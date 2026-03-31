@@ -94,7 +94,8 @@ impl BinaryRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("NO_COLOR", "1");
+            .env("NO_COLOR", "1")
+            .env("AGENTNATIVE_CHECK", "1");
 
         let mut child = loop {
             match cmd.spawn() {
@@ -155,7 +156,8 @@ impl BinaryRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("NO_COLOR", "1");
+            .env("NO_COLOR", "1")
+            .env("AGENTNATIVE_CHECK", "1");
 
         for (k, v) in env_overrides {
             cmd.env(k, v);

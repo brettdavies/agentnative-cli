@@ -2,9 +2,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
+
+use crate::runner::BinaryRunner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -25,7 +28,8 @@ pub struct Project {
     pub language: Option<Language>,
     pub binary_paths: Vec<PathBuf>,
     pub manifest_path: Option<PathBuf>,
-    parsed_files: RefCell<HashMap<PathBuf, ParsedFile>>,
+    pub runner: Option<BinaryRunner>,
+    pub(crate) parsed_files: RefCell<HashMap<PathBuf, ParsedFile>>,
 }
 
 impl std::fmt::Debug for Project {
@@ -35,6 +39,7 @@ impl std::fmt::Debug for Project {
             .field("language", &self.language)
             .field("binary_paths", &self.binary_paths)
             .field("manifest_path", &self.manifest_path)
+            .field("has_runner", &self.runner.is_some())
             .field("parsed_files_count", &self.parsed_files.borrow().len())
             .finish()
     }
@@ -53,11 +58,13 @@ impl Project {
             if !is_executable(&meta) {
                 bail!("not an executable file: {}", path.display());
             }
+            let runner = BinaryRunner::new(path.clone(), Duration::from_secs(5)).ok();
             return Ok(Project {
                 path: path.clone(),
                 language: None,
                 binary_paths: vec![path],
                 manifest_path: None,
+                runner,
                 parsed_files: RefCell::new(HashMap::new()),
             });
         }
@@ -66,11 +73,18 @@ impl Project {
         let (language, manifest_path) = detect_language(&path);
         let binary_paths = discover_binaries(&path, language, manifest_path.as_deref());
 
+        let runner = if binary_paths.is_empty() {
+            None
+        } else {
+            BinaryRunner::new(binary_paths[0].clone(), Duration::from_secs(5)).ok()
+        };
+
         Ok(Project {
             path,
             language,
             binary_paths,
             manifest_path,
+            runner,
             parsed_files: RefCell::new(HashMap::new()),
         })
     }

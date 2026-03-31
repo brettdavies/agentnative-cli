@@ -11,6 +11,7 @@ keywords = ["cli", "linter", "agent", "ast-grep", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["Brett Davies <pm8fp22mbg@privaterelay.appleid.com>"]
 readme = "README.md"
+default-run = "agentnative"
 rust-version = "1.87"
 exclude = [
     ".claude/",

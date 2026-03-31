@@ -50,35 +50,31 @@ pub(crate) mod tests {
     /// the runner at it.
     pub fn test_project_with_sh_script(script: &str) -> Project {
         use std::fs;
-        use std::io::Write as _;
         use std::sync::atomic::{AtomicU64, Ordering};
 
         static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
 
+        // Use unique dir per call — counter + timestamp to avoid collisions
         let dir = std::env::temp_dir().join(format!(
-            "agentnative-behavioral-tests-{}",
-            std::process::id()
+            "agentnative-test-{}-{id}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
         ));
         fs::create_dir_all(&dir).unwrap();
 
-        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let script_path = dir.join(format!("test-{id}.sh"));
-
-        // Write to a temp file and rename for atomicity
-        let tmp_path = script_path.with_extension("tmp");
-        let mut f = fs::File::create(&tmp_path).unwrap();
-        writeln!(f, "#!/bin/sh").unwrap();
-        writeln!(f, "{script}").unwrap();
-        f.sync_all().unwrap();
-        drop(f);
+        let script_path = dir.join("test.sh");
+        let content = format!("#!/bin/sh\n{script}\n");
+        fs::write(&script_path, content).unwrap();
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&tmp_path, fs::Permissions::from_mode(0o755)).unwrap();
+            fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).unwrap();
         }
-
-        fs::rename(&tmp_path, &script_path).unwrap();
 
         Project {
             path: PathBuf::from("."),

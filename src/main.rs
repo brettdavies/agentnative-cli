@@ -1,10 +1,11 @@
+mod check;
 mod checks;
 mod project;
 mod runner;
 mod source;
 mod types;
 
-use checks::{global_flags, no_color, unwrap};
+use checks::source::rust::{global_flags, no_color, unwrap};
 use types::CheckStatus;
 
 fn main() {

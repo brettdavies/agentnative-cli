@@ -1,4 +1,4 @@
-//! PoC Check #3 (KEYWORD): Detect NO_COLOR environment variable handling.
+//! Check: Detect NO_COLOR environment variable handling.
 //!
 //! Maps to: check-p6-no-color from the existing 24 bash checks.
 //! Principle: P6 (Composable Structure) — CLIs must respect NO_COLOR.
@@ -7,21 +7,63 @@
 //! This check verifies the source references `NO_COLOR` as an env var.
 //! It spans source + behavioral layers; this is the source half.
 
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_core::Pattern;
+use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Rust;
 
+use crate::check::Check;
+use crate::project::{Language, Project};
+use crate::source::has_pattern;
 use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 
-pub fn check_no_color(source: &str, file: &str) -> CheckResult {
-    // Strategy: look for any reference to the "NO_COLOR" string literal
-    // in env-reading contexts. Multiple patterns to catch common idioms:
-    //
-    //   std::env::var("NO_COLOR")
-    //   env::var("NO_COLOR")
-    //   env = "NO_COLOR" (clap #[arg(env = "NO_COLOR")])
-    //   "NO_COLOR" as a general string literal (fallback)
+/// Check trait implementation for NO_COLOR detection.
+pub struct NoColorSourceCheck;
 
+impl Check for NoColorSourceCheck {
+    fn id(&self) -> &str {
+        "p6-no-color"
+    }
+
+    fn applicable(&self, project: &Project) -> bool {
+        project.language == Some(Language::Rust)
+    }
+
+    fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
+        let parsed = project.parsed_files();
+        let mut found_any = false;
+
+        for (_path, parsed_file) in parsed.iter() {
+            let result = check_no_color(&parsed_file.source, "");
+            if matches!(result.status, CheckStatus::Pass) {
+                found_any = true;
+                break;
+            }
+        }
+
+        let status = if found_any {
+            CheckStatus::Pass
+        } else {
+            CheckStatus::Fail(
+                "No reference to NO_COLOR found in any source file. CLIs must respect the \
+                 NO_COLOR convention. See https://no-color.org/"
+                    .to_string(),
+            )
+        };
+
+        Ok(CheckResult {
+            id: "p6-no-color".to_string(),
+            label: "Respects NO_COLOR".to_string(),
+            group: CheckGroup::P6,
+            layer: CheckLayer::Source,
+            status,
+        })
+    }
+}
+
+/// Check a single source string for NO_COLOR references.
+///
+/// Kept public(crate) for unit testing with inline source strings.
+pub(crate) fn check_no_color(source: &str, file: &str) -> CheckResult {
     let found_env_var = has_pattern(source, r#"std::env::var("NO_COLOR")"#)
         || has_pattern(source, r#"env::var("NO_COLOR")"#)
         || has_pattern(source, r#"std::env::var_os("NO_COLOR")"#)
@@ -49,18 +91,8 @@ pub fn check_no_color(source: &str, file: &str) -> CheckResult {
     }
 }
 
-fn has_pattern(source: &str, pattern_str: &str) -> bool {
-    let pattern = match Pattern::try_new(pattern_str, Rust) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let root = Rust.ast_grep(source);
-    root.root().find(&pattern).is_some()
-}
-
 /// Check for clap attribute: `#[arg(env = "NO_COLOR")]`
 fn source_contains_no_color_clap_attr(source: &str) -> bool {
-    // Use ast-grep to find #[arg(...)] containing NO_COLOR
     let pattern = match Pattern::try_new(r#"#[arg($$$ARGS)]"#, Rust) {
         Ok(p) => p,
         Err(_) => return false,
@@ -75,7 +107,6 @@ fn source_contains_no_color_clap_attr(source: &str) -> bool {
 }
 
 /// Fallback: scan for "NO_COLOR" as a string literal anywhere in the AST.
-/// This catches patterns we didn't explicitly enumerate.
 fn has_string_literal(source: &str, needle: &str) -> bool {
     let pattern = match Pattern::try_new(&format!(r#""{needle}""#), Rust) {
         Ok(p) => p,
@@ -156,5 +187,33 @@ fn check_color() {
 "#;
         let result = check_no_color(source, "src/color.rs");
         assert_eq!(result.status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn applicable_for_rust() {
+        let check = NoColorSourceCheck;
+        let dir = std::env::temp_dir().join(format!("anc-nocolor-rust-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let project = Project::discover(&dir).unwrap();
+        assert!(check.applicable(&project));
+    }
+
+    #[test]
+    fn not_applicable_for_python() {
+        let check = NoColorSourceCheck;
+        let dir = std::env::temp_dir().join(format!("anc-nocolor-py-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("pyproject.toml"),
+            "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let project = Project::discover(&dir).unwrap();
+        assert!(!check.applicable(&project));
     }
 }

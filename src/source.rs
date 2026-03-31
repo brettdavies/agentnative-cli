@@ -1,10 +1,20 @@
 use std::path::Path;
 
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_core::Pattern;
+use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Rust;
 
 use crate::types::SourceLocation;
+
+/// Check whether a Rust source string contains at least one match for the given pattern.
+pub fn has_pattern(source: &str, pattern_str: &str) -> bool {
+    let pattern = match Pattern::try_new(pattern_str, Rust) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let root = Rust.ast_grep(source);
+    root.root().find(&pattern).is_some()
+}
 
 /// Parse a Rust source file and find all matches for a pattern.
 pub fn find_pattern_matches(source: &str, pattern_str: &str) -> Vec<SourceLocation> {
@@ -113,5 +123,22 @@ fn main() {
     fn test_invalid_pattern_returns_empty() {
         let matches = find_pattern_matches("fn main() {}", "<<<invalid>>>");
         assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn test_has_pattern_found() {
+        let source = "fn main() { let x = foo().unwrap(); }";
+        assert!(has_pattern(source, "$RECV.unwrap()"));
+    }
+
+    #[test]
+    fn test_has_pattern_not_found() {
+        let source = "fn main() { let x = foo()?; }";
+        assert!(!has_pattern(source, "$RECV.unwrap()"));
+    }
+
+    #[test]
+    fn test_has_pattern_invalid_pattern() {
+        assert!(!has_pattern("fn main() {}", "<<<invalid>>>"));
     }
 }

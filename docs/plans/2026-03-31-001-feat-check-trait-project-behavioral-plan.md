@@ -1,7 +1,7 @@
 ---
 title: "feat: Implement Check trait, Project struct, and behavioral checks"
 type: feat
-status: active
+status: completed
 date: 2026-03-31
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 deepened: 2026-03-31
@@ -262,17 +262,17 @@ graph TB
   **Approach:**
 - Define `Language` enum: `Rust`, `Python`, `Go`, `Node`
 - Define `Project` struct: `path: PathBuf`, `language: Option<Language>`, `binary_paths: Vec<PathBuf>`, `manifest_path:
-    Option<PathBuf>`, `parsed_files: LazyFileCache` (populated on first access)
+  Option<PathBuf>`, `parsed_files: LazyFileCache` (populated on first access)
 - `LazyFileCache` wraps `RefCell<HashMap<PathBuf, ParsedFile>>` where `ParsedFile` contains `source: String` and the AST
-    root. Lazily populated when source checks first request files. Excludes `tests/`, `target/` by default.
+  root. Lazily populated when source checks first request files. Excludes `tests/`, `target/` by default.
 - `Project::discover(path: &Path) -> Result<Project>`:
 - If path is an executable file: return Project with binary_paths = [path], no language
 - If path is a directory: detect language from manifest, discover binary paths per language
 - Language detection: `Cargo.toml` -> Rust, `pyproject.toml` -> Python, `go.mod` -> Go, `package.json` -> Node
 - Binary discovery for Rust: parse `[[bin]]` names from Cargo.toml using `toml` crate, look in `target/release/` then
-    `target/debug/`
+  `target/debug/`
 - Binary discovery for Python/Go/Node: parse entry point names from manifest, `which <name>` lookup. Return empty
-    binary_paths if not found (no error -- behavioral checks simply won't run).
+  binary_paths if not found (no error -- behavioral checks simply won't run).
 
   **Patterns to follow:**
 - `source.rs` walkdir pattern for filesystem traversal (extended with path exclusions)
@@ -315,7 +315,7 @@ graph TB
 - Define `RunResult` struct: `exit_code: Option<i32>`, `stdout: String`, `stderr: String`, `status: RunStatus`
 - Define `RunStatus` enum: `Ok`, `Timeout`, `Crash { signal: i32 }`, `NotFound`, `PermissionDenied`, `Error(String)`
 - Define `BinaryRunner` struct: `binary: PathBuf`, `timeout: Duration`, `cache: RefCell<HashMap<(Vec<String>,
-    Vec<(String, String)>), RunResult>>`
+  Vec<(String, String)>), RunResult>>`
 - `BinaryRunner::new(binary, timeout)` -- validates binary exists and is executable
 - `BinaryRunner::run(&self, args, env_overrides) -> RunResult` (cached):
 - Check cache first, return clone if hit
@@ -381,13 +381,13 @@ graph TB
 - Each source check becomes a unit struct (e.g., `pub struct UnwrapCheck;`) implementing `Check`
 - `applicable()` returns true if `project.language == Some(Rust)` for Rust source checks
 - The trait `run()` impl reads Rust source files via `project.parsed_files()` (lazy cache), then delegates to the
-    existing `check_<name>(source, file)` inner function
+  existing `check_<name>(source, file)` inner function
 - Preserve existing `check_<name>(source, file)` functions as `pub(crate)` for unit testing with inline source strings
 - Move `has_pattern()` from `no_color.rs` and `global_flags.rs` into `source.rs` as a public function
 - Tighten `global_flags` Subcommand detection: match `#[derive($$$DERIVES)]` where DERIVES contains "Subcommand" instead
-    of bare identifier match
+  of bare identifier match
 - Add test code exclusion to `scan_rust_files()`: skip `tests/`, `target/` dirs, filter AST nodes inside `#[cfg(test)]`
-    modules
+  modules
 - `source/mod.rs` dispatches: `all_source_checks(language) -> Vec<Box<dyn Check>>`
 - `source/python/mod.rs` returns empty vec (placeholder for fast-follow)
 
@@ -436,26 +436,26 @@ graph TB
 
   **Approach:**
 - Each behavioral check is a unit struct implementing `Check`. `applicable()` checks that `project.binary_paths` is
-    non-empty. The `run()` method receives `&Project`, gets the shared `BinaryRunner` (created by orchestrator, stored
-    in Project or passed via context), and calls runner methods.
+  non-empty. The `run()` method receives `&Project`, gets the shared `BinaryRunner` (created by orchestrator, stored in
+  Project or passed via context), and calls runner methods.
 - **HelpCheck** (`p3-help`): Run `binary --help`. Pass if exit 0 and output contains an examples section (heuristic:
-    heading matching `/(EXAMPLES?|USAGE):/i` after the last `--` flag line). Warn if no examples. Fail if exit non-zero
-    or no output.
+  heading matching `/(EXAMPLES?|USAGE):/i` after the last `--` flag line). Warn if no examples. Fail if exit non-zero or
+  no output.
 - **VersionCheck** (`p3-version`): Run `binary --version`. Pass if exit 0 and stdout is non-empty. Fail otherwise.
 - **JsonOutputCheck** (`p2-json-output`): Run `binary --help` (cached), check if `--output` flag exists. If yes, run
-    `binary --output json [subcommand]` and validate stdout is parseable JSON. Skip if no `--output` flag. Exact
-    subcommand discovery strategy deferred to implementation.
+  `binary --output json [subcommand]` and validate stdout is parseable JSON. Skip if no `--output` flag. Exact
+  subcommand discovery strategy deferred to implementation.
 - **BadArgsCheck** (`p4-bad-args`): Run `binary --this-flag-does-not-exist-agentnative-probe`. Pass if exit code > 0.
-    Fail if exit 0.
+  Fail if exit 0.
 - **QuietCheck** (`p7-quiet`): Run `binary --help` (cached), check if `--quiet` flag exists. If yes, run a command with
-    and without `--quiet`, compare output. Skip if no `--quiet` flag. Exact comparison strategy deferred to
-    implementation.
+  and without `--quiet`, compare output. Skip if no `--quiet` flag. Exact comparison strategy deferred to
+  implementation.
 - **SigpipeCheck** (`p6-sigpipe`): Use `runner.run_partial(["--help"], small_bytes)` to trigger SIGPIPE. Pass if no
-    panic/crash. Exact byte count and pipe-closing strategy deferred to implementation.
+  panic/crash. Exact byte count and pipe-closing strategy deferred to implementation.
 - **NonInteractiveCheck** (`p1-non-interactive`): Run `binary` with no args, stdin null, 5s timeout. Pass if it exits
-    within timeout. Warn if timeout (likely waiting for input).
+  within timeout. Warn if timeout (likely waiting for input).
 - **NoColorBehavioralCheck** (`p6-no-color-behavioral`): Run `binary --help` (cached) with `NO_COLOR=1` env. Pass if
-    stdout contains no ANSI escape sequences (`\x1b[`). Fail if ANSI codes present.
+  stdout contains no ANSI escape sequences (`\x1b[`). Fail if ANSI codes present.
 - `pub fn all_behavioral_checks() -> Vec<Box<dyn Check>>` registry function
 
   **Patterns to follow:**
@@ -498,24 +498,24 @@ graph TB
 - Rewrite: `src/main.rs` (real entry point)
 - Modify: `src/types.rs` (add `Scorecard` struct if needed)
 - Test: `src/scorecard.rs` (inline tests + insta snapshot for JSON schema), `tests/integration.rs` (CLI integration
-    tests with assert_cmd)
+  tests with assert_cmd)
 
   **Approach:**
 - **`src/cli.rs`**: clap derive with `check` as default subcommand via `Option<Commands>` pattern (clap has no built-in
-    default subcommand). Global flags: `--output` (text/json), `--quiet` (with `FalseyValueParser`, env =
-    `AGENTNATIVE_QUIET`), `--no-color` (env = `NO_COLOR`), `--include-tests`. Check-specific: `--binary`, `--source`,
-    `--principle`. Include `completions` subcommand for shell completions.
+  default subcommand). Global flags: `--output` (text/json), `--quiet` (with `FalseyValueParser`, env =
+  `AGENTNATIVE_QUIET`), `--no-color` (env = `NO_COLOR`), `--include-tests`. Check-specific: `--binary`, `--source`,
+  `--principle`. Include `completions` subcommand for shell completions.
 - **`src/error.rs`**: `AppError` enum with thiserror. Variants: `ProjectDetection`, `BinaryExecution`, `Io`. Map to exit
-    code 2 for all error variants.
+  code 2 for all error variants.
 - **`src/main.rs`**: SIGPIPE fix at top. Parse CLI args. Call `run()` which returns `Result<i32, AppError>` (i32 = exit
-    code). `main()` handles display and `process::exit()`.
+  code). `main()` handles display and `process::exit()`.
 - **`src/scorecard.rs`**: `CheckResultView` struct that maps internal `CheckResult` + `CheckStatus` to the exact design
-    doc JSON schema (always includes `"evidence": null` for Pass). `Scorecard` struct with `format_text()` and
-    `format_json()`. Insta snapshot test captures the JSON schema to guard against accidental changes.
+  doc JSON schema (always includes `"evidence": null` for Pass). `Scorecard` struct with `format_text()` and
+  `format_json()`. Insta snapshot test captures the JSON schema to guard against accidental changes.
 - **Orchestration in `run()`**: Apply the auto-detection mode matrix. `Project::discover(path)` -> determine mode from
-    flags + detection -> create `BinaryRunner` once (if binary available) -> select checks by mode and language ->
-    filter by `--principle` -> run each: `check.applicable()` then `check.run()`, convert `Err` to `CheckStatus::Error`
-    -> build scorecard -> format output -> compute exit code (0/1/2).
+  flags + detection -> create `BinaryRunner` once (if binary available) -> select checks by mode and language -> filter
+  by `--principle` -> run each: `check.applicable()` then `check.run()`, convert `Err` to `CheckStatus::Error` -> build
+  scorecard -> format output -> compute exit code (0/1/2).
 - Shell completions via `clap_complete` as a subcommand that exits before any heavy init.
 
   **Patterns to follow:**

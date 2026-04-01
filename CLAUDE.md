@@ -61,10 +61,9 @@ Key decisions already made:
 
 ## CI and Quality
 
-**Pre-push hook:** `~/.claude/rust-ci-check.sh` is installed as a git pre-push hook (symlinked from
-`.git/hooks/pre-push`). It mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a Windows
-compatibility check. If the hook is missing after a fresh clone, reinstall: `ln -sf ~/.claude/rust-ci-check.sh
-.git/hooks/pre-push`
+**Pre-push hook:** `scripts/ci-check.sh` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
+Windows compatibility check. Installed as a git pre-push hook via symlink. If the hook is missing after a fresh clone,
+reinstall: `ln -sf ../../scripts/ci-check.sh .git/hooks/pre-push`
 
 **Windows compatibility:** Only `libc` belongs in `[target.'cfg(unix)'.dependencies]`. All SIGPIPE/signal code must be
 inside `#[cfg(unix)]` blocks. The pre-push hook checks this statically.

@@ -23,7 +23,7 @@ impl Check for SigpipeCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         let result = runner.run_partial(&["--help"], 16);
 
         let status = match result.status {
@@ -53,7 +53,7 @@ mod tests {
     #[test]
     fn sigpipe_pass_with_echo() {
         let project = test_project_with_runner("/bin/echo");
-        let result = SigpipeCheck.run(&project).unwrap();
+        let result = SigpipeCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 }

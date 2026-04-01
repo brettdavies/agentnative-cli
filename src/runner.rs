@@ -198,15 +198,16 @@ impl BinaryRunner {
 
         let timeout_thread = std::thread::spawn(move || {
             let (lock, cvar) = &*done_for_timeout;
-            let guard = lock.lock().unwrap();
+            let guard = lock.lock().expect("mutex poisoned");
             // Check done flag first — if the child already exited before we
             // started, the condvar notification was already sent and would be lost.
             if *guard {
                 return;
             }
-            let (guard, timeout_result) = cvar.wait_timeout(guard, timeout).unwrap();
+            let (guard, timeout_result) =
+                cvar.wait_timeout(guard, timeout).expect("mutex poisoned");
             if !*guard && timeout_result.timed_out() {
-                *timed_out_clone.lock().unwrap() = true;
+                *timed_out_clone.lock().expect("mutex poisoned") = true;
                 if let Ok(mut c) = child_for_timeout.lock() {
                     let _ = c.kill();
                 }
@@ -217,15 +218,15 @@ impl BinaryRunner {
         // so the timeout thread can always acquire it to kill.
         let exit_status = loop {
             {
-                let mut c = child.lock().unwrap();
+                let mut c = child.lock().expect("mutex poisoned");
                 match c.try_wait() {
                     Ok(Some(status)) => break Some(status),
                     Ok(None) => {}
                     Err(_) => break None,
                 }
             } // mutex released here
-            if *timed_out.lock().unwrap() {
-                let _ = child.lock().unwrap().wait();
+            if *timed_out.lock().expect("mutex poisoned") {
+                let _ = child.lock().expect("mutex poisoned").wait();
                 break None;
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -234,7 +235,7 @@ impl BinaryRunner {
         // Signal the timeout thread to wake up and exit immediately.
         {
             let (lock, cvar) = &*done;
-            *lock.lock().unwrap() = true;
+            *lock.lock().expect("mutex poisoned") = true;
             cvar.notify_one();
         }
         timeout_thread.join().ok();

@@ -165,13 +165,13 @@ fn main() -> anyhow::Result<()> {
     fn applicable_for_rust() {
         let check = UnwrapCheck;
         let dir = std::env::temp_dir().join(format!("anc-unwrap-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create test dir");
         std::fs::write(
             dir.join("Cargo.toml"),
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
         )
-        .unwrap();
-        let project = Project::discover(&dir).unwrap();
+        .expect("write test Cargo.toml");
+        let project = Project::discover(&dir).expect("discover test project");
         assert!(check.applicable(&project));
     }
 
@@ -179,13 +179,13 @@ fn main() -> anyhow::Result<()> {
     fn not_applicable_for_python() {
         let check = UnwrapCheck;
         let dir = std::env::temp_dir().join(format!("anc-unwrap-py-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create test dir");
         std::fs::write(
             dir.join("pyproject.toml"),
             "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
         )
-        .unwrap();
-        let project = Project::discover(&dir).unwrap();
+        .expect("write test pyproject.toml");
+        let project = Project::discover(&dir).expect("discover test project");
         assert!(!check.applicable(&project));
     }
 
@@ -193,8 +193,8 @@ fn main() -> anyhow::Result<()> {
     fn not_applicable_for_none() {
         let check = UnwrapCheck;
         let dir = std::env::temp_dir().join(format!("anc-unwrap-none-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let project = Project::discover(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let project = Project::discover(&dir).expect("discover test project");
         assert!(!check.applicable(&project));
     }
 }

@@ -23,7 +23,7 @@ impl Check for HelpCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         let result = runner.run(&["--help"], &[]);
 
         let status = match result.status {
@@ -90,7 +90,7 @@ mod tests {
     fn help_pass_with_examples() {
         let runner =
             crate::runner::BinaryRunner::new("/bin/sh".into(), std::time::Duration::from_secs(5))
-                .unwrap();
+                .expect("create test runner");
         let result = runner.run(&["-c", "echo 'Usage: foo\nExamples:\n  foo bar'"], &[]);
         assert!(has_examples_section(&result.stdout));
     }

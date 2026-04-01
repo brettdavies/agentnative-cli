@@ -23,7 +23,7 @@ impl Check for NonInteractiveCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
 
         // Test P1: binary must not block waiting for interactive input.
         //
@@ -71,14 +71,14 @@ mod tests {
     #[test]
     fn non_interactive_pass_with_echo() {
         let project = test_project_with_runner("/bin/echo");
-        let result = NonInteractiveCheck.run(&project).unwrap();
+        let result = NonInteractiveCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 
     #[test]
     fn non_interactive_pass_with_false() {
         let project = test_project_with_runner("/bin/false");
-        let result = NonInteractiveCheck.run(&project).unwrap();
+        let result = NonInteractiveCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 }

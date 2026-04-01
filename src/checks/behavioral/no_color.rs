@@ -23,7 +23,7 @@ impl Check for NoColorBehavioralCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         // Runner already sets NO_COLOR=1
         let result = runner.run(&["--help"], &[]);
 
@@ -64,7 +64,9 @@ mod tests {
     #[test]
     fn no_color_pass_clean_output() {
         let project = test_project_with_runner("/bin/echo");
-        let result = NoColorBehavioralCheck.run(&project).unwrap();
+        let result = NoColorBehavioralCheck
+            .run(&project)
+            .expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 
@@ -72,7 +74,9 @@ mod tests {
     fn no_color_fail_with_ansi() {
         // Output ANSI escape sequence despite NO_COLOR
         let project = test_project_with_sh_script("printf '\\033[31mred text\\033[0m'");
-        let result = NoColorBehavioralCheck.run(&project).unwrap();
+        let result = NoColorBehavioralCheck
+            .run(&project)
+            .expect("check should run");
         assert!(matches!(result.status, CheckStatus::Fail(_)));
     }
 

@@ -256,13 +256,13 @@ enum Commands {
     fn applicable_for_rust() {
         let check = GlobalFlagsCheck;
         let dir = std::env::temp_dir().join(format!("anc-gflags-rust-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create test dir");
         std::fs::write(
             dir.join("Cargo.toml"),
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
         )
-        .unwrap();
-        let project = Project::discover(&dir).unwrap();
+        .expect("write test Cargo.toml");
+        let project = Project::discover(&dir).expect("discover test project");
         assert!(check.applicable(&project));
     }
 
@@ -270,8 +270,8 @@ enum Commands {
     fn not_applicable_for_none() {
         let check = GlobalFlagsCheck;
         let dir = std::env::temp_dir().join(format!("anc-gflags-none-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let project = Project::discover(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        let project = Project::discover(&dir).expect("discover test project");
         assert!(!check.applicable(&project));
     }
 }

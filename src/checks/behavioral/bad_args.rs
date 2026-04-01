@@ -23,7 +23,7 @@ impl Check for BadArgsCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         let result = runner.run(&["--this-flag-does-not-exist-agentnative-probe"], &[]);
 
         let status = match result.status {
@@ -60,7 +60,7 @@ mod tests {
     fn bad_args_pass_when_rejected() {
         // sh -c 'exit 1' always exits non-zero
         let project = test_project_with_sh_script("exit 2");
-        let result = BadArgsCheck.run(&project).unwrap();
+        let result = BadArgsCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 
@@ -68,7 +68,7 @@ mod tests {
     fn bad_args_fail_when_accepted() {
         // echo silently accepts any args with exit 0
         let project = crate::checks::behavioral::tests::test_project_with_runner("/bin/echo");
-        let result = BadArgsCheck.run(&project).unwrap();
+        let result = BadArgsCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Fail(_)));
     }
 }

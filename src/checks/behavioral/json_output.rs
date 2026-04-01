@@ -23,7 +23,7 @@ impl Check for JsonOutputCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         let result = runner.run(&["--help"], &[]);
 
         let status = match result.status {
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn json_output_detects_format_flag() {
         let project = test_project_with_sh_script("echo '--format json  Choose output format'");
-        let result = JsonOutputCheck.run(&project).unwrap();
+        let result = JsonOutputCheck.run(&project).expect("check should run");
         match &result.status {
             CheckStatus::Skip(msg) => assert!(msg.contains("manual verification")),
             other => panic!("expected Skip, got {other:?}"),
@@ -70,7 +70,7 @@ mod tests {
     #[test]
     fn json_output_no_flag() {
         let project = test_project_with_sh_script("echo 'just some help text'");
-        let result = JsonOutputCheck.run(&project).unwrap();
+        let result = JsonOutputCheck.run(&project).expect("check should run");
         match &result.status {
             CheckStatus::Skip(msg) => assert!(msg.contains("no --output")),
             other => panic!("expected Skip, got {other:?}"),

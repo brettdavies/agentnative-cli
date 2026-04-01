@@ -39,7 +39,10 @@ pub(crate) mod tests {
             language: None,
             binary_paths: vec![PathBuf::from(binary)],
             manifest_path: None,
-            runner: Some(BinaryRunner::new(PathBuf::from(binary), Duration::from_secs(5)).unwrap()),
+            runner: Some(
+                BinaryRunner::new(PathBuf::from(binary), Duration::from_secs(5))
+                    .expect("create test runner"),
+            ),
             include_tests: false,
             parsed_files: RefCell::new(HashMap::new()),
         }
@@ -62,10 +65,10 @@ pub(crate) mod tests {
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .expect("system time after UNIX epoch")
                 .as_nanos(),
         ));
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
 
         let script_path = dir.join("test.sh");
         let content = format!("#!/bin/sh\n{script}\n");
@@ -85,18 +88,20 @@ pub(crate) mod tests {
                     use std::io::Write;
                     f.write_all(content.as_bytes())
                 })
-                .unwrap();
+                .expect("write test script");
         }
 
         #[cfg(not(unix))]
-        fs::write(&script_path, content).unwrap();
+        fs::write(&script_path, content).expect("write test script");
 
         Project {
             path: PathBuf::from("."),
             language: None,
             binary_paths: vec![script_path.clone()],
             manifest_path: None,
-            runner: Some(BinaryRunner::new(script_path, Duration::from_secs(5)).unwrap()),
+            runner: Some(
+                BinaryRunner::new(script_path, Duration::from_secs(5)).expect("create test runner"),
+            ),
             include_tests: false,
             parsed_files: RefCell::new(HashMap::new()),
         }

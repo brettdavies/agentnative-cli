@@ -6,6 +6,10 @@ use clap_complete::Shell;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Suppress non-essential output
+    #[arg(long, short = 'q', global = true, env = "AGENTNATIVE_QUIET")]
+    pub quiet: bool,
 }
 
 #[derive(Subcommand)]
@@ -31,10 +35,6 @@ pub enum Commands {
         /// Output format
         #[arg(long, default_value = "text")]
         output: OutputFormat,
-
-        /// Suppress non-essential output
-        #[arg(long, short = 'q', env = "AGENTNATIVE_QUIET")]
-        quiet: bool,
 
         /// Include test code in source analysis
         #[arg(long)]

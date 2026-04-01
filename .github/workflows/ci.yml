@@ -1,0 +1,28 @@
+# Source repo CI wrapper — calls the centralized reusable workflow.
+# Copy to .github/workflows/ci.yml in the tool repo.
+#
+# The reusable workflow runs: fmt, clippy, test, cargo-deny audit, package check,
+# Windows dep check, and changelog verification (on PRs to main).
+# No secrets required — only needs contents: read and pull-requests: read.
+#
+# paths-ignore on push prevents CI from running on doc-only commits (changelog,
+# README, etc.). Not applied to pull_request to avoid blocking required status
+# checks when a PR only touches ignored paths.
+name: CI
+
+on:
+  push:
+    tags-ignore: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE-*'
+      - 'docs/**'
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ci:
+    uses: brettdavies/.github/.github/workflows/rust-ci.yml@main

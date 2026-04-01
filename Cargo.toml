@@ -1,0 +1,73 @@
+[package]
+name = "agentnative"
+version = "0.1.0"
+edition = "2024"
+description = "The agent-native CLI linter — check whether your CLI follows agent-readiness principles"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/brettdavies/agentnative"
+homepage = "https://github.com/brettdavies/agentnative"
+documentation = "https://docs.rs/agentnative"
+keywords = ["cli", "linter", "agent", "ast-grep", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
+authors = ["Brett Davies <pm8fp22mbg@privaterelay.appleid.com>"]
+readme = "README.md"
+default-run = "agentnative"
+rust-version = "1.87"
+exclude = [
+    ".claude/",
+    ".github/",
+    "cliff.toml",
+    "deny.toml",
+    "docs/",
+    "rustfmt.toml",
+    "tests/",
+]
+
+[[bin]]
+name = "agentnative"
+path = "src/main.rs"
+
+[[bin]]
+name = "anc"
+path = "src/main.rs"
+
+[dependencies]
+# AST pattern matching — pinned pre-1.0
+ast-grep-core = { version = "=0.42.0" }
+ast-grep-language = { version = "=0.42.0", default-features = false, features = [
+    "tree-sitter-rust",
+    "tree-sitter-python",
+] }
+
+# CLI framework
+clap = { version = "4.4", features = ["derive", "env"] }
+clap_complete = "4"
+
+# Manifest parsing
+toml = "0.8"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Platform
+libc = "0.2"
+
+[dev-dependencies]
+assert_cmd = "2"
+insta = "1"
+predicates = "3"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.tar.gz"
+pkg-fmt = "tgz"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

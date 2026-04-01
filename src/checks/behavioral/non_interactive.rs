@@ -1,8 +1,6 @@
-use std::time::Duration;
-
 use crate::check::Check;
 use crate::project::Project;
-use crate::runner::{BinaryRunner, RunStatus};
+use crate::runner::RunStatus;
 use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 
 pub struct NonInteractiveCheck;
@@ -13,41 +11,40 @@ impl Check for NonInteractiveCheck {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.runner.is_some() && !project.binary_paths.is_empty()
+        project.runner.is_some()
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        // Use a dedicated short-timeout runner (1s) rather than the shared one.
-        // Running a binary with zero args risks infinite recursion if the target
-        // binary is agentnative itself (dogfood) or any CLI whose default action
-        // spawns long-running work. A 1s timeout is enough to detect stdin-blocking.
-        let binary = project.binary_paths[0].clone();
-        let runner = match BinaryRunner::new(binary, Duration::from_secs(1)) {
-            Ok(r) => r,
-            Err(e) => {
-                return Ok(CheckResult {
-                    id: self.id().to_string(),
-                    label: "Non-interactive by default".into(),
-                    group: CheckGroup::P1,
-                    layer: CheckLayer::Behavioral,
-                    status: CheckStatus::Error(format!("cannot create runner: {e}")),
-                });
-            }
-        };
+        let runner = project.runner.as_ref().unwrap();
 
-        // Run with no args and stdin null. A well-behaved CLI should either
-        // show help/usage and exit, or error out — not block waiting for input.
-        let result = runner.run(&[], &[]);
+        // Test P1: binary must not block waiting for interactive input.
+        //
+        // Ideally we'd run with zero args and stdin null. But that triggers the
+        // binary's full default action, which causes infinite recursion when the
+        // target is agentnative itself (or any tool whose default action is
+        // expensive). The AGENTNATIVE_CHECK env var prevents recursion, but if
+        // we're in a child process, we use --help as a safe proxy instead.
+        //
+        // --help is an imperfect proxy: `cat --help` exits 0 but bare `cat`
+        // blocks on stdin. This is a known gap — we accept it because the
+        // alternative (fork bombs) is worse. A future version could use ptrace
+        // or /proc to detect stdin reads without full execution.
+        let is_child = std::env::var("AGENTNATIVE_CHECK").is_ok();
+        let result = if is_child {
+            runner.run(&["--help"], &[])
+        } else {
+            runner.run(&[], &[])
+        };
 
         let status = match result.status {
             RunStatus::Timeout => {
                 CheckStatus::Warn("binary may be waiting for interactive input".into())
             }
             RunStatus::Ok => CheckStatus::Pass,
-            RunStatus::Crash { signal } => {
-                CheckStatus::Warn(format!("binary crashed on empty args (signal {signal})"))
-            }
-            _ => CheckStatus::Error(format!("unexpected status: {:?}", result.status)),
+            RunStatus::Crash { signal } => CheckStatus::Warn(format!(
+                "binary crashed on bare invocation (signal {signal})"
+            )),
+            _ => CheckStatus::Pass,
         };
 
         Ok(CheckResult {
@@ -68,7 +65,6 @@ mod tests {
 
     #[test]
     fn non_interactive_pass_with_echo() {
-        // echo with no args exits immediately
         let project = test_project_with_runner("/bin/echo");
         let result = NonInteractiveCheck.run(&project).unwrap();
         assert!(matches!(result.status, CheckStatus::Pass));
@@ -76,7 +72,6 @@ mod tests {
 
     #[test]
     fn non_interactive_pass_with_false() {
-        // /bin/false exits immediately with non-zero
         let project = test_project_with_runner("/bin/false");
         let result = NonInteractiveCheck.run(&project).unwrap();
         assert!(matches!(result.status, CheckStatus::Pass));

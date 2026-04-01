@@ -43,41 +43,33 @@ fn main() {
 fn run() -> Result<i32, AppError> {
     let cli = Cli::parse();
 
+    // --quiet is global (visible in top-level --help for agent discoverability)
+    let quiet = cli.quiet;
+
     // Extract check parameters, defaulting None command to `check .`
-    let (path, binary_only, source_only, principle, output, quiet, include_tests) =
-        match cli.command {
-            Some(Commands::Check {
-                path,
-                binary,
-                source,
-                principle,
-                output,
-                quiet,
-                include_tests,
-            }) => (
-                path,
-                binary,
-                source,
-                principle,
-                output,
-                quiet,
-                include_tests,
-            ),
-            Some(Commands::Completions { shell }) => {
-                let mut cmd = <Cli as clap::CommandFactory>::command();
-                generate(shell, &mut cmd, "agentnative", &mut std::io::stdout());
-                return Ok(0);
-            }
-            None => (
-                PathBuf::from("."),
-                false,
-                false,
-                None,
-                OutputFormat::Text,
-                false,
-                false,
-            ),
-        };
+    let (path, binary_only, source_only, principle, output, include_tests) = match cli.command {
+        Some(Commands::Check {
+            path,
+            binary,
+            source,
+            principle,
+            output,
+            include_tests,
+        }) => (path, binary, source, principle, output, include_tests),
+        Some(Commands::Completions { shell }) => {
+            let mut cmd = <Cli as clap::CommandFactory>::command();
+            generate(shell, &mut cmd, "agentnative", &mut std::io::stdout());
+            return Ok(0);
+        }
+        None => (
+            PathBuf::from("."),
+            false,
+            false,
+            None,
+            OutputFormat::Text,
+            false,
+        ),
+    };
 
     let mut project = Project::discover(&path)?;
     project.include_tests = include_tests;

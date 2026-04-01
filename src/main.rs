@@ -15,6 +15,7 @@ use clap_complete::generate;
 
 use check::Check;
 use checks::behavioral::all_behavioral_checks;
+use checks::project::all_project_checks;
 use checks::source::all_source_checks;
 use cli::{Cli, Commands, OutputFormat};
 use error::AppError;
@@ -103,6 +104,11 @@ fn run() -> Result<i32, AppError> {
         } else if source_only {
             eprintln!("warning: --source specified but no language detected");
         }
+    }
+
+    // Project checks — always collected when path is a directory and not binary-only
+    if !binary_only && project.path.is_dir() {
+        all_checks.extend(all_project_checks());
     }
 
     // Run checks

@@ -1,0 +1,78 @@
+{
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
+  "name": "Protect main",
+  "target": "branch",
+  "rules": [
+    {
+      "type": "creation"
+    },
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "required_reviewers": [],
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": [
+          "squash"
+        ]
+      }
+    },
+    {
+      "type": "required_signatures"
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "ci / Fmt, clippy, test"
+          },
+          {
+            "context": "ci / Package check"
+          },
+          {
+            "context": "ci / Security audit (bans licenses sources)"
+          },
+          {
+            "context": "ci / Changelog"
+          },
+          {
+            "context": "guard-docs / check-forbidden-docs"
+          },
+          {
+            "context": "guard-provenance / check-provenance"
+          }
+        ]
+      }
+    },
+    {
+      "type": "required_linear_history"
+    }
+  ],
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "refs/heads/main"
+      ]
+    }
+  },
+  "enforcement": "active"
+}

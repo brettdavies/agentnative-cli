@@ -90,7 +90,9 @@ pub(crate) fn check_structured_output(source: &str) -> CheckResult {
     }
 
     let has_output_format = has_pattern(source, "enum OutputFormat { $$$BODY }")
-        || has_pattern(source, "enum Format { $$$BODY }");
+        || has_pattern(source, "pub enum OutputFormat { $$$BODY }")
+        || has_pattern(source, "enum Format { $$$BODY }")
+        || has_pattern(source, "pub enum Format { $$$BODY }");
 
     let status = if has_output_format {
         CheckStatus::Pass

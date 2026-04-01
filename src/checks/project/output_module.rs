@@ -12,9 +12,12 @@ const OUTPUT_CANDIDATES: &[&str] = &[
     "output.rs",
     "format.rs",
     "display.rs",
+    "render.rs",
+    "scorecard.rs",
     "output.py",
     "format.py",
     "display.py",
+    "render.py",
 ];
 
 pub struct OutputModuleCheck;

@@ -65,22 +65,33 @@ impl Check for ErrorTypesCheck {
 }
 
 /// Check whether a source string contains an enum whose name includes "Error".
+///
+/// Tries multiple patterns to handle visibility modifiers and attributes:
+/// `enum FooError { ... }`, `pub enum FooError { ... }`, etc.
 pub(crate) fn has_error_enum(source: &str) -> bool {
-    let pattern = match Pattern::try_new("enum $NAME { $$$BODY }", Rust) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
+    let patterns = [
+        "enum $NAME { $$$BODY }",
+        "pub enum $NAME { $$$BODY }",
+        "pub(crate) enum $NAME { $$$BODY }",
+    ];
 
     let root = Rust.ast_grep(source);
-    for m in root.root().find_all(&pattern) {
-        let text = m.text();
-        // Extract the enum name: first line after "enum " up to the next space or "{"
-        if let Some(name) = text
-            .strip_prefix("enum ")
-            .and_then(|rest| rest.split_whitespace().next())
-        {
-            if name.contains("Error") {
-                return true;
+    for pat_str in &patterns {
+        let pattern = match Pattern::try_new(pat_str, Rust) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+
+        for m in root.root().find_all(&pattern) {
+            let text = m.text();
+            // Extract the enum name from the matched text
+            if let Some(enum_pos) = text.find("enum ") {
+                let after_enum = &text[enum_pos + 5..];
+                if let Some(name) = after_enum.split_whitespace().next() {
+                    if name.contains("Error") {
+                        return true;
+                    }
+                }
             }
         }
     }

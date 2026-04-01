@@ -1,0 +1,50 @@
+# Global markdownlint config for Claude Code hooks
+extends: markdownlint/style/prettier
+
+config:
+  # === Not auto-fixable rules (disabled to reduce noise) ===
+
+  # Line length - too noisy, not auto-fixable
+  MD013: false
+
+  # Heading increment (h1 -> h3 skip) - varied doc structures
+  MD001: false
+
+  # Multiple H1s - frontmatter + H1 is common
+  MD025: false
+
+  # Blank lines in blockquote - not auto-fixable
+  MD028: false
+
+  # Bare URLs - common and intentional
+  MD034: false
+
+  # Emphasis as heading - used in docs
+  MD036: false
+
+  # First-line heading requirement - PR templates, etc.
+  MD041: false
+
+  # Empty links - placeholder links in drafts
+  MD042: false
+
+  # Alt-text requirement - not auto-fixable
+  MD045: false
+
+  # Link fragment validation - complex anchors
+  MD051: false
+
+  # Descriptive link text - not auto-fixable
+  MD059: false
+
+  # Table style - not auto-fixable, different styles valid
+  MD060: false
+
+  # === Relaxed rules ===
+
+  # Allow duplicate headings in different sections
+  MD024:
+    siblings_only: true
+
+  # Allow HTML for advanced formatting
+  MD033: false

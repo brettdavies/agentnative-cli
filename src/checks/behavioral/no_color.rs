@@ -85,4 +85,13 @@ mod tests {
         assert!(contains_ansi_escapes("\x1b[31mred\x1b[0m"));
         assert!(!contains_ansi_escapes("plain text"));
     }
+
+    #[test]
+    fn no_color_handles_crash() {
+        let project = test_project_with_sh_script("kill -11 $$");
+        let result = NoColorBehavioralCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        assert!(matches!(result.status, CheckStatus::Skip(_)));
+    }
 }

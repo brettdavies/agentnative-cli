@@ -71,4 +71,13 @@ mod tests {
         let result = BadArgsCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Fail(_)));
     }
+
+    #[test]
+    fn bad_args_handles_crash() {
+        let project = test_project_with_sh_script("kill -11 $$");
+        let result = BadArgsCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        assert!(matches!(result.status, CheckStatus::Fail(_)));
+    }
 }

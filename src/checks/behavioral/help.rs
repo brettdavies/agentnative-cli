@@ -102,4 +102,13 @@ mod tests {
         assert!(has_examples_section("Examples:\n  mycli run"));
         assert!(!has_examples_section("This is just a description"));
     }
+
+    #[test]
+    fn help_handles_crash() {
+        let project = crate::checks::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let result = HelpCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        assert!(matches!(result.status, CheckStatus::Fail(_)));
+    }
 }

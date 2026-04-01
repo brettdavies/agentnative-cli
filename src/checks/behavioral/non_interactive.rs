@@ -81,4 +81,13 @@ mod tests {
         let result = NonInteractiveCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
+
+    #[test]
+    fn non_interactive_handles_crash() {
+        let project = crate::checks::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let result = NonInteractiveCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        assert!(matches!(result.status, CheckStatus::Warn(_)));
+    }
 }

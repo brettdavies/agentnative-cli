@@ -67,4 +67,11 @@ mod tests {
         let result = QuietCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Warn(_)));
     }
+
+    #[test]
+    fn quiet_not_applicable_without_runner() {
+        let mut project = test_project_with_sh_script("echo hi");
+        project.runner = None;
+        assert!(!QuietCheck.applicable(&project));
+    }
 }

@@ -56,4 +56,18 @@ mod tests {
         let result = SigpipeCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
+
+    #[test]
+    fn sigpipe_handles_crash() {
+        let project = crate::checks::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let result = SigpipeCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        // run_partial always returns Ok status (kills child after partial read),
+        // so a crash script may still yield Pass or a non-panic result
+        assert!(matches!(
+            result.status,
+            CheckStatus::Pass | CheckStatus::Fail(_) | CheckStatus::Warn(_)
+        ));
+    }
 }

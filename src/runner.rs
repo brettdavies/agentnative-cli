@@ -6,13 +6,16 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+#[cfg(unix)]
+use anyhow::Context;
+use anyhow::{Result, bail};
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
 /// Outcome classification for a binary execution.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)] // Crash is only constructed on unix (via ExitStatusExt::signal)
 pub enum RunStatus {
     Ok,
     Timeout,

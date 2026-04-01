@@ -10,7 +10,7 @@
 use std::path::Path;
 
 use crate::check::Check;
-use crate::project::Project;
+use crate::project::{Language, Project};
 use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 
 pub struct OutputModuleCheck;
@@ -33,6 +33,19 @@ impl Check for OutputModuleCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
+        // Content patterns are language-specific; skip unsupported languages
+        if !matches!(project.language, Some(Language::Rust)) {
+            return Ok(CheckResult {
+                id: self.id().to_string(),
+                label: "Centralized output module exists".into(),
+                group: self.group(),
+                layer: self.layer(),
+                status: CheckStatus::Skip(
+                    "output module detection not yet supported for this language".into(),
+                ),
+            });
+        }
+
         let parsed = project.parsed_files();
 
         for (path, parsed_file) in parsed.iter() {

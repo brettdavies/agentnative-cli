@@ -10,12 +10,20 @@ impl Check for HelpCheck {
         "p3-help"
     }
 
+    fn group(&self) -> CheckGroup {
+        CheckGroup::P3
+    }
+
+    fn layer(&self) -> CheckLayer {
+        CheckLayer::Behavioral
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         let result = runner.run(&["--help"], &[]);
 
         let status = match result.status {
@@ -82,7 +90,7 @@ mod tests {
     fn help_pass_with_examples() {
         let runner =
             crate::runner::BinaryRunner::new("/bin/sh".into(), std::time::Duration::from_secs(5))
-                .unwrap();
+                .expect("create test runner");
         let result = runner.run(&["-c", "echo 'Usage: foo\nExamples:\n  foo bar'"], &[]);
         assert!(has_examples_section(&result.stdout));
     }
@@ -93,5 +101,14 @@ mod tests {
         assert!(has_examples_section("Usage: mycli [OPTIONS]"));
         assert!(has_examples_section("Examples:\n  mycli run"));
         assert!(!has_examples_section("This is just a description"));
+    }
+
+    #[test]
+    fn help_handles_crash() {
+        let project = crate::checks::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let result = HelpCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        assert!(matches!(result.status, CheckStatus::Fail(_)));
     }
 }

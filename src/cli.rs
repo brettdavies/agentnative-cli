@@ -33,7 +33,7 @@ pub enum Commands {
         output: OutputFormat,
 
         /// Suppress non-essential output
-        #[arg(long, env = "AGENTNATIVE_QUIET")]
+        #[arg(long, short = 'q', env = "AGENTNATIVE_QUIET")]
         quiet: bool,
 
         /// Include test code in source analysis

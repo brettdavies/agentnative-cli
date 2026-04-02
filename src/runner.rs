@@ -106,8 +106,7 @@ impl BinaryRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("NO_COLOR", "1")
-            .env("AGENTNATIVE_CHECK", "1");
+            .env("NO_COLOR", "1");
 
         let mut child = match Self::spawn_with_retry(&mut cmd) {
             Ok(c) => c,
@@ -164,8 +163,7 @@ impl BinaryRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("NO_COLOR", "1")
-            .env("AGENTNATIVE_CHECK", "1");
+            .env("NO_COLOR", "1");
 
         for (k, v) in env_overrides {
             cmd.env(k, v);

@@ -189,7 +189,7 @@ fn validate_json_output(
         }
     }
 
-    CheckStatus::Fail("--output/--format flag detected but no valid JSON produced".into())
+    CheckStatus::Warn("--output/--format flag detected but could not validate JSON via safe probes (--help/--version override output flags in most CLIs)".into())
 }
 
 /// Run a single JSON probe and return Some(status) if valid JSON found.
@@ -276,8 +276,10 @@ esac
         let project = test_project_with_sh_script(script);
         let result = JsonOutputCheck.run(&project).expect("check should run");
         match &result.status {
-            CheckStatus::Fail(msg) => assert!(msg.contains("no valid JSON"), "got: {msg}"),
-            other => panic!("expected Fail, got {other:?}"),
+            CheckStatus::Warn(msg) => {
+                assert!(msg.contains("could not validate JSON"), "got: {msg}")
+            }
+            other => panic!("expected Warn, got {other:?}"),
         }
     }
 

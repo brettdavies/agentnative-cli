@@ -59,6 +59,21 @@ Key decisions already made:
 - Feature flag is `tree-sitter-rust`, not `language-rust`
 - Edition 2024, dual MIT/Apache-2.0 license
 
+## Dogfooding Safety
+
+Behavioral checks spawn the target binary as a child process. When dogfooding (`agentnative check .`), the target IS
+agentnative. Two rules prevent recursive fork bombs:
+
+1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
+   instant help output instead of running `check .`. This is also correct CLI behavior (P1 principle).
+2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
+   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
+
+**Rules for new behavioral checks:**
+
+- NEVER probe subcommands without `--help`/`--version` suffixes
+- NEVER remove `arg_required_else_help` from `Cli` — it prevents recursive self-invocation
+
 ## CI and Quality
 
 **Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a

@@ -28,18 +28,10 @@ impl Check for NonInteractiveCheck {
         // Test P1: binary must not block waiting for interactive input.
         //
         // BinaryRunner sets stdin to /dev/null, so binaries that read stdin
-        // (like cat) get EOF immediately and exit — no blocking. The real
-        // danger is recursive self-invocation: if the target binary is
-        // agentnative itself, zero-args triggers `check .` which spawns
-        // more children. AGENTNATIVE_CHECK (set by BinaryRunner on all
-        // children, like make's MAKELEVEL) detects this. In child processes
-        // we fall back to --help as a proxy.
-        let is_child = std::env::var("AGENTNATIVE_CHECK").is_ok();
-        let result = if is_child {
-            runner.run(&["--help"], &[])
-        } else {
-            runner.run(&[], &[])
-        };
+        // (like cat) get EOF immediately and exit — no blocking. Well-behaved
+        // CLIs print help on bare invocation (arg_required_else_help), so
+        // this probe is safe even when the target is agentnative itself.
+        let result = runner.run(&[], &[]);
 
         let status = match result.status {
             RunStatus::Timeout => {

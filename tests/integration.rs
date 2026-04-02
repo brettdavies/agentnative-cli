@@ -294,3 +294,17 @@ fn test_perfect_fixture() {
     assert_eq!(fail_count, 0, "perfect-rust fixture should have 0 failures");
     assert_eq!(error_count, 0, "perfect-rust fixture should have 0 errors");
 }
+
+// ── Bare invocation test ──────────────────────────────────────────
+
+#[test]
+fn test_bare_invocation_prints_help() {
+    // Bare invocation (no subcommand) must print help and exit 0, not run `check .`.
+    // This is enforced by clap's arg_required_else_help and is critical for safe
+    // dogfooding — without it, NonInteractiveCheck's bare probe triggers a full
+    // recursive check suite.
+    cmd()
+        .assert()
+        .code(0)
+        .stdout(predicate::str::contains("Usage"));
+}

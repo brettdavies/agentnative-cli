@@ -8,8 +8,6 @@ mod scorecard;
 mod source;
 mod types;
 
-use std::path::PathBuf;
-
 use clap::Parser as _;
 use clap_complete::generate;
 
@@ -46,7 +44,8 @@ fn run() -> Result<i32, AppError> {
     // --quiet is global (visible in top-level --help for agent discoverability)
     let quiet = cli.quiet;
 
-    // Extract check parameters, defaulting None command to `check .`
+    // Bare invocation (None) is handled by clap's arg_required_else_help —
+    // it prints help and exits before reaching here.
     let (path, binary_only, source_only, principle, output, include_tests) = match cli.command {
         Some(Commands::Check {
             path,
@@ -61,14 +60,7 @@ fn run() -> Result<i32, AppError> {
             generate(shell, &mut cmd, "agentnative", &mut std::io::stdout());
             return Ok(0);
         }
-        None => (
-            PathBuf::from("."),
-            false,
-            false,
-            None,
-            OutputFormat::Text,
-            false,
-        ),
+        None => unreachable!("clap arg_required_else_help handles bare invocation"),
     };
 
     let mut project = Project::discover(&path)?;

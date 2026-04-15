@@ -139,7 +139,7 @@ argv = ["anc", "--command", "ripgrep"]
 
 ## Implementation Units
 
-- [ ] **Unit 1: Default subcommand — `anc .` as `anc check .`**
+- [x] **Unit 1: Default subcommand — `anc .` as `anc check .`**
 
 **Goal:** Make `anc .` (and `agentnative .`) work by injecting `check` when the first non-flag arg is not a known
 subcommand.
@@ -192,7 +192,7 @@ subcommand.
 
 ---
 
-- [ ] **Unit 2: `--command <name>` flag for PATH lookup**
+- [x] **Unit 2: `--command <name>` flag for PATH lookup**
 
 **Goal:** Add a `--command` flag to the `Check` subcommand that resolves a binary from PATH and runs behavioral checks.
 
@@ -213,9 +213,9 @@ known subcommand, so pre-parse injects `check`)
 - In `main.rs`, when `command` is `Some(name)`:
 - Resolve using `which` on Unix (`std::process::Command::new("which").arg(&name)`), `where` on Windows
 - If resolution fails, return `AppError::ProjectDetection` wrapping an anyhow error: "command '{name}' not found on
-    PATH"
+  PATH"
 - Call `Project::discover(&resolved_path)` — this already sets `language: None` (skipping source checks) and `is_dir()`
-    is false (skipping project checks), so behavioral-only behavior is automatic
+  is false (skipping project checks), so behavioral-only behavior is automatic
 - Update `--help` text to document the flag
 
 **Patterns to follow:**

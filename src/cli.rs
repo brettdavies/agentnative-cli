@@ -21,6 +21,10 @@ pub enum Commands {
         #[arg(default_value = ".")]
         path: std::path::PathBuf,
 
+        /// Resolve a command from PATH and run behavioral checks against it
+        #[arg(long, value_name = "NAME", conflicts_with = "path")]
+        command: Option<String>,
+
         /// Run only behavioral checks (skip source analysis)
         #[arg(long)]
         binary: bool,

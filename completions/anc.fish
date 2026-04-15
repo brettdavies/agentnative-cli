@@ -30,6 +30,7 @@ complete -c anc -n "__fish_anc_needs_command" -s V -l version -d 'Print version'
 complete -c anc -n "__fish_anc_needs_command" -f -a "check" -d 'Check a CLI project or binary for agent-readiness'
 complete -c anc -n "__fish_anc_needs_command" -f -a "completions" -d 'Generate shell completions'
 complete -c anc -n "__fish_anc_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c anc -n "__fish_anc_using_subcommand check" -l command -d 'Resolve a command from PATH and run behavioral checks against it' -r
 complete -c anc -n "__fish_anc_using_subcommand check" -l principle -d 'Filter checks by principle number (1-7)' -r
 complete -c anc -n "__fish_anc_using_subcommand check" -l output -d 'Output format' -r -f -a "text\t''
 json\t''"

@@ -65,13 +65,42 @@ else
 fi
 
 # Helper to invoke the detected completions interface
-gen() {
+gen_raw() {
   local shell="$1"
   if [[ "$COMP_STYLE" == "subcommand" ]]; then
     "$BINARY" completions "$shell"
   else
     "$BINARY" --generate-completion "$shell"
   fi
+}
+
+# Project-specific post-processing. clap_complete's bash backend ignores
+# ValueHint::CommandName and emits `compgen -f` for every value-taking flag.
+# zsh/fish honour the hint correctly. We patch bash so `--command <TAB>` and
+# any other CommandName flags suggest PATH commands. Update the list when
+# adding new flags with that hint.
+#
+# Reads from stdin, writes to stdout, no-op for non-bash shells.
+post_process() {
+  local shell="$1"
+  if [[ "$shell" != "bash" ]]; then
+    cat
+    return
+  fi
+  local command_name_flags=("--command")
+  local sed_program=""
+  for flag in "${command_name_flags[@]}"; do
+    sed_program+=$'\n'"/^[[:space:]]*${flag})[[:space:]]*$/,/;;/{ s|compgen -f|compgen -c|; }"
+  done
+  if [[ -n "$sed_program" ]]; then
+    sed "$sed_program"
+  else
+    cat
+  fi
+}
+
+gen() {
+  gen_raw "$1" | post_process "$1"
 }
 
 if [[ "$MODE" == "check" ]]; then

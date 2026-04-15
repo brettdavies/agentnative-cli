@@ -34,7 +34,11 @@ itself, children spawned without arguments must not recurse into `check .`.
 
 - `0` — all checks passed
 - `1` — warnings present, no failures
-- `2` — failures or errors detected
+- `2` — failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on
+  PATH)
+
+Exit 2 is overloaded. To distinguish "ran but found problems" from "called
+incorrectly", parse stderr — usage errors include `Usage:` text; check failures don't.
 
 ## Project Structure
 

@@ -11,21 +11,19 @@ keywords = ["cli", "linter", "agent", "ast-grep", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["Brett Davies <pm8fp22mbg@privaterelay.appleid.com>"]
 readme = "README.md"
-default-run = "agentnative"
 rust-version = "1.87"
 exclude = [
     ".claude/",
+    ".context/",
     ".github/",
+    ".markdownlint-cli2.yaml",
     "cliff.toml",
     "deny.toml",
     "docs/",
     "rustfmt.toml",
+    "scripts/",
     "tests/",
 ]
-
-[[bin]]
-name = "agentnative"
-path = "src/main.rs"
 
 [[bin]]
 name = "anc"
@@ -65,6 +63,10 @@ predicates = "3"
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.tar.gz"
 pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.zip"
+pkg-fmt = "zip"
 
 [profile.release]
 strip = true

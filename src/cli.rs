@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
 #[derive(Parser)]
-#[command(name = "agentnative", version, about = "The agent-native CLI linter")]
+#[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
 pub struct Cli {
     #[command(subcommand)]

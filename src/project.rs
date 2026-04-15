@@ -250,14 +250,12 @@ fn walk_source_files_inner(
 ) -> Result<()> {
     if depth >= MAX_DEPTH {
         eprintln!(
-            "warning: hit {MAX_DEPTH}-level depth limit; narrow the scan with `agentnative check src/`"
+            "warning: hit {MAX_DEPTH}-level depth limit; narrow the scan with `anc check src/`"
         );
         return Ok(());
     }
     if *file_count >= MAX_FILES {
-        eprintln!(
-            "warning: hit {MAX_FILES}-file limit; narrow the scan with `agentnative check src/`"
-        );
+        eprintln!("warning: hit {MAX_FILES}-file limit; narrow the scan with `anc check src/`");
         return Ok(());
     }
 

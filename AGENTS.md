@@ -1,25 +1,27 @@
 # AGENTS.md
 
-## Running agentnative
+## Running anc
+
+The crate is `agentnative`. The installed binary is `anc`.
 
 ```bash
 # Check current project
-agentnative check .
+anc check .
 
 # JSON output for parsing
-agentnative check . --output json
+anc check . --output json
 
 # Quiet mode (warnings and failures only)
-agentnative check . -q
+anc check . -q
 
 # Filter by principle (1-7)
-agentnative check . --principle 4
+anc check . --principle 4
 
 # Behavioral checks only (no source analysis)
-agentnative check . --binary
+anc check . --binary
 
 # Source checks only (no binary execution)
-agentnative check . --source
+anc check . --source
 ```
 
 ## Exit Codes

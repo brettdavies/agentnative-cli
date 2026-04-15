@@ -415,6 +415,82 @@ fn test_explicit_subcommand_still_works() {
         .stdout(predicate::str::contains("checks:"));
 }
 
+// ── --command flag tests ──────────────────────────────────────────
+//
+// `anc --command <name>` resolves a binary from PATH and runs
+// behavioral-only checks against it.
+
+#[test]
+fn test_command_flag_resolves_path_and_runs_behavioral_only() {
+    // `anc check --command ls` — runs behavioral checks against /bin/ls.
+    // ls is on every POSIX system, so this is safe to rely on in CI.
+    #[cfg(unix)]
+    {
+        let assert = cmd()
+            .args(["check", "--command", "ls", "--output", "json"])
+            .assert();
+        let output = assert.get_output().stdout.clone();
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output).expect("output should be valid JSON");
+        let results = parsed["results"]
+            .as_array()
+            .expect("results should be an array");
+        assert!(!results.is_empty(), "should have behavioral results");
+        // Behavioral-only: no source or project layers.
+        for r in results {
+            let layer = r["layer"].as_str().unwrap_or("");
+            assert_eq!(
+                layer, "behavioral",
+                "--command should produce only behavioral results, got {layer}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_command_flag_via_default_subcommand() {
+    // `anc --command ls` — default-subcommand injection yields
+    // `anc check --command ls` which runs behavioral checks.
+    #[cfg(unix)]
+    {
+        cmd()
+            .args(["--command", "ls"])
+            .assert()
+            .code(predicate::in_iter([0, 1, 2]))
+            .stdout(predicate::str::contains("checks:"));
+    }
+}
+
+#[test]
+fn test_command_flag_unknown_binary_errors() {
+    cmd()
+        .args(["check", "--command", "this-binary-does-not-exist-xyz-12345"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "command 'this-binary-does-not-exist-xyz-12345' not found on PATH",
+        ));
+}
+
+#[test]
+fn test_command_flag_conflicts_with_path() {
+    // `anc check --command ls .` — clap rejects both arguments.
+    cmd()
+        .args(["check", "--command", "ls", "."])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_command_flag_appears_in_help() {
+    cmd()
+        .args(["check", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--command"));
+}
+
 #[test]
 fn test_explicit_completions_subcommand_still_works() {
     // `anc completions bash` — must pass through, not be treated as default subcommand.

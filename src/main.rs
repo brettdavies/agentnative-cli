@@ -46,24 +46,41 @@ fn run() -> Result<i32, AppError> {
 
     // Bare invocation (None) is handled by clap's arg_required_else_help —
     // it prints help and exits before reaching here.
-    let (path, binary_only, source_only, principle, output, include_tests) = match cli.command {
-        Some(Commands::Check {
-            path,
-            binary,
-            source,
-            principle,
-            output,
-            include_tests,
-        }) => (path, binary, source, principle, output, include_tests),
-        Some(Commands::Completions { shell }) => {
-            let mut cmd = <Cli as clap::CommandFactory>::command();
-            generate(shell, &mut cmd, "anc", &mut std::io::stdout());
-            return Ok(0);
-        }
-        None => unreachable!("clap arg_required_else_help handles bare invocation"),
+    let (path, command, binary_only, source_only, principle, output, include_tests) =
+        match cli.command {
+            Some(Commands::Check {
+                path,
+                command,
+                binary,
+                source,
+                principle,
+                output,
+                include_tests,
+            }) => (
+                path,
+                command,
+                binary,
+                source,
+                principle,
+                output,
+                include_tests,
+            ),
+            Some(Commands::Completions { shell }) => {
+                let mut cmd = <Cli as clap::CommandFactory>::command();
+                generate(shell, &mut cmd, "anc", &mut std::io::stdout());
+                return Ok(0);
+            }
+            None => unreachable!("clap arg_required_else_help handles bare invocation"),
+        };
+
+    // --command resolves a binary from PATH and runs behavioral checks against
+    // it. conflicts_with = "path" ensures only one of the two is provided.
+    let resolved_path = match command {
+        Some(name) => resolve_command_on_path(&name)?,
+        None => path,
     };
 
-    let mut project = Project::discover(&path)?;
+    let mut project = Project::discover(&resolved_path)?;
     project.include_tests = include_tests;
 
     // Collect applicable checks based on flags and auto-detection
@@ -129,6 +146,38 @@ fn run() -> Result<i32, AppError> {
     Ok(exit_code(&results))
 }
 
+/// Resolve a command name to an absolute path by shelling out to `which`
+/// (Unix) or `where` (Windows). Returns a clear, actionable error when the
+/// name cannot be found on PATH. Subsequent `Project::discover()` validates
+/// that the resolved path is an executable file.
+fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
+    let locator = if cfg!(windows) { "where" } else { "which" };
+
+    let output = std::process::Command::new(locator)
+        .arg(name)
+        .output()
+        .map_err(|e| {
+            AppError::ProjectDetection(anyhow::anyhow!("failed to invoke `{locator}`: {e}"))
+        })?;
+
+    if !output.status.success() {
+        return Err(AppError::ProjectDetection(anyhow::anyhow!(
+            "command '{name}' not found on PATH"
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // `which` and `where` both print one match per line; take the first.
+    let first = stdout.lines().next().map(str::trim).unwrap_or("");
+    if first.is_empty() {
+        return Err(AppError::ProjectDetection(anyhow::anyhow!(
+            "command '{name}' not found on PATH"
+        )));
+    }
+
+    Ok(std::path::PathBuf::from(first))
+}
+
 /// Inject `check` as the default subcommand when the first non-flag argument
 /// is not a recognized subcommand.
 ///
@@ -175,6 +224,23 @@ where
 
     // No non-flag tokens (e.g., `anc --help`, `anc -q`) — let clap handle it.
     args
+}
+
+fn matches_principle(group: &CheckGroup, principle: u8) -> bool {
+    // CodeQuality and ProjectStructure checks are cross-cutting — always include them.
+    matches!(
+        group,
+        CheckGroup::CodeQuality | CheckGroup::ProjectStructure
+    ) || matches!(
+        (group, principle),
+        (CheckGroup::P1, 1)
+            | (CheckGroup::P2, 2)
+            | (CheckGroup::P3, 3)
+            | (CheckGroup::P4, 4)
+            | (CheckGroup::P5, 5)
+            | (CheckGroup::P6, 6)
+            | (CheckGroup::P7, 7)
+    )
 }
 
 #[cfg(test)]
@@ -262,21 +328,4 @@ mod inject_tests {
         let out = inject_default_subcommand(args(&["anc", ".", "--output", "json"]));
         assert_eq!(names(out), vec!["anc", "check", ".", "--output", "json"]);
     }
-}
-
-fn matches_principle(group: &CheckGroup, principle: u8) -> bool {
-    // CodeQuality and ProjectStructure checks are cross-cutting — always include them.
-    matches!(
-        group,
-        CheckGroup::CodeQuality | CheckGroup::ProjectStructure
-    ) || matches!(
-        (group, principle),
-        (CheckGroup::P1, 1)
-            | (CheckGroup::P2, 2)
-            | (CheckGroup::P3, 3)
-            | (CheckGroup::P4, 4)
-            | (CheckGroup::P5, 5)
-            | (CheckGroup::P6, 6)
-            | (CheckGroup::P7, 7)
-    )
 }

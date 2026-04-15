@@ -23,20 +23,23 @@ cargo binstall agentnative
 ## Quick Start
 
 ```bash
-# Check the current project
-anc check .
+# Check the current project (`check` is the default subcommand)
+anc .
 
 # Check a specific binary
-anc check ./target/release/mycli
+anc ./target/release/mycli
+
+# Resolve a command on PATH and run behavioral checks against it
+anc --command ripgrep
 
 # JSON output for CI
-anc check . --output json
+anc . --output json
 
 # Filter by principle
-anc check . --principle 3
+anc . --principle 3
 
 # Quiet mode (warnings and failures only)
-anc check . -q
+anc . -q
 ```
 
 ## The 7 Principles
@@ -92,6 +95,10 @@ agentnative uses three layers to analyze your CLI:
 
 ## CLI Reference
 
+When the first non-flag argument is not a recognized subcommand, `check` is inserted automatically. `anc .`,
+`anc -q .`, and `anc --command ripgrep` all resolve to `anc check …`. Bare `anc` (no arguments) still prints help and
+exits 2 — this is deliberate fork-bomb prevention when agentnative dogfoods itself.
+
 ```text
 Usage: anc check [OPTIONS] [PATH]
 
@@ -99,6 +106,7 @@ Arguments:
   [PATH]  Path to project directory or binary [default: .]
 
 Options:
+      --command <NAME>         Resolve a command from PATH and run behavioral checks against it
       --binary                 Run only behavioral checks (skip source analysis)
       --source                 Run only source checks (skip behavioral)
       --principle <PRINCIPLE>  Filter checks by principle number (1-7)
@@ -107,6 +115,9 @@ Options:
       --include-tests          Include test code in source analysis
   -h, --help                   Print help
 ```
+
+`--command` and `[PATH]` are mutually exclusive — pick one. `--command` runs behavioral checks only; source and project
+checks are skipped because there is no source tree to analyze.
 
 ### Exit Codes
 

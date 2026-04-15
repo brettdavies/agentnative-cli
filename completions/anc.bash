@@ -1,4 +1,4 @@
-_agentnative() {
+_anc() {
     local i cur prev opts cmd
     COMPREPLY=()
     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
@@ -14,25 +14,25 @@ _agentnative() {
     do
         case "${cmd},${i}" in
             ",$1")
-                cmd="agentnative"
+                cmd="anc"
                 ;;
-            agentnative,check)
-                cmd="agentnative__check"
+            anc,check)
+                cmd="anc__check"
                 ;;
-            agentnative,completions)
-                cmd="agentnative__completions"
+            anc,completions)
+                cmd="anc__completions"
                 ;;
-            agentnative,help)
-                cmd="agentnative__help"
+            anc,help)
+                cmd="anc__help"
                 ;;
-            agentnative__help,check)
-                cmd="agentnative__help__check"
+            anc__help,check)
+                cmd="anc__help__check"
                 ;;
-            agentnative__help,completions)
-                cmd="agentnative__help__completions"
+            anc__help,completions)
+                cmd="anc__help__completions"
                 ;;
-            agentnative__help,help)
-                cmd="agentnative__help__help"
+            anc__help,help)
+                cmd="anc__help__help"
                 ;;
             *)
                 ;;
@@ -40,7 +40,7 @@ _agentnative() {
     done
 
     case "${cmd}" in
-        agentnative)
+        anc)
             opts="-q -h -V --quiet --help --version check completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -54,7 +54,7 @@ _agentnative() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        agentnative__check)
+        anc__check)
             opts="-q -h --binary --source --principle --output --include-tests --quiet --help [PATH]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -76,7 +76,7 @@ _agentnative() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        agentnative__completions)
+        anc__completions)
             opts="-q -h --quiet --help bash elvish fish powershell zsh"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -90,7 +90,7 @@ _agentnative() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        agentnative__help)
+        anc__help)
             opts="check completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -104,7 +104,7 @@ _agentnative() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        agentnative__help__check)
+        anc__help__check)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -118,7 +118,7 @@ _agentnative() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        agentnative__help__completions)
+        anc__help__completions)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -132,7 +132,7 @@ _agentnative() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        agentnative__help__help)
+        anc__help__help)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -150,7 +150,7 @@ _agentnative() {
 }
 
 if [[ "${BASH_VERSINFO[0]}" -eq 4 && "${BASH_VERSINFO[1]}" -ge 4 || "${BASH_VERSINFO[0]}" -gt 4 ]]; then
-    complete -F _agentnative -o nosort -o bashdefault -o default agentnative
+    complete -F _anc -o nosort -o bashdefault -o default anc
 else
-    complete -F _agentnative -o bashdefault -o default agentnative
+    complete -F _anc -o bashdefault -o default anc
 fi

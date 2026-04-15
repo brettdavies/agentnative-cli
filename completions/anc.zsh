@@ -1,8 +1,8 @@
-#compdef agentnative
+#compdef anc
 
 autoload -U is-at-least
 
-_agentnative() {
+_anc() {
     typeset -A opt_args
     typeset -a _arguments_options
     local ret=1
@@ -21,14 +21,14 @@ _agentnative() {
 '--help[Print help]' \
 '-V[Print version]' \
 '--version[Print version]' \
-":: :_agentnative_commands" \
-"*::: :->agentnative" \
+":: :_anc_commands" \
+"*::: :->anc" \
 && ret=0
     case $state in
-    (agentnative)
+    (anc)
         words=($line[1] "${words[@]}")
         (( CURRENT += 1 ))
-        curcontext="${curcontext%:*:*}:agentnative-command-$line[1]:"
+        curcontext="${curcontext%:*:*}:anc-command-$line[1]:"
         case $line[1] in
             (check)
 _arguments "${_arguments_options[@]}" : \
@@ -55,7 +55,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (help)
 _arguments "${_arguments_options[@]}" : \
-":: :_agentnative__help_commands" \
+":: :_anc__help_commands" \
 "*::: :->help" \
 && ret=0
 
@@ -63,7 +63,7 @@ _arguments "${_arguments_options[@]}" : \
     (help)
         words=($line[1] "${words[@]}")
         (( CURRENT += 1 ))
-        curcontext="${curcontext%:*:*}:agentnative-help-command-$line[1]:"
+        curcontext="${curcontext%:*:*}:anc-help-command-$line[1]:"
         case $line[1] in
             (check)
 _arguments "${_arguments_options[@]}" : \
@@ -86,52 +86,52 @@ esac
 esac
 }
 
-(( $+functions[_agentnative_commands] )) ||
-_agentnative_commands() {
+(( $+functions[_anc_commands] )) ||
+_anc_commands() {
     local commands; commands=(
 'check:Check a CLI project or binary for agent-readiness' \
 'completions:Generate shell completions' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
-    _describe -t commands 'agentnative commands' commands "$@"
+    _describe -t commands 'anc commands' commands "$@"
 }
-(( $+functions[_agentnative__check_commands] )) ||
-_agentnative__check_commands() {
+(( $+functions[_anc__check_commands] )) ||
+_anc__check_commands() {
     local commands; commands=()
-    _describe -t commands 'agentnative check commands' commands "$@"
+    _describe -t commands 'anc check commands' commands "$@"
 }
-(( $+functions[_agentnative__completions_commands] )) ||
-_agentnative__completions_commands() {
+(( $+functions[_anc__completions_commands] )) ||
+_anc__completions_commands() {
     local commands; commands=()
-    _describe -t commands 'agentnative completions commands' commands "$@"
+    _describe -t commands 'anc completions commands' commands "$@"
 }
-(( $+functions[_agentnative__help_commands] )) ||
-_agentnative__help_commands() {
+(( $+functions[_anc__help_commands] )) ||
+_anc__help_commands() {
     local commands; commands=(
 'check:Check a CLI project or binary for agent-readiness' \
 'completions:Generate shell completions' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
-    _describe -t commands 'agentnative help commands' commands "$@"
+    _describe -t commands 'anc help commands' commands "$@"
 }
-(( $+functions[_agentnative__help__check_commands] )) ||
-_agentnative__help__check_commands() {
+(( $+functions[_anc__help__check_commands] )) ||
+_anc__help__check_commands() {
     local commands; commands=()
-    _describe -t commands 'agentnative help check commands' commands "$@"
+    _describe -t commands 'anc help check commands' commands "$@"
 }
-(( $+functions[_agentnative__help__completions_commands] )) ||
-_agentnative__help__completions_commands() {
+(( $+functions[_anc__help__completions_commands] )) ||
+_anc__help__completions_commands() {
     local commands; commands=()
-    _describe -t commands 'agentnative help completions commands' commands "$@"
+    _describe -t commands 'anc help completions commands' commands "$@"
 }
-(( $+functions[_agentnative__help__help_commands] )) ||
-_agentnative__help__help_commands() {
+(( $+functions[_anc__help__help_commands] )) ||
+_anc__help__help_commands() {
     local commands; commands=()
-    _describe -t commands 'agentnative help help commands' commands "$@"
+    _describe -t commands 'anc help help commands' commands "$@"
 }
 
-if [ "$funcstack[1]" = "_agentnative" ]; then
-    _agentnative "$@"
+if [ "$funcstack[1]" = "_anc" ]; then
+    _anc "$@"
 else
-    compdef _agentnative agentnative
+    compdef _anc anc
 fi

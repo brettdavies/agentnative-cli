@@ -2,12 +2,12 @@
 using namespace System.Management.Automation
 using namespace System.Management.Automation.Language
 
-Register-ArgumentCompleter -Native -CommandName 'agentnative' -ScriptBlock {
+Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
 
     $commandElements = $commandAst.CommandElements
     $command = @(
-        'agentnative'
+        'anc'
         for ($i = 1; $i -lt $commandElements.Count; $i++) {
             $element = $commandElements[$i]
             if ($element -isnot [StringConstantExpressionAst] -or
@@ -20,7 +20,7 @@ Register-ArgumentCompleter -Native -CommandName 'agentnative' -ScriptBlock {
     }) -join ';'
 
     $completions = @(switch ($command) {
-        'agentnative' {
+        'anc' {
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
@@ -32,7 +32,7 @@ Register-ArgumentCompleter -Native -CommandName 'agentnative' -ScriptBlock {
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
-        'agentnative;check' {
+        'anc;check' {
             [CompletionResult]::new('--principle', '--principle', [CompletionResultType]::ParameterName, 'Filter checks by principle number (1-7)')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format')
             [CompletionResult]::new('--binary', '--binary', [CompletionResultType]::ParameterName, 'Run only behavioral checks (skip source analysis)')
@@ -44,26 +44,26 @@ Register-ArgumentCompleter -Native -CommandName 'agentnative' -ScriptBlock {
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'agentnative;completions' {
+        'anc;completions' {
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
         }
-        'agentnative;help' {
+        'anc;help' {
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check a CLI project or binary for agent-readiness')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Generate shell completions')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
-        'agentnative;help;check' {
+        'anc;help;check' {
             break
         }
-        'agentnative;help;completions' {
+        'anc;help;completions' {
             break
         }
-        'agentnative;help;help' {
+        'anc;help;help' {
             break
         }
     })

@@ -4,33 +4,39 @@ The agent-native CLI linter. Checks whether your CLI follows the 7 agent-readine
 
 ## Install
 
+The crate is published as `agentnative`. The binary is called `anc`.
+
 ```bash
+# Homebrew (installs anc + agentnative symlink)
+brew install brettdavies/tap/agentnative
+
+# From crates.io
 cargo install agentnative
-```
 
-Or with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
-
-```bash
+# Pre-built binary via cargo-binstall
 cargo binstall agentnative
+
+# Pre-built binaries from GitHub Releases
+# https://github.com/brettdavies/agentnative/releases
 ```
 
 ## Quick Start
 
 ```bash
 # Check the current project
-agentnative check .
+anc check .
 
 # Check a specific binary
-agentnative check ./target/release/mycli
+anc check ./target/release/mycli
 
 # JSON output for CI
-agentnative check . --output json
+anc check . --output json
 
 # Filter by principle
-agentnative check . --principle 3
+anc check . --principle 3
 
 # Quiet mode (warnings and failures only)
-agentnative check . -q
+anc check . -q
 ```
 
 ## The 7 Principles
@@ -87,7 +93,7 @@ agentnative uses three layers to analyze your CLI:
 ## CLI Reference
 
 ```text
-Usage: agentnative check [OPTIONS] [PATH]
+Usage: anc check [OPTIONS] [PATH]
 
 Arguments:
   [PATH]  Path to project directory or binary [default: .]
@@ -114,19 +120,27 @@ Options:
 
 ```bash
 # Bash
-agentnative completions bash > ~/.local/share/bash-completion/completions/agentnative
+anc completions bash > ~/.local/share/bash-completion/completions/anc
 
-# Zsh
-agentnative completions zsh > ~/.zfunc/_agentnative
+# Zsh (writes to the first directory on your fpath)
+anc completions zsh > "${fpath[1]}/_anc"
 
 # Fish
-agentnative completions fish > ~/.config/fish/completions/agentnative.fish
+anc completions fish > ~/.config/fish/completions/anc.fish
+
+# PowerShell
+anc completions powershell > anc.ps1
+
+# Elvish
+anc completions elvish > anc.elv
 ```
+
+Pre-generated scripts are also available in `completions/`.
 
 ## JSON Output
 
 ```bash
-agentnative check . --output json
+anc check . --output json
 ```
 
 Produces a scorecard with results and summary:

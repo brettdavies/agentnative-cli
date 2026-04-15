@@ -1,9 +1,9 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
-/// Helper to build a Command for the agentnative binary.
+/// Helper to build a Command for the anc binary.
 fn cmd() -> Command {
-    Command::cargo_bin("agentnative").expect("binary should exist")
+    Command::cargo_bin("anc").expect("binary should exist")
 }
 
 /// Helper to get the path to a fixture relative to the project root.
@@ -20,7 +20,7 @@ fn test_version() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("agentnative"));
+        .stdout(predicate::str::contains("anc"));
 }
 
 #[test]

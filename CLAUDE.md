@@ -61,7 +61,7 @@ Key decisions already made:
 
 ## Dogfooding Safety
 
-Behavioral checks spawn the target binary as a child process. When dogfooding (`agentnative check .`), the target IS
+Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS
 agentnative. Two rules prevent recursive fork bombs:
 
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get

@@ -57,7 +57,7 @@ fn run() -> Result<i32, AppError> {
         }) => (path, binary, source, principle, output, include_tests),
         Some(Commands::Completions { shell }) => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
-            generate(shell, &mut cmd, "agentnative", &mut std::io::stdout());
+            generate(shell, &mut cmd, "anc", &mut std::io::stdout());
             return Ok(0);
         }
         None => unreachable!("clap arg_required_else_help handles bare invocation"),

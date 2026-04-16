@@ -7,7 +7,7 @@ The agent-native CLI linter. Checks whether your CLI follows the 7 agent-readine
 The crate is published as `agentnative`. The binary is called `anc`.
 
 ```bash
-# Homebrew (installs anc + agentnative symlink)
+# Homebrew (installs anc)
 brew install brettdavies/tap/agentnative
 
 # From crates.io
@@ -47,7 +47,7 @@ anc . -q
 agentnative checks your CLI against seven agent-readiness principles:
 
 | # | Principle | What It Means |
-|---|-----------|---------------|
+| - | --------- | ------------- |
 | P1 | Non-Interactive by Default | No prompts, no browser popups, stdin from `/dev/null` works |
 | P2 | Structured Output | `--output json` exists and produces valid JSON |
 | P3 | Progressive Help | `--help` has examples, `--version` works |
@@ -122,7 +122,7 @@ checks are skipped because there is no source tree to analyze.
 ### Exit Codes
 
 | Code | Meaning |
-|------|---------|
+| ---- | ------- |
 | 0 | All checks passed |
 | 1 | Warnings present (no failures) |
 | 2 | Failures, errors, or usage errors |

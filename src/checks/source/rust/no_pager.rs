@@ -42,12 +42,10 @@ impl Check for NoPagerCheck {
 
         for (_path, parsed_file) in parsed.iter() {
             match &check_no_pager(&parsed_file.source) {
-                CheckStatus::Pass => {
-                    // Either no pager or has --no-pager flag
-                    if source_has_pager_code(&parsed_file.source) {
-                        has_pager = true;
-                        has_no_pager_flag = true;
-                    }
+                // Pass + pager code present means both are true: has pager, has --no-pager flag
+                CheckStatus::Pass if source_has_pager_code(&parsed_file.source) => {
+                    has_pager = true;
+                    has_no_pager_flag = true;
                 }
                 CheckStatus::Warn(_) => {
                     has_pager = true;

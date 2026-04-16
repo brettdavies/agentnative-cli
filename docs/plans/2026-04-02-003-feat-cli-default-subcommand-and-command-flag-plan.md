@@ -1,13 +1,28 @@
 ---
 title: "feat: Default subcommand (anc .) and --command flag for PATH lookup"
 type: feat
-status: active
+status: shipped
 date: 2026-04-02
 deepened: 2026-04-02
+shipped: 2026-04-15
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---
 
 # feat: Default subcommand (anc .) and --command flag for PATH lookup
+
+## Status
+
+**Shipped on `dev`** — both implementation units complete plus a follow-on cluster of edge-case fixes surfaced by
+post-merge code review.
+
+- PR [#12](https://github.com/brettdavies/agentnative/pull/12) — initial implementation (commit `4afef67`, merged
+  2026-04-15)
+- PR [#13](https://github.com/brettdavies/agentnative/pull/13) — 7 edge-case fixes + refactor surfaced by `/ce-review`
+  of the merged PR (open against `dev`)
+- Pattern documented for reuse: `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`
+
+See **Post-Implementation Notes** at the end for the delta between the planned design
+and what actually shipped.
 
 ## Overview
 
@@ -89,17 +104,18 @@ PATH without manually resolving its location — the design doc (line 209) speci
 
 ### Deferred to Implementation
 
-- **Typo handling**: `anc chekc .` (typo of `check`) would become `anc check chekc .` where `chekc` becomes the path.
-  This produces "path does not exist: chekc" instead of "unrecognized subcommand 'chekc'." Acceptable for v0.1 — the
-  error is still actionable.
-- **Clap error message context**: When pre-parse injects `check`, clap error messages reference the `check` subcommand
-  context. Users who typed `anc . --bogus` see errors mentioning `check` in the usage line. Minor UX imperfection,
-  acceptable for v0.1.
+- **Typo handling** _(status: as planned)_: `anc chekc .` (typo of `check`) becomes `anc check chekc .` where `chekc`
+  becomes the path. Produces "path does not exist: chekc" instead of "unrecognized subcommand 'chekc'." Acceptable for
+  v0.1 — the error is still actionable. Note: the `help` subcommand is special-cased in PR #13 because clap's
+  auto-generated `help` is not returned by `get_subcommands()` and would otherwise hit this path.
+- **Clap error message context** _(status: as planned)_: When pre-parse injects `check`, clap error messages reference
+  the `check` subcommand context. Users who typed `anc . --bogus` see errors mentioning `check` in the usage line. Minor
+  UX imperfection, acceptable for v0.1.
 
 ## High-Level Technical Design
 
-> *This illustrates the intended approach and is directional guidance for review, not implementation specification. The
-> implementing agent should treat it as context, not code to reproduce.*
+> _This illustrates the intended approach and is directional guidance for review, not implementation specification. The
+> implementing agent should treat it as context, not code to reproduce._
 
 ```text
 argv = ["anc", "-q", ".", "--output", "json"]
@@ -264,4 +280,76 @@ known subcommand, so pre-parse injects `check`)
 
 - **Design doc:** `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md` (lines 126, 209)
 - **Safety constraint:** `~/dev/solutions-docs/logic-errors/cli-linter-fork-bomb-recursive-self-invocation-20260401.md`
-- Related code: `src/cli.rs`, `src/main.rs`, `src/project.rs`, `src/error.rs`
+- Related code: `src/cli.rs`, `src/main.rs`, `src/argv.rs`, `src/project.rs`, `src/error.rs`
+
+## Post-Implementation Notes
+
+What the planning sections above don't capture: the design above shipped in PR #12 and worked, but `/ce-review` of the
+  merged commit surfaced seven edge cases. PR #13 closed all of them. This section is the delta — readers picking up
+  later need both halves.
+
+### Final code locations
+
+- `src/argv.rs` (new module, ~340 lines including 19 unit tests) — owns `inject_default_subcommand` and the supporting
+  helpers (`build_known_subcommand_set`, `build_value_flag_set`, `build_top_level_flag_set`, `consumes_next`,
+  `base_form`). Extracted from `src/main.rs` in PR #13's refactor.
+- `src/main.rs` (203 lines, down from 538 mid-PR) — `run()`, `resolve_command_on_path()`, and the `match cli.command`
+  arm.
+- `src/cli.rs` — `Cli` derive plus `after_help` block, `value_hint = ValueHint::CommandName` on `--command`, and
+  `conflicts_with = "source"` on `--command`.
+- `scripts/generate-completions.sh` — `post_process()` function that patches bash completion to swap `compgen -f` →
+  `compgen -c` for `--command` (clap_complete's bash backend ignores `ValueHint::CommandName`).
+
+### Edge cases resolved beyond the original design
+
+1. **Clap's auto `help` subcommand is NOT in `get_subcommands()`** — `anc help` and `anc help check` were misclassified
+   as paths. Fixed by appending `"help"` to the known set.
+2. **Value-taking flags must be paired with their values during scanning** — `anc --command check` mis-routed because
+   `check` (the value) was treated as the explicit subcommand. Fixed by walking clap's `get_arguments()` for both `Cli`
+   and every subcommand to learn which flags consume the next token.
+3. **Subcommand-scoped flags imply default-subcommand intent even with no positional** — `anc --command rg` and `anc
+   --output json --source` produced clap errors. Fixed by tracking whether any encountered flag is subcommand-scoped
+   (not in the top-level Cli flag set) and injecting `check` if so when no positional was found.
+4. **POSIX `--` separator** — `anc -- .` was untested and ill-defined. Now injects `check` before the separator so clap
+   routes the remaining tokens to Check.
+5. **`arg_required_else_help` only fires on zero args** — `anc -q` (or `--quiet`) reaches `match cli.command` with
+   `command = None` and previously panicked via `unreachable!()`. The `None` arm now renders help to stderr and exits 2.
+   This was a pre-existing bug, not introduced by this plan, but surfaced under the new ergonomics.
+6. **`--command` + `--source` is contradictory** — added `conflicts_with = "source"` so clap rejects the combination at
+   parse time instead of producing a silent empty result.
+7. **Bash completion suggests file paths instead of PATH commands** — added `value_hint = ValueHint::CommandName`.
+   zsh/fish/elvish honor it; bash needs the post-generation `sed` patch documented above.
+
+### Design-time decisions that survived contact with reality
+
+- `flatten` rejection (Key Technical Decisions §1) — confirmed correct; `flatten` remains incompatible with
+  `arg_required_else_help`.
+- Clap introspection for subcommand list (Key Technical Decisions §2) — proved its worth: introspection-driven flag
+  catalogues were essential for the value-pairing fix in PR #13. A static list would have multiplied the failure modes.
+- `which`/`where` shell-out (Key Technical Decisions §3) — works as designed; the cross-reviewer security take in PR #13
+  noted hostile-PATH redirection as a low-risk residual but recommended the `which` crate as a future improvement, not a
+  blocker.
+- `Project::discover()` already handles file paths (Key Technical Decisions §4) — true, no new constructor needed.
+
+### Test parity
+
+| Stage | Unit | Integration | Notes |
+|-------|------|-------------|-------|
+| Pre-Plan 003 baseline | 233 | 12 | from commit `45b5234` |
+| After PR #12 (initial impl) | 244 | 26 | +11 unit, +14 integration |
+| After PR #13 (edge-case fixes) | 253 | 34 | +9 unit, +8 integration |
+
+### Plan 002 coordination
+
+The completions regeneration noted in System-Wide Impact happened twice (once per PR); both PRs commit the regenerated
+  `completions/anc.{bash,zsh,fish,elvish,powershell}` files. No separate Plan 002 step needed for this plan's completion
+  deltas.
+
+### Solutions-docs follow-up
+
+The full pattern (with all seven gotchas, before/after code, and the working invocation matrix) was compounded into:
+
+- `~/dev/solutions-docs/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`
+
+Future Rust CLIs in this orbit that want a default subcommand should read that doc before reimplementing — the cluster
+  of edge cases is the kind of footgun that's much cheaper to avoid than rediscover.

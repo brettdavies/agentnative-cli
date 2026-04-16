@@ -1,7 +1,7 @@
 ---
 title: "feat: Python starter checks, fixture test coverage, and real-world validation"
 type: feat
-status: active
+status: done
 date: 2026-04-02
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---
@@ -96,7 +96,7 @@ real-world CLIs outside of self-dogfooding.
 
 ## Implementation Units
 
-- [ ] **Unit 1: Implement `code-bare-except` Python source check**
+- [x] **Unit 1: Implement `code-bare-except` Python source check**
 
 **Goal:** Detect bare `except:` clauses (without exception type) in Python source. Proves the tree-sitter-python
 pipeline works end-to-end.
@@ -144,7 +144,7 @@ pipeline works end-to-end.
 
 ---
 
-- [ ] **Unit 2: Implement `p4-sys-exit` Python source check**
+- [x] **Unit 2: Implement `p4-sys-exit` Python source check**
 
 **Goal:** Detect `sys.exit()` calls outside `if __name__ == "__main__"` blocks.
 
@@ -185,7 +185,7 @@ pipeline works end-to-end.
 
 ---
 
-- [ ] **Unit 3: Implement `p6-no-color-source` Python source check**
+- [x] **Unit 3: Implement `p6-no-color-source` Python source check**
 
 **Goal:** Detect `NO_COLOR` environment variable handling in Python source.
 
@@ -225,7 +225,7 @@ pipeline works end-to-end.
 
 ---
 
-- [ ] **Unit 4: Un-ignore and fix integration tests for fixtures**
+- [x] **Unit 4: Un-ignore and fix integration tests for fixtures**
 
 **Goal:** Make the 3 `#[ignore]` integration tests pass and remove the `#[ignore]` attribute.
 
@@ -269,7 +269,7 @@ pipeline works end-to-end.
 
 ---
 
-- [ ] **Unit 5: Real-world validation against bird, xurl-rs, and ripgrep**
+- [x] **Unit 5: Real-world validation against bird, xurl-rs, and ripgrep**
 
 **Goal:** Run agentnative against 3 real-world CLIs and document results. Satisfies design doc success criteria.
 
@@ -308,7 +308,7 @@ pipeline works end-to-end.
 
 ---
 
-- [ ] **Unit 6: Update design doc to reflect revised Python scope**
+- [x] **Unit 6: Update design doc to reflect revised Python scope**
 
 **Goal:** Formally document that v0.1 ships 2-3 starter Python checks, with full coverage in v0.2.
 

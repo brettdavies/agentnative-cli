@@ -38,7 +38,7 @@ PATH without manually resolving its location — the design doc (line 209) speci
 
 ## Requirements Trace
 
-- R1. `anc .` and `agentnative .` must behave identically to `anc check .` and `agentnative check .`
+- R1. `anc .` must behave identically to `anc check .`
 - R2. `anc` with no arguments must still print help and exit with code 2 (handled by clap's
   `arg_required_else_help=true` — non-negotiable fork bomb safety constraint)
 - R3. `--command <name>` resolves binary from PATH and runs behavioral checks only
@@ -157,7 +157,7 @@ argv = ["anc", "--command", "ripgrep"]
 
 - [x] **Unit 1: Default subcommand — `anc .` as `anc check .`**
 
-**Goal:** Make `anc .` (and `agentnative .`) work by injecting `check` when the first non-flag arg is not a known
+**Goal:** Make `anc .` work by injecting `check` when the first non-flag arg is not a known
 subcommand.
 
 **Requirements:** R1, R2, R5
@@ -268,7 +268,7 @@ known subcommand, so pre-parse injects `check`)
 ## Risks & Dependencies
 
 | Risk | Mitigation |
-|------|------------|
+| ---- | ---------- |
 | Pre-parse heuristic misidentifies a flag as a path | Use clap introspection for subcommand list; scan past known global flags |
 | Typos like `anc chekc .` produce path-not-found instead of subcommand error | Acceptable for v0.1 — error is still actionable |
 | `which` not available on Windows | Use `where` on Windows via `cfg(target_os)`, consistent with existing `libc` gating |
@@ -334,7 +334,7 @@ What the planning sections above don't capture: the design above shipped in PR #
 ### Test parity
 
 | Stage | Unit | Integration | Notes |
-|-------|------|-------------|-------|
+| ----- | ---- | ----------- | ----- |
 | Pre-Plan 003 baseline | 233 | 12 | from commit `45b5234` |
 | After PR #12 (initial impl) | 244 | 26 | +11 unit, +14 integration |
 | After PR #13 (edge-case fixes) | 253 | 34 | +9 unit, +8 integration |

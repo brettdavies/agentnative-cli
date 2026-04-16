@@ -38,6 +38,11 @@ impl Check for SysExitCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
+            // __main__.py is the Python entry point — sys.exit() is expected there,
+            // just as process::exit() is expected in Rust's main.rs.
+            if file_str.ends_with("__main__.py") {
+                continue;
+            }
             let result = check_sys_exit(&parsed_file.source, &file_str);
             if let CheckStatus::Fail(evidence) = result.status {
                 all_evidence.push(evidence);
@@ -340,5 +345,24 @@ print(msg)
         .expect("write test Cargo.toml");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(!check.applicable(&project));
+    }
+
+    #[test]
+    fn run_skips_dunder_main_py() {
+        let check = SysExitCheck;
+        let dir =
+            std::env::temp_dir().join(format!("anc-sysexit-skip-main-{}", std::process::id()));
+        let src = dir.join("src");
+        std::fs::create_dir_all(&src).expect("create src dir");
+        std::fs::write(
+            dir.join("pyproject.toml"),
+            "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write pyproject");
+        std::fs::write(src.join("__main__.py"), "import sys\nsys.exit(0)\n")
+            .expect("write __main__.py");
+        let project = Project::discover(&dir).expect("discover");
+        let result = check.run(&project).expect("check ran");
+        assert_eq!(result.status, CheckStatus::Pass);
     }
 }

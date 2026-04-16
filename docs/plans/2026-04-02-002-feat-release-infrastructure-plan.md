@@ -199,7 +199,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 ---
 
-- [ ] **Unit 4: Pre-seed Homebrew formula in brettdavies/homebrew-tap**
+- [x] **Unit 4: Pre-seed Homebrew formula in brettdavies/homebrew-tap**
 
 **Goal:** Create `agentnative.rb` formula in the tap repo so the release dispatch has a target.
 
@@ -239,7 +239,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 ---
 
-- [ ] **Unit 5: Clean up stale remote branches**
+- [x] **Unit 5: Clean up stale remote branches**
 
 **Goal:** Remove merged feature branches from origin.
 
@@ -359,23 +359,19 @@ Units 4 and 5 closed. Unit 6 still pending, plus a new Unit 4b blocker surfaced.
   `update-formula.yml` allowlist regex to `^(xurl-rs|bird|agentnative)$`. Formula installs the single `anc` binary
   (agentnative's `Cargo.toml` has exactly one `[[bin]]` target); docs reflect single-binary shipping. **Deviation from
   plan:** formula installs `anc` only, not both `agentnative` and `anc` — accepted, single-binary crate.
-- Unit 4b (NEW — tap dev→main promotion) — **required before any `anc` release tag**. Agentnative's `release.yml` → tap
-  `update-formula.yml` dispatch currently fails on main because:
-
-1. Allowlist regex on `main` is still `^(xurl-rs|bird)$` — rejects `agentnative`.
-2. `Formula/agentnative.rb` does not exist on `main` — fails the defense-in-depth file check.
-3. `brew install agentnative` resolves against the tap's default branch (`main`) — users can't install. Unblock via
-   tap's `dev → release/* → main` cherry-pick pattern. Bundle with any other tap work on `dev` (e.g.,
-   [brettdavies/homebrew-tap#41](https://github.com/brettdavies/homebrew-tap/pull/41) — bottle-build skip for `v0.0.0`
-   pre-seeds) to minimize release-branch churn.
-
+- Unit 4b (tap dev→main promotion) — **done** via
+  [brettdavies/homebrew-tap#42](https://github.com/brettdavies/homebrew-tap/pull/42) (merged 2026-04-16). Bundled PR #37
+  (formula + allowlist) with PR #41 (v0.0.0 bottle-skip) and three Dependabot action bumps. Verified on tap `main`:
+  allowlist regex now `^(xurl-rs|bird|agentnative)$`, `Formula/agentnative.rb` present, `brew install agentnative`
+  resolves against the default branch. Four candidate cherry-picks emptied out (content already on main via other PRs)
+  and were skipped as no-ops; two docs commits were excluded per `guard-main-docs`.
 - Unit 5 (stale branch cleanup) — done as a no-op. All 6 branches were already pruned on origin by GitHub's
   auto-delete-on-merge. `git branch -r` now shows only `origin/HEAD`, `origin/dev`, `origin/main`.
-- Unit 6 (CHANGELOG v0.1.0) — still NOT done. Must happen on `release/v0.1.0` from `origin/main`, after Unit 4b lands
-  and the tap can accept a v0.1.0 dispatch.
+- Unit 6 (CHANGELOG v0.1.0) — still NOT done. Must happen on `release/v0.1.0` from `origin/main`, now unblocked by Unit
+  4b.
 
 - Single-binary correction (captured from earlier session work): the plan originally assumed two binaries (`agentnative`
-  - `anc`). The crate ships one `[[bin]]` target (`anc`) — confirmed via `cargo metadata`. References across this plan,
+- `anc`). The crate ships one `[[bin]]` target (`anc`) — confirmed via `cargo metadata`. References across this plan,
   plan 003, `README.md`, and `RELEASES.md` were updated in a prior session. Formula in PR #37 installs only `anc`,
   matching reality.
 

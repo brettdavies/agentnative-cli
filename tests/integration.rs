@@ -676,7 +676,10 @@ fn convention_check_x_returns_check_status_not_check_result() {
         .expect("rg command failed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let match_count: usize = stdout.lines().filter_map(|l| l.trim().parse::<usize>().ok()).sum();
+    let match_count: usize = stdout
+        .lines()
+        .filter_map(|l| l.trim().parse::<usize>().ok())
+        .sum();
 
     assert_eq!(
         match_count, 0,

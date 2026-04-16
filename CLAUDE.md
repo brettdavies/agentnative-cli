@@ -100,10 +100,15 @@ agentnative. Two rules prevent recursive fork bombs:
 
 ## CI and Quality
 
-**Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: runs `rustup update stable` to sync the local
-toolchain, then fmt, clippy with `-Dwarnings`, test, cargo-deny, and a Windows compatibility check. The toolchain sync
-prevents "local clippy older than CI clippy" false greens — CI reinstalls stable every run, so the local hook does too.
-Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config core.hooksPath scripts/hooks`
+**Toolchain pin:** `rust-toolchain.toml` pins the channel to a specific `X.Y.Z` version with a trailing comment naming
+the rustc commit SHA. Rustup reads this file on every `cargo` invocation — both local and CI snap to identical bits.
+Rustup verifies component SHA256s from the distribution manifest, so the version pin is effectively a SHA pin (the
+manifest is the toolchain's "lockfile"). Bumping the toolchain is a reviewed PR that updates `rust-toolchain.toml`; no
+runtime `rustup update` anywhere. Policy: bump only after a new stable has aged ≥7 days (supply-chain quarantine).
+
+**Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
+Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config
+core.hooksPath scripts/hooks`
 
 **Windows compatibility:** Only `libc` belongs in `[target.'cfg(unix)'.dependencies]`. All SIGPIPE/signal code must be
 inside `#[cfg(unix)]` blocks. The pre-push hook checks this statically.

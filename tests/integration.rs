@@ -206,7 +206,6 @@ fn test_binary_only_fixture() {
 }
 
 #[test]
-#[ignore] // Requires source-only fixture to have parseable Rust source
 fn test_source_only_fixture() {
     let path = fixture_path("source-only");
 
@@ -244,7 +243,6 @@ fn test_source_only_fixture() {
 }
 
 #[test]
-#[ignore] // Requires broken-rust fixture to have parseable Rust source
 fn test_broken_fixture() {
     let path = fixture_path("broken-rust");
 
@@ -276,7 +274,6 @@ fn test_broken_fixture() {
 }
 
 #[test]
-#[ignore] // Requires cargo build in the perfect-rust fixture directory
 fn test_perfect_fixture() {
     let path = fixture_path("perfect-rust");
 

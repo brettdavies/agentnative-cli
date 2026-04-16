@@ -66,11 +66,12 @@ Key decisions already made:
 
 ## Source Check Convention
 
-Every source check follows this structure:
+Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use
+different helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
 
 - **Struct** implements `Check` trait with `id()`, `group()`, `layer()`, `applicable()`, `run()`
-- **`check_x()` helper** takes `(source: &str, file: &str)` and returns `CheckStatus` (not `CheckResult`) — this is the
-  unit-testable core
+- **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
+  context) and returns `CheckStatus` (not `CheckResult`) — this is the unit-testable core
 - **`run()` is the sole `CheckResult` constructor** — uses `self.id()`, `self.group()`, `self.layer()` to build the
   result. Never hardcode ID/group/layer string literals in `check_x()` or anywhere outside `run()`
 - **Tests call `check_x()`** and match on `CheckStatus` directly, not `result.status`

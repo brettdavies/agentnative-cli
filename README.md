@@ -125,7 +125,11 @@ checks are skipped because there is no source tree to analyze.
 |------|---------|
 | 0 | All checks passed |
 | 1 | Warnings present (no failures) |
-| 2 | Failures or errors detected |
+| 2 | Failures, errors, or usage errors |
+
+Exit 2 covers both check failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
+mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
+`anc --help` first to validate the invocation shape.
 
 ### Shell Completions
 

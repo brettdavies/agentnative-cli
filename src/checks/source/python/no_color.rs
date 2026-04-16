@@ -13,7 +13,7 @@ use ast_grep_language::Python;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::source::has_pattern_in;
+use crate::source::has_string_literal_in;
 use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 
 /// Check trait implementation for NO_COLOR detection in Python.
@@ -59,10 +59,10 @@ impl Check for NoColorPythonCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-no-color".to_string(),
+            id: self.id().to_string(),
             label: "Respects NO_COLOR".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -71,7 +71,9 @@ impl Check for NoColorPythonCheck {
 /// Returns true if the source references NO_COLOR via a recognized Python
 /// env-var access pattern, or as a string literal anywhere in the AST.
 pub(crate) fn source_handles_no_color(source: &str) -> bool {
-    // Common explicit access patterns.
+    let root = Python.ast_grep(source);
+
+    // Common explicit access patterns — parse source once, check all patterns.
     let access_patterns = [
         r#"os.environ.get("NO_COLOR")"#,
         r#"os.environ.get('NO_COLOR')"#,
@@ -84,33 +86,16 @@ pub(crate) fn source_handles_no_color(source: &str) -> bool {
         r#"getenv("NO_COLOR")"#,
         r#"getenv('NO_COLOR')"#,
     ];
-    for p in access_patterns {
-        if has_pattern_in(source, p, Language::Python) {
-            return true;
+    for p_str in access_patterns {
+        if let Ok(pattern) = Pattern::try_new(p_str, Python) {
+            if root.root().find(&pattern).is_some() {
+                return true;
+            }
         }
     }
 
     // Fallback: any string literal "NO_COLOR" or 'NO_COLOR' in the AST.
-    has_string_literal(source, "NO_COLOR")
-}
-
-/// Match `"NO_COLOR"` or `'NO_COLOR'` as a string literal anywhere in the AST.
-fn has_string_literal(source: &str, needle: &str) -> bool {
-    let root = Python.ast_grep(source);
-    let pat_double = Pattern::try_new(&format!(r#""{needle}""#), Python).ok();
-    let pat_single = Pattern::try_new(&format!(r#"'{needle}'"#), Python).ok();
-
-    if let Some(p) = &pat_double {
-        if root.root().find(p).is_some() {
-            return true;
-        }
-    }
-    if let Some(p) = &pat_single {
-        if root.root().find(p).is_some() {
-            return true;
-        }
-    }
-    false
+    has_string_literal_in(source, "NO_COLOR", Language::Python)
 }
 
 #[cfg(test)]
@@ -192,6 +177,12 @@ def main():
     }
 
     #[test]
+    fn pass_with_bare_string_literal_only() {
+        let source = "CONST = \"NO_COLOR\"\n";
+        assert!(source_handles_no_color(source));
+    }
+
+    #[test]
     fn applicable_for_python() {
         let check = NoColorPythonCheck;
         let dir = std::env::temp_dir().join(format!("anc-nocolor-py-{}", std::process::id()));
@@ -217,6 +208,27 @@ def main():
         .expect("write test Cargo.toml");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(!check.applicable(&project));
+    }
+
+    #[test]
+    fn run_emits_pass_when_no_color_present() {
+        let check = NoColorPythonCheck;
+        let dir =
+            std::env::temp_dir().join(format!("anc-nocolor-pass-test-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).expect("create test dir");
+        std::fs::write(
+            dir.join("pyproject.toml"),
+            "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write pyproject");
+        std::fs::write(
+            dir.join("src/app.py"),
+            "import os\nif os.getenv('NO_COLOR'):\n    pass\n",
+        )
+        .expect("write app.py");
+        let project = Project::discover(&dir).expect("discover");
+        let result = check.run(&project).expect("check ran");
+        assert_eq!(result.status, CheckStatus::Pass);
     }
 
     #[test]

@@ -1,7 +1,7 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -35,7 +35,7 @@ pub struct Project {
     pub manifest_path: Option<PathBuf>,
     pub runner: Option<BinaryRunner>,
     pub include_tests: bool,
-    pub(crate) parsed_files: RefCell<HashMap<PathBuf, ParsedFile>>,
+    pub(crate) parsed_files: OnceLock<HashMap<PathBuf, ParsedFile>>,
 }
 
 impl std::fmt::Debug for Project {
@@ -47,7 +47,10 @@ impl std::fmt::Debug for Project {
             .field("manifest_path", &self.manifest_path)
             .field("has_runner", &self.runner.is_some())
             .field("include_tests", &self.include_tests)
-            .field("parsed_files_count", &self.parsed_files.borrow().len())
+            .field(
+                "parsed_files_count",
+                &self.parsed_files.get().map_or(0, |m| m.len()),
+            )
             .finish()
     }
 }
@@ -73,7 +76,7 @@ impl Project {
                 manifest_path: None,
                 runner,
                 include_tests: false,
-                parsed_files: RefCell::new(HashMap::new()),
+                parsed_files: OnceLock::new(),
             });
         }
 
@@ -94,7 +97,7 @@ impl Project {
             manifest_path,
             runner,
             include_tests: false,
-            parsed_files: RefCell::new(HashMap::new()),
+            parsed_files: OnceLock::new(),
         })
     }
 
@@ -108,10 +111,9 @@ impl Project {
             .expect("runner must exist when applicable() returns true")
     }
 
-    pub fn parsed_files(&self) -> std::cell::Ref<'_, HashMap<PathBuf, ParsedFile>> {
-        // Lazily populate on first access
-        if self.parsed_files.borrow().is_empty() {
-            let mut cache = self.parsed_files.borrow_mut();
+    pub fn parsed_files(&self) -> &HashMap<PathBuf, ParsedFile> {
+        self.parsed_files.get_or_init(|| {
+            let mut cache = HashMap::new();
             if let Some(lang) = self.language {
                 let ext = match lang {
                     Language::Rust => "rs",
@@ -127,8 +129,8 @@ impl Project {
                     }
                 }
             }
-        }
-        self.parsed_files.borrow()
+            cache
+        })
     }
 }
 

@@ -41,6 +41,22 @@ pub fn find_pattern_matches_in(
     }
 }
 
+/// Check whether `source` contains a string literal matching `needle` in `lang`.
+///
+/// For Rust, checks `"needle"`. For Python, checks both `"needle"` and `'needle'`
+/// (checking both quote forms for Rust is harmless — Rust has no single-quote strings
+/// beyond char literals, so the single-quote pattern simply won't match).
+pub fn has_string_literal_in(source: &str, needle: &str, lang: Language) -> bool {
+    // Double-quoted form: works for both Rust and Python
+    let dq = format!(r#""{needle}""#);
+    if has_pattern_in(source, &dq, lang) {
+        return true;
+    }
+    // Single-quoted form: meaningful for Python, harmless no-op for Rust
+    let sq = format!("'{needle}'");
+    has_pattern_in(source, &sq, lang)
+}
+
 fn has_pattern_with<L>(source: &str, pattern_str: &str, lang: L) -> bool
 where
     L: LanguageExt + Copy,
@@ -188,5 +204,18 @@ fn main() {
         let source = "package main\nfunc main() {}";
         assert!(find_pattern_matches_in(source, "anything", Language::Go).is_empty());
         assert!(!has_pattern_in(source, "anything", Language::Node));
+    }
+
+    #[test]
+    fn test_supported_language_dispatches_correctly() {
+        let py_source = "import sys\nsys.exit(1)\n";
+        assert!(has_pattern_in(
+            py_source,
+            "sys.exit($$$ARGS)",
+            Language::Python
+        ));
+
+        let rs_source = "fn main() { x.unwrap(); }";
+        assert!(has_pattern_in(rs_source, "$RECV.unwrap()", Language::Rust));
     }
 }

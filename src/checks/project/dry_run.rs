@@ -106,9 +106,9 @@ impl Check for DryRunCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::OnceLock;
 
     use crate::project::{Language, ParsedFile};
 
@@ -154,7 +154,7 @@ mod tests {
             manifest_path: Some(dir.join("Cargo.toml")),
             runner: None,
             include_tests: false,
-            parsed_files: RefCell::new(parsed),
+            parsed_files: OnceLock::from(parsed),
         }
     }
 

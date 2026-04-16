@@ -40,11 +40,10 @@ impl Check for SysExitCheck {
             let file_str = path.display().to_string();
             // __main__.py is the Python entry point — sys.exit() is expected there,
             // just as process::exit() is expected in Rust's main.rs.
-            if file_str.ends_with("__main__.py") {
+            if path.file_name().is_some_and(|f| f == "__main__.py") {
                 continue;
             }
-            let result = check_sys_exit(&parsed_file.source, &file_str);
-            if let CheckStatus::Fail(evidence) = result.status {
+            if let CheckStatus::Fail(evidence) = check_sys_exit(&parsed_file.source, &file_str) {
                 all_evidence.push(evidence);
             }
         }
@@ -56,10 +55,10 @@ impl Check for SysExitCheck {
         };
 
         Ok(CheckResult {
-            id: "p4-sys-exit".to_string(),
+            id: self.id().to_string(),
             label: "No sys.exit() outside __main__ guard".to_string(),
-            group: CheckGroup::P4,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -67,10 +66,12 @@ impl Check for SysExitCheck {
 
 /// Scan a Python source string for `sys.exit(...)` calls outside the
 /// `if __name__ == "__main__":` guard.
-pub(crate) fn check_sys_exit(source: &str, file: &str) -> CheckResult {
-    let matches = find_unguarded_sys_exits(source, file);
+pub(crate) fn check_sys_exit(source: &str, file: &str) -> CheckStatus {
+    let root = Python.ast_grep(source);
+    let mut matches = Vec::new();
+    walk(root.root(), file, false, &mut matches);
 
-    let status = if matches.is_empty() {
+    if matches.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = matches
@@ -79,22 +80,7 @@ pub(crate) fn check_sys_exit(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Fail(evidence)
-    };
-
-    CheckResult {
-        id: "p4-sys-exit".to_string(),
-        label: "No sys.exit() outside __main__ guard".to_string(),
-        group: CheckGroup::P4,
-        layer: CheckLayer::Source,
-        status,
     }
-}
-
-fn find_unguarded_sys_exits(source: &str, file: &str) -> Vec<SourceLocation> {
-    let root = Python.ast_grep(source);
-    let mut out = Vec::new();
-    walk(root.root(), file, false, &mut out);
-    out
 }
 
 fn walk<'a>(
@@ -149,21 +135,31 @@ fn is_sys_exit_call<'a>(node: &Node<'a, StrDoc<Python>>) -> bool {
 
 /// Detect `if __name__ == "__main__":` guards.
 ///
-/// We accept either ordering of the comparison and either string-quote style.
+/// Handles canonical form, parenthesized, no-spaces, and reversed orderings.
 fn is_main_guard<'a>(node: &Node<'a, StrDoc<Python>>) -> bool {
-    // The first child of an if_statement is the `if` keyword; the condition
-    // follows. We simplify by scanning the node's text for the canonical
-    // condition form on the first line.
     let text = node.text();
     let first_line = text.lines().next().unwrap_or("").trim();
-    let header = first_line.trim_end_matches(':').trim();
-    matches!(
-        header,
-        "if __name__ == \"__main__\""
-            | "if __name__ == '__main__'"
-            | "if \"__main__\" == __name__"
-            | "if '__main__' == __name__"
-    )
+    let first_line = first_line.split('#').next().unwrap_or("").trim();
+    let header = first_line
+        .strip_prefix("if")
+        .unwrap_or("")
+        .trim()
+        .trim_end_matches(':')
+        .trim();
+    // Strip outer parentheses: if (__name__ == "__main__"):
+    let header = header
+        .strip_prefix('(')
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap_or(header)
+        .trim();
+    // Split on == and check both orderings
+    let Some((lhs, rhs)) = header.split_once("==") else {
+        return false;
+    };
+    let (lhs, rhs) = (lhs.trim(), rhs.trim());
+    let is_name = |s: &str| s == "__name__";
+    let is_main = |s: &str| s == "\"__main__\"" || s == "'__main__'";
+    (is_name(lhs) && is_main(rhs)) || (is_main(lhs) && is_name(rhs))
 }
 
 #[cfg(test)]
@@ -181,8 +177,8 @@ def main():
 if __name__ == \"__main__\":
     sys.exit(main())
 ";
-        let result = check_sys_exit(source, "src/cli.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -193,8 +189,8 @@ import sys
 if __name__ == '__main__':
     sys.exit(0)
 ";
-        let result = check_sys_exit(source, "src/cli.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -203,9 +199,9 @@ if __name__ == '__main__':
 import sys
 sys.exit(1)
 ";
-        let result = check_sys_exit(source, "src/bad.py");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_sys_exit(source, "src/bad.py");
+        assert!(matches!(status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &status {
             assert!(evidence.contains("sys.exit"));
             assert!(evidence.contains("src/bad.py"));
         }
@@ -222,8 +218,8 @@ def fail_hard(msg):
 
 fail_hard('boom')
 ";
-        let result = check_sys_exit(source, "src/lib.py");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
+        let status = check_sys_exit(source, "src/lib.py");
+        assert!(matches!(status, CheckStatus::Fail(_)));
     }
 
     #[test]
@@ -233,12 +229,24 @@ import sys
 print('hi')
 sys.exit(7)
 ";
-        let result = check_sys_exit(source, "src/loc.py");
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_sys_exit(source, "src/loc.py");
+        if let CheckStatus::Fail(evidence) = &status {
             assert!(evidence.contains(":3:"), "expected line 3, got: {evidence}");
         } else {
             panic!("expected Fail");
         }
+    }
+
+    #[test]
+    fn pass_when_main_guard_has_inline_comment() {
+        let source = "\
+import sys
+
+if __name__ == \"__main__\":  # entry point
+    sys.exit(0)
+";
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -248,8 +256,8 @@ sys.exit(7)
         let source = "\
 exit(1)
 ";
-        let result = check_sys_exit(source, "src/builtin.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/builtin.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -259,8 +267,8 @@ import sys
 sys.stderr.write('hi')
 print(sys.argv)
 ";
-        let result = check_sys_exit(source, "src/sys_other.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/sys_other.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -269,8 +277,8 @@ print(sys.argv)
 def add(a, b):
     return a + b
 ";
-        let result = check_sys_exit(source, "src/clean.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/clean.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -284,8 +292,8 @@ def a():
 def b():
     sys.exit(2)
 ";
-        let result = check_sys_exit(source, "src/multi.py");
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_sys_exit(source, "src/multi.py");
+        if let CheckStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
             panic!("expected Fail");
@@ -305,8 +313,8 @@ if __name__ == \"__main__\":
     except RuntimeError:
         sys.exit(1)
 ";
-        let result = check_sys_exit(source, "src/cli.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -315,8 +323,56 @@ if __name__ == \"__main__\":
 msg = \"call sys.exit(1) on failure\"
 print(msg)
 ";
-        let result = check_sys_exit(source, "src/strings.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_sys_exit(source, "src/strings.py");
+        assert_eq!(status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn pass_when_main_guard_parenthesized() {
+        let source = "\
+import sys
+
+if (__name__ == '__main__'):
+    sys.exit(0)
+";
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn pass_when_main_guard_no_spaces() {
+        let source = "\
+import sys
+
+if __name__==\"__main__\":
+    sys.exit(0)
+";
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn pass_when_main_guard_reversed_double_quotes() {
+        let source = "\
+import sys
+
+if \"__main__\" == __name__:
+    sys.exit(0)
+";
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
+    }
+
+    #[test]
+    fn pass_when_main_guard_reversed_single_quotes() {
+        let source = "\
+import sys
+
+if '__main__' == __name__:
+    sys.exit(0)
+";
+        let status = check_sys_exit(source, "src/cli.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -345,6 +401,38 @@ print(msg)
         .expect("write test Cargo.toml");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(!check.applicable(&project));
+    }
+
+    #[test]
+    fn run_aggregates_across_files() {
+        let check = SysExitCheck;
+        let dir = std::env::temp_dir().join(format!("anc-sysexit-multi-{}", std::process::id()));
+        let src = dir.join("src");
+        std::fs::create_dir_all(&src).expect("create src dir");
+        std::fs::write(
+            dir.join("pyproject.toml"),
+            "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write pyproject");
+        std::fs::write(
+            src.join("good.py"),
+            "import sys\nif __name__ == \"__main__\":\n    sys.exit(0)\n",
+        )
+        .expect("write good.py");
+        std::fs::write(src.join("bad.py"), "import sys\nsys.exit(1)\n").expect("write bad.py");
+        let project = Project::discover(&dir).expect("discover");
+        let result = check.run(&project).expect("check ran");
+        assert!(matches!(result.status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &result.status {
+            assert!(
+                evidence.contains("bad.py"),
+                "evidence should reference bad.py: {evidence}"
+            );
+            assert!(
+                !evidence.contains("good.py"),
+                "evidence should not reference good.py: {evidence}"
+            );
+        }
     }
 
     #[test]

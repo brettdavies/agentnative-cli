@@ -37,8 +37,7 @@ impl Check for BareExceptCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_bare_except(&parsed_file.source, &file_str);
-            if let CheckStatus::Fail(evidence) = result.status {
+            if let CheckStatus::Fail(evidence) = check_bare_except(&parsed_file.source, &file_str) {
                 all_evidence.push(evidence);
             }
         }
@@ -50,10 +49,10 @@ impl Check for BareExceptCheck {
         };
 
         Ok(CheckResult {
-            id: "code-bare-except".to_string(),
+            id: self.id().to_string(),
             label: "No bare except: clauses".to_string(),
-            group: CheckGroup::CodeQuality,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -65,10 +64,12 @@ impl Check for BareExceptCheck {
 /// The tree-sitter-python grammar represents bare except as an `except_clause`
 /// whose first non-keyword child is the `:` token (no type expression between
 /// `except` and `:`).
-pub(crate) fn check_bare_except(source: &str, file: &str) -> CheckResult {
-    let matches = find_bare_excepts(source, file);
+pub(crate) fn check_bare_except(source: &str, file: &str) -> CheckStatus {
+    let root = Python.ast_grep(source);
+    let mut matches = Vec::new();
+    walk(root.root(), file, &mut matches);
 
-    let status = if matches.is_empty() {
+    if matches.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = matches
@@ -77,24 +78,7 @@ pub(crate) fn check_bare_except(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Fail(evidence)
-    };
-
-    CheckResult {
-        id: "code-bare-except".to_string(),
-        label: "No bare except: clauses".to_string(),
-        group: CheckGroup::CodeQuality,
-        layer: CheckLayer::Source,
-        status,
     }
-}
-
-/// Walk the Python AST and collect all `except_clause` nodes that lack an
-/// exception type.
-fn find_bare_excepts(source: &str, file: &str) -> Vec<SourceLocation> {
-    let root = Python.ast_grep(source);
-    let mut out = Vec::new();
-    walk(root.root(), file, &mut out);
-    out
 }
 
 fn walk<'a>(
@@ -128,11 +112,12 @@ fn is_bare_except<'a>(
     node: &ast_grep_core::Node<'a, ast_grep_core::tree_sitter::StrDoc<ast_grep_language::Python>>,
 ) -> bool {
     let text = node.text();
-    let Some((header, _)) = text.split_once(':') else {
+    let first_line = text.lines().next().unwrap_or("");
+    let Some((header, _)) = first_line.split_once(':') else {
         return false;
     };
     let trimmed = header.trim();
-    trimmed == "except" || trimmed == "except*"
+    trimmed == "except"
 }
 
 #[cfg(test)]
@@ -147,8 +132,8 @@ try:
 except ValueError:
     handle_it()
 ";
-        let result = check_bare_except(source, "src/foo.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_bare_except(source, "src/foo.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -161,8 +146,8 @@ except (ValueError, KeyError) as e:
 except OSError:
     cleanup()
 ";
-        let result = check_bare_except(source, "src/foo.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_bare_except(source, "src/foo.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -173,10 +158,10 @@ try:
 except:
     pass
 ";
-        let result = check_bare_except(source, "src/foo.py");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
-        if let CheckStatus::Fail(evidence) = &result.status {
-            assert!(evidence.contains("except"));
+        let status = check_bare_except(source, "src/foo.py");
+        assert!(matches!(status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &status {
+            assert!(evidence.contains("except:"));
             assert!(evidence.contains("src/foo.py"));
         }
     }
@@ -188,8 +173,8 @@ try:
     risky()
 except: pass
 ";
-        let result = check_bare_except(source, "src/foo.py");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
+        let status = check_bare_except(source, "src/foo.py");
+        assert!(matches!(status, CheckStatus::Fail(_)));
     }
 
     #[test]
@@ -207,11 +192,11 @@ def b():
     except:
         log()
 ";
-        let result = check_bare_except(source, "src/multi.py");
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_bare_except(source, "src/multi.py");
+        if let CheckStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
-            panic!("expected Fail, got {:?}", result.status);
+            panic!("expected Fail, got {:?}", status);
         }
     }
 
@@ -225,8 +210,8 @@ try:
 except Exception:
     handle()
 ";
-        let result = check_bare_except(source, "src/clean.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_bare_except(source, "src/clean.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -237,8 +222,8 @@ msg = \"never write `except:` in production\"
 def main():
     return msg
 ";
-        let result = check_bare_except(source, "src/strings.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_bare_except(source, "src/strings.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -248,15 +233,15 @@ def main():
 def main():
     pass
 ";
-        let result = check_bare_except(source, "src/comments.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_bare_except(source, "src/comments.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
     fn pass_with_no_python_files() {
         // Empty source = no AST = pass.
-        let result = check_bare_except("", "src/empty.py");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_bare_except("", "src/empty.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -267,8 +252,8 @@ try:
 except:
     pass
 ";
-        let result = check_bare_except(source, "src/loc.py");
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_bare_except(source, "src/loc.py");
+        if let CheckStatus::Fail(evidence) = &status {
             // bare `except:` is on line 3
             assert!(
                 evidence.contains(":3:"),
@@ -291,6 +276,18 @@ except:
         .expect("write test pyproject.toml");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(check.applicable(&project));
+    }
+
+    #[test]
+    fn pass_when_typed_except_group() {
+        let source = "\
+try:
+    do_thing()
+except* ValueError:
+    handle_it()
+";
+        let status = check_bare_except(source, "src/foo.py");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

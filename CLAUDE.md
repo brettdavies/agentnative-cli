@@ -37,11 +37,16 @@ tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
 
 For the full routing table, see `~/.claude/skills/docs/workflow-routing.md`.
 
+## Documented Solutions
+
+`docs/solutions/` (symlink to `~/dev/solutions-docs/`) — searchable archive of past
+solutions and best practices, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search
+with `qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in documented areas.
+
 ## gstack Project History
 
-This project was designed in the `brettdavies/agent-skills` repo, then moved here.
-gstack project data (design doc, eng review, naming rationale, review history) has been copied to
-`~/.gstack/projects/brettdavies-agentnative/`.
+This project was designed in the `brettdavies/agent-skills` repo, then moved here. gstack project data (design doc, eng
+review, naming rationale, review history) has been copied to `~/.gstack/projects/brettdavies-agentnative/`.
 
 Key decisions already made:
 

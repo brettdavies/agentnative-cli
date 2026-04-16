@@ -657,33 +657,71 @@ fn test_broken_python_fixture() {
 ///
 /// The Check trait's run() method is the sole constructor of CheckResult. If check_x()
 /// returns CheckResult, the ID/group/layer fields are duplicated as string literals
-/// instead of derived from self.id()/self.group()/self.layer(). This test greps the
-/// source to catch regressions.
+/// instead of derived from self.id()/self.group()/self.layer(). This test walks the
+/// source to catch regressions. Pure Rust — no external tooling required.
 #[test]
 fn convention_check_x_returns_check_status_not_check_result() {
-    use std::process::Command;
+    use std::ffi::OsStr;
+    use std::fs;
+    use std::path::Path;
 
-    // Find all pub(crate) fn check_ functions in source check files and verify
-    // none of them return CheckResult.
-    let output = Command::new("rg")
-        .args([
-            "--no-filename",
-            "-c",
-            r"pub\(crate\) fn check_.*-> CheckResult",
-            "src/checks/source/",
-        ])
-        .output()
-        .expect("rg command failed");
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let match_count: usize = stdout
-        .lines()
-        .filter_map(|l| l.trim().parse::<usize>().ok())
-        .sum();
-
-    assert_eq!(
-        match_count, 0,
-        "Found {match_count} check_x() functions returning CheckResult instead of CheckStatus. \
-         See CLAUDE.md 'Source Check Convention' — check_x() must return CheckStatus."
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/checks/source");
+    assert!(
+        root.is_dir(),
+        "source checks dir not found: {}",
+        root.display()
     );
+
+    let mut violations: Vec<String> = Vec::new();
+    visit_dir(&root, &mut |path, contents| {
+        // Match `fn check_<anything>(...) -> CheckResult` allowing any visibility
+        // modifier and either single-line or multi-line signatures.
+        // We search for `fn check_` then look ahead for `-> CheckResult` before the
+        // next `{` (end of signature).
+        for (i, line) in contents.lines().enumerate() {
+            if let Some(idx) = line.find("fn check_") {
+                // Collect signature text until we hit `{` (end of signature)
+                let mut sig = String::new();
+                let rest = &line[idx..];
+                sig.push_str(rest);
+                if !sig.contains('{') {
+                    // signature continues on following lines
+                    for cont in contents.lines().skip(i + 1) {
+                        sig.push(' ');
+                        sig.push_str(cont);
+                        if cont.contains('{') {
+                            break;
+                        }
+                    }
+                }
+                let sig_end = sig.find('{').map(|e| &sig[..e]).unwrap_or(&sig);
+                if sig_end.contains("-> CheckResult") {
+                    violations.push(format!("{}:{}: {}", path.display(), i + 1, line.trim()));
+                }
+            }
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Found {} check_x() function(s) returning CheckResult instead of CheckStatus. \
+         See CLAUDE.md 'Source Check Convention' — check_x() must return CheckStatus \
+         so run() can use self.id()/self.group()/self.layer() as the sole source of truth.\n\n\
+         Violations:\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
+
+    fn visit_dir<F: FnMut(&Path, &str)>(dir: &Path, f: &mut F) {
+        for entry in fs::read_dir(dir).expect("read_dir") {
+            let entry = entry.expect("entry");
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dir(&path, f);
+            } else if path.extension() == Some(OsStr::new("rs")) {
+                let contents = fs::read_to_string(&path).expect("read_to_string");
+                f(&path, &contents);
+            }
+        }
+    }
 }

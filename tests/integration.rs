@@ -492,6 +492,115 @@ fn test_command_flag_appears_in_help() {
 }
 
 #[test]
+fn test_command_flag_conflicts_with_source() {
+    // `--command` and `--source` are contradictory: --command targets a binary
+    // (no source code available); --source asks to skip behavioral and run
+    // source-only. Clap rejects the combination at parse time.
+    cmd()
+        .args(["check", "--command", "ls", "--source"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+// ── help subcommand ──────────────────────────────────────────────
+//
+// `anc help` and `anc help <subcommand>` are clap-auto-generated and the
+// universal CLI convention (cargo, git, npm, kubectl, gh, docker). The
+// default-subcommand injection must NOT swallow `help` as a path.
+
+#[test]
+fn test_help_subcommand_works() {
+    cmd()
+        .arg("help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage"));
+}
+
+#[test]
+fn test_help_subcommand_with_target() {
+    cmd()
+        .args(["help", "check"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Resolve a command from PATH"));
+}
+
+// ── No-positional flag-only invocations ──────────────────────────
+//
+// Subcommand-scoped flags imply `check` even with no positional argument.
+// Top-level flags do not — `anc -q` prints help and exits 2 (not panic).
+
+#[test]
+fn test_quiet_flag_alone_exits_2_not_panic() {
+    // PRE-EXISTING bug fix: `anc -q` previously hit `unreachable!()` and
+    // panicked (SIGABRT, exit 134). Now the None arm prints help and exits 2.
+    cmd()
+        .arg("-q")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Usage"));
+}
+
+#[test]
+fn test_quiet_long_flag_alone_exits_2() {
+    cmd()
+        .arg("--quiet")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Usage"));
+}
+
+#[test]
+fn test_subcommand_flag_alone_injects_check() {
+    // `anc --command ls` — no positional, but `--command` is subcommand-scoped
+    // so injection fires. Without this, clap would reject `--command` at the
+    // top level.
+    #[cfg(unix)]
+    {
+        cmd()
+            .args(["--command", "ls"])
+            .assert()
+            .code(predicate::in_iter([0, 1, 2]))
+            .stdout(predicate::str::contains("checks:"));
+    }
+}
+
+// ── Flag-value pairing ───────────────────────────────────────────
+//
+// Tokens following a value-taking flag are values, NOT subcommand candidates.
+// `anc --command check` must resolve "check" as a binary name on PATH, not
+// route to the explicit `check` subcommand.
+
+#[test]
+fn test_command_flag_value_matching_subcommand_name() {
+    // `anc --command check` — `check` is the value of `--command`. Should
+    // try to resolve a binary named "check" on PATH (which doesn't exist on
+    // a typical system) and surface a clean "not found" error.
+    cmd()
+        .args(["--command", "check"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "command 'check' not found on PATH",
+        ));
+}
+
+// ── POSIX `--` separator ─────────────────────────────────────────
+
+#[test]
+fn test_double_dash_separator_with_path() {
+    // `anc -- .` should run check against `.` (POSIX convention treats
+    // everything after `--` as positional).
+    cmd()
+        .args(["--", "."])
+        .assert()
+        .code(predicate::in_iter([1, 2]))
+        .stdout(predicate::str::contains("checks:"));
+}
+
+#[test]
 fn test_explicit_completions_subcommand_still_works() {
     // `anc completions bash` — must pass through, not be treated as default subcommand.
     cmd()

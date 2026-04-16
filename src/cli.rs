@@ -1,9 +1,17 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
 #[derive(Parser)]
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
+#[command(
+    after_help = "When the first argument is not a subcommand, `check` is inserted automatically:
+  anc .                  ≡  anc check .
+  anc --command ripgrep  ≡  anc check --command ripgrep
+
+Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
+that prevents recursive self-invocation when agentnative checks itself."
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -22,7 +30,13 @@ pub enum Commands {
         path: std::path::PathBuf,
 
         /// Resolve a command from PATH and run behavioral checks against it
-        #[arg(long, value_name = "NAME", conflicts_with = "path")]
+        #[arg(
+            long,
+            value_name = "NAME",
+            value_hint = ValueHint::CommandName,
+            conflicts_with = "path",
+            conflicts_with = "source",
+        )]
         command: Option<String>,
 
         /// Run only behavioral checks (skip source analysis)

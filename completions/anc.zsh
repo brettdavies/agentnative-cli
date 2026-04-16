@@ -32,7 +32,7 @@ _anc() {
         case $line[1] in
             (check)
 _arguments "${_arguments_options[@]}" : \
-'()--command=[Resolve a command from PATH and run behavioral checks against it]:NAME:_default' \
+'(--source)--command=[Resolve a command from PATH and run behavioral checks against it]:NAME:_command_names -e' \
 '--principle=[Filter checks by principle number (1-7)]:PRINCIPLE:_default' \
 '--output=[Output format]:OUTPUT:(text json)' \
 '--binary[Run only behavioral checks (skip source analysis)]' \

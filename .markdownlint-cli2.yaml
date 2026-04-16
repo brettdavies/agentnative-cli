@@ -1,50 +1,85 @@
-# Global markdownlint config for Claude Code hooks
-extends: markdownlint/style/prettier
+# Global markdownlint-cli2 configuration
+# Canonical version: 2026.04.15
+# Symlinked to ~/.markdownlint-cli2.yaml via stow
+#
+# Per-repo copies should preserve the `Canonical version` line above and bump it on resync;
+# a stale calver compared to this file is the signal that the per-repo copy has drifted.
+#
+# Documentation: https://github.com/DavidAnson/markdownlint-cli2
+# Rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
 
+# Configure markdownlint rules
 config:
-  # === Not auto-fixable rules (disabled to reduce noise) ===
+  # Use all default rules
+  default: true
 
-  # Line length - too noisy, not auto-fixable
-  MD013: false
+  # MD003: Heading style - use ATX style (#)
+  MD003:
+    style: "atx"
 
-  # Heading increment (h1 -> h3 skip) - varied doc structures
-  MD001: false
+  # MD004: Unordered list style - use dashes
+  MD004:
+    style: "dash"
 
-  # Multiple H1s - frontmatter + H1 is common
-  MD025: false
+  # MD007: Unordered list indentation - 2 spaces
+  MD007:
+    indent: 2
 
-  # Blank lines in blockquote - not auto-fixable
-  MD028: false
+  # MD009: Trailing spaces - allow 2 spaces for line breaks
+  MD009:
+    br_spaces: 2
 
-  # Bare URLs - common and intentional
-  MD034: false
+  # MD013: Line length - 120 chars (more reasonable for code docs)
+  MD013:
+    line_length: 120
+    code_blocks: false      # Don't check code blocks
+    tables: false           # Don't check tables
+    headings: false         # Don't check headings
 
-  # Emphasis as heading - used in docs
-  MD036: false
-
-  # First-line heading requirement - PR templates, etc.
-  MD041: false
-
-  # Empty links - placeholder links in drafts
-  MD042: false
-
-  # Alt-text requirement - not auto-fixable
-  MD045: false
-
-  # Link fragment validation - complex anchors
-  MD051: false
-
-  # Descriptive link text - not auto-fixable
-  MD059: false
-
-  # Table style - not auto-fixable, different styles valid
-  MD060: false
-
-  # === Relaxed rules ===
-
-  # Allow duplicate headings in different sections
+  # MD024: Allow duplicate headings in different sections
   MD024:
     siblings_only: true
 
-  # Allow HTML for advanced formatting
-  MD033: false
+  # MD025: Single top-level heading - allow multiple (for changelogs, etc.)
+  MD025: false
+
+  # MD033: Allow inline HTML for specific elements
+  MD033:
+    allowed_elements:
+      - "br"
+      - "img"
+      - "a"
+      - "details"
+      - "summary"
+      - "sub"
+      - "sup"
+      - "kbd"
+
+  # MD034: Bare URLs - allow (common in docs)
+  MD034: false
+
+  # MD036: Emphasis used as heading - allow (stylistic choice)
+  MD036: false
+
+  # MD041: First line should be top-level heading - disable (not always needed)
+  MD041: false
+
+  # MD046: Code block style - fenced
+  MD046:
+    style: "fenced"
+
+  # MD048: Code fence style - backticks
+  MD048:
+    style: "backtick"
+
+# Ignore patterns
+ignores:
+  - "node_modules/**"
+  - "**/node_modules/**"
+  - "vendor/**"
+  - "target/**"  # Rust build artifacts; harmless for non-Rust projects
+  - ".git/**"
+  - "*.min.md"
+
+# Fix automatically when --fix is used
+fix: true

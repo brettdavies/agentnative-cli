@@ -12,12 +12,12 @@ feature branch → PR to dev (squash merge)
 
 ## Branches
 
-| Branch        | Role                              | Lifetime                       | Protection                                |
-| ------------- | --------------------------------- | ------------------------------ | ----------------------------------------- |
-| `main`        | Production. Only release commits. | Forever.                       | `.github/rulesets/protect-main.json`      |
-| `dev`         | Integration. All feature PRs land here. | Forever. Never delete.   | `.github/rulesets/protect-dev.json`       |
+| Branch | Role | Lifetime | Protection |
+| ------ | ---- | -------- | ---------- |
+| `main` | Production. Only release commits. | Forever. | `.github/rulesets/protect-main.json` |
+| `dev` | Integration. All feature PRs land here. | Forever. Never delete. | `.github/rulesets/protect-dev.json` |
 | `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work. | One PR's worth. Auto-deleted on merge. | None — squash into dev freely. |
-| `release/*`   | Head of a dev → main PR.          | One release's worth. Auto-deleted on merge. | None.                     |
+| `release/*` | Head of a dev → main PR. | One release's worth. Auto-deleted on merge. | None. |
 
 `dev` is a **forever branch**. Never delete it locally or remotely, even after a `release/* → main` merge. The next
 release cycle reuses the same `dev`. The repo's `deleteBranchOnMerge: true` setting doesn't touch `dev` as long as `dev`
@@ -113,13 +113,13 @@ The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
 | Step | What |
-|------|------|
+| ---- | ---- |
 | `check-version` | Verify the tag matches `Cargo.toml` version (gate). |
 | `audit` | `cargo deny check` (license + advisory + ban). |
 | `build` | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses. |
 | `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish). |
 | `release` | Create a **draft** GitHub Release with all 5 archives + `sha256sum.txt`. |
-| `homebrew` | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc` + `agentnative` symlink). |
+| `homebrew` | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`). |
 
 After the homebrew-tap workflow uploads bottles to the draft release, it dispatches `finalize-release` back to this
 repo, which publishes the draft. End result: crate on crates.io, GitHub Release published, Homebrew formula updated with
@@ -198,7 +198,7 @@ gh api repos/brettdavies/agentnative/commits/<sha>/check-runs --jq '.check_runs[
 ## Required secrets
 
 | Secret | Purpose | Lifecycle |
-|--------|---------|-----------|
+| ------ | ------- | --------- |
 | `CI_RELEASE_TOKEN` | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually. |
 | `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish. | Remove after Trusted Publishing is configured. |
 

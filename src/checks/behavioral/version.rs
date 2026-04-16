@@ -10,12 +10,20 @@ impl Check for VersionCheck {
         "p3-version"
     }
 
+    fn group(&self) -> CheckGroup {
+        CheckGroup::P3
+    }
+
+    fn layer(&self) -> CheckLayer {
+        CheckLayer::Behavioral
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
         let result = runner.run(&["--version"], &[]);
 
         let status = match result.status {
@@ -52,7 +60,7 @@ mod tests {
     fn version_pass_with_output() {
         // echo always exits 0 and produces output for any args
         let project = test_project_with_runner("/bin/echo");
-        let result = VersionCheck.run(&project).unwrap();
+        let result = VersionCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 
@@ -60,7 +68,16 @@ mod tests {
     fn version_fail_non_zero_exit() {
         // /bin/false exits 1
         let project = test_project_with_runner("/bin/false");
-        let result = VersionCheck.run(&project).unwrap();
+        let result = VersionCheck.run(&project).expect("check should run");
+        assert!(matches!(result.status, CheckStatus::Fail(_)));
+    }
+
+    #[test]
+    fn version_handles_crash() {
+        let project = crate::checks::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let result = VersionCheck
+            .run(&project)
+            .expect("check should not panic on crash");
         assert!(matches!(result.status, CheckStatus::Fail(_)));
     }
 }

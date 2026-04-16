@@ -15,6 +15,7 @@ use clap_complete::generate;
 
 use check::Check;
 use checks::behavioral::all_behavioral_checks;
+use checks::project::all_project_checks;
 use checks::source::all_source_checks;
 use cli::{Cli, Commands, OutputFormat};
 use error::AppError;
@@ -43,32 +44,43 @@ fn run() -> Result<i32, AppError> {
     let cli = Cli::parse();
 
     // Extract check parameters, defaulting None command to `check .`
-    let (path, binary_only, source_only, principle, output, quiet) = match cli.command {
-        Some(Commands::Check {
-            path,
-            binary,
-            source,
-            principle,
-            output,
-            quiet,
-            ..
-        }) => (path, binary, source, principle, output, quiet),
-        Some(Commands::Completions { shell }) => {
-            let mut cmd = <Cli as clap::CommandFactory>::command();
-            generate(shell, &mut cmd, "agentnative", &mut std::io::stdout());
-            return Ok(0);
-        }
-        None => (
-            PathBuf::from("."),
-            false,
-            false,
-            None,
-            OutputFormat::Text,
-            false,
-        ),
-    };
+    let (path, binary_only, source_only, principle, output, quiet, include_tests) =
+        match cli.command {
+            Some(Commands::Check {
+                path,
+                binary,
+                source,
+                principle,
+                output,
+                quiet,
+                include_tests,
+            }) => (
+                path,
+                binary,
+                source,
+                principle,
+                output,
+                quiet,
+                include_tests,
+            ),
+            Some(Commands::Completions { shell }) => {
+                let mut cmd = <Cli as clap::CommandFactory>::command();
+                generate(shell, &mut cmd, "agentnative", &mut std::io::stdout());
+                return Ok(0);
+            }
+            None => (
+                PathBuf::from("."),
+                false,
+                false,
+                None,
+                OutputFormat::Text,
+                false,
+                false,
+            ),
+        };
 
-    let project = Project::discover(&path)?;
+    let mut project = Project::discover(&path)?;
+    project.include_tests = include_tests;
 
     // Collect applicable checks based on flags and auto-detection
     let mut all_checks: Vec<Box<dyn Check>> = Vec::new();
@@ -94,6 +106,11 @@ fn run() -> Result<i32, AppError> {
         }
     }
 
+    // Project checks — always collected when path is a directory and not binary-only
+    if !binary_only && project.path.is_dir() {
+        all_checks.extend(all_project_checks());
+    }
+
     // Run checks
     let mut results: Vec<CheckResult> = Vec::new();
     for check in &all_checks {
@@ -105,8 +122,8 @@ fn run() -> Result<i32, AppError> {
             Err(e) => CheckResult {
                 id: check.id().to_string(),
                 label: check.id().to_string(),
-                group: CheckGroup::P1,
-                layer: types::CheckLayer::Behavioral,
+                group: check.group(),
+                layer: check.layer(),
                 status: CheckStatus::Error(e.to_string()),
             },
         };
@@ -129,7 +146,11 @@ fn run() -> Result<i32, AppError> {
 }
 
 fn matches_principle(group: &CheckGroup, principle: u8) -> bool {
+    // CodeQuality and ProjectStructure checks are cross-cutting — always include them.
     matches!(
+        group,
+        CheckGroup::CodeQuality | CheckGroup::ProjectStructure
+    ) || matches!(
         (group, principle),
         (CheckGroup::P1, 1)
             | (CheckGroup::P2, 2)

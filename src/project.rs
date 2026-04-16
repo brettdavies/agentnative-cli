@@ -9,6 +9,11 @@ use serde::Serialize;
 
 use crate::runner::BinaryRunner;
 
+/// Maximum directory recursion depth for source file walk.
+const MAX_DEPTH: usize = 20;
+/// Maximum number of source files to collect.
+const MAX_FILES: usize = 10_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Language {
@@ -29,6 +34,7 @@ pub struct Project {
     pub binary_paths: Vec<PathBuf>,
     pub manifest_path: Option<PathBuf>,
     pub runner: Option<BinaryRunner>,
+    pub include_tests: bool,
     pub(crate) parsed_files: RefCell<HashMap<PathBuf, ParsedFile>>,
 }
 
@@ -40,6 +46,7 @@ impl std::fmt::Debug for Project {
             .field("binary_paths", &self.binary_paths)
             .field("manifest_path", &self.manifest_path)
             .field("has_runner", &self.runner.is_some())
+            .field("include_tests", &self.include_tests)
             .field("parsed_files_count", &self.parsed_files.borrow().len())
             .finish()
     }
@@ -65,6 +72,7 @@ impl Project {
                 binary_paths: vec![path],
                 manifest_path: None,
                 runner,
+                include_tests: false,
                 parsed_files: RefCell::new(HashMap::new()),
             });
         }
@@ -85,8 +93,19 @@ impl Project {
             binary_paths,
             manifest_path,
             runner,
+            include_tests: false,
             parsed_files: RefCell::new(HashMap::new()),
         })
+    }
+
+    /// Returns a reference to the runner.
+    ///
+    /// # Panics
+    /// Panics if no runner exists. Only call after `applicable()` confirms a runner is present.
+    pub fn runner_ref(&self) -> &BinaryRunner {
+        self.runner
+            .as_ref()
+            .expect("runner must exist when applicable() returns true")
     }
 
     pub fn parsed_files(&self) -> std::cell::Ref<'_, HashMap<PathBuf, ParsedFile>> {
@@ -100,7 +119,7 @@ impl Project {
                     Language::Go => "go",
                     Language::Node => "js",
                 };
-                if let Ok(files) = walk_source_files(&self.path, ext) {
+                if let Ok(files) = walk_source_files(&self.path, ext, self.include_tests) {
                     for file_path in files {
                         if let Ok(source) = fs::read_to_string(&file_path) {
                             cache.insert(file_path, ParsedFile { source });
@@ -214,30 +233,58 @@ fn discover_simple_binaries(dir: &Path, subdirs: &[&str]) -> Vec<PathBuf> {
     paths
 }
 
-fn walk_source_files(dir: &Path, ext: &str) -> Result<Vec<PathBuf>> {
+fn walk_source_files(dir: &Path, ext: &str, include_tests: bool) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
-    walk_source_files_inner(dir, ext, &mut files)?;
+    let mut file_count: usize = 0;
+    walk_source_files_inner(dir, ext, include_tests, 0, &mut file_count, &mut files)?;
     Ok(files)
 }
 
-fn walk_source_files_inner(dir: &Path, ext: &str, files: &mut Vec<PathBuf>) -> Result<()> {
+fn walk_source_files_inner(
+    dir: &Path,
+    ext: &str,
+    include_tests: bool,
+    depth: usize,
+    file_count: &mut usize,
+    files: &mut Vec<PathBuf>,
+) -> Result<()> {
+    if depth >= MAX_DEPTH {
+        eprintln!(
+            "warning: hit {MAX_DEPTH}-level depth limit; narrow the scan with `agentnative check src/`"
+        );
+        return Ok(());
+    }
+    if *file_count >= MAX_FILES {
+        eprintln!(
+            "warning: hit {MAX_FILES}-file limit; narrow the scan with `agentnative check src/`"
+        );
+        return Ok(());
+    }
+
     let entries =
         fs::read_dir(dir).with_context(|| format!("cannot read directory: {}", dir.display()))?;
 
     for entry in entries {
+        if *file_count >= MAX_FILES {
+            break;
+        }
         let entry = entry?;
         let path = entry.path();
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy();
 
-        // Skip hidden dirs, target/, tests/
+        // Skip hidden dirs, target/ always; tests/ unless --include-tests
         if path.is_dir() {
-            if name.starts_with('.') || name == "target" || name == "tests" {
+            if name.starts_with('.') || name == "target" {
                 continue;
             }
-            walk_source_files_inner(&path, ext, files)?;
+            if name == "tests" && !include_tests {
+                continue;
+            }
+            walk_source_files_inner(&path, ext, include_tests, depth + 1, file_count, files)?;
         } else if path.extension().is_some_and(|e| e == ext) {
             files.push(path);
+            *file_count += 1;
         }
     }
     Ok(())
@@ -261,14 +308,14 @@ mod tests {
 
     fn temp_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("agentnative-test-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
         dir
     }
 
     #[test]
     fn test_rust_project_detected() {
         let dir = temp_dir().join("rust-proj");
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
         fs::write(
             dir.join("Cargo.toml"),
             r#"[package]
@@ -276,9 +323,9 @@ name = "myapp"
 version = "0.1.0"
 "#,
         )
-        .unwrap();
+        .expect("write test Cargo.toml");
 
-        let project = Project::discover(&dir).unwrap();
+        let project = Project::discover(&dir).expect("discover test project");
         assert_eq!(project.language, Some(Language::Rust));
         assert!(project.manifest_path.is_some());
     }
@@ -286,17 +333,18 @@ version = "0.1.0"
     #[test]
     fn test_executable_file() {
         let dir = temp_dir().join("exe-test");
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
         let bin = dir.join("mybin");
-        fs::write(&bin, "#!/bin/sh\necho hi").unwrap();
+        fs::write(&bin, "#!/bin/sh\necho hi").expect("write test binary");
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+            fs::set_permissions(&bin, fs::Permissions::from_mode(0o755))
+                .expect("set test permissions");
         }
 
-        let project = Project::discover(&bin).unwrap();
+        let project = Project::discover(&bin).expect("discover test project");
         assert_eq!(project.language, None);
         assert_eq!(project.binary_paths.len(), 1);
     }
@@ -304,9 +352,9 @@ version = "0.1.0"
     #[test]
     fn test_no_manifest_directory() {
         let dir = temp_dir().join("empty-proj");
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
 
-        let project = Project::discover(&dir).unwrap();
+        let project = Project::discover(&dir).expect("discover test project");
         assert_eq!(project.language, None);
         assert!(project.binary_paths.is_empty());
     }
@@ -314,7 +362,7 @@ version = "0.1.0"
     #[test]
     fn test_cargo_toml_with_bin_entries() {
         let dir = temp_dir().join("bin-entries");
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
         fs::write(
             dir.join("Cargo.toml"),
             r#"[package]
@@ -330,18 +378,22 @@ name = "cli2"
 path = "src/cli2.rs"
 "#,
         )
-        .unwrap();
+        .expect("write test Cargo.toml");
 
-        let project = Project::discover(&dir).unwrap();
+        let project = Project::discover(&dir).expect("discover test project");
         assert_eq!(project.language, Some(Language::Rust));
         // Binaries won't exist on disk, so binary_paths should be empty
         assert!(project.binary_paths.is_empty());
 
         // Verify we parsed the names correctly by checking the discover function directly
         let names = {
-            let content = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
-            let doc: toml::Table = content.parse().unwrap();
-            let bins = doc.get("bin").unwrap().as_array().unwrap();
+            let content = fs::read_to_string(dir.join("Cargo.toml")).expect("read test Cargo.toml");
+            let doc: toml::Table = content.parse().expect("parse TOML");
+            let bins = doc
+                .get("bin")
+                .expect("bin section")
+                .as_array()
+                .expect("bin is array");
             bins.iter()
                 .filter_map(|b| b.get("name").and_then(|n| n.as_str()).map(String::from))
                 .collect::<Vec<_>>()
@@ -358,19 +410,80 @@ path = "src/cli2.rs"
     #[test]
     fn test_non_executable_file_errors() {
         let dir = temp_dir().join("noexec-test");
-        fs::create_dir_all(&dir).unwrap();
+        fs::create_dir_all(&dir).expect("create test dir");
         let file = dir.join("regular.txt");
-        fs::write(&file, "just text").unwrap();
+        fs::write(&file, "just text").expect("write test file");
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+            fs::set_permissions(&file, fs::Permissions::from_mode(0o644))
+                .expect("set test permissions");
         }
 
         let result = Project::discover(&file);
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = result
+            .expect_err("should reject non-executable file")
+            .to_string();
         assert!(err.contains("not an executable"), "got: {err}");
+    }
+
+    #[test]
+    fn test_walk_excludes_tests_by_default() {
+        let dir = temp_dir().join("walk-tests-default");
+        let src = dir.join("src");
+        let tests = dir.join("tests");
+        fs::create_dir_all(&src).expect("create test src dir");
+        fs::create_dir_all(&tests).expect("create test tests dir");
+        fs::write(src.join("main.rs"), "fn main() {}").expect("write test file");
+        fs::write(tests.join("test_foo.rs"), "fn test() {}").expect("write test file");
+
+        let files = walk_source_files(&dir, "rs", false).expect("walk source files");
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("main.rs"));
+    }
+
+    #[test]
+    fn test_walk_includes_tests_when_enabled() {
+        let dir = temp_dir().join("walk-tests-enabled");
+        let src = dir.join("src");
+        let tests = dir.join("tests");
+        fs::create_dir_all(&src).expect("create test src dir");
+        fs::create_dir_all(&tests).expect("create test tests dir");
+        fs::write(src.join("main.rs"), "fn main() {}").expect("write test file");
+        fs::write(tests.join("test_foo.rs"), "fn test() {}").expect("write test file");
+
+        let files = walk_source_files(&dir, "rs", true).expect("walk source files");
+        assert_eq!(files.len(), 2);
+    }
+
+    #[test]
+    fn test_walk_always_excludes_target() {
+        let dir = temp_dir().join("walk-target-excl");
+        let src = dir.join("src");
+        let target = dir.join("target").join("debug");
+        fs::create_dir_all(&src).expect("create test src dir");
+        fs::create_dir_all(&target).expect("create test target dir");
+        fs::write(src.join("main.rs"), "fn main() {}").expect("write test file");
+        fs::write(target.join("build.rs"), "fn build() {}").expect("write test file");
+
+        let files = walk_source_files(&dir, "rs", true).expect("walk source files");
+        assert_eq!(files.len(), 1);
+        assert!(files[0].ends_with("main.rs"));
+    }
+
+    #[test]
+    fn test_include_tests_field_default() {
+        let dir = temp_dir().join("include-tests-default");
+        fs::create_dir_all(&dir).expect("create test dir");
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write test Cargo.toml");
+
+        let project = Project::discover(&dir).expect("discover test project");
+        assert!(!project.include_tests);
     }
 }

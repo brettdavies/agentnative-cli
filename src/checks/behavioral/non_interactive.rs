@@ -10,12 +10,20 @@ impl Check for NonInteractiveCheck {
         "p1-non-interactive"
     }
 
+    fn group(&self) -> CheckGroup {
+        CheckGroup::P1
+    }
+
+    fn layer(&self) -> CheckLayer {
+        CheckLayer::Behavioral
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        let runner = project.runner.as_ref().unwrap();
+        let runner = project.runner_ref();
 
         // Test P1: binary must not block waiting for interactive input.
         //
@@ -63,14 +71,23 @@ mod tests {
     #[test]
     fn non_interactive_pass_with_echo() {
         let project = test_project_with_runner("/bin/echo");
-        let result = NonInteractiveCheck.run(&project).unwrap();
+        let result = NonInteractiveCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
     }
 
     #[test]
     fn non_interactive_pass_with_false() {
         let project = test_project_with_runner("/bin/false");
-        let result = NonInteractiveCheck.run(&project).unwrap();
+        let result = NonInteractiveCheck.run(&project).expect("check should run");
         assert!(matches!(result.status, CheckStatus::Pass));
+    }
+
+    #[test]
+    fn non_interactive_handles_crash() {
+        let project = crate::checks::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let result = NonInteractiveCheck
+            .run(&project)
+            .expect("check should not panic on crash");
+        assert!(matches!(result.status, CheckStatus::Warn(_)));
     }
 }

@@ -39,8 +39,7 @@ impl Check for TryParseCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_try_parse(&parsed_file.source, &file_str);
-            if let CheckStatus::Warn(evidence) = result.status {
+            if let CheckStatus::Warn(evidence) = check_try_parse(&parsed_file.source, &file_str) {
                 all_evidence.push(evidence);
             }
         }
@@ -52,10 +51,10 @@ impl Check for TryParseCheck {
         };
 
         Ok(CheckResult {
-            id: "p4-try-parse".to_string(),
+            id: self.id().to_string(),
             label: "No .parse().unwrap()".to_string(),
-            group: CheckGroup::P4,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -64,7 +63,7 @@ impl Check for TryParseCheck {
 /// Check a single source string for `.parse().unwrap()` and `.parse().expect()`.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_try_parse(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_try_parse(source: &str, file: &str) -> CheckStatus {
     let mut all_matches = Vec::new();
 
     for pattern_str in PATTERNS {
@@ -75,7 +74,7 @@ pub(crate) fn check_try_parse(source: &str, file: &str) -> CheckResult {
         all_matches.extend(matches);
     }
 
-    let status = if all_matches.is_empty() {
+    if all_matches.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = all_matches
@@ -84,14 +83,6 @@ pub(crate) fn check_try_parse(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Warn(evidence)
-    };
-
-    CheckResult {
-        id: "p4-try-parse".to_string(),
-        label: "No .parse().unwrap()".to_string(),
-        group: CheckGroup::P4,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -106,8 +97,8 @@ fn parse_port(s: &str) -> Result<u16, std::num::ParseIntError> {
     s.parse()
 }
 "#;
-        let result = check_try_parse(source, "src/config.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_try_parse(source, "src/config.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -118,8 +109,8 @@ fn parse_port(s: &str) -> anyhow::Result<u16> {
     Ok(port)
 }
 "#;
-        let result = check_try_parse(source, "src/config.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_try_parse(source, "src/config.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -129,9 +120,9 @@ fn main() {
     let port: u16 = args[1].parse().unwrap();
 }
 "#;
-        let result = check_try_parse(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_try_parse(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("parse().unwrap()"));
             assert!(evidence.contains("src/main.rs"));
         }
@@ -145,8 +136,8 @@ fn main() {
     let port: u16 = args[1].parse().expect("bad port");
 }
 "#;
-        let result = check_try_parse(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_try_parse(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -158,8 +149,8 @@ fn main() {
     let timeout: u64 = args[3].parse().expect("bad timeout");
 }
 "#;
-        let result = check_try_parse(source, "src/main.rs");
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_try_parse(source, "src/main.rs");
+        if let CheckStatus::Warn(evidence) = &status {
             // Only .parse().unwrap() lines are flagged, not .expect()
             assert_eq!(evidence.lines().count(), 2);
         } else {
@@ -180,8 +171,8 @@ fn parse_port(s: &str) -> u16 {
     }
 }
 "#;
-        let result = check_try_parse(source, "src/config.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_try_parse(source, "src/config.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

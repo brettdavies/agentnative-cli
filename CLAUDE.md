@@ -64,6 +64,24 @@ Key decisions already made:
 - Feature flag is `tree-sitter-rust`, not `language-rust`
 - Edition 2024, dual MIT/Apache-2.0 license
 
+## Source Check Convention
+
+Every source check follows this structure:
+
+- **Struct** implements `Check` trait with `id()`, `group()`, `layer()`, `applicable()`, `run()`
+- **`check_x()` helper** takes `(source: &str, file: &str)` and returns `CheckStatus` (not `CheckResult`) — this is the
+  unit-testable core
+- **`run()` is the sole `CheckResult` constructor** — uses `self.id()`, `self.group()`, `self.layer()` to build the
+  result. Never hardcode ID/group/layer string literals in `check_x()` or anywhere outside `run()`
+- **Tests call `check_x()`** and match on `CheckStatus` directly, not `result.status`
+
+This prevents ID triplication (the same string literal in `id()`, `run()`, and `check_x()`) and ensures the `Check`
+trait is the single source of truth for check metadata.
+
+For cross-language pattern helpers, use `source::has_pattern_in()` / `source::find_pattern_matches_in()` /
+`source::has_string_literal_in()` with a `Language` parameter — do not write private per-language helpers in individual
+check files.
+
 ## Dogfooding Safety
 
 Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS

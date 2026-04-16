@@ -41,8 +41,7 @@ impl Check for NoPagerCheck {
         let mut has_no_pager_flag = false;
 
         for (_path, parsed_file) in parsed.iter() {
-            let result = check_no_pager(&parsed_file.source);
-            match &result.status {
+            match &check_no_pager(&parsed_file.source) {
                 CheckStatus::Pass => {
                     // Either no pager or has --no-pager flag
                     if source_has_pager_code(&parsed_file.source) {
@@ -68,10 +67,10 @@ impl Check for NoPagerCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-no-pager".to_string(),
+            id: self.id().to_string(),
             label: "No pager blocking agents".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -93,23 +92,17 @@ fn source_has_pager_code(source: &str) -> bool {
 }
 
 /// Check a single source string for pager code and --no-pager flag.
-pub(crate) fn check_no_pager(source: &str) -> CheckResult {
+pub(crate) fn check_no_pager(source: &str) -> CheckStatus {
     let has_pager = source_has_pager_code(source);
 
     if !has_pager {
-        return CheckResult {
-            id: "p6-no-pager".to_string(),
-            label: "No pager blocking agents".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Pass,
-        };
+        return CheckStatus::Pass;
     }
 
     // Check for --no-pager flag
     let has_flag = source.contains("no-pager") || source.contains("no_pager");
 
-    let status = if has_flag {
+    if has_flag {
         CheckStatus::Pass
     } else {
         CheckStatus::Warn(
@@ -117,14 +110,6 @@ pub(crate) fn check_no_pager(source: &str) -> CheckResult {
              Pagers block agents; provide --no-pager to disable."
                 .to_string(),
         )
-    };
-
-    CheckResult {
-        id: "p6-no-pager".to_string(),
-        label: "No pager blocking agents".to_string(),
-        group: CheckGroup::P6,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -139,8 +124,8 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_no_pager(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_pager(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -154,8 +139,8 @@ fn setup_pager(no_pager: bool) {
     }
 }
 "#;
-        let result = check_no_pager(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_pager(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -167,9 +152,9 @@ fn setup() {
     Pager::new().setup();
 }
 "#;
-        let result = check_no_pager(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_no_pager(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("no --no-pager"));
         }
     }
@@ -183,8 +168,8 @@ fn show_output(text: &str) {
     Command::new("less").spawn().expect("spawn less");
 }
 "#;
-        let result = check_no_pager(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        let status = check_no_pager(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]
@@ -196,8 +181,8 @@ fn show_output(text: &str) {
     Command::new("more").spawn().expect("spawn more");
 }
 "#;
-        let result = check_no_pager(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        let status = check_no_pager(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]
@@ -213,8 +198,8 @@ fn show_output(text: &str, no_pager: bool) {
     }
 }
 "#;
-        let result = check_no_pager(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_pager(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

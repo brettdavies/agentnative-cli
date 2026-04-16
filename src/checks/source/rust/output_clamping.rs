@@ -52,8 +52,7 @@ impl Check for OutputClampingCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_output_clamping(&parsed_file.source, &file_str);
-            match &result.status {
+            match &check_output_clamping(&parsed_file.source, &file_str) {
                 CheckStatus::Warn(evidence) => {
                     has_list_patterns = true;
                     list_evidence.push(evidence.clone());
@@ -78,10 +77,10 @@ impl Check for OutputClampingCheck {
         };
 
         Ok(CheckResult {
-            id: "p7-output-clamping".to_string(),
+            id: self.id().to_string(),
             label: "List output is clamped".to_string(),
-            group: CheckGroup::P7,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -90,7 +89,7 @@ impl Check for OutputClampingCheck {
 /// Check a single source string for list patterns and clamping.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_output_clamping(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_output_clamping(source: &str, file: &str) -> CheckStatus {
     // Step 1: Look for list/iteration patterns
     let mut list_locations = Vec::new();
 
@@ -103,20 +102,14 @@ pub(crate) fn check_output_clamping(source: &str, file: &str) -> CheckResult {
     }
 
     if list_locations.is_empty() {
-        return CheckResult {
-            id: "p7-output-clamping".to_string(),
-            label: "List output is clamped".to_string(),
-            group: CheckGroup::P7,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("No list output patterns detected".to_string()),
-        };
+        return CheckStatus::Skip("No list output patterns detected".to_string());
     }
 
     // Step 2: Check if clamping exists anywhere in the same source
     let has_clamping = CLAMP_PATTERNS.iter().any(|pat| has_pattern(source, pat))
         || CLAMP_STRINGS.iter().any(|s| source.contains(s));
 
-    let status = if has_clamping {
+    if has_clamping {
         CheckStatus::Pass
     } else {
         let evidence = list_locations
@@ -132,14 +125,6 @@ pub(crate) fn check_output_clamping(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Warn(evidence)
-    };
-
-    CheckResult {
-        id: "p7-output-clamping".to_string(),
-        label: "List output is clamped".to_string(),
-        group: CheckGroup::P7,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -169,8 +154,8 @@ fn main() {
     eprintln!("result: {x}");
 }
 "#;
-        let result = check_output_clamping(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_output_clamping(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -180,9 +165,9 @@ fn list_items(items: &[Item]) -> Vec<String> {
     items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let result = check_output_clamping(source, "src/list.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_output_clamping(source, "src/list.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("list pattern without clamping"));
         }
     }
@@ -194,8 +179,8 @@ fn list_items(items: &[Item]) -> Vec<String> {
     items.iter().take(100).map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let result = check_output_clamping(source, "src/list.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_output_clamping(source, "src/list.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -209,8 +194,8 @@ fn parse_args() {
     let limit = matches.get_one::<usize>("--limit");
 }
 "#;
-        let result = check_output_clamping(source, "src/list.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_output_clamping(source, "src/list.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -222,8 +207,8 @@ fn print_all(items: Vec<String>) {
     }
 }
 "#;
-        let result = check_output_clamping(source, "src/printer.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        let status = check_output_clamping(source, "src/printer.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]
@@ -234,8 +219,8 @@ fn list_results(items: &[Item]) -> Vec<String> {
     items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let result = check_output_clamping(source, "src/list.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_output_clamping(source, "src/list.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

@@ -652,3 +652,35 @@ fn test_broken_python_fixture() {
         "broken-python fixture should trigger code-bare-except check"
     );
 }
+
+/// Convention enforcement: check_x() functions must return CheckStatus, not CheckResult.
+///
+/// The Check trait's run() method is the sole constructor of CheckResult. If check_x()
+/// returns CheckResult, the ID/group/layer fields are duplicated as string literals
+/// instead of derived from self.id()/self.group()/self.layer(). This test greps the
+/// source to catch regressions.
+#[test]
+fn convention_check_x_returns_check_status_not_check_result() {
+    use std::process::Command;
+
+    // Find all pub(crate) fn check_ functions in source check files and verify
+    // none of them return CheckResult.
+    let output = Command::new("rg")
+        .args([
+            "--no-filename",
+            "-c",
+            r"pub\(crate\) fn check_.*-> CheckResult",
+            "src/checks/source/",
+        ])
+        .output()
+        .expect("rg command failed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let match_count: usize = stdout.lines().filter_map(|l| l.trim().parse::<usize>().ok()).sum();
+
+    assert_eq!(
+        match_count, 0,
+        "Found {match_count} check_x() functions returning CheckResult instead of CheckStatus. \
+         See CLAUDE.md 'Source Check Convention' — check_x() must return CheckStatus."
+    );
+}

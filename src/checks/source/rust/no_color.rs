@@ -41,8 +41,7 @@ impl Check for NoColorSourceCheck {
         let mut found_any = false;
 
         for (_path, parsed_file) in parsed.iter() {
-            let result = check_no_color(&parsed_file.source, "");
-            if matches!(result.status, CheckStatus::Pass) {
+            if matches!(check_no_color(&parsed_file.source, ""), CheckStatus::Pass) {
                 found_any = true;
                 break;
             }
@@ -59,10 +58,10 @@ impl Check for NoColorSourceCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-no-color".to_string(),
+            id: self.id().to_string(),
             label: "Respects NO_COLOR".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -71,7 +70,7 @@ impl Check for NoColorSourceCheck {
 /// Check a single source string for NO_COLOR references.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_no_color(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_no_color(source: &str, file: &str) -> CheckStatus {
     let found_env_var = has_pattern(source, r#"std::env::var("NO_COLOR")"#)
         || has_pattern(source, r#"env::var("NO_COLOR")"#)
         || has_pattern(source, r#"std::env::var_os("NO_COLOR")"#)
@@ -83,21 +82,13 @@ pub(crate) fn check_no_color(source: &str, file: &str) -> CheckResult {
         || found_clap_env
         || has_string_literal_in(source, "NO_COLOR", Language::Rust);
 
-    let status = if found_any {
+    if found_any {
         CheckStatus::Pass
     } else {
         CheckStatus::Fail(format!(
             "{file}: No reference to NO_COLOR found. CLIs must respect the NO_COLOR convention. \
              See https://no-color.org/"
         ))
-    };
-
-    CheckResult {
-        id: "p6-no-color".to_string(),
-        label: "Respects NO_COLOR".to_string(),
-        group: CheckGroup::P6,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -129,8 +120,8 @@ fn setup_color() {
     }
 }
 "#;
-        let result = check_no_color(source, "src/output.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_color(source, "src/output.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -144,8 +135,8 @@ fn setup_color() {
     }
 }
 "#;
-        let result = check_no_color(source, "src/output.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_color(source, "src/output.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -157,8 +148,8 @@ struct Cli {
     no_color: bool,
 }
 "#;
-        let result = check_no_color(source, "src/cli.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_color(source, "src/cli.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -168,9 +159,9 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_no_color(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_no_color(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &status {
             assert!(evidence.contains("NO_COLOR"));
             assert!(evidence.contains("no-color.org"));
         }
@@ -185,8 +176,8 @@ fn check_color() {
     std::env::var(COLOR_ENV).ok();
 }
 "#;
-        let result = check_no_color(source, "src/color.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_no_color(source, "src/color.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

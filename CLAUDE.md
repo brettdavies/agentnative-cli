@@ -100,9 +100,10 @@ agentnative. Two rules prevent recursive fork bombs:
 
 ## CI and Quality
 
-**Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
-Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config
-core.hooksPath scripts/hooks`
+**Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: runs `rustup update stable` to sync the local
+toolchain, then fmt, clippy with `-Dwarnings`, test, cargo-deny, and a Windows compatibility check. The toolchain sync
+prevents "local clippy older than CI clippy" false greens — CI reinstalls stable every run, so the local hook does too.
+Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config core.hooksPath scripts/hooks`
 
 **Windows compatibility:** Only `libc` belongs in `[target.'cfg(unix)'.dependencies]`. All SIGPIPE/signal code must be
 inside `#[cfg(unix)]` blocks. The pre-push hook checks this statically.

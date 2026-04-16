@@ -55,12 +55,16 @@ _anc() {
             return 0
             ;;
         anc__check)
-            opts="-q -h --binary --source --principle --output --include-tests --quiet --help [PATH]"
+            opts="-q -h --command --binary --source --principle --output --include-tests --quiet --help [PATH]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --command)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
                 --principle)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0

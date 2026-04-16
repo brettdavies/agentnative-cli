@@ -5,24 +5,30 @@
 The crate is `agentnative`. The installed binary is `anc`.
 
 ```bash
-# Check current project
-anc check .
+# Check current project — `check` is implicit when the first non-flag arg is a path
+anc .
+
+# Resolve a command on PATH and run behavioral checks against it
+anc --command ripgrep
 
 # JSON output for parsing
-anc check . --output json
+anc . --output json
 
 # Quiet mode (warnings and failures only)
-anc check . -q
+anc . -q
 
 # Filter by principle (1-7)
-anc check . --principle 4
+anc . --principle 4
 
 # Behavioral checks only (no source analysis)
-anc check . --binary
+anc . --binary
 
 # Source checks only (no binary execution)
-anc check . --source
+anc . --source
 ```
+
+Bare `anc` (no arguments) prints help and exits 2. This is a non-negotiable fork-bomb guard: when agentnative dogfoods
+itself, children spawned without arguments must not recurse into `check .`.
 
 ## Exit Codes
 

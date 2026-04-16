@@ -33,6 +33,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             break
         }
         'anc;check' {
+            [CompletionResult]::new('--command', '--command', [CompletionResultType]::ParameterName, 'Resolve a command from PATH and run behavioral checks against it')
             [CompletionResult]::new('--principle', '--principle', [CompletionResultType]::ParameterName, 'Filter checks by principle number (1-7)')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format')
             [CompletionResult]::new('--binary', '--binary', [CompletionResultType]::ParameterName, 'Run only behavioral checks (skip source analysis)')

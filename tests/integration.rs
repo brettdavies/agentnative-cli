@@ -308,3 +308,195 @@ fn test_bare_invocation_prints_help() {
         .code(2)
         .stderr(predicate::str::contains("Usage"));
 }
+
+// ── Default subcommand tests ──────────────────────────────────────
+//
+// `anc .` should behave like `anc check .` via pre-parse injection.
+// The injection must NOT fire for bare invocation, --help, or --version.
+
+#[test]
+fn test_default_subcommand_dot_matches_explicit_check() {
+    // `anc .` and `anc check .` must produce the same JSON scorecard.
+    let implicit = cmd()
+        .args([".", "--output", "json"])
+        .output()
+        .expect("implicit run should execute");
+    let explicit = cmd()
+        .args(["check", ".", "--output", "json"])
+        .output()
+        .expect("explicit run should execute");
+
+    assert_eq!(
+        implicit.status.code(),
+        explicit.status.code(),
+        "exit codes must match"
+    );
+
+    let implicit_json: serde_json::Value =
+        serde_json::from_slice(&implicit.stdout).expect("implicit output must be valid JSON");
+    let explicit_json: serde_json::Value =
+        serde_json::from_slice(&explicit.stdout).expect("explicit output must be valid JSON");
+
+    assert_eq!(
+        implicit_json["summary"], explicit_json["summary"],
+        "summaries from implicit and explicit invocations must match"
+    );
+}
+
+#[test]
+fn test_default_subcommand_preserves_global_flag_before_path() {
+    // `anc -q .` — global flag precedes the path argument.
+    cmd()
+        .args(["-q", "."])
+        .assert()
+        .code(predicate::in_iter([1, 2]))
+        .stdout(predicate::str::contains("[PASS]").not())
+        .stdout(predicate::str::contains("[SKIP]").not());
+}
+
+#[test]
+fn test_default_subcommand_preserves_global_long_flag_before_path() {
+    // `anc --quiet .` — long-form global flag precedes the path.
+    cmd()
+        .args(["--quiet", "."])
+        .assert()
+        .code(predicate::in_iter([1, 2]))
+        .stdout(predicate::str::contains("[PASS]").not());
+}
+
+#[test]
+fn test_default_subcommand_passes_trailing_flags_through() {
+    // `anc . --output json` — the injected subcommand must carry trailing flags.
+    let assert = cmd().args([".", "--output", "json"]).assert();
+    let output = assert.get_output().stdout.clone();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output).expect("output should be valid JSON");
+    assert!(parsed.get("results").is_some());
+    assert!(parsed.get("summary").is_some());
+}
+
+#[test]
+fn test_default_subcommand_rejects_nonexistent_path() {
+    // `anc /nonexistent/path` — injection runs, clap parses, discover errors.
+    cmd()
+        .arg("/nonexistent/path/that/does/not/exist")
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("error"));
+}
+
+#[test]
+fn test_default_subcommand_does_not_fire_for_bare_flags() {
+    // `anc --help` — no injection; clap renders top-level help.
+    cmd()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage"));
+}
+
+#[test]
+fn test_default_subcommand_does_not_fire_for_version() {
+    // `anc --version` — no injection; clap prints version.
+    cmd()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("anc"));
+}
+
+#[test]
+fn test_explicit_subcommand_still_works() {
+    // `anc check .` — must still pass through unchanged.
+    cmd()
+        .args(["check", "."])
+        .assert()
+        .code(predicate::in_iter([1, 2]))
+        .stdout(predicate::str::contains("checks:"));
+}
+
+// ── --command flag tests ──────────────────────────────────────────
+//
+// `anc --command <name>` resolves a binary from PATH and runs
+// behavioral-only checks against it.
+
+#[test]
+fn test_command_flag_resolves_path_and_runs_behavioral_only() {
+    // `anc check --command ls` — runs behavioral checks against /bin/ls.
+    // ls is on every POSIX system, so this is safe to rely on in CI.
+    #[cfg(unix)]
+    {
+        let assert = cmd()
+            .args(["check", "--command", "ls", "--output", "json"])
+            .assert();
+        let output = assert.get_output().stdout.clone();
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output).expect("output should be valid JSON");
+        let results = parsed["results"]
+            .as_array()
+            .expect("results should be an array");
+        assert!(!results.is_empty(), "should have behavioral results");
+        // Behavioral-only: no source or project layers.
+        for r in results {
+            let layer = r["layer"].as_str().unwrap_or("");
+            assert_eq!(
+                layer, "behavioral",
+                "--command should produce only behavioral results, got {layer}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_command_flag_via_default_subcommand() {
+    // `anc --command ls` — default-subcommand injection yields
+    // `anc check --command ls` which runs behavioral checks.
+    #[cfg(unix)]
+    {
+        cmd()
+            .args(["--command", "ls"])
+            .assert()
+            .code(predicate::in_iter([0, 1, 2]))
+            .stdout(predicate::str::contains("checks:"));
+    }
+}
+
+#[test]
+fn test_command_flag_unknown_binary_errors() {
+    cmd()
+        .args(["check", "--command", "this-binary-does-not-exist-xyz-12345"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "command 'this-binary-does-not-exist-xyz-12345' not found on PATH",
+        ));
+}
+
+#[test]
+fn test_command_flag_conflicts_with_path() {
+    // `anc check --command ls .` — clap rejects both arguments.
+    cmd()
+        .args(["check", "--command", "ls", "."])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_command_flag_appears_in_help() {
+    cmd()
+        .args(["check", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--command"));
+}
+
+#[test]
+fn test_explicit_completions_subcommand_still_works() {
+    // `anc completions bash` — must pass through, not be treated as default subcommand.
+    cmd()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty().not());
+}

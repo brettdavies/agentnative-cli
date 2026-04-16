@@ -52,8 +52,7 @@ impl Check for HeadlessAuthCheck {
         let mut has_headless_flag = false;
 
         for (_path, parsed_file) in parsed.iter() {
-            let result = check_headless_auth(&parsed_file.source);
-            match &result.status {
+            match &check_headless_auth(&parsed_file.source) {
                 CheckStatus::Skip(_) => {
                     // No auth code in this file
                 }
@@ -81,10 +80,10 @@ impl Check for HeadlessAuthCheck {
         };
 
         Ok(CheckResult {
-            id: "p1-headless-auth".to_string(),
+            id: self.id().to_string(),
             label: "Headless auth supported".to_string(),
-            group: CheckGroup::P1,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -94,17 +93,11 @@ impl Check for HeadlessAuthCheck {
 ///
 /// Searches function definitions via ast-grep to find auth-related identifiers.
 /// This avoids false positives from comments, string literals, and constant arrays.
-pub(crate) fn check_headless_auth(source: &str) -> CheckResult {
+pub(crate) fn check_headless_auth(source: &str) -> CheckStatus {
     let has_auth = has_auth_functions(source);
 
     if !has_auth {
-        return CheckResult {
-            id: "p1-headless-auth".to_string(),
-            label: "Headless auth supported".to_string(),
-            group: CheckGroup::P1,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("no auth code found".to_string()),
-        };
+        return CheckStatus::Skip("no auth code found".to_string());
     }
 
     // Check for --no-browser or --headless flag in clap arg definitions
@@ -113,7 +106,7 @@ pub(crate) fn check_headless_auth(source: &str) -> CheckResult {
             || source.contains("no_browser")
             || source.contains("headless"));
 
-    let status = if has_flag {
+    if has_flag {
         CheckStatus::Pass
     } else {
         CheckStatus::Warn(
@@ -121,14 +114,6 @@ pub(crate) fn check_headless_auth(source: &str) -> CheckResult {
              Agents need a way to authenticate without a browser."
                 .to_string(),
         )
-    };
-
-    CheckResult {
-        id: "p1-headless-auth".to_string(),
-        label: "Headless auth supported".to_string(),
-        group: CheckGroup::P1,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -172,8 +157,8 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_headless_auth(source);
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_headless_auth(source);
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -191,8 +176,8 @@ struct Cli {
     no_browser: bool,
 }
 "#;
-        let result = check_headless_auth(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_headless_auth(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -210,8 +195,8 @@ struct Cli {
     headless: bool,
 }
 "#;
-        let result = check_headless_auth(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_headless_auth(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -229,9 +214,9 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let result = check_headless_auth(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_headless_auth(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("no --no-browser"));
         }
     }
@@ -246,8 +231,8 @@ fn parse_token(s: &str) -> Token {
     Token::new(s)
 }
 "#;
-        let result = check_headless_auth(source);
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_headless_auth(source);
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]

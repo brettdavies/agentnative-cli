@@ -55,8 +55,7 @@ impl Check for TtyDetectionCheck {
         let mut has_tty = false;
 
         for (_path, parsed_file) in parsed.iter() {
-            let result = check_tty_detection(&parsed_file.source);
-            match &result.status {
+            match &check_tty_detection(&parsed_file.source) {
                 CheckStatus::Skip(_) => {
                     // No color code in this file
                 }
@@ -87,10 +86,10 @@ impl Check for TtyDetectionCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-tty-detection".to_string(),
+            id: self.id().to_string(),
             label: "TTY detection for color output".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -108,42 +107,24 @@ fn source_has_tty_detection(source: &str) -> bool {
 }
 
 /// Check a single source string for TTY detection.
-pub(crate) fn check_tty_detection(source: &str) -> CheckResult {
+pub(crate) fn check_tty_detection(source: &str) -> CheckStatus {
     let has_tty = source_has_tty_detection(source);
 
     if has_tty {
-        return CheckResult {
-            id: "p6-tty-detection".to_string(),
-            label: "TTY detection for color output".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Pass,
-        };
+        return CheckStatus::Pass;
     }
 
     let has_color = source_has_color_code(source);
 
     if !has_color {
-        return CheckResult {
-            id: "p6-tty-detection".to_string(),
-            label: "TTY detection for color output".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("no color/formatting code detected".to_string()),
-        };
+        return CheckStatus::Skip("no color/formatting code detected".to_string());
     }
 
-    CheckResult {
-        id: "p6-tty-detection".to_string(),
-        label: "TTY detection for color output".to_string(),
-        group: CheckGroup::P6,
-        layer: CheckLayer::Source,
-        status: CheckStatus::Warn(
-            "Color/ANSI code detected but no TTY detection found. \
-             Use IsTerminal or is_terminal() to avoid corrupting piped output."
-                .to_string(),
-        ),
-    }
+    CheckStatus::Warn(
+        "Color/ANSI code detected but no TTY detection found. \
+         Use IsTerminal or is_terminal() to avoid corrupting piped output."
+            .to_string(),
+    )
 }
 
 #[cfg(test)]
@@ -157,8 +138,8 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_tty_detection(source);
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_tty_detection(source);
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -173,8 +154,8 @@ fn setup_color() {
     }
 }
 "#;
-        let result = check_tty_detection(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_tty_detection(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -189,8 +170,8 @@ fn setup() {
     }
 }
 "#;
-        let result = check_tty_detection(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_tty_detection(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -202,9 +183,9 @@ fn display(msg: &str) {
     println!("{}", msg.green());
 }
 "#;
-        let result = check_tty_detection(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_tty_detection(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("TTY detection"));
         }
     }
@@ -217,8 +198,8 @@ fn display(msg: &str) {
     print!("\x1b[32m{msg}\x1b[0m");
 }
 "#;
-        let result = check_tty_detection(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        let status = check_tty_detection(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]
@@ -234,8 +215,8 @@ fn main() {
     }
 }
 "#;
-        let result = check_tty_detection(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_tty_detection(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

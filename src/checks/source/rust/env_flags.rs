@@ -44,8 +44,7 @@ impl Check for EnvFlagsCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_env_flags(&parsed_file.source, &file_str);
-            match &result.status {
+            match &check_env_flags(&parsed_file.source, &file_str) {
                 CheckStatus::Warn(evidence) => {
                     has_clap_attrs = true;
                     all_warn_evidence.push(evidence.clone());
@@ -69,10 +68,10 @@ impl Check for EnvFlagsCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-env-flags".to_string(),
+            id: self.id().to_string(),
             label: "Agentic flags have env backing".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -81,32 +80,20 @@ impl Check for EnvFlagsCheck {
 /// Check a single source string for agentic flags missing `env = "..."`.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_env_flags(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_env_flags(source: &str, file: &str) -> CheckStatus {
     let missing = find_agentic_flags_missing_env(source, file);
 
     // If we found no agentic arg attributes at all, check if there are *any* arg attributes.
     if missing.found_agentic == 0 {
         let has_any_arg = has_arg_attributes(source);
         if !has_any_arg {
-            return CheckResult {
-                id: "p6-env-flags".to_string(),
-                label: "Agentic flags have env backing".to_string(),
-                group: CheckGroup::P6,
-                layer: CheckLayer::Source,
-                status: CheckStatus::Skip("No clap #[arg(...)] attributes found".to_string()),
-            };
+            return CheckStatus::Skip("No clap #[arg(...)] attributes found".to_string());
         }
         // Has arg attributes but none are agentic — that's still a skip for this file
-        return CheckResult {
-            id: "p6-env-flags".to_string(),
-            label: "Agentic flags have env backing".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("No agentic flags found".to_string()),
-        };
+        return CheckStatus::Skip("No agentic flags found".to_string());
     }
 
-    let status = if missing.locations.is_empty() {
+    if missing.locations.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = missing
@@ -121,14 +108,6 @@ pub(crate) fn check_env_flags(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Warn(evidence)
-    };
-
-    CheckResult {
-        id: "p6-env-flags".to_string(),
-        label: "Agentic flags have env backing".to_string(),
-        group: CheckGroup::P6,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -215,8 +194,8 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let result = check_env_flags(source, "src/cli.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_env_flags(source, "src/cli.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -231,9 +210,9 @@ struct Cli {
     quiet: bool,
 }
 "#;
-        let result = check_env_flags(source, "src/cli.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_env_flags(source, "src/cli.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("output"));
             assert!(evidence.contains("quiet"));
             assert!(evidence.contains("missing env"));
@@ -247,8 +226,8 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_env_flags(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_env_flags(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -263,8 +242,8 @@ struct Cli {
     config: Option<String>,
 }
 "#;
-        let result = check_env_flags(source, "src/cli.rs");
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_env_flags(source, "src/cli.rs");
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -279,9 +258,9 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let result = check_env_flags(source, "src/cli.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_env_flags(source, "src/cli.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("verbose"));
             assert!(!evidence.contains("output"));
         }
@@ -296,8 +275,8 @@ struct Cli {
     timeout: Option<u64>,
 }
 "#;
-        let result = check_env_flags(source, "src/cli.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_env_flags(source, "src/cli.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

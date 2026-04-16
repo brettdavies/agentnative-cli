@@ -37,8 +37,7 @@ impl Check for StructuredOutputCheck {
         let mut has_output_format = false;
 
         for (_path, parsed_file) in parsed.iter() {
-            let result = check_structured_output(&parsed_file.source);
-            match &result.status {
+            match &check_structured_output(&parsed_file.source) {
                 CheckStatus::Skip(_) => {
                     // No clap in this file
                 }
@@ -66,27 +65,21 @@ impl Check for StructuredOutputCheck {
         };
 
         Ok(CheckResult {
-            id: "p2-structured-output".to_string(),
+            id: self.id().to_string(),
             label: "Structured output type exists".to_string(),
-            group: CheckGroup::P2,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
 }
 
 /// Check a single source string for OutputFormat enum.
-pub(crate) fn check_structured_output(source: &str) -> CheckResult {
+pub(crate) fn check_structured_output(source: &str) -> CheckStatus {
     let has_clap = source.contains("clap") || source.contains("#[derive(Parser)]");
 
     if !has_clap {
-        return CheckResult {
-            id: "p2-structured-output".to_string(),
-            label: "Structured output type exists".to_string(),
-            group: CheckGroup::P2,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("no clap dependency detected".to_string()),
-        };
+        return CheckStatus::Skip("no clap dependency detected".to_string());
     }
 
     let has_output_format = has_pattern(source, "enum OutputFormat { $$$BODY }")
@@ -94,7 +87,7 @@ pub(crate) fn check_structured_output(source: &str) -> CheckResult {
         || has_pattern(source, "enum Format { $$$BODY }")
         || has_pattern(source, "pub enum Format { $$$BODY }");
 
-    let status = if has_output_format {
+    if has_output_format {
         CheckStatus::Pass
     } else {
         CheckStatus::Warn(
@@ -102,14 +95,6 @@ pub(crate) fn check_structured_output(source: &str) -> CheckResult {
              structured output (e.g., --output json) for agent consumption."
                 .to_string(),
         )
-    };
-
-    CheckResult {
-        id: "p2-structured-output".to_string(),
-        label: "Structured output type exists".to_string(),
-        group: CheckGroup::P2,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -124,8 +109,8 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_structured_output(source);
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_structured_output(source);
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -146,8 +131,8 @@ struct Cli {
     output: OutputFormat,
 }
 "#;
-        let result = check_structured_output(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_structured_output(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -166,8 +151,8 @@ struct Cli {
     format: Format,
 }
 "#;
-        let result = check_structured_output(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_structured_output(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -181,9 +166,9 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let result = check_structured_output(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_structured_output(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("OutputFormat"));
         }
     }
@@ -198,9 +183,9 @@ struct Cli {
     name: String,
 }
 "#;
-        let result = check_structured_output(source);
+        let status = check_structured_output(source);
         // Has clap (via derive(Parser)) but no output format
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]

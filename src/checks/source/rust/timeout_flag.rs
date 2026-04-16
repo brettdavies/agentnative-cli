@@ -40,8 +40,7 @@ impl Check for TimeoutFlagCheck {
         let mut has_timeout_flag = false;
 
         for (_path, parsed_file) in parsed.iter() {
-            let result = check_timeout_flag(&parsed_file.source);
-            match &result.status {
+            match &check_timeout_flag(&parsed_file.source) {
                 CheckStatus::Skip(_) => {
                     // No network code in this file
                 }
@@ -69,27 +68,21 @@ impl Check for TimeoutFlagCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-timeout".to_string(),
+            id: self.id().to_string(),
             label: "Timeout flag for network ops".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
 }
 
 /// Check a single source string for network code and timeout flag.
-pub(crate) fn check_timeout_flag(source: &str) -> CheckResult {
+pub(crate) fn check_timeout_flag(source: &str) -> CheckStatus {
     let has_network = NETWORK_INDICATORS.iter().any(|ind| source.contains(ind));
 
     if !has_network {
-        return CheckResult {
-            id: "p6-timeout".to_string(),
-            label: "Timeout flag for network ops".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("no network code detected".to_string()),
-        };
+        return CheckStatus::Skip("no network code detected".to_string());
     }
 
     // Check for --timeout flag in source
@@ -99,7 +92,7 @@ pub(crate) fn check_timeout_flag(source: &str) -> CheckResult {
             || source.contains("long = \"timeout\"")
             || source.contains("long(\"timeout\")"));
 
-    let status = if has_flag {
+    if has_flag {
         CheckStatus::Pass
     } else {
         CheckStatus::Warn(
@@ -107,14 +100,6 @@ pub(crate) fn check_timeout_flag(source: &str) -> CheckResult {
              Agents need to bound execution time for network operations."
                 .to_string(),
         )
-    };
-
-    CheckResult {
-        id: "p6-timeout".to_string(),
-        label: "Timeout flag for network ops".to_string(),
-        group: CheckGroup::P6,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -129,8 +114,8 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_timeout_flag(source);
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_timeout_flag(source);
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -150,8 +135,8 @@ fn fetch(url: &str, timeout: u64) {
     // --timeout used here
 }
 "#;
-        let result = check_timeout_flag(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_timeout_flag(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -164,9 +149,9 @@ fn fetch(url: &str) {
     let resp = client.get(url).send();
 }
 "#;
-        let result = check_timeout_flag(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_timeout_flag(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("no --timeout"));
         }
     }
@@ -180,8 +165,8 @@ async fn fetch() {
     let client = Client::new();
 }
 "#;
-        let result = check_timeout_flag(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        let status = check_timeout_flag(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]
@@ -191,8 +176,8 @@ fn fetch(url: &str) -> String {
     ureq::get(url).call().into_string()
 }
 "#;
-        let result = check_timeout_flag(source);
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
+        let status = check_timeout_flag(source);
+        assert!(matches!(status, CheckStatus::Warn(_)));
     }
 
     #[test]
@@ -208,8 +193,8 @@ struct Cli {
     timeout: u64,
 }
 "#;
-        let result = check_timeout_flag(source);
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_timeout_flag(source);
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

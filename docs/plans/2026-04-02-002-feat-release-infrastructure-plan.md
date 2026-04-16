@@ -269,7 +269,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 ---
 
-- [ ] **Unit 6: Generate CHANGELOG.md for v0.1.0 (on release branch)**
+- [x] **Unit 6: Generate CHANGELOG.md for v0.1.0 (on release branch)**
 
 **Goal:** Populate CHANGELOG.md with v0.1.0 release notes using `generate-changelog.sh`.
 
@@ -377,3 +377,20 @@ Units 4 and 5 closed. Unit 6 still pending, plus a new Unit 4b blocker surfaced.
 
 Blocking order for `anc v0.1.0`: Unit 4b (tap main promotion) → Unit 6 (generate CHANGELOG on release branch) →
 first-time manual `cargo publish` → tag push.
+
+### Refresh 2026-04-16 (Unit 6 done, v0.1.0 released)
+
+All 6 units complete. v0.1.0 released successfully through the full pipeline:
+
+- Release branch cherry-picked 13 commits from dev, excluding guarded docs/plans/ paths
+- Cargo.toml already at 0.1.0, completions already fresh -- no bump or regen needed
+- CHANGELOG.md generated via generate-changelog.sh with PR body expansion
+- PR #18 merged to main, all 9 CI checks passed
+- Alpha v0.1.0-alpha.1 published manually to establish crate on crates.io
+- Trusted Publishing configured, then annotated tag pushed
+- release.yml: 5-target build, TP publish, non-draft release, Homebrew dispatch all succeeded
+- homebrew-tap: formula update PR, bottle builds (3 platforms), publish, finalize-release all succeeded
+- make_latest flipped to true. All channels live.
+
+Post-release: two CE todos filed for monorepo discovery (006) and multi-language support (007),
+discovered during RC testing against bird, xr, and markitdown.

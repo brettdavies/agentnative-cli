@@ -206,7 +206,6 @@ fn test_binary_only_fixture() {
 }
 
 #[test]
-#[ignore] // Requires source-only fixture to have parseable Rust source
 fn test_source_only_fixture() {
     let path = fixture_path("source-only");
 
@@ -244,7 +243,6 @@ fn test_source_only_fixture() {
 }
 
 #[test]
-#[ignore] // Requires broken-rust fixture to have parseable Rust source
 fn test_broken_fixture() {
     let path = fixture_path("broken-rust");
 
@@ -276,7 +274,6 @@ fn test_broken_fixture() {
 }
 
 #[test]
-#[ignore] // Requires cargo build in the perfect-rust fixture directory
 fn test_perfect_fixture() {
     let path = fixture_path("perfect-rust");
 
@@ -608,4 +605,50 @@ fn test_explicit_completions_subcommand_still_works() {
         .assert()
         .success()
         .stdout(predicate::str::is_empty().not());
+}
+
+// ── Python fixture tests ────────────────────────────────────────
+
+#[test]
+fn test_broken_python_fixture() {
+    let path = fixture_path("broken-python");
+
+    let assert = cmd().args(["check", &path, "--output", "json"]).assert();
+
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let results = parsed["results"]
+        .as_array()
+        .expect("results should be an array");
+
+    // Should have source-layer checks
+    let has_source = results
+        .iter()
+        .any(|r| r["layer"].as_str() == Some("source"));
+    assert!(
+        has_source,
+        "broken-python fixture should have source checks"
+    );
+
+    // Should have at least one failure
+    let fail_count = results
+        .iter()
+        .filter(|r| r["status"].as_str() == Some("fail"))
+        .count();
+    assert!(
+        fail_count > 0,
+        "broken-python fixture should have at least one failure, got 0"
+    );
+
+    // Specifically check bare-except fires
+    let has_bare_except = results.iter().any(|r| {
+        r["id"].as_str() == Some("code-bare-except") && r["status"].as_str() == Some("fail")
+    });
+    assert!(
+        has_bare_except,
+        "broken-python fixture should trigger code-bare-except check"
+    );
 }

@@ -118,12 +118,12 @@ The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 | `audit` | `cargo deny check` (license + advisory + ban). |
 | `build` | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses. |
 | `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish). |
-| `release` | Create a **draft** GitHub Release with all 5 archives + `sha256sum.txt`. |
+| `release` | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 5 archives + `sha256sum.txt`. |
 | `homebrew` | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`). |
 
-After the homebrew-tap workflow uploads bottles to the draft release, it dispatches `finalize-release` back to this
-repo, which publishes the draft. End result: crate on crates.io, GitHub Release published, Homebrew formula updated with
-bottles, all atomically advertised.
+After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
+this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest,
+Homebrew formula updated with bottles, all atomically advertised.
 
 ### First-time publish (one-time)
 

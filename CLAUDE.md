@@ -64,6 +64,25 @@ Key decisions already made:
 - Feature flag is `tree-sitter-rust`, not `language-rust`
 - Edition 2024, dual MIT/Apache-2.0 license
 
+## Source Check Convention
+
+Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use
+different helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
+
+- **Struct** implements `Check` trait with `id()`, `group()`, `layer()`, `applicable()`, `run()`
+- **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
+  context) and returns `CheckStatus` (not `CheckResult`) — this is the unit-testable core
+- **`run()` is the sole `CheckResult` constructor** — uses `self.id()`, `self.group()`, `self.layer()` to build the
+  result. Never hardcode ID/group/layer string literals in `check_x()` or anywhere outside `run()`
+- **Tests call `check_x()`** and match on `CheckStatus` directly, not `result.status`
+
+This prevents ID triplication (the same string literal in `id()`, `run()`, and `check_x()`) and ensures the `Check`
+trait is the single source of truth for check metadata.
+
+For cross-language pattern helpers, use `source::has_pattern_in()` / `source::find_pattern_matches_in()` /
+`source::has_string_literal_in()` with a `Language` parameter — do not write private per-language helpers in individual
+check files.
+
 ## Dogfooding Safety
 
 Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS
@@ -80,6 +99,12 @@ agentnative. Two rules prevent recursive fork bombs:
 - NEVER remove `arg_required_else_help` from `Cli` — it prevents recursive self-invocation
 
 ## CI and Quality
+
+**Toolchain pin:** `rust-toolchain.toml` pins the channel to a specific `X.Y.Z` version with a trailing comment naming
+the rustc commit SHA. Rustup reads this file on every `cargo` invocation — both local and CI snap to identical bits.
+Rustup verifies component SHA256s from the distribution manifest, so the version pin is effectively a SHA pin (the
+manifest is the toolchain's "lockfile"). Bumping the toolchain is a reviewed PR that updates `rust-toolchain.toml`; no
+runtime `rustup update` anywhere. Policy: bump only after a new stable has aged ≥7 days (supply-chain quarantine).
 
 **Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
 Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config

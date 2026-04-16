@@ -1,9 +1,6 @@
 # Source repo release wrapper — calls the centralized reusable workflow.
-# Copy to .github/workflows/release.yml in the tool repo.
 #
-# Template parameters:
-#   agentnative -- crate name (e.g., xurl-rs, bird)
-#   agentnative   -- binary name (e.g., xr, bird)
+# crate: agentnative (crates.io name) | bin: anc (installed executable)
 #
 # Pipeline: check-version -> build (5 targets) -> crates.io -> draft release -> homebrew
 name: Release
@@ -22,6 +19,6 @@ jobs:
     uses: brettdavies/.github/.github/workflows/rust-release.yml@main
     with:
       crate: agentnative
-      bin: agentnative
+      bin: anc
     secrets:
       CI_RELEASE_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}

@@ -46,8 +46,8 @@ impl Check for NakedPrintlnCheck {
                 continue;
             }
 
-            let result = check_naked_println(&parsed_file.source, &file_str);
-            if let CheckStatus::Warn(evidence) = result.status {
+            if let CheckStatus::Warn(evidence) = check_naked_println(&parsed_file.source, &file_str)
+            {
                 all_evidence.push(evidence);
             }
         }
@@ -59,10 +59,10 @@ impl Check for NakedPrintlnCheck {
         };
 
         Ok(CheckResult {
-            id: "p7-naked-println".to_string(),
+            id: self.id().to_string(),
             label: "No naked println!/print! outside output modules".to_string(),
-            group: CheckGroup::P7,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -71,7 +71,7 @@ impl Check for NakedPrintlnCheck {
 /// Check a single source string for `println!` and `print!` calls.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_naked_println(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_naked_println(source: &str, file: &str) -> CheckStatus {
     let mut println_matches = find_pattern_matches(source, PRINTLN_PATTERN);
     let mut print_matches = find_pattern_matches(source, PRINT_PATTERN);
 
@@ -85,7 +85,7 @@ pub(crate) fn check_naked_println(source: &str, file: &str) -> CheckResult {
     let mut all_matches = println_matches;
     all_matches.append(&mut print_matches);
 
-    let status = if all_matches.is_empty() {
+    if all_matches.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = all_matches
@@ -94,14 +94,6 @@ pub(crate) fn check_naked_println(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Warn(evidence)
-    };
-
-    CheckResult {
-        id: "p7-naked-println".to_string(),
-        label: "No naked println!/print! outside output modules".to_string(),
-        group: CheckGroup::P7,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -117,8 +109,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let result = check_naked_println(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_naked_println(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -128,9 +120,9 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let result = check_naked_println(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_naked_println(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("println!"));
             assert!(evidence.contains("src/main.rs"));
         }
@@ -143,9 +135,9 @@ fn render() {
     print!("loading...");
 }
 "#;
-        let result = check_naked_println(source, "src/render.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_naked_println(source, "src/render.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("print!"));
             assert!(evidence.contains("src/render.rs"));
         }
@@ -159,8 +151,8 @@ fn main() {
     eprintln!("error: {}", msg);
 }
 "#;
-        let result = check_naked_println(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_naked_println(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -172,8 +164,8 @@ fn main() {
     print!("three");
 }
 "#;
-        let result = check_naked_println(source, "src/lib.rs");
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_naked_println(source, "src/lib.rs");
+        if let CheckStatus::Warn(evidence) = &status {
             assert_eq!(evidence.lines().count(), 3);
         } else {
             panic!("Expected Warn");

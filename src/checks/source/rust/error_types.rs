@@ -55,10 +55,10 @@ impl Check for ErrorTypesCheck {
         };
 
         Ok(CheckResult {
-            id: "p4-error-types".to_string(),
+            id: self.id().to_string(),
             label: "Structured error types".to_string(),
-            group: CheckGroup::P4,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }

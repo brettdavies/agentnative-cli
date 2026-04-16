@@ -41,8 +41,8 @@ impl Check for ProcessExitCheck {
                 continue;
             }
 
-            let result = check_process_exit(&parsed_file.source, &file_str);
-            if let CheckStatus::Fail(evidence) = result.status {
+            if let CheckStatus::Fail(evidence) = check_process_exit(&parsed_file.source, &file_str)
+            {
                 all_evidence.push(evidence);
             }
         }
@@ -54,10 +54,10 @@ impl Check for ProcessExitCheck {
         };
 
         Ok(CheckResult {
-            id: "p4-process-exit".to_string(),
+            id: self.id().to_string(),
             label: "No process::exit outside main".to_string(),
-            group: CheckGroup::P4,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -66,7 +66,7 @@ impl Check for ProcessExitCheck {
 /// Check a single source string for `process::exit()` calls.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_process_exit(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_process_exit(source: &str, file: &str) -> CheckStatus {
     let mut all_matches = Vec::new();
 
     for pattern_str in PATTERNS {
@@ -77,7 +77,7 @@ pub(crate) fn check_process_exit(source: &str, file: &str) -> CheckResult {
         all_matches.extend(matches);
     }
 
-    let status = if all_matches.is_empty() {
+    if all_matches.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = all_matches
@@ -86,14 +86,6 @@ pub(crate) fn check_process_exit(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Fail(evidence)
-    };
-
-    CheckResult {
-        id: "p4-process-exit".to_string(),
-        label: "No process::exit outside main".to_string(),
-        group: CheckGroup::P4,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -108,8 +100,8 @@ fn handle_error(e: Error) -> Result<()> {
     Err(e.into())
 }
 "#;
-        let result = check_process_exit(source, "src/lib.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_process_exit(source, "src/lib.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -122,9 +114,9 @@ fn bail(msg: &str) {
     process::exit(1);
 }
 "#;
-        let result = check_process_exit(source, "src/lib.rs");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_process_exit(source, "src/lib.rs");
+        assert!(matches!(status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &status {
             assert!(evidence.contains("process::exit"));
             assert!(evidence.contains("src/lib.rs"));
         }
@@ -137,9 +129,9 @@ fn bail() {
     std::process::exit(1);
 }
 "#;
-        let result = check_process_exit(source, "src/util.rs");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_process_exit(source, "src/util.rs");
+        assert!(matches!(status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &status {
             assert!(evidence.contains("std::process::exit"));
         }
     }
@@ -156,8 +148,8 @@ fn main() {
 }
 "#;
         // Inner function always reports — it's run() that filters main.rs
-        let result = check_process_exit(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
+        let status = check_process_exit(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Fail(_)));
     }
 
     #[test]
@@ -173,8 +165,8 @@ fn bail_b() {
     process::exit(2);
 }
 "#;
-        let result = check_process_exit(source, "src/commands.rs");
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_process_exit(source, "src/commands.rs");
+        if let CheckStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
             panic!("Expected Fail");

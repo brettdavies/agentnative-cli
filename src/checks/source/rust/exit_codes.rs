@@ -40,8 +40,7 @@ impl Check for ExitCodesCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_exit_codes(&parsed_file.source, &file_str);
-            if let CheckStatus::Warn(evidence) = result.status {
+            if let CheckStatus::Warn(evidence) = check_exit_codes(&parsed_file.source, &file_str) {
                 all_evidence.push(evidence);
             }
         }
@@ -53,10 +52,10 @@ impl Check for ExitCodesCheck {
         };
 
         Ok(CheckResult {
-            id: "p4-exit-codes".to_string(),
+            id: self.id().to_string(),
             label: "Exit codes use named constants".to_string(),
-            group: CheckGroup::P4,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -65,10 +64,10 @@ impl Check for ExitCodesCheck {
 /// Check a single source string for raw integer exit codes.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_exit_codes(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_exit_codes(source: &str, file: &str) -> CheckStatus {
     let violations = find_raw_exit_codes(source, file);
 
-    let status = if violations.is_empty() {
+    if violations.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = violations
@@ -77,14 +76,6 @@ pub(crate) fn check_exit_codes(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Warn(evidence)
-    };
-
-    CheckResult {
-        id: "p4-exit-codes".to_string(),
-        label: "Exit codes use named constants".to_string(),
-        group: CheckGroup::P4,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -144,8 +135,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let result = check_exit_codes(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_exit_codes(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -163,8 +154,8 @@ fn main() {
     process::exit(EXIT_SUCCESS);
 }
 "#;
-        let result = check_exit_codes(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_exit_codes(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -176,9 +167,9 @@ fn main() {
     process::exit(1);
 }
 "#;
-        let result = check_exit_codes(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_exit_codes(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("process::exit(1)"));
             assert!(evidence.contains("src/main.rs"));
         }
@@ -191,9 +182,9 @@ fn bail() {
     std::process::exit(2);
 }
 "#;
-        let result = check_exit_codes(source, "src/lib.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_exit_codes(source, "src/lib.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("std::process::exit(2)"));
         }
     }
@@ -210,8 +201,8 @@ fn main() {
     process::exit(0);
 }
 "#;
-        let result = check_exit_codes(source, "src/main.rs");
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_exit_codes(source, "src/main.rs");
+        if let CheckStatus::Warn(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
             panic!("Expected Warn");
@@ -227,8 +218,8 @@ fn main() {
     process::exit(code);
 }
 "#;
-        let result = check_exit_codes(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_exit_codes(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

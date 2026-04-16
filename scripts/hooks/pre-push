@@ -15,6 +15,12 @@ fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
 
 echo -e "${BOLD}Running local CI checks...${RESET}"
 
+# The toolchain is pinned in rust-toolchain.toml — both local and CI read the same file
+# and install the same version. Rustup verifies component SHA256s from the distribution
+# manifest, so the pin is effectively a SHA pin. No `rustup update` step here: bumping
+# the toolchain is a reviewed PR that updates rust-toolchain.toml.
+pass "toolchain ($(rustc --version 2>/dev/null | awk '{print $2}' || echo unknown))"
+
 # 1. Format check
 cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check"
 pass "fmt"

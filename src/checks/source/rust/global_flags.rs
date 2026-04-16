@@ -47,8 +47,7 @@ impl Check for GlobalFlagsCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_global_flags(&parsed_file.source, &file_str);
-            match &result.status {
+            match &check_global_flags(&parsed_file.source, &file_str) {
                 CheckStatus::Warn(evidence) => {
                     has_subcommands = true;
                     all_warn_evidence.push(evidence.clone());
@@ -73,10 +72,10 @@ impl Check for GlobalFlagsCheck {
         };
 
         Ok(CheckResult {
-            id: "p6-global-flags".to_string(),
+            id: self.id().to_string(),
             label: "Agentic flags are global".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -85,25 +84,19 @@ impl Check for GlobalFlagsCheck {
 /// Check a single source string for non-global agentic flags.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_global_flags(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_global_flags(source: &str, file: &str) -> CheckStatus {
     // Step 1: Detect if the project uses clap subcommands.
     let has_subcommands =
         has_pattern(source, "Subcommand") || has_pattern(source, "#[command(subcommand)]");
 
     if !has_subcommands {
-        return CheckResult {
-            id: "p6-global-flags".to_string(),
-            label: "Agentic flags are global".to_string(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Source,
-            status: CheckStatus::Skip("No subcommands detected".to_string()),
-        };
+        return CheckStatus::Skip("No subcommands detected".to_string());
     }
 
     // Step 2: Find all clap field attributes and check agentic flags.
     let missing = find_non_global_agentic_flags(source, file);
 
-    let status = if missing.is_empty() {
+    if missing.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = missing
@@ -117,14 +110,6 @@ pub(crate) fn check_global_flags(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Warn(evidence)
-    };
-
-    CheckResult {
-        id: "p6-global-flags".to_string(),
-        label: "Agentic flags are global".to_string(),
-        group: CheckGroup::P6,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -175,8 +160,8 @@ struct Cli {
     output: Option<String>,
 }
 "#;
-        let result = check_global_flags(source, "src/cli.rs");
-        assert!(matches!(result.status, CheckStatus::Skip(_)));
+        let status = check_global_flags(source, "src/cli.rs");
+        assert!(matches!(status, CheckStatus::Skip(_)));
     }
 
     #[test]
@@ -199,8 +184,8 @@ enum Commands {
     Check,
 }
 "#;
-        let result = check_global_flags(source, "src/cli.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_global_flags(source, "src/cli.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -223,9 +208,9 @@ enum Commands {
     Check,
 }
 "#;
-        let result = check_global_flags(source, "src/cli.rs");
-        assert!(matches!(result.status, CheckStatus::Warn(_)));
-        if let CheckStatus::Warn(evidence) = &result.status {
+        let status = check_global_flags(source, "src/cli.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        if let CheckStatus::Warn(evidence) = &status {
             assert!(evidence.contains("output"));
             assert!(evidence.contains("quiet"));
         }
@@ -248,8 +233,8 @@ enum Commands {
     Check,
 }
 "#;
-        let result = check_global_flags(source, "src/cli.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_global_flags(source, "src/cli.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

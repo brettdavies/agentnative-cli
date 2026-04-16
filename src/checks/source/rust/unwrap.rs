@@ -36,8 +36,7 @@ impl Check for UnwrapCheck {
 
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
-            let result = check_unwrap(&parsed_file.source, &file_str);
-            if let CheckStatus::Fail(evidence) = result.status {
+            if let CheckStatus::Fail(evidence) = check_unwrap(&parsed_file.source, &file_str) {
                 all_evidence.push(evidence);
             }
         }
@@ -49,10 +48,10 @@ impl Check for UnwrapCheck {
         };
 
         Ok(CheckResult {
-            id: "code-unwrap".to_string(),
+            id: self.id().to_string(),
             label: "No .unwrap() in source".to_string(),
-            group: CheckGroup::CodeQuality,
-            layer: CheckLayer::Source,
+            group: self.group(),
+            layer: self.layer(),
             status,
         })
     }
@@ -61,13 +60,13 @@ impl Check for UnwrapCheck {
 /// Check a single source string for `.unwrap()` calls.
 ///
 /// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn check_unwrap(source: &str, file: &str) -> CheckResult {
+pub(crate) fn check_unwrap(source: &str, file: &str) -> CheckStatus {
     let mut matches = find_pattern_matches(source, PATTERN);
     for m in &mut matches {
         m.file = file.to_string();
     }
 
-    let status = if matches.is_empty() {
+    if matches.is_empty() {
         CheckStatus::Pass
     } else {
         let evidence = matches
@@ -76,14 +75,6 @@ pub(crate) fn check_unwrap(source: &str, file: &str) -> CheckResult {
             .collect::<Vec<_>>()
             .join("\n");
         CheckStatus::Fail(evidence)
-    };
-
-    CheckResult {
-        id: "code-unwrap".to_string(),
-        label: "No .unwrap() in source".to_string(),
-        group: CheckGroup::CodeQuality,
-        layer: CheckLayer::Source,
-        status,
     }
 }
 
@@ -100,8 +91,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let result = check_unwrap(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_unwrap(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -111,9 +102,9 @@ fn main() {
     let config = load_config().unwrap();
 }
 "#;
-        let result = check_unwrap(source, "src/main.rs");
-        assert!(matches!(result.status, CheckStatus::Fail(_)));
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_unwrap(source, "src/main.rs");
+        assert!(matches!(status, CheckStatus::Fail(_)));
+        if let CheckStatus::Fail(evidence) = &status {
             assert!(evidence.contains("unwrap"));
             assert!(evidence.contains("src/main.rs"));
         }
@@ -128,8 +119,8 @@ fn main() {
     let c = baz().unwrap();
 }
 "#;
-        let result = check_unwrap(source, "src/lib.rs");
-        if let CheckStatus::Fail(evidence) = &result.status {
+        let status = check_unwrap(source, "src/lib.rs");
+        if let CheckStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 3);
         } else {
             panic!("Expected Fail");
@@ -145,8 +136,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let result = check_unwrap(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_unwrap(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]
@@ -157,8 +148,8 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let result = check_unwrap(source, "src/main.rs");
-        assert_eq!(result.status, CheckStatus::Pass);
+        let status = check_unwrap(source, "src/main.rs");
+        assert_eq!(status, CheckStatus::Pass);
     }
 
     #[test]

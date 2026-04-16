@@ -24,9 +24,8 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::OnceLock;
     use std::time::Duration;
 
     use crate::project::Project;
@@ -44,7 +43,7 @@ pub(crate) mod tests {
                     .expect("create test runner"),
             ),
             include_tests: false,
-            parsed_files: RefCell::new(HashMap::new()),
+            parsed_files: OnceLock::new(),
         }
     }
 
@@ -103,7 +102,7 @@ pub(crate) mod tests {
                 BinaryRunner::new(script_path, Duration::from_secs(5)).expect("create test runner"),
             ),
             include_tests: false,
-            parsed_files: RefCell::new(HashMap::new()),
+            parsed_files: OnceLock::new(),
         }
     }
 }

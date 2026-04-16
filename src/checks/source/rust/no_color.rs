@@ -13,7 +13,7 @@ use ast_grep_language::Rust;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::source::has_pattern;
+use crate::source::{has_pattern, has_string_literal_in};
 use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 
 /// Check trait implementation for NO_COLOR detection.
@@ -79,7 +79,9 @@ pub(crate) fn check_no_color(source: &str, file: &str) -> CheckResult {
 
     let found_clap_env = source_contains_no_color_clap_attr(source);
 
-    let found_any = found_env_var || found_clap_env || has_string_literal(source, "NO_COLOR");
+    let found_any = found_env_var
+        || found_clap_env
+        || has_string_literal_in(source, "NO_COLOR", Language::Rust);
 
     let status = if found_any {
         CheckStatus::Pass
@@ -112,16 +114,6 @@ fn source_contains_no_color_clap_attr(source: &str) -> bool {
         }
     }
     false
-}
-
-/// Fallback: scan for "NO_COLOR" as a string literal anywhere in the AST.
-fn has_string_literal(source: &str, needle: &str) -> bool {
-    let pattern = match Pattern::try_new(&format!(r#""{needle}""#), Rust) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let root = Rust.ast_grep(source);
-    root.root().find(&pattern).is_some()
 }
 
 #[cfg(test)]

@@ -11,7 +11,8 @@ session left off. Read this doc first, then follow the pointers below.
 
 ## TL;DR
 
-- Three new artifacts shipped: one plan + two spikes. Nothing has been pushed. Two local feature branches exist.
+- Three new artifacts shipped: one plan + two spikes. All committed directly to `dev` (doc-only commits are allowed
+  there; the feature-branch rule only applies to code changes). Nothing has been pushed yet.
 - The multi-language plan (Go + Ruby + TypeScript source checks) is ready to execute starting at Unit 2.
 - The P1 investigation exposed a doctrine question that should probably be resolved *before* the P1 follow-up plan is
   written.
@@ -30,16 +31,15 @@ units. Unit 1 was the spike itself — the user's whole point was to de-risk bef
 has a real top-level pattern-parse hazard for selector calls (`os.Exit($CODE)` parses as an `ERROR` node, so AST walking
 is required for selector-shaped checks); binary-size deltas sit well under the plan's caps (~220 KB Go, ~2.1 MB Ruby,
 ~2.9 MB TypeScript, ~5.2 MB total). The plan was updated to reflect those findings; Unit 1 was marked done. Committed to
-`feat/multi-language-source-checks-spike`.
+a feature branch initially, then consolidated onto `dev` at session end.
 
 Mid-session the user pivoted: "why does `anc check /home/brett/.local/share/claude/versions/2.1.113` pass
-`p1-non-interactive` when `claude` bare in a terminal launches a TUI?" A targeted investigation branch
-(`investigate/p1-claude-false-pass`) produced a spike (`docs/plans/spikes/2026-04-17-p1-non-interactive-check-gap.md`)
-that root-caused the pass: claude detects non-TTY, assumes `--print` mode, and exits in 2.2 s with `Error: Input must be
-provided either through stdin or as a prompt argument when using --print`. The check classifies that as `RunStatus::Ok →
-Pass`, and the pass is technically correct per the principle's MAY clause. The real gap is that the check verifies zero
-of P1's four MUST bullets (env-var bindings, `--no-interactive` flag existence, `--no-browser` / headless auth,
-falsey-value parser).
+`p1-non-interactive` when `claude` bare in a terminal launches a TUI?" A targeted investigation produced a spike
+(`docs/plans/spikes/2026-04-17-p1-non-interactive-check-gap.md`) that root-caused the pass: claude detects non-TTY,
+assumes `--print` mode, and exits in 2.2 s with `Error: Input must be provided either through stdin or as a prompt
+argument when using --print`. The check classifies that as `RunStatus::Ok → Pass`, and the pass is technically correct
+per the principle's MAY clause. The real gap is that the check verifies zero of P1's four MUST bullets (env-var
+bindings, `--no-interactive` flag existence, `--no-browser` / headless auth, falsey-value parser).
 
 A follow-up exchange surfaced a deeper point: the check's "agent = non-TTY" assumption is **not** universally true.
 TTY-driving agents are a growing category (Claude Code's own `--tmux` flag, `ssh -t` sandbox drivers,
@@ -52,29 +52,32 @@ User directive at session end: commit the documentation, no PR, hand off to the 
 
 ## Repo state
 
-| Branch | Base | Latest commit | Contents | Pushed? |
-| ------ | ---- | ------------- | -------- | ------- |
-| `dev` | `origin/dev` | `651d222` (unchanged) | clean | yes (tracking origin) |
-| `feat/multi-language-source-checks-spike` | `dev` | `fccb298` | multi-lang plan + spike | **no** |
-| `investigate/p1-claude-false-pass` | `dev` | this commit | P1 spike + this handoff | **no** |
+All three commits live directly on `dev`. The two working feature branches that existed during the session
+(`feat/multi-language-source-checks-spike` and `investigate/p1-claude-false-pass`) were pruned after cherry-picking —
+everything they contained was doc-only, so the branches added no signal worth preserving. Nothing has been pushed to
+`origin/dev` yet.
+
+Commit chain on `dev` (newest first):
+
+1. `docs(spikes): consolidate session docs onto dev and refresh handoff` — this commit.
+2. `docs(spikes): extend p1 spike with tty addendum and add session handoff`.
+3. `docs(spikes): investigate why p1-non-interactive passes on claude`.
+4. `docs(plans): add multi-language source-checks plan and unit-1 spike`.
 
 User directive: **do not push or open PRs without explicit go-ahead.**
 
 ## Artifacts (read in this order)
 
 1. **`docs/plans/2026-04-17-001-feat-multi-language-source-checks-plan.md`** — six-unit plan for adding Go, Ruby, and
-   TypeScript source checks. Unit 1 checkbox is done; Units 2–6 are concrete and implementation-ready. *Branch:
-   `feat/multi-language-source-checks-spike`.*
+   TypeScript source checks. Unit 1 checkbox is done; Units 2–6 are concrete and implementation-ready.
 
 2. **`docs/plans/spikes/2026-04-17-multi-language-source-checks-spike.md`** — Unit 1 deliverable. Binary-size table,
    meta-var findings (`$VAR` works everywhere), Go top-level pattern-parse hazard, 4-check starter list per language,
-   manifest-ordering confirmation. Explicit recommendations for each of Units 2–5. *Branch:
-   `feat/multi-language-source-checks-spike`.*
+   manifest-ordering confirmation. Explicit recommendations for each of Units 2–5.
 
 3. **`docs/plans/spikes/2026-04-17-p1-non-interactive-check-gap.md`** — investigation of why claude passes P1. Also
    contains the TTY-agent addendum (pushing back on the "agent = non-TTY" assumption) and the doctrine question (does
-   the project want to cover TTY-driving agents as a first-class audience?). *Branch:
-   `investigate/p1-claude-false-pass`.*
+   the project want to cover TTY-driving agents as a first-class audience?).
 
 ## Decisions outstanding (in dependency order)
 
@@ -88,8 +91,7 @@ User directive: **do not push or open PRs without explicit go-ahead.**
 - Tighten MAY (require scriptable escape hatches from any TUI default).
 - Add a sibling principle covering TUI-mode scriptability specifically.
 - Explicitly scope TTY-driving agents out (agentnative targets subprocess-piped agents only). Settling this before
-     writing a P1 follow-up plan avoids building a check whose verdicts contradict the principle doc it claims to
-     enforce.
+  writing a P1 follow-up plan avoids building a check whose verdicts contradict the principle doc it claims to enforce.
 
 1. **Write the P1 follow-up plan.** Should not begin until (2) is settled. The P1 spike lists five candidate extensions
    in order of cost; whichever subset the doctrine decision blesses becomes the plan's scope.
@@ -98,9 +100,9 @@ User directive: **do not push or open PRs without explicit go-ahead.**
 
 Three plausible next actions, any of which is defensible:
 
-- **Execute multi-lang Unit 2.** `/ce-work` against Unit 2 of the multi-language plan. Work happens on
-  `feat/multi-language-source-checks-spike` (or a child branch). The plan's file list, approach, and test scenarios are
-  concrete enough for direct execution.
+- **Execute multi-lang Unit 2.** `/ce-work` against Unit 2 of the multi-language plan. Create a new feature branch off
+  `dev` (Unit 2 is code, not docs — the feature-branch rule applies). The plan's file list, approach, and test scenarios
+  are concrete enough for direct execution.
 - **Resolve the P1 doctrine question.** `/office-hours` or `/ce-brainstorm` on "what audiences does agentnative serve,
   and which TTY modes are in-scope?" The output is a short requirements/doctrine doc at
   `docs/brainstorms/YYYY-MM-DD-p1-audience-scope-requirements.md`. The principle doc at

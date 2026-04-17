@@ -186,6 +186,71 @@ Do NOT strengthen `p1-non-interactive` itself by downgrading it to Warn when the
 items are unverified. That would conflate two distinct signals ("this tool will hang your agent" vs "this tool lacks an
 env-var binding on its --quiet flag"). Keep them as separate checks so the scorecard remains legible.
 
+## Addendum: is the "agent = non-TTY" assumption even true?
+
+The check's design implicitly assumes that when an agent calls a CLI, stdin is a pipe or `/dev/null`. That is true for a
+large share of agent traffic — subprocess-based coding agents (Claude Code's `Bash` tool, Cursor's shell integration,
+Aider's subprocess.run) all spawn children without allocating a PTY. But it is not universally true, and the exceptions
+are growing:
+
+- **tmux-driving agents.** Claude Code's own `--tmux` flag (documented in `claude --help`: "Create a tmux session for
+  the worktree") is explicitly an agent-in-a-TTY use case. The agent operates inside a pane that has a real PTY.
+- **`ssh -t` sandbox drivers.** Agents that SSH into a remote sandbox with `-t` force PTY allocation to get colorized
+  output and proper signal propagation. The child processes inside see a TTY.
+- **`expect` / Ansible-style automation.** Some shipping automation wraps CLIs with `expect`, `unbuffer`, or `script`
+  specifically so that tools that check `isatty()` behave as if a human is present.
+- **Desktop-agent harnesses.** Computer-use-style agents (Operator, Anthropic's computer-use tool) drive a real terminal
+  emulator by typing keys into it. Every child spawned inside that terminal has a TTY.
+
+Each of those scenarios exposes a failure mode today's check cannot see: a CLI that gates a prompt or full-screen TUI
+on `isatty()` will pass the non-TTY probe trivially and still deadlock a TTY-driving agent.
+
+### TTY probe as a distinct capability
+
+If the project decides to cover TTY-driving agents, a PTY probe is the correct instrument — but it is materially more
+expensive than the four `--help`-scan extensions above and should be treated as its own follow-up, not a strengthening
+of the existing probe. Concrete costs:
+
+- **Platform code.** `forkpty(3)` on Unix (`nix::pty::forkpty` or `portable-pty`); Windows has no `forkpty`, requiring
+  ConPty APIs via `winapi` or `portable-pty`'s abstraction. Adds real cross-platform complexity.
+- **"Did it hang?" becomes fuzzy.** The 5-second wall-clock test is sufficient under non-TTY — the child is supposed to
+  exit on EOF. Under TTY, a well-behaved TUI streams output indefinitely; the process is alive and producing bytes, but
+  from the agent's perspective it is hung waiting for input. A useful probe has to distinguish "actively producing
+  progress output" from "idle waiting for keypress," which is grammar-dependent.
+- **Cleanup.** Orphaned TUI children hold the PTY open; the harness has to `kill`, `waitpid`, and close the master fd
+  without leaking file descriptors. CI runners that sandbox `/dev/ptmx` may refuse to cooperate.
+- **Environment sensitivity.** `$TERM`, `$COLORTERM`, `$LINES`, `$COLUMNS`, `$CI` all change tool behavior. The probe
+  needs a canonical environment, not the ambient shell's.
+
+**Recommendation.** If the cheap `--help`-scan extensions land first and leave a meaningful gap, write a separate plan
+that adds a TTY probe as a new check (e.g., `p1-non-interactive-tty`) rather than modifying the existing
+`p1-non-interactive`. Two orthogonal checks with two orthogonal signals keep the scorecard legible even when one fails
+and the other passes.
+
+## Open doctrine question: what does P1 actually require?
+
+Stepping back: the reason this spike started is the user's intuition that claude "feels wrong" to pass P1 given its TUI
+default. Claude does pass, correctly, under the principle *as currently written*. The MAY clause explicitly permits rich
+interactive UX when a TTY is detected. That is the ground truth the check mirrors.
+
+But if the project is serious about covering TTY-driving agents (see the addendum above), the MAY clause may be the
+wrong default. The principle would need one of:
+
+1. **Tighten MAY.** Replace "rich interactive UX when a TTY is detected, provided the non-interactive path remains fully
+   functional" with "rich interactive UX when a TTY is detected *and* the tool advertises a scriptable escape hatch from
+   the TUI (e.g., `--no-tui`, `--headless`, `-p/--print`, etc.)." Claude already clears this — it has `-p`. But tools
+   whose bare invocation is a TUI with no documented escape hatch would no longer be MAY-compliant.
+2. **Add a sibling principle.** Leave P1 as-is and introduce a new principle covering TUI-mode scriptability
+   specifically ("P1b: TUIs must expose a scriptable surface" or "P8: TUI-mode must not be the only mode"). This keeps
+   P1's identity as "don't hang an agent" and puts the TTY-audience concern in its own namespace.
+3. **Decide TTY-driving agents are not in scope.** Agentnative targets subprocess-piped agents; TUI-driving agents are a
+   different product. This is defensible — most commercial coding agents today use piped subprocesses — but it should be
+   an explicit scoping call, not a silent default.
+
+**This is a doctrine question, not an implementation question.** Strengthening the P1 probe without settling which
+framing the project wants will produce a check that flags tools the principle explicitly permits, or permits tools the
+project's audience expects to fail. Resolve the framing first; let that drive the probe design.
+
 ## Sources
 
 - `src/checks/behavioral/non_interactive.rs` — current behavioral probe; the source of the Pass verdict under

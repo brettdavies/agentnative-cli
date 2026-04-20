@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-04-20
+
+### Added
+
+- `anc generate coverage-matrix` subcommand (`--out`, `--json-out`, `--check` drift guard). Emits `docs/coverage-matrix.md` + `coverage/matrix.json` from the spec registry + each check's declared `covers()`. by @brettdavies in [#21](https://github.com/brettdavies/agentnative-cli/pull/21)
+- Scorecard JSON v1.1 fields: `schema_version: "1.1"`, `coverage_summary` (`must`/`should`/`may` × `total`/`verified`), `audience` (reserved, null until v0.1.3), `audit_profile` (reserved, null until v0.1.3).
+- GitHub issue templates for structured reporting: false-positive, scoring-bug, feature-request, grade-a-cli, pressure-test, spec-question (+ chooser `config.yml`).
+
+### Changed
+
+- Renamed `p6-tty-detection` → `p1-tty-detection-source` (verifies the P1 SHOULD for TTY detection, not a P6 concern). by @brettdavies in [#21](https://github.com/brettdavies/agentnative-cli/pull/21)
+- Renamed `p6-env-flags` → `p1-env-flags-source` (verifies the P1 MUST that every flag be settable via env var — lives in P1, not P6).
+- Repo URL references swept to match the GitHub rename `brettdavies/agentnative` → `brettdavies/agentnative-cli`. `Cargo.toml` `homepage` now points at `https://anc.dev`; `README.md` and `RELEASES.md` updated to the new repo path. `cliff.toml` and the issue-template prose references are completed on the `release/v0.1.1-*` branch so the v0.1.1 tag ships a consistent URL sweep end-to-end.
+
+### Fixed
+
+- P1 applicability gate (`src/checks/behavioral/non_interactive.rs`) now passes when any of help-on-bare-invocation, agentic-flag-present, or stdin-as-primary-input is observed. Previously `anc` risked warning itself once `p1-flag-existence` lands in v0.1.2. by @brettdavies in [#21](https://github.com/brettdavies/agentnative-cli/pull/21)
+
+**Full Changelog**: [v0.1.0...v0.1.1](https://github.com/brettdavies/agentnative-cli/compare/v0.1.0...v0.1.1)
+
 ## [0.1.0] - 2026-04-16
 
 ### Added

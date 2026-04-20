@@ -36,6 +36,10 @@ impl Check for GlobalFlagsCheck {
         CheckLayer::Source
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p6-must-global-flags"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.language == Some(Language::Rust)
     }

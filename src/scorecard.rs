@@ -1,14 +1,46 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 
 use serde::Serialize;
 
+use crate::check::Check;
+use crate::principles::registry::{Level, REQUIREMENTS};
 use crate::types::{CheckGroup, CheckResult, CheckStatus};
+
+/// Current scorecard JSON schema version. Consumers (site rendering,
+/// leaderboard pipeline) pin against this to detect shape changes.
+pub const SCHEMA_VERSION: &str = "1.1";
 
 #[derive(Serialize)]
 pub struct Scorecard {
+    pub schema_version: &'static str,
     pub results: Vec<CheckResultView>,
     pub summary: Summary,
+    pub coverage_summary: CoverageSummary,
+    /// Derived audience classification (human-primary, agent-primary, mixed).
+    /// Reserved for v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
+    pub audience: Option<String>,
+    /// Registry-sourced exemption category (human-tui, file-traversal, etc.).
+    /// Reserved for v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
+    pub audit_profile: Option<String>,
+}
+
+/// Per-level verification counts: how many requirements at this level had
+/// at least one check in this run that declared `covers()` against them.
+/// A requirement is "verified" regardless of pass/fail — the status tells
+/// the consumer whether verification succeeded, this counter tells them
+/// whether it was attempted at all.
+#[derive(Serialize)]
+pub struct LevelCounts {
+    pub total: usize,
+    pub verified: usize,
+}
+
+#[derive(Serialize)]
+pub struct CoverageSummary {
+    pub must: LevelCounts,
+    pub should: LevelCounts,
+    pub may: LevelCounts,
 }
 
 #[derive(Serialize)]
@@ -177,13 +209,72 @@ pub fn format_text(results: &[CheckResult], quiet: bool) -> String {
     out
 }
 
-pub fn format_json(results: &[CheckResult]) -> String {
-    let scorecard = Scorecard {
+/// Build a v1.1 scorecard. The `ran_checks` slice is the catalog of checks
+/// that produced `results` — needed to translate check IDs back to the
+/// requirement IDs they cover for `coverage_summary`.
+pub fn build_scorecard(
+    results: &[CheckResult],
+    ran_checks: &[Box<dyn Check>],
+    audience: Option<String>,
+    audit_profile: Option<String>,
+) -> Scorecard {
+    Scorecard {
+        schema_version: SCHEMA_VERSION,
         results: results.iter().map(CheckResultView::from_result).collect(),
         summary: build_summary(results),
-    };
-    // serde_json::to_string_pretty should not fail on this struct
+        coverage_summary: build_coverage_summary(results, ran_checks),
+        audience,
+        audit_profile,
+    }
+}
+
+pub fn format_json(results: &[CheckResult], ran_checks: &[Box<dyn Check>]) -> String {
+    let scorecard = build_scorecard(results, ran_checks, None, None);
     serde_json::to_string_pretty(&scorecard).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"))
+}
+
+fn build_coverage_summary(
+    results: &[CheckResult],
+    ran_checks: &[Box<dyn Check>],
+) -> CoverageSummary {
+    // Map each ran check to its covers() so we can turn the set of ran
+    // check IDs into a set of covered requirement IDs.
+    let covers_by_id: HashMap<&str, &'static [&'static str]> =
+        ran_checks.iter().map(|c| (c.id(), c.covers())).collect();
+
+    let mut verified: HashSet<&'static str> = HashSet::new();
+    for r in results {
+        if let Some(ids) = covers_by_id.get(r.id.as_str()) {
+            verified.extend(ids.iter().copied());
+        }
+    }
+
+    let mut must = LevelCounts {
+        total: 0,
+        verified: 0,
+    };
+    let mut should = LevelCounts {
+        total: 0,
+        verified: 0,
+    };
+    let mut may = LevelCounts {
+        total: 0,
+        verified: 0,
+    };
+
+    for req in REQUIREMENTS {
+        let bucket = match req.level {
+            Level::Must => &mut must,
+            Level::Should => &mut should,
+            Level::May => &mut may,
+        };
+        bucket.total += 1;
+        if verified.contains(req.id) {
+            bucket.verified += 1;
+        }
+    }
+
+    CoverageSummary { must, should, may }
 }
 
 pub fn exit_code(results: &[CheckResult]) -> i32 {
@@ -224,8 +315,9 @@ mod tests {
             make_result("c1", CheckStatus::Pass, CheckGroup::P1),
             make_result("c2", CheckStatus::Fail("bad".into()), CheckGroup::P2),
         ];
-        let json = format_json(&results);
+        let json = format_json(&results, &[]);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["schema_version"], "1.1");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -233,6 +325,58 @@ mod tests {
         assert!(parsed["results"][0]["evidence"].is_null());
         assert_eq!(parsed["results"][1]["status"], "fail");
         assert_eq!(parsed["results"][1]["evidence"], "bad");
+        // v1.1 additions: coverage_summary present with three levels, audience + audit_profile null.
+        assert!(parsed["coverage_summary"]["must"]["total"].is_number());
+        assert!(parsed["coverage_summary"]["should"]["total"].is_number());
+        assert!(parsed["coverage_summary"]["may"]["total"].is_number());
+        assert!(parsed["audience"].is_null());
+        assert!(parsed["audit_profile"].is_null());
+    }
+
+    #[test]
+    fn coverage_summary_counts_verified_requirements() {
+        use crate::check::Check;
+        use crate::project::Project;
+        use crate::types::CheckLayer;
+
+        struct FakeCheck {
+            id: &'static str,
+            covers: &'static [&'static str],
+        }
+
+        impl Check for FakeCheck {
+            fn id(&self) -> &str {
+                self.id
+            }
+            fn group(&self) -> CheckGroup {
+                CheckGroup::P1
+            }
+            fn layer(&self) -> CheckLayer {
+                CheckLayer::Behavioral
+            }
+            fn applicable(&self, _p: &Project) -> bool {
+                true
+            }
+            fn run(&self, _p: &Project) -> anyhow::Result<CheckResult> {
+                unreachable!()
+            }
+            fn covers(&self) -> &'static [&'static str] {
+                self.covers
+            }
+        }
+
+        let results = vec![make_result("verifier-a", CheckStatus::Pass, CheckGroup::P1)];
+        let checks: Vec<Box<dyn Check>> = vec![Box::new(FakeCheck {
+            id: "verifier-a",
+            covers: &["p1-must-no-interactive"],
+        })];
+
+        let summary = build_coverage_summary(&results, &checks);
+        assert_eq!(summary.must.verified, 1);
+        assert_eq!(summary.should.verified, 0);
+        assert_eq!(summary.may.verified, 0);
+        // Totals match the registry snapshot baked into registry.rs tests.
+        assert!(summary.must.total >= 1);
     }
 
     #[test]

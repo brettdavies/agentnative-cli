@@ -32,6 +32,61 @@ fn test_help() {
         .stdout(predicate::str::contains("Usage"));
 }
 
+// ── Generate subcommand ────────────────────────────────────────────
+
+#[test]
+fn test_generate_coverage_matrix_writes_artifacts() {
+    let dir = integration_tempdir();
+    let md = dir.join("matrix.md");
+    let json = dir.join("matrix.json");
+
+    cmd()
+        .args([
+            "generate",
+            "coverage-matrix",
+            "--out",
+            md.to_str().expect("utf8 path"),
+            "--json-out",
+            json.to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .success();
+
+    let md_content = std::fs::read_to_string(&md).expect("matrix.md written");
+    assert!(md_content.contains("# Coverage Matrix"));
+    assert!(md_content.contains("P1: Non-Interactive by Default"));
+
+    let json_content = std::fs::read_to_string(&json).expect("matrix.json written");
+    let parsed: serde_json::Value = serde_json::from_str(&json_content).expect("valid JSON");
+    assert_eq!(parsed["schema_version"], "1.0");
+    assert!(parsed["rows"].as_array().expect("rows array").len() >= 40);
+}
+
+#[test]
+fn test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts() {
+    // Running --check against the committed docs/coverage-matrix.md +
+    // coverage/matrix.json must pass. If this fails, the registry or a
+    // check's covers() drifted without the artifacts being regenerated.
+    cmd()
+        .args(["generate", "coverage-matrix", "--check"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .assert()
+        .success();
+}
+
+fn integration_tempdir() -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "anc-integration-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).expect("create tempdir");
+    root
+}
+
 // ── Check subcommand tests ─────────────────────────────────────────
 
 #[test]

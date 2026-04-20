@@ -30,6 +30,10 @@ impl Check for ExitCodesCheck {
         CheckLayer::Source
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p4-must-exit-code-mapping"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.language == Some(Language::Rust)
     }

@@ -1,7 +1,7 @@
 ---
 title: "feat: Release infrastructure — completions, RELEASING.md, changelog, Homebrew formula"
 type: feat
-status: active
+status: complete
 date: 2026-04-02
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---

@@ -31,6 +31,10 @@ impl Check for NoPagerCheck {
         CheckLayer::Source
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p6-must-no-pager"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.language == Some(Language::Rust)
     }

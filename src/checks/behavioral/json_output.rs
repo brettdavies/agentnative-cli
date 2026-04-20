@@ -18,6 +18,10 @@ impl Check for JsonOutputCheck {
         CheckLayer::Behavioral
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p2-must-output-flag"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }

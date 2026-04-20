@@ -18,6 +18,10 @@ impl Check for QuietCheck {
         CheckLayer::Behavioral
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p7-must-quiet"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }

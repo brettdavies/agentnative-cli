@@ -32,6 +32,10 @@ impl Check for NoColorPythonCheck {
         CheckLayer::Source
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p6-must-no-color"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.language == Some(Language::Python)
     }

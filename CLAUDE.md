@@ -83,6 +83,64 @@ For cross-language pattern helpers, use `source::has_pattern_in()` / `source::fi
 `source::has_string_literal_in()` with a `Language` parameter — do not write private per-language helpers in individual
 check files.
 
+## Principle Registry
+
+`src/principles/registry.rs` is the single source of truth linking spec requirements (MUSTs, SHOULDs, MAYs across P1–P7)
+to the checks that verify them. IDs follow `p{N}-{level}-{key}` and are stable once published — scorecards and the
+coverage matrix pin against them.
+
+- Add requirements by appending to the `REQUIREMENTS` static slice, grouped by principle then level (MUST → SHOULD →
+  MAY).
+- Bumping `registry_size_matches_spec` or `level_counts_match_spec` is a deliberate act — the tests exist to flag
+  unintentional growth. Update both counter tests plus the summary prose in `docs/coverage-matrix.md` when the registry
+  grows.
+- `Applicability::Universal` means every CLI; `Applicability::Conditional(reason)` names the gate in prose so the matrix
+  and the site `/coverage` page can render it.
+- `ExceptionCategory` is reserved for v0.1.3 `audit_profile` suppression — do not consume before then.
+
+## covers() Declaration
+
+Each `Check` declares which requirements it evidences via `fn covers(&self) -> &'static [&'static str]`. The default
+returns `&[]` — checks opt in explicitly. Return a static slice; never allocate. For a check that verifies multiple
+requirements, list them all:
+
+```rust
+fn covers(&self) -> &'static [&'static str] {
+    &["p1-must-no-interactive", "p1-should-tty-detection"]
+}
+```
+
+The drift detector (`dangling_cover_ids` in `src/principles/matrix.rs`) fails the build if any ID returned by `covers()`
+is missing from the registry — typos surface at test time, not at render time.
+
+## Coverage Matrix Artifact Lifecycle
+
+`anc generate coverage-matrix` emits two committed artifacts:
+
+- `docs/coverage-matrix.md` — human-readable table, grouped by principle.
+- `coverage/matrix.json` — machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
+  page.
+
+Both files are tracked in git, not `.gitignore`d. `anc generate coverage-matrix --check` exits non-zero when the
+committed artifacts disagree with the current registry + `covers()` declarations. The integration test
+`test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
+either source.
+
+Regenerate whenever you add a requirement, change a check's `covers()`, or rename a check ID. The regeneration is a
+deliberate commit, not a build-time artifact — the matrix is citable from outside this repo.
+
+## Scorecard v1.1 Fields
+
+`src/scorecard.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
+
+- `coverage_summary` — three-way `{must, should, may} × {total, verified}` counts, computed from the checks that
+  actually ran. Populated every run.
+- `audience` — `Option<String>`, serialized `null` until v0.1.3 wires the audience classifier. Reserved.
+- `audit_profile` — `Option<String>`, serialized `null` until v0.1.3 wires `registry.yaml` suppression. Reserved.
+
+Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-v1.1 scorecards lack
+them until handoff 3 regenerates.
+
 ## Dogfooding Safety
 
 Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS

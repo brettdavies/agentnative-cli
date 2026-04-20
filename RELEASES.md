@@ -133,7 +133,7 @@ Steps for `v0.1.0`:
 1. Verify your email on crates.io (`https://crates.io/settings/profile`).
 2. `cargo publish` locally with `CARGO_REGISTRY_TOKEN` set.
 3. Configure Trusted Publishing on crates.io: `https://crates.io/settings/tokens/trusted-publishing` → add
-   `brettdavies/agentnative`, workflow `release.yml`.
+   `brettdavies/agentnative-cli`, workflow `release.yml`.
 4. Enable "Enforce Trusted Publishing" to block token-based publishes.
 5. Remove the `CARGO_REGISTRY_TOKEN` repository secret.
 
@@ -171,10 +171,10 @@ Edit the JSON locally, then sync to the remote:
 
 ```bash
 # First apply (creating a ruleset):
-gh api -X POST repos/brettdavies/agentnative/rulesets --input .github/rulesets/protect-dev.json
+gh api -X POST repos/brettdavies/agentnative-cli/rulesets --input .github/rulesets/protect-dev.json
 
-# Subsequent updates (replace by ID — find via `gh api repos/brettdavies/agentnative/rulesets`):
-gh api -X PUT repos/brettdavies/agentnative/rulesets/<id> --input .github/rulesets/protect-main.json
+# Subsequent updates (replace by ID — find via `gh api repos/brettdavies/agentnative-cli/rulesets`):
+gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/rulesets/protect-main.json
 ```
 
 Committing the JSON alongside code means ruleset changes land via the same review process as workflow changes — a
@@ -192,7 +192,7 @@ Mixing these produces a stuck-but-green PR: all actual checks report green, but 
 that will never appear. Confirm the real contexts after a first CI run with:
 
 ```bash
-gh api repos/brettdavies/agentnative/commits/<sha>/check-runs --jq '.check_runs[].name'
+gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_runs[].name'
 ```
 
 ## Required secrets

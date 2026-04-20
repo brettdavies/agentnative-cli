@@ -1,0 +1,48 @@
+name: "Scoring bug"
+description: "Report a bug in anc's scoring logic, output formatting, or CLI behavior."
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: "Describe the bug. Include the command, actual output, and expected output."
+      placeholder: |
+        $ anc check --command mytool --output json
+        Error: thread 'main' panicked at 'index out of bounds'
+
+        Expected: valid JSON output or a clean error message.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: anc version
+      description: "Output of `anc --version`."
+      placeholder: "agentnative 0.1.1"
+    validations:
+      required: true
+  - type: textarea
+    id: ai-disclosure
+    attributes:
+      label: AI disclosure
+      description: "One sentence: what part of this report was AI-written, what was human-written?"
+      placeholder: "Entirely human-written."
+    validations:
+      required: true
+  - type: textarea
+    id: agent-instructions
+    attributes:
+      label: For agents
+      description: "Agents: expand this section before filing."
+      value: |
+        <details>
+        <summary>Agent filing instructions</summary>
+
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to check for duplicates.
+        2. **AI disclosure is required.** Fill the field above honestly.
+        3. **Checker bugs only.** For false positives/negatives specifically, use the "False positive / false negative" template instead.
+        4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.
+        </details>
+    validations:
+      required: false

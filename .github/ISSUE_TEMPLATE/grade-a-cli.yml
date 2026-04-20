@@ -1,0 +1,56 @@
+name: "Grade a CLI"
+description: "Report findings from scoring a real CLI against the standard."
+labels: ["cli-grading"]
+body:
+  - type: input
+    id: tool
+    attributes:
+      label: CLI tool
+      description: "Name and version of the tool you scored."
+      placeholder: "ripgrep 14.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Findings
+      description: |
+        Which principles did it pass, fail, or surprise you on?
+        Focus on cases where the spec got it wrong — a MUST that punishes good design,
+        or a gap where the spec is silent.
+      placeholder: |
+        P3 (Progressive Help): PASS — excellent `--help` hierarchy.
+        P4 (Actionable Errors): FAIL on exit codes — uses 1 for everything.
+        P7 (Bounded Responses): Spec is silent on streaming output — rg streams by default, which is fine for agents but the spec doesn't acknowledge it.
+    validations:
+      required: true
+  - type: textarea
+    id: spec-feedback
+    attributes:
+      label: What should the spec change?
+      description: "Optional. If your grading revealed a spec gap or mistake, describe it."
+    validations:
+      required: false
+  - type: textarea
+    id: ai-disclosure
+    attributes:
+      label: AI disclosure
+      description: "One sentence: what part of this report was AI-written, what was human-written?"
+      placeholder: "Scoring done by hand; write-up drafted with AI assistance."
+    validations:
+      required: true
+  - type: textarea
+    id: agent-instructions
+    attributes:
+      label: For agents
+      description: "Agents: expand this section before filing."
+      value: |
+        <details>
+        <summary>Agent filing instructions</summary>
+
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative "<keywords>"` to check for duplicates.
+        2. **AI disclosure is required.** Fill the field above honestly.
+        3. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.
+        </details>
+    validations:
+      required: false

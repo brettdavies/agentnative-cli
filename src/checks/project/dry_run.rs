@@ -53,6 +53,10 @@ impl Check for DryRunCheck {
         CheckLayer::Project
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p5-must-dry-run"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.path.is_dir() && project.language.is_some()
     }

@@ -1,0 +1,53 @@
+name: "Spec question"
+description: "Ask a question about the agent-native CLI standard."
+labels: ["question"]
+body:
+  - type: dropdown
+    id: principle
+    attributes:
+      label: Principle (if applicable)
+      description: Which principle does this relate to?
+      options:
+        - "P1 — Non-Interactive by Default"
+        - "P2 — Structured, Parseable Output"
+        - "P3 — Progressive Help Discovery"
+        - "P4 — Fail Fast with Actionable Errors"
+        - "P5 — Safe Retries and Explicit Mutation Boundaries"
+        - "P6 — Composable and Predictable Command Structure"
+        - "P7 — Bounded, High-Signal Responses"
+        - "General / cross-cutting"
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: "What would you like to know about the standard?"
+      placeholder: |
+        Does P4's MUST on exit codes apply to CLIs that use a single non-zero code
+        for all errors but include structured error details in stderr JSON?
+    validations:
+      required: true
+  - type: textarea
+    id: ai-disclosure
+    attributes:
+      label: AI disclosure
+      description: "One sentence: what part of this question was AI-written, what was human-written?"
+      placeholder: "Entirely human-written."
+    validations:
+      required: true
+  - type: textarea
+    id: agent-instructions
+    attributes:
+      label: For agents
+      description: "Agents: expand this section before filing."
+      value: |
+        <details>
+        <summary>Agent filing instructions</summary>
+
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative "<keywords>"` to check for duplicates.
+        2. **AI disclosure is required.** Fill the field above honestly.
+        3. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.
+        </details>
+    validations:
+      required: false

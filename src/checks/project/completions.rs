@@ -24,6 +24,10 @@ impl Check for CompletionsCheck {
         CheckLayer::Project
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p6-must-completions"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.path.is_dir()
             && project.language == Some(Language::Rust)

@@ -64,6 +64,33 @@ pub enum Commands {
         /// Shell to generate for
         shell: Shell,
     },
+    /// Generate build artifacts (coverage matrix, etc.)
+    Generate {
+        #[command(subcommand)]
+        artifact: GenerateKind,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum GenerateKind {
+    /// Render the spec coverage matrix (registry → checks → artifact).
+    CoverageMatrix {
+        /// Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`.
+        #[arg(long, value_name = "PATH", default_value = "docs/coverage-matrix.md")]
+        out: std::path::PathBuf,
+
+        /// Path for the JSON artifact. Defaults to `coverage/matrix.json`.
+        #[arg(
+            long = "json-out",
+            value_name = "PATH",
+            default_value = "coverage/matrix.json"
+        )]
+        json_out: std::path::PathBuf,
+
+        /// Exit non-zero when committed artifacts differ from generated output. CI drift guard.
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Clone, ValueEnum)]

@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 - Renamed `p6-tty-detection` → `p1-tty-detection-source` (verifies the P1 SHOULD for TTY detection, not a P6 concern). by @brettdavies in [#21](https://github.com/brettdavies/agentnative-cli/pull/21)
 - Renamed `p6-env-flags` → `p1-env-flags-source` (verifies the P1 MUST that every flag be settable via env var — lives in P1, not P6).
-- Repo URL references swept to match the GitHub rename `brettdavies/agentnative` → `brettdavies/agentnative-cli`. `Cargo.toml` `homepage` now points at `https://anc.dev`; `README.md` and `RELEASES.md` updated to the new repo path. `cliff.toml` and the issue-template prose references are completed on the `release/v0.1.1-*` branch so the v0.1.1 tag ships a consistent URL sweep end-to-end.
+- Repo URL references swept to `brettdavies/agentnative-cli` (renamed from `brettdavies/agentnative`). `Cargo.toml` `homepage` now points at `https://anc.dev`.
 
 ### Fixed
 

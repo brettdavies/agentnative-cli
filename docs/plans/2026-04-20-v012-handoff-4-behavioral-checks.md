@@ -12,6 +12,16 @@ blocks: [5]
 **Written for**: the session building the three new behavioral checks that land after v0.1.1 is fully shipped and
 stable. This is net-new verification code; the registry + coverage infrastructure already exists.
 
+## Sibling handoffs
+
+| # | Phase  | Repo               | Doc                                                                              |
+|---|--------|--------------------|----------------------------------------------------------------------------------|
+| 1 | v0.1.1 | `agentnative`      | `docs/plans/2026-04-20-v011-handoff-1-agentnative-impl.md`                       |
+| 2 | v0.1.1 | `agentnative-site` | `docs/plans/2026-04-20-v011-handoff-2-site-spec-coverage.md` (+ session brief)   |
+| 3 | v0.1.1 | `agentnative-site` | `docs/plans/2026-04-20-v011-handoff-3-scorecard-regen.md`                        |
+| 4 | v0.1.2 | `agentnative`      | `docs/plans/2026-04-20-v012-handoff-4-behavioral-checks.md` *(this doc)*         |
+| 5 | v0.1.3 | `agentnative-site` | `docs/plans/2026-04-20-v013-handoff-5-audience-leaderboard.md`                   |
+
 ## The job, in one sentence
 
 Build `p1-flag-existence`, `p1-env-hints`, `p6-no-pager-behavioral` as behavioral checks, and introduce a shared

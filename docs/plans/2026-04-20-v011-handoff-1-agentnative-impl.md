@@ -12,6 +12,16 @@ blocks: [2, 3]
 **Written for**: the session that picks up the Rust implementation of v0.1.1 after the doctrine review closed on
 2026-04-20. This is the first and largest handoff.
 
+## Sibling handoffs
+
+| # | Phase  | Repo               | Doc                                                                              |
+|---|--------|--------------------|----------------------------------------------------------------------------------|
+| 1 | v0.1.1 | `agentnative`      | `docs/plans/2026-04-20-v011-handoff-1-agentnative-impl.md` *(this doc)*          |
+| 2 | v0.1.1 | `agentnative-site` | `docs/plans/2026-04-20-v011-handoff-2-site-spec-coverage.md` (+ session brief)   |
+| 3 | v0.1.1 | `agentnative-site` | `docs/plans/2026-04-20-v011-handoff-3-scorecard-regen.md`                        |
+| 4 | v0.1.2 | `agentnative`      | `docs/plans/2026-04-20-v012-handoff-4-behavioral-checks.md`                      |
+| 5 | v0.1.3 | `agentnative-site` | `docs/plans/2026-04-20-v013-handoff-5-audience-leaderboard.md`                   |
+
 ## The job, in one sentence
 
 Build the `PrincipleRegistry` + matrix generator + Check trait `covers()` addition + miscategorized-check renames + P1
@@ -31,8 +41,8 @@ Do not re-read the CEO-review transcripts or the pre-doctrine spike; everything 
 1. **New module `src/principles/`**:
 
 - `registry.rs` — flat `&'static [Requirement]` array covering MUSTs + SHOULDs + MAYs (~46 entries). Types:
-     `Requirement`, `Level { Must, Should, May }`, `Applicability { Universal, Conditional(&'static str) }`,
-     `ExceptionCategory`.
+  `Requirement`, `Level { Must, Should, May }`, `Applicability { Universal, Conditional(&'static str) }`,
+  `ExceptionCategory`.
 - `matrix.rs` — generator emitting `docs/coverage-matrix.md` + `coverage/matrix.json`.
 - `mod.rs` — public API surface.
 

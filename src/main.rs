@@ -3,6 +3,7 @@ mod check;
 mod checks;
 mod cli;
 mod error;
+mod principles;
 mod project;
 mod runner;
 mod scorecard;
@@ -17,8 +18,9 @@ use check::Check;
 use checks::behavioral::all_behavioral_checks;
 use checks::project::all_project_checks;
 use checks::source::all_source_checks;
-use cli::{Cli, Commands, OutputFormat};
+use cli::{Cli, Commands, GenerateKind, OutputFormat};
 use error::AppError;
+use principles::matrix;
 use project::Project;
 use scorecard::{exit_code, format_json, format_text};
 use types::{CheckGroup, CheckResult, CheckStatus};
@@ -72,6 +74,9 @@ fn run() -> Result<i32, AppError> {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
                 generate(shell, &mut cmd, "anc", &mut std::io::stdout());
                 return Ok(0);
+            }
+            Some(Commands::Generate { artifact }) => {
+                return run_generate(artifact);
             }
             None => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -143,10 +148,11 @@ fn run() -> Result<i32, AppError> {
         results.retain(|r| matches_principle(&r.group, p));
     }
 
-    // Format output
+    // Format output. `format_json` needs the check catalog so it can map
+    // result IDs back to the requirements each check covers.
     let output_str = match output {
         OutputFormat::Text => format_text(&results, quiet),
-        OutputFormat::Json => format_json(&results),
+        OutputFormat::Json => format_json(&results, &all_checks),
     };
     print!("{output_str}");
 
@@ -183,6 +189,99 @@ fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
     }
 
     Ok(std::path::PathBuf::from(first))
+}
+
+fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
+    match artifact {
+        GenerateKind::CoverageMatrix {
+            out,
+            json_out,
+            check,
+        } => {
+            let catalog = checks::all_checks_catalog();
+
+            // Dangling `covers()` references are a registry bug — surface
+            // them before writing artifacts so CI catches the regression
+            // at `generate --check` time too.
+            let dangling = matrix::dangling_cover_ids(&catalog);
+            if !dangling.is_empty() {
+                for (check_id, req_id) in &dangling {
+                    eprintln!("error: check `{check_id}` covers unknown requirement `{req_id}`");
+                }
+                return Err(AppError::ProjectDetection(anyhow::anyhow!(
+                    "registry drift: {} dangling requirement reference(s)",
+                    dangling.len()
+                )));
+            }
+
+            let m = matrix::build(&catalog);
+            let rendered_md = matrix::render_markdown(&m);
+            let rendered_json = matrix::render_json(&m);
+
+            if check {
+                // Drift mode: compare generated output to committed artifacts.
+                // Fail with actionable evidence so CI points the operator at
+                // `anc generate coverage-matrix` as the fix.
+                let existing_md = std::fs::read_to_string(&out).unwrap_or_default();
+                let existing_json = std::fs::read_to_string(&json_out).unwrap_or_default();
+                let md_matches = normalize_trailing_newline(&existing_md)
+                    == normalize_trailing_newline(&rendered_md);
+                let json_matches = normalize_trailing_newline(&existing_json)
+                    == normalize_trailing_newline(&rendered_json);
+                if !md_matches {
+                    eprintln!(
+                        "error: {} is out of date — run `anc generate coverage-matrix`",
+                        out.display()
+                    );
+                }
+                if !json_matches {
+                    eprintln!(
+                        "error: {} is out of date — run `anc generate coverage-matrix`",
+                        json_out.display()
+                    );
+                }
+                return Ok(if md_matches && json_matches { 0 } else { 2 });
+            }
+
+            if let Some(parent) = out.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        AppError::ProjectDetection(anyhow::anyhow!(
+                            "creating parent dir for {}: {e}",
+                            out.display()
+                        ))
+                    })?;
+                }
+            }
+            if let Some(parent) = json_out.parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        AppError::ProjectDetection(anyhow::anyhow!(
+                            "creating parent dir for {}: {e}",
+                            json_out.display()
+                        ))
+                    })?;
+                }
+            }
+            std::fs::write(&out, &rendered_md).map_err(|e| {
+                AppError::ProjectDetection(anyhow::anyhow!("writing {}: {e}", out.display()))
+            })?;
+            std::fs::write(&json_out, &rendered_json).map_err(|e| {
+                AppError::ProjectDetection(anyhow::anyhow!("writing {}: {e}", json_out.display()))
+            })?;
+            eprintln!(
+                "wrote {} ({} rows) and {}",
+                out.display(),
+                m.rows.len(),
+                json_out.display()
+            );
+            Ok(0)
+        }
+    }
+}
+
+fn normalize_trailing_newline(s: &str) -> &str {
+    s.trim_end_matches('\n')
 }
 
 fn matches_principle(group: &CheckGroup, principle: u8) -> bool {

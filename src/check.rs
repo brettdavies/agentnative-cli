@@ -17,4 +17,11 @@ pub trait Check {
 
     /// Run the check against the project.
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult>;
+
+    /// Requirement IDs (from `crate::principles::REQUIREMENTS`) that this
+    /// check verifies. Empty by default so checks opt in explicitly.
+    /// The registry validator fails if an ID here is not registered.
+    fn covers(&self) -> &'static [&'static str] {
+        &[]
+    }
 }

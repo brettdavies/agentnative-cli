@@ -1,6 +1,6 @@
 [package]
 name = "agentnative"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "The agent-native CLI linter — check whether your CLI follows agent-readiness principles"
 license = "MIT OR Apache-2.0"

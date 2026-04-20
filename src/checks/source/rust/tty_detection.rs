@@ -1,7 +1,11 @@
-//! Check: Detect TTY/terminal detection for color output.
+//! Check: Detect TTY/terminal detection in source.
 //!
-//! Principle: P6 (Composable Structure) — CLIs that emit color/ANSI codes
-//! should detect whether stdout is a terminal to avoid corrupting piped output.
+//! Principle: P1 (Non-Interactive by Default) SHOULD — "Auto-detect
+//! non-interactive context via TTY detection and suppress prompts when
+//! stderr is not a terminal, even without an explicit `--no-interactive`
+//! flag." The same `IsTerminal` machinery also satisfies P6's color
+//! suppression MUST, but semantically this check verifies the P1 SHOULD
+//! (renamed from `p6-tty-detection` in v0.1.1).
 //!
 //! This is a conditional check:
 //!   Trigger: the source uses color/ANSI/style libraries
@@ -34,15 +38,19 @@ pub struct TtyDetectionCheck;
 
 impl Check for TtyDetectionCheck {
     fn id(&self) -> &str {
-        "p6-tty-detection"
+        "p1-tty-detection-source"
     }
 
     fn group(&self) -> CheckGroup {
-        CheckGroup::P6
+        CheckGroup::P1
     }
 
     fn layer(&self) -> CheckLayer {
         CheckLayer::Source
+    }
+
+    fn covers(&self) -> &'static [&'static str] {
+        &["p1-should-tty-detection"]
     }
 
     fn applicable(&self, project: &Project) -> bool {

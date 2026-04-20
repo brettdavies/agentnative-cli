@@ -18,6 +18,10 @@ impl Check for BadArgsCheck {
         CheckLayer::Behavioral
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p4-must-exit-code-mapping"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }

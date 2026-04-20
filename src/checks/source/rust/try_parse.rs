@@ -29,6 +29,10 @@ impl Check for TryParseCheck {
         CheckLayer::Source
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p4-must-try-parse"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.language == Some(Language::Rust)
     }

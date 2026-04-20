@@ -1,8 +1,10 @@
 //! Check: Detect agentic clap flags missing `env = "..."` attribute.
 //!
-//! Principle: P6 (Composable Structure) — Agentic flags (output, quiet, verbose,
-//! timeout, no-color, format) should be configurable via environment variables
-//! so agents can set defaults without passing flags every invocation.
+//! Principle: P1 (Non-Interactive by Default) MUST — "Every flag settable
+//! via environment variable." Agentic flags (output, quiet, verbose, timeout,
+//! no-color, format) should all have env-var bindings so agents can set
+//! defaults without passing flags every invocation. Renamed from
+//! `p6-env-flags` in v0.1.1 — the spec requirement lives in P1, not P6.
 
 use ast_grep_core::Pattern;
 use ast_grep_core::tree_sitter::LanguageExt;
@@ -22,15 +24,19 @@ pub struct EnvFlagsCheck;
 
 impl Check for EnvFlagsCheck {
     fn id(&self) -> &str {
-        "p6-env-flags"
+        "p1-env-flags-source"
     }
 
     fn group(&self) -> CheckGroup {
-        CheckGroup::P6
+        CheckGroup::P1
     }
 
     fn layer(&self) -> CheckLayer {
         CheckLayer::Source
+    }
+
+    fn covers(&self) -> &'static [&'static str] {
+        &["p1-must-env-var"]
     }
 
     fn applicable(&self, project: &Project) -> bool {

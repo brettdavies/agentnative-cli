@@ -27,6 +27,10 @@ impl Check for NonInteractiveSourceCheck {
         CheckLayer::Project
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p1-must-no-interactive"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.path.is_dir()
             && project.language == Some(Language::Rust)

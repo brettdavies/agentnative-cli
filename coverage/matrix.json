@@ -1,0 +1,618 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "anc generate coverage-matrix",
+  "rows": [
+    {
+      "id": "p1-must-env-var",
+      "principle": 1,
+      "level": "must",
+      "summary": "Every flag settable via environment variable (falsey-value parser for booleans).",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p1-env-flags-source",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p1-must-no-interactive",
+      "principle": 1,
+      "level": "must",
+      "summary": "`--no-interactive` flag gates every prompt library call; when set or stdin is not a TTY, use defaults/stdin or exit with an actionable error.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p1-non-interactive",
+          "layer": "behavioral"
+        },
+        {
+          "check_id": "p1-non-interactive-source",
+          "layer": "project"
+        }
+      ]
+    },
+    {
+      "id": "p1-must-no-browser",
+      "principle": 1,
+      "level": "must",
+      "summary": "Headless authentication path (`--no-browser` / OAuth Device Authorization Grant).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI authenticates against a remote service"
+      },
+      "verifiers": [
+        {
+          "check_id": "p1-headless-auth",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p1-should-tty-detection",
+      "principle": 1,
+      "level": "should",
+      "summary": "Auto-detect non-interactive context via TTY detection; suppress prompts when stderr is not a terminal.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p1-tty-detection-source",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p1-should-defaults-in-help",
+      "principle": 1,
+      "level": "should",
+      "summary": "Document default values for prompted inputs in `--help` output.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p1-may-rich-tui",
+      "principle": 1,
+      "level": "may",
+      "summary": "Rich interactive experiences (spinners, progress bars, menus) when TTY is detected and `--no-interactive` is not set.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p2-must-output-flag",
+      "principle": 2,
+      "level": "must",
+      "summary": "`--output text|json|jsonl` flag selects output format; `OutputFormat` enum threaded through output paths.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p2-json-output",
+          "layer": "behavioral"
+        },
+        {
+          "check_id": "p2-structured-output",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p2-must-stdout-stderr-split",
+      "principle": 2,
+      "level": "must",
+      "summary": "Data goes to stdout; diagnostics/progress/warnings go to stderr — never interleaved.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p2-output-module",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p2-must-exit-codes",
+      "principle": 2,
+      "level": "must",
+      "summary": "Exit codes are structured and documented (0 success, 1 general, 2 usage, 77 auth, 78 config).",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p2-must-json-errors",
+      "principle": 2,
+      "level": "must",
+      "summary": "When `--output json` is active, errors are emitted as JSON (to stderr) with at least `error`, `kind`, and `message` fields.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p2-should-consistent-envelope",
+      "principle": 2,
+      "level": "should",
+      "summary": "JSON output uses a consistent envelope — a top-level object with predictable keys — across every command.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p2-may-more-formats",
+      "principle": 2,
+      "level": "may",
+      "summary": "Additional output formats (CSV, TSV, YAML) beyond the core three.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p2-may-raw-flag",
+      "principle": 2,
+      "level": "may",
+      "summary": "`--raw` flag for unformatted output suitable for piping to other tools.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p3-must-subcommand-examples",
+      "principle": 3,
+      "level": "must",
+      "summary": "Every subcommand ships at least one concrete invocation example (`after_help` in clap).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI uses subcommands"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p3-must-top-level-examples",
+      "principle": 3,
+      "level": "must",
+      "summary": "The top-level command ships 2–3 examples covering the primary use cases.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p3-help",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p3-should-paired-examples",
+      "principle": 3,
+      "level": "should",
+      "summary": "Examples show human and agent invocations side by side (text then `--output json` equivalent).",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p3-should-about-long-about",
+      "principle": 3,
+      "level": "should",
+      "summary": "Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p3-may-examples-subcommand",
+      "principle": 3,
+      "level": "may",
+      "summary": "Dedicated `examples` subcommand or `--examples` flag for curated usage patterns.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p4-must-try-parse",
+      "principle": 4,
+      "level": "must",
+      "summary": "Parse arguments with `try_parse()` instead of `parse()` so `--output json` can emit JSON parse errors.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p4-try-parse",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p4-must-exit-code-mapping",
+      "principle": 4,
+      "level": "must",
+      "summary": "Error types map to distinct exit codes (0, 1, 2, 77, 78).",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p4-bad-args",
+          "layer": "behavioral"
+        },
+        {
+          "check_id": "p4-exit-codes",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p4-must-actionable-errors",
+      "principle": 4,
+      "level": "must",
+      "summary": "Every error message contains what failed, why, and what to do next.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p4-should-structured-enum",
+      "principle": 4,
+      "level": "should",
+      "summary": "Error types use a structured enum (via `thiserror` in Rust) with variant-to-kind mapping for JSON serialization.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p4-error-module",
+          "layer": "project"
+        },
+        {
+          "check_id": "p4-error-types",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p4-should-gating-before-network",
+      "principle": 4,
+      "level": "should",
+      "summary": "Config and auth validation happen before any network call (three-tier dependency gating).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI makes network calls"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p4-should-json-error-output",
+      "principle": 4,
+      "level": "should",
+      "summary": "Error output respects `--output json`: JSON-formatted errors go to stderr when JSON output is selected.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p5-must-force-yes",
+      "principle": 5,
+      "level": "must",
+      "summary": "Destructive operations (delete, overwrite, bulk modify) require an explicit `--force` or `--yes` flag.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has destructive operations"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p5-must-read-write-distinction",
+      "principle": 5,
+      "level": "must",
+      "summary": "The distinction between read and write commands is clear from the command name and help text alone.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has both read and write operations"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p5-must-dry-run",
+      "principle": 5,
+      "level": "must",
+      "summary": "A `--dry-run` flag is present on every write command; dry-run output respects `--output json`.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has write operations"
+      },
+      "verifiers": [
+        {
+          "check_id": "p5-dry-run",
+          "layer": "project"
+        }
+      ]
+    },
+    {
+      "id": "p5-should-idempotency",
+      "principle": 5,
+      "level": "should",
+      "summary": "Write operations are idempotent where the domain allows it — running the same command twice produces the same result.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has write operations"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p6-must-sigpipe",
+      "principle": 6,
+      "level": "must",
+      "summary": "SIGPIPE fix is the first executable statement in `main()` — piping output to `head`/`tail` must not panic.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-sigpipe",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p6-must-no-color",
+      "principle": 6,
+      "level": "must",
+      "summary": "TTY detection plus support for `NO_COLOR` and `TERM=dumb` — color codes suppressed when stdout/stderr is not a terminal.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-no-color-behavioral",
+          "layer": "behavioral"
+        },
+        {
+          "check_id": "p6-no-color",
+          "layer": "source"
+        },
+        {
+          "check_id": "p6-no-color",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p6-must-completions",
+      "principle": 6,
+      "level": "must",
+      "summary": "Shell completions available via a `completions` subcommand (Tier 1 meta-command — needs no config/auth/network).",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-completions",
+          "layer": "project"
+        }
+      ]
+    },
+    {
+      "id": "p6-must-timeout-network",
+      "principle": 6,
+      "level": "must",
+      "summary": "Network CLIs ship a `--timeout` flag with a sensible default (e.g., 30 seconds).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI makes network calls"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-timeout",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p6-must-no-pager",
+      "principle": 6,
+      "level": "must",
+      "summary": "If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=\"\"`.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI invokes a pager for output"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-no-pager",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p6-must-global-flags",
+      "principle": 6,
+      "level": "must",
+      "summary": "Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) are `global = true` so they propagate to every subcommand.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI uses subcommands"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-global-flags",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p6-should-stdin-input",
+      "principle": 6,
+      "level": "should",
+      "summary": "Commands that accept input read from stdin when no file argument is provided.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has commands that accept input data"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p6-should-consistent-naming",
+      "principle": 6,
+      "level": "should",
+      "summary": "Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI uses subcommands"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p6-should-tier-gating",
+      "principle": 6,
+      "level": "should",
+      "summary": "Three-tier dependency gating: Tier 1 (meta) needs nothing, Tier 2 (local) needs config, Tier 3 (network) needs config + auth.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p6-should-subcommand-operations",
+      "principle": 6,
+      "level": "should",
+      "summary": "Operations are modeled as subcommands, not flags (`tool search \"q\"`, not `tool --search \"q\"`).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI performs multiple distinct operations"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p6-may-color-flag",
+      "principle": 6,
+      "level": "may",
+      "summary": "`--color auto|always|never` flag for explicit color control beyond TTY auto-detection.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p7-must-quiet",
+      "principle": 7,
+      "level": "must",
+      "summary": "A `--quiet` flag suppresses non-essential output; only requested data and errors appear.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p7-quiet",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p7-must-list-clamping",
+      "principle": 7,
+      "level": "must",
+      "summary": "List operations clamp to a sensible default maximum; when truncated, indicate it (`\"truncated\": true` in JSON, stderr note in text).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has list-style commands"
+      },
+      "verifiers": [
+        {
+          "check_id": "p7-output-clamping",
+          "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p7-should-verbose",
+      "principle": 7,
+      "level": "should",
+      "summary": "A `--verbose` flag (or `-v` / `-vv`) escalates diagnostic detail when agents need to debug failures.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p7-should-limit",
+      "principle": 7,
+      "level": "should",
+      "summary": "A `--limit` or `--max-results` flag lets callers request exactly the number of items they want.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has list-style commands"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p7-should-timeout",
+      "principle": 7,
+      "level": "should",
+      "summary": "A `--timeout` flag bounds execution time so agents are not blocked indefinitely.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p7-may-cursor-pagination",
+      "principle": 7,
+      "level": "may",
+      "summary": "Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI returns paginated results"
+      },
+      "verifiers": []
+    },
+    {
+      "id": "p7-may-auto-verbosity",
+      "principle": 7,
+      "level": "may",
+      "summary": "Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests).",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": []
+    }
+  ],
+  "summary": {
+    "total": 46,
+    "covered": 19,
+    "uncovered": 27,
+    "must": {
+      "total": 23,
+      "covered": 17
+    },
+    "should": {
+      "total": 16,
+      "covered": 2
+    },
+    "may": {
+      "total": 7,
+      "covered": 0
+    }
+  }
+}

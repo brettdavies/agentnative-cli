@@ -24,6 +24,10 @@ impl Check for ErrorModuleCheck {
         CheckLayer::Project
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p4-should-structured-enum"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.path.is_dir() && project.language.is_some()
     }

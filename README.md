@@ -17,7 +17,7 @@ cargo install agentnative
 cargo binstall agentnative
 
 # Pre-built binaries from GitHub Releases
-# https://github.com/brettdavies/agentnative/releases
+# https://github.com/brettdavies/agentnative-cli/releases
 ```
 
 ## Quick Start
@@ -186,7 +186,7 @@ Produces a scorecard with results and summary:
 ## Contributing
 
 ```bash
-git clone https://github.com/brettdavies/agentnative
+git clone https://github.com/brettdavies/agentnative-cli
 cd agentnative
 cargo test
 cargo run -- check .

@@ -18,6 +18,10 @@ impl Check for HelpCheck {
         CheckLayer::Behavioral
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p3-must-top-level-examples"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }

@@ -18,6 +18,10 @@ impl Check for SigpipeCheck {
         CheckLayer::Behavioral
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p6-must-sigpipe"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.runner.is_some()
     }

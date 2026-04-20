@@ -22,8 +22,23 @@ _anc() {
             anc,completions)
                 cmd="anc__completions"
                 ;;
+            anc,generate)
+                cmd="anc__generate"
+                ;;
             anc,help)
                 cmd="anc__help"
+                ;;
+            anc__generate,coverage-matrix)
+                cmd="anc__generate__coverage__matrix"
+                ;;
+            anc__generate,help)
+                cmd="anc__generate__help"
+                ;;
+            anc__generate__help,coverage-matrix)
+                cmd="anc__generate__help__coverage__matrix"
+                ;;
+            anc__generate__help,help)
+                cmd="anc__generate__help__help"
                 ;;
             anc__help,check)
                 cmd="anc__help__check"
@@ -31,8 +46,14 @@ _anc() {
             anc__help,completions)
                 cmd="anc__help__completions"
                 ;;
+            anc__help,generate)
+                cmd="anc__help__generate"
+                ;;
             anc__help,help)
                 cmd="anc__help__help"
+                ;;
+            anc__help__generate,coverage-matrix)
+                cmd="anc__help__generate__coverage__matrix"
                 ;;
             *)
                 ;;
@@ -41,7 +62,7 @@ _anc() {
 
     case "${cmd}" in
         anc)
-            opts="-q -h -V --quiet --help --version check completions help"
+            opts="-q -h -V --quiet --help --version check completions generate help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -94,8 +115,86 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        anc__generate)
+            opts="-q -h --quiet --help coverage-matrix help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__generate__coverage__matrix)
+            opts="-q -h --out --json-out --check --quiet --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --out)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --json-out)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__generate__help)
+            opts="coverage-matrix help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__generate__help__coverage__matrix)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__generate__help__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         anc__help)
-            opts="check completions help"
+            opts="check completions generate help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -125,6 +224,34 @@ _anc() {
         anc__help__completions)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__help__generate)
+            opts="coverage-matrix"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__help__generate__coverage__matrix)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi

@@ -40,6 +40,10 @@ impl Check for OutputClampingCheck {
         CheckLayer::Source
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p7-must-list-clamping"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.language == Some(Language::Rust)
     }

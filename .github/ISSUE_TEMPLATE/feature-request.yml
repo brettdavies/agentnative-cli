@@ -1,0 +1,44 @@
+name: "Feature request"
+description: "Suggest a new feature or improvement for the anc checker."
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature description
+      description: "What should `anc` do that it doesn't today?"
+      placeholder: |
+        anc should support --format=sarif for integration with GitHub Code Scanning.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: "Why do you need this? What workflow does it unblock?"
+    validations:
+      required: true
+  - type: textarea
+    id: ai-disclosure
+    attributes:
+      label: AI disclosure
+      description: "One sentence: what part of this request was AI-written, what was human-written?"
+      placeholder: "Entirely human-written."
+    validations:
+      required: true
+  - type: textarea
+    id: agent-instructions
+    attributes:
+      label: For agents
+      description: "Agents: expand this section before filing."
+      value: |
+        <details>
+        <summary>Agent filing instructions</summary>
+
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli-cli "<keywords>"` to check for duplicates.
+        2. **AI disclosure is required.** Fill the field above honestly.
+        3. **Checker features only.** For spec changes, file on [brettdavies/agentnative-cli](https://github.com/brettdavies/agentnative-cli).
+        4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative-cli/blob/main/CONTRIBUTING.md) for full guidelines.
+        </details>
+    validations:
+      required: false

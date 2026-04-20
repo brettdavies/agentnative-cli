@@ -1,0 +1,87 @@
+name: "Pressure-test a principle"
+description: "Propose a principle edit: merge, split, rewording, or requirement-tier change."
+labels: ["pressure-test"]
+body:
+  - type: dropdown
+    id: principle
+    attributes:
+      label: Principle
+      description: Which principle does this affect?
+      options:
+        - "P1 — Non-Interactive by Default"
+        - "P2 — Structured, Parseable Output"
+        - "P3 — Progressive Help Discovery"
+        - "P4 — Fail Fast with Actionable Errors"
+        - "P5 — Safe Retries and Explicit Mutation Boundaries"
+        - "P6 — Composable and Predictable Command Structure"
+        - "P7 — Bounded, High-Signal Responses"
+        - "Multiple / cross-cutting"
+    validations:
+      required: true
+  - type: dropdown
+    id: change-type
+    attributes:
+      label: Type of change
+      options:
+        - "Rewording (prose clarity, no requirement-tier change)"
+        - "Promotion (SHOULD to MUST, MAY to SHOULD)"
+        - "Demotion (MUST to SHOULD, SHOULD to MAY)"
+        - "Merge (combine two requirements)"
+        - "Split (break a requirement into two)"
+        - "New requirement"
+        - "Remove requirement"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: |
+        Name a real CLI, the specific MUST/SHOULD/MAY, and what happened.
+        The strongest proposals cite a tool where the current spec text produces the wrong outcome.
+      placeholder: |
+        Tool: gh (GitHub CLI)
+        Requirement: P4 MUST "distinct exit codes for distinct failure categories"
+        Observed: gh uses exit code 1 for everything — auth, network, not-found.
+        Problem: The current MUST is correct but underspecified — it doesn't say how many categories are enough.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should the spec say instead? Quote the current text and show the diff.
+    validations:
+      required: true
+  - type: input
+    id: human-reviewer
+    attributes:
+      label: Human reviewer
+      description: "GitHub handle of the human who reviewed and approved this submission."
+      placeholder: "@username"
+    validations:
+      required: true
+  - type: textarea
+    id: ai-disclosure
+    attributes:
+      label: AI disclosure
+      description: "One sentence: what part of this submission was AI-written, what was human-written?"
+      placeholder: "Evidence gathered by hand; proposed wording drafted with Claude and edited."
+    validations:
+      required: true
+  - type: textarea
+    id: agent-instructions
+    attributes:
+      label: For agents
+      description: "Agents: expand this section before filing."
+      value: |
+        <details>
+        <summary>Agent filing instructions</summary>
+
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to check for duplicates.
+        2. **AI disclosure is required.** Fill the field above honestly.
+        3. **Human reviewer is required.** A human must review and approve spec change proposals before submission.
+        4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative-cli/blob/main/CONTRIBUTING.md) for full guidelines.
+        </details>
+    validations:
+      required: false

@@ -26,6 +26,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --version 'Print version'
             cand check 'Check a CLI project or binary for agent-readiness'
             cand completions 'Generate shell completions'
+            cand generate 'Generate build artifacts (coverage matrix, etc.)'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;check'= {
@@ -46,14 +47,45 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand -h 'Print help'
             cand --help 'Print help'
         }
+        &'anc;generate'= {
+            cand -q 'Suppress non-essential output'
+            cand --quiet 'Suppress non-essential output'
+            cand -h 'Print help'
+            cand --help 'Print help'
+            cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'anc;generate;coverage-matrix'= {
+            cand --out 'Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`'
+            cand --json-out 'Path for the JSON artifact. Defaults to `coverage/matrix.json`'
+            cand --check 'Exit non-zero when committed artifacts differ from generated output. CI drift guard'
+            cand -q 'Suppress non-essential output'
+            cand --quiet 'Suppress non-essential output'
+            cand -h 'Print help'
+            cand --help 'Print help'
+        }
+        &'anc;generate;help'= {
+            cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
+            cand help 'Print this message or the help of the given subcommand(s)'
+        }
+        &'anc;generate;help;coverage-matrix'= {
+        }
+        &'anc;generate;help;help'= {
+        }
         &'anc;help'= {
             cand check 'Check a CLI project or binary for agent-readiness'
             cand completions 'Generate shell completions'
+            cand generate 'Generate build artifacts (coverage matrix, etc.)'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;help;check'= {
         }
         &'anc;help;completions'= {
+        }
+        &'anc;help;generate'= {
+            cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
+        }
+        &'anc;help;generate;coverage-matrix'= {
         }
         &'anc;help;help'= {
         }

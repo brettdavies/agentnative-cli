@@ -3,6 +3,7 @@ title: "Handoff 1 of 5: v0.1.1 agentnative implementation"
 type: handoff
 order: 1
 phase: v0.1.1
+status: in-progress
 depends_on: []
 blocks: [2, 3]
 ---
@@ -80,14 +81,15 @@ Do not re-read the CEO-review transcripts or the pre-doctrine spike; everything 
 
 ## Definition of done
 
-- [ ] All existing tests still pass
-- [ ] New unit tests per test plan (~30 tests across registry + matrix + renames + applicability)
-- [ ] `cargo run -- check .` on the agentnative repo itself passes all checks (dogfood)
-- [ ] `cargo run -- generate coverage-matrix --check` passes (no drift)
-- [ ] `docs/coverage-matrix.md` committed
-- [ ] `coverage/matrix.json` committed (or generated at build — decide during implementation)
-- [ ] Scorecard JSON shape matches v1.1: test by running `anc check` and diffing against committed golden
-- [ ] CLAUDE.md updated if new conventions emerge (registry editing, covers() declaration pattern)
+- [x] All existing tests still pass
+- [x] New unit tests per test plan (+17 unit, +2 integration vs. 304-test baseline)
+- [x] `cargo run -- check .` on the agentnative repo itself passes all checks (dogfood: 26 pass / 2 warn / 0 fail / 2
+  skip)
+- [x] `cargo run -- generate coverage-matrix --check` passes (no drift — exit 0)
+- [x] `docs/coverage-matrix.md` committed
+- [x] `coverage/matrix.json` committed (`schema_version: "1.0"`, 46 rows, 19 covered / 27 uncovered)
+- [x] Scorecard JSON shape matches v1.1 (`coverage_summary` populated, `audience` + `audit_profile` null until v0.1.3)
+- [x] CLAUDE.md updated with registry + `covers()` + matrix-lifecycle + scorecard-v1.1 conventions (commit `1509331`)
 
 ## Known gotchas
 
@@ -99,7 +101,15 @@ Do not re-read the CEO-review transcripts or the pre-doctrine spike; everything 
 - Check ID renames break the 10 existing scorecards in `agentnative-site/scorecards/*.json`. That's handoff 3's problem;
   document the rename map in this PR's description for handoff 3 to consume.
 
+## Progress
+
+Scope complete; PR #21 open against `dev` with CI green. All DoD items checked against commit `1509331` (debug
+build smoke test — see todo 011 for record). Final pre-merge validation (release build + re-run after any subsequent
+commits) still pending before merge.
+
+Flip this plan's `status` to `complete` when PR #21 merges.
+
 ## After this PR merges
 
-Handoff 2 (site spec text + `/coverage` page) can begin. Handoff 3 (scorecard regeneration) waits for both handoff 1
-and handoff 2 to merge.
+Handoff 2 (site spec text + `/coverage` page) can begin. Handoff 3 (scorecard regeneration) waits for both handoff 1 and
+handoff 2 to merge.

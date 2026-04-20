@@ -48,9 +48,9 @@ body:
         <details>
         <summary>Agent filing instructions</summary>
 
-        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative "<keywords>"` to check for duplicates.
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to check for duplicates.
         2. **AI disclosure is required.** Fill the field above honestly.
-        3. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.
+        3. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative-cli/blob/main/CONTRIBUTING.md) for full guidelines.
         </details>
     validations:
       required: false

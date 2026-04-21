@@ -44,6 +44,7 @@ pub(crate) mod tests {
             ),
             include_tests: false,
             parsed_files: OnceLock::new(),
+            help_output: OnceLock::new(),
         }
     }
 
@@ -103,6 +104,7 @@ pub(crate) mod tests {
             ),
             include_tests: false,
             parsed_files: OnceLock::new(),
+            help_output: OnceLock::new(),
         }
     }
 }

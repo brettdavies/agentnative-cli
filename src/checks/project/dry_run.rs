@@ -160,6 +160,7 @@ mod tests {
             runner: None,
             include_tests: false,
             parsed_files: OnceLock::from(parsed),
+            help_output: OnceLock::new(),
         }
     }
 

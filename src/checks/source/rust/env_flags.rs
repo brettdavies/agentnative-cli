@@ -12,7 +12,7 @@ use ast_grep_language::Rust;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, SourceLocation};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence, SourceLocation};
 
 /// Agentic flags that should have `env = "..."` backing.
 const AGENTIC_FLAGS: &[&str] = &[
@@ -79,6 +79,7 @@ impl Check for EnvFlagsCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

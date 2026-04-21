@@ -9,7 +9,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::find_pattern_matches;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 const PATTERNS: &[&str] = &["$RECV.parse().unwrap()"];
 
@@ -60,6 +60,7 @@ impl Check for TryParseCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

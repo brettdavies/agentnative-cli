@@ -10,7 +10,7 @@ use ast_grep_language::Python;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, SourceLocation};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence, SourceLocation};
 
 /// Check trait implementation for sys.exit() outside __main__ guard.
 pub struct SysExitCheck;
@@ -60,6 +60,7 @@ impl Check for SysExitCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

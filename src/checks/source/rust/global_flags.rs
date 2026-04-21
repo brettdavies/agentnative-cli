@@ -15,7 +15,7 @@ use ast_grep_language::Rust;
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::has_pattern;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, SourceLocation};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence, SourceLocation};
 
 /// Agentic flags that should be global when subcommands exist.
 const AGENTIC_FLAGS: &[&str] = &["output", "quiet", "verbose", "no_color", "no-color"];
@@ -81,6 +81,7 @@ impl Check for GlobalFlagsCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

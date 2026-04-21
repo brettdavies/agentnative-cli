@@ -1,7 +1,7 @@
 use crate::check::Check;
 use crate::project::Project;
 use crate::runner::RunStatus;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 pub struct SigpipeCheck;
 
@@ -44,6 +44,7 @@ impl Check for SigpipeCheck {
             group: CheckGroup::P6,
             layer: CheckLayer::Behavioral,
             status,
+            confidence: Confidence::High,
         })
     }
 }

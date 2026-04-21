@@ -15,7 +15,7 @@
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Color/formatting indicators to search for in source text.
 const COLOR_INDICATORS: &[&str] = &[
@@ -99,6 +99,7 @@ impl Check for TtyDetectionCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

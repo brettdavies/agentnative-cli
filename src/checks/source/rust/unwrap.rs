@@ -6,7 +6,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::find_pattern_matches;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 const PATTERN: &str = "$RECV.unwrap()";
 
@@ -53,6 +53,7 @@ impl Check for UnwrapCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

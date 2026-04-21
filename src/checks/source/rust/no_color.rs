@@ -14,7 +14,7 @@ use ast_grep_language::Rust;
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::{has_pattern, has_string_literal_in};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Check trait implementation for NO_COLOR detection.
 pub struct NoColorSourceCheck;
@@ -67,6 +67,7 @@ impl Check for NoColorSourceCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

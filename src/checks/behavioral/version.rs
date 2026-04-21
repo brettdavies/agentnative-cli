@@ -1,7 +1,7 @@
 use crate::check::Check;
 use crate::project::Project;
 use crate::runner::RunStatus;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 pub struct VersionCheck;
 
@@ -46,6 +46,7 @@ impl Check for VersionCheck {
             group: CheckGroup::P3,
             layer: CheckLayer::Behavioral,
             status,
+            confidence: Confidence::High,
         })
     }
 }

@@ -6,7 +6,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::find_pattern_matches;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 const PATTERNS: &[&str] = &["process::exit($CODE)", "std::process::exit($CODE)"];
 
@@ -59,6 +59,7 @@ impl Check for ProcessExitCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

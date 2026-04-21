@@ -11,7 +11,7 @@ use ast_grep_language::Rust;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Check trait implementation for structured error type detection.
 pub struct ErrorTypesCheck;
@@ -64,6 +64,7 @@ impl Check for ErrorTypesCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

@@ -7,7 +7,7 @@ use std::fs;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 pub struct CompletionsCheck;
 
@@ -60,6 +60,7 @@ impl Check for CompletionsCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

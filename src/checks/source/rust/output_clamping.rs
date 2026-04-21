@@ -9,7 +9,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::{find_pattern_matches, has_pattern};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Patterns that suggest list/collection output.
 const LIST_PATTERNS: &[&str] = &[
@@ -86,6 +86,7 @@ impl Check for OutputClampingCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

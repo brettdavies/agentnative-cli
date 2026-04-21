@@ -7,7 +7,7 @@ use std::fs;
 
 use crate::check::Check;
 use crate::project::Project;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 pub struct ErrorModuleCheck;
 
@@ -45,6 +45,7 @@ impl Check for ErrorModuleCheck {
                     group: self.group(),
                     layer: self.layer(),
                     status: CheckStatus::Pass,
+                    confidence: Confidence::High,
                 });
             }
         }
@@ -63,6 +64,7 @@ impl Check for ErrorModuleCheck {
                                     group: self.group(),
                                     layer: self.layer(),
                                     status: CheckStatus::Pass,
+                                    confidence: Confidence::High,
                                 });
                             }
                         }
@@ -79,6 +81,7 @@ impl Check for ErrorModuleCheck {
             status: CheckStatus::Warn(
                 "No dedicated error module found (expected src/error.rs or src/errors.rs)".into(),
             ),
+            confidence: Confidence::High,
         })
     }
 }

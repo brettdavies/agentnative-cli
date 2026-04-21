@@ -284,7 +284,7 @@ mod tests {
     use super::*;
     use crate::check::Check;
     use crate::project::Project;
-    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
     struct FakeCheck {
         id: &'static str,
@@ -311,6 +311,7 @@ mod tests {
                 group: CheckGroup::P1,
                 layer: CheckLayer::Behavioral,
                 status: CheckStatus::Pass,
+                confidence: Confidence::High,
             })
         }
         fn covers(&self) -> &'static [&'static str] {

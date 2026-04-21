@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2] - 2026-04-21
+
+### Added
+
+- Add `p1-flag-existence` behavioral check — passes when `--help` advertises a non-interactive gate flag (`--no-interactive`, `--batch`, `--headless`, `-y`, `--yes`, `-p`, `--print`, `--no-input`, `--assume-yes`). Skips when the target already satisfies P1 via help-on-bare-invocation or stdin-primary. by @brettdavies in [#24](https://github.com/brettdavies/agentnative-cli/pull/24)
+- Add `p1-env-hints` behavioral check — passes when `--help` exposes clap-style `[env: FOO]` bindings for flags. Emits medium confidence; the heuristic covers the canonical but not the only env-binding format.
+- Add `p6-no-pager-behavioral` behavioral check — passes when `--no-pager` is advertised in `--help`. Skips when no pager signal (`less` / `more` / `$PAGER` / `--pager`) appears. Emits medium confidence.
+- Add `confidence` field to every scorecard result (`high` / `medium` / `low`). Additive; v1.1 consumers feature-detect.
+- Add `dual_layer` count to the coverage matrix summary so the headline prose surfaces how many covered requirements have verifiers in two layers.
+
+### Changed
+
+- Raise required approving review count on `main` branch from 0 to 1. by @brettdavies in [#24](https://github.com/brettdavies/agentnative-cli/pull/24)
+
+### Documentation
+
+- Document the \`covers()\` trait method and the coverage-matrix regeneration step in the \"Adding a New Check\" guide. by @brettdavies in [#23](https://github.com/brettdavies/agentnative-cli/pull/23)
+- Refresh README sample output to match v0.1.1 dogfood behaviour.
+- Regenerate `docs/coverage-matrix.md` + `coverage/matrix.json` to pick up the three new behavioral verifiers. by @brettdavies in [#24](https://github.com/brettdavies/agentnative-cli/pull/24)
+
+**Full Changelog**: [v0.1.1...v0.1.2](https://github.com/brettdavies/agentnative-cli/compare/v0.1.1...v0.1.2)
+
 ## [0.1.1] - 2026-04-20
 
 ### Added

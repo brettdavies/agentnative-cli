@@ -158,10 +158,11 @@ Pre-generated scripts are also available in `completions/`.
 anc check . --output json
 ```
 
-Produces a scorecard with results and summary:
+Produces a scorecard (`schema_version: "1.1"`) with results, summary, and coverage against the 7 principles:
 
 ```json
 {
+  "schema_version": "1.1",
   "results": [
     {
       "id": "p3-help",
@@ -174,14 +175,26 @@ Produces a scorecard with results and summary:
   ],
   "summary": {
     "total": 30,
-    "pass": 20,
-    "warn": 8,
+    "pass": 26,
+    "warn": 2,
     "fail": 0,
     "skip": 2,
     "error": 0
-  }
+  },
+  "coverage_summary": {
+    "must": { "total": 23, "verified": 17 },
+    "should": { "total": 16, "verified": 2 },
+    "may":   { "total": 7,  "verified": 0 }
+  },
+  "audience": null,
+  "audit_profile": null
 }
 ```
+
+- `coverage_summary` — how many MUSTs/SHOULDs/MAYs the checks that ran actually verified, against the spec registry's
+  totals. See `docs/coverage-matrix.md` for the per-requirement breakdown.
+- `audience` / `audit_profile` — reserved for v0.1.3 (audience classifier + `registry.yaml` suppression). Serialize as
+  `null` today; consumers should feature-detect.
 
 ## Contributing
 

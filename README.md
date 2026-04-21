@@ -79,7 +79,7 @@ P6 — Composable Structure
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-30 checks: 20 pass, 8 warn, 0 fail, 2 skip, 0 error
+30 checks: 26 pass, 2 warn, 0 fail, 2 skip, 0 error
 ```
 
 ## Three Check Layers

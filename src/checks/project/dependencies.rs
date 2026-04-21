@@ -8,7 +8,7 @@ use std::fs;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Recommended dependency groups: (description, alternatives).
 /// A group passes if any alternative is present.
@@ -71,6 +71,7 @@ impl Check for DependenciesCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

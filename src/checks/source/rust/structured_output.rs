@@ -9,7 +9,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::has_pattern;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Check trait implementation for structured output detection.
 pub struct StructuredOutputCheck;
@@ -74,6 +74,7 @@ impl Check for StructuredOutputCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

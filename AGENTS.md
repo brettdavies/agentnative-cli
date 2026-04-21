@@ -50,13 +50,22 @@ incorrectly", parse stderr — usage errors include `Usage:` text; check failure
 - `src/project.rs` — project discovery and source file walking
 - `src/scorecard.rs` — output formatting (text and JSON)
 - `src/types.rs` — CheckResult, CheckStatus, CheckGroup, CheckLayer
+- `src/principles/registry.rs` — single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the
+  checks that verify them
+- `src/principles/matrix.rs` — coverage-matrix generator + drift detector
 
 ## Adding a New Check
 
 1. Create a file in the appropriate `src/checks/` subdirectory
-2. Implement the `Check` trait: `id()`, `group()`, `layer()`, `applicable()`, `run()`
+2. Implement the `Check` trait: `id()`, `group()`, `layer()`, `applicable()`, `run()`, and `covers()` if the check
+   verifies requirements in `src/principles/registry.rs` (return a `&'static [&'static str]` of requirement IDs)
 3. Register in the layer's `mod.rs` (e.g., `all_rust_checks()`)
 4. Add inline `#[cfg(test)]` tests
+5. Regenerate the coverage matrix: `cargo run -- generate coverage-matrix` (produces `docs/coverage-matrix.md` +
+   `coverage/matrix.json`, both tracked in git)
+
+See `CLAUDE.md` §"Principle Registry" and §"`covers()` Declaration" for the registry conventions and drift-detector
+behavior.
 
 ## Testing
 

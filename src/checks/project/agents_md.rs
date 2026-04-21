@@ -5,7 +5,7 @@
 
 use crate::check::Check;
 use crate::project::Project;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 pub struct AgentsMdCheck;
 
@@ -41,6 +41,7 @@ impl Check for AgentsMdCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

@@ -1,7 +1,10 @@
 mod bad_args;
+mod env_hints;
+mod flag_existence;
 mod help;
 mod json_output;
 mod no_color;
+mod no_pager_behavioral;
 mod non_interactive;
 mod quiet;
 mod sigpipe;
@@ -18,6 +21,9 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(quiet::QuietCheck),
         Box::new(sigpipe::SigpipeCheck),
         Box::new(non_interactive::NonInteractiveCheck),
+        Box::new(flag_existence::FlagExistenceCheck),
+        Box::new(env_hints::EnvHintsCheck),
+        Box::new(no_pager_behavioral::NoPagerBehavioralCheck),
         Box::new(no_color::NoColorBehavioralCheck),
     ]
 }
@@ -44,6 +50,7 @@ pub(crate) mod tests {
             ),
             include_tests: false,
             parsed_files: OnceLock::new(),
+            help_output: OnceLock::new(),
         }
     }
 
@@ -103,6 +110,7 @@ pub(crate) mod tests {
             ),
             include_tests: false,
             parsed_files: OnceLock::new(),
+            help_output: OnceLock::new(),
         }
     }
 }

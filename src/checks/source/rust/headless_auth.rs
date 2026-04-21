@@ -10,7 +10,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::has_pattern;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Auth-related substrings to search for in Rust identifiers (not string
 /// literals or comments). We search function definitions via ast-grep to
@@ -89,6 +89,7 @@ impl Check for HeadlessAuthCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

@@ -12,6 +12,20 @@ pub enum CheckStatus {
     Error(String),
 }
 
+/// How confident a check is in its verdict. Direct probes (flag parsers,
+/// exit-code observation) report `High`; heuristic text inference reports
+/// `Medium`; soft cross-signal inference reports `Low`. Consumers use this
+/// to weight conflicting signals and surface caveats on the scorecard.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Confidence {
+    #[default]
+    High,
+    Medium,
+    #[allow(dead_code)] // Reserved for future inferential checks.
+    Low,
+}
+
 /// Groups checks by principle or category.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -45,6 +59,10 @@ pub struct CheckResult {
     pub group: CheckGroup,
     pub layer: CheckLayer,
     pub status: CheckStatus,
+    /// How much the check trusts its own verdict. Defaults to `High`; only
+    /// heuristic checks downgrade. Additive field; consumers feature-detect.
+    #[serde(default)]
+    pub confidence: Confidence,
 }
 
 /// A source location where a violation was found.

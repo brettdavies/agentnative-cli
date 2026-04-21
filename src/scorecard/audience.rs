@@ -46,6 +46,13 @@ pub fn classify(results: &[CheckResult]) -> Option<String> {
         let Some(r) = results.iter().find(|r| r.id == signal_id) else {
             continue;
         };
+        // A Skip emitted by `--audit-profile` suppression is *not* signal —
+        // per R2, any signal check that didn't run produces `audience:
+        // null`. Organic Skips (e.g., "no flags exposed") still count
+        // toward the denominator because the check actually executed.
+        if is_audit_profile_suppression(&r.status) {
+            continue;
+        }
         matched += 1;
         if matches!(r.status, CheckStatus::Warn(_)) {
             warns += 1;
@@ -64,6 +71,14 @@ pub fn classify(results: &[CheckResult]) -> Option<String> {
         }
         .to_string(),
     )
+}
+
+/// Evidence-string sniff for audit_profile suppression. The evidence
+/// format is produced by the main check-execution loop and is considered
+/// part of the behavioral contract — the integration test
+/// `test_audit_profile_suppresses_listed_checks` asserts the prefix.
+fn is_audit_profile_suppression(status: &CheckStatus) -> bool {
+    matches!(status, CheckStatus::Skip(e) if e.starts_with("suppressed by audit_profile:"))
 }
 
 #[cfg(test)]
@@ -139,13 +154,27 @@ mod tests {
     }
 
     #[test]
-    fn skipped_signal_counts_as_not_warn() {
-        // Skip is a legitimate outcome (e.g., target has no flags); it's not
+    fn organic_skipped_signal_counts_as_not_warn() {
+        // An organic Skip (e.g., target has no flags) is a legitimate
+        // outcome — the check ran and decided it doesn't apply. It's not
         // a Warn, so it doesn't push toward human_primary, and the signal
         // still counts toward the denominator — all 4 present.
         let mut results = all_pass();
         results[3].status = CheckStatus::Skip("no flags".into());
         assert_eq!(classify(&results).as_deref(), Some("agent_optimized"));
+    }
+
+    #[test]
+    fn audit_profile_suppressed_signal_drops_denominator() {
+        // When --audit-profile suppresses a signal check, the evidence
+        // prefix tells us the check did NOT run — per R2, audience must
+        // be null rather than a partial-count verdict.
+        let mut results = all_pass();
+        results[0].status = CheckStatus::Skip("suppressed by audit_profile: human-tui".into());
+        assert!(
+            classify(&results).is_none(),
+            "audit_profile-suppressed signal should drop denominator and force None",
+        );
     }
 
     #[test]

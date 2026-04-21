@@ -712,6 +712,132 @@ fn test_broken_python_fixture() {
 ///
 /// The Check trait's run() method is the sole constructor of CheckResult. If check_x()
 /// returns CheckResult, the ID/group/layer fields are duplicated as string literals
+// ── --audit-profile tests ─────────────────────────────────────────
+
+#[test]
+fn test_audit_profile_rejects_unknown_value() {
+    // clap's value_enum rejects unknown values with exit code 2 — no
+    // custom validation needed.
+    cmd()
+        .args(["check", ".", "--audit-profile", "not-a-real-category"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("audit-profile"));
+}
+
+#[test]
+fn test_audit_profile_echoed_in_json_output() {
+    let assert = cmd()
+        .args([
+            "check",
+            ".",
+            "--audit-profile",
+            "human-tui",
+            "--output",
+            "json",
+        ])
+        .assert();
+    // Non-zero exit OK — anc has warnings on itself; we're asserting the
+    // scorecard shape, not the pass/fail verdict.
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+    assert_eq!(parsed["audit_profile"], "human-tui");
+    assert_eq!(parsed["schema_version"], "1.1");
+}
+
+#[test]
+fn test_audit_profile_suppresses_listed_checks() {
+    let assert = cmd()
+        .args([
+            "check",
+            ".",
+            "--audit-profile",
+            "human-tui",
+            "--output",
+            "json",
+        ])
+        .assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+
+    // Suppressed checks appear in results[] with Skip + structured evidence
+    // so readers see what was excluded.
+    let results = parsed["results"].as_array().expect("results is array");
+    let suppressed: Vec<&serde_json::Value> = results
+        .iter()
+        .filter(|r| {
+            r["evidence"]
+                .as_str()
+                .is_some_and(|s| s.contains("suppressed by audit_profile: human-tui"))
+        })
+        .collect();
+
+    assert!(
+        !suppressed.is_empty(),
+        "expected at least one check suppressed by human-tui profile, got results: {results:?}",
+    );
+    // Every suppressed result must be status=skip, not a fresh verdict.
+    for r in &suppressed {
+        assert_eq!(r["status"], "skip", "suppressed check must be status=skip");
+    }
+}
+
+#[test]
+fn test_audit_profile_absent_emits_null() {
+    // No --audit-profile flag: scorecard should echo null, preserving
+    // v0.1.2 behavior for consumers that feature-detect.
+    let assert = cmd().args(["check", ".", "--output", "json"]).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+    assert!(parsed["audit_profile"].is_null());
+}
+
+#[test]
+fn test_audit_profile_shrinks_audience_denominator() {
+    // When --audit-profile human-tui suppresses p1-non-interactive (one
+    // of the 4 audience signal checks), the classifier can't form a 4-way
+    // verdict. Expect audience: null per R2.
+    let assert = cmd()
+        .args([
+            "check",
+            ".",
+            "--audit-profile",
+            "human-tui",
+            "--output",
+            "json",
+        ])
+        .assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+    assert!(
+        parsed["audience"].is_null(),
+        "audience should be null when a signal check is suppressed (got {:?})",
+        parsed["audience"],
+    );
+}
+
+#[test]
+fn test_audit_profile_diagnostic_does_not_panic_on_self() {
+    // Dogfood edge case from the plan: whimsical combination that still
+    // must not crash. diagnostic-only suppresses p5-dry-run, which is a
+    // project check that runs against the current directory.
+    cmd()
+        .args([
+            "check",
+            ".",
+            "--audit-profile",
+            "diagnostic-only",
+            "--output",
+            "json",
+        ])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+}
+
 /// instead of derived from self.id()/self.group()/self.layer(). This test walks the
 /// source to catch regressions. Pure Rust — no external tooling required.
 #[test]

@@ -12,7 +12,7 @@ use ast_grep_language::Rust;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, SourceLocation};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence, SourceLocation};
 
 /// Check trait implementation for raw exit code detection.
 pub struct ExitCodesCheck;
@@ -61,6 +61,7 @@ impl Check for ExitCodesCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

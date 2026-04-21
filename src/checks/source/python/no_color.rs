@@ -14,7 +14,7 @@ use ast_grep_language::Python;
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::has_string_literal_in;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Check trait implementation for NO_COLOR detection in Python.
 pub struct NoColorPythonCheck;
@@ -68,6 +68,7 @@ impl Check for NoColorPythonCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

@@ -1,3 +1,7 @@
+pub mod help_probe;
+
+pub use help_probe::HelpOutput;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Read as _;

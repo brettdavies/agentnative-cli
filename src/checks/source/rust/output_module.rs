@@ -11,7 +11,7 @@ use std::path::Path;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 // Rust source check — lives in source/rust because the content patterns
 // (fn format_, impl Display, std::fmt::Write) are Rust-specific.
@@ -54,6 +54,7 @@ impl Check for OutputModuleCheck {
                     group: self.group(),
                     layer: self.layer(),
                     status: CheckStatus::Pass,
+                    confidence: Confidence::High,
                 });
             }
         }
@@ -68,6 +69,7 @@ impl Check for OutputModuleCheck {
                  with format/render/display functions rather than scattering print calls."
                     .into(),
             ),
+            confidence: Confidence::High,
         })
     }
 }

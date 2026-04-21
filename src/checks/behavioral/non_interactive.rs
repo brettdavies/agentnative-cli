@@ -1,7 +1,7 @@
 use crate::check::Check;
 use crate::project::Project;
 use crate::runner::RunStatus;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Agentic flag markers in `--help` output that signal the tool exposes a
 /// headless path. Matching any one satisfies P1's "no blocking-interactive
@@ -102,6 +102,7 @@ impl Check for NonInteractiveCheck {
             group: CheckGroup::P1,
             layer: CheckLayer::Behavioral,
             status,
+            confidence: Confidence::High,
         })
     }
 }

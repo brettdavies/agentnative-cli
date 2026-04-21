@@ -7,7 +7,7 @@ use std::fs;
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Interactive prompt libraries that conflict with agent-native operation.
 const PROMPT_LIBS: &[&str] = &["dialoguer", "inquire", "rustyline", "crossterm"];
@@ -66,6 +66,7 @@ impl Check for NonInteractiveSourceCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

@@ -79,7 +79,7 @@ P6 — Composable Structure
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-30 checks: 20 pass, 8 warn, 0 fail, 2 skip, 0 error
+30 checks: 26 pass, 2 warn, 0 fail, 2 skip, 0 error
 ```
 
 ## Three Check Layers
@@ -158,10 +158,11 @@ Pre-generated scripts are also available in `completions/`.
 anc check . --output json
 ```
 
-Produces a scorecard with results and summary:
+Produces a scorecard (`schema_version: "1.1"`) with results, summary, and coverage against the 7 principles:
 
 ```json
 {
+  "schema_version": "1.1",
   "results": [
     {
       "id": "p3-help",
@@ -174,14 +175,26 @@ Produces a scorecard with results and summary:
   ],
   "summary": {
     "total": 30,
-    "pass": 20,
-    "warn": 8,
+    "pass": 26,
+    "warn": 2,
     "fail": 0,
     "skip": 2,
     "error": 0
-  }
+  },
+  "coverage_summary": {
+    "must": { "total": 23, "verified": 17 },
+    "should": { "total": 16, "verified": 2 },
+    "may":   { "total": 7,  "verified": 0 }
+  },
+  "audience": null,
+  "audit_profile": null
 }
 ```
+
+- `coverage_summary` — how many MUSTs/SHOULDs/MAYs the checks that ran actually verified, against the spec registry's
+  totals. See `docs/coverage-matrix.md` for the per-requirement breakdown.
+- `audience` / `audit_profile` — reserved for v0.1.3 (audience classifier + `registry.yaml` suppression). Serialize as
+  `null` today; consumers should feature-detect.
 
 ## Contributing
 
@@ -191,6 +204,24 @@ cd agentnative
 cargo test
 cargo run -- check .
 ```
+
+### Reporting issues
+
+Open an issue at
+[github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
+Seven structured templates cover the common cases:
+
+| Template | Use it when |
+| --- | --- |
+| False positive | A check flagged your CLI but you believe your CLI is doing the right thing. |
+| Scoring bug | Results don't match what the check should be doing (wrong status, miscategorized group/layer, evidence pointing at the wrong line). |
+| Feature request | Missing capability, flag, or output format in the checker itself. |
+| Grade a CLI | Nominate a CLI for an `anc`-graded readiness review. |
+| Pressure test | Challenge a principle or check definition — "this check is too strict / too loose / wrong on this class of CLI." |
+| Spec question | Ambiguity or gap in the 7-principle spec (not the checker). |
+| Something else | Chooser for anything outside the templates above. |
+
+Filing on the right template front-loads the triage context we need and keeps issues out of a single-bucket backlog.
 
 ## License
 

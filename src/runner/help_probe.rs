@@ -30,9 +30,7 @@ impl Flag {
     /// Whether this flag exposes `name` under either its short or long form.
     /// Accepts `-s`, `--long`, or even `long` / `s` (without dashes).
     pub fn matches(&self, name: &str) -> bool {
-        let with_dash_long = if name.starts_with("--") {
-            name.to_string()
-        } else if name.starts_with('-') {
+        let with_dash_long = if name.starts_with('-') {
             name.to_string()
         } else if name.len() == 1 {
             format!("-{name}")
@@ -58,6 +56,10 @@ pub struct HelpOutput {
     raw: String,
     flags: OnceLock<Vec<Flag>>,
     env_hints: OnceLock<Vec<EnvHint>>,
+    /// Reserved for P3/P6 subcommand-structure checks. Parsed lazily like
+    /// the other views; no current behavioral check consumes it, so the
+    /// compiler would flag it as dead code without this allow.
+    #[allow(dead_code)]
     subcommands: OnceLock<Vec<String>>,
 }
 
@@ -115,6 +117,8 @@ impl HelpOutput {
     }
 
     /// Subcommand names parsed out of the help surface. Lazy + cached.
+    /// Reserved for P3/P6 checks; no behavioral check consumes this yet.
+    #[allow(dead_code)]
     pub fn subcommands(&self) -> &[String] {
         self.subcommands
             .get_or_init(|| parse_subcommands(&self.raw))
@@ -239,6 +243,7 @@ fn is_env_var_name(s: &str) -> bool {
 /// Parse the `Commands:` / `Subcommands:` block. We collect the first
 /// whitespace-separated token on each line until the block terminates
 /// (empty line, or a new non-indented section header).
+#[allow(dead_code)]
 fn parse_subcommands(raw: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut in_section = false;
@@ -272,6 +277,7 @@ fn parse_subcommands(raw: &str) -> Vec<String> {
 
 /// Subcommand names are kebab-case/snake_case identifiers. Anything else —
 /// `[options]`, `<ARG>`, punctuation — is not a subcommand.
+#[allow(dead_code)]
 fn is_subcommand_name(s: &str) -> bool {
     !s.is_empty()
         && s.chars()

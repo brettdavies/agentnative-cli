@@ -8,6 +8,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 ## Summary
 
 - **Total**: 46 requirements (19 covered / 27 uncovered)
+- **Dual-layer**: 7 of 19 covered requirements have verifiers in two layers (behavioral + source or project)
 - **MUST**: 17 of 23 covered
 - **SHOULD**: 2 of 16 covered
 - **MAY**: 0 of 7 covered
@@ -16,8 +17,8 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p1-must-env-var` | MUST | Universal | `p1-env-flags-source` (source) | Every flag settable via environment variable (falsey-value parser for booleans). |
-| `p1-must-no-interactive` | MUST | Universal | `p1-non-interactive` (behavioral)<br>`p1-non-interactive-source` (project) | `--no-interactive` flag gates every prompt library call; when set or stdin is not a TTY, use defaults/stdin or exit with an actionable error. |
+| `p1-must-env-var` | MUST | Universal | `p1-env-hints` (behavioral)<br>`p1-env-flags-source` (source) | Every flag settable via environment variable (falsey-value parser for booleans). |
+| `p1-must-no-interactive` | MUST | Universal | `p1-non-interactive` (behavioral)<br>`p1-flag-existence` (behavioral)<br>`p1-non-interactive-source` (project) | `--no-interactive` flag gates every prompt library call; when set or stdin is not a TTY, use defaults/stdin or exit with an actionable error. |
 | `p1-must-no-browser` | MUST | If: CLI authenticates against a remote service | `p1-headless-auth` (source) | Headless authentication path (`--no-browser` / OAuth Device Authorization Grant). |
 | `p1-should-tty-detection` | SHOULD | Universal | `p1-tty-detection-source` (source) | Auto-detect non-interactive context via TTY detection; suppress prompts when stderr is not a terminal. |
 | `p1-should-defaults-in-help` | SHOULD | Universal | **UNCOVERED** | Document default values for prompted inputs in `--help` output. |
@@ -73,7 +74,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p6-must-no-color` | MUST | Universal | `p6-no-color-behavioral` (behavioral)<br>`p6-no-color` (source)<br>`p6-no-color` (source) | TTY detection plus support for `NO_COLOR` and `TERM=dumb` — color codes suppressed when stdout/stderr is not a terminal. |
 | `p6-must-completions` | MUST | Universal | `p6-completions` (project) | Shell completions available via a `completions` subcommand (Tier 1 meta-command — needs no config/auth/network). |
 | `p6-must-timeout-network` | MUST | If: CLI makes network calls | `p6-timeout` (source) | Network CLIs ship a `--timeout` flag with a sensible default (e.g., 30 seconds). |
-| `p6-must-no-pager` | MUST | If: CLI invokes a pager for output | `p6-no-pager` (source) | If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. |
+| `p6-must-no-pager` | MUST | If: CLI invokes a pager for output | `p6-no-pager-behavioral` (behavioral)<br>`p6-no-pager` (source) | If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. |
 | `p6-must-global-flags` | MUST | If: CLI uses subcommands | `p6-global-flags` (source) | Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) are `global = true` so they propagate to every subcommand. |
 | `p6-should-stdin-input` | SHOULD | If: CLI has commands that accept input data | **UNCOVERED** | Commands that accept input read from stdin when no file argument is provided. |
 | `p6-should-consistent-naming` | SHOULD | If: CLI uses subcommands | **UNCOVERED** | Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. |

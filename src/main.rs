@@ -22,6 +22,7 @@ use cli::{Cli, Commands, GenerateKind, OutputFormat};
 use error::AppError;
 use principles::matrix;
 use project::Project;
+use scorecard::audience;
 use scorecard::{exit_code, format_json, format_text};
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
@@ -149,11 +150,15 @@ fn run() -> Result<i32, AppError> {
         results.retain(|r| matches_principle(&r.group, p));
     }
 
+    // Compute audience from the 4 signal checks. Read-only over results;
+    // Returns None when any signal check is missing from the vector.
+    let audience_label = audience::classify(&results);
+
     // Format output. `format_json` needs the check catalog so it can map
     // result IDs back to the requirements each check covers.
     let output_str = match output {
         OutputFormat::Text => format_text(&results, quiet),
-        OutputFormat::Json => format_json(&results, &all_checks),
+        OutputFormat::Json => format_json(&results, &all_checks, audience_label, None),
     };
     print!("{output_str}");
 

@@ -1,3 +1,5 @@
+pub mod audience;
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 
@@ -237,8 +239,13 @@ pub fn build_scorecard(
     }
 }
 
-pub fn format_json(results: &[CheckResult], ran_checks: &[Box<dyn Check>]) -> String {
-    let scorecard = build_scorecard(results, ran_checks, None, None);
+pub fn format_json(
+    results: &[CheckResult],
+    ran_checks: &[Box<dyn Check>],
+    audience: Option<String>,
+    audit_profile: Option<String>,
+) -> String {
+    let scorecard = build_scorecard(results, ran_checks, audience, audit_profile);
     serde_json::to_string_pretty(&scorecard).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"))
 }
 
@@ -325,7 +332,7 @@ mod tests {
             make_result("c1", CheckStatus::Pass, CheckGroup::P1),
             make_result("c2", CheckStatus::Fail("bad".into()), CheckGroup::P2),
         ];
-        let json = format_json(&results, &[]);
+        let json = format_json(&results, &[], None, None);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["schema_version"], "1.1");
         assert_eq!(parsed["summary"]["total"], 2);
@@ -456,5 +463,67 @@ mod tests {
         let view = CheckResultView::from_result(&r);
         assert_eq!(view.status, "pass");
         assert!(view.evidence.is_none());
+    }
+
+    #[test]
+    fn format_json_emits_audience_when_all_signals_present() {
+        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+
+        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+            .iter()
+            .map(|id| make_result(id, CheckStatus::Pass, CheckGroup::P1))
+            .collect();
+        let audience = classify(&results);
+        let json = format_json(&results, &[], audience, None);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["audience"], "agent_optimized");
+        assert!(parsed["audit_profile"].is_null());
+        assert_eq!(parsed["schema_version"], "1.1");
+    }
+
+    #[test]
+    fn format_json_emits_human_primary_when_signals_warn() {
+        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+
+        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+            .iter()
+            .enumerate()
+            .map(|(i, id)| {
+                let status = if i < 3 {
+                    CheckStatus::Warn(format!("missing {id}"))
+                } else {
+                    CheckStatus::Pass
+                };
+                make_result(id, status, CheckGroup::P1)
+            })
+            .collect();
+        let audience = classify(&results);
+        let json = format_json(&results, &[], audience, None);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["audience"], "human_primary");
+    }
+
+    #[test]
+    fn format_json_audience_null_when_signals_missing() {
+        use crate::scorecard::audience::classify;
+
+        // Source-only-style run: no behavioral checks, so no signal IDs.
+        let results = vec![make_result(
+            "p1-env-flags-source",
+            CheckStatus::Pass,
+            CheckGroup::P1,
+        )];
+        let audience = classify(&results);
+        let json = format_json(&results, &[], audience, None);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert!(parsed["audience"].is_null());
+    }
+
+    #[test]
+    fn format_json_echoes_audit_profile() {
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let json = format_json(&results, &[], None, Some("human-tui".into()));
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["audit_profile"], "human-tui");
     }
 }

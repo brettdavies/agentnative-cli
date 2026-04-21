@@ -9,7 +9,7 @@
 
 use crate::check::Check;
 use crate::project::{Language, Project};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Network library indicators to search for in source text.
 const NETWORK_INDICATORS: &[&str] = &["reqwest", "hyper", "curl", "ureq"];
@@ -77,6 +77,7 @@ impl Check for TimeoutFlagCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

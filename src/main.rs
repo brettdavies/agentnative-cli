@@ -23,7 +23,7 @@ use error::AppError;
 use principles::matrix;
 use project::Project;
 use scorecard::{exit_code, format_json, format_text};
-use types::{CheckGroup, CheckResult, CheckStatus};
+use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
 fn main() {
     // Fix SIGPIPE handling so piping to head/grep works correctly.
@@ -138,6 +138,7 @@ fn run() -> Result<i32, AppError> {
                 group: check.group(),
                 layer: check.layer(),
                 status: CheckStatus::Error(e.to_string()),
+                confidence: Confidence::High,
             },
         };
         results.push(result);

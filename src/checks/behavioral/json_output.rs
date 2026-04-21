@@ -1,7 +1,7 @@
 use crate::check::Check;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, RunStatus};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 pub struct JsonOutputCheck;
 
@@ -55,6 +55,7 @@ impl Check for JsonOutputCheck {
             group: CheckGroup::P2,
             layer: CheckLayer::Behavioral,
             status,
+            confidence: Confidence::High,
         })
     }
 }

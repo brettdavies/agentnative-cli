@@ -12,6 +12,10 @@
       },
       "verifiers": [
         {
+          "check_id": "p1-env-hints",
+          "layer": "behavioral"
+        },
+        {
           "check_id": "p1-env-flags-source",
           "layer": "source"
         }
@@ -28,6 +32,10 @@
       "verifiers": [
         {
           "check_id": "p1-non-interactive",
+          "layer": "behavioral"
+        },
+        {
+          "check_id": "p1-flag-existence",
           "layer": "behavioral"
         },
         {
@@ -440,6 +448,10 @@
       },
       "verifiers": [
         {
+          "check_id": "p6-no-pager-behavioral",
+          "layer": "behavioral"
+        },
+        {
           "check_id": "p6-no-pager",
           "layer": "source"
         }
@@ -602,6 +614,7 @@
     "total": 46,
     "covered": 19,
     "uncovered": 27,
+    "dual_layer": 7,
     "must": {
       "total": 23,
       "covered": 17

@@ -61,6 +61,9 @@ pub struct CheckResultView {
     pub layer: String,
     pub status: String,
     pub evidence: Option<String>,
+    /// `high` for direct probes, `medium` for heuristics. Additive field;
+    /// v1.1 consumers feature-detect and tolerate missing keys.
+    pub confidence: String,
 }
 
 impl CheckResultView {
@@ -72,7 +75,8 @@ impl CheckResultView {
             CheckStatus::Skip(e) => ("skip".to_string(), Some(e.clone())),
             CheckStatus::Error(e) => ("error".to_string(), Some(e.clone())),
         };
-        // Serialize CheckGroup via serde_json for canonical format
+        // Serialize CheckGroup / CheckLayer / Confidence via serde_json so
+        // the JSON mirrors the canonical enum spelling (snake_case).
         let group = serde_json::to_value(r.group)
             .ok()
             .and_then(|v| v.as_str().map(|s| s.to_string()))
@@ -81,6 +85,10 @@ impl CheckResultView {
             .ok()
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| format!("{:?}", r.layer));
+        let confidence = serde_json::to_value(r.confidence)
+            .ok()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| format!("{:?}", r.confidence));
         CheckResultView {
             id: r.id.clone(),
             label: r.label.clone(),
@@ -88,6 +96,7 @@ impl CheckResultView {
             layer,
             status,
             evidence,
+            confidence,
         }
     }
 }
@@ -297,7 +306,7 @@ pub fn exit_code(results: &[CheckResult]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
     fn make_result(id: &str, status: CheckStatus, group: CheckGroup) -> CheckResult {
         CheckResult {
@@ -306,6 +315,7 @@ mod tests {
             group,
             layer: CheckLayer::Behavioral,
             status,
+            confidence: Confidence::High,
         }
     }
 
@@ -323,14 +333,24 @@ mod tests {
         assert_eq!(parsed["summary"]["fail"], 1);
         assert_eq!(parsed["results"][0]["status"], "pass");
         assert!(parsed["results"][0]["evidence"].is_null());
+        assert_eq!(parsed["results"][0]["confidence"], "high");
         assert_eq!(parsed["results"][1]["status"], "fail");
         assert_eq!(parsed["results"][1]["evidence"], "bad");
+        assert_eq!(parsed["results"][1]["confidence"], "high");
         // v1.1 additions: coverage_summary present with three levels, audience + audit_profile null.
         assert!(parsed["coverage_summary"]["must"]["total"].is_number());
         assert!(parsed["coverage_summary"]["should"]["total"].is_number());
         assert!(parsed["coverage_summary"]["may"]["total"].is_number());
         assert!(parsed["audience"].is_null());
         assert!(parsed["audit_profile"].is_null());
+    }
+
+    #[test]
+    fn medium_confidence_serializes_as_medium() {
+        let mut r = make_result("c3", CheckStatus::Warn("soft".into()), CheckGroup::P6);
+        r.confidence = Confidence::Medium;
+        let view = CheckResultView::from_result(&r);
+        assert_eq!(view.confidence, "medium");
     }
 
     #[test]

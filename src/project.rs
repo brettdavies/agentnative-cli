@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
-use crate::runner::BinaryRunner;
+use crate::runner::{BinaryRunner, HelpOutput};
 
 /// Maximum directory recursion depth for source file walk.
 const MAX_DEPTH: usize = 20;
@@ -36,6 +36,7 @@ pub struct Project {
     pub runner: Option<BinaryRunner>,
     pub include_tests: bool,
     pub(crate) parsed_files: OnceLock<HashMap<PathBuf, ParsedFile>>,
+    pub(crate) help_output: OnceLock<Option<HelpOutput>>,
 }
 
 impl std::fmt::Debug for Project {
@@ -51,6 +52,7 @@ impl std::fmt::Debug for Project {
                 "parsed_files_count",
                 &self.parsed_files.get().map_or(0, |m| m.len()),
             )
+            .field("help_probed", &self.help_output.get().is_some())
             .finish()
     }
 }
@@ -77,6 +79,7 @@ impl Project {
                 runner,
                 include_tests: false,
                 parsed_files: OnceLock::new(),
+                help_output: OnceLock::new(),
             });
         }
 
@@ -98,6 +101,7 @@ impl Project {
             runner,
             include_tests: false,
             parsed_files: OnceLock::new(),
+            help_output: OnceLock::new(),
         })
     }
 
@@ -109,6 +113,20 @@ impl Project {
         self.runner
             .as_ref()
             .expect("runner must exist when applicable() returns true")
+    }
+
+    /// Lazily probe `<binary> --help` exactly once, returning a shared
+    /// reference that behavioral checks consume. Returns `None` when the
+    /// project has no runner or the help probe fails outright (e.g., binary
+    /// missing). `HelpOutput` itself handles partial captures from timeouts
+    /// and crashes — those still yield `Some(_)`.
+    pub fn help_output(&self) -> Option<&HelpOutput> {
+        self.help_output
+            .get_or_init(|| {
+                let runner = self.runner.as_ref()?;
+                HelpOutput::probe(runner).ok()
+            })
+            .as_ref()
     }
 
     pub fn parsed_files(&self) -> &HashMap<PathBuf, ParsedFile> {

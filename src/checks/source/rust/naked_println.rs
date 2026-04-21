@@ -8,7 +8,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::find_pattern_matches;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 const PRINTLN_PATTERN: &str = "println!($$$ARGS)";
 const PRINT_PATTERN: &str = "print!($$$ARGS)";
@@ -64,6 +64,7 @@ impl Check for NakedPrintlnCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

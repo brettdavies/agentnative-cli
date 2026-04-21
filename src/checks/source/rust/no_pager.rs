@@ -10,7 +10,7 @@
 use crate::check::Check;
 use crate::project::{Language, Project};
 use crate::source::has_pattern;
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
 /// Pager-related patterns to detect in source text.
 const PAGER_INDICATORS: &[&str] = &["pager::Pager", "Pager::new", "Pager::with_pager"];
@@ -74,6 +74,7 @@ impl Check for NoPagerCheck {
             group: self.group(),
             layer: self.layer(),
             status,
+            confidence: Confidence::High,
         })
     }
 }

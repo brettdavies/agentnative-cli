@@ -50,6 +50,11 @@ pub struct MatrixSummary {
     pub total: usize,
     pub covered: usize,
     pub uncovered: usize,
+    /// Covered requirements that have at least two verifiers, spanning
+    /// behavioral + source (or project) layers. Dual-layer coverage is the
+    /// headline signal that a requirement is pinned down from more than
+    /// one angle — useful for spotting surface-only verifiers.
+    pub dual_layer: usize,
     pub must: LevelSummary,
     pub should: LevelSummary,
     pub may: LevelSummary,
@@ -114,6 +119,7 @@ fn summarize(rows: &[MatrixRow]) -> MatrixSummary {
         covered: 0,
     };
     let mut covered = 0;
+    let mut dual_layer = 0;
 
     for row in rows {
         let bucket = match row.level {
@@ -125,6 +131,9 @@ fn summarize(rows: &[MatrixRow]) -> MatrixSummary {
         if !row.verifiers.is_empty() {
             bucket.covered += 1;
             covered += 1;
+            if row.verifiers.len() >= 2 {
+                dual_layer += 1;
+            }
         }
     }
 
@@ -132,6 +141,7 @@ fn summarize(rows: &[MatrixRow]) -> MatrixSummary {
         total: rows.len(),
         covered,
         uncovered: rows.len() - covered,
+        dual_layer,
         must,
         should,
         may,
@@ -167,6 +177,11 @@ pub fn render_markdown(matrix: &Matrix) -> String {
         out,
         "- **Total**: {} requirements ({} covered / {} uncovered)",
         s.total, s.covered, s.uncovered
+    );
+    let _ = writeln!(
+        out,
+        "- **Dual-layer**: {} of {} covered requirements have verifiers in two layers (behavioral + source or project)",
+        s.dual_layer, s.covered
     );
     let _ = writeln!(
         out,
@@ -284,7 +299,7 @@ mod tests {
     use super::*;
     use crate::check::Check;
     use crate::project::Project;
-    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
 
     struct FakeCheck {
         id: &'static str,
@@ -311,6 +326,7 @@ mod tests {
                 group: CheckGroup::P1,
                 layer: CheckLayer::Behavioral,
                 status: CheckStatus::Pass,
+                confidence: Confidence::High,
             })
         }
         fn covers(&self) -> &'static [&'static str] {

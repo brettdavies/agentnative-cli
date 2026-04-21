@@ -205,6 +205,24 @@ cargo test
 cargo run -- check .
 ```
 
+### Reporting issues
+
+Open an issue at
+[github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
+Seven structured templates cover the common cases:
+
+| Template | Use it when |
+| --- | --- |
+| False positive | A check flagged your CLI but you believe your CLI is doing the right thing. |
+| Scoring bug | Results don't match what the check should be doing (wrong status, miscategorized group/layer, evidence pointing at the wrong line). |
+| Feature request | Missing capability, flag, or output format in the checker itself. |
+| Grade a CLI | Nominate a CLI for an `anc`-graded readiness review. |
+| Pressure test | Challenge a principle or check definition — "this check is too strict / too loose / wrong on this class of CLI." |
+| Spec question | Ambiguity or gap in the 7-principle spec (not the checker). |
+| Something else | Chooser for anything outside the templates above. |
+
+Filing on the right template front-loads the triage context we need and keeps issues out of a single-bucket backlog.
+
 ## License
 
 MIT OR Apache-2.0

@@ -14,7 +14,7 @@ origin: "docs/plans/2026-04-20-v012-handoff-4-behavioral-checks.md (references H
 
 Split the CLI-side work out of the original combined H5 that lives in the `agentnative-site` repo. The CLI ships v0.1.3
 with three things: a derived **audience classifier** that reads a scorecard run and labels the target as
-`agent_optimized`, `mixed`, or `human_primary`; honoring of categorical exceptions via a new `--audit-profile` flag that
+`agent-optimized`, `mixed`, or `human-primary`; honoring of categorical exceptions via a new `--audit-profile` flag that
 suppresses inapplicable MUSTs per `ExceptionCategory` (already in the registry, `#[allow(dead_code)]` reserved); and
 Pattern 2 of `p1-env-hints` (bash-style `$FOO` / `TOOL_FOO` near flag descriptions — the half of the H4 plan that didn't
 ship in v0.1.2, tracked as todo `013`).
@@ -60,8 +60,8 @@ The three workstreams are orthogonal inside the CLI but share a release vehicle.
 ## Requirements Trace
 
 - R1. Emit a derived `audience` label on every scorecard run. Rule: count `Warn` status across exactly 4 signal checks
-  (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). 0-1 → `agent_optimized`; 2 → `mixed`;
-  3-4 → `human_primary`. Carried from origin H5 "audience classifier" scope.
+  (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). 0-1 → `agent-optimized`; 2 → `mixed`;
+  3-4 → `human-primary`. Carried from origin H5 "audience classifier" scope.
 - R2. When any of the 4 signal checks fails to run (missing runner, Skipped by applicability, or suppressed by
   audit_profile), emit `audience: null` rather than a partial-count verdict. Keeps the classifier honest about
   insufficient signal — per CEO review Finding #3, "aggregate signal is strictly weaker than per-check evidence."
@@ -163,9 +163,13 @@ The three workstreams are orthogonal inside the CLI but share a release vehicle.
 - **Suppression table lives in `src/principles/registry.rs` next to `ExceptionCategory`.** Reason: the enum is already
   there; the mapping is small (4 categories × handful of suppressed check IDs each); colocating keeps the exception
   semantics in one file.
-- **Audience label serialization is snake_case** (`"agent_optimized"`, `"mixed"`, `"human_primary"`). Reason: matches
-  the existing `CheckGroup` / `CheckLayer` / `Confidence` enum serialization convention (serde `rename_all =
-  "snake_case"`).
+- **Audience label serialization is kebab-case** (`"agent-optimized"`, `"mixed"`, `"human-primary"`). Reason: unifies
+  with `audit_profile`'s kebab-case values (`"human-tui"`, etc.) within the same JSON document, so consumers don't
+  juggle two casing conventions in one scorecard. `audit_profile` MUST be kebab-case because it echoes the CLI flag
+  value (`--audit-profile human-tui`); `audience` adopts the same convention. Per-result enum values in
+  `results[].group` / `layer` / `confidence` stay snake_case — they are a different contract (one row per check) with
+  broader consumer history and share spelling with the Rust type identifiers they come from. (Revised post-code-review
+  on 2026-04-22; the original decision was snake_case to match the per-result enums. See Implementation Log.)
 - **Drift test uses `const` array of 4 signal IDs** so a grep can find them in one place. Reason: the test failure
   message points back to this array, and renaming a check surfaces both the test failure and the array in the same hunk
   of the diff.
@@ -233,9 +237,9 @@ classify(results: &[CheckResult]) -> Option<String>
   if signals.len() < 4: return None
   warns = signals.filter(|r| matches!(r.status, Warn(_))).count()
   match warns {
-    0..=1 => Some("agent_optimized"),
+    0..=1 => Some("agent-optimized"),
     2     => Some("mixed"),
-    3..=4 => Some("human_primary"),
+    3..=4 => Some("human-primary"),
     _     => unreachable!(),
   }
 ```
@@ -274,7 +278,7 @@ an inline drift test that fails loudly if any signal ID is missing from `REQUIRE
 **Approach:**
 
 - Constants: `SIGNAL_CHECK_IDS: &[&str; 4]` listing the 4 IDs.
-- Pure function `classify(&[CheckResult]) -> Option<String>` emits snake_case label or `None`.
+- Pure function `classify(&[CheckResult]) -> Option<String>` emits a kebab-case label or `None`.
 - Drift test iterates `SIGNAL_CHECK_IDS`, calls `principles::registry::find(id)`, asserts `Some(_)`. Failure message
   cites which ID is missing so a rename produces an actionable hit.
 - Directory promotion is purely mechanical; no behavior change beyond module reorganization.
@@ -290,14 +294,14 @@ The signal-ID drift test can land alongside.
 
 **Test scenarios:**
 
-- Happy path — 4 Pass results with the signal IDs → `Some("agent_optimized")`.
-- Happy path — 4 Warn results → `Some("human_primary")`.
+- Happy path — 4 Pass results with the signal IDs → `Some("agent-optimized")`.
+- Happy path — 4 Warn results → `Some("human-primary")`.
 - Happy path — 2 Warn, 2 Pass → `Some("mixed")`.
-- Happy path — 1 Warn, 3 Pass → `Some("agent_optimized")`.
+- Happy path — 1 Warn, 3 Pass → `Some("agent-optimized")`.
 - Edge case — only 3 of 4 signal checks present in results (one missing entirely) → `None`.
-- Edge case — one signal check emits Skip (not Warn) → count as not-a-Warn; 0 Warns total → `Some("agent_optimized")`.
+- Edge case — one signal check emits Skip (not Warn) → count as not-a-Warn; 0 Warns total → `Some("agent-optimized")`.
 - Edge case — one signal check emits Error → count as not-a-Warn (Error ≠ Warn); if total Warns in remaining are 0 →
-  `Some("agent_optimized")`.
+  `Some("agent-optimized")`.
 - Edge case — non-signal checks in `results[]` are ignored (their Warn/Pass doesn't count).
 - Drift — `REQUIREMENTS` contains every `SIGNAL_CHECK_IDS` entry (current state) → test passes.
 - Drift — remove an ID from `REQUIREMENTS` (mutate via test fixture if possible; otherwise rely on compile-time
@@ -336,14 +340,14 @@ wired (Unit 4); for this unit, scope to audience only.
 
 **Test scenarios:**
 
-- Integration — a `format_json` run with results matching "4 Pass signals" emits `"audience": "agent_optimized"`.
-- Integration — a run with results matching "3 Warn, 1 Pass signals" emits `"audience": "human_primary"`.
+- Integration — a `format_json` run with results matching "4 Pass signals" emits `"audience": "agent-optimized"`.
+- Integration — a run with results matching "3 Warn, 1 Pass signals" emits `"audience": "human-primary"`.
 - Backwards-compat — a run without the 4 signals (e.g., source-only mode, no behavioral checks) emits `"audience":
   null`.
 - Schema — `schema_version` stays `"1.1"`.
 
 **Verification:** `anc check ripgrep --output json | jaq .audience` returns a string; `anc check .` (self)
-returns a string (`anc` should classify as `agent_optimized` per its own dogfood).
+returns a string (`anc` should classify as `agent-optimized` per its own dogfood).
 
 - [x] **Unit 3: Suppression table + `registry::suppresses()` helper**
 
@@ -624,14 +628,27 @@ the next step.
   rendered into the committed file); no edit was required.
 - **Pattern 2 heuristic tightened beyond the plan's three mitigations.** The plan listed tool-scoped identifier shape
 - same-paragraph co-occurrence + shell-env blacklist. The first implementation using only those regressed two
-    pre-existing tests (captured `OPTIONS` and `HTTP` as env vars). Final rule requires `$` prefix OR underscore in the
-    identifier (separating real env vars from acronyms/placeholders) AND rejects bare `[FOO]`/`<FOO>` placeholders AND
-    strips `[env: ...]` regions before Pattern 2 scans. Documented as a reusable best-practice in
-    `docs/solutions/best-practices/cli-env-var-shape-heuristic-2026-04-21.md`.
+  pre-existing tests (captured `OPTIONS` and `HTTP` as env vars). Final rule requires `$` prefix OR underscore in the
+  identifier (separating real env vars from acronyms/placeholders) AND rejects bare `[FOO]`/`<FOO>` placeholders AND
+  strips `[env: ...]` regions before Pattern 2 scans. Documented as a reusable best-practice in
+  `docs/solutions/best-practices/cli-env-var-shape-heuristic-2026-04-21.md`.
 
 - **`gh` did not flip Warn → Pass as the todo predicted.** Pattern 2 probes `<binary> --help`; `gh` documents env vars
   in `gh help environment`, a separate help topic. The Warn is accurate for the actual `--help` surface. Named
   limitation — not in scope for v0.1.3.
+
+- **Audience values flipped from snake_case to kebab-case (post-code-review, 2026-04-22).** The initial plan (see Key
+  Technical Decisions above, now revised) chose `"agent_optimized"` / `"mixed"` / `"human_primary"` to match the
+  existing `CheckGroup` / `CheckLayer` / `Confidence` snake_case enum convention. The `/ce:review` pass flagged the
+  resulting mix (snake_case `audience` + kebab-case `audit_profile` inside one JSON document) as P3 #17. Assessment
+  surfaced that the mix wasn't design — it was two legitimate conventions meeting. `audit_profile`'s kebab-case is
+  non-negotiable (it echoes the CLI flag value a user types); `audience`'s snake_case was pure convention-inertia since
+  audience values are never typed, never matched against a flag, and never exposed outside that one JSON field. Landed
+  kebab-case on both: `audience: "agent-optimized" | "mixed" | "human-primary"`. Per-result enum values stay snake_case
+  (different contract, broader consumer history). Window rationale: v0.1.2 emitted `audience: null`; site H6 hasn't
+  shipped; no live consumer had pinned on the snake_case values. Changes: `src/scorecard/audience.rs::classify()` return
+  values + doc comment; 13+ tests in `audience.rs` / `scorecard/mod.rs` / `tests/integration.rs`; README.md, AGENTS.md,
+  CLAUDE.md v1.1 fields section; this plan doc.
 
 ### Verification results
 
@@ -642,7 +659,7 @@ the next step.
 - `cargo deny check`: **advisories/bans/licenses/sources ok** (unchanged warnings about unused license allowances are
   pre-existing).
 - `anc generate coverage-matrix --check`: **exit 0** (no drift; no registry changes).
-- Dogfood `anc check . --output json`: `schema_version: "1.1"`, `audience: "agent_optimized"`, `audit_profile: null`, 27
+- Dogfood `anc check . --output json`: `schema_version: "1.1"`, `audience: "agent-optimized"`, `audit_profile: null`, 27
   pass / 2 warn / 4 skip / 0 fail.
 - Dogfood `anc check . --audit-profile diagnostic-only`: clean run, echoes profile, suppresses `p5-dry-run` with
   structured evidence, no panic.

@@ -35,13 +35,17 @@ _arguments "${_arguments_options[@]}" : \
 '(--source)--command=[Resolve a command from PATH and run behavioral checks against it]:NAME:_command_names -e' \
 '--principle=[Filter checks by principle number (1-7)]:PRINCIPLE:_default' \
 '--output=[Output format]:OUTPUT:(text json)' \
+'--audit-profile=[Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so \`--audit-profile human-tui\` skips the interactive-prompt MUSTs. Suppressed checks emit \`Skip\` with structured evidence so readers see what was excluded]:CATEGORY:((human-tui\:"TUI-by-design tools (lazygit, k9s, btop). Suppresses interactive-prompt MUSTs and SIGPIPE — their contract is the TTY"
+file-traversal\:"File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those checks land"
+posix-utility\:"POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs satisfied vacuously via stdin-primary input"
+diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so the P5 mutation-boundary MUSTs do not apply"))' \
 '--binary[Run only behavioral checks (skip source analysis)]' \
 '--source[Run only source checks (skip behavioral)]' \
 '--include-tests[Include test code in source analysis]' \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
-'-h[Print help]' \
-'--help[Print help]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 '::path -- Path to project directory or binary:_files' \
 && ret=0
 ;;

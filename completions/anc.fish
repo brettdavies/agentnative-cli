@@ -35,11 +35,15 @@ complete -c anc -n "__fish_anc_using_subcommand check" -l command -d 'Resolve a 
 complete -c anc -n "__fish_anc_using_subcommand check" -l principle -d 'Filter checks by principle number (1-7)' -r
 complete -c anc -n "__fish_anc_using_subcommand check" -l output -d 'Output format' -r -f -a "text\t''
 json\t''"
+complete -c anc -n "__fish_anc_using_subcommand check" -l audit-profile -d 'Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed checks emit `Skip` with structured evidence so readers see what was excluded' -r -f -a "human-tui\t'TUI-by-design tools (lazygit, k9s, btop). Suppresses interactive-prompt MUSTs and SIGPIPE — their contract is the TTY'
+file-traversal\t'File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those checks land'
+posix-utility\t'POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs satisfied vacuously via stdin-primary input'
+diagnostic-only\t'Diagnostic tools (nvidia-smi, vmstat). No write operations, so the P5 mutation-boundary MUSTs do not apply'"
 complete -c anc -n "__fish_anc_using_subcommand check" -l binary -d 'Run only behavioral checks (skip source analysis)'
 complete -c anc -n "__fish_anc_using_subcommand check" -l source -d 'Run only source checks (skip behavioral)'
 complete -c anc -n "__fish_anc_using_subcommand check" -l include-tests -d 'Include test code in source analysis'
 complete -c anc -n "__fish_anc_using_subcommand check" -s q -l quiet -d 'Suppress non-essential output'
-complete -c anc -n "__fish_anc_using_subcommand check" -s h -l help -d 'Print help'
+complete -c anc -n "__fish_anc_using_subcommand check" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c anc -n "__fish_anc_using_subcommand completions" -s q -l quiet -d 'Suppress non-essential output'
 complete -c anc -n "__fish_anc_using_subcommand completions" -s h -l help -d 'Print help'
 complete -c anc -n "__fish_anc_using_subcommand generate; and not __fish_seen_subcommand_from coverage-matrix help" -s q -l quiet -d 'Suppress non-essential output'

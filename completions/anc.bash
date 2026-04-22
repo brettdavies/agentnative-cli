@@ -76,7 +76,7 @@ _anc() {
             return 0
             ;;
         anc__check)
-            opts="-q -h --command --binary --source --principle --output --include-tests --quiet --help [PATH]"
+            opts="-q -h --command --binary --source --principle --output --include-tests --audit-profile --quiet --help [PATH]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -92,6 +92,10 @@ _anc() {
                     ;;
                 --output)
                     COMPREPLY=($(compgen -W "text json" -- "${cur}"))
+                    return 0
+                    ;;
+                --audit-profile)
+                    COMPREPLY=($(compgen -W "human-tui file-traversal posix-utility diagnostic-only" -- "${cur}"))
                     return 0
                     ;;
                 *)

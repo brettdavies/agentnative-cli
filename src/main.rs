@@ -21,7 +21,9 @@ use checks::source::all_source_checks;
 use cli::{Cli, Commands, GenerateKind, OutputFormat};
 use error::AppError;
 use principles::matrix;
+use principles::registry::{ExceptionCategory, suppresses};
 use project::Project;
+use scorecard::audience;
 use scorecard::{exit_code, format_json, format_text};
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
@@ -51,7 +53,7 @@ fn run() -> Result<i32, AppError> {
     // Bare invocation (no args at all) is handled by clap's arg_required_else_help.
     // A flag-only invocation like `anc -q` parses successfully with `command =
     // None` — render help to stderr and exit 2 to mirror clap's contract.
-    let (path, command, binary_only, source_only, principle, output, include_tests) =
+    let (path, command, binary_only, source_only, principle, output, include_tests, audit_profile) =
         match cli.command {
             Some(Commands::Check {
                 path,
@@ -61,6 +63,7 @@ fn run() -> Result<i32, AppError> {
                 principle,
                 output,
                 include_tests,
+                audit_profile,
             }) => (
                 path,
                 command,
@@ -69,6 +72,7 @@ fn run() -> Result<i32, AppError> {
                 principle,
                 output,
                 include_tests,
+                audit_profile,
             ),
             Some(Commands::Completions { shell }) => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -124,11 +128,34 @@ fn run() -> Result<i32, AppError> {
         all_checks.extend(all_project_checks());
     }
 
-    // Run checks
+    // Translate the CLI-facing AuditProfile into the registry's
+    // ExceptionCategory. Kept local so the registry stays CLI-agnostic.
+    let exception_category: Option<ExceptionCategory> = audit_profile.map(Into::into);
+
+    // Run checks. When an audit_profile is set, checks whose IDs appear in
+    // the suppression table short-circuit to Skip with structured evidence
+    // — they still appear in `results[]` so the scorecard shows what was
+    // excluded and why.
     let mut results: Vec<CheckResult> = Vec::new();
     for check in &all_checks {
         if !check.applicable(&project) {
             continue;
+        }
+        if let Some(cat) = exception_category {
+            if suppresses(check.id(), cat) {
+                results.push(CheckResult {
+                    id: check.id().to_string(),
+                    label: check.id().to_string(),
+                    group: check.group(),
+                    layer: check.layer(),
+                    status: CheckStatus::Skip(format!(
+                        "suppressed by audit_profile: {}",
+                        cat.as_kebab_case()
+                    )),
+                    confidence: Confidence::High,
+                });
+                continue;
+            }
         }
         let result = match check.run(&project) {
             Ok(r) => r,
@@ -149,11 +176,20 @@ fn run() -> Result<i32, AppError> {
         results.retain(|r| matches_principle(&r.group, p));
     }
 
+    // Compute audience from the 4 signal checks. Read-only over results;
+    // Returns None when any signal check is missing from the vector — the
+    // suppression loop above is the usual reason signal checks drop out
+    // (e.g., human-tui suppresses `p1-non-interactive`).
+    let audience_label = audience::classify(&results);
+    let audit_profile_label = exception_category.map(|c| c.as_kebab_case().to_string());
+
     // Format output. `format_json` needs the check catalog so it can map
     // result IDs back to the requirements each check covers.
     let output_str = match output {
         OutputFormat::Text => format_text(&results, quiet),
-        OutputFormat::Json => format_json(&results, &all_checks),
+        OutputFormat::Json => {
+            format_json(&results, &all_checks, audience_label, audit_profile_label)
+        }
     };
     print!("{output_str}");
 

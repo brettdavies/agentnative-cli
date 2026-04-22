@@ -37,13 +37,14 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             [CompletionResult]::new('--command', '--command', [CompletionResultType]::ParameterName, 'Resolve a command from PATH and run behavioral checks against it')
             [CompletionResult]::new('--principle', '--principle', [CompletionResultType]::ParameterName, 'Filter checks by principle number (1-7)')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format')
+            [CompletionResult]::new('--audit-profile', '--audit-profile', [CompletionResultType]::ParameterName, 'Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed checks emit `Skip` with structured evidence so readers see what was excluded')
             [CompletionResult]::new('--binary', '--binary', [CompletionResultType]::ParameterName, 'Run only behavioral checks (skip source analysis)')
             [CompletionResult]::new('--source', '--source', [CompletionResultType]::ParameterName, 'Run only source checks (skip behavioral)')
             [CompletionResult]::new('--include-tests', '--include-tests', [CompletionResultType]::ParameterName, 'Include test code in source analysis')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
         }
         'anc;completions' {

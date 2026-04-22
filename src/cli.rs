@@ -141,3 +141,54 @@ impl From<AuditProfile> for ExceptionCategory {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::principles::registry::ALL_EXCEPTION_CATEGORIES;
+    use clap::ValueEnum;
+
+    /// Every CLI `AuditProfile` variant must map to a distinct
+    /// `ExceptionCategory`, and every `ExceptionCategory` must be
+    /// reachable from at least one `AuditProfile` variant. Failing this
+    /// test means adding a category on one side without the other —
+    /// either the CLI accepts a profile that suppresses nothing, or the
+    /// registry defines a category no CLI user can reach.
+    #[test]
+    fn audit_profile_and_exception_category_variants_are_isomorphic() {
+        let cli_mapped: std::collections::HashSet<&'static str> = AuditProfile::value_variants()
+            .iter()
+            .map(|v| ExceptionCategory::from(*v).as_kebab_case())
+            .collect();
+        let registry_kebab: std::collections::HashSet<&'static str> = ALL_EXCEPTION_CATEGORIES
+            .iter()
+            .map(|c| c.as_kebab_case())
+            .collect();
+
+        assert_eq!(
+            cli_mapped, registry_kebab,
+            "AuditProfile (cli) and ExceptionCategory (registry) variants must be isomorphic. \
+             CLI-reachable: {cli_mapped:?}, registry: {registry_kebab:?}",
+        );
+    }
+
+    /// The kebab-case string clap renders for each `AuditProfile` variant
+    /// must equal the kebab-case the registry emits — otherwise the flag
+    /// value a user types on the CLI won't match the `audit_profile` field
+    /// echoed in JSON output.
+    #[test]
+    fn audit_profile_clap_name_matches_registry_kebab_case() {
+        for variant in AuditProfile::value_variants() {
+            let clap_name = variant
+                .to_possible_value()
+                .expect("AuditProfile variants have clap names")
+                .get_name()
+                .to_string();
+            let registry_name = ExceptionCategory::from(*variant).as_kebab_case();
+            assert_eq!(
+                clap_name, registry_name,
+                "clap value name and registry kebab-case must match for every variant",
+            );
+        }
+    }
+}

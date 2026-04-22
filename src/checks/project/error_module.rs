@@ -16,6 +16,10 @@ impl Check for ErrorModuleCheck {
         "p4-error-module"
     }
 
+    fn label(&self) -> &'static str {
+        "Dedicated error module exists"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -41,7 +45,7 @@ impl Check for ErrorModuleCheck {
             if src_dir.join(candidate).exists() {
                 return Ok(CheckResult {
                     id: self.id().to_string(),
-                    label: "Dedicated error module exists".into(),
+                    label: self.label().into(),
                     group: self.group(),
                     layer: self.layer(),
                     status: CheckStatus::Pass,
@@ -60,7 +64,7 @@ impl Check for ErrorModuleCheck {
                             if path.join(name).exists() {
                                 return Ok(CheckResult {
                                     id: self.id().to_string(),
-                                    label: "Dedicated error module exists".into(),
+                                    label: self.label().into(),
                                     group: self.group(),
                                     layer: self.layer(),
                                     status: CheckStatus::Pass,
@@ -75,7 +79,7 @@ impl Check for ErrorModuleCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Dedicated error module exists".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status: CheckStatus::Warn(

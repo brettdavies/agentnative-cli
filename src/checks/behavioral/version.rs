@@ -10,6 +10,10 @@ impl Check for VersionCheck {
         "p3-version"
     }
 
+    fn label(&self) -> &'static str {
+        "Version flag works"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P3
     }
@@ -42,7 +46,7 @@ impl Check for VersionCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Version flag works".into(),
+            label: self.label().into(),
             group: CheckGroup::P3,
             layer: CheckLayer::Behavioral,
             status,

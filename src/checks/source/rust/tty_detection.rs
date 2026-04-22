@@ -41,6 +41,10 @@ impl Check for TtyDetectionCheck {
         "p1-tty-detection-source"
     }
 
+    fn label(&self) -> &'static str {
+        "TTY detection for color output"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -95,7 +99,7 @@ impl Check for TtyDetectionCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "TTY detection for color output".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

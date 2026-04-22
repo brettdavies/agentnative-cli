@@ -10,6 +10,10 @@ impl Check for JsonOutputCheck {
         "p2-json-output"
     }
 
+    fn label(&self) -> &'static str {
+        "Structured output support"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P2
     }
@@ -51,7 +55,7 @@ impl Check for JsonOutputCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Structured output support".into(),
+            label: self.label().into(),
             group: CheckGroup::P2,
             layer: CheckLayer::Behavioral,
             status,

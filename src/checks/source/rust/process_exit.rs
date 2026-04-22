@@ -18,6 +18,10 @@ impl Check for ProcessExitCheck {
         "p4-process-exit"
     }
 
+    fn label(&self) -> &'static str {
+        "No process::exit outside main"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -55,7 +59,7 @@ impl Check for ProcessExitCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No process::exit outside main".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

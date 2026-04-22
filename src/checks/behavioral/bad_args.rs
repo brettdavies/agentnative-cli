@@ -10,6 +10,10 @@ impl Check for BadArgsCheck {
         "p4-bad-args"
     }
 
+    fn label(&self) -> &'static str {
+        "Rejects invalid arguments"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -46,7 +50,7 @@ impl Check for BadArgsCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Rejects invalid arguments".into(),
+            label: self.label().into(),
             group: CheckGroup::P4,
             layer: CheckLayer::Behavioral,
             status,

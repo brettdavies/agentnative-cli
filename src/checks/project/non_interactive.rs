@@ -19,6 +19,10 @@ impl Check for NonInteractiveSourceCheck {
         "p1-non-interactive-source"
     }
 
+    fn label(&self) -> &'static str {
+        "No interactive prompt dependencies"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -62,7 +66,7 @@ impl Check for NonInteractiveSourceCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No interactive prompt dependencies".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

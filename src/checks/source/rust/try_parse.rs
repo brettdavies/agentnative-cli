@@ -21,6 +21,10 @@ impl Check for TryParseCheck {
         "p4-try-parse"
     }
 
+    fn label(&self) -> &'static str {
+        "No .parse().unwrap()"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -56,7 +60,7 @@ impl Check for TryParseCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No .parse().unwrap()".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

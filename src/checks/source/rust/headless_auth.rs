@@ -34,6 +34,10 @@ impl Check for HeadlessAuthCheck {
         "p1-headless-auth"
     }
 
+    fn label(&self) -> &'static str {
+        "Headless auth supported"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -85,7 +89,7 @@ impl Check for HeadlessAuthCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Headless auth supported".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

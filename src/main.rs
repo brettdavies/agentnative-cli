@@ -21,7 +21,7 @@ use checks::source::all_source_checks;
 use cli::{Cli, Commands, GenerateKind, OutputFormat};
 use error::AppError;
 use principles::matrix;
-use principles::registry::{ExceptionCategory, suppresses};
+use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
 use project::Project;
 use scorecard::audience;
 use scorecard::{exit_code, format_json, format_text};
@@ -145,11 +145,11 @@ fn run() -> Result<i32, AppError> {
             if suppresses(check.id(), cat) {
                 results.push(CheckResult {
                     id: check.id().to_string(),
-                    label: check.id().to_string(),
+                    label: check.label().to_string(),
                     group: check.group(),
                     layer: check.layer(),
                     status: CheckStatus::Skip(format!(
-                        "suppressed by audit_profile: {}",
+                        "{SUPPRESSION_EVIDENCE_PREFIX}{}",
                         cat.as_kebab_case()
                     )),
                     confidence: Confidence::High,
@@ -161,7 +161,7 @@ fn run() -> Result<i32, AppError> {
             Ok(r) => r,
             Err(e) => CheckResult {
                 id: check.id().to_string(),
-                label: check.id().to_string(),
+                label: check.label().to_string(),
                 group: check.group(),
                 layer: check.layer(),
                 status: CheckStatus::Error(e.to_string()),

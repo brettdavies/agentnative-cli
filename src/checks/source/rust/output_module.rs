@@ -23,6 +23,10 @@ impl Check for OutputModuleCheck {
         "p2-output-module"
     }
 
+    fn label(&self) -> &'static str {
+        "Centralized output module exists"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P2
     }
@@ -50,7 +54,7 @@ impl Check for OutputModuleCheck {
             if has_output_formatting_code(&parsed_file.source) {
                 return Ok(CheckResult {
                     id: self.id().to_string(),
-                    label: "Centralized output module exists".into(),
+                    label: self.label().into(),
                     group: self.group(),
                     layer: self.layer(),
                     status: CheckStatus::Pass,
@@ -61,7 +65,7 @@ impl Check for OutputModuleCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Centralized output module exists".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status: CheckStatus::Warn(

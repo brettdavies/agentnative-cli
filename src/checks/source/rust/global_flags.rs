@@ -28,6 +28,10 @@ impl Check for GlobalFlagsCheck {
         "p6-global-flags"
     }
 
+    fn label(&self) -> &'static str {
+        "Agentic flags are global"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -77,7 +81,7 @@ impl Check for GlobalFlagsCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Agentic flags are global".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

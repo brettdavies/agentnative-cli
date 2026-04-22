@@ -34,6 +34,10 @@ impl Check for NonInteractiveCheck {
         "p1-non-interactive"
     }
 
+    fn label(&self) -> &'static str {
+        "Non-interactive by default"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -98,7 +102,7 @@ impl Check for NonInteractiveCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Non-interactive by default".into(),
+            label: self.label().into(),
             group: CheckGroup::P1,
             layer: CheckLayer::Behavioral,
             status,

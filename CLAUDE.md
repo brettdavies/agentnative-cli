@@ -69,11 +69,18 @@ Key decisions already made:
 Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use
 different helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
 
-- **Struct** implements `Check` trait with `id()`, `group()`, `layer()`, `applicable()`, `run()`
+- **Struct** implements `Check` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
 - **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
   context) and returns `CheckStatus` (not `CheckResult`) — this is the unit-testable core
-- **`run()` is the sole `CheckResult` constructor** — uses `self.id()`, `self.group()`, `self.layer()` to build the
-  result. Never hardcode ID/group/layer string literals in `check_x()` or anywhere outside `run()`
+- **No `Check` impl constructs `CheckResult` outside its own `run()`.** `run()` is the sole place each check assembles
+  its own result — never hardcode ID/group/layer/label string literals in `check_x()` or anywhere outside `run()`. The
+  runtime layer (`main::run`'s error and `--audit-profile` suppression branches) legitimately constructs `CheckResult`
+  as a *second* site — it's the runner, not a `Check` impl, and it uses `check.id()`, `check.label()`, `check.group()`,
+  `check.layer()` from the trait (never string literals). Test doubles (`FakeCheck` in `src/principles/matrix.rs` and
+  `src/scorecard/mod.rs`) similarly sidestep the rule by design.
+- **`label()` returns `&'static str`** and feeds the `label` field in `run()`'s `CheckResult`. Having the label on the
+  trait also means the suppression and error branches can show the human label instead of falling back to the opaque
+  `id`. See `src/check.rs`.
 - **Tests call `check_x()`** and match on `CheckStatus` directly, not `result.status`
 
 This prevents ID triplication (the same string literal in `id()`, `run()`, and `check_x()`) and ensures the `Check`
@@ -139,7 +146,7 @@ deliberate commit, not a build-time artifact — the matrix is citable from outs
 - `coverage_summary` — three-way `{must, should, may} × {total, verified}` counts, computed from the checks that
   actually ran. Populated every run.
 - `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral checks.
-  Emits `"agent_optimized"`, `"mixed"`, `"human_primary"`, or `null` when any signal check is missing from results
+  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing from results
   (including when suppressed by `--audit-profile`). The classifier is read-only over results and never gates totals or
   exit codes — per CEO review Finding #3, label mismatches are fixed via registry, not classifier logic.
 - `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,

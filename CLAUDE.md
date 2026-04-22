@@ -96,7 +96,10 @@ coverage matrix pin against them.
   grows.
 - `Applicability::Universal` means every CLI; `Applicability::Conditional(reason)` names the gate in prose so the matrix
   and the site `/coverage` page can render it.
-- `ExceptionCategory` is reserved for v0.1.3 `audit_profile` suppression — do not consume before then.
+- `ExceptionCategory` drives `--audit-profile` suppression. The `SUPPRESSION_TABLE` maps each variant to the check IDs
+  it suppresses; drift tests fail the build if a category has no entry or a listed check ID isn't in the catalog. Adding
+  a fifth category requires a plan revision — the four v0.1.3 categories (`human-tui`, `file-traversal`,
+  `posix-utility`, `diagnostic-only`) are the committed surface.
 
 ## covers() Declaration
 
@@ -131,15 +134,19 @@ deliberate commit, not a build-time artifact — the matrix is citable from outs
 
 ## Scorecard v1.1 Fields
 
-`src/scorecard.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
+`src/scorecard/mod.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
 
 - `coverage_summary` — three-way `{must, should, may} × {total, verified}` counts, computed from the checks that
   actually ran. Populated every run.
-- `audience` — `Option<String>`, serialized `null` until v0.1.3 wires the audience classifier. Reserved.
-- `audit_profile` — `Option<String>`, serialized `null` until v0.1.3 wires `registry.yaml` suppression. Reserved.
+- `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral checks.
+  Emits `"agent_optimized"`, `"mixed"`, `"human_primary"`, or `null` when any signal check is missing from results
+  (including when suppressed by `--audit-profile`). The classifier is read-only over results and never gates totals or
+  exit codes — per CEO review Finding #3, label mismatches are fixed via registry, not classifier logic.
+- `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,
+  `"file-traversal"`, `"posix-utility"`, `"diagnostic-only"`). `null` when no profile is set.
 
 Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-v1.1 scorecards lack
-them until handoff 3 regenerates.
+them. v0.1.2 scorecards carry `audience: null` and `audit_profile: null`; v0.1.3+ populates both.
 
 ## Dogfooding Safety
 

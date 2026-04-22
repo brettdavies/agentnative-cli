@@ -10,6 +10,10 @@ impl Check for NoColorBehavioralCheck {
         "p6-no-color-behavioral"
     }
 
+    fn label(&self) -> &'static str {
+        "Respects NO_COLOR"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -47,9 +51,9 @@ impl Check for NoColorBehavioralCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Respects NO_COLOR".into(),
-            group: CheckGroup::P6,
-            layer: CheckLayer::Behavioral,
+            label: self.label().into(),
+            group: self.group(),
+            layer: self.layer(),
             status,
             confidence: Confidence::High,
         })

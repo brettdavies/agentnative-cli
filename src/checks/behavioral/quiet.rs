@@ -10,6 +10,10 @@ impl Check for QuietCheck {
         "p7-quiet"
     }
 
+    fn label(&self) -> &'static str {
+        "Quiet mode available"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P7
     }
@@ -44,7 +48,7 @@ impl Check for QuietCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Quiet mode available".into(),
+            label: self.label().into(),
             group: CheckGroup::P7,
             layer: CheckLayer::Behavioral,
             status,

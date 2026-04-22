@@ -13,15 +13,41 @@ use crate::types::{CheckGroup, CheckResult, CheckStatus};
 /// leaderboard pipeline) pin against this to detect shape changes.
 pub const SCHEMA_VERSION: &str = "1.1";
 
+/// v1.1 scorecard shape emitted by `anc check --output json`.
+///
+/// **Scorecard-level enum values are kebab-case.** Both `audience` and
+/// `audit_profile` serialize their enum values as kebab-case strings
+/// (`agent-optimized` / `mixed` / `human-primary` for `audience`;
+/// `human-tui` / `file-traversal` / `posix-utility` / `diagnostic-only`
+/// for `audit_profile`). `audit_profile` MUST be kebab-case because it
+/// echoes the CLI flag value a caller types (`--audit-profile human-tui`);
+/// `audience` uses the same convention so consumers don't have to juggle
+/// two casing rules inside one JSON document.
+///
+/// Per-result enum values in `results[].group` / `layer` / `confidence`
+/// stay snake_case via their `#[serde(rename_all = "snake_case")]`
+/// derives — they are a different contract (one row per check) with
+/// broader consumer history, and share spelling with the Rust
+/// type-system identifiers they come from.
+///
+/// Consumers key on the exact string; never transform case.
 #[derive(Serialize)]
 pub struct Scorecard {
     pub schema_version: &'static str,
     pub results: Vec<CheckResultView>,
     pub summary: Summary,
     pub coverage_summary: CoverageSummary,
-    /// Derived audience classification (human-primary, agent-primary, mixed).
-    /// Reserved for v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
+    /// Derived audience classification (`agent-optimized`, `mixed`,
+    /// `human-primary`). Reserved in v0.1.1 / v0.1.2 (always `null`);
+    /// populated in v0.1.3+.
     pub audience: Option<String>,
+    /// When `audience` is `null`, the reason the classifier declined to
+    /// label: `suppressed` (signal check masked by `--audit-profile`) or
+    /// `insufficient_signal` (signal check never produced, e.g. source-only
+    /// run). Omitted from JSON when `audience` has a label. Additive to
+    /// v1.1; consumers feature-detect.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audience_reason: Option<String>,
     /// Registry-sourced exemption category (human-tui, file-traversal, etc.).
     /// Reserved for v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
     pub audit_profile: Option<String>,
@@ -229,12 +255,23 @@ pub fn build_scorecard(
     audience: Option<String>,
     audit_profile: Option<String>,
 ) -> Scorecard {
+    // `audience_reason` is derived from `results` rather than threaded
+    // through as a caller parameter — the reason is a property of the
+    // result set, not a caller decision, and deriving it here keeps the
+    // label and its explanation in lock-step. When audience has a label
+    // the field is omitted from JSON (see Scorecard's serde skip rule).
+    let audience_reason = if audience.is_some() {
+        None
+    } else {
+        audience::classify_reason(results).map(|s| s.to_string())
+    };
     Scorecard {
         schema_version: SCHEMA_VERSION,
         results: results.iter().map(CheckResultView::from_result).collect(),
         summary: build_summary(results),
         coverage_summary: build_coverage_summary(results, ran_checks),
         audience,
+        audience_reason,
         audit_profile,
     }
 }
@@ -258,8 +295,18 @@ fn build_coverage_summary(
     let covers_by_id: HashMap<&str, &'static [&'static str]> =
         ran_checks.iter().map(|c| (c.id(), c.covers())).collect();
 
+    // Verified = requirements covered by a check that actually executed.
+    // A check suppressed by --audit-profile did NOT verify its
+    // requirement — it emitted Skip with the `SUPPRESSION_EVIDENCE_PREFIX`
+    // sentinel. Counting it toward `verified` would overstate coverage on
+    // any --audit-profile run (a misleading public metric for the site
+    // leaderboard). Filter those out here and mirror the exclusion in the
+    // regression test below.
     let mut verified: HashSet<&'static str> = HashSet::new();
     for r in results {
+        if audience::is_audit_profile_suppression(&r.status) {
+            continue;
+        }
         if let Some(ids) = covers_by_id.get(r.id.as_str()) {
             verified.extend(ids.iter().copied());
         }
@@ -293,6 +340,21 @@ fn build_coverage_summary(
     CoverageSummary { must, should, may }
 }
 
+/// Derive the process exit code from the full result set.
+///
+/// - `0` — every check Pass or Skip.
+/// - `1` — at least one Warn.
+/// - `2` — at least one Fail or Error.
+///
+/// **`--audit-profile` affects the exit code by masking Fails to Skips.**
+/// A check that would otherwise Fail but is suppressed by the applied
+/// profile contributes nothing to `has_fail_or_error` and cannot lift the
+/// code above `0`/`1`. This is intentional per plan R4: the caller is
+/// declaring "this category of check doesn't apply to this tool", so
+/// scoring against that requirement would produce a misleading non-zero
+/// exit. The tradeoff is that callers passing the wrong profile can
+/// silently bless a broken tool — guarding against that lives upstream
+/// (site's regen script, CI policy), not here.
 pub fn exit_code(results: &[CheckResult]) -> i32 {
     let has_fail_or_error = results
         .iter()
@@ -375,6 +437,9 @@ mod tests {
             fn id(&self) -> &str {
                 self.id
             }
+            fn label(&self) -> &'static str {
+                "fake"
+            }
             fn group(&self) -> CheckGroup {
                 CheckGroup::P1
             }
@@ -404,6 +469,73 @@ mod tests {
         assert_eq!(summary.may.verified, 0);
         // Totals match the registry snapshot baked into registry.rs tests.
         assert!(summary.must.total >= 1);
+    }
+
+    #[test]
+    fn coverage_summary_excludes_audit_profile_suppressed_checks() {
+        use crate::check::Check;
+        use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
+        use crate::project::Project;
+        use crate::types::CheckLayer;
+
+        struct FakeCheck {
+            id: &'static str,
+            covers: &'static [&'static str],
+        }
+
+        impl Check for FakeCheck {
+            fn id(&self) -> &str {
+                self.id
+            }
+            fn label(&self) -> &'static str {
+                "fake"
+            }
+            fn group(&self) -> CheckGroup {
+                CheckGroup::P1
+            }
+            fn layer(&self) -> CheckLayer {
+                CheckLayer::Behavioral
+            }
+            fn applicable(&self, _p: &Project) -> bool {
+                true
+            }
+            fn run(&self, _p: &Project) -> anyhow::Result<CheckResult> {
+                unreachable!()
+            }
+            fn covers(&self) -> &'static [&'static str] {
+                self.covers
+            }
+        }
+
+        // Two checks: one ran (Pass → counts as verified), one was
+        // suppressed by --audit-profile (Skip with the sentinel prefix →
+        // MUST NOT count as verified).
+        let results = vec![
+            make_result("verifier-ran", CheckStatus::Pass, CheckGroup::P1),
+            make_result(
+                "verifier-suppressed",
+                CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
+                CheckGroup::P1,
+            ),
+        ];
+        let checks: Vec<Box<dyn Check>> = vec![
+            Box::new(FakeCheck {
+                id: "verifier-ran",
+                covers: &["p1-must-no-interactive"],
+            }),
+            Box::new(FakeCheck {
+                id: "verifier-suppressed",
+                covers: &["p1-should-tty-detection"],
+            }),
+        ];
+
+        let summary = build_coverage_summary(&results, &checks);
+        assert_eq!(
+            summary.must.verified, 1,
+            "only the non-suppressed verifier's requirement should count; \
+             suppressed Skips MUST NOT inflate coverage_summary.verified",
+        );
+        assert_eq!(summary.should.verified, 0);
     }
 
     #[test]
@@ -476,7 +608,7 @@ mod tests {
         let audience = classify(&results);
         let json = format_json(&results, &[], audience, None);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["audience"], "agent_optimized");
+        assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
         assert_eq!(parsed["schema_version"], "1.1");
     }
@@ -500,7 +632,7 @@ mod tests {
         let audience = classify(&results);
         let json = format_json(&results, &[], audience, None);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["audience"], "human_primary");
+        assert_eq!(parsed["audience"], "human-primary");
     }
 
     #[test]
@@ -525,5 +657,157 @@ mod tests {
         let json = format_json(&results, &[], None, Some("human-tui".into()));
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audit_profile"], "human-tui");
+    }
+
+    #[test]
+    fn format_json_audience_reason_insufficient_signal() {
+        // Source-only-style run: no signal checks → audience null and
+        // audience_reason must explain why.
+        let results = vec![make_result(
+            "p1-env-flags-source",
+            CheckStatus::Pass,
+            CheckGroup::P1,
+        )];
+        let json = format_json(&results, &[], None, None);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert!(parsed["audience"].is_null());
+        assert_eq!(parsed["audience_reason"], "insufficient_signal");
+    }
+
+    #[test]
+    fn format_json_audience_reason_omitted_when_audience_labeled() {
+        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+
+        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+            .iter()
+            .map(|id| make_result(id, CheckStatus::Pass, CheckGroup::P1))
+            .collect();
+        let audience = classify(&results);
+        let json = format_json(&results, &[], audience, None);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        // audience has a label, so audience_reason must be omitted — not
+        // merely null. `#[serde(skip_serializing_if = "Option::is_none")]`
+        // on the field makes this verifiable by key presence.
+        assert_eq!(parsed["audience"], "agent-optimized");
+        assert!(
+            parsed.get("audience_reason").is_none(),
+            "audience_reason key should be absent when audience is labeled, got {}",
+            parsed["audience_reason"],
+        );
+    }
+
+    #[test]
+    fn format_json_audience_reason_suppressed() {
+        use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
+        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+
+        // One signal suppressed → audience null and reason "suppressed".
+        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+            .iter()
+            .enumerate()
+            .map(|(i, id)| {
+                let status = if i == 0 {
+                    CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui"))
+                } else {
+                    CheckStatus::Pass
+                };
+                make_result(id, status, CheckGroup::P1)
+            })
+            .collect();
+        let audience = classify(&results);
+        let json = format_json(&results, &[], audience, Some("human-tui".into()));
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert!(parsed["audience"].is_null());
+        assert_eq!(parsed["audience_reason"], "suppressed");
+    }
+
+    #[test]
+    fn exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_check() {
+        // Intentional behavior per plan R4: when --audit-profile suppresses
+        // a check that would otherwise Fail, the check emits Skip with the
+        // suppression prefix and the overall exit code reflects the
+        // masked state. This is a trust-boundary choice — the caller
+        // declared the requirement doesn't apply, so failing on it would
+        // be misleading.
+        //
+        // This test pins the behavior against a future well-meaning
+        // change that tries to "refuse to exit 0 if any check was
+        // suppressed." Such a change must update this test deliberately
+        // and resolve the conflict with plan R4, not sneak through.
+        use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
+
+        let baseline = vec![
+            make_result("c-pass", CheckStatus::Pass, CheckGroup::P1),
+            make_result(
+                "c-would-fail",
+                CheckStatus::Fail("violates MUST".into()),
+                CheckGroup::P1,
+            ),
+        ];
+        assert_eq!(exit_code(&baseline), 2, "baseline: a Fail → exit 2");
+
+        let suppressed = vec![
+            make_result("c-pass", CheckStatus::Pass, CheckGroup::P1),
+            make_result(
+                "c-would-fail",
+                CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
+                CheckGroup::P1,
+            ),
+        ];
+        assert_eq!(
+            exit_code(&suppressed),
+            0,
+            "suppression by audit_profile must lower the exit code — \
+             Fail → Skip is intentional masking per plan R4",
+        );
+    }
+
+    #[test]
+    fn scorecard_level_enum_values_are_kebab_case() {
+        // Both `audience` and `audit_profile` enum values MUST serialize
+        // as kebab-case inside the v1.1 scorecard JSON. `audit_profile`
+        // echoes the CLI flag value (`--audit-profile human-tui`) and
+        // cannot change casing; `audience` adopts the same convention so
+        // consumers don't juggle two rules inside one document.
+        //
+        // A future serde `rename_all` edit, field reorder, or enum
+        // migration that silently flips either convention must fail here
+        // loudly. The snake_case negative assertions below guard against
+        // the most likely regression direction (adopting the per-result
+        // enum convention from `CheckGroup` / `CheckLayer` / `Confidence`).
+        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+
+        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+            .iter()
+            .map(|id| make_result(id, CheckStatus::Pass, CheckGroup::P1))
+            .collect();
+        let audience = classify(&results);
+        let json = format_json(&results, &[], audience, Some("human-tui".into()));
+
+        // audience: kebab-case.
+        assert!(
+            json.contains("\"audience\": \"agent-optimized\""),
+            "audience must serialize as kebab-case 'agent-optimized', got:\n{json}",
+        );
+        assert!(
+            !json.contains("\"agent_optimized\""),
+            "audience must NOT render as snake_case 'agent_optimized' — \
+             kebab-case unified with audit_profile in v0.1.3",
+        );
+        assert!(
+            !json.contains("\"human_primary\""),
+            "audience must NOT render as snake_case 'human_primary'",
+        );
+
+        // audit_profile: kebab-case (echo of the CLI flag value).
+        assert!(
+            json.contains("\"audit_profile\": \"human-tui\""),
+            "audit_profile must serialize as kebab-case 'human-tui', got:\n{json}",
+        );
+        assert!(
+            !json.contains("\"human_tui\""),
+            "audit_profile must NOT render as snake_case 'human_tui' — \
+             would desync from the --audit-profile flag value shape",
+        );
     }
 }

@@ -42,6 +42,10 @@ impl Check for FlagExistenceCheck {
         "p1-flag-existence"
     }
 
+    fn label(&self) -> &'static str {
+        "Non-interactive gate flag advertised in --help"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -72,7 +76,7 @@ impl Check for FlagExistenceCheck {
         if help_on_bare || stdin_clean_exit {
             return Ok(CheckResult {
                 id: self.id().to_string(),
-                label: "Non-interactive gate flag advertised in --help".into(),
+                label: self.label().into(),
                 group: self.group(),
                 layer: self.layer(),
                 status: CheckStatus::Skip(
@@ -104,7 +108,7 @@ impl Check for FlagExistenceCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Non-interactive gate flag advertised in --help".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

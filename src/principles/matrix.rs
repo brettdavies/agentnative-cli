@@ -15,7 +15,9 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 use crate::check::Check;
-use crate::principles::registry::{Applicability, Level, REQUIREMENTS};
+use crate::principles::registry::{
+    ALL_EXCEPTION_CATEGORIES, Applicability, Level, REQUIREMENTS, SUPPRESSION_TABLE,
+};
 use crate::types::CheckLayer;
 
 /// A check that covers a given requirement.
@@ -36,6 +38,22 @@ pub struct MatrixRow {
     pub verifiers: Vec<Verifier>,
 }
 
+/// Programmatic listing of every `--audit-profile` value and what it
+/// suppresses. Consumed by the site's regen script and by agents that
+/// want to enumerate suppressible checks without scraping `--help`.
+#[derive(Debug, Serialize)]
+pub struct AuditProfileEntry {
+    /// Kebab-case flag value (e.g., `"human-tui"`) — exactly what a
+    /// caller passes to `anc check --audit-profile <name>`.
+    pub name: &'static str,
+    /// One-line human description of the category.
+    pub description: &'static str,
+    /// Check IDs that emit `Skip` with the audit_profile suppression
+    /// prefix when this profile is active. Empty slice = reserved
+    /// category with no current suppressions.
+    pub suppresses: Vec<&'static str>,
+}
+
 /// The rendered matrix, suitable for JSON serialization.
 #[derive(Debug, Serialize)]
 pub struct Matrix {
@@ -43,6 +61,10 @@ pub struct Matrix {
     pub generated_by: &'static str,
     pub rows: Vec<MatrixRow>,
     pub summary: MatrixSummary,
+    /// Every `--audit-profile` category in a stable order. Agents can
+    /// read this instead of running `anc check --help` to discover the
+    /// valid profile values and what each one excludes.
+    pub audit_profiles: Vec<AuditProfileEntry>,
 }
 
 #[derive(Debug, Serialize)]
@@ -102,7 +124,30 @@ pub fn build(checks: &[Box<dyn Check>]) -> Matrix {
         generated_by: GENERATED_BY,
         rows,
         summary,
+        audit_profiles: build_audit_profiles(),
     }
+}
+
+/// Build the `audit_profiles` section of the matrix. Iterates every
+/// `ExceptionCategory` variant in the registry order and pairs each with
+/// its `SUPPRESSION_TABLE` entry — the order is stable across runs so
+/// consumers can diff matrix.json without noise.
+fn build_audit_profiles() -> Vec<AuditProfileEntry> {
+    ALL_EXCEPTION_CATEGORIES
+        .iter()
+        .map(|cat| {
+            let suppresses: Vec<&'static str> = SUPPRESSION_TABLE
+                .iter()
+                .find(|(c, _)| *c == *cat)
+                .map(|(_, ids)| ids.to_vec())
+                .unwrap_or_default();
+            AuditProfileEntry {
+                name: cat.as_kebab_case(),
+                description: cat.description(),
+                suppresses,
+            }
+        })
+        .collect()
 }
 
 fn summarize(rows: &[MatrixRow]) -> MatrixSummary {
@@ -310,6 +355,9 @@ mod tests {
         fn id(&self) -> &str {
             self.id
         }
+        fn label(&self) -> &'static str {
+            "fake"
+        }
         fn group(&self) -> CheckGroup {
             CheckGroup::P1
         }
@@ -399,5 +447,51 @@ mod tests {
             covers: &["p1-must-no-interactive", "p1-should-tty-detection"],
         })];
         assert!(dangling_cover_ids(&checks).is_empty());
+    }
+
+    #[test]
+    fn build_audit_profiles_covers_every_registry_variant() {
+        // Emitted list length must equal ALL_EXCEPTION_CATEGORIES length —
+        // an ordering or completeness drift on either side fails here.
+        let profiles = build_audit_profiles();
+        assert_eq!(profiles.len(), ALL_EXCEPTION_CATEGORIES.len());
+        for (i, cat) in ALL_EXCEPTION_CATEGORIES.iter().enumerate() {
+            assert_eq!(
+                profiles[i].name,
+                cat.as_kebab_case(),
+                "audit_profiles[{i}].name must match registry kebab-case",
+            );
+            let expected_suppresses: Vec<&'static str> = SUPPRESSION_TABLE
+                .iter()
+                .find(|(c, _)| *c == *cat)
+                .map(|(_, ids)| ids.to_vec())
+                .unwrap_or_default();
+            assert_eq!(
+                profiles[i].suppresses,
+                expected_suppresses,
+                "audit_profiles[{i}].suppresses must match SUPPRESSION_TABLE for {}",
+                cat.as_kebab_case(),
+            );
+        }
+    }
+
+    #[test]
+    fn matrix_json_includes_audit_profiles_section() {
+        // Build a minimal matrix and verify the rendered JSON has a
+        // top-level `audit_profiles` array that downstream consumers can
+        // key against without re-running suppression logic.
+        let checks: Vec<Box<dyn Check>> = vec![];
+        let matrix = build(&checks);
+        let json = render_json(&matrix);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        let arr = parsed["audit_profiles"]
+            .as_array()
+            .expect("audit_profiles is a JSON array");
+        assert_eq!(arr.len(), ALL_EXCEPTION_CATEGORIES.len());
+        for entry in arr {
+            assert!(entry["name"].is_string());
+            assert!(entry["description"].is_string());
+            assert!(entry["suppresses"].is_array());
+        }
     }
 }

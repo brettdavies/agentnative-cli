@@ -10,6 +10,10 @@ impl Check for HelpCheck {
         "p3-help"
     }
 
+    fn label(&self) -> &'static str {
+        "Help flag produces useful output"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P3
     }
@@ -55,7 +59,7 @@ impl Check for HelpCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Help flag produces useful output".into(),
+            label: self.label().into(),
             group: CheckGroup::P3,
             layer: CheckLayer::Behavioral,
             status,

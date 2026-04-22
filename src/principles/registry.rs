@@ -57,7 +57,74 @@ impl ExceptionCategory {
             ExceptionCategory::DiagnosticOnly => "diagnostic-only",
         }
     }
+
+    /// One-line human description. Surfaces in `coverage/matrix.json`
+    /// under the `audit_profiles` section so agents + site renderers can
+    /// explain each category without re-deriving semantics from the
+    /// kebab-case name.
+    pub fn description(&self) -> &'static str {
+        match self {
+            ExceptionCategory::HumanTui => {
+                "TUI-by-design tools (lazygit, k9s, btop). Interactive-prompt MUSTs \
+                 suppressed; the TTY-driving contract is out of scope for verification."
+            }
+            ExceptionCategory::FileTraversal => {
+                "File-traversal utilities (fd, find). Subcommand-structure SHOULDs \
+                 relaxed; these tools have no subcommands by design."
+            }
+            ExceptionCategory::PosixUtility => {
+                "POSIX utilities (cat, sed, awk). Stdin-as-primary-input is their \
+                 contract; P1 interactive-prompt MUSTs satisfied vacuously."
+            }
+            ExceptionCategory::DiagnosticOnly => {
+                "Diagnostic tools (nvidia-smi, vmstat). No write operations, so the \
+                 P5 mutation-boundary MUSTs do not apply."
+            }
+        }
+    }
 }
+
+/// Every `ExceptionCategory` variant in order. Anchor for parity drift
+/// tests (CLI `AuditProfile` must stay isomorphic) and for callers that
+/// need to iterate the full set (suppression-table drift check,
+/// `coverage/matrix.json` audit_profile section).
+///
+/// A new variant on the enum is a breaking plan change — land it in
+/// `docs/plans/`, update this slice, update `SUPPRESSION_TABLE`, update
+/// `AuditProfile`, and regenerate completions. The drift tests below and
+/// in `src/cli.rs` tie all four sites together.
+pub const ALL_EXCEPTION_CATEGORIES: &[ExceptionCategory] = &[
+    ExceptionCategory::HumanTui,
+    ExceptionCategory::FileTraversal,
+    ExceptionCategory::PosixUtility,
+    ExceptionCategory::DiagnosticOnly,
+];
+
+// Compile-time guard that the slice above covers every variant. If a
+// new variant is added without updating ALL_EXCEPTION_CATEGORIES the
+// match is non-exhaustive and the build breaks — making this drift
+// impossible to merge rather than "test should catch it."
+#[allow(dead_code)]
+const fn _all_categories_covers_every_variant(c: ExceptionCategory) -> bool {
+    match c {
+        ExceptionCategory::HumanTui
+        | ExceptionCategory::FileTraversal
+        | ExceptionCategory::PosixUtility
+        | ExceptionCategory::DiagnosticOnly => true,
+    }
+}
+
+/// Prefix of the structured evidence string emitted for any check suppressed
+/// by `--audit-profile`. The full evidence takes the shape
+/// `"suppressed by audit_profile: <kebab-case-category>"`. This is the single
+/// source of truth — `main.rs` (producer), `scorecard::audience` (consumer
+/// sniffer), and the `scorecard::build_coverage_summary` filter all reference
+/// this constant so a rename can't silently desync the three sites.
+///
+/// Consumers outside this crate (the integration test asserting the literal,
+/// downstream site renderers) pin against the stable string shape — treat any
+/// edit here as a consumer-contract change.
+pub const SUPPRESSION_EVIDENCE_PREFIX: &str = "suppressed by audit_profile: ";
 
 /// Which check IDs each exception category suppresses. When a category
 /// applies, the listed checks emit `CheckStatus::Skip` with structured
@@ -77,6 +144,33 @@ impl ExceptionCategory {
 ///
 /// Every listed check ID is validated against the behavioral/source/project
 /// catalog at test time; a typo or rename breaks the build.
+///
+/// # Trust boundary
+///
+/// The CLI accepts `--audit-profile <category>` from the caller without
+/// validating that the target tool actually fits the declared category.
+/// A broken CLI can self-declare `--audit-profile human-tui` and silently
+/// mask the P1 interactive-prompt MUSTs + `p6-sigpipe` that would
+/// otherwise Fail. This is intentional: the CLI only knows what it was
+/// told, and hard-coding per-tool category detection would entangle the
+/// repo-agnostic CLI with a tool registry it deliberately doesn't own.
+/// Guarding against caller-chosen miscategorization is an upstream
+/// concern (site's regen script looks up each tool's declared profile;
+/// CI policy gates reviewer attention on registry changes). See also the
+/// drift test in `src/cli.rs` pinning `AuditProfile` ↔ `ExceptionCategory`
+/// parity and the `audit_profiles` section of `coverage/matrix.json`
+/// publishing the full mapping.
+///
+/// # Drift test scope
+///
+/// The `suppression_table_check_ids_exist_in_catalog` test below verifies
+/// that every listed check ID resolves to a real catalog entry — typos
+/// surface at build time. It does *not* assert that each ID is
+/// *semantically appropriate* for its category (e.g., a typo that
+/// accidentally moves `p2-json-output` into `HumanTui` would still pass
+/// because `p2-json-output` exists). At v0.1.3's 4 committed categories
+/// the per-category slice is short enough for eyeball review; revisit a
+/// per-category snapshot assertion if the table grows.
 pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
     (
         ExceptionCategory::HumanTui,

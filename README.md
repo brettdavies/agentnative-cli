@@ -186,15 +186,26 @@ Produces a scorecard (`schema_version: "1.1"`) with results, summary, and covera
     "should": { "total": 16, "verified": 2 },
     "may":   { "total": 7,  "verified": 0 }
   },
-  "audience": null,
+  "audience": "agent-optimized",
   "audit_profile": null
 }
 ```
 
 - `coverage_summary` — how many MUSTs/SHOULDs/MAYs the checks that ran actually verified, against the spec registry's
-  totals. See `docs/coverage-matrix.md` for the per-requirement breakdown.
-- `audience` / `audit_profile` — reserved for v0.1.3 (audience classifier + `registry.yaml` suppression). Serialize as
-  `null` today; consumers should feature-detect.
+  totals. See `docs/coverage-matrix.md` for the per-requirement breakdown. Checks suppressed by `--audit-profile` do
+  **not** count toward `verified` — suppression means the requirement was not verified, even if the check is skipped
+  rather than run.
+- `audience` — derived classification from 4 signal behavioral checks (`p1-non-interactive`, `p2-json-output`,
+  `p7-quiet`, `p6-no-color-behavioral`). Emits `agent-optimized` (0-1 Warns), `mixed` (2 Warns), or `human-primary` (3-4
+  Warns). Returns `null` when any signal check failed to run (source-only mode, missing runner, or `--audit-profile`
+  suppression). Informational only — never gates totals or exit codes. Values serialize as kebab-case to match
+  `audit_profile`'s format within the same JSON document.
+- `audience_reason` — present only when `audience` is `null`. Values: `suppressed` (at least one signal check was masked
+  by `--audit-profile`) or `insufficient_signal` (signal check never produced, e.g. source-only run). Additive to schema
+  v1.1; v1.1 consumers feature-detect.
+- `audit_profile` — echoes the applied `--audit-profile <category>` flag value (`human-tui`, `file-traversal`,
+  `posix-utility`, or `diagnostic-only`). `null` when no profile is set. See `coverage/matrix.json` under
+  `audit_profiles` for the committed per-category mapping of which check IDs each profile suppresses.
 
 ## Contributing
 

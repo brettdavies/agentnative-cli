@@ -27,6 +27,10 @@ impl Check for EnvFlagsCheck {
         "p1-env-flags-source"
     }
 
+    fn label(&self) -> &'static str {
+        "Agentic flags have env backing"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -75,7 +79,7 @@ impl Check for EnvFlagsCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Agentic flags have env backing".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

@@ -14,6 +14,10 @@ impl Check for AgentsMdCheck {
         "p6-agents-md"
     }
 
+    fn label(&self) -> &'static str {
+        "AGENTS.md exists"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -37,7 +41,7 @@ impl Check for AgentsMdCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "AGENTS.md exists".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

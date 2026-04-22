@@ -19,6 +19,10 @@ impl Check for StructuredOutputCheck {
         "p2-structured-output"
     }
 
+    fn label(&self) -> &'static str {
+        "Structured output type exists"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P2
     }
@@ -70,7 +74,7 @@ impl Check for StructuredOutputCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Structured output type exists".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

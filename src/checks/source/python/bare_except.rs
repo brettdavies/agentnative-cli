@@ -19,6 +19,10 @@ impl Check for BareExceptCheck {
         "code-bare-except"
     }
 
+    fn label(&self) -> &'static str {
+        "No bare except: clauses"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::CodeQuality
     }
@@ -50,7 +54,7 @@ impl Check for BareExceptCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No bare except: clauses".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

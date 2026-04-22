@@ -21,6 +21,10 @@ impl Check for ErrorTypesCheck {
         "p4-error-types"
     }
 
+    fn label(&self) -> &'static str {
+        "Structured error types"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -60,7 +64,7 @@ impl Check for ErrorTypesCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Structured error types".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

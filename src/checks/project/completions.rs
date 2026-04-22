@@ -16,6 +16,10 @@ impl Check for CompletionsCheck {
         "p6-completions"
     }
 
+    fn label(&self) -> &'static str {
+        "Shell completions support"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -56,7 +60,7 @@ impl Check for CompletionsCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Shell completions support".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

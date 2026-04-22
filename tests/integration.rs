@@ -821,11 +821,120 @@ fn test_audit_profile_shrinks_audience_denominator() {
 }
 
 #[test]
+fn test_audience_non_null_on_self_dogfood() {
+    // End-to-end guard for the main.rs → scorecard audience handoff.
+    // A unit test in `src/scorecard` feeds synthetic `CheckResult`s into
+    // `classify()`, but only an integration run exercises
+    // `run_check()` → `classify()` → `build_scorecard()` on real data.
+    // A regression that passes `None` at the main.rs call site would pass
+    // every existing unit test and only fail here.
+    //
+    // Self-dogfood produces `agent-optimized` today — but the specific
+    // label isn't the contract. What matters is that `audience` is a
+    // non-null string (classifier actually ran) and that `audience_reason`
+    // is absent (no gap to explain).
+    let assert = cmd().args(["check", ".", "--output", "json"]).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+
+    let audience = parsed["audience"].as_str().unwrap_or_else(|| {
+        panic!(
+            "self-dogfood must produce a concrete audience label, got {:?}",
+            parsed["audience"]
+        )
+    });
+    assert!(
+        matches!(audience, "agent-optimized" | "mixed" | "human-primary"),
+        "audience must be one of the 3 enum values, got {audience:?}",
+    );
+    assert!(
+        parsed.get("audience_reason").is_none(),
+        "audience_reason key should be absent when audience is labeled, got {}",
+        parsed["audience_reason"],
+    );
+}
+
+#[test]
+fn test_principle_filter_forces_audience_null() {
+    // `--principle 2` drops every non-P2 check from `all_checks` before
+    // the run loop. Since the 4 audience signals span P1, P2, P6, P7,
+    // three of them disappear — audience must be null with
+    // `audience_reason: "insufficient_signal"`.
+    let assert = cmd()
+        .args(["check", ".", "--principle", "2", "--output", "json"])
+        .assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+
+    assert!(
+        parsed["audience"].is_null(),
+        "filtering to a single principle drops 3 of 4 signal checks — audience must be null",
+    );
+    assert_eq!(parsed["audience_reason"], "insufficient_signal");
+}
+
+#[test]
+fn test_scorecard_json_has_stable_top_level_keys() {
+    // Snapshot-style contract check: the site renderer and any agent
+    // consumer pin against this exact key set. A regression that
+    // accidentally renames or drops a top-level key fails here rather
+    // than silently breaking downstream consumption. New keys (always
+    // additive) should add to EXPECTED; removals or renames require a
+    // plan revision because they break v1.1 consumers.
+    //
+    // Enforcing "no unexpected keys" too (bidirectional check) means an
+    // accidental extra key also fails — which is the correct behavior
+    // for a versioned schema contract.
+    let assert = cmd().args(["check", ".", "--output", "json"]).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+    let obj = parsed.as_object().expect("scorecard is a JSON object");
+
+    const EXPECTED: &[&str] = &[
+        "schema_version",
+        "results",
+        "summary",
+        "coverage_summary",
+        "audience",
+        "audit_profile",
+    ];
+    // `audience_reason` is present only when audience is null — on the
+    // self-dogfood it should NOT appear, consistent with the skip rule.
+    const OPTIONAL: &[&str] = &["audience_reason"];
+
+    for key in EXPECTED {
+        assert!(
+            obj.contains_key(*key),
+            "scorecard JSON missing required v1.1 key {key:?}; got {:?}",
+            obj.keys().collect::<Vec<_>>(),
+        );
+    }
+    let unexpected: Vec<&String> = obj
+        .keys()
+        .filter(|k| !EXPECTED.contains(&k.as_str()) && !OPTIONAL.contains(&k.as_str()))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "scorecard JSON grew unexpected top-level key(s): {unexpected:?}. Additive? \
+         Add to EXPECTED/OPTIONAL in this test. Breaking? Plan revision required.",
+    );
+
+    // Fixed enumerations also pin against the renderer contract.
+    assert_eq!(obj["schema_version"], "1.1");
+}
+
+#[test]
 fn test_audit_profile_diagnostic_does_not_panic_on_self() {
-    // Dogfood edge case from the plan: whimsical combination that still
-    // must not crash. diagnostic-only suppresses p5-dry-run, which is a
-    // project check that runs against the current directory.
-    cmd()
+    // Dogfood edge case from the plan: `diagnostic-only` suppresses
+    // p5-dry-run on the self-target. A regression that drops the
+    // suppression (check runs normally) would still exit with a valid
+    // code, so a stronger assertion is required: `p5-dry-run` must
+    // appear in `results[]` as `status: "skip"` with the structured
+    // suppression evidence.
+    let assert = cmd()
         .args([
             "check",
             ".",
@@ -836,6 +945,27 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
         ])
         .assert()
         .code(predicate::in_iter([0, 1, 2]));
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("utf8 stdout");
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
+
+    let results = parsed["results"].as_array().expect("results is array");
+    let p5 = results
+        .iter()
+        .find(|r| r["id"] == "p5-dry-run")
+        .expect("p5-dry-run check should appear in results[]");
+    assert_eq!(
+        p5["status"], "skip",
+        "diagnostic-only must suppress p5-dry-run to Skip (got {p5})",
+    );
+    let evidence = p5["evidence"]
+        .as_str()
+        .expect("suppressed p5-dry-run carries evidence string");
+    assert!(
+        evidence.contains("suppressed by audit_profile: diagnostic-only"),
+        "expected suppression evidence prefix, got {evidence:?}",
+    );
+    assert_eq!(parsed["audit_profile"], "diagnostic-only");
 }
 
 /// instead of derived from self.id()/self.group()/self.layer(). This test walks the
@@ -899,6 +1029,116 @@ fn convention_check_x_returns_check_status_not_check_result() {
             let path = entry.path();
             if path.is_dir() {
                 visit_dir(&path, f);
+            } else if path.extension() == Some(OsStr::new("rs")) {
+                let contents = fs::read_to_string(&path).expect("read_to_string");
+                f(&path, &contents);
+            }
+        }
+    }
+}
+
+/// CLAUDE.md "Source Check Convention" says: **no `Check` impl constructs
+/// `CheckResult` outside its own `run()`.** Every check file's
+/// `CheckResult { ... }` struct literal must sit inside a `fn run(`
+/// function body — not in helpers, module-level code, or anything else.
+///
+/// The runtime layer (`src/main.rs`) is exempt — it legitimately
+/// constructs `CheckResult` in the error and audit_profile-suppression
+/// branches using `check.id()` / `check.label()` / `check.group()` /
+/// `check.layer()` from the trait, not string literals. Test doubles
+/// inside `#[cfg(test)]` are also exempt.
+///
+/// This test walks every `src/checks/**/*.rs` file, strips the
+/// `#[cfg(test)]` section, and flags any `CheckResult {` literal whose
+/// nearest preceding `fn <name>(` declaration is not named `run`. Paired
+/// with `convention_check_x_returns_check_status_not_check_result`
+/// above (which catches helpers returning CheckResult), this enforces
+/// the full convention.
+#[test]
+fn convention_check_result_constructed_only_in_run_body() {
+    use std::ffi::OsStr;
+    use std::fs;
+    use std::path::Path;
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/checks");
+    assert!(
+        root.is_dir(),
+        "checks root dir not found: {}",
+        root.display()
+    );
+
+    let mut violations: Vec<String> = Vec::new();
+    visit_dir_all(&root, &mut |path, contents| {
+        // Strip everything at and below the first `#[cfg(test)]` — test
+        // modules construct CheckResult via FakeCheck / make_result and
+        // are legitimately exempt from the convention.
+        let scan = match contents.find("#[cfg(test)]") {
+            Some(cut) => &contents[..cut],
+            None => contents,
+        };
+
+        let lines: Vec<&str> = scan.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            // Match struct-literal construction, not the return-type
+            // position in a function signature (`-> CheckResult {`).
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            let idx = match line.find("CheckResult {") {
+                Some(k) => k,
+                None => continue,
+            };
+            // Skip the signature return-type case.
+            let before = &line[..idx];
+            if before.trim_end().ends_with("->") {
+                continue;
+            }
+
+            // Walk backward to find the nearest `fn <name>(` declaration.
+            let enclosing_fn = lines[..i]
+                .iter()
+                .rev()
+                .find_map(|l| {
+                    let t = l.trim_start();
+                    // Ignore comment lines mentioning `fn foo(`.
+                    if t.starts_with("//") {
+                        return None;
+                    }
+                    let pos = t.find("fn ")?;
+                    let after = &t[pos + 3..];
+                    let name_end = after.find(|c: char| !c.is_ascii_alphanumeric() && c != '_')?;
+                    Some(after[..name_end].to_string())
+                })
+                .unwrap_or_else(|| "<module>".to_string());
+
+            if enclosing_fn != "run" {
+                violations.push(format!(
+                    "{}:{}: CheckResult constructed inside `fn {enclosing_fn}`, not `fn run`",
+                    path.display(),
+                    i + 1,
+                ));
+            }
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Found {} CheckResult construction(s) outside `fn run` in src/checks/. \
+         CLAUDE.md 'Source Check Convention' requires run() to be the sole \
+         CheckResult constructor per Check impl. Move the construction into \
+         run() (helpers should return CheckStatus).\n\n\
+         Violations:\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
+
+    fn visit_dir_all<F: FnMut(&Path, &str)>(dir: &Path, f: &mut F) {
+        for entry in fs::read_dir(dir).expect("read_dir") {
+            let entry = entry.expect("entry");
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dir_all(&path, f);
             } else if path.extension() == Some(OsStr::new("rs")) {
                 let contents = fs::read_to_string(&path).expect("read_to_string");
                 f(&path, &contents);

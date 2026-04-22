@@ -45,6 +45,10 @@ impl Check for DryRunCheck {
         "p5-dry-run"
     }
 
+    fn label(&self) -> &'static str {
+        "Dry-run flag for write operations"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P5
     }
@@ -99,7 +103,7 @@ impl Check for DryRunCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Dry-run flag for write operations".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

@@ -32,6 +32,10 @@ impl Check for OutputClampingCheck {
         "p7-output-clamping"
     }
 
+    fn label(&self) -> &'static str {
+        "List output is clamped"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P7
     }
@@ -82,7 +86,7 @@ impl Check for OutputClampingCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "List output is clamped".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

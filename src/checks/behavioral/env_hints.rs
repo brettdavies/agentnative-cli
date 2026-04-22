@@ -20,6 +20,10 @@ impl Check for EnvHintsCheck {
         "p1-env-hints"
     }
 
+    fn label(&self) -> &'static str {
+        "Flags advertise env-var bindings in --help"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P1
     }
@@ -44,7 +48,7 @@ impl Check for EnvHintsCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Flags advertise env-var bindings in --help".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

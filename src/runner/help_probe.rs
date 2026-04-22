@@ -231,7 +231,7 @@ fn parse_env_hints(raw: &str) -> Vec<EnvHint> {
     let pattern2 = parse_env_hints_bash_style(raw);
 
     let mut seen: HashSet<String> = HashSet::new();
-    let mut merged = Vec::with_capacity(pattern1.len() + pattern2.len());
+    let mut merged = Vec::new();
     for hint in pattern1.into_iter().chain(pattern2) {
         if seen.insert(hint.var.clone()) {
             merged.push(hint);
@@ -449,16 +449,19 @@ fn extract_env_tokens(line: &str) -> Vec<String> {
             // `OPTIONS`, `COMMAND`, `HTTP`, `FILES`.
             let is_tool_scoped = had_dollar || candidate.contains('_');
 
+            // `is_env_var_name(candidate)` would be redundant here —
+            // the greedy scan above only admits `[A-Z_][A-Z0-9_]*` bytes,
+            // so the candidate is already a valid env-var name by
+            // construction.
             if left_ok
                 && right_ok
                 && !in_placeholder_bracket
                 && is_tool_scoped
                 && candidate.len() >= 3
-                && is_env_var_name(candidate)
             {
                 out.push(candidate.to_string());
             }
-            i = end.max(i + 1);
+            i = end;
         } else {
             i += 1;
         }

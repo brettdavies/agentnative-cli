@@ -21,6 +21,10 @@ impl Check for NakedPrintlnCheck {
         "p7-naked-println"
     }
 
+    fn label(&self) -> &'static str {
+        "No naked println!/print! outside output modules"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P7
     }
@@ -60,7 +64,7 @@ impl Check for NakedPrintlnCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No naked println!/print! outside output modules".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

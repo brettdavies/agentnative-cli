@@ -24,6 +24,10 @@ impl Check for NoColorSourceCheck {
         "p6-no-color"
     }
 
+    fn label(&self) -> &'static str {
+        "Respects NO_COLOR"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -63,7 +67,7 @@ impl Check for NoColorSourceCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Respects NO_COLOR".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

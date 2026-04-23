@@ -24,6 +24,10 @@ impl Check for NoPagerBehavioralCheck {
         "p6-no-pager-behavioral"
     }
 
+    fn label(&self) -> &'static str {
+        "Pager-using CLI ships --no-pager escape hatch"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -48,7 +52,7 @@ impl Check for NoPagerBehavioralCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Pager-using CLI ships --no-pager escape hatch".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

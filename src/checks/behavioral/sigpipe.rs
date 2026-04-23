@@ -10,6 +10,10 @@ impl Check for SigpipeCheck {
         "p6-sigpipe"
     }
 
+    fn label(&self) -> &'static str {
+        "Handles SIGPIPE gracefully"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -40,7 +44,7 @@ impl Check for SigpipeCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Handles SIGPIPE gracefully".into(),
+            label: self.label().into(),
             group: CheckGroup::P6,
             layer: CheckLayer::Behavioral,
             status,

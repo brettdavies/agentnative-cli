@@ -22,6 +22,10 @@ impl Check for TimeoutFlagCheck {
         "p6-timeout"
     }
 
+    fn label(&self) -> &'static str {
+        "Timeout flag for network ops"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -73,7 +77,7 @@ impl Check for TimeoutFlagCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Timeout flag for network ops".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

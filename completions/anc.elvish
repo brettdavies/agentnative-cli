@@ -33,13 +33,14 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --command 'Resolve a command from PATH and run behavioral checks against it'
             cand --principle 'Filter checks by principle number (1-7)'
             cand --output 'Output format'
+            cand --audit-profile 'Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed checks emit `Skip` with structured evidence so readers see what was excluded'
             cand --binary 'Run only behavioral checks (skip source analysis)'
             cand --source 'Run only source checks (skip behavioral)'
             cand --include-tests 'Include test code in source analysis'
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
-            cand -h 'Print help'
-            cand --help 'Print help'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
         }
         &'anc;completions'= {
             cand -q 'Suppress non-essential output'

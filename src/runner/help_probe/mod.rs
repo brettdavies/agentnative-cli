@@ -10,7 +10,22 @@
 //! is a named exception in `docs/coverage-matrix.md` — checks that consume
 //! these parsers should Skip, not Warn, when the raw text lacks an English
 //! help surface.
+//!
+//! `parse_env_hints` uses two complementary patterns:
+//! - **Pattern 1 (clap-style)**: `[env: FOO]` annotations inside the flag
+//!   table. Exact match; high precision.
+//! - **Pattern 2 (bash-style)**: `$FOO` or `TOOL_FOO` tokens co-occurring
+//!   within a ±4-line window of a flag definition, plus a dedicated
+//!   `ENVIRONMENT` section scan. Catches tools like `ripgrep`, `gh`, and
+//!   `aider` that document env bindings in free prose rather than clap
+//!   annotations. Three mitigations keep false positives in check:
+//!   uppercase-identifier shape (length ≥ 3), same-paragraph window, and
+//!   a shell-env blacklist (`PATH`, `HOME`, etc.).
+//!
+//! Results from both patterns are deduped by env-var name. Confidence on
+//! `p1-env-hints` stays `Medium` — widening does not raise confidence.
 
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use anyhow::Result;
@@ -42,12 +57,38 @@ impl Flag {
     }
 }
 
+mod env_hints_bash;
+
+/// Which detection pattern surfaced an [`EnvHint`]. Agents debugging a
+/// false positive need to know whether a hint came from a clap
+/// `[env: FOO]` annotation (high signal), flag-adjacent prose (medium),
+/// or a dedicated `ENVIRONMENT` section (medium). Serialized as
+/// snake_case if/when [`EnvHint`] is exposed in JSON.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvHintSource {
+    /// Pattern 1 — clap's `[env: FOO]` / `[env: FOO=<default>]`
+    /// annotation. The strongest signal; clap emits this when
+    /// `env = "FOO"` is declared on an `Arg`.
+    ClapAnnotation,
+    /// Pattern 2a — a bash-style `$FOO` or `TOOL_FOO` token appears
+    /// within the ±4-line proximity window around a flag definition.
+    Proximity,
+    /// Pattern 2b — a token appears inside a dedicated `ENVIRONMENT` /
+    /// `ENV VARS` / `ENVIRONMENT VARIABLES` section.
+    EnvSection,
+}
+
 /// A bound between a flag surface and an environment variable — surfaces
 /// clap's `[env: FOO]` hints as first-class data so checks don't re-scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvHint {
     /// Environment variable name, e.g., `RIPGREP_CONFIG_PATH`.
     pub var: String,
+    /// Which detection pattern surfaced this hint. Lets evidence strings
+    /// and downstream agents see where the signal came from without
+    /// re-running the parser.
+    pub source: EnvHintSource,
 }
 
 /// Shared, lazily-parsed view over `<binary> --help`. Construct via
@@ -204,10 +245,36 @@ fn parse_short_flag(candidate: &str) -> Option<String> {
     }
 }
 
-/// Parse clap's `[env: FOO_BAR]` or `[env: FOO_BAR=<default>]` annotations.
-/// Each occurrence becomes one `EnvHint` — duplicates are preserved so
-/// callers can count occurrences if useful.
+/// Parse env-var bindings from help text using two complementary patterns.
+///
+/// Pattern 1 (clap-style `[env: FOO]`) and Pattern 2 (bash-style `$FOO` or
+/// `TOOL_FOO` near a flag) are scanned independently, then merged and
+/// deduped by var name. Duplicates within a single pattern are preserved
+/// in Pattern 1's output but collapsed across patterns — callers that want
+/// occurrence counts should inspect Pattern 1's raw output directly.
 fn parse_env_hints(raw: &str) -> Vec<EnvHint> {
+    let pattern1 = parse_env_hints_clap_style(raw);
+    let pattern2 = env_hints_bash::parse_env_hints_bash_style(raw);
+
+    // Dedup by var name. Pattern 1 wins when both patterns match the same
+    // name — its signal (explicit clap annotation) is strictly stronger
+    // than proximity-or-section inference, and the emitted `source` tag
+    // reflects that provenance. Iteration order preserves Pattern 1's
+    // occurrences first, so `seen.insert` keeps the clap-annotation hint.
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut merged = Vec::new();
+    for hint in pattern1.into_iter().chain(pattern2) {
+        if seen.insert(hint.var.clone()) {
+            merged.push(hint);
+        }
+    }
+    merged
+}
+
+/// Pattern 1 — clap's `[env: FOO_BAR]` or `[env: FOO_BAR=<default>]`
+/// annotations. Each occurrence becomes one `EnvHint` tagged with
+/// [`EnvHintSource::ClapAnnotation`].
+fn parse_env_hints_clap_style(raw: &str) -> Vec<EnvHint> {
     const TAG: &str = "[env:";
     let mut hints = Vec::new();
     let mut rest = raw;
@@ -219,6 +286,7 @@ fn parse_env_hints(raw: &str) -> Vec<EnvHint> {
         if is_env_var_name(name) {
             hints.push(EnvHint {
                 var: name.to_string(),
+                source: EnvHintSource::ClapAnnotation,
             });
         }
         rest = &after[end..];
@@ -329,6 +397,11 @@ A tiny HTTP client.
 Usage: xurl-rs URL
 "#;
 
+    // Pattern 2 fixtures (GH_HELP, RIPGREP_PROSE_HELP) and Pattern 2
+    // tests live alongside the Pattern 2 code in
+    // `runner/help_probe/env_hints_bash.rs`. Parent keeps only Pattern 1
+    // + shared-fixture tests.
+
     // Localized help — ensures parsers degrade to empty without panicking.
     const NON_ENGLISH_HELP: &str = r#"用法: outil [选项]
 
@@ -392,6 +465,28 @@ Usage: xurl-rs URL
         let hints = parse_env_hints(src);
         assert_eq!(hints.len(), 1);
         assert_eq!(hints[0].var, "VALID_1");
+    }
+
+    #[test]
+    fn pattern1_existing_behavior_unchanged() {
+        // Regression guard: the Pattern 1 fixtures that shipped in v0.1.2
+        // must still produce the same hits post-widening. Pattern 2
+        // specific coverage lives in env_hints_bash::tests.
+        let rg = parse_env_hints(RIPGREP_HELP);
+        assert!(rg.iter().any(|h| h.var == "RIPGREP_COLOR"));
+        let clap = parse_env_hints(CLAP_HELP);
+        assert!(clap.iter().any(|h| h.var == "AGENTNATIVE_QUIET"));
+    }
+
+    #[test]
+    fn pattern1_tags_hints_as_clap_annotation() {
+        // Every Pattern 1 emission must carry EnvHintSource::ClapAnnotation.
+        let rg = parse_env_hints(RIPGREP_HELP);
+        let hint = rg
+            .iter()
+            .find(|h| h.var == "RIPGREP_COLOR")
+            .expect("RIPGREP_COLOR in Pattern 1 hits");
+        assert_eq!(hint.source, EnvHintSource::ClapAnnotation);
     }
 
     #[test]

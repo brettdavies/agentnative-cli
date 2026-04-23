@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-04-23
+
+### Added
+
+- `audience` field on scorecard JSON now emits a kebab-case label (`agent-optimized` / `mixed` / `human-primary`) when all four signal behavioral checks ran, or `null` when any are missing. by @brettdavies in [#26](https://github.com/brettdavies/agentnative-cli/pull/26)
+- `--audit-profile <category>` flag on `anc check` accepts `human-tui`, `file-traversal`, `posix-utility`, or `diagnostic-only`. The applied value echoes as the top-level `audit_profile` field on scorecard JSON, and suppressed checks drop out of `coverage_summary.{must,should,may}.verified` so site leaderboards don't overstate per-tool coverage under audit profiles.
+- `audience_reason` field on scorecard JSON — populated only when `audience` is `null`, with `"suppressed"` (signal check masked by `--audit-profile`) or `"insufficient_signal"` (signal check never produced) so consumers can see why the classifier withheld a label. by @brettdavies in [#27](https://github.com/brettdavies/agentnative-cli/pull/27)
+- `audit_profiles` array in `coverage/matrix.json` — each entry carries `{name, description, suppresses[]}`, letting agents and site renderers enumerate the four `--audit-profile` categories and what each one suppresses without scraping `--help`.
+
+### Changed
+
+- `p1-env-hints` now recognizes bash-style env-var references (`$FOO` / `TOOL_FOO`) near flag definitions in addition to clap `[env: FOO]` annotations. Tools like `ripgrep` and `aider` that document env bindings in free prose now Pass instead of Warn. `$PAGER` and uppercase section headers like `DOCKER_CONFIG:` are excluded so tools like `git` / `gh` / `man` and pages with structured help output don't produce false positives. by @brettdavies in [#26](https://github.com/brettdavies/agentnative-cli/pull/26)
+- Suppressed and errored `results[].label` values now show the check's human-readable label (e.g., "Respects NO_COLOR") instead of falling back to the check id. by @brettdavies in [#27](https://github.com/brettdavies/agentnative-cli/pull/27)
+
+### Documentation
+
+- README.md, AGENTS.md, and CLAUDE.md updated to describe the shipped v0.1.3 scorecard surface: `audience` + `audience_reason` + `audit_profile` field semantics, the `--audit-profile` flag with examples, and the `audit_profiles` section of `coverage/matrix.json` as the programmatic source for category enumeration. by @brettdavies in [#27](https://github.com/brettdavies/agentnative-cli/pull/27)
+
+**Full Changelog**: [v0.1.2...v0.1.3](https://github.com/brettdavies/agentnative-cli/compare/v0.1.2...v0.1.3)
+
 ## [0.1.2] - 2026-04-21
 
 ### Added

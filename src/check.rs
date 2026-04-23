@@ -6,6 +6,15 @@ pub trait Check {
     /// Unique identifier for this check (e.g., "code-unwrap", "p3-help").
     fn id(&self) -> &str;
 
+    /// Human-readable one-line label. Surfaces in scorecard JSON
+    /// (`results[].label`) and text output. Every `run()` implementation
+    /// must hand this same string to `CheckResult`, and the suppression
+    /// and error branches in `main::run` use it so that a check
+    /// short-circuited by `--audit-profile` or an internal error
+    /// produces the same label the user would see on a successful run —
+    /// rather than falling back to the opaque `id`.
+    fn label(&self) -> &'static str;
+
     /// Which principle or category this check belongs to.
     fn group(&self) -> CheckGroup;
 

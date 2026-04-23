@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
+use crate::principles::registry::ExceptionCategory;
+
 #[derive(Parser)]
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
@@ -58,6 +60,14 @@ pub enum Commands {
         /// Include test code in source analysis
         #[arg(long)]
         include_tests: bool,
+
+        /// Exemption category for the target. Suppresses checks that do not
+        /// apply to this class of tool — e.g., TUI apps legitimately
+        /// intercept the TTY, so `--audit-profile human-tui` skips the
+        /// interactive-prompt MUSTs. Suppressed checks emit `Skip` with
+        /// structured evidence so readers see what was excluded.
+        #[arg(long, value_name = "CATEGORY")]
+        audit_profile: Option<AuditProfile>,
     },
     /// Generate shell completions
     Completions {
@@ -97,4 +107,88 @@ pub enum GenerateKind {
 pub enum OutputFormat {
     Text,
     Json,
+}
+
+/// Exemption category for `--audit-profile`. Mirrors
+/// `ExceptionCategory` in the registry one-to-one; the `From` impl below
+/// converts between them at the call site. Kept as a CLI-owned type so
+/// clap controls the surface (`value_enum` validation, shell completions)
+/// without leaking clap into the registry module.
+#[derive(Clone, Copy, ValueEnum, PartialEq, Eq, Debug)]
+#[value(rename_all = "kebab-case")]
+pub enum AuditProfile {
+    /// TUI-by-design tools (lazygit, k9s, btop). Suppresses
+    /// interactive-prompt MUSTs and SIGPIPE — their contract is the TTY.
+    HumanTui,
+    /// File-traversal utilities (fd, find). Reserved for subcommand-structure
+    /// relaxations as those checks land.
+    FileTraversal,
+    /// POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs
+    /// satisfied vacuously via stdin-primary input.
+    PosixUtility,
+    /// Diagnostic tools (nvidia-smi, vmstat). No write operations, so the
+    /// P5 mutation-boundary MUSTs do not apply.
+    DiagnosticOnly,
+}
+
+impl From<AuditProfile> for ExceptionCategory {
+    fn from(p: AuditProfile) -> Self {
+        match p {
+            AuditProfile::HumanTui => ExceptionCategory::HumanTui,
+            AuditProfile::FileTraversal => ExceptionCategory::FileTraversal,
+            AuditProfile::PosixUtility => ExceptionCategory::PosixUtility,
+            AuditProfile::DiagnosticOnly => ExceptionCategory::DiagnosticOnly,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::principles::registry::ALL_EXCEPTION_CATEGORIES;
+    use clap::ValueEnum;
+
+    /// Every CLI `AuditProfile` variant must map to a distinct
+    /// `ExceptionCategory`, and every `ExceptionCategory` must be
+    /// reachable from at least one `AuditProfile` variant. Failing this
+    /// test means adding a category on one side without the other —
+    /// either the CLI accepts a profile that suppresses nothing, or the
+    /// registry defines a category no CLI user can reach.
+    #[test]
+    fn audit_profile_and_exception_category_variants_are_isomorphic() {
+        let cli_mapped: std::collections::HashSet<&'static str> = AuditProfile::value_variants()
+            .iter()
+            .map(|v| ExceptionCategory::from(*v).as_kebab_case())
+            .collect();
+        let registry_kebab: std::collections::HashSet<&'static str> = ALL_EXCEPTION_CATEGORIES
+            .iter()
+            .map(|c| c.as_kebab_case())
+            .collect();
+
+        assert_eq!(
+            cli_mapped, registry_kebab,
+            "AuditProfile (cli) and ExceptionCategory (registry) variants must be isomorphic. \
+             CLI-reachable: {cli_mapped:?}, registry: {registry_kebab:?}",
+        );
+    }
+
+    /// The kebab-case string clap renders for each `AuditProfile` variant
+    /// must equal the kebab-case the registry emits — otherwise the flag
+    /// value a user types on the CLI won't match the `audit_profile` field
+    /// echoed in JSON output.
+    #[test]
+    fn audit_profile_clap_name_matches_registry_kebab_case() {
+        for variant in AuditProfile::value_variants() {
+            let clap_name = variant
+                .to_possible_value()
+                .expect("AuditProfile variants have clap names")
+                .get_name()
+                .to_string();
+            let registry_name = ExceptionCategory::from(*variant).as_kebab_case();
+            assert_eq!(
+                clap_name, registry_name,
+                "clap value name and registry kebab-case must match for every variant",
+            );
+        }
+    }
 }

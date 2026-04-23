@@ -22,6 +22,10 @@ impl Check for ExitCodesCheck {
         "p4-exit-codes"
     }
 
+    fn label(&self) -> &'static str {
+        "Exit codes use named constants"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -57,7 +61,7 @@ impl Check for ExitCodesCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Exit codes use named constants".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

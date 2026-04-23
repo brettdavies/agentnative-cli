@@ -18,6 +18,10 @@ impl Check for UnwrapCheck {
         "code-unwrap"
     }
 
+    fn label(&self) -> &'static str {
+        "No .unwrap() in source"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::CodeQuality
     }
@@ -49,7 +53,7 @@ impl Check for UnwrapCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No .unwrap() in source".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

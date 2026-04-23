@@ -69,11 +69,18 @@ Key decisions already made:
 Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use
 different helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
 
-- **Struct** implements `Check` trait with `id()`, `group()`, `layer()`, `applicable()`, `run()`
+- **Struct** implements `Check` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
 - **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
   context) and returns `CheckStatus` (not `CheckResult`) — this is the unit-testable core
-- **`run()` is the sole `CheckResult` constructor** — uses `self.id()`, `self.group()`, `self.layer()` to build the
-  result. Never hardcode ID/group/layer string literals in `check_x()` or anywhere outside `run()`
+- **No `Check` impl constructs `CheckResult` outside its own `run()`.** `run()` is the sole place each check assembles
+  its own result — never hardcode ID/group/layer/label string literals in `check_x()` or anywhere outside `run()`. The
+  runtime layer (`main::run`'s error and `--audit-profile` suppression branches) legitimately constructs `CheckResult`
+  as a *second* site — it's the runner, not a `Check` impl, and it uses `check.id()`, `check.label()`, `check.group()`,
+  `check.layer()` from the trait (never string literals). Test doubles (`FakeCheck` in `src/principles/matrix.rs` and
+  `src/scorecard/mod.rs`) similarly sidestep the rule by design.
+- **`label()` returns `&'static str`** and feeds the `label` field in `run()`'s `CheckResult`. Having the label on the
+  trait also means the suppression and error branches can show the human label instead of falling back to the opaque
+  `id`. See `src/check.rs`.
 - **Tests call `check_x()`** and match on `CheckStatus` directly, not `result.status`
 
 This prevents ID triplication (the same string literal in `id()`, `run()`, and `check_x()`) and ensures the `Check`
@@ -96,7 +103,10 @@ coverage matrix pin against them.
   grows.
 - `Applicability::Universal` means every CLI; `Applicability::Conditional(reason)` names the gate in prose so the matrix
   and the site `/coverage` page can render it.
-- `ExceptionCategory` is reserved for v0.1.3 `audit_profile` suppression — do not consume before then.
+- `ExceptionCategory` drives `--audit-profile` suppression. The `SUPPRESSION_TABLE` maps each variant to the check IDs
+  it suppresses; drift tests fail the build if a category has no entry or a listed check ID isn't in the catalog. Adding
+  a fifth category requires a plan revision — the four v0.1.3 categories (`human-tui`, `file-traversal`,
+  `posix-utility`, `diagnostic-only`) are the committed surface.
 
 ## covers() Declaration
 
@@ -131,15 +141,19 @@ deliberate commit, not a build-time artifact — the matrix is citable from outs
 
 ## Scorecard v1.1 Fields
 
-`src/scorecard.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
+`src/scorecard/mod.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
 
 - `coverage_summary` — three-way `{must, should, may} × {total, verified}` counts, computed from the checks that
   actually ran. Populated every run.
-- `audience` — `Option<String>`, serialized `null` until v0.1.3 wires the audience classifier. Reserved.
-- `audit_profile` — `Option<String>`, serialized `null` until v0.1.3 wires `registry.yaml` suppression. Reserved.
+- `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral checks.
+  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing from results
+  (including when suppressed by `--audit-profile`). The classifier is read-only over results and never gates totals or
+  exit codes — per CEO review Finding #3, label mismatches are fixed via registry, not classifier logic.
+- `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,
+  `"file-traversal"`, `"posix-utility"`, `"diagnostic-only"`). `null` when no profile is set.
 
 Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-v1.1 scorecards lack
-them until handoff 3 regenerates.
+them. v0.1.2 scorecards carry `audience: null` and `audit_profile: null`; v0.1.3+ populates both.
 
 ## Dogfooding Safety
 

@@ -23,6 +23,10 @@ impl Check for NoPagerCheck {
         "p6-no-pager"
     }
 
+    fn label(&self) -> &'static str {
+        "No pager blocking agents"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -70,7 +74,7 @@ impl Check for NoPagerCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No pager blocking agents".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

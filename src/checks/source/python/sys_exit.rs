@@ -20,6 +20,10 @@ impl Check for SysExitCheck {
         "p4-sys-exit"
     }
 
+    fn label(&self) -> &'static str {
+        "No sys.exit() outside __main__ guard"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P4
     }
@@ -56,7 +60,7 @@ impl Check for SysExitCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "No sys.exit() outside __main__ guard".to_string(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

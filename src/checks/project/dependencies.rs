@@ -28,6 +28,10 @@ impl Check for DependenciesCheck {
         "p6-dependencies"
     }
 
+    fn label(&self) -> &'static str {
+        "Recommended dependencies present"
+    }
+
     fn group(&self) -> CheckGroup {
         CheckGroup::P6
     }
@@ -67,7 +71,7 @@ impl Check for DependenciesCheck {
 
         Ok(CheckResult {
             id: self.id().to_string(),
-            label: "Recommended dependencies present".into(),
+            label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
             status,

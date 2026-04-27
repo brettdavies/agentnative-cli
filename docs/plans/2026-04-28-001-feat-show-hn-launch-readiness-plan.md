@@ -343,9 +343,9 @@ cold device).
 3. `anc --version` — confirm version matches the published tag
 4. `anc --help` — confirm help renders without errors
 5. `mkdir -p /tmp/anc-cold && cd /tmp/anc-cold && cargo init --bin && anc .` — confirm a real check run works on a fresh
-     trivial Rust project
+   trivial Rust project
 6. `anc . --output json | jq .scorecard.spec_version` — confirm the spec-vendor field is populated (this is the
-     post-launch receipt that the tagged release contains the spec-vendor work)
+   post-launch receipt that the tagged release contains the spec-vendor work)
 
 - If anything fails, **do not post**. Open an incident issue and diagnose.
 
@@ -373,10 +373,18 @@ cold device).
 
 - U5. **Gate 4 plan-checkbox sweep (CLI side)**
 
+> **Close-out (2026-04-27).** Sweep landed in `be767e4`. Actual scope diverged from the planning text in two
+> instructive ways: (1) the three "Likely modify" handoff docs were **moved** to `.context/handoffs/` (local-only,
+> gitignored) rather than status-flipped in place, and the relocation expanded to all 6 handoff-shaped docs across
+> `docs/plans/` and `docs/plans/spikes/`; (2) the multi-language source-checks plan kept `status: active` (CE plan
+> status enum is binary `active`/`completed` — no `deferred` exists) with a post-launch deferral admonition added at
+> the top of the file. Net public surface: `docs/plans/` dropped from 12 plans to 9 + 2 spike artifacts. No
+> status-string normalization, as planned.
+
 **Goal:** Reconcile `docs/plans/*.md` checkboxes and statuses so a reader landing in this repo from the Show HN post
 sees plans that match reality.
 
-**Status:** `not-started`
+**Status:** `done`
 
 **Requirements:** Gate 4 (CLI-repo subset — spec repo owns the rest of the sweep).
 
@@ -387,16 +395,16 @@ sees plans that match reality.
 - Audit: every file under `docs/plans/*.md` (12 plans currently).
 - Likely modify (suspect drift from initial scan):
 - `docs/plans/2026-04-20-v011-handoff-1-agentnative-impl.md` — currently `status: in-progress` but v0.1.1 shipped on
-    2026-04-21. Almost certainly stale; flip to `status: completed` (or whichever terminal status matches the file's
-    voice) and check the box state inside.
+  2026-04-21. Almost certainly stale; flip to `status: completed` (or whichever terminal status matches the file's
+  voice) and check the box state inside.
 - `docs/plans/2026-04-20-v012-handoff-4-behavioral-checks.md` — no status frontmatter at all. Verify: did v0.1.2 ship
-    the behavioral-checks expansion? `git log --grep='v0.1.2'` says yes (`f969f8c`, #24). Add `status: completed`
-    frontmatter or convert to a clearly-labeled handoff-archive doc.
+  the behavioral-checks expansion? `git log --grep='v0.1.2'` says yes (`f969f8c`, #24). Add `status: completed`
+  frontmatter or convert to a clearly-labeled handoff-archive doc.
 - `docs/plans/2026-04-21-v012-h4-eng-agent-handoff.md` — same shape as above, no status. Same treatment.
 - Possibly leave unchanged:
 - `docs/plans/2026-04-17-001-feat-multi-language-source-checks-plan.md` — `status: active`. Spike done, units unstarted.
-    Either keep `active` or downgrade to `deferred` (acknowledging the post-launch ship-window). Either is defensible —
-    pick whichever the spec-side sweep ends up using as canonical so the two repos are coherent.
+  Either keep `active` or downgrade to `deferred` (acknowledging the post-launch ship-window). Either is defensible —
+  pick whichever the spec-side sweep ends up using as canonical so the two repos are coherent.
 - Out of scope (not modified): cosmetic status-string normalization (`completed` vs `complete` vs `done` vs `shipped` vs
   `implemented` — five terms in current use across 12 plans).
 
@@ -445,7 +453,7 @@ shipped, here's the evidence" summary on top of a stale body.
   [`agentnative-spec/docs/plans/2026-04-27-001-refactor-three-repo-naming-alignment-plan.md`](https://github.com/brettdavies/agentnative-spec/blob/dev/docs/plans/2026-04-27-001-refactor-three-repo-naming-alignment-plan.md):
 - U2 (filesystem rename `~/dev/agentnative` → `~/dev/agentnative-cli`): non-commit, complete.
 - U3 (in-place CLI repo drift fix on a then-uncommitted plan file): healed in place; the host file was committed later
-    under the spec-vendor plan.
+  under the spec-vendor plan.
 - Cross-check: `rg 'brettdavies/agentnative-spec' .` from the repo root returns 0 hits. **Confirmed at plan-write
   time.**
 - This unit is a status-acknowledgement only. No work remains.

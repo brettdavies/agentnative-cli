@@ -35,8 +35,10 @@ itself, children spawned without arguments must not recurse into `check .`.
 
 ## Agent-facing JSON surface
 
-`anc check <target> --output json` emits a `schema_version: "1.2"` scorecard. Five fields are additive to v1.0 and v1.1
-consumers feature-detect them:
+`anc check <target> --output json` emits a `schema_version: "0.3"` scorecard. The schema is at `0.x` while `anc` is
+pre-launch — shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
+norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes five
+scorecard-level fields beyond the base `results` / `summary`:
 
 - `audience` — `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral checks
   (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Informational only; never gates totals

@@ -743,7 +743,7 @@ fn test_audit_profile_echoed_in_json_output() {
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
     assert_eq!(parsed["audit_profile"], "human-tui");
-    assert_eq!(parsed["schema_version"], "1.2");
+    assert_eq!(parsed["schema_version"], "0.3");
 }
 
 #[test]
@@ -882,7 +882,8 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     // accidentally renames or drops a top-level key fails here rather
     // than silently breaking downstream consumption. New keys (always
     // additive) should add to EXPECTED; removals or renames require a
-    // plan revision because they break v1.1 consumers.
+    // plan revision because they break consumers built against earlier
+    // 0.x revisions.
     //
     // Enforcing "no unexpected keys" too (bidirectional check) means an
     // accidental extra key also fails — which is the correct behavior
@@ -909,7 +910,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     for key in EXPECTED {
         assert!(
             obj.contains_key(*key),
-            "scorecard JSON missing required v1.2 key {key:?}; got {:?}",
+            "scorecard JSON missing required key {key:?}; got {:?}",
             obj.keys().collect::<Vec<_>>(),
         );
     }
@@ -924,7 +925,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     );
 
     // Fixed enumerations also pin against the renderer contract.
-    assert_eq!(obj["schema_version"], "1.2");
+    assert_eq!(obj["schema_version"], "0.3");
 }
 
 #[test]

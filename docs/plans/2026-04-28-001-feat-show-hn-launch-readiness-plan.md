@@ -89,13 +89,17 @@ Gates **not** owned by this repo: 1, 2, 3, 6, 8, 9, 10, 11, 12. Listed in Cross-
 ### Unreleased work on `dev` (the cherry-pick scope)
 
 ```text
+4f30d75 docs(plans): close out U5 in launch-readiness plan (status: done + close-out admonition)
+be767e4 chore(plans): U5 launch-readiness sweep — relocate handoffs, defer multi-language plan
+0641554 docs(plans): add Show HN launch readiness plan
 2989e21 docs(plans): mark spec-vendor plan completed (#29 merged)
 9a264f9 feat(spec-vendor): build-time REQUIREMENTS from vendored frontmatter (#29)
 a918225 docs(plans): add spec vendoring plan for build-time REQUIREMENTS generation
 ```
 
-Three commits. One feature (`#29`), one plan-add, one plan-close. All ship in the night-before pre-launch release PR to
-`release/launch` → `main`. Tag triggers the existing reusable workflow at
+Six commits unreleased on `dev`. One feature (`#29`), five docs-only (plan add, U5 sweep, U5 close-out, the two
+spec-vendor plan commits). U1.5 (spec re-vendor against `v0.3.0`) will add a seventh commit before branch-cut. All ship
+in the night-before pre-launch release PR to `release/launch` → `main`. Tag triggers the existing reusable workflow at
 `brettdavies/.github/.github/workflows/rust-release.yml`.
 
 ### Coordinating in-flight plans (do NOT dual-file)
@@ -131,20 +135,26 @@ None applicable — this is repo-internal release choreography.
 
 ## Key Technical Decisions
 
-- **Cherry-pick scope is the full `v0.1.3..dev` window.** Three commits, tightly coupled (the two doc commits frame the
-  feature commit). No cherry-pick selection needed; the release branch resets to `dev` HEAD at branch-cut time.
-- **Recommended next version: `v0.2.0` (MINOR).** The spec-vendor change is additive at the JSON scorecard level
-  (`spec_version` is a new field consumers may key on), and it changes the `REQUIREMENTS` provenance from
-  hand-maintained to build-time-derived. Schema is `0.3` (already pre-launch additive), so the JSON contract bump is
-  cosmetic — but the user-facing capability is meaningful enough to warrant MINOR per the project's working pattern.
-  Final call deferred to Q-CLI1 below.
-- **Cold-device verification target: macOS (Apple Silicon).** Single primary verification path matches Show HN reader's
-  most-likely posture. Linux verification optional; Windows is best-effort and explicitly not in the install-path
-  narrative.
-- **Do not cut the release branch until the spec repo's pre-launch PR is staged.** Because the spec-vendor feature pulls
-  from a pinned `agentnative-spec` ref, a spec-side `v0.2.0` release timed for launch should land first so the CLI's
-  published `spec_version` matches what readers see at `anc.dev`. Sequencing detail in the Pre-launch release PR
-  checklist below.
+- **Cherry-pick scope is the full `v0.1.3..dev` window plus the U1.5 re-vendor commit.** Seven commits total at
+  branch-cut time (six already on `dev`, one re-vendor commit landing pre-branch-cut). No cherry-pick selection needed;
+  the release branch resets to `dev` HEAD at branch-cut time.
+
+- **Next version: `v0.2.0` (MINOR).** Resolved per Q-CLI1. The spec-vendor change is additive at the JSON scorecard
+  level (`spec_version` is a new field consumers may key on), changes the `REQUIREMENTS` provenance from hand-maintained
+  to build-time-derived, and the U1.5 re-vendor flips all 7 vendored principles from `status: draft` to `status: active`
+  — meaningful user-facing capability change warranting MINOR per the project's working pattern.
+- **Cold-device verification target: fresh Linux box.** Resolved per Q-CLI4 (no Mac available). `brew install` on
+  Linuxbrew exercises the same tap-formula path readers will use on Linux; macOS coverage drops to "best-effort
+  scrub-and-reinstall on dev machine if time permits." Windows is explicitly out of the install-path narrative.
+- **Spec re-vendor + version-pin alignment.** The CLI vendors `agentnative-spec` at a pinned ref via
+  `scripts/sync-spec.sh` (current default `SPEC_REF=v0.2.0`). Spec is queued to tag `v0.3.0` for launch eve (the `draft
+  → active` principle-status flip, central tracker Gate 2). U1.5 re-vendors against `v0.3.0` so the published CLI binary
+  reports `spec_version: 0.3.0` and bundles `active`-status principles, matching what `anc.dev` renders. Without this
+  re-vendor, Show HN readers running `anc check .` would see `draft` status while the site shows `active` — a coherence
+  gap.
+- **Hard sequencing: spec `v0.3.0` tag must exist on `agentnative-spec` `main` before U1.5 runs.** The CLI's
+  `scripts/sync-spec.sh` resolves `SPEC_REF` via `git rev-parse --verify` and aborts on missing refs. The pre-launch
+  checklist gates U1.5 behind a `gh release view --repo brettdavies/agentnative v0.3.0` success.
 
 ---
 
@@ -158,26 +168,25 @@ None applicable — this is repo-internal release choreography.
 - **Are there other CLI-side gates beyond 4/5/7?** No — Gates 1, 2, 3, 6, 8, 9, 10, 11, 12 are owned by spec, site,
   vault, or no-repo per the central tracker.
 
-### Deferred to implementation
+### Resolved during execution (2026-04-27 SoT-alignment recon)
 
-- **Q-CLI1: PATCH (`v0.1.4`) or MINOR (`v0.2.0`) for the next release?** Recommendation: MINOR. Decide at branch-cut
-  time. If the spec repo also publishes `v0.2.0` for the same launch window, version-aligning the two repos is a small
-  but real readability win for anyone scanning both release pages. If spec stays at `v0.1.x`, CLI MINOR is still
-  defensible on the additive-field grounds.
-- **Q-CLI2: Which day to cut the release branch — Tuesday night, Wednesday night, or Thursday night?** Inherits from
-  parent tracker's Q4 (post-day decision). Recommendation: cut release branch the evening **before** the post day, so
-  the published binary has 8–12 hours of bake time before the post lands. If post day is Thursday, branch-cut Wednesday
-  night.
-- **Q-CLI3: Should the lib/bin split (TODO 016) ride this release?** Recommendation: no, defer post-launch. Even though
-  the refactor is mechanical and ~1 hour, it would land an additional `[lib]` Cargo target in a `MINOR` release — a
-  consumer-facing surface change distinct from the spec-vendor feature. Cleaner story is "v0.2.0 = spec-vendor", and
-  TODO 016 lands in v0.2.1 or v0.3.0 alongside whatever tests it unblocks.
-- **Q-CLI4: Cold-device verification — borrow a fresh Mac, or `brew uninstall` and reinstall on the dev machine?**
-  Borrow if at all possible. `brew uninstall + brew install` is **not** equivalent to a cold-device test because the
-  Homebrew bottle cache, prior tap registration, and any `~/.cargo` artifacts can mask install-path bugs. If a fresh Mac
-  is unavailable, the fallback is `brew uninstall agentnative && brew untap brettdavies/tap && rm -rf
-  ~/Library/Caches/Homebrew/downloads/*agentnative*` before reinstall — explicit, documented, called out as a known
-  limitation.
+- **Q-CLI1: PATCH (`v0.1.4`) or MINOR (`v0.2.0`) for the next release?** **MINOR `v0.2.0`.** Spec-vendor scorecard field
+  addition + U1.5's `draft → active` principle status flip across all 7 vendored principles is a meaningful user-facing
+  capability change. CLI semver is independent of spec's semver — spec going `v0.2.0 → v0.3.0` does not force CLI
+  version parity.
+- **Q-CLI2: Which night to cut the release branch?** **Wednesday 2026-04-29 PT for Thursday 2026-04-30 post.** 8–12h
+  bake time before post lands; matches the central tracker's "post Tue–Thu morning PT, peak HN window" constraint.
+- **Q-CLI3: Should the lib/bin split (TODO 016) ride this release?** **No, defer post-launch.** Even though the refactor
+  is mechanical and ~1 hour, it would land an additional `[lib]` Cargo target in a `MINOR` release — a consumer-facing
+  surface change distinct from the spec-vendor feature. Cleaner story is "v0.2.0 = spec-vendor + active-status
+  principles"; TODO 016 lands in v0.2.1 or v0.3.0 alongside whatever tests it unblocks.
+- **Q-CLI4: Cold-device verification path?** **Fresh Linux box (no Mac available).** Linuxbrew exercises the same
+  tap-formula install path. `brew install brettdavies/tap/agentnative` on a never-before-installed Linux machine is the
+  primary verification. Falls back to `brew uninstall + untap + cache-clear` on dev machine if time permits, as a
+  best-effort macOS smoke test.
+- **Spec re-vendor scope.** **Re-vendor against `v0.3.0` after spec tags it (new U1.5 unit).** The CLI vendors
+  `agentnative-spec` at a pinned ref. Without re-vendor, the launch binary reports `spec_version: 0.2.0` with `draft`
+  principles while `anc.dev` renders `v0.3.0` `active`. Re-vendor closes the coherence gap.
 
 ---
 
@@ -230,16 +239,78 @@ release commits in `git log --grep='feat(v0\.1' --oneline`.
 
 ---
 
+- U1.5. **Re-vendor `agentnative-spec` to `v0.3.0`**
+
+**Goal:** Update the CLI's vendored spec content from `v0.2.0` (draft principles) to `v0.3.0` (active principles) so the
+launch binary reports `spec_version: 0.3.0` and bundles the same principle-status posture readers see at `anc.dev`.
+
+**Status:** `not-started`
+
+**Requirements:** Gate 7 (CLI launch coherence). Cross-repo coordination with spec Gate 2 (status: active flip shipping
+in spec `v0.3.0`).
+
+**Dependencies:** **HARD BLOCK — spec `v0.3.0` tag must exist on `agentnative-spec` `main`.** Verify via `gh release
+view --repo brettdavies/agentnative v0.3.0` (exit 0). The spec-side launch-readiness plan owns this tag; CLI re-vendor
+cannot run before it lands.
+
+**Files:**
+
+- Modify: `scripts/sync-spec.sh` — flip default `SPEC_REF=v0.2.0` → `SPEC_REF=v0.3.0` (line ~22).
+- Regenerate: `src/principles/spec/VERSION` (`0.2.0` → `0.3.0`).
+- Regenerate: `src/principles/spec/principles/p[1-7]-*.md` — `status: draft` → `status: active` for all 7 principles
+  (this is the user-visible payload).
+- Regenerate: `src/principles/spec/CHANGELOG.md`, `src/principles/spec/README.md` (whatever ships in `v0.3.0`).
+- Regenerate: `Cargo.lock` if `build.rs` derives different REQUIREMENTS shape from the new frontmatter (it should not —
+  `v0.3.0` is a status flip, not a requirement-ID change — but verify).
+
+**Approach:**
+
+1. `gh release view --repo brettdavies/agentnative v0.3.0` (verify tag exists; abort if missing).
+2. `git -C ~/dev/agentnative-spec fetch --tags` (ensure local clone sees the tag).
+3. `SPEC_REF=v0.3.0 ./scripts/sync-spec.sh` (re-vendor; the script's `git show <ref>:<path>` extraction does not perturb
+   the spec working tree).
+4. Edit `scripts/sync-spec.sh` to bump the default `SPEC_REF` value so future runs without the env var pin to `v0.3.0`.
+5. `cargo build --release` — confirm `build.rs` regenerates REQUIREMENTS cleanly with the new frontmatter; tests pass.
+6. `cargo test` — confirm dogfood + spec-version tests still pass.
+7. `git diff src/principles/spec/principles/` — eyeball that all 7 principles flipped `draft → active` and nothing else
+   surprising changed.
+8. Commit `chore(spec): re-vendor to v0.3.0 — active-status principles` direct to `dev` (single commit, mixes the
+   `scripts/sync-spec.sh` default bump and the regenerated content).
+9. Push to `origin/dev` (pre-push hook runs full CI check).
+
+**Patterns to follow:** `scripts/sync-spec.sh` header comment block already documents the resync workflow. The
+spec-vendor plan (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`) is the authoritative reference for how the
+vendoring contract works. Brett's prior re-vendor cadence: re-run after every new `agentnative-spec` tag.
+
+**Test scenarios:**
+
+- Happy path: `cargo test` exits 0 with all 405+ tests passing post-re-vendor; `cargo run -- check . --output json | jq
+  .scorecard.spec_version` reports `"0.3.0"`; coverage matrix matches committed artifact.
+- Edge case: `v0.3.0` adds, removes, or renames a requirement ID. Mitigation: `cargo run -- generate coverage-matrix
+  --check` flags drift; regenerate via `cargo run -- generate coverage-matrix` and commit the artifact diff in the same
+  chore commit if the change is small, or split into a follow-on commit if it's substantive.
+- Error path: spec tag pulls a frontmatter shape `build.rs` can't parse. Diagnose the parse error; if the spec
+  introduced a breaking frontmatter change between `v0.2.0` and `v0.3.0`, update the CLI's parser before the re-vendor
+  lands.
+
+**Verification:**
+
+- `head -1 src/principles/spec/VERSION` returns `0.3.0`.
+- `grep -h '^status:' src/principles/spec/principles/p[1-7]-*.md | sort -u` returns exactly `status: active`.
+- `cargo test` green; pre-push hook green; `cargo run -- check .` reports `spec_version: 0.3.0`.
+
+---
+
 - U2. **Cut `release/launch` branch + open pre-launch PR**
 
 **Goal:** Stage the night-before release PR from `dev` → `release/launch` → `main` per Brett's standing pattern.
 
 **Status:** `not-started`
 
-**Requirements:** Gate 7. Inherits Q-CLI2 (which night?).
+**Requirements:** Gate 7. Q-CLI2 resolved: cut Wed 2026-04-29 PT for Thu post.
 
-**Dependencies:** U1 (CHANGELOG ready). Spec repo's pre-launch release PR ideally staged first (see Key Technical
-Decisions § sequencing).
+**Dependencies:** U1.5 (spec re-vendor commit on `dev`). U1's CHANGELOG/version-bump prep is a no-op on `dev` per
+established convention (bump happens on the release branch, see U1 note).
 
 **Files:**
 
@@ -333,19 +404,24 @@ cold device).
 
 **Approach:**
 
-- Per Q-CLI4: borrow a fresh macOS device (Apple Silicon preferred) with no prior Homebrew agentnative footprint. If
-  unavailable, run the documented uninstall+untap+cache-clear sequence on the dev machine and proceed with the known
-  limitation.
+- Per Q-CLI4 (resolved): use a fresh Linux box with Linuxbrew installed but no prior `brettdavies/tap` footprint and no
+  `agentnative` binary on PATH. Linuxbrew is one of the 5 release-pipeline build targets, so this exercises the same
+  tap-formula install path readers will use. macOS coverage is best-effort: if time permits the night of, run the
+  documented `brew uninstall agentnative && brew untap brettdavies/tap && rm -rf
+  ~/Library/Caches/Homebrew/downloads/*agentnative*` sequence on the dev machine as a smoke test, but do not gate the
+  launch on it.
 - Run, in order, capturing stdout/stderr to a verification log:
 
 1. `brew install brettdavies/tap/agentnative` (or follow whatever tap-prefixed form the README documents at launch time)
 2. `which anc` — confirm binary on `PATH`
-3. `anc --version` — confirm version matches the published tag
+3. `anc --version` — confirm version reports `0.2.0` (matches the published tag)
 4. `anc --help` — confirm help renders without errors
 5. `mkdir -p /tmp/anc-cold && cd /tmp/anc-cold && cargo init --bin && anc .` — confirm a real check run works on a fresh
    trivial Rust project
-6. `anc . --output json | jq .scorecard.spec_version` — confirm the spec-vendor field is populated (this is the
-   post-launch receipt that the tagged release contains the spec-vendor work)
+6. `anc . --output json | jq '.scorecard.spec_version'` — confirm `"0.3.0"` (this is the post-launch receipt that the
+   tagged release bundles the U1.5 re-vendor + spec-vendor field)
+7. `anc . --output json | jq -r '.scorecard.results[] | select(.id|startswith("p1-")) | .label'` — sanity-check that the
+   principle labels match the spec `v0.3.0` content (no leftover `draft`-era labels).
 
 - If anything fails, **do not post**. Open an incident issue and diagnose.
 
@@ -484,45 +560,69 @@ shipped, here's the evidence" summary on top of a stale body.
 
 ## Risks & Dependencies
 
-| Risk                                                                                           | Mitigation                                                                                                                                                                                              |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Homebrew bottle build fails for one platform on launch night                                   | Existing pipeline allows per-target re-runs. Document the manual `brew install --build-from-source` fallback in the launch tracker. Decide ship/no-ship per the central tracker's "ship without" rule.  |
-| crates.io publish fails (rate limit, auth)                                                     | crates.io publish is idempotent on tag. Re-run pipeline after token refresh. If unrecoverable in launch window, ship without crates.io and call it out in the post — `brew install` is the primary CTA. |
-| Cold-device `brew install` exposes a packaging bug not caught by CI                            | This is exactly what U4 catches. Buffer at least 4–8 hours between U3 (tag) and the post being submitted, so a packaging bug surfaces with time to fix.                                                 |
-| Spec repo and CLI repo publish version-misaligned releases (e.g., spec `v0.2.0`, CLI `v0.1.4`) | Sequence spec release first; align CLI version to MINOR if spec also bumps MINOR. Q-CLI1 captures this dependency.                                                                                      |
-| Plan-checkbox sweep accidentally flips a still-active plan to `completed`                      | U5's approach explicitly says: do not invent ship-evidence. When in doubt, leave `active`.                                                                                                              |
-| TODO 016 (lib/bin split) gets pulled into scope under launch-week pressure                     | Scope-Boundaries section codifies the deferral. Re-read this plan if anyone proposes adding 016 mid-week.                                                                                               |
+| Risk                                                                                           | Mitigation                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Homebrew bottle build fails for one platform on launch night                                   | Existing pipeline allows per-target re-runs. Document the manual `brew install --build-from-source` fallback in the launch tracker. Decide ship/no-ship per the central tracker's "ship without" rule.                                                                                                            |
+| crates.io publish fails (rate limit, auth)                                                     | crates.io publish is idempotent on tag. Re-run pipeline after token refresh. If unrecoverable in launch window, ship without crates.io and call it out in the post — `brew install` is the primary CTA.                                                                                                           |
+| Cold-device `brew install` exposes a packaging bug not caught by CI                            | This is exactly what U4 catches. Buffer at least 4–8 hours between U3 (tag) and the post being submitted, so a packaging bug surfaces with time to fix.                                                                                                                                                           |
+| Spec repo and CLI repo publish numerically misaligned versions (spec `v0.3.0` vs CLI `v0.2.0`) | Deliberate. CLI semver is independent of spec's; CLI's `v0.2.0` reflects the spec-vendor feature + U1.5 re-vendor as a single MINOR cadence. Show HN readers parse changelog content, not tag arithmetic. Documented in Key Technical Decisions.                                                                  |
+| Spec slips on `v0.3.0` tag — U1.5 blocks indefinitely                                          | Two fallbacks: (a) push CLI launch by 24h until spec ships; or (b) skip U1.5 and ship CLI `v0.2.0` pinned to spec `v0.2.0` (draft principles), accepting the coherence gap and committing to a CLI `v0.2.1` re-vendor within 48h post-launch. Decide at launch eve per the central tracker's "ship without" rule. |
+| Re-vendor exposes a frontmatter parse breakage in spec `v0.3.0`                                | U1.5 builds + tests before commit. If `build.rs` errors on the new frontmatter shape, fix the parser (CLI side) or escalate to spec for a hotfix `v0.3.1`. Buffer time: 8–12h between spec tag and CLI branch-cut absorbs this.                                                                                   |
+| Plan-checkbox sweep accidentally flips a still-active plan to `completed`                      | U5's approach explicitly says: do not invent ship-evidence. When in doubt, leave `active`. (U5 already shipped — `be767e4` — risk closed.)                                                                                                                                                                        |
+| TODO 016 (lib/bin split) gets pulled into scope under launch-week pressure                     | Scope-Boundaries section codifies the deferral. Re-read this plan if anyone proposes adding 016 mid-week.                                                                                                                                                                                                         |
 
 ---
 
-## Pre-launch release PR checklist (the night-before cherry-pick to `release/launch`)
+## Pre-launch release PR checklist (Wed 2026-04-29 PT for Thu post)
 
-This is the explicit checklist the handoff requires. Run in order on the chosen pre-launch night (per Q-CLI2):
+Run in order. The first three steps are HARD GATES — do not advance past a failure.
 
-1. ☐ Confirm `dev` is green: `gh run list --branch dev --limit 5` shows recent successes; no in-flight runs.
-2. ☐ Resolve Q-CLI1 (PATCH or MINOR — recommendation MINOR `v0.2.0`).
-3. ☐ Confirm spec repo's pre-launch release PR is staged or merged. If spec is also publishing `v0.2.0` for launch
-   alignment, ensure it lands first so the CLI's published `spec_version` matches.
-4. ☐ Pre-flight on `dev`: U1's CHANGELOG prep landed (or will land on the release branch — confirm convention).
-5. ☐ Cut `release/launch` from `dev` head (U2).
-6. ☐ Bump `Cargo.toml` version on the release branch if that's the established convention; otherwise verify it was
-   bumped on `dev`.
-7. ☐ Open PR `release/launch` → `main`. Pre-push hook must pass.
-8. ☐ CI green on the release PR (`gh pr checks <pr> --watch`).
-9. ☐ Merge release PR to `main`.
-10. ☐ Tag `vX.Y.Z` on the `main` merge commit. Push tag (U3).
-11. ☐ Watch all release-pipeline runs: build (5 targets), crates.io, GitHub Release draft, Homebrew tap dispatch. Re-run
-    individual jobs on transient failures.
-12. ☐ Re-run `gh run list --branch main --limit 5` to catch chained `finalize-release.yml` and homebrew dispatch runs.
-13. ☐ Verify the GitHub Release for `vX.Y.Z` is published (not draft) with all 5 artifacts attached.
-14. ☐ Verify `homebrew-tap/Formula/agentnative.rb` on `main` references the new tag and correct sha256.
-15. ☐ Run U4 cold-device verification. Save log to
-    `~/.gstack/projects/brettdavies-agentnative/cold-device-verification-{date}.md`.
-16. ☐ Update the central launch tracker: flip Gate 7 from `on-dev-pending` to `done`. Commit as `chore: update launch
-    tracker — CLI release shipped`.
+**Phase A — pre-branch-cut (on `dev`):**
 
-If any step fails irrecoverably within the launch window, escalate to "ship without" or "push launch by 24h" per the
-central tracker's pre-launch night rules. **No "we'll fix it after."**
+1. ☐ **HARD GATE — spec `v0.3.0` shipped.** `gh release view --repo brettdavies/agentnative v0.3.0` exits 0 and the tag
+   exists on `agentnative-spec` `main`. If not: pause. Either wait for spec, push CLI launch by 24h, or escalate to the
+   "ship without re-vendor" fallback in Risks (CLI `v0.2.0` pinned to spec `v0.2.0`).
+2. ☐ **HARD GATE — `dev` is green.** `gh run list --branch dev --limit 5` shows recent successes; no in-flight runs.
+3. ☐ **HARD GATE — clean working tree.** `git status` empty on `dev`.
+4. ☐ Run U1.5: `git -C ~/dev/agentnative-spec fetch --tags` → `SPEC_REF=v0.3.0 ./scripts/sync-spec.sh` → bump
+   `scripts/sync-spec.sh` default `SPEC_REF` to `v0.3.0` → `cargo build --release` → `cargo test` → eyeball `git diff
+   src/principles/spec/principles/` (all 7 should flip `draft → active`) → commit as `chore(spec): re-vendor to v0.3.0 —
+   active-status principles` → `git push origin dev` (pre-push hook runs CI locally).
+
+**Phase B — branch-cut to release:**
+
+1. ☐ Cut `release/launch` from `dev` HEAD: `git switch -c release/launch dev`.
+2. ☐ On `release/launch`: bump `Cargo.toml` version `0.1.0 → 0.2.0`; `cargo build` regenerates `Cargo.lock`; commit as
+   `chore: bump version to 0.2.0` per the established pattern (`a1b3bfd` for v0.1.3).
+3. ☐ Generate CHANGELOG entry for `v0.2.0`: `scripts/generate-changelog.sh` (or `git cliff --tag v0.2.0 --unreleased`
+   per `cliff.toml`); commit as `docs(changelog): v0.2.0`.
+4. ☐ Open PR `release/launch` → `main` titled `release: v0.2.0` (mirror `release: v0.1.3 (#28)`). Body uses
+   `.github/pull_request_template.md` cascade per global CLAUDE.md.
+5. ☐ CI green on the release PR (`gh pr checks <pr> --watch`).
+6. ☐ Merge release PR to `main`.
+
+**Phase C — tag + pipeline (U3):**
+
+1. ☐ `git fetch origin` → `git tag -a v0.2.0 -m "v0.2.0" origin/main` → `git push origin v0.2.0`.
+2. ☐ Watch all release-pipeline runs: build (5 targets), crates.io, GitHub Release draft, Homebrew tap dispatch. Re-run
+   individual jobs on transient failures.
+3. ☐ Re-run `gh run list --branch main --limit 5` to catch chained `finalize-release.yml` and homebrew dispatch runs.
+4. ☐ Verify the GitHub Release for `v0.2.0` is published (not draft) with all 5 artifacts attached.
+5. ☐ Verify `homebrew-tap/Formula/agentnative.rb` on `main` references `v0.2.0` and the correct sha256.
+
+**Phase D — cold-device verify + tracker update (U4):**
+
+1. ☐ Run U4 cold-device verification on a fresh Linux box. Save log to
+   `~/.gstack/projects/brettdavies-agentnative/cold-device-verification-{date}.md`.
+2. ☐ Best-effort macOS smoke test on dev machine: `brew uninstall agentnative && brew untap brettdavies/tap && rm -rf
+   ~/Library/Caches/Homebrew/downloads/*agentnative* && brew install brettdavies/tap/agentnative && anc --version`.
+   Pass/fail informational only — Linux is the gate.
+3. ☐ Update the central launch tracker: flip Gate 7 from `on-dev-pending` to `done`. Commit as `chore: update launch
+   tracker — CLI v0.2.0 shipped`.
+
+If any HARD GATE in Phase A fails, the launch posture pivots to either "push CLI launch by 24h" or "ship without
+re-vendor" per the central tracker's pre-launch-night rules. Phase B/C/D failures escalate per the Risks table. **No
+"we'll fix it after."**
 
 ---
 

@@ -263,6 +263,11 @@ pub fn emit_rust(reqs: &[ParsedRequirement], spec_version: &str) -> String {
          // to regenerate.\n\n",
     );
 
+    out.push_str(
+        "/// Every MUST/SHOULD/MAY in the spec, generated from vendored frontmatter.\n\
+         /// Sort order: principle ascending, then level (MUST → SHOULD → MAY),\n\
+         /// preserving spec source order within a level.\n",
+    );
     out.push_str("pub static REQUIREMENTS: &[Requirement] = &[\n");
     for r in reqs {
         out.push_str("    Requirement {\n");
@@ -288,6 +293,8 @@ pub fn emit_rust(reqs: &[ParsedRequirement], spec_version: &str) -> String {
     }
     out.push_str("];\n\n");
 
+    out.push_str("/// Spec version vendored under `src/principles/spec/VERSION` at build time.\n");
+    out.push_str("#[allow(dead_code)]\n");
     out.push_str(&format!(
         "pub const SPEC_VERSION: &str = \"{}\";\n",
         escape_rust_str(spec_version)

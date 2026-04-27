@@ -55,10 +55,19 @@ thiserror = "2"
 # Platform
 libc = "0.2"
 
+[build-dependencies]
+# Vendored spec frontmatter parser (build.rs → $OUT_DIR/generated_requirements.rs).
+# serde_yaml is deprecated upstream but still functional; pinned tightly.
+# Re-evaluate (saphyr / yaml-rust2) if cargo-deny flags it.
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "=0.9.34"
+
 [dev-dependencies]
 assert_cmd = "2"
 insta = "1"
 predicates = "3"
+# Used by tests/build_parser.rs to exercise the build_support/parser.rs module.
+serde_yaml = "=0.9.34"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.tar.gz"

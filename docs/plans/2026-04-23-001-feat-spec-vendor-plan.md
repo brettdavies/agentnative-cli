@@ -1,7 +1,7 @@
 ---
 title: "feat: vendor agentnative-spec — generate REQUIREMENTS at build time + drift-check"
 type: feat
-status: active
+status: completed
 date: 2026-04-23
 parents:
   - https://github.com/brettdavies/agentnative/blob/dev/docs/plans/2026-04-22-002-post-frontmatter-roadmap.md
@@ -40,8 +40,8 @@ compile), cross-repo artifact dependency.
 Today `src/principles/registry.rs` hand-maintains a 767-line `&'static [Requirement]` slice covering every
 MUST/SHOULD/MAY across P1-P7 (`p1-must-env-var`, `p1-must-no-interactive`, …, `p7-may-auto-verbosity`). That table was
 correct when this crate shipped, but the spec now owns those IDs as canonical frontmatter
-(`agentnative:principles/p*-*.md`). Two copies of the same contract will drift — already a live risk, since the
-spec bumped from 46 to N entries via the v0.2.0 frontmatter migration and any future add/rename in the spec requires a
+(`agentnative:principles/p*-*.md`). Two copies of the same contract will drift — already a live risk, since the spec
+bumped from 46 to N entries via the v0.2.0 frontmatter migration and any future add/rename in the spec requires a
 coordinated hand-edit on this side.
 
 The `sot_contract.md` doctrine (spec-repo session memory) settled the design: **IDs are the contract, versions are
@@ -70,9 +70,9 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
   scorecard field. v1.1 consumers feature-detect and tolerate its presence, per the existing additive-schema policy in
   `AGENTS.md`.
 - R7. The coupled-release protocol in
-  [`agentnative:CONTRIBUTING.md`](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) is
-  honored: this plan's execution is the "companion PR" that resolves Open Question (a) in spec plan 001 (vendoring
-  pattern choice — now definitively commit-a-copy).
+  [`agentnative:CONTRIBUTING.md`](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) is honored: this
+  plan's execution is the "companion PR" that resolves Open Question (a) in spec plan 001 (vendoring pattern choice —
+  now definitively commit-a-copy).
 
 ## Scope Boundaries
 
@@ -135,21 +135,22 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
   ```
 
 -
-  [`agentnative:scripts/validate-principles.mjs`](https://github.com/brettdavies/agentnative/blob/main/scripts/validate-principles.mjs)
-  — source-side schema validator. The `build.rs` YAML parser must accept everything this validator accepts (no stricter,
-  no looser). The validator is the authoritative schema.
+
+[`agentnative:scripts/validate-principles.mjs`](https://github.com/brettdavies/agentnative/blob/main/scripts/validate-principles.mjs)
+— source-side schema validator. The `build.rs` YAML parser must accept everything this validator accepts (no stricter,
+no looser). The validator is the authoritative schema.
 
 ### Institutional Learnings
 
 - `sot_contract.md` (spec-repo session memory) — hybrid propagation + IDs-as-SoT. Settled.
 -
-  [`cross-repo-artifact-consumption-static-sites-2026-04-21.md`](../../docs/solutions/best-practices/cross-repo-artifact-consumption-static-sites-2026-04-21.md)
-  — commit-a-copy vs build-time fetch vs symlink. Commit-a-copy wins on network independence and reproducibility.
-  Feature-detect new fields rather than version-gate.
--
-  [`build-module-srp-dry-refactor-20260421.md`](../../docs/solutions/best-practices/build-module-srp-dry-refactor-20260421.md)
-  — build-time code-generation patterns in this ecosystem; precedent for keeping generated code out of `src/` (prefer
-  `OUT_DIR`).
+
+[`cross-repo-artifact-consumption-static-sites-2026-04-21.md`](../../docs/solutions/best-practices/cross-repo-artifact-consumption-static-sites-2026-04-21.md)
+— commit-a-copy vs build-time fetch vs symlink. Commit-a-copy wins on network independence and reproducibility.
+Feature-detect new fields rather than version-gate. -
+[`build-module-srp-dry-refactor-20260421.md`](../../docs/solutions/best-practices/build-module-srp-dry-refactor-20260421.md)
+— build-time code-generation patterns in this ecosystem; precedent for keeping generated code out of `src/` (prefer
+`OUT_DIR`).
 
 ### External References
 
@@ -317,8 +318,8 @@ pub const SPEC_VERSION: &str = "0.2.0";  // from src/principles/spec/VERSION
 - `$SPEC_ROOT/CHANGELOG.md` → `src/principles/spec/CHANGELOG.md`
 - `$SPEC_ROOT/principles/*.md` → `src/principles/spec/principles/`
 - `src/principles/spec/README.md` contents: short (~15 lines). Identifies the folder as vendored from
-  `brettdavies/agentnative`, cites the CC BY 4.0 license + attribution, points at `scripts/sync-spec.sh` for
-  resync, and names the current pinned tag.
+  `brettdavies/agentnative`, cites the CC BY 4.0 license + attribution, points at `scripts/sync-spec.sh` for resync, and
+  names the current pinned tag.
 - Add `chmod +x` on creation.
 
 **Patterns to follow:**
@@ -391,10 +392,10 @@ pub const SPEC_VERSION: &str = "0.2.0";  // from src/principles/spec/VERSION
 
 - [ ] U3. **Add `build.rs`; generate `REQUIREMENTS` from vendored frontmatter**
 
-**Execution note:** Test-first for the generator. Before writing `build.rs` logic, craft a handful of fixture
-inputs (valid, missing-field, duplicate-ID, unknown-level, unknown-applicability-shape) and assert the generator
-produces the expected output or fails with the expected error. This is new build-time-failure surface; the diagnostic
-quality is the feature.
+**Execution note:** Test-first for the generator. Before writing `build.rs` logic, craft a handful of fixture inputs
+(valid, missing-field, duplicate-ID, unknown-level, unknown-applicability-shape) and assert the generator produces the
+expected output or fails with the expected error. This is new build-time-failure surface; the diagnostic quality is the
+feature.
 
 **Goal:** Parse vendored frontmatter and emit `$OUT_DIR/generated_requirements.rs` at build time.
 
@@ -415,14 +416,14 @@ quality is the feature.
 
 1. `println!("cargo:rerun-if-changed=src/principles/spec/");` — rebuild only when vendored content changes.
 2. For each file matching `src/principles/spec/principles/p*-*.md`: a. Read to string. b. Split on the second `---`;
-     YAML-parse the block between the first and second. c. Validate: required fields present (`id`, `title`,
-     `requirements`); each requirement has `id`, `level`, `applicability`, `summary`; `level` ∈ {`must`, `should`,
-     `may`}; `applicability` is either the string `universal` or an object with an `if` key whose value is a non-empty
-     string. d. Compute `principle: u8` from the file-level `id` (strip `p` prefix, parse integer).
+   YAML-parse the block between the first and second. c. Validate: required fields present (`id`, `title`,
+   `requirements`); each requirement has `id`, `level`, `applicability`, `summary`; `level` ∈ {`must`, `should`, `may`};
+   `applicability` is either the string `universal` or an object with an `if` key whose value is a non-empty string. d.
+   Compute `principle: u8` from the file-level `id` (strip `p` prefix, parse integer).
 3. Aggregate all requirements across all 7 files. Detect duplicate IDs (hard error with file + ID).
 4. Sort by `(principle, level_sort_key, source_order)`.
 5. Read `src/principles/spec/VERSION` → emit `pub const SPEC_VERSION: &str = "..."`. If file missing, emit `"unknown"`
-     and print a `cargo:warning=...`.
+   and print a `cargo:warning=...`.
 6. Write generated Rust to `$OUT_DIR/generated_requirements.rs`.
 
 - Keep the generator in a single `build.rs` file. No separate `build/` module; if the logic grows past ~200 lines,
@@ -530,12 +531,12 @@ quality is the feature.
   covered ID, `HashSet::difference` against `REQUIREMENTS` IDs. Non-empty diff = failure citing the orphan IDs.
 - Test 2 (R5): every MUST in `REQUIREMENTS` is covered by at least one check OR is listed in an explicit allowlist.
 - Allowlist lives in the test file as `const UNVERIFIED_MUSTS: &[&str] = &[...]` with a `why:` comment per entry.
-    Allowlist entries are the "MUST covered by the spec but intentionally not automated at current scale" cases (see
-    [`agentnative:docs/decisions/p1-behavioral-must.md`](https://github.com/brettdavies/agentnative/blob/main/docs/decisions/p1-behavioral-must.md)
-    for the precedent — TTY-driving-agent scenarios are in P1 but not PTY-probed).
+  Allowlist entries are the "MUST covered by the spec but intentionally not automated at current scale" cases (see
+  [`agentnative:docs/decisions/p1-behavioral-must.md`](https://github.com/brettdavies/agentnative/blob/main/docs/decisions/p1-behavioral-must.md)
+  for the precedent — TTY-driving-agent scenarios are in P1 but not PTY-probed).
 - Every MUST not in the allowlist must be covered by at least one check.
 - If a new MUST lands in the spec and no check references it AND it's not in the allowlist, this test fails loudly on
-    next `cargo test`.
+  next `cargo test`.
 - Test 3 (schema sanity): `REQUIREMENTS` length > 0, every entry has non-empty `summary`, `principle` is in `1..=7`, no
   duplicate IDs (redundant with build.rs check but cheap insurance).
 - Follow the "loud failure message cites the diagnostic next step" voice of the existing
@@ -638,23 +639,23 @@ quality is the feature.
 
 - **Interaction graph:**
 - `build.rs` (NEW) → vendored `src/principles/spec/` (NEW) → `$OUT_DIR/generated_requirements.rs` (NEW) →
-    `src/principles/registry.rs` (MODIFIED) → every existing consumer (`src/checks/`, `src/principles/matrix.rs`,
-    `src/scorecard/`).
+  `src/principles/registry.rs` (MODIFIED) → every existing consumer (`src/checks/`, `src/principles/matrix.rs`,
+  `src/scorecard/`).
 - No change to the binary's runtime behavior in U1-U5 — the plan intentionally preserves byte-identical scorecard output
-    until U6's additive field.
+  until U6's additive field.
 - **Error propagation:**
 - Build-time: all failures are `cargo build` errors with file + field context. Never silent.
 - Runtime: no new failure modes. The runtime reads a `&'static` slice exactly as before.
 - **API surface parity:**
 - Public API (`pub use` in `src/principles/mod.rs`) unchanged. Downstream consumers of the crate (if any) see no
-    breaking change.
+  breaking change.
 - Scorecard v1.2 is additive; v1.1 consumers compatible.
 - **Unchanged invariants:**
 - `Requirement`, `Level`, `Applicability`, `ExceptionCategory` type definitions — untouched.
 - `SUPPRESSION_TABLE`, `SUPPRESSION_EVIDENCE_PREFIX`, `ALL_EXCEPTION_CATEGORIES` — hand-maintained, unchanged.
 - `find()` and `count_at_level()` — unchanged; still operate on `REQUIREMENTS`.
 - `coverage-matrix.json` output shape — identical (derives from `REQUIREMENTS`, and the generated version matches the
-    hand-maintained one byte-for-byte post-U4).
+  hand-maintained one byte-for-byte post-U4).
 - Exit codes, CLI grammar, `--audit-profile` semantics — all unchanged.
 - **Integration coverage:** The spec repo's `scripts/validate-principles.mjs` and this crate's `build.rs` are now two
   parsers of the same YAML. U3 explicitly requires the two accept the same schema. If they diverge, the spec-side
@@ -665,14 +666,14 @@ quality is the feature.
 
 ## Risks & Dependencies
 
-| Risk                                                                                  | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `serde_yaml` is deprecated; `cargo-deny` flags it                                     | Med        | Low    | Pin tight version; if flagged, evaluate `saphyr`/`yaml-rust2` in U3. Parser is isolated to `build.rs`.                                                                                                                                                                              |
-| Build-time YAML parser diverges from spec-repo JS validator                           | Med        | Med    | U3 test-first covers every error shape; manual parity check against `agentnative:scripts/validate-principles.mjs` rules. Drift surfaces as a real spec file failing to parse on this side.                                                                                     |
-| Generated sort order differs from hand-maintained order → `coverage-matrix.json` diff | Low        | Low    | U4 integration test verifies byte-for-byte scorecard identity on a golden target. Sort key is explicit and tested.                                                                                                                                                                  |
-| Vendored spec licensing concern (CC BY 4.0 in MIT/Apache crate)                       | Low        | Low    | Compatible per CC BY 4.0 — attribution only. `src/principles/spec/README.md` carries the attribution; spec frontmatter already in each file. Precedent: site repo vendors identically.                                                                                              |
-| Spec adds a `level` or `applicability` shape not in this crate's enums                | Low        | Med    | Build fails loudly; a coordinated CLI-side enum addition + resync is the remediation. Better than silent tolerance.                                                                                                                                                                 |
-| `cargo publish` rejects vendored non-Rust content                                     | Low        | Low    | Dry-run in U2 verifies. Cargo includes all of `src/` by default; `Cargo.toml` exclude list doesn't touch `src/principles/spec/`.                                                                                                                                                    |
+| Risk                                                                                  | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `serde_yaml` is deprecated; `cargo-deny` flags it                                     | Med        | Low    | Pin tight version; if flagged, evaluate `saphyr`/`yaml-rust2` in U3. Parser is isolated to `build.rs`.                                                                                                                                                                    |
+| Build-time YAML parser diverges from spec-repo JS validator                           | Med        | Med    | U3 test-first covers every error shape; manual parity check against `agentnative:scripts/validate-principles.mjs` rules. Drift surfaces as a real spec file failing to parse on this side.                                                                                |
+| Generated sort order differs from hand-maintained order → `coverage-matrix.json` diff | Low        | Low    | U4 integration test verifies byte-for-byte scorecard identity on a golden target. Sort key is explicit and tested.                                                                                                                                                        |
+| Vendored spec licensing concern (CC BY 4.0 in MIT/Apache crate)                       | Low        | Low    | Compatible per CC BY 4.0 — attribution only. `src/principles/spec/README.md` carries the attribution; spec frontmatter already in each file. Precedent: site repo vendors identically.                                                                                    |
+| Spec adds a `level` or `applicability` shape not in this crate's enums                | Low        | Med    | Build fails loudly; a coordinated CLI-side enum addition + resync is the remediation. Better than silent tolerance.                                                                                                                                                       |
+| `cargo publish` rejects vendored non-Rust content                                     | Low        | Low    | Dry-run in U2 verifies. Cargo includes all of `src/` by default; `Cargo.toml` exclude list doesn't touch `src/principles/spec/`.                                                                                                                                          |
 | Drift tests allowlist becomes a dumping ground                                        | Med        | Low    | Every allowlist entry requires a `why:` comment citing the decision record (like [`agentnative:docs/decisions/p1-behavioral-must.md`](https://github.com/brettdavies/agentnative/blob/main/docs/decisions/p1-behavioral-must.md)). Enforce via prose review, not tooling. |
 
 **External dependencies:**
@@ -691,12 +692,12 @@ quality is the feature.
 - When this plan lands, strike item 5 in
   [agentnative-spec roadmap 002](https://github.com/brettdavies/agentnative/blob/dev/docs/plans/2026-04-22-002-post-frontmatter-roadmap.md)
   (mark shipped with PR link + vendored spec version).
-- Update `agentnative:CONTRIBUTING.md`'s coupled-release protocol note if any of U1-U6 surface a gap in the
-  existing documentation.
+- Update `agentnative:CONTRIBUTING.md`'s coupled-release protocol note if any of U1-U6 surface a gap in the existing
+  documentation.
 - The `agent-native-cli` skill (`~/.claude/skills/agent-native-cli/`) includes `references/principles-deep-dive.md`;
-  that doc is currently downstream of `agentnative:principles/`. This plan doesn't re-home it, but landing U4
-  creates a natural moment to consider whether that skill's principles file should become a third consumer of the
-  vendored spec (out of scope here; flag as a future-consideration item).
+  that doc is currently downstream of `agentnative:principles/`. This plan doesn't re-home it, but landing U4 creates a
+  natural moment to consider whether that skill's principles file should become a third consumer of the vendored spec
+  (out of scope here; flag as a future-consideration item).
 - Resync cadence guidance (to land in this repo's `AGENTS.md` under U1): "Rerun `scripts/sync-spec.sh` after every new
   `agentnative-spec` tag. The `repository_dispatch` from the spec's publish workflow is the trigger. If the dispatch is
   handled by a future GitHub Action that opens a resync PR, this script becomes the action's body."
@@ -721,10 +722,12 @@ quality is the feature.
 - Relevant code (spec repo):
 - [`principles/p*-*.md`](https://github.com/brettdavies/agentnative/tree/main/principles) (canonical frontmatter)
 - [`principles/AGENTS.md`](https://github.com/brettdavies/agentnative/blob/main/principles/AGENTS.md) (schema
-    governance)
+  governance)
 -
-    [`scripts/validate-principles.mjs`](https://github.com/brettdavies/agentnative/blob/main/scripts/validate-principles.mjs)
-    (authoritative schema validator)
+
+[`scripts/validate-principles.mjs`](https://github.com/brettdavies/agentnative/blob/main/scripts/validate-principles.mjs)
+(authoritative schema validator)
+
 - External: [Cargo build scripts](https://doc.rust-lang.org/cargo/reference/build-scripts.html),
   [`serde_yaml`](https://docs.rs/serde_yaml), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 - Target pin: `agentnative-spec@v0.2.0` (commit `83bf0fd`)

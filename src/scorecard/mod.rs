@@ -6,14 +6,20 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 use crate::check::Check;
-use crate::principles::registry::{Level, REQUIREMENTS};
+use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
 use crate::types::{CheckGroup, CheckResult, CheckStatus};
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
 /// leaderboard pipeline) pin against this to detect shape changes.
-pub const SCHEMA_VERSION: &str = "1.1";
+///
+/// `0.x` is pre-launch — shape may still evolve. Will lock to `1.0` on
+/// first public release of `anc`. During `0.x`, additive fields are the
+/// norm; consumers feature-detect new keys rather than pinning exact
+/// values. History: `0.1` (initial), `0.2` (audience, audit_profile,
+/// coverage_summary), `0.3` (spec_version).
+pub const SCHEMA_VERSION: &str = "0.3";
 
-/// v1.1 scorecard shape emitted by `anc check --output json`.
+/// Pre-launch (`0.x`) scorecard shape emitted by `anc check --output json`.
 ///
 /// **Scorecard-level enum values are kebab-case.** Both `audience` and
 /// `audit_profile` serialize their enum values as kebab-case strings
@@ -38,19 +44,27 @@ pub struct Scorecard {
     pub summary: Summary,
     pub coverage_summary: CoverageSummary,
     /// Derived audience classification (`agent-optimized`, `mixed`,
-    /// `human-primary`). Reserved in v0.1.1 / v0.1.2 (always `null`);
-    /// populated in v0.1.3+.
+    /// `human-primary`). Reserved in `anc` v0.1.1 / v0.1.2 (always `null`);
+    /// populated in v0.1.3+. Pre-launch additive (schema `0.2`); older
+    /// consumers feature-detect.
     pub audience: Option<String>,
     /// When `audience` is `null`, the reason the classifier declined to
     /// label: `suppressed` (signal check masked by `--audit-profile`) or
     /// `insufficient_signal` (signal check never produced, e.g. source-only
-    /// run). Omitted from JSON when `audience` has a label. Additive to
-    /// v1.1; consumers feature-detect.
+    /// run). Omitted from JSON when `audience` has a label. Pre-launch
+    /// additive (schema `0.2`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audience_reason: Option<String>,
     /// Registry-sourced exemption category (human-tui, file-traversal, etc.).
-    /// Reserved for v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
+    /// Reserved for `anc` v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
+    /// Pre-launch additive (schema `0.2`).
     pub audit_profile: Option<String>,
+    /// agentnative-spec version this CLI was built against. Sourced at build
+    /// time from `src/principles/spec/VERSION` by `build.rs`. Reads
+    /// `"unknown"` if the vendored VERSION file was missing at build time
+    /// (build still succeeds; warning emitted). Pre-launch additive
+    /// (schema `0.3`); older consumers feature-detect.
+    pub spec_version: &'static str,
 }
 
 /// Per-level verification counts: how many requirements at this level had
@@ -89,8 +103,8 @@ pub struct CheckResultView {
     pub layer: String,
     pub status: String,
     pub evidence: Option<String>,
-    /// `high` for direct probes, `medium` for heuristics. Additive field;
-    /// v1.1 consumers feature-detect and tolerate missing keys.
+    /// `high` for direct probes, `medium` for heuristics. Older consumers
+    /// feature-detect and tolerate missing keys.
     pub confidence: String,
 }
 
@@ -246,7 +260,7 @@ pub fn format_text(results: &[CheckResult], quiet: bool) -> String {
     out
 }
 
-/// Build a v1.1 scorecard. The `ran_checks` slice is the catalog of checks
+/// Build the scorecard. The `ran_checks` slice is the catalog of checks
 /// that produced `results` — needed to translate check IDs back to the
 /// requirement IDs they cover for `coverage_summary`.
 pub fn build_scorecard(
@@ -273,6 +287,7 @@ pub fn build_scorecard(
         audience,
         audience_reason,
         audit_profile,
+        spec_version: SPEC_VERSION,
     }
 }
 
@@ -396,7 +411,7 @@ mod tests {
         ];
         let json = format_json(&results, &[], None, None);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "1.1");
+        assert_eq!(parsed["schema_version"], "0.3");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -406,12 +421,17 @@ mod tests {
         assert_eq!(parsed["results"][1]["status"], "fail");
         assert_eq!(parsed["results"][1]["evidence"], "bad");
         assert_eq!(parsed["results"][1]["confidence"], "high");
-        // v1.1 additions: coverage_summary present with three levels, audience + audit_profile null.
+        // 0.2 additions: coverage_summary present with three levels, audience + audit_profile null.
         assert!(parsed["coverage_summary"]["must"]["total"].is_number());
         assert!(parsed["coverage_summary"]["should"]["total"].is_number());
         assert!(parsed["coverage_summary"]["may"]["total"].is_number());
         assert!(parsed["audience"].is_null());
         assert!(parsed["audit_profile"].is_null());
+        // 0.3 addition: spec_version is always present and non-empty.
+        let spec = parsed["spec_version"]
+            .as_str()
+            .expect("spec_version is a string");
+        assert!(!spec.is_empty(), "spec_version must not be empty");
     }
 
     #[test]
@@ -610,7 +630,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "1.1");
+        assert_eq!(parsed["schema_version"], "0.3");
     }
 
     #[test]
@@ -765,7 +785,7 @@ mod tests {
     #[test]
     fn scorecard_level_enum_values_are_kebab_case() {
         // Both `audience` and `audit_profile` enum values MUST serialize
-        // as kebab-case inside the v1.1 scorecard JSON. `audit_profile`
+        // as kebab-case inside the scorecard JSON. `audit_profile`
         // echoes the CLI flag value (`--audit-profile human-tui`) and
         // cannot change casing; `audience` adopts the same convention so
         // consumers don't juggle two rules inside one document.

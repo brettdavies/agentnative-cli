@@ -88,7 +88,12 @@ Gates **not** owned by this repo: 1, 2, 3, 6, 8, 9, 10, 11, 12. Listed in Cross-
 
 ### Unreleased work on `dev` (the cherry-pick scope)
 
+Snapshot at 2026-04-27 evening (CLI session post pre-launch dev hygiene):
+
 ```text
+7f4f257 chore(changelog): fix cliff.toml repo name post-rename (agentnative → agentnative-cli)
+3caa40e chore(repo): sync PR template — add **Renamed:** subsection (#30)
+39e200c docs(plans): refresh launch plan with resolved Qs + add U1.5 spec re-vendor
 4f30d75 docs(plans): close out U5 in launch-readiness plan (status: done + close-out admonition)
 be767e4 chore(plans): U5 launch-readiness sweep — relocate handoffs, defer multi-language plan
 0641554 docs(plans): add Show HN launch readiness plan
@@ -97,10 +102,27 @@ be767e4 chore(plans): U5 launch-readiness sweep — relocate handoffs, defer mul
 a918225 docs(plans): add spec vendoring plan for build-time REQUIREMENTS generation
 ```
 
-Six commits unreleased on `dev`. One feature (`#29`), five docs-only (plan add, U5 sweep, U5 close-out, the two
-spec-vendor plan commits). U1.5 (spec re-vendor against `v0.3.0`) will add a seventh commit before branch-cut. All ship
-in the night-before pre-launch release PR to `release/launch` → `main`. Tag triggers the existing reusable workflow at
-`brettdavies/.github/.github/workflows/rust-release.yml`.
+**Nine commits unreleased on `dev`.** One feature (`#29`), two chores (`#30` + the cliff.toml fix), six docs-only (plan
+add, U5 sweep, U5 close-out, plan refresh, the two spec-vendor plan commits). U1.5 (spec re-vendor against `v0.3.0`)
+will add a tenth commit before branch-cut. All ship in the night-before pre-launch release PR to `release/launch` →
+`main`. Tag triggers the existing reusable workflow at `brettdavies/.github/.github/workflows/rust-release.yml`.
+
+**Pre-launch dev hygiene log** — chore commits landed on `dev` between plan-write (2026-04-27 morning) and launch eve to
+keep the v0.2.0 release coherent with the post-rename repo state:
+
+- `3caa40e` (PR #30) — synced `.github/pull_request_template.md` with the canonical at
+  `~/dotfiles/stow/github/dot-config/github/pull_request_template.md` (added `**Renamed:**` subsection under Files
+  Modified). Parallel sync PRs were filed in `agentnative-skill` and `agentnative-site`.
+- `7f4f257` — fixed `cliff.toml [remote.github] repo` from `agentnative` (pre-rename) to `agentnative-cli`. Without
+  this, every PR link in v0.2.0's auto-generated CHANGELOG would have rendered as
+  `github.com/brettdavies/agentnative/pull/N` — GitHub's rename redirect saves them from 404, but the cosmetic drift
+  would surface in the launch release. Verified via cross-repo recon that spec's `cliff.toml repo = "agentnative"` is
+  correct as-is (spec retained the canonical name post-alignment); only CLI carried the suffix change.
+- Cross-repo finding (not CLI-owned, not blocking CLI launch): `agentnative-site/scripts/sync-coverage-matrix.sh:16` has
+  stale default `ANC_ROOT="${ANC_ROOT:-$HOME/dev/agentnative}"` — the path no longer exists. Documented as P0 in
+  `agentnative-site/.context/compound-engineering/todos/014-pending-p0-coverage-matrix-script-rename-drift.md`
+  (local-only). Site-owned fix; matters because post-launch coverage-matrix re-sync (after CLI v0.2.0 ships U1.5
+  re-vendor) needs the script working on default invocation.
 
 ### Coordinating in-flight plans (do NOT dual-file)
 

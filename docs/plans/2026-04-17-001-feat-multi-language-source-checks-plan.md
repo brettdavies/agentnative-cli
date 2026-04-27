@@ -7,6 +7,16 @@ date: 2026-04-17
 
 # feat: Go, Ruby, and TypeScript source checks
 
+> **Phase 1 (research spike) shipped 2026-04-17** — Unit 1's ast-grep viability assessment landed at
+> [`docs/plans/spikes/2026-04-17-multi-language-source-checks-spike.md`](spikes/2026-04-17-multi-language-source-checks-spike.md)
+> (`status: complete`).
+>
+> **Phase 2 (Units 2–6 — Go / TypeScript / Ruby starter checks + cross-cutting infra + fixtures)** is **deferred to
+> post-launch.** Per the Show HN launch readiness plan
+> ([`2026-04-28-001`](2026-04-28-001-feat-show-hn-launch-readiness-plan.md)), multi-language source coverage is not
+> a launch-day hook and stays out of the v0.2.0 cherry-pick window. `status: active` reflects continuing scope, not
+> in-flight implementation.
+
 ## Overview
 
 Extend source checks beyond Rust and Python to cover Go, Ruby, and TypeScript. Start with a scoped research spike to
@@ -417,12 +427,12 @@ place).
   (section "Per-grammar findings: Go → Starter check candidates"):
 - `code-go-panic` (code-quality — analog to `code-unwrap`); `Pattern::try_new("panic($MSG)", Go)` works at top level.
 - `p4-go-os-exit` (P4 — analog to `p4-process-exit`); **AST walking required** — top-level `os.Exit($CODE)` patterns
-    fail to parse as a call. Walk `call_expression > selector_expression(os, Exit)`; exempt files whose `package_clause`
-    is `package main`.
+  fail to parse as a call. Walk `call_expression > selector_expression(os, Exit)`; exempt files whose `package_clause`
+  is `package main`.
 - `p4-go-log-fatal` (P4); AST walking for `call_expression > selector_expression(log, Fatal|Fatalf|Fatalln)`. Same
-    main-package exemption.
+  main-package exemption.
 - `p6-go-no-color` (P6 — analog to `p6-no-color`); pattern `os.Getenv($KEY)` fails top-level so use AST walk plus
-    `source::has_string_literal_in(source, "NO_COLOR", Go)` fallback.
+  `source::has_string_literal_in(source, "NO_COLOR", Go)` fallback.
 - Modify: `src/checks/source/mod.rs` — wire `all_source_checks(Language::Go)` to `go::all_go_checks()`.
 - Test: inline `#[cfg(test)]` module per check file (matches Python convention: `check_x()` helper tested directly,
   `run()` tested with a temporary-directory fixture).
@@ -500,8 +510,8 @@ spike pattern decisions are validated empirically per check.
   present, treat those paths as entry points; otherwise, fall back to files named `cli.ts`, `cli.tsx`, `index.ts`, or
   the file referenced by `main`. Document the heuristic's limitations in the check's module doc comment.
 
-**Execution note:** Characterization-first for `process_exit_outside_entry` — start with a passing and a failing
-fixture so the entry-point heuristic is validated against real code before the check ships.
+**Execution note:** Characterization-first for `process_exit_outside_entry` — start with a passing and a failing fixture
+so the entry-point heuristic is validated against real code before the check ships.
 
 **Patterns to follow:**
 
@@ -565,8 +575,8 @@ fixture so the entry-point heuristic is validated against real code before the c
   (several canonical forms exist; list comes from spike). The scope-tracking approach mirrors Python's `sys_exit`
   `is_main_guard()` logic.
 
-**Execution note:** Test-first — Ruby has the lowest local pattern density in this codebase (no existing Ruby code),
-so confidence in pattern correctness should come from tests, not eye-balling.
+**Execution note:** Test-first — Ruby has the lowest local pattern density in this codebase (no existing Ruby code), so
+confidence in pattern correctness should come from tests, not eye-balling.
 
 **Patterns to follow:**
 
@@ -698,18 +708,18 @@ table to reflect the new coverage.
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| ~~Ruby or Go `µ` meta-var breaks existing `$`-pattern assumptions in shared helpers.~~ **Defused by spike (2026-04-17).** `Rust` and `Python` already use `impl_lang_expando!` with `µ` internally; user-facing syntax is `$VAR` for every supported language. No cross-language helper change needed. | n/a |
-| Go top-level pattern-parse failure for selector-expression calls (e.g. `os.Exit($CODE)` parses as `ERROR > type_conversion_expression` at the top level, not as a `call_expression`). Surfaced by spike (2026-04-17). | Unit 3 uses AST walking for selector-call checks (`os.*`, `log.*`, `fmt.*`) and reserves `Pattern::try_new` for bare builtin calls (`panic`, `print`). Every Go starter check ships with a Fail test case that would surface a pattern-parse regression immediately. |
-| Ruby uppercase-global literal (`$PROGRAM_NAME`) cannot appear in a `Pattern` string — the expando-char rewriter turns it into a meta-var. Surfaced by spike (2026-04-17). | Unit 5's entry-point check uses AST walking + header-text inspection (same shape as Python's `sys_exit::is_main_guard`) rather than a literal `Pattern`. The `$0` digit global is unaffected and can appear in patterns as-is. |
-| Stripped binary size grows enough that release artifacts cross a meaningful boundary (e.g., Homebrew formula size limits, CI artifact size). | Spike (Unit 1) measures the delta per grammar. If a grammar exceeds the 5 MB per-grammar cap called out in Key Technical Decisions, pause and reconsider — either gate that grammar behind a Cargo feature or drop the language from this plan. |
-| `tsconfig.json` check in `detect_language` ordering conflicts with a real repo where only `package.json` exists but the project is TypeScript via other signals (e.g., only `.ts` files). | Spike validates ordering against representative repos. Document the ordering and the fallback behavior (project without tsconfig.json falls back to `Language::Node`). |
-| `Gemfile` / `*.gemspec` detection misfires for a polyglot repo (Rust + Ruby scripts). | `detect_language` already uses first-match-wins on manifest files; extending the ordered table preserves this semantics. A Rust+Ruby repo with a `Cargo.toml` will classify as Rust; this is the desired behavior and the same as today's Rust+Python handling. |
-| ast-grep-language 0.42.0 grammar versions lag upstream tree-sitter grammars, and a pattern working against current upstream tree-sitter-go fails against 0.42.0's pinned version. | Spike empirically validates every pattern against the pinned version, not against documentation or upstream examples. |
-| Starter check selection turns out to be redundant with existing behavioral checks (e.g., a TS `process_exit_outside_entry` check duplicates what `--help exits 0` already proves). | Spike criteria include "maps to at least two distinct principles" and "proves cross-language helper semantics" — this forces diversity. Any check that only duplicates an existing behavioral check is dropped in Unit 1. |
-| Meta-var character confusion causes silent pattern mismatches (no panic, just never matches). | Every per-language check's Fail test case is a concrete source string known to trigger — if the pattern is wrong the test fails, surfacing the issue at Unit 3/4/5 commit time rather than in production. |
-| Adding three grammars meaningfully slows compile times for every contributor, even those working only on Rust checks. | Accepted — this is core product work, not optional tooling. If the slowdown is painful, a follow-up could split grammars behind Cargo features; not in scope here. |
+| Risk                                                                                                                                                                                                                                                                                                   | Mitigation                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Ruby or Go `µ` meta-var breaks existing `$`-pattern assumptions in shared helpers.~~ **Defused by spike (2026-04-17).** `Rust` and `Python` already use `impl_lang_expando!` with `µ` internally; user-facing syntax is `$VAR` for every supported language. No cross-language helper change needed. | n/a                                                                                                                                                                                                                                                                  |
+| Go top-level pattern-parse failure for selector-expression calls (e.g. `os.Exit($CODE)` parses as `ERROR > type_conversion_expression` at the top level, not as a `call_expression`). Surfaced by spike (2026-04-17).                                                                                  | Unit 3 uses AST walking for selector-call checks (`os.*`, `log.*`, `fmt.*`) and reserves `Pattern::try_new` for bare builtin calls (`panic`, `print`). Every Go starter check ships with a Fail test case that would surface a pattern-parse regression immediately. |
+| Ruby uppercase-global literal (`$PROGRAM_NAME`) cannot appear in a `Pattern` string — the expando-char rewriter turns it into a meta-var. Surfaced by spike (2026-04-17).                                                                                                                              | Unit 5's entry-point check uses AST walking + header-text inspection (same shape as Python's `sys_exit::is_main_guard`) rather than a literal `Pattern`. The `$0` digit global is unaffected and can appear in patterns as-is.                                       |
+| Stripped binary size grows enough that release artifacts cross a meaningful boundary (e.g., Homebrew formula size limits, CI artifact size).                                                                                                                                                           | Spike (Unit 1) measures the delta per grammar. If a grammar exceeds the 5 MB per-grammar cap called out in Key Technical Decisions, pause and reconsider — either gate that grammar behind a Cargo feature or drop the language from this plan.                      |
+| `tsconfig.json` check in `detect_language` ordering conflicts with a real repo where only `package.json` exists but the project is TypeScript via other signals (e.g., only `.ts` files).                                                                                                              | Spike validates ordering against representative repos. Document the ordering and the fallback behavior (project without tsconfig.json falls back to `Language::Node`).                                                                                               |
+| `Gemfile` / `*.gemspec` detection misfires for a polyglot repo (Rust + Ruby scripts).                                                                                                                                                                                                                  | `detect_language` already uses first-match-wins on manifest files; extending the ordered table preserves this semantics. A Rust+Ruby repo with a `Cargo.toml` will classify as Rust; this is the desired behavior and the same as today's Rust+Python handling.      |
+| ast-grep-language 0.42.0 grammar versions lag upstream tree-sitter grammars, and a pattern working against current upstream tree-sitter-go fails against 0.42.0's pinned version.                                                                                                                      | Spike empirically validates every pattern against the pinned version, not against documentation or upstream examples.                                                                                                                                                |
+| Starter check selection turns out to be redundant with existing behavioral checks (e.g., a TS `process_exit_outside_entry` check duplicates what `--help exits 0` already proves).                                                                                                                     | Spike criteria include "maps to at least two distinct principles" and "proves cross-language helper semantics" — this forces diversity. Any check that only duplicates an existing behavioral check is dropped in Unit 1.                                            |
+| Meta-var character confusion causes silent pattern mismatches (no panic, just never matches).                                                                                                                                                                                                          | Every per-language check's Fail test case is a concrete source string known to trigger — if the pattern is wrong the test fails, surfacing the issue at Unit 3/4/5 commit time rather than in production.                                                            |
+| Adding three grammars meaningfully slows compile times for every contributor, even those working only on Rust checks.                                                                                                                                                                                  | Accepted — this is core product work, not optional tooling. If the slowdown is painful, a follow-up could split grammars behind Cargo features; not in scope here.                                                                                                   |
 
 ## Documentation / Operational Notes
 

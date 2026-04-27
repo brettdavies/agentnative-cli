@@ -109,14 +109,23 @@ cargo test -- --ignored       # fixture tests (slower)
 
 ## Spec source (principles)
 
-The canonical specification of the 7 agent-readiness principles lives in the vault, one file per principle. The `anc`
-checks in `src/checks/` are derived **manually** from these files — there is no build-time import, no live link. When a
-principle's spec changes, propagate to the relevant check(s) deliberately.
+The canonical specification of the 7 agent-readiness principles lives in
+[`brettdavies/agentnative`](https://github.com/brettdavies/agentnative), one file per principle under `principles/`. A
+pinned snapshot is **vendored** into this crate at `src/principles/spec/`, and `build.rs` parses its frontmatter at
+build time to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI checks against.
+There is no manual sync of requirement IDs; only the `Check::covers()` declarations are hand-maintained.
 
-- `~/obsidian-vault/Projects/brettdavies-agentnative/principles/index.md` — table of P1-P7 with status (draft /
-  under-review / locked).
-- `~/obsidian-vault/Projects/brettdavies-agentnative/principles/AGENTS.md` — iteration workflow, pressure-test protocol,
-  per-file structure. Read before proposing a new check that stretches the existing `P<n>` coverage.
+The `anc` checks in `src/checks/` themselves are derived **manually** from each principle's prose. When a principle's
+spec adds, removes, or reworks a requirement, propagate to the relevant check(s) deliberately.
+
+**Resync cadence:** rerun `scripts/sync-spec.sh` after every new `agentnative-spec` tag. The default `SPEC_REF` in the
+script is the current pin; bump via `SPEC_REF=v0.2.1 scripts/sync-spec.sh` when adopting a newer spec release. The
+companion `repository_dispatch` from the spec's publish workflow is the canonical trigger; if a future GitHub Action
+opens a resync PR automatically, this script becomes that action's body.
+
+For iteration workflow, pressure-test protocol, and per-file structure of the spec itself, see
+[`agentnative:principles/AGENTS.md`](https://github.com/brettdavies/agentnative/blob/main/principles/AGENTS.md). Read
+before proposing a new check that stretches the existing `P<n>` coverage.
 
 When a check is added or revised, its code or doc comment should name the principle code (`P<n>`) it implements for
 traceability. Do not embed the principle text in the check source.

@@ -22,4 +22,4 @@ body = """
 
 [remote.github]
 owner = "brettdavies"
-repo = "agentnative"
+repo = "agentnative-cli"

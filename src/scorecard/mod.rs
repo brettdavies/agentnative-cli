@@ -6,12 +6,14 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 use crate::check::Check;
-use crate::principles::registry::{Level, REQUIREMENTS};
+use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
 use crate::types::{CheckGroup, CheckResult, CheckStatus};
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
 /// leaderboard pipeline) pin against this to detect shape changes.
-pub const SCHEMA_VERSION: &str = "1.1";
+///
+/// v1.2 adds `spec_version` (additive). v1.1 consumers feature-detect.
+pub const SCHEMA_VERSION: &str = "1.2";
 
 /// v1.1 scorecard shape emitted by `anc check --output json`.
 ///
@@ -51,6 +53,12 @@ pub struct Scorecard {
     /// Registry-sourced exemption category (human-tui, file-traversal, etc.).
     /// Reserved for v0.1.3; emitted as `null` in v0.1.1 / v0.1.2.
     pub audit_profile: Option<String>,
+    /// agentnative-spec version this CLI was built against. Sourced at build
+    /// time from `src/principles/spec/VERSION` by `build.rs`. Reads
+    /// `"unknown"` if the vendored VERSION file was missing at build time
+    /// (build still succeeds; warning emitted). v1.2 addition; v1.1
+    /// consumers feature-detect.
+    pub spec_version: &'static str,
 }
 
 /// Per-level verification counts: how many requirements at this level had
@@ -273,6 +281,7 @@ pub fn build_scorecard(
         audience,
         audience_reason,
         audit_profile,
+        spec_version: SPEC_VERSION,
     }
 }
 
@@ -396,7 +405,7 @@ mod tests {
         ];
         let json = format_json(&results, &[], None, None);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "1.1");
+        assert_eq!(parsed["schema_version"], "1.2");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -412,6 +421,11 @@ mod tests {
         assert!(parsed["coverage_summary"]["may"]["total"].is_number());
         assert!(parsed["audience"].is_null());
         assert!(parsed["audit_profile"].is_null());
+        // v1.2 addition: spec_version is always present and non-empty.
+        let spec = parsed["spec_version"]
+            .as_str()
+            .expect("spec_version is a string");
+        assert!(!spec.is_empty(), "spec_version must not be empty");
     }
 
     #[test]
@@ -610,7 +624,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "1.1");
+        assert_eq!(parsed["schema_version"], "1.2");
     }
 
     #[test]

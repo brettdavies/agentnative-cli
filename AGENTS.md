@@ -35,7 +35,7 @@ itself, children spawned without arguments must not recurse into `check .`.
 
 ## Agent-facing JSON surface
 
-`anc check <target> --output json` emits a `schema_version: "1.1"` scorecard. Four fields are additive to v1.1 and v1.1
+`anc check <target> --output json` emits a `schema_version: "1.2"` scorecard. Five fields are additive to v1.0 and v1.1
 consumers feature-detect them:
 
 - `audience` — `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral checks
@@ -46,9 +46,12 @@ consumers feature-detect them:
 - `audit_profile` — echoes the applied `--audit-profile <category>` flag value. `null` when no profile is set.
 - `coverage_summary.{must,should,may}.verified` — requirements verified by a check that actually ran. Checks suppressed
   by `--audit-profile` do not count as verified; suppression means verification was intentionally skipped.
+- `spec_version` — the `agentnative-spec` version this CLI was built against. Sourced at build time from
+  `src/principles/spec/VERSION` by `build.rs`; reads `"unknown"` if that file was missing at build time. Pin against
+  this to know which spec contract the scorecard's requirement IDs reference.
 
-`--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`.
-Unknown values exit 2 with a structured error. The full per-category mapping of suppressed check IDs is committed to
+`--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
+values exit 2 with a structured error. The full per-category mapping of suppressed check IDs is committed to
 `coverage/matrix.json` under the `audit_profiles` section — agents should read that file rather than scraping `--help`:
 
 ```bash
@@ -65,8 +68,8 @@ Suppressed checks appear in `results[]` as `status: "skip"` with evidence starti
 - `2` — failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on
   PATH)
 
-Exit 2 is overloaded. To distinguish "ran but found problems" from "called
-incorrectly", parse stderr — usage errors include `Usage:` text; check failures don't.
+Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr — usage errors
+include `Usage:` text; check failures don't.
 
 ## Project Structure
 
@@ -111,7 +114,7 @@ principle's spec changes, propagate to the relevant check(s) deliberately.
 - `~/obsidian-vault/Projects/brettdavies-agentnative/principles/index.md` — table of P1-P7 with status (draft /
   under-review / locked).
 - `~/obsidian-vault/Projects/brettdavies-agentnative/principles/AGENTS.md` — iteration workflow, pressure-test protocol,
-  per-file structure. Read before proposing a new check that stretches the existing P<n> coverage.
+  per-file structure. Read before proposing a new check that stretches the existing `P<n>` coverage.
 
 When a check is added or revised, its code or doc comment should name the principle code (`P<n>`) it implements for
 traceability. Do not embed the principle text in the check source.
@@ -127,5 +130,5 @@ folder:
 - `extracts/` — curated, topic-scoped files (verbatim quotes, principle mapping, recommended uses).
 - `raw/` — full-text captures.
 
-When an extract names concrete linter-rule candidates, walk its **"Linter rule coverage audit"** or equivalent
-section against existing checks in `src/checks/` before opening a new check.
+When an extract names concrete linter-rule candidates, walk its **"Linter rule coverage audit"** or equivalent section
+against existing checks in `src/checks/` before opening a new check.

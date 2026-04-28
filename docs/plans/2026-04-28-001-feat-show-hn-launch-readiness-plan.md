@@ -9,6 +9,10 @@ parent: ~/.gstack/projects/brettdavies-agentnative/brett-dev-design-show-hn-laun
 > **Parent:** `~/.gstack/projects/brettdavies-agentnative/brett-dev-design-show-hn-launch-inversion-20260427-144756.md`
 > (the central Show HN launch tracker — single source of truth for gates, scope, approach across spec/CLI/site/skill).
 > This per-repo plan inherits gates from the parent and is authoritative for repo-internal execution detail only.
+>
+> **Release version + order:** see central tracker § Release Versions and Order — SoT for v0.3.0 launch wave.
+> CLI `v0.2.0` release is **step 2** of the launch wave. Hard-blocked on step 1 (spec `v0.3.0` tag publication);
+> homebrew tap formula update is part of the same step. Slip → push launch 24h.
 
 # feat: Show HN launch readiness — agentnative-cli
 
@@ -196,8 +200,10 @@ None applicable — this is repo-internal release choreography.
   addition + U1.5's `draft → active` principle status flip across all 7 vendored principles is a meaningful user-facing
   capability change. CLI semver is independent of spec's semver — spec going `v0.2.0 → v0.3.0` does not force CLI
   version parity.
-- **Q-CLI2: Which night to cut the release branch?** **Wednesday 2026-04-29 PT for Thursday 2026-04-30 post.** 8–12h
-  bake time before post lands; matches the central tracker's "post Tue–Thu morning PT, peak HN window" constraint.
+- **Q-CLI2: Which night to cut the release branch?** **Tuesday 2026-04-28 PT for Wednesday 2026-04-29 09:00 AM PT
+  post.** ~12h bake time before post lands; matches the central tracker's resolved launch-day decision (parent Q4).
+  Original resolution targeted Wed-cut-for-Thu-post; superseded by the 2026-04-28 cross-repo audit Q4 resolution. See
+  central tracker § Release Versions and Order — SoT for v0.3.0 launch wave.
 - **Q-CLI3: Should the lib/bin split (TODO 016) ride this release?** **No, defer post-launch.** Even though the refactor
   is mechanical and ~1 hour, it would land an additional `[lib]` Cargo target in a `MINOR` release — a consumer-facing
   surface change distinct from the spec-vendor feature. Cleaner story is "v0.2.0 = spec-vendor + active-status
@@ -329,7 +335,7 @@ vendoring contract works. Brett's prior re-vendor cadence: re-run after every ne
 
 **Status:** `not-started`
 
-**Requirements:** Gate 7. Q-CLI2 resolved: cut Wed 2026-04-29 PT for Thu post.
+**Requirements:** Gate 7. Q-CLI2 resolved: cut Tue 2026-04-28 PT for Wed 2026-04-29 09:00 AM PT post.
 
 **Dependencies:** U1.5 (spec re-vendor commit on `dev`). U1's CHANGELOG/version-bump prep is a no-op on `dev` per
 established convention (bump happens on the release branch, see U1 note).
@@ -595,7 +601,7 @@ shipped, here's the evidence" summary on top of a stale body.
 
 ---
 
-## Pre-launch release PR checklist (Wed 2026-04-29 PT for Thu post)
+## Pre-launch release PR checklist (Tue 2026-04-28 PT for Wed 2026-04-29 09:00 AM PT post)
 
 Run in order. The first three steps are HARD GATES — do not advance past a failure.
 

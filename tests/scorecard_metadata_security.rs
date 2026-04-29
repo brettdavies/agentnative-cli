@@ -11,7 +11,11 @@
 
 use assert_cmd::Command;
 use serde_json::Value;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// `Instant` is only used by the unix-gated hostile-binary tests below; the
+// `cfg(unix)` cuts it out on Windows where shell-script fixtures can't run.
+#[cfg(unix)]
+use std::time::Instant;
 
 fn cmd() -> Command {
     Command::cargo_bin("anc").expect("anc binary should exist")

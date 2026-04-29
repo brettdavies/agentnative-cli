@@ -1,4 +1,5 @@
 mod argv;
+mod build_info;
 mod check;
 mod checks;
 mod cli;
@@ -10,10 +11,15 @@ mod scorecard;
 mod source;
 mod types;
 
+use std::time::{Duration, Instant};
+
 use clap::Parser as _;
 use clap_complete::generate;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
-use argv::inject_default_subcommand;
+use argv::{format_invocation, inject_default_subcommand};
+use build_info::{ANC_COMMIT, ANC_VERSION};
 use check::Check;
 use checks::behavioral::all_behavioral_checks;
 use checks::project::all_project_checks;
@@ -23,8 +29,11 @@ use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
 use project::Project;
-use scorecard::audience;
-use scorecard::{exit_code, format_json, format_text};
+use runner::{BinaryRunner, RunStatus};
+use scorecard::{
+    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, ToolInfo, audience, exit_code,
+    format_json, format_text,
+};
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
 fn main() {
@@ -45,7 +54,13 @@ fn main() {
 }
 
 fn run() -> Result<i32, AppError> {
-    let cli = Cli::parse_from(inject_default_subcommand(std::env::args_os()));
+    // Capture argv *before* `inject_default_subcommand` rewrites bare paths
+    // into `check <path>`, so the scorecard's `run.invocation` reflects what
+    // the user actually typed (R4). The injection rewrite is an internal
+    // detail; recording it would lie about user intent.
+    let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+
+    let cli = Cli::parse_from(inject_default_subcommand(raw_argv.iter().cloned()));
 
     // --quiet is global (visible in top-level --help for agent discoverability)
     let quiet = cli.quiet;
@@ -89,8 +104,18 @@ fn run() -> Result<i32, AppError> {
             }
         };
 
+    // Run-level timing starts at the top of the Check arm (R4): wall-clock
+    // milliseconds and an RFC 3339 UTC timestamp. We use `OffsetDateTime` for
+    // formatting only — duration math goes through `Instant` which is
+    // monotonic and unaffected by wall-clock adjustments.
+    let start_instant = Instant::now();
+    let started_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"));
+
     // --command resolves a binary from PATH and runs behavioral checks against
     // it. conflicts_with = "path" ensures only one of the two is provided.
+    let command_name = command.clone();
     let resolved_path = match command {
         Some(name) => resolve_command_on_path(&name)?,
         None => path,
@@ -184,16 +209,181 @@ fn run() -> Result<i32, AppError> {
     let audit_profile_label = exception_category.map(|c| c.as_kebab_case().to_string());
 
     // Format output. `format_json` needs the check catalog so it can map
-    // result IDs back to the requirements each check covers.
+    // result IDs back to the requirements each check covers, plus the
+    // run-level metadata (`tool`, `anc`, `run`, `target`).
     let output_str = match output {
         OutputFormat::Text => format_text(&results, quiet),
         OutputFormat::Json => {
-            format_json(&results, &all_checks, audience_label, audit_profile_label)
+            let target = build_target_info(command_name.as_deref(), &project);
+            let tool = build_tool_info(command_name.as_deref(), &project);
+            let invocation = format_invocation(&raw_argv);
+            let duration_ms =
+                u64::try_from(start_instant.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let metadata = RunMetadata {
+                tool,
+                anc: AncInfo {
+                    version: ANC_VERSION,
+                    commit: ANC_COMMIT,
+                },
+                run: RunInfo {
+                    invocation,
+                    started_at,
+                    duration_ms,
+                    platform: PlatformInfo {
+                        os: std::env::consts::OS,
+                        arch: std::env::consts::ARCH,
+                    },
+                },
+                target,
+            };
+            format_json(
+                &results,
+                &all_checks,
+                audience_label,
+                audit_profile_label,
+                metadata,
+            )
         }
     };
     print!("{output_str}");
 
     Ok(exit_code(&results))
+}
+
+/// Classify what `anc check` was pointed at into structured `target` metadata.
+/// Three modes: `command` (PATH-resolved), `binary` (file argument), `project`
+/// (directory argument).
+fn build_target_info(command_name: Option<&str>, project: &Project) -> TargetInfo {
+    match command_name {
+        Some(name) => TargetInfo {
+            kind: "command".into(),
+            path: None,
+            command: Some(name.to_string()),
+        },
+        None if project.path.is_dir() => TargetInfo {
+            kind: "project".into(),
+            path: Some(project.path.to_string_lossy().into_owned()),
+            command: None,
+        },
+        None => TargetInfo {
+            kind: "binary".into(),
+            path: Some(project.path.to_string_lossy().into_owned()),
+            command: None,
+        },
+    }
+}
+
+/// Build the scorecard's `tool` block. `name` is always present (deterministic
+/// from path / command name). `binary` is the executable basename when one
+/// exists. `version` is best-effort: project-mode prefers the manifest version,
+/// command/binary mode probes `<bin> --version` / `<bin> -V`. Any failure
+/// yields `null` rather than aborting the run.
+fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
+    let (name, binary, version_seed) = match command_name {
+        Some(cmd) => {
+            // Command mode: name and binary both come from the user-supplied
+            // command name (NOT the resolved path — we don't want to leak
+            // /usr/local/bin/foo as the binary identifier).
+            (cmd.to_string(), Some(cmd.to_string()), None)
+        }
+        None => {
+            // path-based: distinguish project (directory) from binary (file).
+            let basename = project
+                .path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(String::from)
+                .unwrap_or_default();
+            if project.path.is_dir() {
+                let manifest_version = project
+                    .manifest_path
+                    .as_deref()
+                    .and_then(read_manifest_version);
+                let binary_name = project
+                    .binary_paths
+                    .first()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .map(String::from);
+                (basename, binary_name, manifest_version)
+            } else {
+                // Binary file passed directly.
+                let bin_name = basename.clone();
+                (basename, Some(bin_name), None)
+            }
+        }
+    };
+
+    // Manifest version takes precedence; fall back to the binary self-report.
+    let version = version_seed.or_else(|| probe_tool_version(project));
+
+    ToolInfo {
+        name,
+        binary,
+        version,
+    }
+}
+
+/// Best-effort `<binary> --version` / `<binary> -V` probe. Reuses the runner's
+/// timeout + 1MB cap primitives via a fresh `BinaryRunner` with a tighter
+/// 2-second timeout (the version probe is one-shot, not a check).
+///
+/// Self-spawn guard: comparing the resolved binary path to `current_exe()`
+/// declines the probe when `anc` is asked to score itself. Without this,
+/// `anc check --command anc` would recursively score `anc` — bounded only by
+/// `arg_required_else_help` in `Cli`. Belt-and-suspenders.
+fn probe_tool_version(project: &Project) -> Option<String> {
+    let binary = project.binary_paths.first()?;
+
+    if let Ok(self_exe) = std::env::current_exe()
+        && let (Ok(a), Ok(b)) = (binary.canonicalize(), self_exe.canonicalize())
+        && a == b
+    {
+        // Both paths canonicalized (Project::discover canonicalizes; the OS
+        // resolves current_exe). Direct comparison is the right primitive.
+        return None;
+    }
+
+    let runner = BinaryRunner::new(binary.clone(), Duration::from_secs(2)).ok()?;
+    for flag in ["--version", "-V"] {
+        let result = runner.run(&[flag], &[]);
+        if matches!(result.status, RunStatus::Ok)
+            && result.exit_code == Some(0)
+            && let Some(line) = result.stdout.lines().next()
+        {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Read `package.version` from a Cargo.toml or `project.version` from a
+/// pyproject.toml. Returns `None` for unreadable / unparseable / missing-field
+/// cases — the version probe falls through to the binary self-report.
+fn read_manifest_version(manifest: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(manifest).ok()?;
+    let parsed: toml::Value = content.parse().ok()?;
+
+    // Cargo.toml: [package] version = "...".
+    if let Some(v) = parsed
+        .get("package")
+        .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(v.to_string());
+    }
+    // pyproject.toml: [project] version = "...".
+    if let Some(v) = parsed
+        .get("project")
+        .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(v.to_string());
+    }
+    None
 }
 
 /// Resolve a command name to an absolute path by shelling out to `which`

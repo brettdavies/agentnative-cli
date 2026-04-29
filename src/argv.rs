@@ -3,7 +3,7 @@
 //! and so the injection logic is unit-testable in isolation.
 
 use std::collections::HashSet;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 
 use crate::cli::Cli;
 
@@ -174,9 +174,79 @@ where
     args
 }
 
+/// Format a captured argv vector as a shell-quoted command string, suitable
+/// for the scorecard's `run.invocation` field. Uses single-quote quoting:
+/// args containing whitespace, single quotes, double quotes, or shell
+/// metacharacters are wrapped in `'…'`, with embedded `'` escaped as
+/// `'\''`. Lossy UTF-8 conversion is intentional — the field records what
+/// the user typed for human review, not for byte-perfect replay.
+///
+/// Captured *before* `inject_default_subcommand` rewrites the args, so the
+/// recorded command reflects user intent (`anc .` stays as `anc .`, not
+/// `anc check .`).
+pub fn format_invocation(args: &[OsString]) -> String {
+    args.iter()
+        .map(|a| quote_arg(a))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn quote_arg(arg: &OsStr) -> String {
+    let s = arg.to_string_lossy();
+    if s.is_empty() {
+        return "''".to_string();
+    }
+    if needs_quoting(&s) {
+        // Single-quote everything; escape embedded single quotes by closing
+        // the quoted run, emitting `\'`, and reopening — POSIX-shell idiom.
+        let mut out = String::with_capacity(s.len() + 2);
+        out.push('\'');
+        for c in s.chars() {
+            if c == '\'' {
+                out.push_str("'\\''");
+            } else {
+                out.push(c);
+            }
+        }
+        out.push('\'');
+        out
+    } else {
+        s.into_owned()
+    }
+}
+
+fn needs_quoting(s: &str) -> bool {
+    s.chars().any(|c| {
+        c.is_whitespace()
+            || matches!(
+                c,
+                '\'' | '"'
+                    | '\\'
+                    | '$'
+                    | '`'
+                    | '|'
+                    | '&'
+                    | ';'
+                    | '<'
+                    | '>'
+                    | '('
+                    | ')'
+                    | '{'
+                    | '}'
+                    | '*'
+                    | '?'
+                    | '['
+                    | ']'
+                    | '#'
+                    | '~'
+                    | '!'
+            )
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::inject_default_subcommand;
+    use super::{format_invocation, inject_default_subcommand};
     use std::ffi::OsString;
 
     fn args(a: &[&str]) -> Vec<OsString> {
@@ -338,5 +408,68 @@ mod tests {
     fn trailing_flags_pass_through() {
         let out = inject_default_subcommand(args(&["anc", ".", "--output", "json"]));
         assert_eq!(names(out), vec!["anc", "check", ".", "--output", "json"]);
+    }
+
+    // ---- format_invocation ----
+
+    #[test]
+    fn format_invocation_simple_args_unquoted() {
+        let out = format_invocation(&args(&["anc", "check", "."]));
+        assert_eq!(out, "anc check .");
+    }
+
+    #[test]
+    fn format_invocation_pre_injection_user_intent_preserved() {
+        // Plan R4 intent check: a user who typed `anc .` MUST see `anc .` in
+        // the scorecard, not `anc check .` (which would be a fact about anc's
+        // internals, not the user's command).
+        let out = format_invocation(&args(&["anc", "."]));
+        assert_eq!(out, "anc .");
+    }
+
+    #[test]
+    fn format_invocation_arg_with_space_is_single_quoted() {
+        let out = format_invocation(&args(&["anc", "check", "/tmp/with space/repo"]));
+        assert_eq!(out, "anc check '/tmp/with space/repo'");
+    }
+
+    #[test]
+    fn format_invocation_arg_with_single_quote_is_escaped() {
+        // POSIX-shell escape: close, emit `\'`, reopen.
+        let out = format_invocation(&args(&["anc", "check", "ab'cd"]));
+        assert_eq!(out, "anc check 'ab'\\''cd'");
+    }
+
+    #[test]
+    fn format_invocation_arg_with_metacharacters_is_quoted() {
+        let out = format_invocation(&args(&["anc", "check", "$(rm -rf)"]));
+        assert_eq!(out, "anc check '$(rm -rf)'");
+    }
+
+    #[test]
+    fn format_invocation_empty_arg_renders_as_empty_quotes() {
+        let out = format_invocation(&args(&["anc", ""]));
+        assert_eq!(out, "anc ''");
+    }
+
+    #[test]
+    fn format_invocation_double_quote_is_quoted() {
+        let out = format_invocation(&args(&["anc", "say\"hi"]));
+        assert_eq!(out, "anc 'say\"hi'");
+    }
+
+    #[test]
+    fn format_invocation_round_trip_no_panic_on_invalid_utf8() {
+        // Linux-only: build an OsString containing invalid UTF-8. Lossy
+        // conversion must not panic; the field carries the lossy form.
+        #[cfg(target_os = "linux")]
+        {
+            use std::ffi::OsString;
+            use std::os::unix::ffi::OsStringExt;
+
+            let invalid = OsString::from_vec(vec![0xff, 0xfe]);
+            let out = format_invocation(&[OsString::from("anc"), invalid]);
+            assert!(out.starts_with("anc "));
+        }
     }
 }

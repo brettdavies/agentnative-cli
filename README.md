@@ -95,9 +95,9 @@ agentnative uses three layers to analyze your CLI:
 
 ## CLI Reference
 
-When the first non-flag argument is not a recognized subcommand, `check` is inserted automatically. `anc .`,
-`anc -q .`, and `anc --command ripgrep` all resolve to `anc check …`. Bare `anc` (no arguments) still prints help and
-exits 2 — this is deliberate fork-bomb prevention when agentnative dogfoods itself.
+When the first non-flag argument is not a recognized subcommand, `check` is inserted automatically. `anc .`, `anc -q .`,
+and `anc --command ripgrep` all resolve to `anc check …`. Bare `anc` (no arguments) still prints help and exits 2 — this
+is deliberate fork-bomb prevention when agentnative dogfoods itself.
 
 ```text
 Usage: anc check [OPTIONS] [PATH]
@@ -121,11 +121,11 @@ checks are skipped because there is no source tree to analyze.
 
 ### Exit Codes
 
-| Code | Meaning |
-| ---- | ------- |
-| 0 | All checks passed |
-| 1 | Warnings present (no failures) |
-| 2 | Failures, errors, or usage errors |
+| Code | Meaning                           |
+| ---- | --------------------------------- |
+| 0    | All checks passed                 |
+| 1    | Warnings present (no failures)    |
+| 2    | Failures, errors, or usage errors |
 
 Exit 2 covers both check failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
 mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
@@ -158,11 +158,13 @@ Pre-generated scripts are also available in `completions/`.
 anc check . --output json
 ```
 
-Produces a scorecard (`schema_version: "1.1"`) with results, summary, and coverage against the 7 principles:
+Produces a self-describing scoring run record (`schema_version: "0.4"`) with results, summary, coverage against the 7
+principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform, and
+how:
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "0.4",
   "results": [
     {
       "id": "p3-help",
@@ -187,7 +189,17 @@ Produces a scorecard (`schema_version: "1.1"`) with results, summary, and covera
     "may":   { "total": 7,  "verified": 0 }
   },
   "audience": "agent-optimized",
-  "audit_profile": null
+  "audit_profile": null,
+  "spec_version": "0.3.0",
+  "tool":   { "name": "ripgrep", "binary": "rg",  "version": "ripgrep 15.1.0" },
+  "anc":    { "version": "0.2.0", "commit": "abc1234" },
+  "run":    {
+    "invocation": "anc check --command rg --output json",
+    "started_at": "2026-04-29T16:00:00Z",
+    "duration_ms": 412,
+    "platform":   { "os": "linux", "arch": "x86_64" }
+  },
+  "target": { "kind": "command", "path": null, "command": "rg" }
 }
 ```
 
@@ -202,10 +214,32 @@ Produces a scorecard (`schema_version: "1.1"`) with results, summary, and covera
   `audit_profile`'s format within the same JSON document.
 - `audience_reason` — present only when `audience` is `null`. Values: `suppressed` (at least one signal check was masked
   by `--audit-profile`) or `insufficient_signal` (signal check never produced, e.g. source-only run). Additive to schema
-  v1.1; v1.1 consumers feature-detect.
+  `0.2`; older consumers feature-detect.
 - `audit_profile` — echoes the applied `--audit-profile <category>` flag value (`human-tui`, `file-traversal`,
   `posix-utility`, or `diagnostic-only`). `null` when no profile is set. See `coverage/matrix.json` under
   `audit_profiles` for the committed per-category mapping of which check IDs each profile suppresses.
+- `tool` — identifies what was scored. `name` is always present (deterministic from path or command). `binary` is the
+  executable basename when one is located; `null` for project-mode runs without a built artifact. `version` is
+  best-effort: project-mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`), command/binary mode probes
+  `<bin> --version` then `-V`. `null` when probing failed or was declined by the self-spawn guard. The site's
+  `registry.yaml` `version_extract` snippets remain authoritative for tools whose self-report is unreliable. Schema
+  `0.4` addition.
+- `anc` — identifies the `anc` build that produced the scorecard. `version` is the crate version at compile time.
+  `commit` is the short Git SHA at compile time, or `null` for builds outside a Git checkout (e.g., `cargo install` from
+  crates.io). Informational, not a signed provenance signal — pair with a Sigstore-signed release artifact if provenance
+  is required. Schema `0.4` addition.
+- `run` — run-level facts. `invocation` is the user's argv joined with shell-safe quoting, captured **before**
+  default-subcommand injection so it reflects what the user typed (`anc .`, not `anc check .`). `started_at` is RFC 3339
+  UTC. `duration_ms` is wall-clock milliseconds. `platform.os` / `platform.arch` come from `std::env::consts`. Schema
+  `0.4` addition.
+- `target` — what `anc` was pointed at. `kind` is `"project"` (directory), `"binary"` (executable file), or `"command"`
+  (PATH-resolved name from `--command`). `path` carries the resolved filesystem path for project / binary modes;
+  `command` carries the user-supplied name for command mode. The unused field is always `null`, never missing — consumer
+  code can access both unconditionally. Schema `0.4` addition.
+
+> Publishing a scorecard? `run.invocation` and `target.path` may carry usernames or absolute paths from the machine that
+> produced the scorecard. Review before publishing — `anc` does not silently redact, since that would surprise users
+> debugging their own runs.
 
 ## Contributing
 
@@ -222,15 +256,15 @@ Open an issue at
 [github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
 Seven structured templates cover the common cases:
 
-| Template | Use it when |
-| --- | --- |
-| False positive | A check flagged your CLI but you believe your CLI is doing the right thing. |
-| Scoring bug | Results don't match what the check should be doing (wrong status, miscategorized group/layer, evidence pointing at the wrong line). |
-| Feature request | Missing capability, flag, or output format in the checker itself. |
-| Grade a CLI | Nominate a CLI for an `anc`-graded readiness review. |
-| Pressure test | Challenge a principle or check definition — "this check is too strict / too loose / wrong on this class of CLI." |
-| Spec question | Ambiguity or gap in the 7-principle spec (not the checker). |
-| Something else | Chooser for anything outside the templates above. |
+| Template        | Use it when                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| False positive  | A check flagged your CLI but you believe your CLI is doing the right thing.                                                         |
+| Scoring bug     | Results don't match what the check should be doing (wrong status, miscategorized group/layer, evidence pointing at the wrong line). |
+| Feature request | Missing capability, flag, or output format in the checker itself.                                                                   |
+| Grade a CLI     | Nominate a CLI for an `anc`-graded readiness review.                                                                                |
+| Pressure test   | Challenge a principle or check definition — "this check is too strict / too loose / wrong on this class of CLI."                    |
+| Spec question   | Ambiguity or gap in the 7-principle spec (not the checker).                                                                         |
+| Something else  | Chooser for anything outside the templates above.                                                                                   |
 
 Filing on the right template front-loads the triage context we need and keeps issues out of a single-bucket backlog.
 

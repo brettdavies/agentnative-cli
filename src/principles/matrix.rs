@@ -449,6 +449,134 @@ mod tests {
         assert!(dangling_cover_ids(&checks).is_empty());
     }
 
+    /// MUSTs that the spec carries but no behavioral / source / project check
+    /// auto-verifies at current scale. Each entry is `(requirement_id, why)`;
+    /// the rationale MUST cite the decision record or scope note that
+    /// justifies non-coverage.
+    ///
+    /// Adding to this list is a deliberate act — the test below fails loudly
+    /// when a MUST loses its cover (or a new MUST lands in the spec) so a
+    /// human has to opt into "we know this isn't auto-checked, here's why."
+    const UNVERIFIED_MUSTS: &[(&str, &str)] = &[
+        // Pre-existing coverage gaps surfaced by R5 against vendored spec
+        // v0.2.0. Each MUST is real and important; the absence of a check
+        // reflects scope-of-work, not a stance that the requirement should
+        // not be enforced. Track follow-up work in the project roadmap.
+        (
+            "p2-must-exit-codes",
+            "vocabulary check (0, 1, 2, 77, 78 codes appear in mapping) — \
+             distinct from `p4-must-exit-code-mapping` which the existing \
+             `exit_codes.rs` check covers (mapping shape, not specific values).",
+        ),
+        (
+            "p2-must-json-errors",
+            "behavioral check requires inducing an error path with `--output \
+             json` and parsing the JSON envelope — no current behavioral \
+             check probes error paths.",
+        ),
+        (
+            "p3-must-subcommand-examples",
+            "behavioral check would walk `<subcommand> --help` for an \
+             `Examples:` section — distinct from `p3-must-top-level-examples` \
+             which `p3_examples.rs` covers; per-subcommand traversal is \
+             out of scope for v0.1.x.",
+        ),
+        (
+            "p4-must-actionable-errors",
+            "judgment-quality check — requires inducing error paths and \
+             evaluating message structure (what failed, why, hint). Not \
+             reducible to a static-analysis or shape check at current scale.",
+        ),
+        (
+            "p5-must-force-yes",
+            "no source check yet detects clap `--force` / `--yes` flag \
+             declarations; would mirror `p5-must-dry-run`'s pattern. \
+             follow-up work.",
+        ),
+        (
+            "p5-must-read-write-distinction",
+            "judgment-quality check — distinguishing read-only from \
+             mutating subcommands requires per-subcommand semantic \
+             understanding beyond ast-grep's reach. Not auto-verified.",
+        ),
+    ];
+
+    /// R4 — every `Check::covers()` id in the live catalog resolves in the
+    /// generated `REQUIREMENTS` slice. A typo (or a renamed-then-forgotten
+    /// id) fails this test rather than silently producing a coverage gap.
+    #[test]
+    fn live_catalog_has_no_dangling_cover_ids() {
+        use crate::checks::all_checks_catalog;
+
+        let checks = all_checks_catalog();
+        let dangling = dangling_cover_ids(&checks);
+        assert!(
+            dangling.is_empty(),
+            "checks declare `covers()` ids that are not in REQUIREMENTS: \
+             {dangling:?}\nfix `Check::covers()` to reference an id from \
+             `src/principles/spec/principles/`."
+        );
+    }
+
+    /// R5 — every MUST in the vendored spec is covered by at least one
+    /// check, OR is explicitly listed in `UNVERIFIED_MUSTS` with rationale.
+    #[test]
+    fn every_must_is_covered_or_explicitly_unverified() {
+        use crate::checks::all_checks_catalog;
+        use std::collections::HashSet;
+
+        let checks = all_checks_catalog();
+        let covered: HashSet<&'static str> = checks
+            .iter()
+            .flat_map(|c| c.covers().iter().copied())
+            .collect();
+        let allowlisted: HashSet<&'static str> =
+            UNVERIFIED_MUSTS.iter().map(|(id, _)| *id).collect();
+
+        let gaps: Vec<&'static str> = REQUIREMENTS
+            .iter()
+            .filter(|r| r.level == Level::Must)
+            .map(|r| r.id)
+            .filter(|id| !covered.contains(id) && !allowlisted.contains(id))
+            .collect();
+
+        assert!(
+            gaps.is_empty(),
+            "MUSTs without a covering check and not on UNVERIFIED_MUSTS: \
+             {gaps:?}\noptions:\n\
+             1. wire a check via `Check::covers()` to evidence the MUST, OR\n\
+             2. add an entry to UNVERIFIED_MUSTS with a rationale citing the \
+                decision record (see docs/decisions/)."
+        );
+    }
+
+    /// R5 (allowlist hygiene) — every entry in `UNVERIFIED_MUSTS` references
+    /// an id that is currently a MUST in the spec and carries a non-empty
+    /// rationale. Catches stale shields after a rename or level change.
+    #[test]
+    fn unverified_musts_allowlist_only_references_real_must_ids() {
+        use std::collections::HashSet;
+
+        let must_ids: HashSet<&'static str> = REQUIREMENTS
+            .iter()
+            .filter(|r| r.level == Level::Must)
+            .map(|r| r.id)
+            .collect();
+
+        for (id, why) in UNVERIFIED_MUSTS {
+            assert!(
+                must_ids.contains(id),
+                "UNVERIFIED_MUSTS entry `{id}` (`{why}`) is not a current MUST \
+                 in REQUIREMENTS — the requirement may have been renamed or \
+                 its level changed. update the allowlist or remove the entry."
+            );
+            assert!(
+                !why.trim().is_empty(),
+                "UNVERIFIED_MUSTS entry `{id}` has empty rationale"
+            );
+        }
+    }
+
     #[test]
     fn build_audit_profiles_covers_every_registry_variant() {
         // Emitted list length must equal ALL_EXCEPTION_CATEGORIES length —

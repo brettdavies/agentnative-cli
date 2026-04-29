@@ -54,7 +54,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p4-must-exit-code-mapping` | MUST | Universal | `p4-bad-args` (behavioral)<br>`p4-exit-codes` (source) | Error types map to distinct exit codes (0, 1, 2, 77, 78). |
 | `p4-must-actionable-errors` | MUST | Universal | **UNCOVERED** | Every error message contains what failed, why, and what to do next. |
 | `p4-should-structured-enum` | SHOULD | Universal | `p4-error-module` (project)<br>`p4-error-types` (source) | Error types use a structured enum (via `thiserror` in Rust) with variant-to-kind mapping for JSON serialization. |
-| `p4-should-gating-before-network` | SHOULD | If: CLI makes network calls | **UNCOVERED** | Config and auth validation happen before any network call (three-tier dependency gating). |
+| `p4-should-gating-before-network` | SHOULD | If: CLI makes network calls | **UNCOVERED** | Config and auth validation happen before any network call, failing at the earliest possible point. |
 | `p4-should-json-error-output` | SHOULD | Universal | **UNCOVERED** | Error output respects `--output json`: JSON-formatted errors go to stderr when JSON output is selected. |
 
 ## P5: Safe Retries, Mutation Boundaries
@@ -70,12 +70,12 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p6-must-sigpipe` | MUST | Universal | `p6-sigpipe` (behavioral) | SIGPIPE fix is the first executable statement in `main()` — piping output to `head`/`tail` must not panic. |
+| `p6-must-sigpipe` | MUST | Universal | `p6-sigpipe` (behavioral) | SIGPIPE is handled so piping to `head`/`tail` does not crash the process (Rust example below; Python/Go/Node have language-specific equivalents). |
 | `p6-must-no-color` | MUST | Universal | `p6-no-color-behavioral` (behavioral)<br>`p6-no-color` (source)<br>`p6-no-color` (source) | TTY detection plus support for `NO_COLOR` and `TERM=dumb` — color codes suppressed when stdout/stderr is not a terminal. |
 | `p6-must-completions` | MUST | Universal | `p6-completions` (project) | Shell completions available via a `completions` subcommand (Tier 1 meta-command — needs no config/auth/network). |
 | `p6-must-timeout-network` | MUST | If: CLI makes network calls | `p6-timeout` (source) | Network CLIs ship a `--timeout` flag with a sensible default (e.g., 30 seconds). |
 | `p6-must-no-pager` | MUST | If: CLI invokes a pager for output | `p6-no-pager-behavioral` (behavioral)<br>`p6-no-pager` (source) | If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. |
-| `p6-must-global-flags` | MUST | If: CLI uses subcommands | `p6-global-flags` (source) | Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) are `global = true` so they propagate to every subcommand. |
+| `p6-must-global-flags` | MUST | If: CLI uses subcommands | `p6-global-flags` (source) | Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) propagate to every subcommand (e.g., `global = true` in clap). |
 | `p6-should-stdin-input` | SHOULD | If: CLI has commands that accept input data | **UNCOVERED** | Commands that accept input read from stdin when no file argument is provided. |
 | `p6-should-consistent-naming` | SHOULD | If: CLI uses subcommands | **UNCOVERED** | Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. |
 | `p6-should-tier-gating` | SHOULD | Universal | **UNCOVERED** | Three-tier dependency gating: Tier 1 (meta) needs nothing, Tier 2 (local) needs config, Tier 3 (network) needs config + auth. |

@@ -2,7 +2,7 @@
 id: p1
 title: Non-Interactive by Default
 last-revised: 2026-04-22
-status: draft
+status: active
 requirements:
   - id: p1-must-env-var
     level: must
@@ -64,8 +64,9 @@ agent-tool deadlock.
   ```
 
 - A `--no-interactive` flag gating every prompt library call (`dialoguer`, `inquire`, `read_line`, `TTY::Prompt`,
-  `inquirer`, equivalents in other frameworks). When the flag is set, or when stdin is not a TTY, the tool uses
-  defaults, reads from stdin, or exits with an actionable error. It never blocks.
+  `inquirer`, equivalents in other frameworks, or any TUI event loop that takes over the terminal). When the flag is
+  set, or when stdin is not a TTY, the tool uses defaults, reads from stdin, or exits with an actionable error. It never
+  blocks.
 - A headless authentication path if the CLI authenticates. The canonical flag is `--no-browser`, which triggers the
   OAuth 2.0 Device Authorization Grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)): the CLI prints a URL and a
   code; the user authorizes on another device. Agents cannot open browsers. Non-canonical alternatives (`--device-code`,
@@ -103,4 +104,27 @@ agent-tool deadlock.
 - OAuth flow that unconditionally opens a browser with no headless escape hatch.
 
 Measured by check IDs `p1-non-interactive` (behavioral) and `p1-non-interactive-source` (source). Run `agentnative check
-  --principle 1 .` against your CLI to see both.
+--principle 1 .` against your CLI to see both.
+
+## Pressure test notes
+
+### 2026-04-27 — Show HN launch red-team pass
+
+Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
+recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
+
+- **[edit]** *Internal inconsistency.* "The `--no-interactive` MUST bullet says 'uses defaults, reads from stdin, or
+  exits with an actionable error' but the principle's behavioral framing (per decision record) covers TUI session init
+  too. The prose bullet only enumerates prompt libraries (`dialoguer`, `inquire`, `read_line`, `TTY::Prompt`,
+  `inquirer`), not TUI frameworks (`ratatui`, `bubbletea`) — readers will infer the MUST excludes TUIs, contradicting
+  the decision record's explicit 'blocking-interactive surface includes... TUI session initialization.'" Resolved: prose
+  bullet's parenthetical now includes "or any TUI event loop that takes over the terminal." Mirrors the behavioral
+  framing in [`docs/decisions/p1-behavioral-must.md`](../docs/decisions/p1-behavioral-must.md). No frontmatter change;
+  the summary already says "gates every prompt library call" and stays.
+- **[wontfix]** *Prior art.* "RFC 8628 citation is correct in name but incomplete in framing. The prose says Device
+  Authorization Grant means 'the CLI prints a URL and a code; the user authorizes on another device' — this still
+  requires a human on another device, which an unattended agent does not have. An HN commenter will note this is a
+  *human-assisted* headless path, not an agent-headless path; true unattended agents need service-account / API-token
+  auth (which the principle doesn't mention)." Rationale: P1 scopes "headless" as "no local browser required," not "no
+  human anywhere." A human-in-the-loop is acceptable here. Service-account auth is orthogonal and would belong to a
+  separate principle if it were added.

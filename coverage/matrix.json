@@ -302,7 +302,7 @@
       "id": "p4-should-gating-before-network",
       "principle": 4,
       "level": "should",
-      "summary": "Config and auth validation happen before any network call (three-tier dependency gating).",
+      "summary": "Config and auth validation happen before any network call, failing at the earliest possible point.",
       "applicability": {
         "kind": "conditional",
         "condition": "CLI makes network calls"
@@ -372,7 +372,7 @@
       "id": "p6-must-sigpipe",
       "principle": 6,
       "level": "must",
-      "summary": "SIGPIPE fix is the first executable statement in `main()` — piping output to `head`/`tail` must not panic.",
+      "summary": "SIGPIPE is handled so piping to `head`/`tail` does not crash the process (Rust example below; Python/Go/Node have language-specific equivalents).",
       "applicability": {
         "kind": "universal"
       },
@@ -461,7 +461,7 @@
       "id": "p6-must-global-flags",
       "principle": 6,
       "level": "must",
-      "summary": "Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) are `global = true` so they propagate to every subcommand.",
+      "summary": "Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) propagate to every subcommand (e.g., `global = true` in clap).",
       "applicability": {
         "kind": "conditional",
         "condition": "CLI uses subcommands"

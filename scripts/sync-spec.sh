@@ -12,7 +12,7 @@
 #
 # Env vars:
 #   SPEC_ROOT  Path to agentnative-spec checkout. Default: $HOME/dev/agentnative-spec
-#   SPEC_REF   Git ref (tag, branch, or SHA) to vendor. Default: v0.2.0
+#   SPEC_REF   Git ref (tag, branch, or SHA) to vendor. Default: v0.3.0
 #
 # Resync cadence: rerun after every new agentnative-spec tag. Stale orphan
 # files in src/principles/spec/principles/ (e.g., from a spec rename) are
@@ -21,7 +21,7 @@
 set -euo pipefail
 
 SPEC_ROOT="${SPEC_ROOT:-$HOME/dev/agentnative-spec}"
-SPEC_REF="${SPEC_REF:-v0.2.0}"
+SPEC_REF="${SPEC_REF:-v0.3.0}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST_DIR="$REPO_ROOT/src/principles/spec"

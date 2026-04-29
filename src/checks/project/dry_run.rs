@@ -85,12 +85,11 @@ impl Check for DryRunCheck {
         }
 
         // Also check the manifest for subcommand names that imply writes
-        if !has_write_commands {
-            if let Some(manifest) = &project.manifest_path {
-                if let Ok(content) = fs::read_to_string(manifest) {
-                    has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw));
-                }
-            }
+        if !has_write_commands
+            && let Some(manifest) = &project.manifest_path
+            && let Ok(content) = fs::read_to_string(manifest)
+        {
+            has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw));
         }
 
         let status = if !has_write_commands {

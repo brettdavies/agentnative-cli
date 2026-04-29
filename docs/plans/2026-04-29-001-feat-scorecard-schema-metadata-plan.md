@@ -1,9 +1,11 @@
 ---
 title: "feat: scorecard schema 0.3 → 0.4 — embed run / tool / anc / target metadata"
 type: feat
-status: active
+status: completed
 date: 2026-04-29
 deepened: 2026-04-29
+completed: 2026-04-29
+shipped_in: "PR #34 (commit 8b1f642)"
 ---
 
 # feat: scorecard schema 0.3 → 0.4 — embed run / tool / anc / target metadata

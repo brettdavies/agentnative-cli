@@ -111,17 +111,17 @@ cargo test -- --ignored       # fixture tests (slower)
 
 The canonical specification of the 7 agent-readiness principles lives in
 [`brettdavies/agentnative`](https://github.com/brettdavies/agentnative), one file per principle under `principles/`. A
-pinned snapshot is **vendored** into this crate at `src/principles/spec/`, and `build.rs` parses its frontmatter at
-build time to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI checks against.
-There is no manual sync of requirement IDs; only the `Check::covers()` declarations are hand-maintained.
+snapshot is **vendored** into this crate at `src/principles/spec/`, and `build.rs` parses its frontmatter at build time
+to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI checks against. There is no
+manual sync of requirement IDs; only the `Check::covers()` declarations are hand-maintained.
 
 The `anc` checks in `src/checks/` themselves are derived **manually** from each principle's prose. When a principle's
 spec adds, removes, or reworks a requirement, propagate to the relevant check(s) deliberately.
 
-**Resync cadence:** rerun `scripts/sync-spec.sh` after every new `agentnative-spec` tag. The default `SPEC_REF` in the
-script is the current pin; bump via `SPEC_REF=v0.2.1 scripts/sync-spec.sh` when adopting a newer spec release. The
-companion `repository_dispatch` from the spec's publish workflow is the canonical trigger; if a future GitHub Action
-opens a resync PR automatically, this script becomes that action's body.
+**Resync cadence:** rerun `scripts/sync-spec.sh` after every new `agentnative-spec` tag. The script queries the remote
+for the latest `v*` tag automatically and falls back to a local checkout (`$HOME/dev/agentnative-spec` by default) if
+the remote is unreachable. The companion `repository_dispatch` from the spec's publish workflow is the canonical
+trigger; if a future GitHub Action opens a resync PR automatically, this script becomes that action's body.
 
 For iteration workflow, pressure-test protocol, and per-file structure of the spec itself, see
 [`agentnative:principles/AGENTS.md`](https://github.com/brettdavies/agentnative/blob/main/principles/AGENTS.md). Read

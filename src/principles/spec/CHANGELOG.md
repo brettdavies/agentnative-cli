@@ -1,6 +1,30 @@
 # Changelog
 
-All notable changes to the agent-native CLI standard are documented here.
+All notable changes to this repository are documented here — governance, validator, release infrastructure, README, decision records.
+
+Changes to the standard itself — principle MUST/SHOULD/MAY tier moves, requirement IDs added/removed/renamed, applicability shifts — are tracked per-principle in `principles/p*-*.md` via the `last-revised:` calver frontmatter field and the `## Pressure test notes` section appended to each file.
+
+## [0.3.0] - 2026-04-28
+
+### Added
+
+- `active` status value for principles, joining `draft | under-review | locked` as the default state for shipped principles. by @brettdavies in [#12](https://github.com/brettdavies/agentnative/pull/12)
+- README `## Status` section and HN-scroller hook explaining the active-with-pressure-tests-welcome posture.
+
+### Changed
+
+- All 7 principles flipped from `status: draft` to `status: active` for the v0.3.0 release. by @brettdavies in [#12](https://github.com/brettdavies/agentnative/pull/12)
+- `principles/AGENTS.md` pressure-test protocol updated for the new status lifecycle (`active` is the default; `under-review` is reserved for substantive critique cycles).
+- README restructured for HN-visitor flow: new `## The trifecta` callout (spec + linter + leaderboard as equals); `## Quick start` lead with `brew install brettdavies/tap/agentnative`; `## Live leaderboard` preview table; admin sections (Versioning, Decision records, Related, Contributing, License) reordered below spec content. License section tightened from 4 paragraphs to 3 bullets; Contributing tightened from 4-bullet list to 1 paragraph. by @brettdavies in [#14](https://github.com/brettdavies/agentnative/pull/14)
+- README leaderboard URLs corrected from bare `anc.dev` to `anc.dev/scorecards`.
+- AGENTS.md adds `brettdavies/agentnative-skill` as a documented downstream consumer (introductory list + cross-repo context table); replaces the prior `~/.claude/skills/agent-native-cli/` row with the public `~/dev/agentnative-skill` row.
+
+### Documentation
+
+- G11 red-team pass on all 7 principle files via `compound-engineering:ce-adversarial-document-reviewer`. 25 findings: 11 prose edits applied (P1 TUI parenthetical, P2 sysexits acknowledgment, P4 dependency-gating cleanup, P5 `--dry-run` write-gate + retry hedge, P6 SIGPIPE language-neutral + global-flags behavioral lead, P7 LLM-vs-non-LLM cost generalization), 10 `[later]` notes appended for v0.4.0 follow-up, 2 `[wontfix]` notes, 2 skipped. No requirement IDs added/removed/renamed; no level/applicability changes; no `last-revised:` bumps; no VERSION bump triggered. by @brettdavies in [#13](https://github.com/brettdavies/agentnative/pull/13)
+- Three summary-text tightenings (P4 `gating-before-network`, P6 `sigpipe`, P6 `global-flags`) introduce mild registry-readable drift documented in pressure-test notes for v0.4.0 follow-up.
+
+**Full Changelog**: [v0.2.0...v0.3.0](https://github.com/brettdavies/agentnative/compare/v0.2.0...v0.3.0)
 
 ## [0.2.0] - 2026-04-23
 

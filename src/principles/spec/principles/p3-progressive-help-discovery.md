@@ -2,7 +2,7 @@
 id: p3
 title: Progressive Help Discovery
 last-revised: 2026-04-22
-status: draft
+status: active
 requirements:
   - id: p3-must-subcommand-examples
     level: must
@@ -77,5 +77,30 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 - Examples buried in a README or man page but absent from `--help` output.
 - `after_help` text that describes the flags in prose instead of demonstrating them in code.
 
-Measured by check IDs `p3-help`, `p3-after-help`, `p3-version`. Run `agentnative check --principle 3 .` against
-your CLI to see each.
+Measured by check IDs `p3-help`, `p3-after-help`, `p3-version`. Run `agentnative check --principle 3 .` against your CLI
+to see each.
+
+## Pressure test notes
+
+### 2026-04-27 — Show HN launch red-team pass
+
+Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
+recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
+
+- **[later]** *Internal inconsistency.* "The SHOULD on paired examples ('text then `--output json` equivalent')
+  implicitly gates P3 conformance on a `--output json` mode, which is P2's territory. A CLI without structured output
+  cannot satisfy this SHOULD even in spirit, yet `applicability: universal`." Deferred: narrowing `applicability` from
+  `universal` to conditional (`if: CLI exposes a structured-output mode`) fires the coupled-release norm (CLI registry
+  parses `applicability`). Bundled with other applicability cleanups for a v0.4.0 PR with explicit registry
+  coordination.
+- **[later]** *Must-vs-should.* "'Top-level command ships 2–3 examples' as a universal MUST is too strong for genuinely
+  single-purpose CLIs (e.g., `cat`, `true`, a one-shot wrapper) where one canonical invocation is the entire surface.
+  The '2–3' count baked into a MUST will draw HN fire as cargo-culted." Deferred: softening to "at least one example,
+  and 2–3 when the tool has multiple primary use cases" is a MUST-content change that drifts the frontmatter summary.
+  Bundled with other MUST-content softenings for a v0.4.0 PR.
+- **[later]** *Prior art.* "Principle is clap-flavored throughout (`after_help`, `about`/`long_about`, `///` doc
+  comments in Anti-Patterns) without a single sentence acknowledging the non-Rust analog (docopt usage block, `argparse`
+  epilog, `cobra` Example field, `gh`/`kubectl` Examples convention). HN will call this 'a clap style guide, not a CLI
+  standard.'" Deferred: a cross-framework analog appendix is a meaningful addition. The Definition / Why-Agents-Need-It
+  sections are framework-agnostic; the Evidence section is intentionally clap-keyed. Worth revisiting in v0.4.0 once the
+  standard's multi-language reach is clearer; site copy may also be a better home than the principle file itself.

@@ -2,7 +2,7 @@
 id: p7
 title: Bounded, High-Signal Responses
 last-revised: 2026-04-22
-status: draft
+status: active
 requirements:
   - id: p7-must-quiet
     level: must
@@ -47,10 +47,11 @@ conversation that invoked it.
 
 ## Why Agents Need It
 
-Every token of CLI output an agent consumes has a cost — both monetary (API tokens) and cognitive (context window
-capacity). Unbounded output forces the agent to either truncate (losing potentially important data) or consume the full
-response (wasting context on noise). Bounded output with `--quiet`, `--verbose`, and `--limit` flags gives the agent
-precise control over how much data arrives, keeping responses high-signal and inside budget.
+Unbounded CLI output is expensive for any agent — token cost and context-window capacity for LLM agents, parse cost and
+memory pressure for scripts, schedulers, and other automation. Either way, the agent ends up truncating (losing
+potentially important data) or consuming the full response (wasting cycles on noise). Bounded output with `--quiet`,
+`--verbose`, and `--limit` flags gives the agent precise control over how much data arrives, keeping responses
+high-signal and inside budget.
 
 ## Requirements
 
@@ -101,5 +102,32 @@ precise control over how much data arrives, keeping responses high-signal and in
 - Progress bars or spinners that write to stderr in non-TTY contexts, adding noise to agent logs.
 - No `--timeout` on network operations. A stalled request blocks the agent indefinitely.
 
-Measured by check IDs `p7-quiet`, `p7-limit`, `p7-timeout`. Run `agentnative check --principle 7 .` against
-your CLI to see each.
+Measured by check IDs `p7-quiet`, `p7-limit`, `p7-timeout`. Run `agentnative check --principle 7 .` against your CLI to
+see each.
+
+## Pressure test notes
+
+### 2026-04-27 — Show HN launch red-team pass
+
+Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
+recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
+
+- **[later]** *Internal inconsistency.* "`--timeout` is universal SHOULD in P7 but conditional MUST in P6
+  (`p6-must-timeout-network`). For network CLIs the two compose (MUST wins), but P7's prose ('An agent waiting
+  indefinitely on a hung network call cannot proceed') only motivates the network case — the universal scope is
+  unjustified by its own rationale." Deferred: narrowing P7's `applicability` from `universal` to non-network
+  long-running operations only — or to `if: CLI has long-running operations` — fires the coupled-release norm (CLI
+  registry parses `applicability`). Bundled with other applicability cleanups for a v0.4.0 PR with explicit registry
+  coordination.
+- **[later]** *Must-vs-should.* "The list-clamping MUST fires on every CLI with 'list-style commands' regardless of
+  natural cardinality. A tool whose list operation returns a bounded small set by construction (e.g., `anc principles
+  list` → exactly 7) gains nothing from a clamp + `\"truncated\": true` contract — the clamp is unreachable and the
+  truncation flag is dead schema." Deferred: narrowing the `if:` clause from "CLI has list-style commands" to "CLI has
+  list-style commands whose result set is unbounded or user-data-driven" changes the registry-parsed applicability
+  value. Bundled with the P3 / P7 applicability cleanups for v0.4.0.
+- **[edit]** *Vague agent-native.* "'Every token of CLI output an agent consumes has a cost' plus 'context window'
+  framing dates the principle to current LLM-agent assumptions. Non-LLM agents (scripts, schedulers, future
+  architectures) still benefit from bounded output, but for throughput/parsing reasons, not tokens." Resolved: "Why
+  Agents Need It" generalized to acknowledge both costs ("token cost and context-window capacity for LLM agents, parse
+  cost and memory pressure for scripts, schedulers, and other automation"). Keeps the LLM example without making it the
+  sole rationale.

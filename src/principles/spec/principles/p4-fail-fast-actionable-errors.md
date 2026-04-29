@@ -2,7 +2,7 @@
 id: p4
 title: Fail Fast with Actionable Errors
 last-revised: 2026-04-22
-status: draft
+status: active
 requirements:
   - id: p4-must-try-parse
     level: must
@@ -24,7 +24,7 @@ requirements:
     level: should
     applicability:
       if: CLI makes network calls
-    summary: Config and auth validation happen before any network call (three-tier dependency gating).
+    summary: Config and auth validation happen before any network call, failing at the earliest possible point.
   - id: p4-should-json-error-output
     level: should
     applicability: universal
@@ -58,15 +58,19 @@ OAuth or asks the user to check their config file. Getting that wrong wastes ent
   let cli = Cli::try_parse()?;
   ```
 
-- Error types map to distinct exit codes. At minimum:
+- Error types map to distinct exit codes. Use 77 when the CLI has an auth surface and 78 when it has a config surface;
+  0/1/2 are universal:
 
-  | Code | Meaning                       |
-  | ---: | ----------------------------- |
-  |    0 | Success                       |
-  |    1 | General command error         |
-  |    2 | Usage / argument error        |
-  |   77 | Auth / permission error       |
-  |   78 | Configuration error           |
+| Code | Meaning                 |
+| ---: | ----------------------- |
+|    0 | Success                 |
+|    1 | General command error   |
+|    2 | Usage / argument error  |
+|   77 | Auth / permission error |
+|   78 | Configuration error     |
+
+  These codes blend the bash 0/1/2 convention with BSD `sysexits.h` 77/78 (`EX_NOPERM`, `EX_CONFIG`); the result is the
+  de-facto agent-facing dialect, not strict `sysexits.h` compliance.
 
 - Every error message contains **what failed**, **why**, and **what to do next**. Example:
 
@@ -79,8 +83,9 @@ OAuth or asks the user to check their config file. Getting that wrong wastes ent
 
 - Error types use a structured enum (via `thiserror` in Rust) with variant-to-kind mapping for JSON serialization.
   Agents match on error kinds programmatically rather than parsing message text.
-- Config and auth validation happen before any network call. A three-tier dependency gating pattern (meta-commands,
-  local-only commands, network commands) fails at the earliest possible point.
+- Config and auth validation happen before any network call, failing at the earliest possible point. The structural
+  three-tier definition (meta-commands, local-only commands, network commands) lives in P6 (`p6-should-tier-gating`);
+  this requirement specifies the network-call ordering consequence.
 - Error output respects `--output json`: JSON-formatted errors go to stderr when JSON output is selected.
 
 ## Evidence
@@ -100,5 +105,37 @@ OAuth or asks the user to check their config file. Getting that wrong wastes ent
 - Error messages that state the symptom without the cause or fix ("Error: request failed").
 - Panics (`unwrap()`, `expect()`) on recoverable errors in production code paths.
 
-Measured by check IDs `p4-bad-args`, `p4-process-exit`, `p4-unwrap`, `p4-exit-codes`. Run
-`agentnative check --principle 4 .` against your CLI to see each.
+Measured by check IDs `p4-bad-args`, `p4-process-exit`, `p4-unwrap`, `p4-exit-codes`. Run `agentnative check --principle
+4 .` against your CLI to see each.
+
+## Pressure test notes
+
+### 2026-04-27 — Show HN launch red-team pass
+
+Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
+recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
+
+- **[edit]** *Internal inconsistency.* "Three-tier gating is labeled identically as a SHOULD in both P4
+  (`p4-should-gating-before-network`) and P6 (`p6-should-tier-gating`) — same pattern, two homes, no cross-reference.
+  Readers can't tell which is canonical, and a CLI that satisfies one auto-satisfies the other." Resolved: P4's bullet
+  now focuses on the network-call ordering consequence and points to P6 as the canonical home of the structural
+  three-tier definition. Frontmatter summary tightened to match. Requirement ID is unchanged so CLI registry pinning is
+  unaffected.
+- **[edit]** *Must-vs-should.* "`p4-must-exit-code-mapping` is `applicability: universal` and the prose says 'At
+  minimum' 0/1/2/77/78 — but a CLI with no auth surface and no config file legitimately has nothing to assign to either
+  77 or 78, and the MUST forces empty-by-construction error variants. Same shape as P6, which correctly gates
+  `p6-must-timeout-network` behind `if: CLI makes network calls`." Resolved: prose now reads "Use 77 when the CLI has an
+  auth surface and 78 when it has a config surface; 0/1/2 are universal." Frontmatter summary stays universal because
+  the *mapping discipline* is universal even if the specific 77/78 codes are conditional. The summary-prose drift is a
+  known launch-week tradeoff; full alignment of the summary text is on the v0.4.0 punch list.
+
+- **[edit]** *Prior art.* "77/78 align with BSD `sysexits.h` (`EX_NOPERM`, `EX_CONFIG`) — the alignment is a strength
+  but neither P2 nor P4 cites BSD sysexits, leaving an HN commenter to 'discover' it as a gotcha." Resolved: added a
+  one-liner under the P4 exit-code table acknowledging the `sysexits.h` alignment. Same sentence added to P2's exit-code
+  table for consistency.
+- **[later]** *Must-vs-should.* "`p4-must-try-parse` names a clap-specific Rust API in a `applicability: universal`
+  MUST. A Go/Python/Node CLI has no `try_parse()`. The underlying requirement — 'argument-parse failures route through
+  the same error/output formatter as runtime errors, not a library-internal `process::exit()`' — is universal; the API
+  name is not." Deferred: language-neutralizing the bullet ("Argument parsing returns a structured error rather than
+  calling `process::exit()` internally; in Rust+clap, this means `try_parse()` not `parse()`") drifts the frontmatter
+  summary. Bundled with P6's SIGPIPE and `global = true` rewrites for a coordinated v0.4.0 language-neutralization PR.

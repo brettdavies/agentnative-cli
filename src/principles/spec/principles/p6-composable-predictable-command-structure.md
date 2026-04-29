@@ -2,12 +2,12 @@
 id: p6
 title: Composable and Predictable Command Structure
 last-revised: 2026-04-22
-status: draft
+status: active
 requirements:
   - id: p6-must-sigpipe
     level: must
     applicability: universal
-    summary: SIGPIPE fix is the first executable statement in `main()` — piping output to `head`/`tail` must not panic.
+    summary: SIGPIPE is handled so piping to `head`/`tail` does not crash the process (Rust example below; Python/Go/Node have language-specific equivalents).
   - id: p6-must-no-color
     level: must
     applicability: universal
@@ -30,7 +30,7 @@ requirements:
     level: must
     applicability:
       if: CLI uses subcommands
-    summary: Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) are `global = true` so they propagate to every subcommand.
+    summary: Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) propagate to every subcommand (e.g., `global = true` in clap).
   - id: p6-should-stdin-input
     level: should
     applicability:
@@ -81,12 +81,16 @@ tool a building block rather than a dead end.
 
 **MUST:**
 
-- A SIGPIPE fix is the first executable statement in `main()`. Without it, piping output to `head`, `tail`, or any tool
-  that closes the pipe early causes a panic:
+- SIGPIPE is handled so that piping to `head`, `tail`, or any tool that closes the pipe early does not crash the
+  process. In Rust, restore the default SIGPIPE handler as the first executable statement in `main()`:
 
   ```rust
   unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }
   ```
+
+  Equivalents in other languages: Python — restore the default `SIGPIPE` handler at startup
+  (`signal.signal(signal.SIGPIPE, signal.SIG_DFL)`); Go — the runtime's default handling already exits cleanly on
+  EPIPE writes; Node.js — handle `EPIPE` on `process.stdout`.
 
 - TTY detection, plus support for `NO_COLOR` and `TERM=dumb`. When stdout or stderr is not a terminal, color codes are
   suppressed automatically.
@@ -96,8 +100,8 @@ tool a building block rather than a dead end.
   budgets need to fail fast rather than block on a slow upstream.
 - If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. Pagers block
   headless execution indefinitely.
-- When the CLI uses subcommands, agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) are `global =
-  true` so they propagate to every subcommand automatically.
+- When the CLI uses subcommands, agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) propagate to
+  every subcommand automatically (e.g., `global = true` in clap).
 
 **SHOULD:**
 
@@ -132,5 +136,26 @@ tool a building block rather than a dead end.
 - A `completions` command that requires auth or config to run.
 - No stdin support on commands where piped input is a natural use case.
 
-Measured by check IDs `p6-sigpipe`, `p6-no-color`, `p6-completions`, `p6-timeout`, `p6-agents-md`. Run
-`agentnative check --principle 6 .` against your CLI to see each.
+Measured by check IDs `p6-sigpipe`, `p6-no-color`, `p6-completions`, `p6-timeout`, `p6-agents-md`. Run `agentnative
+check --principle 6 .` against your CLI to see each.
+
+## Pressure test notes
+
+### 2026-04-27 — Show HN launch red-team pass
+
+Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
+recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
+
+- **[edit]** *Prior art / vague agent-native.* "The SIGPIPE MUST prescribes `unsafe { libc::signal(libc::SIGPIPE,
+  libc::SIG_DFL); }` as the first `main()` statement — that is a Rust-specific remedy. Python raises `BrokenPipeError`
+  by default (different fix), Go's runtime already exits cleanly on EPIPE writes (no fix needed), Node.js needs
+  `process.stdout.on('error')`. The MUST as written is correct in spirit but the prescription leaks Rust into a
+  universal-applicability rule." Resolved: prose bullet now leads with the language-neutral MUST ("SIGPIPE is handled so
+  that piping to `head`, `tail`, or any tool that closes the pipe early does not crash the process"); the Rust snippet
+  stays as the canonical example; per-language one-liners cover Python, Go, and Node. Frontmatter summary updated to
+  match.
+- **[edit]** *Must-vs-should.* "The `global = true` MUST is a clap-API artifact — the behavioral requirement is 'agentic
+  flags propagate to every subcommand,' which is what the prose actually says. The frontmatter summary baking `global =
+  true` into a universal contract overfits to one library." Resolved: frontmatter summary and prose bullet now lead with
+  the behavioral requirement ("propagate to every subcommand"), with `global = true` cited as the clap-specific example.
+  Behavior unchanged; language-neutrality restored.

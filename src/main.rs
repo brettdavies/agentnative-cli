@@ -166,21 +166,21 @@ fn run() -> Result<i32, AppError> {
         if !check.applicable(&project) {
             continue;
         }
-        if let Some(cat) = exception_category {
-            if suppresses(check.id(), cat) {
-                results.push(CheckResult {
-                    id: check.id().to_string(),
-                    label: check.label().to_string(),
-                    group: check.group(),
-                    layer: check.layer(),
-                    status: CheckStatus::Skip(format!(
-                        "{SUPPRESSION_EVIDENCE_PREFIX}{}",
-                        cat.as_kebab_case()
-                    )),
-                    confidence: Confidence::High,
-                });
-                continue;
-            }
+        if let Some(cat) = exception_category
+            && suppresses(check.id(), cat)
+        {
+            results.push(CheckResult {
+                id: check.id().to_string(),
+                label: check.label().to_string(),
+                group: check.group(),
+                layer: check.layer(),
+                status: CheckStatus::Skip(format!(
+                    "{SUPPRESSION_EVIDENCE_PREFIX}{}",
+                    cat.as_kebab_case()
+                )),
+                confidence: Confidence::High,
+            });
+            continue;
         }
         let result = match check.run(&project) {
             Ok(r) => r,
@@ -470,25 +470,25 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
                 return Ok(if md_matches && json_matches { 0 } else { 2 });
             }
 
-            if let Some(parent) = out.parent() {
-                if !parent.as_os_str().is_empty() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        AppError::ProjectDetection(anyhow::anyhow!(
-                            "creating parent dir for {}: {e}",
-                            out.display()
-                        ))
-                    })?;
-                }
+            if let Some(parent) = out.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    AppError::ProjectDetection(anyhow::anyhow!(
+                        "creating parent dir for {}: {e}",
+                        out.display()
+                    ))
+                })?;
             }
-            if let Some(parent) = json_out.parent() {
-                if !parent.as_os_str().is_empty() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        AppError::ProjectDetection(anyhow::anyhow!(
-                            "creating parent dir for {}: {e}",
-                            json_out.display()
-                        ))
-                    })?;
-                }
+            if let Some(parent) = json_out.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    AppError::ProjectDetection(anyhow::anyhow!(
+                        "creating parent dir for {}: {e}",
+                        json_out.display()
+                    ))
+                })?;
             }
             std::fs::write(&out, &rendered_md).map_err(|e| {
                 AppError::ProjectDetection(anyhow::anyhow!("writing {}: {e}", out.display()))

@@ -113,10 +113,10 @@ where
                 .iter()
                 .any(|(l, _)| l.as_deref() == Some(rest));
         }
-        if let Some(rest) = token.strip_prefix('-') {
-            if let Some(c) = rest.chars().next().filter(|_| rest.len() == 1) {
-                return all_value_flags.iter().any(|(_, s)| *s == Some(c));
-            }
+        if let Some(rest) = token.strip_prefix('-')
+            && let Some(c) = rest.chars().next().filter(|_| rest.len() == 1)
+        {
+            return all_value_flags.iter().any(|(_, s)| *s == Some(c));
         }
         false
     };
@@ -148,10 +148,10 @@ where
             // Track whether this flag belongs to a subcommand rather than the
             // top-level Cli. If so, the user clearly intends `check` even when
             // no positional argument follows (e.g. `anc --command rg`).
-            if let Some(base) = base_form(&token) {
-                if !top_level_flags.contains(&base) {
-                    saw_subcommand_flag = true;
-                }
+            if let Some(base) = base_form(&token)
+                && !top_level_flags.contains(&base)
+            {
+                saw_subcommand_flag = true;
             }
             i += if consumes_next(&token) { 2 } else { 1 };
             continue;

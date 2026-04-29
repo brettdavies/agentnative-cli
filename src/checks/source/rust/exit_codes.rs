@@ -105,25 +105,25 @@ fn find_raw_exit_codes(source: &str, file: &str) -> Vec<SourceLocation> {
         for m in root_node.find_all(&pattern) {
             let text = m.text().to_string();
             // Extract the argument inside exit(...)
-            if let Some(start) = text.rfind('(') {
-                if let Some(end) = text.rfind(')') {
-                    let arg = text[start + 1..end].trim();
-                    // A raw integer literal is all digits (possibly with a leading minus)
-                    let is_raw_literal = !arg.is_empty()
-                        && arg
-                            .strip_prefix('-')
-                            .unwrap_or(arg)
-                            .chars()
-                            .all(|c| c.is_ascii_digit());
-                    if is_raw_literal {
-                        let pos = m.start_pos();
-                        violations.push(SourceLocation {
-                            file: file.to_string(),
-                            line: pos.line() + 1,
-                            column: pos.column(&m) + 1,
-                            text,
-                        });
-                    }
+            if let Some(start) = text.rfind('(')
+                && let Some(end) = text.rfind(')')
+            {
+                let arg = text[start + 1..end].trim();
+                // A raw integer literal is all digits (possibly with a leading minus)
+                let is_raw_literal = !arg.is_empty()
+                    && arg
+                        .strip_prefix('-')
+                        .unwrap_or(arg)
+                        .chars()
+                        .all(|c| c.is_ascii_digit());
+                if is_raw_literal {
+                    let pos = m.start_pos();
+                    violations.push(SourceLocation {
+                        file: file.to_string(),
+                        line: pos.line() + 1,
+                        column: pos.column(&m) + 1,
+                        text,
+                    });
                 }
             }
         }

@@ -334,10 +334,10 @@ fn parse_subcommands(raw: &str) -> Vec<String> {
             // A new top-level section header ended the commands block.
             break;
         }
-        if let Some(name) = trimmed.split_whitespace().next() {
-            if is_subcommand_name(name) {
-                out.push(name.to_string());
-            }
+        if let Some(name) = trimmed.split_whitespace().next()
+            && is_subcommand_name(name)
+        {
+            out.push(name.to_string());
         }
     }
     out

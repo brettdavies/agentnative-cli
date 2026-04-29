@@ -11,7 +11,7 @@ keywords = ["cli", "linter", "agent", "ast-grep", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["Brett Davies <pm8fp22mbg@privaterelay.appleid.com>"]
 readme = "README.md"
-rust-version = "1.87"
+rust-version = "1.88"
 exclude = [
     ".claude/",
     ".context/",
@@ -54,6 +54,12 @@ thiserror = "2"
 
 # Platform
 libc = "0.2"
+
+# RFC 3339 timestamps for scorecard `run.started_at`. Pinned exact (pre-1.0
+# convention). `formatting` feature enables `OffsetDateTime::format` with the
+# `Rfc3339` well-known description; default `std` feature is required for
+# `OffsetDateTime::now_utc`.
+time = { version = "=0.3.47", default-features = false, features = ["std", "formatting"] }
 
 [build-dependencies]
 # Vendored spec frontmatter parser (build.rs → $OUT_DIR/generated_requirements.rs).

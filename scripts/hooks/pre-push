@@ -41,26 +41,47 @@ else
     echo "  - deny (skipped, cargo-deny not installed)"
 fi
 
-# 5. Windows cross-check: verify no unconditional use of unix-only APIs
-# This catches the libc::SIGPIPE issue without needing a Windows toolchain.
+# 5. Windows cross-check (fast): verify no unconditional use of unix-only APIs.
+# Catches the libc::SIGPIPE class of issue without invoking a Windows toolchain
+# — runs in milliseconds. Step 6 is the comprehensive backstop.
 if rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ | rg -v '#\[cfg(unix)\]' | rg -v '// *#\[cfg' | rg -qv '^$'; then
-    # Found libc unix calls — check they're inside #[cfg(unix)] blocks
     violations=$(rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ 2>/dev/null || true)
     if [ -n "$violations" ]; then
-        # Check each file for proper cfg gating
         while IFS= read -r line; do
             file=$(echo "$line" | cut -d: -f1)
             lineno=$(echo "$line" | cut -d: -f2)
-            # Look for #[cfg(unix)] in the 3 lines before the libc call
             before=$(sed -n "$((lineno > 3 ? lineno - 3 : 1)),${lineno}p" "$file")
             if ! echo "$before" | rg -q 'cfg\(unix\)'; then
                 fail "libc unix-only API used without #[cfg(unix)] at $file:$lineno"
             fi
         done <<< "$violations"
     fi
-    pass "windows compat"
+    pass "windows compat (libc grep)"
 else
-    pass "windows compat"
+    pass "windows compat (libc grep)"
+fi
+
+# 6. Windows cross-clippy: full type-check of the codebase as if compiling for
+# x86_64-pc-windows-gnu. Catches cfg-gated unused imports, conditional dead
+# code, and any other warning class that only surfaces on Windows. Linux
+# clippy alone misses these because `#[cfg(unix)]` filters out their usage
+# sites locally — the warning only fires on the platform where the gate
+# excludes them.
+#
+# Requirements (one-time setup):
+#   sudo apt install mingw-w64                          # the C linker tree-sitter needs
+#   rustup target add x86_64-pc-windows-gnu             # the Windows std library
+#
+# If either is missing the step is skipped with a one-line note rather than
+# failing — but local Windows coverage is then absent, and CI's Windows job
+# becomes the only backstop. Install both to close that gap.
+if command -v x86_64-w64-mingw32-gcc &>/dev/null \
+    && rustup target list --installed 2>/dev/null | grep -q '^x86_64-pc-windows-gnu$'; then
+    RUSTFLAGS="-Dwarnings" cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet 2>&1 \
+        || fail "cargo clippy --target x86_64-pc-windows-gnu -Dwarnings"
+    pass "windows clippy (cross-target)"
+else
+    echo "  - windows clippy (skipped: install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\` to enable)"
 fi
 
 echo -e "${BOLD}${GREEN}All checks passed.${RESET}"

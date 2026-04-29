@@ -35,10 +35,10 @@ itself, children spawned without arguments must not recurse into `check .`.
 
 ## Agent-facing JSON surface
 
-`anc check <target> --output json` emits a `schema_version: "0.3"` scorecard. The schema is at `0.x` while `anc` is
+`anc check <target> --output json` emits a `schema_version: "0.4"` scorecard. The schema is at `0.x` while `anc` is
 pre-launch — shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
-norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes five
-scorecard-level fields beyond the base `results` / `summary`:
+norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
+following scorecard-level fields beyond the base `results` / `summary`:
 
 - `audience` — `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral checks
   (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Informational only; never gates totals
@@ -51,6 +51,15 @@ scorecard-level fields beyond the base `results` / `summary`:
 - `spec_version` — the `agentnative-spec` version this CLI was built against. Sourced at build time from
   `src/principles/spec/VERSION` by `build.rs`; reads `"unknown"` if that file was missing at build time. Pin against
   this to know which spec contract the scorecard's requirement IDs reference.
+- `tool` — `{ name, binary, version }`. Identifies what was scored. `version` is best-effort (manifest field for project
+  mode, `<bin> --version` / `-V` for binary/command mode); `null` when probing fails or is declined by the self-spawn
+  guard. Schema `0.4` addition.
+- `anc` — `{ version, commit }`. Identifies the `anc` build that produced the scorecard. `commit` is `null` for builds
+  outside a Git checkout. Informational, not signed provenance. Schema `0.4` addition.
+- `run` — `{ invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` reflects what the user typed
+  (captured pre-injection). `started_at` is RFC 3339 UTC. Schema `0.4` addition.
+- `target` — `{ kind, path, command }`. `kind` is `"project"` / `"binary"` / `"command"`. The unused field is always
+  `null`, never missing. Schema `0.4` addition.
 
 `--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
 values exit 2 with a structured error. The full per-category mapping of suppressed check IDs is committed to

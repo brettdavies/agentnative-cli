@@ -14,8 +14,8 @@ Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-202603
 
 ## Skill Routing
 
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
+When the user's request matches an available skill, ALWAYS invoke it using the Skill tool as your FIRST action. Do NOT
+answer directly, do NOT use other tools first.
 
 **gstack skills (ideation, planning, shipping, ops):**
 
@@ -39,9 +39,9 @@ For the full routing table, see `~/.claude/skills/docs/workflow-routing.md`.
 
 ## Documented Solutions
 
-`docs/solutions/` (symlink to `~/dev/solutions-docs/`) — searchable archive of past
-solutions and best practices, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search
-with `qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in documented areas.
+`docs/solutions/` (symlink to `~/dev/solutions-docs/`) — searchable archive of past solutions and best practices,
+organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search with `qmd query "<topic>"
+--collection solutions`. Relevant when implementing or debugging in documented areas.
 
 ## gstack Project History
 
@@ -66,8 +66,8 @@ Key decisions already made:
 
 ## Source Check Convention
 
-Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use
-different helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
+Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use different
+helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
 
 - **Struct** implements `Check` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
 - **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
@@ -139,21 +139,52 @@ either source.
 Regenerate whenever you add a requirement, change a check's `covers()`, or rename a check ID. The regeneration is a
 deliberate commit, not a build-time artifact — the matrix is citable from outside this repo.
 
-## Scorecard v1.1 Fields
+## Scorecard v0.4 Fields
 
-`src/scorecard/mod.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
+`src/scorecard/mod.rs` emits `schema_version: "0.4"`. The schema evolves additively during the `0.x` pre-launch window —
+consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
-- `coverage_summary` — three-way `{must, should, may} × {total, verified}` counts, computed from the checks that
-  actually ran. Populated every run.
+- `0.2` — `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
+- `0.3` — `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).
+- `0.4` — four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
+
+Existing field semantics:
+
+- `coverage_summary` — populated every run. Checks suppressed by `--audit-profile` do not count toward `verified`.
 - `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral checks.
-  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing from results
-  (including when suppressed by `--audit-profile`). The classifier is read-only over results and never gates totals or
-  exit codes — per CEO review Finding #3, label mismatches are fixed via registry, not classifier logic.
+  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing (including
+  `--audit-profile` suppression). Read-only over results; never gates totals or exit codes — per CEO review Finding #3,
+  label mismatches are fixed via registry, not classifier logic.
 - `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,
   `"file-traversal"`, `"posix-utility"`, `"diagnostic-only"`). `null` when no profile is set.
+- `spec_version` — `&'static str` — the vendored spec version this `anc` build was compiled against.
 
-Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-v1.1 scorecards lack
-them. v0.1.2 scorecards carry `audience: null` and `audit_profile: null`; v0.1.3+ populates both.
+`0.4` additions (defined as serde-derived sub-structs in `src/scorecard/mod.rs`):
+
+- `tool` — `ToolInfo { name: String, binary: Option<String>, version: Option<String> }`. Built in `main.rs`'s
+  `build_tool_info`. Project mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`); command/binary mode
+  probes `<bin> --version` then `-V` via a fresh `BinaryRunner` with a 2-second timeout. Self-spawn guard compares the
+  resolved binary path against `std::env::current_exe()` — recursion declined → `tool.version: null`.
+- `anc` — `AncInfo { version: &'static str, commit: Option<&'static str> }`. Both fields are build-time constants
+  emitted by `build.rs` into `$OUT_DIR/build_info.rs` (re-exported from `src/build_info.rs`). `commit` is `None` for
+  builds outside a Git checkout. `build.rs` declares `cargo:rerun-if-changed` directives for `.git/HEAD`,
+  `.git/refs/heads/<branch>`, and `.git/packed-refs` so cached builds don't embed a stale SHA across local commits.
+- `run` — `RunInfo { invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` is captured **before**
+  `inject_default_subcommand` rewrites argv (so `anc .` records as `"anc ."`, not `"anc check ."`). `started_at` is RFC
+  3339 UTC via the `time` crate (pinned `=0.3.45`). `duration_ms` uses `Instant` for monotonic measurement.
+  `platform.{os,arch}` come from `std::env::consts`.
+- `target` — `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
+  `"binary"`, `"command"`. The unused field is always `null`, never missing.
+
+Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
+when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is
+`audience_reason`, which uses `skip_serializing_if = "Option::is_none"` — its absence carries information (audience has
+a label).
+
+Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-`0.4` scorecards lack the
+four metadata blocks. The site's `agentnative-site/registry.yaml` will eventually drop its parallel `version` /
+`scored_at` fields once consumers read those facts from the scorecard's `tool.version` / `run.started_at`. That
+follow-up lives in the `agentnative-site` repo, not here.
 
 ## Dogfooding Safety
 

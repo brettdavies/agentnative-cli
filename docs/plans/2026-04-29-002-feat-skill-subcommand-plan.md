@@ -3,7 +3,7 @@ title: "feat: `anc skill install <host>` — single-command skill installer with
 type: feat
 status: active
 date: 2026-04-29
-deepened: 2026-04-29
+deepened: 2026-04-30
 ---
 
 # feat: `anc skill install <host>` — single-command skill installer with hardened git clone
@@ -27,7 +27,8 @@ The subcommand exposes two flags that close `anc`'s own dogfood loop on P2 (stru
   (`destination-not-empty`/`destination-is-file`/`home-not-set`/`git-not-found`/`git-clone-failed`).
 
 The `git clone` invocation runs with named-const hardening (`GIT_HARDEN_FLAGS`, `GIT_HARDEN_ENV_REMOVE`,
-`GIT_TERMINAL_PROMPT=0` set) to defeat ambient git-config and env-var subversion. Tilde-expansion uses
+`GIT_HARDEN_ENV_SET` — the latter holds `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and
+`GIT_TERMINAL_PROMPT=0`) to defeat ambient git-config and env-var subversion. Tilde-expansion uses
 `std::env::var("HOME")` directly with no `home`/`dirs` crate dependency. A vendored `tests/fixtures/skill.json` plus
 `scripts/sync-skill-fixture.sh --check` (CI-enforced) is the drift anchor between this binary's hardcoded map and the
 canonical site copy — drift fails CI, never users.
@@ -86,14 +87,25 @@ to re-justify its own hardening from scratch.
   matches `expand_tilde_no_tilde_passthrough` in the eng-review test plan). `$HOME` unset or empty →
   `AppError::MissingHome`, but only when expansion is actually attempted (input begins with `~`).
 - **R6c.** The `git clone` invocation runs with sanitized environment and explicit config flags, captured as named
-  constants in `src/skill_install.rs`. `GIT_HARDEN_FLAGS: &[&str]` holds five `-c key=value` pairs: `credential.helper=`
-  (empty), `core.askPass=` (empty), `protocol.allow=https-only`, `http.followRedirects=false`, and
-  `url.https://github.com/brettdavies/agentnative-skill.insteadOf=` (empty). `GIT_HARDEN_ENV_REMOVE: &[&str]` lists
-  seven environment variables removed via `Command::env_remove`: `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_SSH`,
-  `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`. Do NOT call `env_clear()` — it strips PATH and
-  breaks `git`'s helper resolution. Additionally, `GIT_TERMINAL_PROMPT=0` is **set** (not removed) on the spawned
-  process — git's default-when-unset is to prompt, which is the wrong default for a non-interactive subcommand. This is
-  the explicit correction over the original plan, which only listed env vars to remove. Tests assert each list is
+  constants in `src/skill_install.rs`. Three tables make up the surface (as-shipped — see "Document Review
+  (implementation revision, 2026-04-30)" for the two corrections relative to the eng-review wording):
+- `GIT_HARDEN_FLAGS: &[&str]` holds five `-c key=value` pairs: `credential.helper=` (empty), `core.askPass=` (empty),
+  `protocol.allow=never`, `protocol.https.allow=always`, and `http.followRedirects=false`. The default-deny +
+  per-protocol-allow pair is the documented git-config form for "HTTPS only" — the eng-review's
+  `protocol.allow=https-only` shorthand is **not** valid git syntax (`fatal: unknown value`).
+- `GIT_HARDEN_ENV_REMOVE: &[&str]` lists five environment variables removed via `Command::env_remove`: `GIT_SSH`,
+  `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`. The `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`
+  pair is **not** in this list — `env_remove` would let git fall back to `$HOME/.gitconfig` and `/etc/gitconfig`,
+  defeating the intent. Those two are routed through `GIT_HARDEN_ENV_SET` instead.
+- `GIT_HARDEN_ENV_SET: &[(&str, &str)]` lists three env vars *set* on the spawned process:
+  `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and `GIT_TERMINAL_PROMPT=0`. The
+  `GIT_CONFIG_*=/dev/null` pair is the actual defense against user-config `insteadOf` URL-rewriting — it forces git to
+  read no global/system config at all. The eng-review's `-c url.<repo>.insteadOf=` flag was dropped: with an empty value
+  it does the *opposite* of blocking (it rewrites every empty-prefix URL to start with `<repo>`, doubling the clone URL
+  into a 404). `GIT_TERMINAL_PROMPT=0` blocks credential prompts; git's default-when-unset is to prompt, which is the
+  wrong default for a non-interactive subcommand.
+
+  Do NOT call `env_clear()` — it strips PATH and breaks git's helper resolution. Tests assert each table is
   non-empty and contains the expected entries by string match (no regex, no parsing).
 - **R9.** Destination conflict check, run after `fs::canonicalize` of the resolved destination (defends against the
   symlinked-skills-dir case where the parent skills directory itself is a symlink, per F4): reject if the dest exists as
@@ -272,7 +284,7 @@ flowchart TD
     D -->|yes| E["emit_result text or json with mode=dry-run, would_succeed"]
     D -->|no| F["check_destination canonicalize + R9 conflict check"]
     F -->|conflict| G["emit_result with status=error, typed reason"]
-    F -->|ok| H["build_clone_command url, dest with R6c GIT_HARDEN_FLAGS + ENV_REMOVE + GIT_TERMINAL_PROMPT=0"]
+    F -->|ok| H["build_clone_command url, dest with R6c GIT_HARDEN_FLAGS + ENV_REMOVE + ENV_SET"]
     H --> I["Command spawn git clone, capture exit code"]
     I -->|git missing| Z2["AppError::GitNotFound -> reason=git-not-found"]
     I -->|nonzero exit| Z3["AppError::GitCloneFailed -> reason=git-clone-failed"]
@@ -302,7 +314,10 @@ flowchart TD
   "snake_case")]` so surface names match `skill.json` keys verbatim.
 - `pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "opencode"];`
 - `pub const GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (R6c).
-- `pub const GIT_HARDEN_ENV_REMOVE: &[&str]` — seven env vars (R6c).
+- `pub const GIT_HARDEN_ENV_REMOVE: &[&str]` — five env vars (R6c).
+- `pub const GIT_HARDEN_ENV_SET: &[(&str, &str)]` — three env-var pairs (R6c). The
+  `GIT_CONFIG_GLOBAL=/dev/null`/`GIT_CONFIG_SYSTEM=/dev/null` pair disables ambient git config; `GIT_TERMINAL_PROMPT=0`
+  blocks credential prompts.
 - `fn resolve_host(host: SkillHost) -> (&'static str, &'static str)` — returns `(url, dest_template)`.
 - `fn expand_tilde(template: &str) -> Result<PathBuf, AppError>` — reads `$HOME` via `std::env::var`; replaces leading
   `~` or `~/` with `$HOME`; passes other paths through unchanged (R6a passthrough contract — pure function, errors only
@@ -310,8 +325,8 @@ flowchart TD
 - `fn check_destination(path: &Path) -> Result<DestinationStatus, AppError>` — canonicalize + R9 conflict check; returns
   `DestinationStatus` (`Absent`/`EmptyDir`/`NonEmptyDir`/`File`) for the envelope, errors on conflict.
 - `fn build_clone_command(url: &str, dest: &Path) -> Command` — pure constructor; applies `GIT_HARDEN_FLAGS`,
-  `env_remove` per `GIT_HARDEN_ENV_REMOVE`, sets `GIT_TERMINAL_PROMPT=0`. Pure-function shape enables unit-test
-  introspection without spawning.
+  `env_remove` per `GIT_HARDEN_ENV_REMOVE`, and `env` per each `GIT_HARDEN_ENV_SET` entry. Pure-function shape enables
+  unit-test introspection without spawning.
 - `fn run_install(host: SkillHost, dry_run: bool, output: OutputFormat) -> Result<i32, AppError>` — orchestrates the
   pipeline above.
 - `fn emit_result_text(...)` and `fn emit_result_json(...)` per R-OUT.
@@ -342,7 +357,9 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 8. **[Unit]** `check_destination` on a regular file → `Err(AppError::DestIsFile)`.
 9. **[Unit]** `check_destination` follows symlinks via canonicalize — symlink to non-empty dir → `Err(DestNotEmpty)`.
 10. **[Unit]** `build_clone_command` introspection: every flag in `GIT_HARDEN_FLAGS` appears in the constructed args;
-    every env var in `GIT_HARDEN_ENV_REMOVE` is in the removal set; `GIT_TERMINAL_PROMPT=0` is in the env-set list.
+    every env var in `GIT_HARDEN_ENV_REMOVE` is in the removal set; every `(key, value)` pair in `GIT_HARDEN_ENV_SET` is
+    in the env-set list (including `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and
+    `GIT_TERMINAL_PROMPT=0`).
 11. **[Unit]** `KNOWN_HOSTS` matches `SkillHost` variant count and names exactly.
 12. **[Unit]** `host_map_matches_site_skill_json` — drift anchor. Loads `tests/fixtures/skill.json` and asserts each
     Rust-map `(url, dest_template)` resolves to the fixture's `install.<host>` value verbatim. Fails in `cargo test`
@@ -405,8 +422,9 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 - Modify: `RELEASES.md` — add a row under the pre-release checklist: `bash scripts/sync-skill-fixture.sh && git diff
   tests/fixtures/skill.json` to surface drift before tag (mirrors the spec-vendor step).
 - Modify: `CLAUDE.md` — short paragraph on the hardcoded-map model, the named-const hardening surface
-  (`GIT_HARDEN_FLAGS`/`GIT_HARDEN_ENV_REMOVE`/`GIT_TERMINAL_PROMPT=0`), and the CI drift check, so future agents
-  understand the contract without re-deriving it.
+  (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET` — the latter holding the
+  `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and `GIT_TERMINAL_PROMPT=0` triple), and the CI drift
+  check, so future agents understand the contract without re-deriving it.
 - Modify: `AGENTS.md` if present — same content as CLAUDE.md, audience-appropriate.
 
 **Patterns to follow:** existing spec-vendor entries in `RELEASES.md` and `CLAUDE.md`.
@@ -442,7 +460,7 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Symlink at the destination redirects `git clone` to a sensitive system path.                              | `fs::canonicalize` in `check_destination` (R9) resolves symlinks before the conflict check (per F4). TOCTOU window between check and exec acknowledged as residual single-user-machine risk; `git clone` itself errors on a non-empty target as backstop.                                                                                            |
 | Tilde-prefixed destinations from the hardcoded map not expanded by `Command::new("git")`.                 | R6a explicitly tilde-expands `~`/`~/` to `$HOME` via `std::env::var("HOME")` before validation and exec. `MissingHome` is a typed error, not a panic. Test fixture (Test 2) exercises every host's canonical path end-to-end.                                                                                                                        |
-| `git clone` env / config subversion via ambient git config or env vars.                                   | R6c named-const hardening: `GIT_HARDEN_FLAGS` (5 `-c` pairs) + `GIT_HARDEN_ENV_REMOVE` (7 env vars) + `GIT_TERMINAL_PROMPT=0` set. Tests assert each list contains the expected entries by string match. `Command::new("git").args([...])` only — never `sh -c`.                                                                                     |
+| `git clone` env / config subversion via ambient git config or env vars.                                   | R6c named-const hardening: `GIT_HARDEN_FLAGS` (5 `-c` pairs) + `GIT_HARDEN_ENV_REMOVE` (5 vars) + `GIT_HARDEN_ENV_SET` (3 pairs — `GIT_CONFIG_*=/dev/null` disables user-config; `GIT_TERMINAL_PROMPT=0`). `Command::args([...])` only — never `sh -c`.                                                                                              |
 | Supply-chain compromise of `agentnative-skill` repo — rolling-`main` distribution executes attacker code. | Acknowledged residual risk. The producer's update model is rolling `main`; pinning would defeat the bundle's own freshness loop. `--dry-run` lets users inspect the resolved command before running. Future `anc skill install --verify` could compare cloned `HEAD` against an advisory `verify.expected` and warn on drift; deferred to follow-up. |
 | `agentnative-skill` repo is renamed or moved to a different owner.                                        | Hardcoded URL update + `anc` patch release. Drift window is bounded by release cadence. Users on too-old `anc` see the manual `git clone` fallback documented in `--help` and `README` (per F5).                                                                                                                                                     |
 | User installs into a location their host doesn't actually scan.                                           | The hardcoded destinations match the site contract. If a path is wrong, fix it in `agentnative-site/src/data/skill.json`, sync the fixture, update the Rust map, ship a patch. `--dry-run` lets users see the resolved path before exec.                                                                                                             |
@@ -582,6 +600,44 @@ alternative each decision rejected.
 - **F8 (bash one-liner counterargument):** A new "Why a binary verb, not a bash one-liner?" paragraph in Problem Frame
   documents the dogfood rationale honestly. The bash path delivers the install UX for ~5% of the cost; the binary path
   exercises P2 + P5 on `anc`'s own surface and shares a future trust boundary.
+
+### Document Review (implementation revision, 2026-04-30)
+
+Pre-merge manual smoke (item 6 in the handoff's checklist) caught two bugs in the eng-review's R6c hardening surface
+that introspection-only tests could not see — both surface only when an actual `git` binary parses the args. The body of
+this plan is updated to reflect the as-shipped surface; this subsection captures *why* each correction was needed so
+future readers don't re-introduce the originals.
+
+- **`protocol.allow=https-only` is not valid git syntax.** `git` rejects it with `fatal: unknown value for config
+  'protocol.allow': https-only` and aborts the clone. The HTTPS-only intent is expressed correctly as a default-deny +
+  per-protocol-allow pair (the documented git-config form): `-c protocol.allow=never -c protocol.https.allow=always`.
+  This replaces the single `-c` pair the eng-review wording proposed. `GIT_HARDEN_FLAGS` count stays at 5 because the
+  existing `url.<repo>.insteadOf=` pair was simultaneously dropped (see below).
+
+- **`-c url.<repo>.insteadOf=` (empty value) does the *opposite* of blocking.** git's `url.<base>.insteadOf=<value>`
+  directive rewrites URLs starting with `<value>` to start with `<base>`. With an empty `<value>`, every URL matches the
+  empty prefix, so all URLs are rewritten to start with `<base>`, doubling the clone URL into `<repo><repo>/` which
+  404s. The flag was dropped entirely. The actual defense against user-config `insteadOf` URL-rewriting is to disable
+  user-controlled git config wholesale, which `env_remove` cannot achieve (git falls back to default config paths when
+  `GIT_CONFIG_*` are unset). The fix routes those two vars through a new `GIT_HARDEN_ENV_SET` table with
+  `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` — pointing both at `/dev/null` forces git to read no
+  global/system config at all. `GIT_TERMINAL_PROMPT=0` moves into the same table for symmetry.
+
+- **`GIT_HARDEN_ENV_REMOVE` shrinks from 7 to 5 entries.** `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` move to
+  `GIT_HARDEN_ENV_SET` for the reason above. The remaining five (`GIT_SSH`, `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND`,
+  `GIT_ASKPASS`, `GIT_EXEC_PATH`) keep their original semantics: user-controlled overrides we want to ignore via
+  `Command::env_remove`.
+
+Verification (post-fix):
+
+- `cargo test`: 520 tests pass; test 10 introspects all three tables and the constructed `Command`.
+- `cargo test -- --ignored skill_install`: live e2e clones the upstream skill bundle into a tempdir successfully.
+- Manual smoke: `HOME=/tmp/anc-skill-smoke anc skill install claude_code` → exit 0, `.git/HEAD` written; rerun →
+  envelope `status: error`, `reason: destination-not-empty`, exit 1 (R9 honored).
+
+The eng-review verdict and Plan Rewrite Brief sections below are left unchanged — they document the decision lineage
+at the time of the SCOPE_REDUCED rewrite, before this implementation revision. The plan body above is the as-shipped
+contract.
 
 ### Pattern Documentation Note
 

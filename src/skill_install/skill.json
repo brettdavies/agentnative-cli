@@ -15,6 +15,8 @@
     "claude_code": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.claude/skills/agent-native-cli",
     "codex": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.codex/skills/agent-native-cli",
     "cursor": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.cursor/skills/agent-native-cli",
+    "factory": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.factory/skills/agent-native-cli",
+    "kiro": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.kiro/skills/agent-native-cli",
     "opencode": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.config/opencode/skills/agent-native-cli"
   },
   "verify": {

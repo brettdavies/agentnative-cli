@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Sync tests/fixtures/skill.json from agentnative-site/src/data/skill.json.
+# Sync src/skill_install/skill.json from agentnative-site/src/data/skill.json.
 #
-# The fixture is the drift anchor between this binary's hardcoded host map
-# (src/skill_install.rs) and the canonical site contract. Drift is caught at
-# two layers: the cargo-level companion test 12 (host_map_matches_site_skill_json)
-# fires on `cargo test`, and `--check` mode here fires on every PR.
+# The fixture is also the build-time input for build.rs's host-map codegen
+# (which emits the SkillHost enum, KNOWN_HOSTS const, and resolve_host fn
+# into $OUT_DIR/generated_hosts.rs). Single source of truth: rerun this
+# script on site updates and `cargo build` regenerates the Rust map. CI's
+# skill-fixture-drift workflow runs `--check` on every PR to catch drift
+# between the committed fixture and the canonical site contract.
 #
 # Modes:
 #   scripts/sync-skill-fixture.sh           Update the fixture in place.
@@ -30,7 +32,7 @@ SKILL_SITE_REF="${SKILL_SITE_REF:-dev}"
 SKILL_SITE_ROOT="${SKILL_SITE_ROOT:-$HOME/dev/agentnative-site}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST_FILE="$REPO_ROOT/tests/fixtures/skill.json"
+DEST_FILE="$REPO_ROOT/src/skill_install/skill.json"
 SOURCE_PATH="src/data/skill.json"
 
 mode="update"

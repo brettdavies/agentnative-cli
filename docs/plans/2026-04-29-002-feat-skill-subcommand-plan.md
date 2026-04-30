@@ -1,9 +1,11 @@
 ---
 title: "feat: `anc skill install <host>` — single-command skill installer with hardened git clone"
 type: feat
-status: active
+status: completed
 date: 2026-04-29
 deepened: 2026-04-30
+completed: 2026-04-30
+shipped_in: "PR #35"
 ---
 
 # feat: `anc skill install <host>` — single-command skill installer with hardened git clone
@@ -37,6 +39,64 @@ copy — drift fails CI, never users.
 
 Plan depth is **Modest** — one new subcommand, one process spawn, no network, no embedded resources beyond Rust
 constants. ~1 implementation unit (plus a small docs unit).
+
+---
+
+## Acceptance Status (post-shipment, 2026-04-30)
+
+All requirements and verification anchors are met. Shipped in PR #35 against `dev`. The body below remains the
+as-shipped contract; the two `### Document Review` subsections at the bottom capture *why* the manual-smoke and codegen
+revisions reshaped R6c, U1, and the host-map mechanism relative to planning-time wording.
+
+**Requirements trace:**
+
+- [x] **R1** — `Commands::Skill { SkillCmd::Install }` lands in `src/cli.rs`. No `list`/`path`/`update` verbs (deferred).
+- [x] **R2** — `<host>` validated against the build-time-generated `SkillHost` enum (six variants:
+  `claude_code`/`codex`/`cursor`/`factory`/`kiro`/`opencode`). Unknown hosts → clap exit 2 with possible-values list.
+- [x] **R6a** — `expand_tilde` reads `$HOME` via `std::env::var`, replaces leading `~`/`~/`, passes other paths through
+  unchanged. `MissingHome` error only when input begins with `~`. Tests 2-4.
+- [x] **R6c** — Three named-const tables (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET`) applied via
+  `Command::args` / `env_remove` / `env`. Test 10 asserts each table contents on the constructed `Command`. Eng-review
+  wording corrected during manual smoke (see Document Review subsection).
+- [x] **R9** — `check_destination` canonicalises before the conflict check. `DestIsFile` / `DestNotEmpty` /
+  `DestReadFailed` typed errors. Tests 5-9.
+- [x] **R-DRY** — `--dry-run` flag short-circuits exec; emits resolved `git clone` command on stdout. Tests 13-15.
+- [x] **R-OUT** — `--output {text,json}` honored on both dry-run AND live install paths. Uniform JSON envelope across
+  success/error and across modes. Field-presence rules via `skip_serializing_if`. Tests 14, 15, 19, 23.
+- [x] **R-LIST** — `pub const KNOWN_HOSTS: &[&str]` exposed at module boundary; build-generated.
+
+**Implementation units:**
+
+- [x] **U1** — `skill_install` module + clap surface + main dispatch shipped. ~830 LOC including tests; six hosts;
+  build.rs codegen.
+- [x] **U2** — Documentation + sync workflow shipped. README install section, AGENTS.md / CLAUDE.md skill-verb sections,
+  RELEASES.md pre-release sync step.
+
+**Test scenarios** (numbering tracks the eng-review test plan):
+
+- [x] Tests 1–11 (unit) pass in `src/skill_install.rs::tests`.
+- [x] Test 12 deleted as provably redundant after the codegen refactor (see Document Review § codegen). Test 1 picks up
+  the regression-catch role by parsing the fixture and asserting each `resolve_host` pair.
+- [x] Tests 13–23 (integration) pass in `tests/skill_install.rs`; test 16b is `#[ignore]` (live network e2e, opt-in).
+- [x] Tests 24–25 (CRITICAL dogfood guards) pass in `tests/dogfood.rs`.
+- [x] Test 26 (CI drift gate) is green via `.github/workflows/skill-fixture-drift.yml`.
+
+**Pre-merge checklist (handoff document):**
+
+- [x] `cargo test` green — 519 active passing, 2 ignored.
+- [x] `cargo clippy --all-targets -- -Dwarnings` clean.
+- [x] `scripts/hooks/pre-push` clean (mirrors CI: fmt, clippy, test, cargo-deny, Windows compat).
+- [x] `bash scripts/sync-skill-fixture.sh --check` exits 0 against `agentnative-site/dev`.
+- [x] Manual smoke for all six hosts via `--dry-run` plus live install for `claude_code`/`codex`/`factory` into tempdirs.
+  Rerun-on-populated returns the typed `destination-not-empty` envelope per R9.
+
+**Pattern Documentation Note follow-ups:**
+
+- [x] Spec-SHOULDs follow-up plan written at
+  [`docs/plans/2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md`](2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md)
+  (queued for future implementation).
+- [x] Solutions doc refreshed in place at
+  `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` (committed in solutions-docs).
 
 ---
 
@@ -78,10 +138,12 @@ to re-justify its own hardening from scratch.
 
 - **R1.** `anc skill` is a new top-level subcommand. Its only initial verb is `install <host>`. Future verbs (`list`,
   `path`, `update`) are out of scope.
-- **R2.** `install` accepts `<host>` as a positional argument, validated by clap `ValueEnum` against the hardcoded
-  `SkillHost` enum. Variants: `ClaudeCode`, `Codex`, `Cursor`, `Opencode` (with `clap(rename_all = "snake_case")` so
-  surface names match `skill.json` keys verbatim — note `opencode`, not `open_code`). Unknown hosts are rejected by clap
-  with exit 2 and a list of accepted values in the error message.
+- **R2.** `install` accepts `<host>` as a positional argument, validated by clap `ValueEnum` against the
+  build-time-generated `SkillHost` enum. As-shipped variants (six, alphabetised by JSON key): `ClaudeCode`, `Codex`,
+  `Cursor`, `Factory`, `Kiro`, `Opencode` (with `#[value(rename_all = "snake_case")]` so surface names match
+  `skill.json` keys verbatim — note `opencode`, not `open_code`; `factory` and `kiro` were added during implementation
+  via the upstream `agentnative-site#53` PR before the codegen refactor landed). Unknown hosts are rejected by clap with
+  exit 2 and a list of accepted values in the error message.
 - **R6a.** Tilde expansion of the destination template happens before `Command::new("git")` exec, via
   `std::env::var("HOME")` directly — no `home`/`dirs` crate dep. A leading `~` or `~/` is replaced with `$HOME`;
   templates not starting with `~` or `~/` pass through unchanged (pure-function shape — the v1 hardcoded map only ever
@@ -188,16 +250,17 @@ to re-justify its own hardening from scratch.
 - `src/error.rs` — existing `AppError` enum. New variants (`MissingHome`, `GitNotFound`, `GitCloneFailed { code: i32 }`,
   `DestIsFile`, `DestNotEmpty`, `DestReadFailed`) follow the existing typed-variant pattern with the same `thiserror`
   derives.
-- `tests/fixtures/` — vendored fixtures pattern. The new `skill.json` fixture mirrors the existing spec-vendor shape
-  (`src/principles/spec/`) but lives under `tests/` because no production code reads it.
+- `src/principles/spec/` — vendored content used as a build input by `build.rs`. The new `src/skill_install/skill.json`
+  mirrors that pattern: vendored under `src/` (not `tests/`, which `Cargo.toml` excludes from the package) so
+  `build.rs::emit_skill_hosts` can read it at compile time.
 - `scripts/sync-spec.sh` — sync-script precedent. `scripts/sync-skill-fixture.sh` mirrors its shape and adds a `--check`
   mode (matches `anc generate coverage-matrix --check`).
 
 ### Institutional Learnings
 
-- The "vendored fixture + CI drift check" pattern is already proven by the spec-vendor work
-  (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`). Reuse the structure, narrowed: this fixture is test-only, not
-  build-input.
+- The "vendored fixture + build-time codegen + CI drift check" pattern is already proven by the spec-vendor work
+  (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`). The same shape applies here: the fixture is the build input,
+  codegen emits Rust source, and `--check` mode in the sync script is the drift gate against upstream.
 - Search `docs/solutions/` at execution time for `Command::new`, `git clone`, `tilde expansion`, `env sanitization`,
   `clap ValueEnum`, `output envelope` — surface any prior decisions before committing.
 - Verified during planning: `agentnative-skill/bin/check-update` curls `raw.githubusercontent.com` for `VERSION` and
@@ -206,8 +269,9 @@ to re-justify its own hardening from scratch.
 
 ### External References
 
-- `agentnative-site/src/data/skill.json` — canonical host map. The fixture mirrors this; the Rust map is hand-maintained
-  to match.
+- `agentnative-site/src/data/skill.json` — canonical host map upstream. `scripts/sync-skill-fixture.sh` vendors it into
+  `src/skill_install/skill.json`; `build.rs::emit_skill_hosts` consumes the vendored copy and emits the Rust map
+  automatically. No hand-maintained Rust to keep in sync.
 - `agentnative-site/src/build/skill.mjs` — site-side schema validator. Informational reference; not consumed here.
 - `agentnative-skill/bin/check-update` — existing release-tag-based update flow.
 - gstack's `hosts/<name>.ts` files (`~/dev/agent-skills/gstack/hosts/`) — informational reference for a future
@@ -252,11 +316,17 @@ to re-justify its own hardening from scratch.
 
 - **Skill source** → not embedded as content. `anc skill install` shells out to `git clone`; the bundle ships
   independently.
-- **Map source** → hardcoded Rust constants. The fixture is a CI drift anchor, not a runtime resource.
-- **Drift handling** → CI-enforced. `scripts/sync-skill-fixture.sh --check` fails on drift between the fixture and the
-  Rust map.
-- **Hosts at launch** → `claude_code`, `codex`, `cursor`, `opencode`. New hosts ship via `anc` patch release after the
-  site updates `skill.json`. `--help` documents the manual `git clone` fallback for users on a too-old `anc`.
+- **Map source** → build-time codegen. `build.rs::emit_skill_hosts` parses `src/skill_install/skill.json` at compile
+  time and emits `SkillHost` / `KNOWN_HOSTS` / `resolve_host` / `host_envelope_str` into `$OUT_DIR/generated_hosts.rs`.
+  No JSON parsing in production; no fetch; no allowlist. *(Initially settled as hand-maintained Rust constants;
+  refactored to codegen on 2026-04-30 — see "Document Review (codegen refactor)" subsection.)*
+- **Drift handling** → CI-enforced. `scripts/sync-skill-fixture.sh --check` fails on drift between the vendored fixture
+  and the upstream `agentnative-site/src/data/skill.json`. Drift between the fixture and the Rust map is structurally
+  impossible after the codegen refactor (both single-source from the same JSON within a single build).
+- **Hosts at launch** → six: `claude_code`, `codex`, `cursor`, `factory`, `kiro`, `opencode`. *(`factory` and `kiro`
+  added on 2026-04-30 via the upstream `agentnative-site#53` PR before the codegen refactor; the planning-time list
+  named four.)* New hosts ship via `anc` patch release after the site updates `skill.json`; `--help` documents the
+  manual `git clone` fallback for users on a too-old `anc`.
 - **Output format default** → `text` (matches existing `anc check` default). `json` is opt-in.
 
 ### Deferred to Implementation
@@ -319,9 +389,12 @@ flowchart TD
 
 **Module shape (`src/skill_install.rs`):**
 
-- `pub enum SkillHost { ClaudeCode, Codex, Cursor, Opencode }` with `clap::ValueEnum` derive, `#[value(rename_all =
-  "snake_case")]` so surface names match `skill.json` keys verbatim.
-- `pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "opencode"];`
+- `pub enum SkillHost { ClaudeCode, Codex, Cursor, Factory, Kiro, Opencode }` with `clap::ValueEnum` derive,
+  `#[value(rename_all = "snake_case")]` so surface names match `skill.json` keys verbatim. *Generated by
+  `build.rs::emit_skill_hosts` from `src/skill_install/skill.json` into `$OUT_DIR/generated_hosts.rs`; consumed via
+  `include!` in `src/skill_install.rs` — no hand-maintained variant list.*
+- `pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "factory", "kiro", "opencode"];` *(also
+  generated; sorted by JSON key)*.
 - `pub const GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (R6c).
 - `pub const GIT_HARDEN_ENV_REMOVE: &[&str]` — five env vars (R6c).
 - `pub const GIT_HARDEN_ENV_SET: &[(&str, &str)]` — three env-var pairs (R6c). The
@@ -449,8 +522,10 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 
 ## System-Wide Impact
 
-- **Interaction graph:** new module `src/skill_install.rs`. Touched files: `src/cli.rs`, `src/main.rs`, `src/error.rs`.
-  No existing module's behavior changes.
+- **Interaction graph:** new module `src/skill_install.rs`; new build-input `src/skill_install/skill.json`; codegen hook
+  in `build.rs::emit_skill_hosts`. Touched files: `src/cli.rs`, `src/main.rs`, `src/error.rs`, `Cargo.toml` (build-dep
+  `serde_json` + dev-dep `tempfile`), `scripts/sync-skill-fixture.sh` (new), CI workflow
+  `.github/workflows/skill-fixture-drift.yml` (new). No existing module's behavior changes.
 - **Error propagation:** six new `AppError` variants surface via the existing `thiserror`/`Display` plumbing. All
   surface via the existing `--output` and exit-code conventions.
 - **State lifecycle risks:** `git clone` writes to disk. R9 prevents accidental overwrite. Cleanup remains the user's

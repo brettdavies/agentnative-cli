@@ -743,7 +743,7 @@ fn test_audit_profile_echoed_in_json_output() {
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
     assert_eq!(parsed["audit_profile"], "human-tui");
-    assert_eq!(parsed["schema_version"], "0.4");
+    assert_eq!(parsed["schema_version"], "0.5");
 }
 
 #[test]
@@ -907,6 +907,9 @@ fn test_scorecard_json_has_stable_top_level_keys() {
         "anc",
         "run",
         "target",
+        // 0.5 addition — agent-native badge block (eligibility, embed
+        // snippet, scorecard/badge URLs).
+        "badge",
     ];
     // `audience_reason` is present only when audience is null — on the
     // self-dogfood it should NOT appear, consistent with the skip rule.
@@ -930,7 +933,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     );
 
     // Fixed enumerations also pin against the renderer contract.
-    assert_eq!(obj["schema_version"], "0.4");
+    assert_eq!(obj["schema_version"], "0.5");
 }
 
 #[test]

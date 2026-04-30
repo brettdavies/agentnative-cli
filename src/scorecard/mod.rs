@@ -17,8 +17,31 @@ use crate::types::{CheckGroup, CheckResult, CheckStatus};
 /// norm; consumers feature-detect new keys rather than pinning exact
 /// values. History: `0.1` (initial), `0.2` (audience, audit_profile,
 /// coverage_summary), `0.3` (spec_version), `0.4` (tool / anc / run /
-/// target metadata blocks — self-describing scoring run).
-pub const SCHEMA_VERSION: &str = "0.4";
+/// target metadata blocks — self-describing scoring run), `0.5` (`badge`
+/// block — eligibility, embed snippet, and badge/scorecard URLs derived
+/// from the run, so authors learn about the badge from the CLI itself
+/// rather than a round-trip to the site).
+pub const SCHEMA_VERSION: &str = "0.5";
+
+/// Eligibility floor for the agent-native badge, expressed as an integer
+/// percent. A score that meets or exceeds this floor qualifies a tool to
+/// embed the badge.
+///
+/// Authority is the site's published badge convention at
+/// <https://anc.dev/badge> (mirrors the `badgeColor` brightline in
+/// `agentnative-site/src/build/badge.mjs`). The spec convention currently
+/// lives on the `agentnative-spec` `feat/badge-claim-convention` branch
+/// and will move into the vendored spec via `sync-spec` once the floor
+/// lands as a published constant. Until then, this constant carries the
+/// site's authoritative value.
+pub const BADGE_ELIGIBILITY_FLOOR_PCT: u32 = 80;
+
+/// Canonical base URL the badge convention publishes against. Per the
+/// site convention, the URL is "always-latest" — `<base>/badge/<tool>.svg`
+/// reflects the most recent score against the most recent published spec.
+/// The constant is centralized here so the URL pattern is the single
+/// source of truth across `text_hint`, JSON emission, and tests.
+pub const BADGE_BASE_URL: &str = "https://anc.dev";
 
 /// Pre-launch (`0.x`) scorecard shape emitted by `anc check --output json`.
 ///
@@ -77,6 +100,118 @@ pub struct Scorecard {
     /// What `anc` was pointed at: project path, binary file, or PATH-resolved
     /// command. Pre-launch additive (schema `0.4`).
     pub target: TargetInfo,
+    /// Agent-native badge eligibility + embed snippet for this run. Always
+    /// emitted; below-floor runs leave `embed_markdown` `null` per the
+    /// "do not nag" rule in the site's badge convention. Pre-launch
+    /// additive (schema `0.5`).
+    pub badge: BadgeInfo,
+}
+
+/// Agent-native badge metadata derived from the current run.
+///
+/// `score_pct` is the rounded integer percent of `pass / (pass + warn +
+/// fail)` — the same denominator the site leaderboard uses. Skips and
+/// errors do not count toward either side of the ratio. When the
+/// denominator is zero (no scoring data — e.g., `--principle 99` filters
+/// every check out) the score is reported as `0` and `eligible` is
+/// `false`.
+///
+/// `eligible` is `true` iff `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT`
+/// **and** a tool slug was derivable. Without a slug we cannot construct
+/// the embed URL truthfully, and silently emitting a placeholder would
+/// mislead authors.
+///
+/// `embed_markdown` is `Some` only when the tool is eligible — the field
+/// drives the gating contract: a consumer that emits `embed_markdown` to
+/// a README knows it's safe to show because the floor was checked here.
+///
+/// `scorecard_url` and `badge_url` are populated whenever a tool slug
+/// exists, even below the floor. The site renders the SVG for every
+/// scored tool regardless of score so a regression below the floor shows
+/// the visual color shift instead of a 404.
+#[derive(Serialize)]
+pub struct BadgeInfo {
+    pub eligible: bool,
+    pub score_pct: u32,
+    pub embed_markdown: Option<String>,
+    pub scorecard_url: Option<String>,
+    pub badge_url: Option<String>,
+    pub convention_url: &'static str,
+}
+
+impl BadgeInfo {
+    /// Render the post-summary text hint shown in `--output text` mode
+    /// when the tool qualifies for the badge. Returns `None` below the
+    /// eligibility floor so callers can append unconditionally without
+    /// nagging authors who are not yet eligible.
+    pub fn text_hint(&self) -> Option<String> {
+        let embed = self.embed_markdown.as_deref()?;
+        Some(format!(
+            "\n🏆 Score: {}% — your tool qualifies for the agent-native badge.\n\
+             \x20  Embed in your README:\n\
+             \x20    {embed}\n\
+             \x20  Convention: {}/badge\n",
+            self.score_pct, BADGE_BASE_URL,
+        ))
+    }
+}
+
+/// Pure derivation of `BadgeInfo` from a result set and a tool slug. Used
+/// by both `build_scorecard` (for JSON emission) and the runner's text
+/// path (for the post-summary hint), so a single source of truth backs
+/// both surfaces.
+pub fn compute_badge(results: &[CheckResult], tool_name: &str) -> BadgeInfo {
+    let pct = score_pct(results);
+    let trimmed = tool_name.trim();
+    let has_slug = !trimmed.is_empty();
+    let eligible = has_slug && pct >= BADGE_ELIGIBILITY_FLOOR_PCT;
+
+    let scorecard_url = has_slug.then(|| format!("{BADGE_BASE_URL}/score/{trimmed}"));
+    let badge_url = has_slug.then(|| format!("{BADGE_BASE_URL}/badge/{trimmed}.svg"));
+    let embed_markdown = if eligible {
+        Some(format!(
+            "[![agent-native]({BADGE_BASE_URL}/badge/{trimmed}.svg)]({BADGE_BASE_URL}/score/{trimmed})"
+        ))
+    } else {
+        None
+    };
+
+    BadgeInfo {
+        eligible,
+        score_pct: pct,
+        embed_markdown,
+        scorecard_url,
+        badge_url,
+        convention_url: "https://anc.dev/badge",
+    }
+}
+
+/// Compute the rounded integer percent score using the leaderboard's
+/// denominator (`pass + warn + fail`). Skips and errors are excluded from
+/// both sides of the ratio. Returns `0` when no checks contribute (every
+/// status was Skip or Error, or no checks ran at all) — pairs with
+/// `BadgeInfo::eligible == false` so a zero score never qualifies.
+fn score_pct(results: &[CheckResult]) -> u32 {
+    let mut pass = 0u32;
+    let mut denom = 0u32;
+    for r in results {
+        match &r.status {
+            CheckStatus::Pass => {
+                pass += 1;
+                denom += 1;
+            }
+            CheckStatus::Warn(_) | CheckStatus::Fail(_) => {
+                denom += 1;
+            }
+            CheckStatus::Skip(_) | CheckStatus::Error(_) => {}
+        }
+    }
+    if denom == 0 {
+        0
+    } else {
+        let ratio = f64::from(pass) / f64::from(denom);
+        (ratio * 100.0).round() as u32
+    }
 }
 
 /// Identity of the scored target. `version` is best-effort: when the binary
@@ -269,7 +404,11 @@ fn group_order(group: &CheckGroup) -> u8 {
     }
 }
 
-pub fn format_text(results: &[CheckResult], quiet: bool) -> String {
+/// Format the scorecard as plain text. Pass `Some(badge)` to append the
+/// post-summary embed hint when the tool qualifies for the agent-native
+/// badge; below-floor runs see `text_hint()` return `None`, so nothing is
+/// appended (the "do not nag" rule from the badge convention).
+pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInfo>) -> String {
     let mut out = String::new();
 
     // Group results by CheckGroup
@@ -328,6 +467,13 @@ pub fn format_text(results: &[CheckResult], quiet: bool) -> String {
         s.total, s.pass, s.warn, s.fail, s.skip, s.error
     );
 
+    // Badge embed hint — appended only when eligible. Below the floor the
+    // `text_hint()` returns None and nothing is added (the convention's
+    // "do not nag" rule).
+    if let Some(hint) = badge.and_then(BadgeInfo::text_hint) {
+        out.push_str(&hint);
+    }
+
     out
 }
 
@@ -368,6 +514,11 @@ pub fn build_scorecard(
         run,
         target,
     } = metadata;
+    // Compute the badge from the same `tool.name` the JSON emits, so the
+    // embed URL in `badge.embed_markdown` and the slug in `tool.name` can
+    // never disagree (a regression that diverges them would mislead any
+    // author copy-pasting from the JSON).
+    let badge = compute_badge(results, &tool.name);
     Scorecard {
         schema_version: SCHEMA_VERSION,
         results: results.iter().map(CheckResultView::from_result).collect(),
@@ -381,6 +532,7 @@ pub fn build_scorecard(
         anc,
         run,
         target,
+        badge,
     }
 }
 
@@ -535,7 +687,7 @@ mod tests {
         ];
         let json = format_json(&results, &[], None, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "0.4");
+        assert_eq!(parsed["schema_version"], "0.5");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -754,7 +906,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "0.4");
+        assert_eq!(parsed["schema_version"], "0.5");
     }
 
     #[test]
@@ -974,8 +1126,8 @@ mod tests {
     }
 
     #[test]
-    fn schema_v04_emits_every_documented_key() {
-        // Drift guard for schema 0.4. Builds a synthetic Scorecard, parses
+    fn schema_v05_emits_every_documented_key() {
+        // Drift guard for schema 0.5. Builds a synthetic Scorecard, parses
         // the JSON, and asserts every documented key path resolves —
         // including keys that hold `null` values (those are part of the
         // contract: consumer code should treat null and missing differently
@@ -1026,13 +1178,14 @@ mod tests {
         ] {
             assert!(
                 parsed.get(path).is_some(),
-                "0.1-0.3 key `{path}` must remain present in 0.4",
+                "0.1-0.3 key `{path}` must remain present in 0.5",
             );
         }
 
-        // 0.4 additions — every documented sub-key resolves.
-        assert_eq!(parsed["schema_version"], "0.4");
+        // 0.4 + 0.5 additions — every documented sub-key resolves.
+        assert_eq!(parsed["schema_version"], "0.5");
         for path in [
+            // 0.4
             "tool.name",
             "tool.binary",
             "tool.version",
@@ -1046,12 +1199,19 @@ mod tests {
             "target.kind",
             "target.path",
             "target.command",
+            // 0.5 — badge block
+            "badge.eligible",
+            "badge.score_pct",
+            "badge.embed_markdown",
+            "badge.scorecard_url",
+            "badge.badge_url",
+            "badge.convention_url",
         ] {
             let mut node = &parsed;
             for segment in path.split('.') {
                 node = node
                     .get(segment)
-                    .unwrap_or_else(|| panic!("0.4 key `{path}` missing — segment `{segment}`"));
+                    .unwrap_or_else(|| panic!("0.5 key `{path}` missing — segment `{segment}`"));
             }
         }
 
@@ -1071,5 +1231,250 @@ mod tests {
         assert!(parsed["tool"]["version"].is_null());
         assert!(parsed["tool"]["binary"].is_null());
         assert!(parsed["target"]["command"].is_null());
+    }
+
+    #[test]
+    fn compute_badge_eligible_when_all_pass_and_slug_present() {
+        // Three Pass and zero failures → 100% → above the 80% floor.
+        let results = vec![
+            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c2", CheckStatus::Pass, CheckGroup::P2),
+            make_result("c3", CheckStatus::Pass, CheckGroup::P3),
+        ];
+        let badge = compute_badge(&results, "navi");
+        assert!(badge.eligible);
+        assert_eq!(badge.score_pct, 100);
+        assert_eq!(
+            badge.embed_markdown.as_deref(),
+            Some("[![agent-native](https://anc.dev/badge/navi.svg)](https://anc.dev/score/navi)"),
+        );
+        assert_eq!(
+            badge.scorecard_url.as_deref(),
+            Some("https://anc.dev/score/navi"),
+        );
+        assert_eq!(
+            badge.badge_url.as_deref(),
+            Some("https://anc.dev/badge/navi.svg"),
+        );
+        assert_eq!(badge.convention_url, "https://anc.dev/badge");
+    }
+
+    #[test]
+    fn compute_badge_below_floor_emits_urls_but_no_embed() {
+        // 4 of 5 fail → 1 pass / 5 denom = 20% → below floor.
+        let results = vec![
+            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c2", CheckStatus::Fail("a".into()), CheckGroup::P2),
+            make_result("c3", CheckStatus::Fail("b".into()), CheckGroup::P3),
+            make_result("c4", CheckStatus::Fail("c".into()), CheckGroup::P4),
+            make_result("c5", CheckStatus::Fail("d".into()), CheckGroup::P5),
+        ];
+        let badge = compute_badge(&results, "needs-work");
+        assert!(!badge.eligible);
+        assert_eq!(badge.score_pct, 20);
+        assert!(
+            badge.embed_markdown.is_none(),
+            "below the floor: embed_markdown must be None per the do-not-nag rule",
+        );
+        // The site renders an SVG for every scored tool regardless of
+        // score, so the URL is still useful below the floor.
+        assert!(badge.scorecard_url.is_some());
+        assert!(badge.badge_url.is_some());
+    }
+
+    #[test]
+    fn compute_badge_at_floor_is_eligible() {
+        // 4 pass / 5 denom = 80% — exactly at the floor must qualify.
+        let results = vec![
+            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c2", CheckStatus::Pass, CheckGroup::P2),
+            make_result("c3", CheckStatus::Pass, CheckGroup::P3),
+            make_result("c4", CheckStatus::Pass, CheckGroup::P4),
+            make_result("c5", CheckStatus::Fail("one fail".into()), CheckGroup::P5),
+        ];
+        let badge = compute_badge(&results, "edge-case");
+        assert!(badge.eligible, "score == floor must qualify");
+        assert_eq!(badge.score_pct, 80);
+        assert!(badge.embed_markdown.is_some());
+    }
+
+    #[test]
+    fn compute_badge_skips_excluded_from_denominator() {
+        // 1 Pass + 1 Skip + 1 Error → denom is 1 (only Pass), score 100%.
+        // Skips and Errors must not pull the score down — they're not
+        // verdicts, so the leaderboard formula excludes them.
+        let results = vec![
+            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result(
+                "c2",
+                CheckStatus::Skip("not applicable".into()),
+                CheckGroup::P2,
+            ),
+            make_result("c3", CheckStatus::Error("boom".into()), CheckGroup::P3),
+        ];
+        let badge = compute_badge(&results, "skipper");
+        assert_eq!(badge.score_pct, 100);
+        assert!(badge.eligible);
+    }
+
+    #[test]
+    fn compute_badge_no_scoring_data_is_ineligible() {
+        // Every result is a Skip → denominator is zero. Score 0% and not
+        // eligible — guard against division-by-zero turning into NaN or a
+        // misleading 100%.
+        let results = vec![
+            make_result("c1", CheckStatus::Skip("filtered".into()), CheckGroup::P1),
+            make_result("c2", CheckStatus::Skip("filtered".into()), CheckGroup::P2),
+        ];
+        let badge = compute_badge(&results, "ghost");
+        assert_eq!(badge.score_pct, 0);
+        assert!(!badge.eligible);
+        assert!(badge.embed_markdown.is_none());
+    }
+
+    #[test]
+    fn compute_badge_empty_slug_is_ineligible_even_at_perfect_score() {
+        // Without a tool slug the embed URL would be malformed
+        // (`/badge/.svg`); ineligible is the safe default — better to omit
+        // the hint than to emit a broken URL.
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let badge = compute_badge(&results, "");
+        assert_eq!(badge.score_pct, 100);
+        assert!(!badge.eligible);
+        assert!(badge.embed_markdown.is_none());
+        assert!(badge.scorecard_url.is_none());
+        assert!(badge.badge_url.is_none());
+        // Convention URL is always emitted — it's the same for every tool.
+        assert_eq!(badge.convention_url, "https://anc.dev/badge");
+    }
+
+    #[test]
+    fn badge_text_hint_present_when_eligible() {
+        let badge = compute_badge(
+            &[make_result("c1", CheckStatus::Pass, CheckGroup::P1)],
+            "demo",
+        );
+        let hint = badge.text_hint().expect("eligible run must produce hint");
+        assert!(
+            hint.contains("Score: 100%"),
+            "hint should announce the score, got: {hint}",
+        );
+        assert!(
+            hint.contains("https://anc.dev/badge/demo.svg"),
+            "hint should embed the canonical badge URL, got: {hint}",
+        );
+        assert!(
+            hint.contains("https://anc.dev/score/demo"),
+            "hint should link to the per-tool scorecard page, got: {hint}",
+        );
+        assert!(
+            hint.contains("https://anc.dev/badge"),
+            "hint should reference the convention page, got: {hint}",
+        );
+    }
+
+    #[test]
+    fn badge_text_hint_absent_when_below_floor() {
+        // The "do not nag" rule from the badge convention: below the floor
+        // we print nothing badge-related.
+        let badge = compute_badge(
+            &[
+                make_result("c1", CheckStatus::Fail("a".into()), CheckGroup::P1),
+                make_result("c2", CheckStatus::Fail("b".into()), CheckGroup::P2),
+            ],
+            "needs-work",
+        );
+        assert!(badge.text_hint().is_none());
+    }
+
+    #[test]
+    fn format_text_appends_hint_when_badge_eligible() {
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let badge = compute_badge(&results, "demo");
+        let text = format_text(&results, false, Some(&badge));
+        assert!(
+            text.contains("qualifies for the agent-native badge"),
+            "format_text must append the badge hint when eligible:\n{text}",
+        );
+        assert!(
+            text.contains("https://anc.dev/badge/demo.svg"),
+            "embedded URL must use the tool slug:\n{text}",
+        );
+    }
+
+    #[test]
+    fn format_text_omits_hint_when_below_floor() {
+        let results = vec![
+            make_result("c1", CheckStatus::Fail("a".into()), CheckGroup::P1),
+            make_result("c2", CheckStatus::Fail("b".into()), CheckGroup::P2),
+        ];
+        let badge = compute_badge(&results, "needs-work");
+        let text = format_text(&results, false, Some(&badge));
+        assert!(
+            !text.contains("agent-native badge"),
+            "below-floor runs must not nag:\n{text}",
+        );
+    }
+
+    #[test]
+    fn format_text_without_badge_arg_is_unchanged() {
+        // Callers that pass `None` (e.g., legacy plumbing or tests
+        // exercising the formatter alone) get the historical output with
+        // no badge tail.
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let text = format_text(&results, false, None);
+        assert!(!text.contains("agent-native badge"));
+    }
+
+    #[test]
+    fn scorecard_emits_badge_block() {
+        // End-to-end: a synthetic perfect run produces a JSON scorecard
+        // whose `badge` block reflects eligibility and the slug echoed in
+        // `tool.name`. Pins the contract that JSON consumers (notably the
+        // site's `/score/<tool>` renderer) can rely on without re-running
+        // `compute_badge` themselves.
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let metadata = RunMetadata {
+            tool: ToolInfo {
+                name: "navi".into(),
+                binary: Some("navi".into()),
+                version: Some("0.1.0".into()),
+            },
+            anc: AncInfo {
+                version: "0.0.0-test",
+                commit: None,
+            },
+            run: RunInfo {
+                invocation: "anc check .".into(),
+                started_at: "1970-01-01T00:00:00Z".into(),
+                duration_ms: 0,
+                platform: PlatformInfo {
+                    os: "test-os",
+                    arch: "test-arch",
+                },
+            },
+            target: TargetInfo {
+                kind: "project".into(),
+                path: Some(".".into()),
+                command: None,
+            },
+        };
+        let json = format_json(&results, &[], None, None, metadata);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["badge"]["eligible"], true);
+        assert_eq!(parsed["badge"]["score_pct"], 100);
+        assert_eq!(
+            parsed["badge"]["embed_markdown"],
+            "[![agent-native](https://anc.dev/badge/navi.svg)](https://anc.dev/score/navi)"
+        );
+        assert_eq!(
+            parsed["badge"]["scorecard_url"],
+            "https://anc.dev/score/navi"
+        );
+        assert_eq!(
+            parsed["badge"]["badge_url"],
+            "https://anc.dev/badge/navi.svg"
+        );
+        assert_eq!(parsed["badge"]["convention_url"], "https://anc.dev/badge");
     }
 }

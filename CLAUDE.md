@@ -139,14 +139,16 @@ either source.
 Regenerate whenever you add a requirement, change a check's `covers()`, or rename a check ID. The regeneration is a
 deliberate commit, not a build-time artifact — the matrix is citable from outside this repo.
 
-## Scorecard v0.4 Fields
+## Scorecard v0.5 Fields
 
-`src/scorecard/mod.rs` emits `schema_version: "0.4"`. The schema evolves additively during the `0.x` pre-launch window —
+`src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window —
 consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
 - `0.2` — `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
 - `0.3` — `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).
 - `0.4` — four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
+- `0.5` — `badge` block surfacing agent-native badge eligibility, embed snippet, and badge/scorecard URLs derived from
+  the live run.
 
 Existing field semantics:
 
@@ -176,15 +178,30 @@ Existing field semantics:
 - `target` — `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
   `"binary"`, `"command"`. The unused field is always `null`, never missing.
 
+`0.5` addition (`BadgeInfo` in `src/scorecard/mod.rs`):
+
+- `badge` — `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Computed by
+  `compute_badge(results, tool_name)` from the leaderboard's pass-rate (`pass / (pass + warn + fail)`) — Skips and
+  Errors are excluded from both sides of the ratio. `eligible` is true iff `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT`
+  (currently `80`) **and** a tool slug was derivable; `embed_markdown` is `Some` only when `eligible` (the do-not-nag
+  contract from the site's badge convention). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
+  below the floor — the site renders an SVG for every scored tool so a regression below the floor shifts color rather
+  than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are anchored at `BADGE_BASE_URL =
+  "https://anc.dev"` so the URL pattern lives in one place. Authority for the floor is the site's published convention
+  (`agentnative-site/content/badge.md`); when the spec convention merges off `feat/badge-claim-convention` it will move
+  into the vendored spec via `sync-spec`. Text mode (`--output text`) appends a post-summary hint via
+  `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so the JSON `embed_markdown` and
+  the printed hint can never disagree.
+
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is
 `audience_reason`, which uses `skip_serializing_if = "Option::is_none"` — its absence carries information (audience has
 a label).
 
 Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-`0.4` scorecards lack the
-four metadata blocks. The site's `agentnative-site/registry.yaml` will eventually drop its parallel `version` /
-`scored_at` fields once consumers read those facts from the scorecard's `tool.version` / `run.started_at`. That
-follow-up lives in the `agentnative-site` repo, not here.
+four metadata blocks; pre-`0.5` scorecards lack `badge`. The site's `agentnative-site/registry.yaml` will eventually
+drop its parallel `version` / `scored_at` fields once consumers read those facts from the scorecard's `tool.version` /
+`run.started_at`. That follow-up lives in the `agentnative-site` repo, not here.
 
 ## Skill Install Verb
 

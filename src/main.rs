@@ -32,8 +32,8 @@ use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppr
 use project::Project;
 use runner::{BinaryRunner, RunStatus};
 use scorecard::{
-    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, ToolInfo, audience, exit_code,
-    format_json, format_text,
+    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, ToolInfo, audience, compute_badge,
+    exit_code, format_json, format_text,
 };
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
@@ -214,9 +214,16 @@ fn run() -> Result<i32, AppError> {
 
     // Format output. `format_json` needs the check catalog so it can map
     // result IDs back to the requirements each check covers, plus the
-    // run-level metadata (`tool`, `anc`, `run`, `target`).
+    // run-level metadata (`tool`, `anc`, `run`, `target`). For text mode
+    // we still need the tool slug so the badge hint can render the
+    // canonical embed URL — derive it cheaply (no version probe) and
+    // hand it to `compute_badge`.
     let output_str = match output {
-        OutputFormat::Text => format_text(&results, quiet),
+        OutputFormat::Text => {
+            let tool_name = derive_tool_name(command_name.as_deref(), &project);
+            let badge = compute_badge(&results, &tool_name);
+            format_text(&results, quiet, Some(&badge))
+        }
         OutputFormat::Json => {
             let target = build_target_info(command_name.as_deref(), &project);
             let tool = build_tool_info(command_name.as_deref(), &project);
@@ -277,27 +284,39 @@ fn build_target_info(command_name: Option<&str>, project: &Project) -> TargetInf
     }
 }
 
+/// Cheap slug derivation: the same `name` `build_tool_info` would emit, but
+/// without the manifest read or `--version` subprocess probe. Used by the
+/// text-mode badge hint, where we need the slug to render the embed URL but
+/// have no use for the version. Keeping this in lock-step with
+/// `build_tool_info`'s `name` calculation guarantees the text-mode hint
+/// references the same `<tool>` slug a `--output json` consumer would see.
+fn derive_tool_name(command_name: Option<&str>, project: &Project) -> String {
+    match command_name {
+        Some(cmd) => cmd.to_string(),
+        None => project
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(String::from)
+            .unwrap_or_default(),
+    }
+}
+
 /// Build the scorecard's `tool` block. `name` is always present (deterministic
 /// from path / command name). `binary` is the executable basename when one
 /// exists. `version` is best-effort: project-mode prefers the manifest version,
 /// command/binary mode probes `<bin> --version` / `<bin> -V`. Any failure
 /// yields `null` rather than aborting the run.
 fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
-    let (name, binary, version_seed) = match command_name {
+    let name = derive_tool_name(command_name, project);
+    let (binary, version_seed) = match command_name {
         Some(cmd) => {
-            // Command mode: name and binary both come from the user-supplied
-            // command name (NOT the resolved path — we don't want to leak
-            // /usr/local/bin/foo as the binary identifier).
-            (cmd.to_string(), Some(cmd.to_string()), None)
+            // Command mode: binary echoes the user-supplied name (NOT the
+            // resolved path — we don't want to leak /usr/local/bin/foo as
+            // the binary identifier).
+            (Some(cmd.to_string()), None)
         }
         None => {
-            // path-based: distinguish project (directory) from binary (file).
-            let basename = project
-                .path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(String::from)
-                .unwrap_or_default();
             if project.path.is_dir() {
                 let manifest_version = project
                     .manifest_path
@@ -309,11 +328,10 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
                     .map(String::from);
-                (basename, binary_name, manifest_version)
+                (binary_name, manifest_version)
             } else {
                 // Binary file passed directly.
-                let bin_name = basename.clone();
-                (basename, Some(bin_name), None)
+                (Some(name.clone()), None)
             }
         }
     };

@@ -36,12 +36,16 @@
 //! ```
 //!
 //! Hardening surface (R6c):
-//! - `GIT_HARDEN_FLAGS` — five `-c key=value` pairs that defeat ambient git
-//!   config (`credential.helper`, `core.askPass`, `protocol.allow`,
-//!   `http.followRedirects`, `url.<repo>.insteadOf`).
-//! - `GIT_HARDEN_ENV_REMOVE` — seven env vars stripped before spawn.
-//! - `GIT_TERMINAL_PROMPT=0` is *set* (not removed) so git never prompts when
-//!   credentials are missing — its default-when-unset is to prompt.
+//! - `GIT_HARDEN_FLAGS` — five `-c key=value` pairs (`credential.helper`,
+//!   `core.askPass`, `protocol.allow=never`, `protocol.https.allow=always`,
+//!   `http.followRedirects`).
+//! - `GIT_HARDEN_ENV_REMOVE` — five env vars stripped before spawn (SSH /
+//!   proxy / askpass / exec-path overrides).
+//! - `GIT_HARDEN_ENV_SET` — three env vars set on the spawned process:
+//!   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`
+//!   together disable every layer of user-controlled git config (the
+//!   actual defense against `insteadOf` URL-rewriting attacks);
+//!   `GIT_TERMINAL_PROMPT=0` blocks credential prompts.
 //!
 //! Never `env_clear()` (strips PATH, breaks git's helper resolution). Never
 //! `sh -c` (tokens go directly to `git` via `Command::args`).
@@ -55,10 +59,11 @@ use clap::ValueEnum;
 use crate::cli::OutputFormat;
 use crate::error::AppError;
 
-/// Canonical upstream URL for the skill bundle. Matched by the `insteadOf=`
-/// blocker in `GIT_HARDEN_FLAGS` to defeat URL-rewriting attacks. Test 12
-/// (the cargo-level drift anchor) asserts this matches the URL parsed from
-/// the vendored `tests/fixtures/skill.json` for every host.
+/// Canonical upstream URL for the skill bundle. Test 12 (the cargo-level
+/// drift anchor) asserts this matches the URL parsed from the vendored
+/// `tests/fixtures/skill.json` for every host. The defense against
+/// `insteadOf` rewriting of this URL lives in [`GIT_HARDEN_ENV_SET`]
+/// (disable user-controlled git config), not in `-c` flags.
 pub const SKILL_REPO_URL: &str = "https://github.com/brettdavies/agentnative-skill.git";
 
 /// Host names accepted by `anc skill install <host>`, in declaration order.
@@ -78,29 +83,44 @@ pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "opencode"]
 /// |------|---------|
 /// | `credential.helper=` | Suppress credential helpers — public clone, no creds |
 /// | `core.askPass=` | Suppress askpass programs |
-/// | `protocol.allow=https-only` | Refuse `git://`, `ssh://`, `file://` etc. |
+/// | `protocol.allow=never` | Default-deny every transport |
+/// | `protocol.https.allow=always` | Permit HTTPS only — paired with the deny above |
 /// | `http.followRedirects=false` | Pin destination — no transparent redirects |
-/// | `url.<repo>.insteadOf=` | Block ambient `insteadOf` rewriting for our URL |
+///
+/// Two corrections over the plan's original wording, both surfaced by the
+/// pre-merge manual smoke (R6c — verified against the actual `git` binary):
+///
+/// 1. `protocol.allow=https-only` is **not** valid git syntax (`fatal:
+///    unknown value`). The HTTPS-only intent is expressed as a default-deny
+///    plus per-protocol allow, which is the documented git-config form.
+/// 2. `url.<repo>.insteadOf=` (empty value) does the **opposite** of
+///    blocking — it rewrites every empty-prefix URL (i.e. all URLs) to
+///    start with `<repo>`, doubling the clone URL. The defense against
+///    `insteadOf` attacks is to disable global/system config entirely via
+///    [`GIT_HARDEN_ENV_SET`] (`GIT_CONFIG_GLOBAL=/dev/null`,
+///    `GIT_CONFIG_SYSTEM=/dev/null`), not via `-c`. The flag was dropped.
 pub const GIT_HARDEN_FLAGS: &[&str] = &[
     "-c",
     "credential.helper=",
     "-c",
     "core.askPass=",
     "-c",
-    "protocol.allow=https-only",
+    "protocol.allow=never",
+    "-c",
+    "protocol.https.allow=always",
     "-c",
     "http.followRedirects=false",
-    "-c",
-    "url.https://github.com/brettdavies/agentnative-skill.git.insteadOf=",
 ];
 
 /// Environment variables removed via `Command::env_remove` before spawn.
 /// Each one is a known git-side override that could redirect or hijack the
-/// clone. Never `env_clear()` — that strips PATH and breaks git's own helper
+/// clone. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
+/// list — removing them would let git fall back to default config paths
+/// (`~/.gitconfig`, `/etc/gitconfig`); we instead point them at `/dev/null`
+/// via [`GIT_HARDEN_ENV_SET`] to actively disable user-controlled config.
+/// Never `env_clear()` — that strips PATH and breaks git's helper
 /// resolution.
 pub const GIT_HARDEN_ENV_REMOVE: &[&str] = &[
-    "GIT_CONFIG_GLOBAL",
-    "GIT_CONFIG_SYSTEM",
     "GIT_SSH",
     "GIT_SSH_COMMAND",
     "GIT_PROXY_COMMAND",
@@ -108,11 +128,18 @@ pub const GIT_HARDEN_ENV_REMOVE: &[&str] = &[
     "GIT_EXEC_PATH",
 ];
 
-/// Env var *set* (not removed) on the spawned `git` process. Git's default
-/// when this is unset is to prompt for input — wrong default for a
-/// non-interactive subcommand.
-pub const GIT_TERMINAL_PROMPT_KEY: &str = "GIT_TERMINAL_PROMPT";
-pub const GIT_TERMINAL_PROMPT_VALUE: &str = "0";
+/// Environment variables *set* (not removed) on the spawned process. The
+/// `GIT_CONFIG_*` pair points global / system config at `/dev/null` so
+/// user-config `insteadOf` rewriting and other ambient overrides cannot
+/// fire — this is the actual defense against URL-rewriting attacks.
+/// `GIT_TERMINAL_PROMPT=0` blocks credential prompts; git's default-when-
+/// unset is to prompt, which is the wrong default for a non-interactive
+/// subcommand.
+pub const GIT_HARDEN_ENV_SET: &[(&str, &str)] = &[
+    ("GIT_CONFIG_GLOBAL", "/dev/null"),
+    ("GIT_CONFIG_SYSTEM", "/dev/null"),
+    ("GIT_TERMINAL_PROMPT", "0"),
+];
 
 /// Hosts the binary knows how to install into. Surface names match
 /// `agentnative-site/src/data/skill.json` keys verbatim via
@@ -250,11 +277,14 @@ pub fn check_destination(path: &Path) -> Result<DestinationStatus, AppError> {
 /// Build the hardened `git clone` command. Pure constructor — no spawn, no
 /// I/O. The returned `Command` carries the full hardening surface:
 ///
-/// 1. `GIT_HARDEN_FLAGS` applied as `-c key=value` pairs *before* the
+/// 1. [`GIT_HARDEN_FLAGS`] applied as `-c key=value` pairs *before* the
 ///    `clone` subcommand (git's required position for top-level `-c`).
-/// 2. `GIT_HARDEN_ENV_REMOVE` entries removed via `env_remove`.
-/// 3. `GIT_TERMINAL_PROMPT=0` set on the spawned process so git never
-///    prompts for input.
+/// 2. [`GIT_HARDEN_ENV_REMOVE`] entries removed via `env_remove` —
+///    user/attacker-controlled overrides we want to ignore.
+/// 3. [`GIT_HARDEN_ENV_SET`] entries set via `env` — most importantly
+///    `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`,
+///    which together disable every layer of user-controlled git config
+///    (the actual defense against `insteadOf` URL-rewriting attacks).
 ///
 /// `--depth 1` is included to match the canonical install command shipped
 /// in `skill.json`. Verified during planning that `agentnative-skill`'s
@@ -269,7 +299,9 @@ pub fn build_clone_command(url: &str, dest: &Path) -> Command {
     for var in GIT_HARDEN_ENV_REMOVE {
         cmd.env_remove(var);
     }
-    cmd.env(GIT_TERMINAL_PROMPT_KEY, GIT_TERMINAL_PROMPT_VALUE);
+    for (key, value) in GIT_HARDEN_ENV_SET {
+        cmd.env(key, value);
+    }
     cmd
 }
 
@@ -571,16 +603,26 @@ mod tests {
         );
     }
 
-    /// Defense-in-depth — the `insteadOf=` blocker in `GIT_HARDEN_FLAGS`
-    /// must reference the same URL `resolve_host` uses, otherwise the
-    /// blocker silently misses the target.
+    /// Defense-in-depth — the GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM
+    /// pointers must be set to a path that disables config loading
+    /// entirely (`/dev/null`). This is the actual defense against
+    /// user-config `insteadOf` URL-rewriting attacks; an earlier draft
+    /// used a `url.<repo>.insteadOf=` `-c` flag that did the *opposite*
+    /// of blocking (it rewrote every URL to start with our repo, doubling
+    /// the clone URL). Pin the corrected shape so we don't regress.
     #[test]
-    fn git_harden_flags_insteadof_blocks_skill_repo_url() {
-        let blocker = format!("url.{SKILL_REPO_URL}.insteadOf=");
-        assert!(
-            GIT_HARDEN_FLAGS.contains(&blocker.as_str()),
-            "GIT_HARDEN_FLAGS missing insteadOf= blocker for {SKILL_REPO_URL}; got {GIT_HARDEN_FLAGS:?}",
-        );
+    fn git_harden_env_set_disables_user_config() {
+        let pairs: std::collections::HashMap<&str, &str> =
+            GIT_HARDEN_ENV_SET.iter().copied().collect();
+        for var in ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] {
+            let v = pairs.get(var).unwrap_or_else(|| {
+                panic!("GIT_HARDEN_ENV_SET missing {var}; got {GIT_HARDEN_ENV_SET:?}")
+            });
+            assert_eq!(
+                *v, "/dev/null",
+                "{var} must be set to /dev/null to disable user config; got {v:?}",
+            );
+        }
     }
 
     /// Sanity: no panics when constructing each variant via `ValueEnum`.
@@ -795,12 +837,14 @@ mod tests {
             );
         }
 
-        let prompt = envs.get(GIT_TERMINAL_PROMPT_KEY);
-        assert_eq!(
-            prompt,
-            Some(&Some(GIT_TERMINAL_PROMPT_VALUE.to_string())),
-            "GIT_TERMINAL_PROMPT must be set to 0; got {prompt:?}",
-        );
+        for &(key, value) in GIT_HARDEN_ENV_SET {
+            let entry = envs.get(key);
+            assert_eq!(
+                entry,
+                Some(&Some(value.to_string())),
+                "GIT_HARDEN_ENV_SET entry {key}={value:?} not present in env-set list; got {entry:?}",
+            );
+        }
     }
 
     /// Sanity: `format_clone_command` produces the canonical user-visible

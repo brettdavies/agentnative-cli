@@ -204,12 +204,16 @@ The `git clone` invocation runs with named-const hardening that defeats ambient 
 surface lives in `src/skill_install.rs`:
 
 - `GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (`credential.helper=`, `core.askPass=`,
-  `protocol.allow=https-only`, `http.followRedirects=false`, `url.<repo>.insteadOf=`). Applied via `Command::args`
+  `protocol.allow=never`, `protocol.https.allow=always`, `http.followRedirects=false`). Applied via `Command::args`
   *before* the `clone` subcommand — git's required position for top-level `-c` options.
-- `GIT_HARDEN_ENV_REMOVE: &[&str]` — seven env vars stripped via `env_remove` (`GIT_CONFIG_{GLOBAL,SYSTEM}`,
-  `GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`).
-- `GIT_TERMINAL_PROMPT=0` is **set** (not removed) so git never prompts when credentials are missing — its
-  default-when-unset is to prompt, which is the wrong default for a non-interactive subcommand.
+- `GIT_HARDEN_ENV_REMOVE: &[&str]` — five env vars stripped via `env_remove` (`GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`,
+  `GIT_ASKPASS`, `GIT_EXEC_PATH`).
+- `GIT_HARDEN_ENV_SET: &[(&str, &str)]` — three env vars **set** on the spawned process. The
+  `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` pair disables every layer of user-controlled git
+  config — the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried `-c
+  url.<repo>.insteadOf=`, which does the *opposite* of blocking and doubles the clone URL). `GIT_TERMINAL_PROMPT=0`
+  blocks credential prompts; git's default-when-unset is to prompt, which is the wrong default for a non-interactive
+  subcommand.
 
 **Rules for changes touching skill install:**
 

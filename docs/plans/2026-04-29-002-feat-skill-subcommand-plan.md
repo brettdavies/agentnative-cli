@@ -699,9 +699,12 @@ follow-ups were named when this plan landed, tracked here for visibility:
    new SHOULDs to `agentnative-spec` (P2 `output-applies-to-every-subcommand`, P2 `json-envelope-on-error`, P2
    `output-envelope-schema-uniform`, P4 `json-error-includes-typed-reason`) plus matching behavioral checks in this
    repo's registry. Plan written 2026-04-30; not yet implemented.
-2. **Solutions doc — pending.** Write `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-<date>.md`
-   via `/ce-compound` capturing the as-shipped envelope schema. Will run after this PR merges so the doc reflects
-   shipped behavior.
+2. **Solutions doc — done.** Refreshed in place at
+   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` (committed in solutions-docs on
+   2026-04-30 via `/ce-compound`). The placeholder authored during planning was folded forward with as-shipped reality:
+   the two manual-smoke `git` flag corrections (`protocol.allow=https-only` invalid syntax, `url.<repo>.insteadOf=`
+   reverse-direction), the three named-const hardening tables, the build.rs codegen architecture, field-presence rules
+   with `skip_serializing_if`, the table-driven exit-code matrix, and per-ID dogfood guards as the enforcement surface.
 
 ## GSTACK REVIEW REPORT
 

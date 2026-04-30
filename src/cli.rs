@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
 use crate::principles::registry::ExceptionCategory;
+use crate::skill_install::SkillHost;
 
 #[derive(Parser)]
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
@@ -78,6 +79,35 @@ pub enum Commands {
     Generate {
         #[command(subcommand)]
         artifact: GenerateKind,
+    },
+    /// Install or manage the agentnative skill bundle
+    Skill {
+        #[command(subcommand)]
+        cmd: SkillCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SkillCmd {
+    /// Install the skill bundle into a host's canonical skills directory.
+    ///
+    /// If the site adds a host before this `anc` release knows about it, run
+    /// the manual fallback printed by `--dry-run` for any known host and
+    /// substitute the destination path:
+    ///
+    ///     git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
+    Install {
+        /// Target host (claude_code, codex, cursor, opencode).
+        host: SkillHost,
+
+        /// Print the resolved git command without spawning. Captures cleanly
+        /// via `eval $(anc skill install --dry-run <host>)`.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output format for the result envelope.
+        #[arg(long, default_value = "text")]
+        output: OutputFormat,
     },
 }
 

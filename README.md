@@ -20,6 +20,42 @@ cargo binstall agentnative
 # https://github.com/brettdavies/agentnative-cli/releases
 ```
 
+## Install the skill
+
+`anc` ships a companion skill bundle (`agentnative-skill`) that teaches AI coding agents how to operate the linter and
+where to apply the principles. Install it with one command per host:
+
+```bash
+anc skill install claude_code   # ~/.claude/skills/agent-native-cli
+anc skill install codex         # ~/.codex/skills/agent-native-cli
+anc skill install cursor        # ~/.cursor/skills/agent-native-cli
+anc skill install factory       # ~/.factory/skills/agent-native-cli   (Factory Droid)
+anc skill install kiro          # ~/.kiro/skills/agent-native-cli      (Kiro)
+anc skill install opencode      # ~/.config/opencode/skills/agent-native-cli
+```
+
+Inspect the resolved command before running it:
+
+```bash
+anc skill install --dry-run claude_code
+# git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git /home/you/.claude/skills/agent-native-cli
+```
+
+JSON output (mode `dry-run` and `install`, success and error) is uniform — agents can rely on the same envelope shape
+across every outcome:
+
+```bash
+anc skill install --dry-run claude_code --output json
+```
+
+If the site adds a host before this `anc` release knows about it, fall back to a manual `git clone`:
+
+```bash
+git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <host-skills-dir>/agent-native-cli
+```
+
+The host map is hardcoded in this binary; new hosts ship via patch release after the site updates `skill.json`.
+
 ## Quick Start
 
 ```bash

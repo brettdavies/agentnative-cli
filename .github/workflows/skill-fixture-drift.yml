@@ -1,0 +1,28 @@
+# Drift gate for tests/fixtures/skill.json against upstream
+# agentnative-site. Companion to the cargo-level test 12
+# (host_map_matches_site_skill_json) which catches drift between the Rust
+# map and this fixture; this workflow catches drift between the fixture
+# and the canonical site contract.
+#
+# Failure means the site has updated src/data/skill.json without a
+# corresponding fixture refresh. Run `scripts/sync-skill-fixture.sh`
+# locally, review the diff, commit, push.
+
+name: skill-fixture-drift
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run drift check
+        run: bash scripts/sync-skill-fixture.sh --check

@@ -189,16 +189,22 @@ follow-up lives in the `agentnative-site` repo, not here.
 ## Skill Install Verb
 
 `anc skill install <host>` ships the `agentnative-skill` bundle into a host's canonical skills directory. The host map
-is **hardcoded** in `src/skill_install.rs` (no `skill.json` parsing in production, no HTTPS fetch, no allowlist
-validator). The freshness model is: re-vendor `tests/fixtures/skill.json`, update the Rust map to match, cut a patch
-release. CI fails on drift between the fixture and the canonical site copy at every layer:
+is **build-time-generated** from `src/skill_install/skill.json` (a verbatim copy of
+`agentnative-site/src/data/skill.json`) into `$OUT_DIR/generated_hosts.rs` by `build.rs::emit_skill_hosts`.
+`src/skill_install.rs` `include!`s the generated file; there is no hand-maintained host enum or destination table. To
+add or change a host, edit `skill.json` (or run `bash scripts/sync-skill-fixture.sh` to pull the upstream site contract)
+and `cargo build` regenerates the Rust map. There is no `skill.json` parsing in production, no HTTPS fetch at runtime,
+and no allowlist validator — the host map is compile-time data.
 
-- `tests/fixtures/skill.json` is a verbatim copy of `agentnative-site/src/data/skill.json`. Test 12
-  (`host_map_matches_site_skill_json`) loads the fixture and asserts each Rust-map `(url, dest_template)` reconstructs
-  the fixture's `install.<host>` command verbatim — fails fast in `cargo test` with no network access.
+CI catches drift between the committed fixture and the upstream site contract:
+
 - `scripts/sync-skill-fixture.sh --check` (CI workflow `skill-fixture-drift.yml`) clones the upstream site at
   `SKILL_SITE_REF` (default `dev`, since the site uses a dev/main forever-branch flow) and `cmp`s the live blob against
-  the committed fixture. Runs on every PR and on push to main/dev.
+  `src/skill_install/skill.json`. Runs on every PR and on push to main/dev.
+
+Drift between the fixture and the generated Rust map cannot occur within a single build: `cargo:rerun-if-changed` on the
+JSON file forces regeneration whenever the fixture moves. The earlier `host_map_matches_site_skill_json` test (test 12)
+was deleted as provably redundant after this refactor.
 
 The `git clone` invocation runs with named-const hardening that defeats ambient git-config and env subversion. The full
 surface lives in `src/skill_install.rs`:
@@ -219,9 +225,14 @@ surface lives in `src/skill_install.rs`:
 
 - NEVER call `Command::env_clear()` — it strips PATH and breaks git's helper resolution. Use `env_remove` per var.
 - NEVER use `sh -c` or any shell-mediated invocation. Tokens go directly to `git` via `Command::args`.
-- NEVER reintroduce `skill.json` parsing in production code. The fixture is a CI drift anchor, not a runtime resource.
-- When adding a new host, update both `SkillHost` (with the `rename_all = "snake_case"` clap value) AND `KNOWN_HOSTS`
-  AND `resolve_host`. Test 11 enforces lockstep on the first two; the registry-style guard is intentional.
+- NEVER reintroduce `skill.json` parsing in production code. The fixture is a build-time codegen input, not a runtime
+  resource.
+- NEVER hand-edit `SkillHost`, `KNOWN_HOSTS`, `resolve_host`, or `host_envelope_str` in `src/skill_install.rs` — those
+  identifiers come from the generated `$OUT_DIR/generated_hosts.rs` and any apparent definition in source is the
+  include! macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
+- The codegen rejects malformed install commands at build time. Each `install.<host>` value MUST tokenize as exactly
+  `git clone --depth 1 <url> <dest>` (six whitespace-separated tokens, dest not ending in `.git`). The validation
+  mirrors `agentnative-site/src/build/skill.mjs` so the two binaries reject the same inputs.
 
 ## Dogfooding Safety
 

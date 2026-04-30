@@ -29,6 +29,8 @@ where to apply the principles. Install it with one command per host:
 anc skill install claude_code   # ~/.claude/skills/agent-native-cli
 anc skill install codex         # ~/.codex/skills/agent-native-cli
 anc skill install cursor        # ~/.cursor/skills/agent-native-cli
+anc skill install factory       # ~/.factory/skills/agent-native-cli   (Factory Droid)
+anc skill install kiro          # ~/.kiro/skills/agent-native-cli      (Kiro)
 anc skill install opencode      # ~/.config/opencode/skills/agent-native-cli
 ```
 

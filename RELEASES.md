@@ -12,12 +12,12 @@ feature branch → PR to dev (squash merge)
 
 ## Branches
 
-| Branch | Role | Lifetime | Protection |
-| ------ | ---- | -------- | ---------- |
-| `main` | Production. Only release commits. | Forever. | `.github/rulesets/protect-main.json` |
-| `dev` | Integration. All feature PRs land here. | Forever. Never delete. | `.github/rulesets/protect-dev.json` |
-| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work. | One PR's worth. Auto-deleted on merge. | None — squash into dev freely. |
-| `release/*` | Head of a dev → main PR. | One release's worth. Auto-deleted on merge. | None. |
+| Branch                                 | Role                                    | Lifetime                                    | Protection                           |
+| -------------------------------------- | --------------------------------------- | ------------------------------------------- | ------------------------------------ |
+| `main`                                 | Production. Only release commits.       | Forever.                                    | `.github/rulesets/protect-main.json` |
+| `dev`                                  | Integration. All feature PRs land here. | Forever. Never delete.                      | `.github/rulesets/protect-dev.json`  |
+| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None — squash into dev freely.       |
+| `release/*`                            | Head of a dev → main PR.                | One release's worth. Auto-deleted on merge. | None.                                |
 
 `dev` is a **forever branch**. Never delete it locally or remotely, even after a `release/* → main` merge. The next
 release cycle reuses the same `dev`. The repo's `deleteBranchOnMerge: true` setting doesn't touch `dev` as long as `dev`
@@ -41,10 +41,9 @@ gh pr create --base dev --title "feat(scope): what changed"
 
 ## Releasing dev to main
 
-Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`,
-`docs/reviews/`) live on `dev` only. `guard-main-docs.yml` blocks them from reaching `main`, and
-`guard-release-branch.yml` rejects any PR to main whose head isn't `release/*`. Use the release-branch cherry-pick
-pattern:
+Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`, `docs/reviews/`) live on `dev` only.
+`guard-main-docs.yml` blocks them from reaching `main`, and `guard-release-branch.yml` rejects any PR to main whose head
+isn't `release/*`. Use the release-branch cherry-pick pattern:
 
 **Branch naming**: `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
 `release/v0.2.0-python-checks`). The `v<version>` prefix is required — `scripts/generate-changelog.sh` extracts the
@@ -79,12 +78,13 @@ git add completions/ && git commit -m "chore: regenerate shell completions" || t
 # 7. Refresh the skill.json fixture from upstream and review the diff. CI's
 #    skill-fixture-drift workflow runs --check on every PR, but pulling the
 #    latest content here catches any site changes since dev was branched and
-#    avoids tagging a release whose hardcoded host map is one revision behind:
-bash scripts/sync-skill-fixture.sh && git diff tests/fixtures/skill.json
-# If the diff is non-trivial, update src/skill_install.rs's host map to match
-# (test 12 — host_map_matches_site_skill_json — fails fast if you skip this).
-git add tests/fixtures/skill.json src/skill_install.rs && \
-    git commit -m "chore(skill): refresh fixture + map for v0.2.0" || true
+#    avoids tagging a release with the codegen-derived host map one revision
+#    behind upstream:
+bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
+# The Rust map (SkillHost / KNOWN_HOSTS / resolve_host) regenerates from the
+# JSON automatically on the next `cargo build` — no manual src edits needed.
+git add src/skill_install/skill.json && \
+    git commit -m "chore(skill): refresh fixture for v0.2.0" || true
 
 # 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
 ./scripts/generate-changelog.sh
@@ -122,14 +122,14 @@ git push origin main --tags
 The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
-| Step | What |
-| ---- | ---- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate). |
-| `audit` | `cargo deny check` (license + advisory + ban). |
-| `build` | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses. |
-| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish). |
-| `release` | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 5 archives + `sha256sum.txt`. |
-| `homebrew` | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`). |
+| Step            | What                                                                                                                                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                      |
+| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                           |
+| `build`         | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses.       |
+| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                         |
+| `release`       | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 5 archives + `sha256sum.txt`. |
+| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                   |
 
 After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
 this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest,
@@ -207,10 +207,10 @@ gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_r
 
 ## Required secrets
 
-| Secret | Purpose | Lifecycle |
-| ------ | ------- | --------- |
-| `CI_RELEASE_TOKEN` | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually. |
-| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish. | Remove after Trusted Publishing is configured. |
+| Secret                 | Purpose                                                                                                           | Lifecycle                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `CI_RELEASE_TOKEN`     | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually.                              |
+| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Remove after Trusted Publishing is configured. |
 
 `GITHUB_TOKEN` is automatic; CI (`ci.yml`) only needs `contents: read` and uses no extra secrets.
 

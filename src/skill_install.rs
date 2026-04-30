@@ -54,27 +54,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use clap::ValueEnum;
-
 use crate::cli::OutputFormat;
 use crate::error::AppError;
 
-/// Canonical upstream URL for the skill bundle. Test 12 (the cargo-level
-/// drift anchor) asserts this matches the URL parsed from the vendored
-/// `tests/fixtures/skill.json` for every host. The defense against
-/// `insteadOf` rewriting of this URL lives in [`GIT_HARDEN_ENV_SET`]
-/// (disable user-controlled git config), not in `-c` flags.
-pub const SKILL_REPO_URL: &str = "https://github.com/brettdavies/agentnative-skill.git";
-
-/// Host names accepted by `anc skill install <host>`, in declaration order.
-/// Surfaces externally for shell-completion enumeration and as the seed for a
-/// future `anc skill list` verb (R-LIST). Stays in lockstep with
-/// [`SkillHost`] variants — test 11 enforces parity. `#[allow(dead_code)]`
-/// is intentional: no in-tree consumer in v1, but the constant is a
-/// committed external API surface (see the R-LIST seed rationale in the
-/// plan).
-#[allow(dead_code)]
-pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "opencode"];
+// `SkillHost`, `KNOWN_HOSTS`, and `resolve_host` are auto-generated at
+// build time from `src/skill_install/skill.json`. To add or remove a host,
+// edit the JSON file (or run `bash scripts/sync-skill-fixture.sh` to pull
+// the upstream site contract) and `cargo build` regenerates this file.
+// See `build.rs::emit_skill_hosts` for the codegen logic.
+include!(concat!(env!("OUT_DIR"), "/generated_hosts.rs"));
 
 /// `git clone` config flags applied via `-c key=value` pairs, in token order
 /// suitable for `Command::args`. Five logical pairs (10 string tokens):
@@ -140,31 +128,6 @@ pub const GIT_HARDEN_ENV_SET: &[(&str, &str)] = &[
     ("GIT_CONFIG_SYSTEM", "/dev/null"),
     ("GIT_TERMINAL_PROMPT", "0"),
 ];
-
-/// Hosts the binary knows how to install into. Surface names match
-/// `agentnative-site/src/data/skill.json` keys verbatim via
-/// `rename_all = "snake_case"` — note `opencode` (one word), not `open_code`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-#[value(rename_all = "snake_case")]
-pub enum SkillHost {
-    ClaudeCode,
-    Codex,
-    Cursor,
-    Opencode,
-}
-
-/// Resolve a host enum to its `(url, dest_template)` pair. The URL is the
-/// same for every host in v1; the destination template is host-specific and
-/// `~`-prefixed. Pure function — no I/O, no side effects.
-pub fn resolve_host(host: SkillHost) -> (&'static str, &'static str) {
-    let dest_template = match host {
-        SkillHost::ClaudeCode => "~/.claude/skills/agent-native-cli",
-        SkillHost::Codex => "~/.codex/skills/agent-native-cli",
-        SkillHost::Cursor => "~/.cursor/skills/agent-native-cli",
-        SkillHost::Opencode => "~/.config/opencode/skills/agent-native-cli",
-    };
-    (SKILL_REPO_URL, dest_template)
-}
 
 /// Snapshot of what `check_destination` found at the resolved path. Drives
 /// the JSON envelope's `destination_status` field. The success path returns
@@ -351,15 +314,6 @@ const REASON_DEST_IS_FILE: &str = "destination-is-file";
 const REASON_HOME_NOT_SET: &str = "home-not-set";
 const REASON_GIT_NOT_FOUND: &str = "git-not-found";
 const REASON_GIT_CLONE_FAILED: &str = "git-clone-failed";
-
-fn host_envelope_str(host: SkillHost) -> &'static str {
-    match host {
-        SkillHost::ClaudeCode => "claude_code",
-        SkillHost::Codex => "codex",
-        SkillHost::Cursor => "cursor",
-        SkillHost::Opencode => "opencode",
-    }
-}
 
 /// Compute the envelope without performing I/O (dry-run) or, in install
 /// mode, after spawning `git`. Internal I/O failures that don't fit the
@@ -564,27 +518,50 @@ pub fn run_install(host: SkillHost, dry_run: bool, output: OutputFormat) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::ValueEnum;
 
-    /// Test 1 — `resolve_host` returns expected `(url, dest_template)` for
-    /// every variant.
+    /// Helper used by hardening-surface tests: any host's URL works because
+    /// every install command in the v1 fixture shares one upstream. Reads
+    /// straight from `resolve_host` so the value tracks the build-time
+    /// codegen — no parallel hardcoded constant to keep in sync.
+    fn skill_repo_url() -> &'static str {
+        resolve_host(SkillHost::ClaudeCode).0
+    }
+
+    /// Test 1 — `resolve_host` returns the expected `(url, dest_template)`
+    /// for every variant. Drives off `KNOWN_HOSTS` so adding a host to
+    /// `skill.json` automatically extends coverage. Since both
+    /// `KNOWN_HOSTS` and `resolve_host` are generated from the same JSON,
+    /// this test catches build.rs codegen regressions (e.g. wrong URL,
+    /// off-by-one tokenisation) — without it, a buggy emitter could
+    /// produce arbitrary garbage and the rest of the suite would still
+    /// pass.
     #[test]
     fn resolve_host_returns_expected_pair_for_every_variant() {
-        assert_eq!(
-            resolve_host(SkillHost::ClaudeCode),
-            (SKILL_REPO_URL, "~/.claude/skills/agent-native-cli")
-        );
-        assert_eq!(
-            resolve_host(SkillHost::Codex),
-            (SKILL_REPO_URL, "~/.codex/skills/agent-native-cli")
-        );
-        assert_eq!(
-            resolve_host(SkillHost::Cursor),
-            (SKILL_REPO_URL, "~/.cursor/skills/agent-native-cli")
-        );
-        assert_eq!(
-            resolve_host(SkillHost::Opencode),
-            (SKILL_REPO_URL, "~/.config/opencode/skills/agent-native-cli")
-        );
+        let fixture_text = include_str!("skill_install/skill.json");
+        let fixture: serde_json::Value =
+            serde_json::from_str(fixture_text).expect("fixture is valid JSON");
+        let install = fixture
+            .get("install")
+            .and_then(|v| v.as_object())
+            .expect("fixture has install map");
+
+        for &host_name in KNOWN_HOSTS {
+            let cmd = install
+                .get(host_name)
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("fixture missing install.{host_name}"));
+            let tokens: Vec<&str> = cmd.split_whitespace().collect();
+            let expected_url = tokens[4];
+            let expected_dest = tokens[5];
+
+            let host = SkillHost::from_str(host_name, false)
+                .unwrap_or_else(|_| panic!("KNOWN_HOSTS entry {host_name:?} unparseable"));
+            let (url, dest) = resolve_host(host);
+
+            assert_eq!(url, expected_url, "url mismatch for {host_name}");
+            assert_eq!(dest, expected_dest, "dest mismatch for {host_name}");
+        }
     }
 
     /// Test 11 — `KNOWN_HOSTS` matches `SkillHost` variant count and names
@@ -638,38 +615,17 @@ mod tests {
         }
     }
 
-    /// Test 12 — drift anchor. Loads the vendored
-    /// `tests/fixtures/skill.json` and asserts each Rust-map
-    /// `(url, dest_template)` reconstructs the fixture's `install.<host>`
-    /// command verbatim. Cargo-level companion to test 26
-    /// (`scripts/sync-skill-fixture.sh --check`): this fails fast in
-    /// `cargo test` before the script-based CI gate runs.
-    #[test]
-    fn host_map_matches_site_skill_json() {
-        let fixture_text = include_str!("../tests/fixtures/skill.json");
-        let fixture: serde_json::Value =
-            serde_json::from_str(fixture_text).expect("fixture is valid JSON");
-        let install = fixture
-            .get("install")
-            .expect("fixture has install map (schema_version 1)");
-
-        for &host_name in KNOWN_HOSTS {
-            let expected = install
-                .get(host_name)
-                .and_then(|v| v.as_str())
-                .unwrap_or_else(|| panic!("fixture missing install.{host_name}"));
-
-            let host = SkillHost::from_str(host_name, false)
-                .unwrap_or_else(|_| panic!("KNOWN_HOSTS entry {host_name:?} unparseable"));
-            let (url, template) = resolve_host(host);
-            let actual = format!("git clone --depth 1 {url} {template}");
-
-            assert_eq!(
-                actual, expected,
-                "Rust host map drifted from skill.json fixture for host {host_name:?}",
-            );
-        }
-    }
+    // Test 12 — `host_map_matches_site_skill_json` — was the cargo-level
+    // drift anchor between the hand-maintained Rust map and the vendored
+    // fixture. It is provably redundant after the build.rs codegen
+    // refactor: both `SkillHost` / `KNOWN_HOSTS` / `resolve_host` AND
+    // `tests/fixtures/skill.json` are now single-sourced from
+    // `src/skill_install/skill.json`. Cargo's `rerun-if-changed` directive
+    // ensures the codegen regenerates whenever the fixture changes, so
+    // they cannot drift relative to each other within a single build.
+    // Drift between the fixture and the upstream site contract is still
+    // caught by `scripts/sync-skill-fixture.sh --check` (CI workflow
+    // `skill-fixture-drift.yml`, test 26).
 
     /// Test 2 — `expand_tilde("~/.claude/skills/agent-native-cli")` with
     /// `HOME=/home/test` resolves to the canonical absolute path. Uses the
@@ -784,8 +740,9 @@ mod tests {
     /// Also pins the conventional `clone --depth 1 <url> <dest>` shape.
     #[test]
     fn build_clone_command_applies_hardening_surface() {
+        let url = skill_repo_url();
         let dest = Path::new("/tmp/anc-skill-introspect");
-        let cmd = build_clone_command(SKILL_REPO_URL, dest);
+        let cmd = build_clone_command(url, dest);
 
         let args: Vec<String> = cmd
             .get_args()
@@ -811,7 +768,7 @@ mod tests {
             "missing --depth value: {args:?}"
         );
         assert!(
-            args.iter().any(|a| a == SKILL_REPO_URL),
+            args.iter().any(|a| a == url),
             "missing url operand: {args:?}",
         );
         assert!(
@@ -854,7 +811,7 @@ mod tests {
     #[test]
     fn format_clone_command_matches_canonical_shape() {
         let s = format_clone_command(
-            SKILL_REPO_URL,
+            skill_repo_url(),
             Path::new("/home/u/.claude/skills/agent-native-cli"),
         );
         assert_eq!(

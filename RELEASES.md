@@ -76,11 +76,21 @@ git diff origin/main --stat
 ./scripts/generate-completions.sh
 git add completions/ && git commit -m "chore: regenerate shell completions" || true
 
-# 7. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
+# 7. Refresh the skill.json fixture from upstream and review the diff. CI's
+#    skill-fixture-drift workflow runs --check on every PR, but pulling the
+#    latest content here catches any site changes since dev was branched and
+#    avoids tagging a release whose hardcoded host map is one revision behind:
+bash scripts/sync-skill-fixture.sh && git diff tests/fixtures/skill.json
+# If the diff is non-trivial, update src/skill_install.rs's host map to match
+# (test 12 — host_map_matches_site_skill_json — fails fast if you skip this).
+git add tests/fixtures/skill.json src/skill_install.rs && \
+    git commit -m "chore(skill): refresh fixture + map for v0.2.0" || true
+
+# 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
 ./scripts/generate-changelog.sh
 git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
 
-# 8. Push and open the PR:
+# 9. Push and open the PR:
 git push -u origin release/v0.2.0
 gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0"
 ```

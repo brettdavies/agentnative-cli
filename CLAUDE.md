@@ -186,6 +186,39 @@ four metadata blocks. The site's `agentnative-site/registry.yaml` will eventuall
 `scored_at` fields once consumers read those facts from the scorecard's `tool.version` / `run.started_at`. That
 follow-up lives in the `agentnative-site` repo, not here.
 
+## Skill Install Verb
+
+`anc skill install <host>` ships the `agentnative-skill` bundle into a host's canonical skills directory. The host map
+is **hardcoded** in `src/skill_install.rs` (no `skill.json` parsing in production, no HTTPS fetch, no allowlist
+validator). The freshness model is: re-vendor `tests/fixtures/skill.json`, update the Rust map to match, cut a patch
+release. CI fails on drift between the fixture and the canonical site copy at every layer:
+
+- `tests/fixtures/skill.json` is a verbatim copy of `agentnative-site/src/data/skill.json`. Test 12
+  (`host_map_matches_site_skill_json`) loads the fixture and asserts each Rust-map `(url, dest_template)` reconstructs
+  the fixture's `install.<host>` command verbatim — fails fast in `cargo test` with no network access.
+- `scripts/sync-skill-fixture.sh --check` (CI workflow `skill-fixture-drift.yml`) clones the upstream site at
+  `SKILL_SITE_REF` (default `dev`, since the site uses a dev/main forever-branch flow) and `cmp`s the live blob against
+  the committed fixture. Runs on every PR and on push to main/dev.
+
+The `git clone` invocation runs with named-const hardening that defeats ambient git-config and env subversion. The full
+surface lives in `src/skill_install.rs`:
+
+- `GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (`credential.helper=`, `core.askPass=`,
+  `protocol.allow=https-only`, `http.followRedirects=false`, `url.<repo>.insteadOf=`). Applied via `Command::args`
+  *before* the `clone` subcommand — git's required position for top-level `-c` options.
+- `GIT_HARDEN_ENV_REMOVE: &[&str]` — seven env vars stripped via `env_remove` (`GIT_CONFIG_{GLOBAL,SYSTEM}`,
+  `GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`).
+- `GIT_TERMINAL_PROMPT=0` is **set** (not removed) so git never prompts when credentials are missing — its
+  default-when-unset is to prompt, which is the wrong default for a non-interactive subcommand.
+
+**Rules for changes touching skill install:**
+
+- NEVER call `Command::env_clear()` — it strips PATH and breaks git's helper resolution. Use `env_remove` per var.
+- NEVER use `sh -c` or any shell-mediated invocation. Tokens go directly to `git` via `Command::args`.
+- NEVER reintroduce `skill.json` parsing in production code. The fixture is a CI drift anchor, not a runtime resource.
+- When adding a new host, update both `SkillHost` (with the `rename_all = "snake_case"` clap value) AND `KNOWN_HOSTS`
+  AND `resolve_host`. Test 11 enforces lockstep on the first two; the registry-style guard is intentional.
+
 ## Dogfooding Safety
 
 Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS

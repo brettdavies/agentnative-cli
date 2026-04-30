@@ -64,7 +64,11 @@ pub const SKILL_REPO_URL: &str = "https://github.com/brettdavies/agentnative-ski
 /// Host names accepted by `anc skill install <host>`, in declaration order.
 /// Surfaces externally for shell-completion enumeration and as the seed for a
 /// future `anc skill list` verb (R-LIST). Stays in lockstep with
-/// [`SkillHost`] variants — test 11 enforces parity.
+/// [`SkillHost`] variants — test 11 enforces parity. `#[allow(dead_code)]`
+/// is intentional: no in-tree consumer in v1, but the constant is a
+/// committed external API surface (see the R-LIST seed rationale in the
+/// plan).
+#[allow(dead_code)]
 pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "opencode"];
 
 /// `git clone` config flags applied via `-c key=value` pairs, in token order
@@ -278,16 +282,251 @@ pub fn format_clone_command(url: &str, dest: &Path) -> String {
     format!("git clone --depth 1 {url} {}", dest.display())
 }
 
-/// Orchestrate the install pipeline: resolve host -> expand tilde -> dry-run
-/// short-circuit / destination check -> hardened spawn -> emit result. Body
-/// is filled in U1.6; cli.rs and main.rs wire to the signature now so the
-/// clap surface compiles in isolation.
-pub fn run_install(
-    _host: SkillHost,
-    _dry_run: bool,
-    _output: OutputFormat,
-) -> Result<i32, AppError> {
-    unimplemented!("run_install pipeline lands in U1.6")
+/// Result envelope shared by both `--output text` and `--output json`.
+/// Schema is uniform across success and error paths (R-OUT, C1).
+///
+/// Field-presence rules:
+/// - `would_succeed` — present in dry-run mode only.
+/// - `exit_code` — present on the live install path only (and only when we
+///   actually spawned `git`; e.g., `git-not-found` leaves it absent).
+/// - `reason` — present on error only, with the typed values enumerated in
+///   the plan's R-OUT.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InstallEnvelope {
+    pub action: &'static str,
+    pub host: &'static str,
+    pub mode: &'static str,
+    pub command: String,
+    pub destination: String,
+    pub destination_status: &'static str,
+    pub status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub would_succeed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<&'static str>,
+}
+
+const ACTION: &str = "skill-install";
+const MODE_DRY_RUN: &str = "dry-run";
+const MODE_INSTALL: &str = "install";
+const STATUS_SUCCESS: &str = "success";
+const STATUS_ERROR: &str = "error";
+
+const REASON_DEST_NOT_EMPTY: &str = "destination-not-empty";
+const REASON_DEST_IS_FILE: &str = "destination-is-file";
+const REASON_HOME_NOT_SET: &str = "home-not-set";
+const REASON_GIT_NOT_FOUND: &str = "git-not-found";
+const REASON_GIT_CLONE_FAILED: &str = "git-clone-failed";
+
+fn host_envelope_str(host: SkillHost) -> &'static str {
+    match host {
+        SkillHost::ClaudeCode => "claude_code",
+        SkillHost::Codex => "codex",
+        SkillHost::Cursor => "cursor",
+        SkillHost::Opencode => "opencode",
+    }
+}
+
+/// Compute the envelope without performing I/O (dry-run) or, in install
+/// mode, after spawning `git`. Internal I/O failures that don't fit the
+/// typed reason taxonomy (e.g., `DestReadFailed` from a permission-denied
+/// `read_dir`) propagate as `AppError` — the top-level handler renders
+/// them on stderr and exits 2 (internal-error reserved per P4).
+pub fn compute_install_envelope(
+    host: SkillHost,
+    dry_run: bool,
+) -> Result<InstallEnvelope, AppError> {
+    let (url, dest_template) = resolve_host(host);
+    let host_str = host_envelope_str(host);
+    let mode_str = if dry_run { MODE_DRY_RUN } else { MODE_INSTALL };
+
+    // Step 1: tilde expand. MissingHome is an envelope error, not propagated.
+    let dest = match expand_tilde(dest_template) {
+        Ok(p) => p,
+        Err(AppError::MissingHome) => {
+            // Without $HOME we cannot show the resolved destination. Surface
+            // the template (with its literal `~`) so the consumer sees what
+            // would have been expanded; destination_status is `absent`
+            // because we never reached the filesystem.
+            let command = format!("git clone --depth 1 {url} {dest_template}");
+            return Ok(InstallEnvelope {
+                action: ACTION,
+                host: host_str,
+                mode: mode_str,
+                command,
+                destination: dest_template.to_string(),
+                destination_status: DestinationStatus::Absent.as_envelope_str(),
+                status: STATUS_ERROR,
+                would_succeed: if dry_run { Some(false) } else { None },
+                exit_code: None,
+                reason: Some(REASON_HOME_NOT_SET),
+            });
+        }
+        Err(e) => return Err(e),
+    };
+
+    let command = format_clone_command(url, &dest);
+    let dest_str = dest.display().to_string();
+
+    // Step 2: destination check. Conflict variants surface as envelope
+    // errors; DestReadFailed propagates (internal I/O failure).
+    let dest_status = match check_destination(&dest) {
+        Ok(s) => s,
+        Err(AppError::DestIsFile { .. }) => {
+            return Ok(InstallEnvelope {
+                action: ACTION,
+                host: host_str,
+                mode: mode_str,
+                command,
+                destination: dest_str,
+                destination_status: DestinationStatus::File.as_envelope_str(),
+                status: STATUS_ERROR,
+                would_succeed: if dry_run { Some(false) } else { None },
+                exit_code: None,
+                reason: Some(REASON_DEST_IS_FILE),
+            });
+        }
+        Err(AppError::DestNotEmpty { .. }) => {
+            return Ok(InstallEnvelope {
+                action: ACTION,
+                host: host_str,
+                mode: mode_str,
+                command,
+                destination: dest_str,
+                destination_status: DestinationStatus::NonEmptyDir.as_envelope_str(),
+                status: STATUS_ERROR,
+                would_succeed: if dry_run { Some(false) } else { None },
+                exit_code: None,
+                reason: Some(REASON_DEST_NOT_EMPTY),
+            });
+        }
+        Err(e) => return Err(e),
+    };
+
+    let dest_status_str = dest_status.as_envelope_str();
+
+    if dry_run {
+        return Ok(InstallEnvelope {
+            action: ACTION,
+            host: host_str,
+            mode: MODE_DRY_RUN,
+            command,
+            destination: dest_str,
+            destination_status: dest_status_str,
+            status: STATUS_SUCCESS,
+            would_succeed: Some(true),
+            exit_code: None,
+            reason: None,
+        });
+    }
+
+    // Step 3: spawn `git`. The spawn helper produces typed `AppError`
+    // variants (`GitNotFound`, `GitCloneFailed`) so the envelope-mapping
+    // pattern stays uniform across error sources. Other I/O errors
+    // propagate.
+    let mut cmd = build_clone_command(url, &dest);
+    match spawn_git_clone(&mut cmd) {
+        Ok(()) => Ok(InstallEnvelope {
+            action: ACTION,
+            host: host_str,
+            mode: MODE_INSTALL,
+            command,
+            destination: dest_str,
+            destination_status: dest_status_str,
+            status: STATUS_SUCCESS,
+            would_succeed: None,
+            exit_code: Some(0),
+            reason: None,
+        }),
+        Err(AppError::GitCloneFailed { code }) => Ok(InstallEnvelope {
+            action: ACTION,
+            host: host_str,
+            mode: MODE_INSTALL,
+            command,
+            destination: dest_str,
+            destination_status: dest_status_str,
+            status: STATUS_ERROR,
+            would_succeed: None,
+            exit_code: Some(code),
+            reason: Some(REASON_GIT_CLONE_FAILED),
+        }),
+        Err(AppError::GitNotFound) => Ok(InstallEnvelope {
+            action: ACTION,
+            host: host_str,
+            mode: MODE_INSTALL,
+            command,
+            destination: dest_str,
+            destination_status: dest_status_str,
+            status: STATUS_ERROR,
+            would_succeed: None,
+            exit_code: None,
+            reason: Some(REASON_GIT_NOT_FOUND),
+        }),
+        Err(e) => Err(e),
+    }
+}
+
+/// Spawn the prepared `git clone` command and reduce the result to typed
+/// `AppError` variants matching the plan's reason taxonomy. Other I/O
+/// failures (e.g., permission denied invoking the resolved binary) wrap
+/// into `AppError::Io` and propagate.
+fn spawn_git_clone(cmd: &mut Command) -> Result<(), AppError> {
+    match cmd.status() {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(AppError::GitCloneFailed {
+            code: status.code().unwrap_or(-1),
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(AppError::GitNotFound),
+        Err(e) => Err(AppError::Io(e)),
+    }
+}
+
+/// Render the envelope as a single-line text command (`git clone …`) on
+/// success, or as a human error line on failure. Single-line dry-run output
+/// is the contract that `eval $(anc skill install --dry-run <host>)`
+/// depends on.
+pub fn emit_result_text(env: &InstallEnvelope) -> String {
+    if env.status == STATUS_SUCCESS {
+        match env.mode {
+            // Dry-run success: just the command, captures via `eval $(...)`.
+            "dry-run" => env.command.clone(),
+            // Live install success: short confirmation line on stdout.
+            _ => format!("Installed agent-native-cli into {}", env.destination),
+        }
+    } else {
+        let reason = env.reason.unwrap_or("unknown");
+        format!("error: {reason}: {}", env.destination)
+    }
+}
+
+/// Render the envelope as pretty-printed JSON. Pretty-print matches the
+/// existing `anc check --output json` style and keeps grep / `jaq` queries
+/// readable. `serde_json::to_string_pretty` is infallible for this struct
+/// (no map keys, no non-string keys, no skipped serializer), so we
+/// `expect()` rather than propagate.
+pub fn emit_result_json(env: &InstallEnvelope) -> String {
+    serde_json::to_string_pretty(env)
+        .expect("InstallEnvelope serialization is infallible by construction")
+}
+
+/// Orchestrate the install pipeline. Always emits an envelope (text or
+/// json) on stdout. Exit code is `0` for success, `1` for envelope errors
+/// (typed reason set), and `AppError` for internal I/O failures handled by
+/// `main` (exit 2 — internal-error reserved per P4).
+pub fn run_install(host: SkillHost, dry_run: bool, output: OutputFormat) -> Result<i32, AppError> {
+    let envelope = compute_install_envelope(host, dry_run)?;
+    let rendered = match output {
+        OutputFormat::Text => emit_result_text(&envelope),
+        OutputFormat::Json => emit_result_json(&envelope),
+    };
+    println!("{rendered}");
+    Ok(if envelope.status == STATUS_SUCCESS {
+        0
+    } else {
+        1
+    })
 }
 
 #[cfg(test)]
@@ -461,10 +700,12 @@ mod tests {
     /// Test 10 — `build_clone_command` introspection. Spawns nothing; reads
     /// the constructed `Command` via `get_args` / `get_envs`. Pins three
     /// invariants:
-    ///   1. Every flag in `GIT_HARDEN_FLAGS` appears in the args list.
-    ///   2. Every var in `GIT_HARDEN_ENV_REMOVE` is in the removal set
-    ///      (Some(None) — set with no value means env_remove).
-    ///   3. `GIT_TERMINAL_PROMPT=0` is in the env-set list.
+    ///
+    /// 1. Every flag in `GIT_HARDEN_FLAGS` appears in the args list.
+    /// 2. Every var in `GIT_HARDEN_ENV_REMOVE` is in the removal set
+    ///    (`Some(None)` — set with no value means `env_remove`).
+    /// 3. `GIT_TERMINAL_PROMPT=0` is in the env-set list.
+    ///
     /// Also pins the conventional `clone --depth 1 <url> <dest>` shape.
     #[test]
     fn build_clone_command_applies_hardening_surface() {

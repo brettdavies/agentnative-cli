@@ -262,10 +262,13 @@ pub struct PlatformInfo {
 }
 
 /// What `anc check` was pointed at. `kind` is one of `"project"`, `"binary"`,
-/// or `"command"`. `path` carries the resolved filesystem path for project
-/// and binary modes; `command` carries the user-supplied name for `--command`
-/// mode. Always-present keys (the unused field is `null`, not missing) keep
-/// consumer code simple.
+/// or `"command"`. `path` carries the **basename** of the resolved target
+/// (directory name in project mode, file name in binary mode) — never the
+/// full filesystem path, which would leak operator PII (home-dir username,
+/// org/employer dir structure) into committed scorecards, README badge URLs,
+/// and any agent-posted artifact. `command` carries the user-supplied name
+/// for `--command` mode. Always-present keys (the unused field is `null`,
+/// not missing) keep consumer code simple.
 #[derive(Serialize)]
 pub struct TargetInfo {
     pub kind: String,

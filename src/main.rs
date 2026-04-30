@@ -265,6 +265,17 @@ fn run() -> Result<i32, AppError> {
 /// Classify what `anc check` was pointed at into structured `target` metadata.
 /// Three modes: `command` (PATH-resolved), `binary` (file argument), `project`
 /// (directory argument).
+///
+/// `path` is the **basename** of the resolved target — the directory name in
+/// project mode, the file name in binary mode. Absolute paths from
+/// `Project::discover`'s canonicalization would leak operator PII (home-dir
+/// username, org/employer dir structure) into committed scorecards, README
+/// badge URLs, and any agent-posted artifact. The basename carries the only
+/// signal a consumer needs (matches the slug used by `tool.name` and the
+/// `/score/<slug>` URL); anything richer is information leakage with no
+/// compensating use. For pathological paths where `file_name()` returns
+/// `None` (e.g. `/`), `path` falls back to `null` per the always-present
+/// null contract.
 fn build_target_info(command_name: Option<&str>, project: &Project) -> TargetInfo {
     match command_name {
         Some(name) => TargetInfo {
@@ -274,15 +285,23 @@ fn build_target_info(command_name: Option<&str>, project: &Project) -> TargetInf
         },
         None if project.path.is_dir() => TargetInfo {
             kind: "project".into(),
-            path: Some(project.path.to_string_lossy().into_owned()),
+            path: basename_string(&project.path),
             command: None,
         },
         None => TargetInfo {
             kind: "binary".into(),
-            path: Some(project.path.to_string_lossy().into_owned()),
+            path: basename_string(&project.path),
             command: None,
         },
     }
+}
+
+/// Return the basename of `path` as an owned `String`, or `None` if the path
+/// has no file-name component (e.g. `/`, `..`). Uses `to_string_lossy` so
+/// non-UTF-8 path components round-trip with replacement characters rather
+/// than vanishing.
+fn basename_string(path: &std::path::Path) -> Option<String> {
+    path.file_name().map(|n| n.to_string_lossy().into_owned())
 }
 
 /// Cheap slug derivation: the same `name` `build_tool_info` would emit, but

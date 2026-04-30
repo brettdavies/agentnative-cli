@@ -176,7 +176,12 @@ Existing field semantics:
   3339 UTC via the `time` crate (pinned `=0.3.45`). `duration_ms` uses `Instant` for monotonic measurement.
   `platform.{os,arch}` come from `std::env::consts`.
 - `target` — `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
-  `"binary"`, `"command"`. The unused field is always `null`, never missing.
+  `"binary"`, `"command"`. `path` is the **basename** of the resolved target (directory name in project mode, file name
+  in binary mode) — never the absolute path, which would leak operator PII (home-dir username, org/employer dir
+  structure) into committed scorecards, README badge URLs, and any agent-posted artifact. `null` for `command` mode.
+  Pathological paths where `Path::file_name()` returns `None` (e.g. `/`, `..`) fall back to `null`. The unused field is
+  always `null`, never missing. See `src/main.rs::build_target_info` for the leak-vector rationale; the regression guard
+  lives in `tests/scorecard_schema_v05.rs::schema_v05_target_path_carries_no_separators`.
 
 `0.5` addition (`BadgeInfo` in `src/scorecard/mod.rs`):
 

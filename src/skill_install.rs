@@ -46,6 +46,9 @@
 //! Never `env_clear()` (strips PATH, breaks git's helper resolution). Never
 //! `sh -c` (tokens go directly to `git` via `Command::args`).
 
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use clap::ValueEnum;
 
 use crate::cli::OutputFormat;
@@ -131,6 +134,114 @@ pub fn resolve_host(host: SkillHost) -> (&'static str, &'static str) {
     (SKILL_REPO_URL, dest_template)
 }
 
+/// Snapshot of what `check_destination` found at the resolved path. Drives
+/// the JSON envelope's `destination_status` field. The success path returns
+/// only `Absent`/`EmptyDir`; conflict cases (`NonEmptyDir`, `File`) are
+/// inferred from the corresponding `AppError` variant in the caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DestinationStatus {
+    Absent,
+    EmptyDir,
+    NonEmptyDir,
+    File,
+}
+
+impl DestinationStatus {
+    /// Kebab-case identifier for the JSON envelope `destination_status` field.
+    pub fn as_envelope_str(self) -> &'static str {
+        match self {
+            DestinationStatus::Absent => "absent",
+            DestinationStatus::EmptyDir => "empty-dir",
+            DestinationStatus::NonEmptyDir => "non-empty-dir",
+            DestinationStatus::File => "file",
+        }
+    }
+}
+
+/// Expand a leading `~` or `~/` to `$HOME`. Pure passthrough on inputs that
+/// do not start with `~` (R6a). `MissingHome` only fires when the input
+/// actually begins with `~` and `$HOME` is unset or empty — non-`~` inputs
+/// never read the environment.
+pub fn expand_tilde(template: &str) -> Result<PathBuf, AppError> {
+    let home = std::env::var("HOME").ok();
+    expand_tilde_with(template, home.as_deref())
+}
+
+/// Pure-function core of [`expand_tilde`]. Tests pass `home` explicitly so
+/// they never mutate the process environment (which would race with parallel
+/// tests). The public wrapper performs the env lookup.
+pub fn expand_tilde_with(template: &str, home: Option<&str>) -> Result<PathBuf, AppError> {
+    let needs_home = template == "~" || template.starts_with("~/");
+    if !needs_home {
+        return Ok(PathBuf::from(template));
+    }
+    let home = home
+        .filter(|s| !s.is_empty())
+        .ok_or(AppError::MissingHome)?;
+    if template == "~" {
+        return Ok(PathBuf::from(home));
+    }
+    let rest = template
+        .strip_prefix("~/")
+        .expect("template starts with ~/ per the branch guard");
+    let mut p = PathBuf::from(home);
+    p.push(rest);
+    Ok(p)
+}
+
+/// R9 destination conflict check. Canonicalizes the path so a symlinked
+/// skills directory resolves to its real target before the check runs (F4).
+/// Returns `Absent`/`EmptyDir` on success; `DestIsFile` for a regular file,
+/// `DestNotEmpty` for a populated directory, `DestReadFailed` for any I/O
+/// error along the way.
+///
+/// TOCTOU between this check and the subsequent `git clone` exec is
+/// acknowledged residual single-user-machine risk — `git clone` itself
+/// errors on a non-empty target, so the worst case is a less-actionable
+/// error message, not a security failure.
+pub fn check_destination(path: &Path) -> Result<DestinationStatus, AppError> {
+    match path.try_exists() {
+        Ok(false) => return Ok(DestinationStatus::Absent),
+        Ok(true) => {}
+        Err(e) => {
+            return Err(AppError::DestReadFailed {
+                path: path.to_path_buf(),
+                source: e,
+            });
+        }
+    }
+
+    let canonical = fs::canonicalize(path).map_err(|e| AppError::DestReadFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })?;
+
+    let metadata = fs::metadata(&canonical).map_err(|e| AppError::DestReadFailed {
+        path: canonical.clone(),
+        source: e,
+    })?;
+
+    if metadata.is_file() {
+        return Err(AppError::DestIsFile { path: canonical });
+    }
+
+    if metadata.is_dir() {
+        let mut entries = fs::read_dir(&canonical).map_err(|e| AppError::DestReadFailed {
+            path: canonical.clone(),
+            source: e,
+        })?;
+        if entries.next().is_some() {
+            return Err(AppError::DestNotEmpty { path: canonical });
+        }
+        return Ok(DestinationStatus::EmptyDir);
+    }
+
+    // Block / char devices, sockets, fifos — not a normal place to clone into.
+    // Treat as a file conflict; the typed reason maps to `destination-is-file`
+    // which best describes "this is not the directory we expected".
+    Err(AppError::DestIsFile { path: canonical })
+}
+
 /// Orchestrate the install pipeline: resolve host -> expand tilde -> dry-run
 /// short-circuit / destination check -> hardened spawn -> emit result. Body
 /// is filled in U1.6; cli.rs and main.rs wire to the signature now so the
@@ -208,5 +319,106 @@ mod tests {
             let rendered = parsed.to_possible_value().unwrap().get_name().to_string();
             assert_eq!(rendered, expected);
         }
+    }
+
+    /// Test 2 — `expand_tilde("~/.claude/skills/agent-native-cli")` with
+    /// `HOME=/home/test` resolves to the canonical absolute path. Uses the
+    /// pure helper to avoid mutating process env (which would race with
+    /// parallel tests).
+    #[test]
+    fn expand_tilde_replaces_leading_tilde_slash_with_home() {
+        let got = expand_tilde_with("~/.claude/skills/agent-native-cli", Some("/home/test"))
+            .expect("HOME present + ~/ prefix should expand cleanly");
+        assert_eq!(
+            got,
+            PathBuf::from("/home/test/.claude/skills/agent-native-cli")
+        );
+    }
+
+    /// Test 3 — `expand_tilde` with `HOME` unset returns `MissingHome`,
+    /// but only when the input begins with `~`.
+    #[test]
+    fn expand_tilde_missing_home_only_when_input_starts_with_tilde() {
+        let err = expand_tilde_with("~/anything", None)
+            .expect_err("HOME unset + tilde input should be MissingHome");
+        assert!(matches!(err, AppError::MissingHome));
+
+        let err_empty =
+            expand_tilde_with("~", Some("")).expect_err("HOME empty string is treated as unset");
+        assert!(matches!(err_empty, AppError::MissingHome));
+    }
+
+    /// Test 4 — Passthrough contract: paths that don't start with `~` pass
+    /// through unchanged regardless of `$HOME`. The hardcoded map only ever
+    /// feeds `~`-prefixed templates, so this branch is unreachable in
+    /// practice but keeps the contract simple and total (D1 passthrough).
+    #[test]
+    fn expand_tilde_no_tilde_passthrough() {
+        let got_with_home = expand_tilde_with("/abs/path", Some("/home/test"))
+            .expect("non-tilde input never errors");
+        assert_eq!(got_with_home, PathBuf::from("/abs/path"));
+
+        let got_without_home =
+            expand_tilde_with("/abs/path", None).expect("non-tilde input ignores HOME");
+        assert_eq!(got_without_home, PathBuf::from("/abs/path"));
+    }
+
+    /// Test 5 — `check_destination` on a nonexistent path returns
+    /// `Absent`. A fresh tempdir's child is a deterministic nonexistent
+    /// path.
+    #[test]
+    fn check_destination_absent_for_nonexistent_path() {
+        let tmp = tempfile::tempdir().expect("tempdir creation");
+        let target = tmp.path().join("does-not-exist");
+        let status = check_destination(&target).expect("absent path should be Ok(Absent)");
+        assert_eq!(status, DestinationStatus::Absent);
+    }
+
+    /// Test 6 — `check_destination` on an empty directory returns
+    /// `EmptyDir`.
+    #[test]
+    fn check_destination_empty_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir creation");
+        let status = check_destination(tmp.path()).expect("empty tempdir should be Ok(EmptyDir)");
+        assert_eq!(status, DestinationStatus::EmptyDir);
+    }
+
+    /// Test 7 — `check_destination` on a non-empty directory returns
+    /// `DestNotEmpty`.
+    #[test]
+    fn check_destination_non_empty_dir_errors() {
+        let tmp = tempfile::tempdir().expect("tempdir creation");
+        std::fs::write(tmp.path().join("placeholder"), b"x").expect("write placeholder");
+        let err = check_destination(tmp.path()).expect_err("populated dir should be DestNotEmpty");
+        assert!(matches!(err, AppError::DestNotEmpty { .. }));
+    }
+
+    /// Test 8 — `check_destination` on a regular file returns `DestIsFile`.
+    #[test]
+    fn check_destination_regular_file_errors() {
+        let tmp = tempfile::tempdir().expect("tempdir creation");
+        let target = tmp.path().join("a-file");
+        std::fs::write(&target, b"contents").expect("write file");
+        let err = check_destination(&target).expect_err("file should be DestIsFile");
+        assert!(matches!(err, AppError::DestIsFile { .. }));
+    }
+
+    /// Test 9 — Symlink follow via `fs::canonicalize`: a symlink pointing at
+    /// a non-empty directory returns `DestNotEmpty`, not the symlink's own
+    /// status. Defends F4 — a symlinked skills dir resolves to the target
+    /// before the conflict check runs.
+    #[cfg(unix)]
+    #[test]
+    fn check_destination_follows_symlink_to_non_empty_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir creation");
+        let real_dir = tmp.path().join("real");
+        std::fs::create_dir(&real_dir).expect("mkdir real");
+        std::fs::write(real_dir.join("placeholder"), b"x").expect("populate real");
+
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(&real_dir, &link).expect("symlink real -> link");
+
+        let err = check_destination(&link).expect_err("symlinked non-empty dir is DestNotEmpty");
+        assert!(matches!(err, AppError::DestNotEmpty { .. }));
     }
 }

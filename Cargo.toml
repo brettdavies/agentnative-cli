@@ -74,6 +74,10 @@ insta = "1"
 predicates = "3"
 # Used by tests/build_parser.rs to exercise the build_support/parser.rs module.
 serde_yaml = "=0.9.34"
+# Tempdir / tempfile fixtures for skill_install destination-check tests.
+# Already a transitive dev-dep via insta — declared here so it's a direct
+# dependency we control.
+tempfile = "3"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.tar.gz"

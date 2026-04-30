@@ -82,7 +82,7 @@ drift.
 
 ## Agent-facing JSON surface
 
-`anc check <target> --output json` emits a `schema_version: "0.4"` scorecard. The schema is at `0.x` while `anc` is
+`anc check <target> --output json` emits a `schema_version: "0.5"` scorecard. The schema is at `0.x` while `anc` is
 pre-launch — shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
 norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
 following scorecard-level fields beyond the base `results` / `summary`:
@@ -107,6 +107,12 @@ following scorecard-level fields beyond the base `results` / `summary`:
   (captured pre-injection). `started_at` is RFC 3339 UTC. Schema `0.4` addition.
 - `target` — `{ kind, path, command }`. `kind` is `"project"` / `"binary"` / `"command"`. The unused field is always
   `null`, never missing. Schema `0.4` addition.
+- `badge` — `{ eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Agent-native badge
+  derivation from the live run. `score_pct` is the rounded percent of `pass / (pass + warn + fail)` (Skips and Errors
+  excluded from the ratio). `eligible` is true iff `score_pct >= 80` and a tool slug was derivable. `embed_markdown` is
+  `null` below the floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
+  below the floor; `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint
+  (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
 
 `--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
 values exit 2 with a structured error. The full per-category mapping of suppressed check IDs is committed to

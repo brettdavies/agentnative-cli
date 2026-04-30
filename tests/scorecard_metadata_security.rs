@@ -141,7 +141,7 @@ fn hostile_binary_nonzero_version_exit_yields_null() {
     );
     // The scorecard itself must still emit — version probe failure is not
     // a scoring failure.
-    assert_eq!(parsed["schema_version"], "0.4");
+    assert_eq!(parsed["schema_version"], "0.5");
     assert_eq!(parsed["target"]["kind"], "binary");
 }
 

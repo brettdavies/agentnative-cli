@@ -28,10 +28,57 @@ anc . --source
 
 # Suppress inapplicable MUSTs for a categorical exception
 anc . --audit-profile human-tui
+
+# Install the companion skill bundle into your host's skills dir
+anc skill install claude_code             # ~/.claude/skills/agent-native-cli
+anc skill install --dry-run codex         # print resolved git command, don't run
+anc skill install factory --output json   # emit envelope on success and error
 ```
 
 Bare `anc` (no arguments) prints help and exits 2. This is a non-negotiable fork-bomb guard: when agentnative dogfoods
-itself, children spawned without arguments must not recurse into `check .`.
+itself, children spawned without arguments must not recurse into `check .`. Bare `anc skill` likewise prints help and
+exits 2.
+
+## Skill install
+
+`anc skill install <host>` clones the `agentnative-skill` bundle into a host's canonical skills directory. Six hosts
+ship at v0.1: `claude_code`, `codex`, `cursor`, `factory`, `kiro`, `opencode`. `--help` enumerates them; the JSON
+envelope's `host` field reports the chosen one verbatim.
+
+Output envelope (`--output json`) is uniform across success and error and across `--dry-run` and live install:
+
+```json
+{
+  "action": "skill-install",
+  "host": "claude_code",
+  "mode": "dry-run",
+  "command": "git clone --depth 1 <url> <dest>",
+  "destination": "<resolved-dest>",
+  "destination_status": "absent",
+  "status": "success",
+  "would_succeed": true
+}
+```
+
+Field-presence rules: `would_succeed` only on `mode: "dry-run"`; `exit_code` only on `mode: "install"` AND only when
+`git` actually spawned (e.g. `git-not-found` leaves it absent); `reason` only when `status: "error"`, with one of the
+typed values `destination-not-empty` / `destination-is-file` / `home-not-set` / `git-not-found` / `git-clone-failed`.
+`destination_status` is one of `absent` / `empty-dir` / `non-empty-dir` / `file`.
+
+Exit codes follow the P4 convention: `0` for success, `1` for any envelope error (typed `reason` set), `2` for clap
+usage errors (unknown host, missing positional, bare `anc skill`).
+
+The `git clone` invocation runs with named-const hardening (`GIT_HARDEN_FLAGS`, `GIT_HARDEN_ENV_REMOVE`,
+`GIT_HARDEN_ENV_SET` — the last includes `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` to disable
+user-controlled git config, plus `GIT_TERMINAL_PROMPT=0`). No `sh -c`, no `env_clear`. Defense against `insteadOf`
+URL-rewriting comes from disabling user config wholesale, not from a `-c url.<repo>.insteadOf=` flag (which would do the
+opposite of blocking).
+
+The host map (`SkillHost` enum, `KNOWN_HOSTS`, `resolve_host`, `host_envelope_str`) is **build-time-generated** from
+`src/skill_install/skill.json` by `build.rs::emit_skill_hosts`. To add or change a host, edit the JSON (or run `bash
+scripts/sync-skill-fixture.sh` to pull the upstream site contract) and `cargo build` regenerates the Rust map — no hand
+edits to `src/skill_install.rs`. CI's `skill-fixture-drift.yml` runs `--check` on every PR to catch fixture vs upstream
+drift.
 
 ## Agent-facing JSON surface
 

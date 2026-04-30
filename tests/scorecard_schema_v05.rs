@@ -85,9 +85,10 @@ fn schema_v05_project_mode_emits_full_shape() {
 
     assert_v05_shape(&parsed);
     assert_eq!(parsed["target"]["kind"], "project");
-    assert!(
-        parsed["target"]["path"].is_string(),
-        "project mode must populate target.path",
+    assert_eq!(
+        parsed["target"]["path"], "perfect-rust",
+        "project mode emits the basename of the resolved target, not the absolute path \
+         (PII-leak guard — operator home dir / org dir structure must not appear)",
     );
     assert!(parsed["target"]["command"].is_null());
 }
@@ -104,8 +105,36 @@ fn schema_v05_binary_mode_emits_full_shape() {
 
     assert_v05_shape(&parsed);
     assert_eq!(parsed["target"]["kind"], "binary");
-    assert!(parsed["target"]["path"].is_string());
+    assert_eq!(
+        parsed["target"]["path"], "test.sh",
+        "binary mode emits the basename of the resolved target, not the absolute path \
+         (PII-leak guard)",
+    );
     assert!(parsed["target"]["command"].is_null());
+}
+
+/// Regression guard — `target.path` must never contain a path separator. If
+/// this trips, the absolute-path leak from pre-fix `build_target_info` has
+/// crept back in (or someone built a new code path that emits a richer
+/// path representation). See `src/main.rs::build_target_info` doc comment
+/// for the leak-vector rationale.
+#[test]
+fn schema_v05_target_path_carries_no_separators() {
+    let path = fixture_path("perfect-rust");
+    let output = cmd()
+        .args(["check", &path, "--output", "json"])
+        .output()
+        .expect("anc spawn");
+    let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+    let parsed: Value = serde_json::from_str(&stdout).expect("valid JSON");
+
+    let target_path = parsed["target"]["path"]
+        .as_str()
+        .expect("project mode emits a string target.path");
+    assert!(
+        !target_path.contains('/') && !target_path.contains('\\'),
+        "target.path must be a basename only, got: {target_path:?}",
+    );
 }
 
 #[test]

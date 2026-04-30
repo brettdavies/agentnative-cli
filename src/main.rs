@@ -25,7 +25,7 @@ use check::Check;
 use checks::behavioral::all_behavioral_checks;
 use checks::project::all_project_checks;
 use checks::source::all_source_checks;
-use cli::{Cli, Commands, GenerateKind, OutputFormat};
+use cli::{Cli, Commands, GenerateKind, OutputFormat, SkillCmd};
 use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
@@ -97,6 +97,9 @@ fn run() -> Result<i32, AppError> {
             }
             Some(Commands::Generate { artifact }) => {
                 return run_generate(artifact);
+            }
+            Some(Commands::Skill { cmd }) => {
+                return run_skill(cmd);
             }
             None => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -417,6 +420,16 @@ fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
     }
 
     Ok(std::path::PathBuf::from(first))
+}
+
+fn run_skill(cmd: SkillCmd) -> Result<i32, AppError> {
+    match cmd {
+        SkillCmd::Install {
+            host,
+            dry_run,
+            output,
+        } => skill_install::run_install(host, dry_run, output),
+    }
 }
 
 fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {

@@ -48,6 +48,9 @@
 
 use clap::ValueEnum;
 
+use crate::cli::OutputFormat;
+use crate::error::AppError;
+
 /// Canonical upstream URL for the skill bundle. Matched by the `insteadOf=`
 /// blocker in `GIT_HARDEN_FLAGS` to defeat URL-rewriting attacks. Test 12
 /// (the cargo-level drift anchor) asserts this matches the URL parsed from
@@ -126,6 +129,18 @@ pub fn resolve_host(host: SkillHost) -> (&'static str, &'static str) {
         SkillHost::Opencode => "~/.config/opencode/skills/agent-native-cli",
     };
     (SKILL_REPO_URL, dest_template)
+}
+
+/// Orchestrate the install pipeline: resolve host -> expand tilde -> dry-run
+/// short-circuit / destination check -> hardened spawn -> emit result. Body
+/// is filled in U1.6; cli.rs and main.rs wire to the signature now so the
+/// clap surface compiles in isolation.
+pub fn run_install(
+    _host: SkillHost,
+    _dry_run: bool,
+    _output: OutputFormat,
+) -> Result<i32, AppError> {
+    unimplemented!("run_install pipeline lands in U1.6")
 }
 
 #[cfg(test)]

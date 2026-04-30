@@ -4,6 +4,7 @@ mod check;
 mod checks;
 mod cli;
 mod error;
+mod output;
 mod principles;
 mod project;
 mod runner;
@@ -256,7 +257,7 @@ fn run() -> Result<i32, AppError> {
             )
         }
     };
-    print!("{output_str}");
+    output::emit(&output_str);
 
     Ok(exit_code(&results))
 }

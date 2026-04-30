@@ -4,6 +4,9 @@
 //! dedicated output module, not scatter `println!` calls across the codebase.
 //! `eprintln!` is exempt (diagnostics go to stderr).
 //! Files with "output" or "display" in their path are exempt (output modules).
+//! `build.rs` is also exempt — Cargo build scripts emit metadata via
+//! `println!("cargo:...")` directives by required-by-protocol convention; no
+//! alternative API exists, so flagging them produces noise without recourse.
 
 use crate::check::Check;
 use crate::project::{Language, Project};
@@ -44,9 +47,13 @@ impl Check for NakedPrintlnCheck {
         for (path, parsed_file) in parsed.iter() {
             let file_str = path.display().to_string();
 
-            // Exempt files with "output" or "display" in their path
+            // Exempt files with "output" or "display" in their path, and
+            // Cargo build scripts (build.rs at any crate root).
             let lower = file_str.to_lowercase();
             if lower.contains("output") || lower.contains("display") {
+                continue;
+            }
+            if is_cargo_build_script(&file_str) {
                 continue;
             }
 
@@ -71,6 +78,30 @@ impl Check for NakedPrintlnCheck {
             confidence: Confidence::High,
         })
     }
+}
+
+/// True when `path` names a Cargo build script (`build.rs` at any crate
+/// root). The convention is fixed by Cargo — build scripts are always at
+/// `<crate-root>/build.rs`, never nested under `src/`, `tests/`, `examples/`,
+/// or `benches/`. Paths under those directories that happen to be named
+/// `build.rs` are misnamed source files, not build scripts, and stay flagged.
+fn is_cargo_build_script(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    // Normalize Windows separators so segment checks are uniform.
+    let normalized = lower.replace('\\', "/");
+    let segments: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+    let Some(last) = segments.last() else {
+        return false;
+    };
+    if *last != "build.rs" {
+        return false;
+    }
+    // Cargo build scripts live at crate root. Reject paths where any
+    // ancestor segment is a known non-root subdirectory.
+    let parents = &segments[..segments.len() - 1];
+    !parents
+        .iter()
+        .any(|s| matches!(*s, "src" | "tests" | "examples" | "benches"))
 }
 
 /// Check a single source string for `println!` and `print!` calls.
@@ -175,6 +206,39 @@ fn main() {
         } else {
             panic!("Expected Warn");
         }
+    }
+
+    #[test]
+    fn build_script_path_recognized() {
+        assert!(is_cargo_build_script("build.rs"));
+        assert!(is_cargo_build_script("./build.rs"));
+        assert!(is_cargo_build_script("/abs/path/build.rs"));
+        assert!(is_cargo_build_script("BUILD.RS")); // case-insensitive
+        assert!(is_cargo_build_script("subcrate\\build.rs")); // Windows path
+
+        assert!(!is_cargo_build_script("src/build.rs"));
+        // build.rs nested under src/ is not the cargo build script — it's a
+        // misnamed source file. Cargo build scripts only live at crate root.
+        // Exception: workspace member build scripts at <member>/build.rs
+        // are correctly matched by the `/build.rs` suffix logic.
+        assert!(!is_cargo_build_script("src/skill_install.rs"));
+        assert!(!is_cargo_build_script("build.rs.bak"));
+    }
+
+    #[test]
+    fn check_skips_build_script_println() {
+        // Direct check of the helper — the macro pattern matches, but the
+        // path-level filter in run() skips build.rs callers.
+        let source = r#"
+fn main() {
+    println!("cargo:rerun-if-changed=src/principles/spec/");
+}
+"#;
+        // The unit-level helper still warns (it doesn't know about file
+        // path); the run() loop is what skips. Confirm both behaviors.
+        let status = check_naked_println(source, "build.rs");
+        assert!(matches!(status, CheckStatus::Warn(_)));
+        assert!(is_cargo_build_script("build.rs"));
     }
 
     #[test]

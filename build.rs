@@ -67,7 +67,12 @@ fn main() {
 
     let mut parsed_per_file = Vec::with_capacity(files.len());
     for path in &files {
-        let name = path.file_name().unwrap().to_str().unwrap().to_string();
+        let name = path
+            .file_name()
+            .expect("glob match always has a file name component")
+            .to_str()
+            .expect("principle filenames are ASCII per spec contract")
+            .to_string();
         let content = fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
         let reqs = parser::parse_principle_file(&name, &content)

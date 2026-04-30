@@ -507,7 +507,7 @@ pub fn run_install(host: SkillHost, dry_run: bool, output: OutputFormat) -> Resu
         OutputFormat::Text => emit_result_text(&envelope),
         OutputFormat::Json => emit_result_json(&envelope),
     };
-    println!("{rendered}");
+    crate::output::emit_line(&rendered);
     Ok(if envelope.status == STATUS_SUCCESS {
         0
     } else {
@@ -571,7 +571,12 @@ mod tests {
     fn known_hosts_matches_skill_host_variant_count_and_names() {
         let variant_names: Vec<String> = SkillHost::value_variants()
             .iter()
-            .map(|v| v.to_possible_value().unwrap().get_name().to_string())
+            .map(|v| {
+                v.to_possible_value()
+                    .expect("clap ValueEnum variant always has a possible value")
+                    .get_name()
+                    .to_string()
+            })
             .collect();
         let known: Vec<String> = KNOWN_HOSTS.iter().map(|s| (*s).to_string()).collect();
         assert_eq!(
@@ -610,7 +615,11 @@ mod tests {
         for &expected in KNOWN_HOSTS {
             let parsed = SkillHost::from_str(expected, false)
                 .unwrap_or_else(|_| panic!("KNOWN_HOSTS entry {expected:?} not parseable"));
-            let rendered = parsed.to_possible_value().unwrap().get_name().to_string();
+            let rendered = parsed
+                .to_possible_value()
+                .expect("clap ValueEnum variant always has a possible value")
+                .get_name()
+                .to_string();
             assert_eq!(rendered, expected);
         }
     }

@@ -135,6 +135,25 @@ After the homebrew-tap workflow uploads bottles to this repo's release assets, i
 this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest,
 Homebrew formula updated with bottles, all atomically advertised.
 
+### After publish — sync `dev` with the release
+
+Once `finalize-release.yml` has flipped the GitHub Release to `published`, backport the release-bookkeeping files from
+`main` to `dev` so future builds from `dev` report the released version (and so `anc check`'s embedded badge URL points
+at the right slug, not stale `0.1.0`):
+
+```bash
+./scripts/sync-dev-after-release.sh v0.2.0
+git push origin dev
+```
+
+The script surgically updates only `Cargo.toml`'s `[package].version` line (other `Cargo.toml` lines on `dev` —
+post-launch deps, rust-version bumps — are preserved), regenerates `Cargo.lock` via `cargo build --release`, and copies
+`CHANGELOG.md` verbatim from `origin/main`. The single commit lands directly on `dev` (signed via your normal commit
+signing — no PR), establishing release backport as a deliberate convention rather than the prior "never back-merged"
+norm.
+
+The backport is idempotent: re-running on a `dev` already in sync exits 0 with no commit.
+
 ### First-time publish (one-time)
 
 The very first crate publish requires a regular crates.io API token (Trusted Publishing needs the crate to exist first).

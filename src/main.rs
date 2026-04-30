@@ -8,6 +8,7 @@ mod principles;
 mod project;
 mod runner;
 mod scorecard;
+mod skill_install;
 mod source;
 mod types;
 

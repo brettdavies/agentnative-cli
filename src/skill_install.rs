@@ -596,6 +596,39 @@ mod tests {
         }
     }
 
+    /// Test 12 — drift anchor. Loads the vendored
+    /// `tests/fixtures/skill.json` and asserts each Rust-map
+    /// `(url, dest_template)` reconstructs the fixture's `install.<host>`
+    /// command verbatim. Cargo-level companion to test 26
+    /// (`scripts/sync-skill-fixture.sh --check`): this fails fast in
+    /// `cargo test` before the script-based CI gate runs.
+    #[test]
+    fn host_map_matches_site_skill_json() {
+        let fixture_text = include_str!("../tests/fixtures/skill.json");
+        let fixture: serde_json::Value =
+            serde_json::from_str(fixture_text).expect("fixture is valid JSON");
+        let install = fixture
+            .get("install")
+            .expect("fixture has install map (schema_version 1)");
+
+        for &host_name in KNOWN_HOSTS {
+            let expected = install
+                .get(host_name)
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("fixture missing install.{host_name}"));
+
+            let host = SkillHost::from_str(host_name, false)
+                .unwrap_or_else(|_| panic!("KNOWN_HOSTS entry {host_name:?} unparseable"));
+            let (url, template) = resolve_host(host);
+            let actual = format!("git clone --depth 1 {url} {template}");
+
+            assert_eq!(
+                actual, expected,
+                "Rust host map drifted from skill.json fixture for host {host_name:?}",
+            );
+        }
+    }
+
     /// Test 2 — `expand_tilde("~/.claude/skills/agent-native-cli")` with
     /// `HOME=/home/test` resolves to the canonical absolute path. Uses the
     /// pure helper to avoid mutating process env (which would race with

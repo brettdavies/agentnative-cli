@@ -1,9 +1,11 @@
 ---
 title: "feat: `anc skill install <host>` — single-command skill installer with hardened git clone"
 type: feat
-status: active
+status: completed
 date: 2026-04-29
-deepened: 2026-04-29
+deepened: 2026-04-30
+completed: 2026-04-30
+shipped_in: "PR #35"
 ---
 
 # feat: `anc skill install <host>` — single-command skill installer with hardened git clone
@@ -27,13 +29,74 @@ The subcommand exposes two flags that close `anc`'s own dogfood loop on P2 (stru
   (`destination-not-empty`/`destination-is-file`/`home-not-set`/`git-not-found`/`git-clone-failed`).
 
 The `git clone` invocation runs with named-const hardening (`GIT_HARDEN_FLAGS`, `GIT_HARDEN_ENV_REMOVE`,
-`GIT_TERMINAL_PROMPT=0` set) to defeat ambient git-config and env-var subversion. Tilde-expansion uses
-`std::env::var("HOME")` directly with no `home`/`dirs` crate dependency. A vendored `tests/fixtures/skill.json` plus
-`scripts/sync-skill-fixture.sh --check` (CI-enforced) is the drift anchor between this binary's hardcoded map and the
-canonical site copy — drift fails CI, never users.
+`GIT_HARDEN_ENV_SET` — the latter holds `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and
+`GIT_TERMINAL_PROMPT=0`) to defeat ambient git-config and env-var subversion. Tilde-expansion uses
+`std::env::var("HOME")` directly with no `home`/`dirs` crate dependency. The vendored `src/skill_install/skill.json` is
+the build-time codegen input for `build.rs::emit_skill_hosts`, which emits `SkillHost`, `KNOWN_HOSTS`, `resolve_host`,
+and `host_envelope_str` into `$OUT_DIR/generated_hosts.rs` — `src/skill_install.rs` `include!`s the generated file.
+`scripts/sync-skill-fixture.sh --check` (CI-enforced) catches drift between the vendored fixture and the canonical site
+copy — drift fails CI, never users.
 
 Plan depth is **Modest** — one new subcommand, one process spawn, no network, no embedded resources beyond Rust
 constants. ~1 implementation unit (plus a small docs unit).
+
+---
+
+## Acceptance Status (post-shipment, 2026-04-30)
+
+All requirements and verification anchors are met. Shipped in PR #35 against `dev`. The body below remains the
+as-shipped contract; the two `### Document Review` subsections at the bottom capture *why* the manual-smoke and codegen
+revisions reshaped R6c, U1, and the host-map mechanism relative to planning-time wording.
+
+**Requirements trace:**
+
+- [x] **R1** — `Commands::Skill { SkillCmd::Install }` lands in `src/cli.rs`. No `list`/`path`/`update` verbs (deferred).
+- [x] **R2** — `<host>` validated against the build-time-generated `SkillHost` enum (six variants:
+  `claude_code`/`codex`/`cursor`/`factory`/`kiro`/`opencode`). Unknown hosts → clap exit 2 with possible-values list.
+- [x] **R6a** — `expand_tilde` reads `$HOME` via `std::env::var`, replaces leading `~`/`~/`, passes other paths through
+  unchanged. `MissingHome` error only when input begins with `~`. Tests 2-4.
+- [x] **R6c** — Three named-const tables (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET`) applied via
+  `Command::args` / `env_remove` / `env`. Test 10 asserts each table contents on the constructed `Command`. Eng-review
+  wording corrected during manual smoke (see Document Review subsection).
+- [x] **R9** — `check_destination` canonicalises before the conflict check. `DestIsFile` / `DestNotEmpty` /
+  `DestReadFailed` typed errors. Tests 5-9.
+- [x] **R-DRY** — `--dry-run` flag short-circuits exec; emits resolved `git clone` command on stdout. Tests 13-15.
+- [x] **R-OUT** — `--output {text,json}` honored on both dry-run AND live install paths. Uniform JSON envelope across
+  success/error and across modes. Field-presence rules via `skip_serializing_if`. Tests 14, 15, 19, 23.
+- [x] **R-LIST** — `pub const KNOWN_HOSTS: &[&str]` exposed at module boundary; build-generated.
+
+**Implementation units:**
+
+- [x] **U1** — `skill_install` module + clap surface + main dispatch shipped. ~830 LOC including tests; six hosts;
+  build.rs codegen.
+- [x] **U2** — Documentation + sync workflow shipped. README install section, AGENTS.md / CLAUDE.md skill-verb sections,
+  RELEASES.md pre-release sync step.
+
+**Test scenarios** (numbering tracks the eng-review test plan):
+
+- [x] Tests 1–11 (unit) pass in `src/skill_install.rs::tests`.
+- [x] Test 12 deleted as provably redundant after the codegen refactor (see Document Review § codegen). Test 1 picks up
+  the regression-catch role by parsing the fixture and asserting each `resolve_host` pair.
+- [x] Tests 13–23 (integration) pass in `tests/skill_install.rs`; test 16b is `#[ignore]` (live network e2e, opt-in).
+- [x] Tests 24–25 (CRITICAL dogfood guards) pass in `tests/dogfood.rs`.
+- [x] Test 26 (CI drift gate) is green via `.github/workflows/skill-fixture-drift.yml`.
+
+**Pre-merge checklist (handoff document):**
+
+- [x] `cargo test` green — 519 active passing, 2 ignored.
+- [x] `cargo clippy --all-targets -- -Dwarnings` clean.
+- [x] `scripts/hooks/pre-push` clean (mirrors CI: fmt, clippy, test, cargo-deny, Windows compat).
+- [x] `bash scripts/sync-skill-fixture.sh --check` exits 0 against `agentnative-site/dev`.
+- [x] Manual smoke for all six hosts via `--dry-run` plus live install for `claude_code`/`codex`/`factory` into tempdirs.
+  Rerun-on-populated returns the typed `destination-not-empty` envelope per R9.
+
+**Pattern Documentation Note follow-ups:**
+
+- [x] Spec-SHOULDs follow-up plan written at
+  [`docs/plans/2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md`](2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md)
+  (queued for future implementation).
+- [x] Solutions doc refreshed in place at
+  `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` (committed in solutions-docs).
 
 ---
 
@@ -75,10 +138,12 @@ to re-justify its own hardening from scratch.
 
 - **R1.** `anc skill` is a new top-level subcommand. Its only initial verb is `install <host>`. Future verbs (`list`,
   `path`, `update`) are out of scope.
-- **R2.** `install` accepts `<host>` as a positional argument, validated by clap `ValueEnum` against the hardcoded
-  `SkillHost` enum. Variants: `ClaudeCode`, `Codex`, `Cursor`, `Opencode` (with `clap(rename_all = "snake_case")` so
-  surface names match `skill.json` keys verbatim — note `opencode`, not `open_code`). Unknown hosts are rejected by clap
-  with exit 2 and a list of accepted values in the error message.
+- **R2.** `install` accepts `<host>` as a positional argument, validated by clap `ValueEnum` against the
+  build-time-generated `SkillHost` enum. As-shipped variants (six, alphabetised by JSON key): `ClaudeCode`, `Codex`,
+  `Cursor`, `Factory`, `Kiro`, `Opencode` (with `#[value(rename_all = "snake_case")]` so surface names match
+  `skill.json` keys verbatim — note `opencode`, not `open_code`; `factory` and `kiro` were added during implementation
+  via the upstream `agentnative-site#53` PR before the codegen refactor landed). Unknown hosts are rejected by clap with
+  exit 2 and a list of accepted values in the error message.
 - **R6a.** Tilde expansion of the destination template happens before `Command::new("git")` exec, via
   `std::env::var("HOME")` directly — no `home`/`dirs` crate dep. A leading `~` or `~/` is replaced with `$HOME`;
   templates not starting with `~` or `~/` pass through unchanged (pure-function shape — the v1 hardcoded map only ever
@@ -86,14 +151,25 @@ to re-justify its own hardening from scratch.
   matches `expand_tilde_no_tilde_passthrough` in the eng-review test plan). `$HOME` unset or empty →
   `AppError::MissingHome`, but only when expansion is actually attempted (input begins with `~`).
 - **R6c.** The `git clone` invocation runs with sanitized environment and explicit config flags, captured as named
-  constants in `src/skill_install.rs`. `GIT_HARDEN_FLAGS: &[&str]` holds five `-c key=value` pairs: `credential.helper=`
-  (empty), `core.askPass=` (empty), `protocol.allow=https-only`, `http.followRedirects=false`, and
-  `url.https://github.com/brettdavies/agentnative-skill.insteadOf=` (empty). `GIT_HARDEN_ENV_REMOVE: &[&str]` lists
-  seven environment variables removed via `Command::env_remove`: `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_SSH`,
-  `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`. Do NOT call `env_clear()` — it strips PATH and
-  breaks `git`'s helper resolution. Additionally, `GIT_TERMINAL_PROMPT=0` is **set** (not removed) on the spawned
-  process — git's default-when-unset is to prompt, which is the wrong default for a non-interactive subcommand. This is
-  the explicit correction over the original plan, which only listed env vars to remove. Tests assert each list is
+  constants in `src/skill_install.rs`. Three tables make up the surface (as-shipped — see "Document Review
+  (implementation revision, 2026-04-30)" for the two corrections relative to the eng-review wording):
+- `GIT_HARDEN_FLAGS: &[&str]` holds five `-c key=value` pairs: `credential.helper=` (empty), `core.askPass=` (empty),
+  `protocol.allow=never`, `protocol.https.allow=always`, and `http.followRedirects=false`. The default-deny +
+  per-protocol-allow pair is the documented git-config form for "HTTPS only" — the eng-review's
+  `protocol.allow=https-only` shorthand is **not** valid git syntax (`fatal: unknown value`).
+- `GIT_HARDEN_ENV_REMOVE: &[&str]` lists five environment variables removed via `Command::env_remove`: `GIT_SSH`,
+  `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`. The `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM`
+  pair is **not** in this list — `env_remove` would let git fall back to `$HOME/.gitconfig` and `/etc/gitconfig`,
+  defeating the intent. Those two are routed through `GIT_HARDEN_ENV_SET` instead.
+- `GIT_HARDEN_ENV_SET: &[(&str, &str)]` lists three env vars *set* on the spawned process:
+  `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and `GIT_TERMINAL_PROMPT=0`. The
+  `GIT_CONFIG_*=/dev/null` pair is the actual defense against user-config `insteadOf` URL-rewriting — it forces git to
+  read no global/system config at all. The eng-review's `-c url.<repo>.insteadOf=` flag was dropped: with an empty value
+  it does the *opposite* of blocking (it rewrites every empty-prefix URL to start with `<repo>`, doubling the clone URL
+  into a 404). `GIT_TERMINAL_PROMPT=0` blocks credential prompts; git's default-when-unset is to prompt, which is the
+  wrong default for a non-interactive subcommand.
+
+  Do NOT call `env_clear()` — it strips PATH and breaks git's helper resolution. Tests assert each table is
   non-empty and contains the expected entries by string match (no regex, no parsing).
 - **R9.** Destination conflict check, run after `fs::canonicalize` of the resolved destination (defends against the
   symlinked-skills-dir case where the parent skills directory itself is a symlink, per F4): reject if the dest exists as
@@ -141,8 +217,8 @@ to re-justify its own hardening from scratch.
   users surface real needs.
 - No automatic update check. `agentnative-skill/bin/check-update` runs out of the installed bundle; `anc` does not
   shadow it.
-- No skill-content vendoring or embedding. `anc` does not ship the bundle. The vendored `tests/fixtures/skill.json` is a
-  CI drift anchor only — no production code path reads it.
+- No skill-content vendoring or embedding. `anc` does not ship the bundle. The vendored `src/skill_install/skill.json`
+  is the build-time codegen input + CI drift anchor only — no production code path reads it at runtime.
 - No `--refresh`, no HTTPS fetch, no JSON parsing in production code. The host map is compile-time Rust.
 - No `--path` override in v1. The hardcoded map's destinations match the site contract; users who need a custom location
   run `git clone` manually (and `--help` documents that escape hatch per F5).
@@ -174,16 +250,17 @@ to re-justify its own hardening from scratch.
 - `src/error.rs` — existing `AppError` enum. New variants (`MissingHome`, `GitNotFound`, `GitCloneFailed { code: i32 }`,
   `DestIsFile`, `DestNotEmpty`, `DestReadFailed`) follow the existing typed-variant pattern with the same `thiserror`
   derives.
-- `tests/fixtures/` — vendored fixtures pattern. The new `skill.json` fixture mirrors the existing spec-vendor shape
-  (`src/principles/spec/`) but lives under `tests/` because no production code reads it.
+- `src/principles/spec/` — vendored content used as a build input by `build.rs`. The new `src/skill_install/skill.json`
+  mirrors that pattern: vendored under `src/` (not `tests/`, which `Cargo.toml` excludes from the package) so
+  `build.rs::emit_skill_hosts` can read it at compile time.
 - `scripts/sync-spec.sh` — sync-script precedent. `scripts/sync-skill-fixture.sh` mirrors its shape and adds a `--check`
   mode (matches `anc generate coverage-matrix --check`).
 
 ### Institutional Learnings
 
-- The "vendored fixture + CI drift check" pattern is already proven by the spec-vendor work
-  (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`). Reuse the structure, narrowed: this fixture is test-only, not
-  build-input.
+- The "vendored fixture + build-time codegen + CI drift check" pattern is already proven by the spec-vendor work
+  (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`). The same shape applies here: the fixture is the build input,
+  codegen emits Rust source, and `--check` mode in the sync script is the drift gate against upstream.
 - Search `docs/solutions/` at execution time for `Command::new`, `git clone`, `tilde expansion`, `env sanitization`,
   `clap ValueEnum`, `output envelope` — surface any prior decisions before committing.
 - Verified during planning: `agentnative-skill/bin/check-update` curls `raw.githubusercontent.com` for `VERSION` and
@@ -192,8 +269,9 @@ to re-justify its own hardening from scratch.
 
 ### External References
 
-- `agentnative-site/src/data/skill.json` — canonical host map. The fixture mirrors this; the Rust map is hand-maintained
-  to match.
+- `agentnative-site/src/data/skill.json` — canonical host map upstream. `scripts/sync-skill-fixture.sh` vendors it into
+  `src/skill_install/skill.json`; `build.rs::emit_skill_hosts` consumes the vendored copy and emits the Rust map
+  automatically. No hand-maintained Rust to keep in sync.
 - `agentnative-site/src/build/skill.mjs` — site-side schema validator. Informational reference; not consumed here.
 - `agentnative-skill/bin/check-update` — existing release-tag-based update flow.
 - gstack's `hosts/<name>.ts` files (`~/dev/agent-skills/gstack/hosts/`) — informational reference for a future
@@ -203,10 +281,12 @@ to re-justify its own hardening from scratch.
 
 ## Key Technical Decisions
 
-- **D1-revisited (B): hardcoded Rust host map.** The host map is `(SkillHost, &'static str url, &'static str
-  dest_template)` triples in `src/skill_install.rs`. No JSON contract at runtime, no fetch, no allowlist. Drops ~30
-  transitive deps and the live-fetch threat surface. Freshness model: re-vendor `tests/fixtures/skill.json`, update the
-  Rust map to match, cut a patch release. CI fails on drift.
+- **D1-revisited (B): build-time codegen host map.** The host map (`SkillHost` enum, `KNOWN_HOSTS` const, `resolve_host`
+  fn, `host_envelope_str` fn) is generated by `build.rs::emit_skill_hosts` from `src/skill_install/skill.json` into
+  `$OUT_DIR/generated_hosts.rs`; `src/skill_install.rs` `include!`s it. No JSON contract at runtime, no fetch, no
+  allowlist. Drops ~30 transitive deps and the live-fetch threat surface. Freshness model: re-vendor
+  `src/skill_install/skill.json` (or run `bash scripts/sync-skill-fixture.sh`) and rebuild — the Rust map regenerates
+  automatically. CI fails on drift between the fixture and the upstream site contract.
 - **D2 (B): `--dry-run` (not `--print`) for P5; `--output {text,json}` for P2.** The original `--print` flag was
   scope-creep dressed as security; `--dry-run` is the standard CLI verb for "show me what would happen", and `--output
   json` is the agent-native-spec compliance gate this repo ships against. Both apply to the live install path —
@@ -216,8 +296,10 @@ to re-justify its own hardening from scratch.
 - **C1: always JSON envelope.** In `--output json` mode, stdout has structured JSON for both success and error. The
   `status` field distinguishes; `reason` is a typed identifier on error. Stderr is reserved for human prose only and is
   not parsed by callers.
-- **T1: vendored fixture + `--check` mode.** `tests/fixtures/skill.json` + `scripts/sync-skill-fixture.sh --check` is
-  the drift anchor. CI runs the check on every PR. Drift becomes a CI failure, not a user surprise.
+- **T1: vendored fixture + `--check` mode.** `src/skill_install/skill.json` + `scripts/sync-skill-fixture.sh --check` is
+  the drift anchor between the binary and the upstream site contract. CI runs the check on every PR. Drift becomes a CI
+  failure, not a user surprise. (Initially landed at `tests/fixtures/skill.json` as a test-only fixture; moved into
+  `src/` during the codegen refactor so `build.rs` can read it as a build input.)
 - **OV1 (override of D2): `--output json` applies on the live install path.** Earlier draft silently ignored `--output`
   outside dry-run; OV1 surfaced this as a P2 violation. The envelope wraps every outcome.
 - **OV2 (sustain A1): single-file module placement stands.** The Outside Voice subagent challenged it; rejected for the
@@ -234,11 +316,17 @@ to re-justify its own hardening from scratch.
 
 - **Skill source** → not embedded as content. `anc skill install` shells out to `git clone`; the bundle ships
   independently.
-- **Map source** → hardcoded Rust constants. The fixture is a CI drift anchor, not a runtime resource.
-- **Drift handling** → CI-enforced. `scripts/sync-skill-fixture.sh --check` fails on drift between the fixture and the
-  Rust map.
-- **Hosts at launch** → `claude_code`, `codex`, `cursor`, `opencode`. New hosts ship via `anc` patch release after the
-  site updates `skill.json`. `--help` documents the manual `git clone` fallback for users on a too-old `anc`.
+- **Map source** → build-time codegen. `build.rs::emit_skill_hosts` parses `src/skill_install/skill.json` at compile
+  time and emits `SkillHost` / `KNOWN_HOSTS` / `resolve_host` / `host_envelope_str` into `$OUT_DIR/generated_hosts.rs`.
+  No JSON parsing in production; no fetch; no allowlist. *(Initially settled as hand-maintained Rust constants;
+  refactored to codegen on 2026-04-30 — see "Document Review (codegen refactor)" subsection.)*
+- **Drift handling** → CI-enforced. `scripts/sync-skill-fixture.sh --check` fails on drift between the vendored fixture
+  and the upstream `agentnative-site/src/data/skill.json`. Drift between the fixture and the Rust map is structurally
+  impossible after the codegen refactor (both single-source from the same JSON within a single build).
+- **Hosts at launch** → six: `claude_code`, `codex`, `cursor`, `factory`, `kiro`, `opencode`. *(`factory` and `kiro`
+  added on 2026-04-30 via the upstream `agentnative-site#53` PR before the codegen refactor; the planning-time list
+  named four.)* New hosts ship via `anc` patch release after the site updates `skill.json`; `--help` documents the
+  manual `git clone` fallback for users on a too-old `anc`.
 - **Output format default** → `text` (matches existing `anc check` default). `json` is opt-in.
 
 ### Deferred to Implementation
@@ -272,7 +360,7 @@ flowchart TD
     D -->|yes| E["emit_result text or json with mode=dry-run, would_succeed"]
     D -->|no| F["check_destination canonicalize + R9 conflict check"]
     F -->|conflict| G["emit_result with status=error, typed reason"]
-    F -->|ok| H["build_clone_command url, dest with R6c GIT_HARDEN_FLAGS + ENV_REMOVE + GIT_TERMINAL_PROMPT=0"]
+    F -->|ok| H["build_clone_command url, dest with R6c GIT_HARDEN_FLAGS + ENV_REMOVE + ENV_SET"]
     H --> I["Command spawn git clone, capture exit code"]
     I -->|git missing| Z2["AppError::GitNotFound -> reason=git-not-found"]
     I -->|nonzero exit| Z3["AppError::GitCloneFailed -> reason=git-clone-failed"]
@@ -292,17 +380,26 @@ flowchart TD
 - Modify: `src/main.rs` (add `Commands::Skill` arm in `run()` dispatching to `skill_install::run_install`).
 - Modify: `src/error.rs` (add `MissingHome`, `GitNotFound`, `GitCloneFailed { code: i32 }`, `DestIsFile`,
   `DestNotEmpty`, `DestReadFailed` variants).
-- Create: `tests/fixtures/skill.json` (vendored copy of `agentnative-site/src/data/skill.json`).
+- Create: `src/skill_install/skill.json` (vendored copy of `agentnative-site/src/data/skill.json`; build-time codegen
+  input).
+- Modify: `build.rs` — add `emit_skill_hosts` to read the JSON and emit `$OUT_DIR/generated_hosts.rs`. Add `serde_json`
+  to `[build-dependencies]`.
 - Create: `scripts/sync-skill-fixture.sh` (with `--check` mode mirroring `anc generate coverage-matrix --check`).
 - Modify: existing CI workflow YAML — add a step running `scripts/sync-skill-fixture.sh --check` on every PR.
 
 **Module shape (`src/skill_install.rs`):**
 
-- `pub enum SkillHost { ClaudeCode, Codex, Cursor, Opencode }` with `clap::ValueEnum` derive, `#[value(rename_all =
-  "snake_case")]` so surface names match `skill.json` keys verbatim.
-- `pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "opencode"];`
+- `pub enum SkillHost { ClaudeCode, Codex, Cursor, Factory, Kiro, Opencode }` with `clap::ValueEnum` derive,
+  `#[value(rename_all = "snake_case")]` so surface names match `skill.json` keys verbatim. *Generated by
+  `build.rs::emit_skill_hosts` from `src/skill_install/skill.json` into `$OUT_DIR/generated_hosts.rs`; consumed via
+  `include!` in `src/skill_install.rs` — no hand-maintained variant list.*
+- `pub const KNOWN_HOSTS: &[&str] = &["claude_code", "codex", "cursor", "factory", "kiro", "opencode"];` *(also
+  generated; sorted by JSON key)*.
 - `pub const GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (R6c).
-- `pub const GIT_HARDEN_ENV_REMOVE: &[&str]` — seven env vars (R6c).
+- `pub const GIT_HARDEN_ENV_REMOVE: &[&str]` — five env vars (R6c).
+- `pub const GIT_HARDEN_ENV_SET: &[(&str, &str)]` — three env-var pairs (R6c). The
+  `GIT_CONFIG_GLOBAL=/dev/null`/`GIT_CONFIG_SYSTEM=/dev/null` pair disables ambient git config; `GIT_TERMINAL_PROMPT=0`
+  blocks credential prompts.
 - `fn resolve_host(host: SkillHost) -> (&'static str, &'static str)` — returns `(url, dest_template)`.
 - `fn expand_tilde(template: &str) -> Result<PathBuf, AppError>` — reads `$HOME` via `std::env::var`; replaces leading
   `~` or `~/` with `$HOME`; passes other paths through unchanged (R6a passthrough contract — pure function, errors only
@@ -310,8 +407,8 @@ flowchart TD
 - `fn check_destination(path: &Path) -> Result<DestinationStatus, AppError>` — canonicalize + R9 conflict check; returns
   `DestinationStatus` (`Absent`/`EmptyDir`/`NonEmptyDir`/`File`) for the envelope, errors on conflict.
 - `fn build_clone_command(url: &str, dest: &Path) -> Command` — pure constructor; applies `GIT_HARDEN_FLAGS`,
-  `env_remove` per `GIT_HARDEN_ENV_REMOVE`, sets `GIT_TERMINAL_PROMPT=0`. Pure-function shape enables unit-test
-  introspection without spawning.
+  `env_remove` per `GIT_HARDEN_ENV_REMOVE`, and `env` per each `GIT_HARDEN_ENV_SET` entry. Pure-function shape enables
+  unit-test introspection without spawning.
 - `fn run_install(host: SkillHost, dry_run: bool, output: OutputFormat) -> Result<i32, AppError>` — orchestrates the
   pipeline above.
 - `fn emit_result_text(...)` and `fn emit_result_json(...)` per R-OUT.
@@ -342,11 +439,15 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 8. **[Unit]** `check_destination` on a regular file → `Err(AppError::DestIsFile)`.
 9. **[Unit]** `check_destination` follows symlinks via canonicalize — symlink to non-empty dir → `Err(DestNotEmpty)`.
 10. **[Unit]** `build_clone_command` introspection: every flag in `GIT_HARDEN_FLAGS` appears in the constructed args;
-    every env var in `GIT_HARDEN_ENV_REMOVE` is in the removal set; `GIT_TERMINAL_PROMPT=0` is in the env-set list.
+    every env var in `GIT_HARDEN_ENV_REMOVE` is in the removal set; every `(key, value)` pair in `GIT_HARDEN_ENV_SET` is
+    in the env-set list (including `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and
+    `GIT_TERMINAL_PROMPT=0`).
 11. **[Unit]** `KNOWN_HOSTS` matches `SkillHost` variant count and names exactly.
-12. **[Unit]** `host_map_matches_site_skill_json` — drift anchor. Loads `tests/fixtures/skill.json` and asserts each
-    Rust-map `(url, dest_template)` resolves to the fixture's `install.<host>` value verbatim. Fails in `cargo test`
-    before push, complementing the script-based CI gate (test 26).
+12. **[Unit, deleted]** `host_map_matches_site_skill_json` — was the cargo-level drift anchor between the
+    hand-maintained Rust map and the vendored fixture. Provably redundant after the build.rs codegen refactor (the Rust
+    map and the fixture are now single-sourced from `src/skill_install/skill.json`); deleted with a documenting note in
+    `mod tests`. Test 1 picks up the regression-catch role: it parses the fixture and asserts each `resolve_host` pair
+    matches the JSON-derived `(url, dest_template)`, which would also catch a buggy `build.rs` codegen.
 13. **[Integration]** `anc skill install --dry-run claude_code --output text` writes a single-line `git clone …` command
     to stdout, exits 0.
 14. **[Integration]** `anc skill install --dry-run claude_code --output json` writes the envelope with `mode:
@@ -377,8 +478,9 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 25. **[Dogfood — CRITICAL]** `anc check . --output json` on this repo shows no FAIL on `p2-*` for the new verb. Without
     this, the dogfood claim breaks.
 26. **[CI drift gate]** `scripts/sync-skill-fixture.sh --check` exits 0 on a clean tree, non-zero when
-    `tests/fixtures/skill.json` drifts from the upstream `agentnative-site/src/data/skill.json`. CI runs the check on
-    every PR (per F3). Test 12 is the cargo-level companion that catches drift between the Rust map and the fixture.
+    `src/skill_install/skill.json` drifts from the upstream `agentnative-site/src/data/skill.json`. CI runs the check on
+    every PR (per F3). After the codegen refactor, this is the only remaining drift surface — Rust map vs fixture drift
+    is structurally impossible because both derive from the same JSON at build time.
 
 **Verification:**
 
@@ -403,10 +505,11 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
   clone` fallback **explicitly** (per F5) so future agents and users see the escape hatch when the site adds a host
   between `anc` releases.
 - Modify: `RELEASES.md` — add a row under the pre-release checklist: `bash scripts/sync-skill-fixture.sh && git diff
-  tests/fixtures/skill.json` to surface drift before tag (mirrors the spec-vendor step).
+  src/skill_install/skill.json` to surface upstream drift before tag (mirrors the spec-vendor step).
 - Modify: `CLAUDE.md` — short paragraph on the hardcoded-map model, the named-const hardening surface
-  (`GIT_HARDEN_FLAGS`/`GIT_HARDEN_ENV_REMOVE`/`GIT_TERMINAL_PROMPT=0`), and the CI drift check, so future agents
-  understand the contract without re-deriving it.
+  (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET` — the latter holding the
+  `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and `GIT_TERMINAL_PROMPT=0` triple), and the CI drift
+  check, so future agents understand the contract without re-deriving it.
 - Modify: `AGENTS.md` if present — same content as CLAUDE.md, audience-appropriate.
 
 **Patterns to follow:** existing spec-vendor entries in `RELEASES.md` and `CLAUDE.md`.
@@ -419,8 +522,10 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 
 ## System-Wide Impact
 
-- **Interaction graph:** new module `src/skill_install.rs`. Touched files: `src/cli.rs`, `src/main.rs`, `src/error.rs`.
-  No existing module's behavior changes.
+- **Interaction graph:** new module `src/skill_install.rs`; new build-input `src/skill_install/skill.json`; codegen hook
+  in `build.rs::emit_skill_hosts`. Touched files: `src/cli.rs`, `src/main.rs`, `src/error.rs`, `Cargo.toml` (build-dep
+  `serde_json` + dev-dep `tempfile`), `scripts/sync-skill-fixture.sh` (new), CI workflow
+  `.github/workflows/skill-fixture-drift.yml` (new). No existing module's behavior changes.
 - **Error propagation:** six new `AppError` variants surface via the existing `thiserror`/`Display` plumbing. All
   surface via the existing `--output` and exit-code conventions.
 - **State lifecycle risks:** `git clone` writes to disk. R9 prevents accidental overwrite. Cleanup remains the user's
@@ -442,25 +547,25 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Symlink at the destination redirects `git clone` to a sensitive system path.                              | `fs::canonicalize` in `check_destination` (R9) resolves symlinks before the conflict check (per F4). TOCTOU window between check and exec acknowledged as residual single-user-machine risk; `git clone` itself errors on a non-empty target as backstop.                                                                                            |
 | Tilde-prefixed destinations from the hardcoded map not expanded by `Command::new("git")`.                 | R6a explicitly tilde-expands `~`/`~/` to `$HOME` via `std::env::var("HOME")` before validation and exec. `MissingHome` is a typed error, not a panic. Test fixture (Test 2) exercises every host's canonical path end-to-end.                                                                                                                        |
-| `git clone` env / config subversion via ambient git config or env vars.                                   | R6c named-const hardening: `GIT_HARDEN_FLAGS` (5 `-c` pairs) + `GIT_HARDEN_ENV_REMOVE` (7 env vars) + `GIT_TERMINAL_PROMPT=0` set. Tests assert each list contains the expected entries by string match. `Command::new("git").args([...])` only — never `sh -c`.                                                                                     |
+| `git clone` env / config subversion via ambient git config or env vars.                                   | R6c named-const hardening: `GIT_HARDEN_FLAGS` (5 `-c` pairs) + `GIT_HARDEN_ENV_REMOVE` (5 vars) + `GIT_HARDEN_ENV_SET` (3 pairs — `GIT_CONFIG_*=/dev/null` disables user-config; `GIT_TERMINAL_PROMPT=0`). `Command::args([...])` only — never `sh -c`.                                                                                              |
 | Supply-chain compromise of `agentnative-skill` repo — rolling-`main` distribution executes attacker code. | Acknowledged residual risk. The producer's update model is rolling `main`; pinning would defeat the bundle's own freshness loop. `--dry-run` lets users inspect the resolved command before running. Future `anc skill install --verify` could compare cloned `HEAD` against an advisory `verify.expected` and warn on drift; deferred to follow-up. |
 | `agentnative-skill` repo is renamed or moved to a different owner.                                        | Hardcoded URL update + `anc` patch release. Drift window is bounded by release cadence. Users on too-old `anc` see the manual `git clone` fallback documented in `--help` and `README` (per F5).                                                                                                                                                     |
-| User installs into a location their host doesn't actually scan.                                           | The hardcoded destinations match the site contract. If a path is wrong, fix it in `agentnative-site/src/data/skill.json`, sync the fixture, update the Rust map, ship a patch. `--dry-run` lets users see the resolved path before exec.                                                                                                             |
+| User installs into a location their host doesn't actually scan.                                           | Hardcoded destinations match the site contract. If a path is wrong, fix `agentnative-site/src/data/skill.json`, sync the fixture; the Rust map regenerates on build. `--dry-run` lets users see the resolved path before exec.                                                                                                                       |
 | Site adds a host between `anc` releases (e.g., a new agent CLI ships).                                    | `--help` documents the manual `git clone` fallback explicitly (per F5). The hardcoded map updates via patch release on the next cycle. CI drift check (`scripts/sync-skill-fixture.sh --check`) flags fixture drift the moment the site lands a change, so the gap window is surfaced loudly to maintainers.                                         |
-| Hardcoded Rust map drifts from `tests/fixtures/skill.json` and the canonical site copy.                   | `scripts/sync-skill-fixture.sh --check` is CI-enforced on every PR (per F3). Pre-release checklist runs the sync + diff (per U2). Drift fails CI loudly, not users silently.                                                                                                                                                                         |
+| Codegen-derived host map drifts from upstream site (`src/data/skill.json`).                               | `scripts/sync-skill-fixture.sh --check` is CI-enforced on every PR (per F3). Within a build, fixture and Rust map cannot drift relative to each other — both single-sourced from `src/skill_install/skill.json`. Pre-release checklist runs the sync + diff (per U2).                                                                                |
 
 ---
 
 ## Documentation / Operational Notes
 
-- Pre-release checklist gains one step: `bash scripts/sync-skill-fixture.sh && git diff tests/fixtures/skill.json`
+- Pre-release checklist gains one step: `bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json`
   (mirrors the spec-vendor step).
 - README's "Install" section grows by ~10 lines, plus an explicit one-liner showing the manual `git clone` fallback for
   hosts not yet in the binary's map.
 - `--help` text for `anc skill install` documents the manual fallback so users on older `anc` versions are not stranded
   when the site adds a host.
-- A post-launch issue tracks real-world host requests; once 2–3 land, re-vendor the fixture and update the map in a
-  patch release.
+- A post-launch issue tracks real-world host requests; once 2–3 land, re-vendor the fixture (the codegen picks up the
+  new entries automatically on next build) and ship a patch release.
 
 ---
 
@@ -583,14 +688,98 @@ alternative each decision rejected.
   documents the dogfood rationale honestly. The bash path delivers the install UX for ~5% of the cost; the binary path
   exercises P2 + P5 on `anc`'s own surface and shares a future trust boundary.
 
+### Document Review (implementation revision, 2026-04-30)
+
+Pre-merge manual smoke (item 6 in the handoff's checklist) caught two bugs in the eng-review's R6c hardening surface
+that introspection-only tests could not see — both surface only when an actual `git` binary parses the args. The body of
+this plan is updated to reflect the as-shipped surface; this subsection captures *why* each correction was needed so
+future readers don't re-introduce the originals.
+
+- **`protocol.allow=https-only` is not valid git syntax.** `git` rejects it with `fatal: unknown value for config
+  'protocol.allow': https-only` and aborts the clone. The HTTPS-only intent is expressed correctly as a default-deny +
+  per-protocol-allow pair (the documented git-config form): `-c protocol.allow=never -c protocol.https.allow=always`.
+  This replaces the single `-c` pair the eng-review wording proposed. `GIT_HARDEN_FLAGS` count stays at 5 because the
+  existing `url.<repo>.insteadOf=` pair was simultaneously dropped (see below).
+
+- **`-c url.<repo>.insteadOf=` (empty value) does the *opposite* of blocking.** git's `url.<base>.insteadOf=<value>`
+  directive rewrites URLs starting with `<value>` to start with `<base>`. With an empty `<value>`, every URL matches the
+  empty prefix, so all URLs are rewritten to start with `<base>`, doubling the clone URL into `<repo><repo>/` which
+  404s. The flag was dropped entirely. The actual defense against user-config `insteadOf` URL-rewriting is to disable
+  user-controlled git config wholesale, which `env_remove` cannot achieve (git falls back to default config paths when
+  `GIT_CONFIG_*` are unset). The fix routes those two vars through a new `GIT_HARDEN_ENV_SET` table with
+  `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` — pointing both at `/dev/null` forces git to read no
+  global/system config at all. `GIT_TERMINAL_PROMPT=0` moves into the same table for symmetry.
+
+- **`GIT_HARDEN_ENV_REMOVE` shrinks from 7 to 5 entries.** `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` move to
+  `GIT_HARDEN_ENV_SET` for the reason above. The remaining five (`GIT_SSH`, `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND`,
+  `GIT_ASKPASS`, `GIT_EXEC_PATH`) keep their original semantics: user-controlled overrides we want to ignore via
+  `Command::env_remove`.
+
+Verification (post-fix):
+
+- `cargo test`: 520 tests pass; test 10 introspects all three tables and the constructed `Command`.
+- `cargo test -- --ignored skill_install`: live e2e clones the upstream skill bundle into a tempdir successfully.
+- Manual smoke: `HOME=/tmp/anc-skill-smoke anc skill install claude_code` → exit 0, `.git/HEAD` written; rerun →
+  envelope `status: error`, `reason: destination-not-empty`, exit 1 (R9 honored).
+
+### Document Review (codegen refactor, 2026-04-30)
+
+Follow-up on the same day. The original plan called for a hand-maintained Rust host map kept in lockstep with the
+vendored fixture via test 12 (`host_map_matches_site_skill_json`). User direction during the host expansion (4 → 6 to
+add Factory Droid and Kiro) was to eliminate the manual edit class entirely. Outcome:
+
+- **Fixture moved:** `tests/fixtures/skill.json` → `src/skill_install/skill.json`. `tests/` is in `Cargo.toml`'s
+  `exclude` list (so it ships nothing to crates.io); `src/` is not. The new path is inside the cargo package, available
+  to `build.rs`.
+- **Codegen added:** `build.rs::emit_skill_hosts` parses the JSON, validates each install command tokenises as `git
+  clone --depth 1 <url> <dest>` (mirroring the site emitter's validation), and writes `$OUT_DIR/generated_hosts.rs` with
+  the `SkillHost` enum (PascalCase variants of snake_case JSON keys), the `KNOWN_HOSTS` const, `resolve_host`, and
+  `host_envelope_str`. `cargo:rerun-if-changed` invalidates the build cache on JSON changes.
+- **Hand-written code shrinks:** `src/skill_install.rs` replaces four hand-maintained items (`SkillHost`, `KNOWN_HOSTS`,
+  `resolve_host`, `host_envelope_str`) with one `include!` line. The hardening tables, orchestrator, envelope struct,
+  and tests remain hand-written. `SKILL_REPO_URL` const is removed; tests read the URL via
+  `resolve_host(SkillHost::ClaudeCode).0` so there's no parallel hardcoded constant to drift.
+- **Test 12 deleted as provably redundant.** Both the Rust map and the fixture are now single-sourced from
+  `src/skill_install/skill.json`. They cannot drift relative to each other within a single build because
+  `cargo:rerun-if-changed` forces regeneration on any JSON edit. The note left in `mod tests` documents the deletion
+  rationale so a future reader can tell the absence is intentional.
+- **Drift between fixture and upstream still gated.** `scripts/sync-skill-fixture.sh --check` (CI workflow
+  `skill-fixture-drift.yml`) is unchanged — it still catches drift between `src/skill_install/skill.json` and
+  `agentnative-site/src/data/skill.json` on every PR.
+
+Net effect: adding a host is a single-file edit (or `bash scripts/sync-skill-fixture.sh`). The 4 → 6 expansion that
+triggered this refactor (`factory`, `kiro`) flowed through the same path: the upstream PR (`agentnative-site#53` —
+`feat(skill): add factory and kiro hosts to install map`) merged to `dev`, then a single sync-script invocation here
+pulled in the new entries and `cargo build` regenerated the Rust map.
+
+Verification (post-codegen):
+
+- `cargo test`: 519 tests pass (one fewer than pre-codegen because test 12 was deleted). Test 1 now drives off
+  `KNOWN_HOSTS`, automatically extending coverage as the fixture grows.
+- `cargo clippy --all-targets -- -Dwarnings`: clean.
+- Manual smoke: `HOME=/tmp/anc-factory-smoke anc skill install factory` → exit 0, `.git/HEAD` written at
+  `~/.factory/skills/agent-native-cli`. Same shape verified for the 5 other hosts via `--dry-run`. `--help` enumerates
+  all 6 possible values.
+
+The eng-review verdict and Plan Rewrite Brief sections below are left unchanged — they document the decision lineage at
+the time of the SCOPE_REDUCED rewrite, before this implementation revision. The plan body above is the as-shipped
+contract.
+
 ### Pattern Documentation Note
 
-The `--dry-run` / `--output {text,json}` / "JSON envelope on success and error" pattern is enforced project-wide. After
-implementation lands, write `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-<date>.md` via
-`/ce-compound` capturing the as-shipped envelope schema. A separate follow-up plan proposes new SHOULDs to
-`agentnative-spec` (P2: `output-applies-to-every-subcommand`, `json-envelope-on-error`,
-`output-envelope-schema-uniform`; P4: `json-error-includes-typed-reason`) and adds matching source checks to the
-registry.
+The `--dry-run` / `--output {text,json}` / "JSON envelope on success and error" pattern is enforced project-wide. Two
+follow-ups were named when this plan landed, tracked here for visibility:
+
+1. **Spec follow-up plan — done.** [`docs/plans/2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md`] proposes four
+   new SHOULDs to `agentnative-spec` (P2 `output-applies-to-every-subcommand`, P2 `json-envelope-on-error`, P2
+   `output-envelope-schema-uniform`, P4 `json-error-includes-typed-reason`) plus matching behavioral checks in this
+   repo's registry. Plan written 2026-04-30; not yet implemented.
+2. **Solutions doc — done.** Refreshed in place at
+   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` (committed in solutions-docs on
+   2026-04-30 via `/ce-compound`). The placeholder authored during planning was folded forward with as-shipped reality:
+   the two manual-smoke `git` flag corrections (`protocol.allow=https-only` invalid syntax, `url.<repo>.insteadOf=`
+   reverse-direction), the three named-const hardening tables, the build.rs codegen architecture, field-presence rules
+   with `skip_serializing_if`, the table-driven exit-code matrix, and per-ID dogfood guards as the enforcement surface.
 
 ## GSTACK REVIEW REPORT
 

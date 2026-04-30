@@ -48,6 +48,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use clap::ValueEnum;
 
@@ -242,6 +243,41 @@ pub fn check_destination(path: &Path) -> Result<DestinationStatus, AppError> {
     Err(AppError::DestIsFile { path: canonical })
 }
 
+/// Build the hardened `git clone` command. Pure constructor — no spawn, no
+/// I/O. The returned `Command` carries the full hardening surface:
+///
+/// 1. `GIT_HARDEN_FLAGS` applied as `-c key=value` pairs *before* the
+///    `clone` subcommand (git's required position for top-level `-c`).
+/// 2. `GIT_HARDEN_ENV_REMOVE` entries removed via `env_remove`.
+/// 3. `GIT_TERMINAL_PROMPT=0` set on the spawned process so git never
+///    prompts for input.
+///
+/// `--depth 1` is included to match the canonical install command shipped
+/// in `skill.json`. Verified during planning that `agentnative-skill`'s
+/// `bin/check-update` curls the upstream `VERSION` file and does NOT
+/// require local tag history, so shallow cloning is safe.
+pub fn build_clone_command(url: &str, dest: &Path) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.args(GIT_HARDEN_FLAGS);
+    cmd.args(["clone", "--depth", "1"]);
+    cmd.arg(url);
+    cmd.arg(dest);
+    for var in GIT_HARDEN_ENV_REMOVE {
+        cmd.env_remove(var);
+    }
+    cmd.env(GIT_TERMINAL_PROMPT_KEY, GIT_TERMINAL_PROMPT_VALUE);
+    cmd
+}
+
+/// User-visible representation of the clone command for the JSON envelope's
+/// `command` field and the `--dry-run --output text` single-line output.
+/// Intentionally omits the hardening flags — those are an implementation
+/// detail. The displayed form matches `skill.json`'s `install.<host>`
+/// verbatim, so users can copy-paste-modify as a manual fallback.
+pub fn format_clone_command(url: &str, dest: &Path) -> String {
+    format!("git clone --depth 1 {url} {}", dest.display())
+}
+
 /// Orchestrate the install pipeline: resolve host -> expand tilde -> dry-run
 /// short-circuit / destination check -> hardened spawn -> emit result. Body
 /// is filled in U1.6; cli.rs and main.rs wire to the signature now so the
@@ -420,5 +456,92 @@ mod tests {
 
         let err = check_destination(&link).expect_err("symlinked non-empty dir is DestNotEmpty");
         assert!(matches!(err, AppError::DestNotEmpty { .. }));
+    }
+
+    /// Test 10 — `build_clone_command` introspection. Spawns nothing; reads
+    /// the constructed `Command` via `get_args` / `get_envs`. Pins three
+    /// invariants:
+    ///   1. Every flag in `GIT_HARDEN_FLAGS` appears in the args list.
+    ///   2. Every var in `GIT_HARDEN_ENV_REMOVE` is in the removal set
+    ///      (Some(None) — set with no value means env_remove).
+    ///   3. `GIT_TERMINAL_PROMPT=0` is in the env-set list.
+    /// Also pins the conventional `clone --depth 1 <url> <dest>` shape.
+    #[test]
+    fn build_clone_command_applies_hardening_surface() {
+        let dest = Path::new("/tmp/anc-skill-introspect");
+        let cmd = build_clone_command(SKILL_REPO_URL, dest);
+
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+
+        for &flag in GIT_HARDEN_FLAGS {
+            assert!(
+                args.iter().any(|a| a == flag),
+                "GIT_HARDEN_FLAGS entry {flag:?} missing from command args; got {args:?}",
+            );
+        }
+        assert!(
+            args.iter().any(|a| a == "clone"),
+            "missing 'clone' subcommand: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "--depth"),
+            "missing --depth flag: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == "1"),
+            "missing --depth value: {args:?}"
+        );
+        assert!(
+            args.iter().any(|a| a == SKILL_REPO_URL),
+            "missing url operand: {args:?}",
+        );
+        assert!(
+            args.iter().any(|a| a == "/tmp/anc-skill-introspect"),
+            "missing dest operand: {args:?}",
+        );
+
+        let envs: std::collections::HashMap<String, Option<String>> = cmd
+            .get_envs()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().into_owned(),
+                    v.map(|s| s.to_string_lossy().into_owned()),
+                )
+            })
+            .collect();
+
+        for &var in GIT_HARDEN_ENV_REMOVE {
+            let entry = envs.get(var);
+            assert!(
+                matches!(entry, Some(None)),
+                "GIT_HARDEN_ENV_REMOVE entry {var:?} should be removed; got {entry:?}",
+            );
+        }
+
+        let prompt = envs.get(GIT_TERMINAL_PROMPT_KEY);
+        assert_eq!(
+            prompt,
+            Some(&Some(GIT_TERMINAL_PROMPT_VALUE.to_string())),
+            "GIT_TERMINAL_PROMPT must be set to 0; got {prompt:?}",
+        );
+    }
+
+    /// Sanity: `format_clone_command` produces the canonical user-visible
+    /// form, matching the `install.<host>` strings in `skill.json` once the
+    /// destination template is expanded. Hardening flags are intentionally
+    /// absent — implementation detail.
+    #[test]
+    fn format_clone_command_matches_canonical_shape() {
+        let s = format_clone_command(
+            SKILL_REPO_URL,
+            Path::new("/home/u/.claude/skills/agent-native-cli"),
+        );
+        assert_eq!(
+            s,
+            "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git /home/u/.claude/skills/agent-native-cli",
+        );
     }
 }

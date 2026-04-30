@@ -692,12 +692,16 @@ contract.
 
 ### Pattern Documentation Note
 
-The `--dry-run` / `--output {text,json}` / "JSON envelope on success and error" pattern is enforced project-wide. After
-implementation lands, write `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-<date>.md` via
-`/ce-compound` capturing the as-shipped envelope schema. A separate follow-up plan proposes new SHOULDs to
-`agentnative-spec` (P2: `output-applies-to-every-subcommand`, `json-envelope-on-error`,
-`output-envelope-schema-uniform`; P4: `json-error-includes-typed-reason`) and adds matching source checks to the
-registry.
+The `--dry-run` / `--output {text,json}` / "JSON envelope on success and error" pattern is enforced project-wide. Two
+follow-ups were named when this plan landed, tracked here for visibility:
+
+1. **Spec follow-up plan — done.** [`docs/plans/2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md`] proposes four
+   new SHOULDs to `agentnative-spec` (P2 `output-applies-to-every-subcommand`, P2 `json-envelope-on-error`, P2
+   `output-envelope-schema-uniform`, P4 `json-error-includes-typed-reason`) plus matching behavioral checks in this
+   repo's registry. Plan written 2026-04-30; not yet implemented.
+2. **Solutions doc — pending.** Write `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-<date>.md`
+   via `/ce-compound` capturing the as-shipped envelope schema. Will run after this PR merges so the doc reflects
+   shipped behavior.
 
 ## GSTACK REVIEW REPORT
 

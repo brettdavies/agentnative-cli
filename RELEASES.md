@@ -61,10 +61,29 @@ git log --oneline dev --not origin/main
 # 3. Cherry-pick the ones you want to ship. Docs commits stay on dev.
 git cherry-pick <sha1> <sha2> ...
 
-# 4. Verify no guarded paths leaked through:
-git diff origin/main --stat
-# If anything under docs/plans/, docs/solutions/, or docs/brainstorms/
-# shows up, you cherry-picked a docs commit by mistake — reset and redo.
+# 4. Triple-diff verification — belt-and-suspenders sweep that catches both
+#    directions of drift before the release tag goes out:
+#
+#    A. main → release  (what users will see; the intended ship surface)
+#    B. release → dev   (should be empty for non-doc paths until the
+#                        bump/completions/CHANGELOG commits land, and even
+#                        then should only list those release-prep files —
+#                        anything else is a missed cherry-pick)
+#    C. dev → main      (sanity: phantom commits dev "appears ahead" on
+#                        because cherry-pick rewrites SHAs post-squash)
+git diff origin/main..HEAD --stat                                                # A
+git diff HEAD..origin/dev --name-only | grep -v '^docs/' || echo "(none)"        # B
+git diff origin/dev..origin/main --stat | tail -5                                # C
+#
+# Re-confirm no guarded paths leaked (this caught the original miss class):
+git diff origin/main..HEAD --name-only \
+  | grep -E '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)' \
+  && echo "LEAKED — reset and redo" || echo "(clean — no guarded paths)"
+#
+# If B lists any non-docs path you didn't expect, fetch dev, identify the
+# commit (`git log dev --not origin/main`), cherry-pick it, re-run the
+# triple-diff. Missed cherry-picks have shipped to main on this and sibling
+# repos before — this step is the cheap way to catch them.
 
 # 5. Bump version in Cargo.toml and commit:
 #    sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml

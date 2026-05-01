@@ -8,8 +8,7 @@
   "license": "MIT",
   "source": {
     "type": "git",
-    "url": "https://github.com/brettdavies/agentnative-skill.git",
-    "commit": "47a76cceb8b7b1bc013c19ee18a5e38179b1dd0e"
+    "url": "https://github.com/brettdavies/agentnative-skill.git"
   },
   "install": {
     "claude_code": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.claude/skills/agent-native-cli",
@@ -18,11 +17,6 @@
     "factory": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.factory/skills/agent-native-cli",
     "kiro": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.kiro/skills/agent-native-cli",
     "opencode": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.config/opencode/skills/agent-native-cli"
-  },
-  "verify": {
-    "command": "git -C <install-dir> rev-parse HEAD",
-    "expected": "47a76cceb8b7b1bc013c19ee18a5e38179b1dd0e",
-    "semantics": "advisory freshness probe; mismatch means upstream has moved past the site's pin"
   },
   "update": "cd <install-dir> && git pull --ff-only",
   "uninstall": "rm -rf <install-dir>",

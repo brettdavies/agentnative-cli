@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-05-01
+
+### Added
+
+- Add four scorecard metadata blocks (`tool`, `anc`, `run`, `target`) to `--output json` — identifies the scored tool/version, the `anc` build that produced the scorecard, the user-typed invocation with timestamp and duration, and the resolved target (project / binary / command). by @brettdavies in [#34](https://github.com/brettdavies/agentnative-cli/pull/34)
+- Add `time = "=0.3.47"` dependency for RFC 3339 timestamps in `run.started_at`.
+- Add `anc skill install <host>` subcommand to install the [`agentnative-skill`](https://github.com/brettdavies/agentnative-skill) bundle into a host's canonical skills directory. Six hosts: `claude_code`, `codex`, `cursor`, `factory`, `kiro`, `opencode`. by @brettdavies in [#35](https://github.com/brettdavies/agentnative-cli/pull/35)
+- Add `--dry-run` flag (P5): prints the resolved `git clone` command without spawning. Captures cleanly via `eval $(anc skill install --dry-run <host>)`.
+- Add `--output {text,json}` flag (P2): JSON envelope is uniform across success and error and across dry-run / live install. Typed `reason` on error (`destination-not-empty`, `destination-is-file`, `home-not-set`, `git-not-found`, `git-clone-failed`).
+- `--output text` now appends an agent-native badge embed hint after the summary line when the tool clears the 80% eligibility floor. Below the floor, nothing badge-related is printed (the convention's "do not nag" rule). by @brettdavies in [#36](https://github.com/brettdavies/agentnative-cli/pull/36)
+- `--output json` scorecard now includes a `badge` block (`eligible`, `score_pct`, `embed_markdown`, `scorecard_url`, `badge_url`, `convention_url`). `embed_markdown` is `null` below the floor; `scorecard_url` / `badge_url` are populated whenever a tool slug exists, since the site renders an SVG for every scored tool.
+- `scripts/sync-dev-after-release.sh` — backports `Cargo.toml` `[package].version`, `Cargo.lock`, and `CHANGELOG.md` from `main` to `dev` after a release tag publishes. Surgical (preserves dev's other Cargo.toml lines), idempotent (re-runs are a no-op when dev is already in sync), and signed via the operator's normal commit signing — satisfies `protect-dev`'s `required_signatures` ruleset without needing a CI bot identity. by @brettdavies in [#37](https://github.com/brettdavies/agentnative-cli/pull/37)
+
+### Changed
+
+- Vendoring now always tracks the latest published spec tag — `SPEC_REF` env override removed. Run `bash scripts/sync-spec.sh` to refresh; no environment configuration required. by @brettdavies in [#33](https://github.com/brettdavies/agentnative-cli/pull/33)
+- Bump scorecard `schema_version` from `"0.3"` to `"0.4"` (additive within the documented `0.x` policy — older consumers feature-detect). by @brettdavies in [#34](https://github.com/brettdavies/agentnative-cli/pull/34)
+- Bump `rust-version` from `1.87` to `1.88` (let-chain stabilization).
+- Bumped scorecard `schema_version` from `"0.4"` to `"0.5"`. Pre-`0.5` consumers feature-detect the new `badge` key and continue to work. by @brettdavies in [#36](https://github.com/brettdavies/agentnative-cli/pull/36)
+- `p7-naked-println` source check now exempts `build.rs` at any crate root. Cargo build scripts use `println!("cargo:…")` directives by protocol; flagging them produces noise without an alternative API. Misnamed `src/build.rs` or `tests/build.rs` files stay flagged. by @brettdavies in [#38](https://github.com/brettdavies/agentnative-cli/pull/38)
+- README refreshed for current state: schema 0.5 with `badge` block, `--audit-profile <CATEGORY>` documented under CLI Reference, `target.path` documented as basename-only (PII-safe), refreshed Example Output to match the live 33-check dogfood and the post-summary badge embed hint. by @brettdavies in [#40](https://github.com/brettdavies/agentnative-cli/pull/40)
+- `--output json` scorecard `anc` block no longer includes a `commit` field. `anc.version` (the crate version pin) remains as the build identity. Removed because the per-build Git SHA capture made cached builds fragile (stale SHAs across local commits) without solving any consumer-facing problem — `anc.version` already identifies the released binary unambiguously, and pre-launch no public consumer of `anc.commit` exists. by @brettdavies in [#47](https://github.com/brettdavies/agentnative-cli/pull/47)
+
+### Fixed
+
+- Eliminated four `.unwrap()` calls on infallible operations across `src/skill_install.rs` and `build.rs`. Replaced with `.expect("…")` naming the upstream contract that guarantees `Some`/`Ok`. No behavior change — these were already infallible; the `expect` messages document why. by @brettdavies in [#38](https://github.com/brettdavies/agentnative-cli/pull/38)
+- `target.path` in `anc check --output json` now emits the basename of the resolved target instead of the canonicalized absolute path, eliminating a home-directory / username PII leak that flowed into committed scorecards, badge URLs, and agent-posted artifacts. Project mode emits the directory name (e.g. `"agentnative-cli"`); binary mode emits the file name (e.g. `"anc"`); command mode unchanged at `null`. No schema bump — value semantics changed, schema shape did not. by @brettdavies in [#39](https://github.com/brettdavies/agentnative-cli/pull/39)
+- Corrected cross-repo URLs in `.github/ISSUE_TEMPLATE/` so contact links and agent-filing instructions point at the right repos. Spec repo references switched from `agentnative-cli` to `agentnative`; site repo references switched from `agentnative-cli-site` to `agentnative-site`; the `agentnative-cli-cli` double-suffix typo in agent gh-search guidance was corrected to `agentnative-cli`. Affects `config.yml`, `false-positive.yml`, `feature-request.yml`, `scoring-bug.yml`. by @brettdavies in [#42](https://github.com/brettdavies/agentnative-cli/pull/42)
+
+### Documentation
+
+- `AGENTS.md` and `src/principles/spec/README.md` updated to reflect the simpler vendor flow. by @brettdavies in [#33](https://github.com/brettdavies/agentnative-cli/pull/33)
+- Document the four new top-level objects in README.md, AGENTS.md, and CLAUDE.md, including the publishing-PII review reminder for `run.invocation` and `target.path`. by @brettdavies in [#34](https://github.com/brettdavies/agentnative-cli/pull/34)
+- Add `## Install the skill` section to README with one-line examples per host and the manual `git clone` fallback for hosts not yet in the binary's map. by @brettdavies in [#35](https://github.com/brettdavies/agentnative-cli/pull/35)
+- `RELEASES.md` § "After publish — sync ``dev`` with the release" documents the backport step, supersedes the prior "never back-merged" rule for these three specific files, and points operators at the script. by @brettdavies in [#37](https://github.com/brettdavies/agentnative-cli/pull/37)
+- Add the `[![agent-native](https://anc.dev/badge/anc.svg)](https://anc.dev/score/anc)` badge plus crates.io and license shields at the top of `README.md`. by @brettdavies in [#40](https://github.com/brettdavies/agentnative-cli/pull/40)
+- Trim `.github/ISSUE_TEMPLATE/` to `false-positive`, `feature-request`, `scoring-bug`, plus a new `00-blank.yml` that lets a Blank issue option sit first in the chooser ahead of the structured forms. Spec-side templates (`pressure-test`, `grade-a-cli`, `spec-question`) were duplicates of the spec repo's set from before the rename — they belong on `brettdavies/agentnative` only, and `config.yml` already redirects there.
+- Add `scripts/SYNCS.md` — cross-repo sync map covering every spec/skill/coverage/release data flow with mechanism, payload, trigger, and drift check per edge. Includes a flowchart of inbound/outbound edges, a release-pipeline sequence diagram, and a cadence summary table reducing the system to "automatic vs manual" per sync point. by @brettdavies in [#41](https://github.com/brettdavies/agentnative-cli/pull/41)
+- `RELEASES.md` § "Releasing dev to main" step 4 replaced with a triple-diff verification block (A: main→release, B: release→dev, C: dev→main) plus a `git cherry HEAD origin/dev` patch-id check. The new flow catches both directions of drift before the release tag goes out — guarded paths leaking IN (the original concern) and missed cherry-picks that should have shipped (the new concern). Discovered during v0.3.0 prep when an ad-hoc triple-diff caught 4 `.github/ISSUE_TEMPLATE/*.yml` files that had drifted on `main` since the v0.1.1 squash. by @brettdavies in [#45](https://github.com/brettdavies/agentnative-cli/pull/45)
+- `RELEASES.md` § "Releasing dev to main" step 4 — expanded the `git cherry` patch-id check comment with squash-merge triage guidance (three expected noise sources, what a real miss looks like, and a two-command triage recipe). Discovered during v0.3.0 prep when the check produced 55 noisy `+` lines that all turned out to be expected; the original comment didn't explain that this is normal in a squash-merge workflow. by @brettdavies in [#46](https://github.com/brettdavies/agentnative-cli/pull/46)
+
+**Full Changelog**: [v0.2.0...v0.3.0](https://github.com/brettdavies/agentnative-cli/compare/v0.2.0...v0.3.0)
+
 ## [0.2.0] - 2026-04-29
 
 ### Added

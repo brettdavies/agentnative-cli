@@ -195,29 +195,27 @@ fn discover_binaries(
 fn discover_rust_binaries(dir: &Path, manifest_path: Option<&Path>) -> Vec<PathBuf> {
     let mut bin_names = Vec::new();
 
-    if let Some(manifest) = manifest_path {
-        if let Ok(content) = fs::read_to_string(manifest) {
-            if let Ok(doc) = content.parse::<toml::Table>() {
-                // Check [[bin]] entries
-                if let Some(bins) = doc.get("bin").and_then(|b| b.as_array()) {
-                    for bin in bins {
-                        if let Some(name) = bin.get("name").and_then(|n| n.as_str()) {
-                            bin_names.push(name.to_string());
-                        }
-                    }
-                }
-
-                // Fallback to package name if no [[bin]]
-                if bin_names.is_empty() {
-                    if let Some(name) = doc
-                        .get("package")
-                        .and_then(|p| p.get("name"))
-                        .and_then(|n| n.as_str())
-                    {
-                        bin_names.push(name.to_string());
-                    }
+    if let Some(manifest) = manifest_path
+        && let Ok(content) = fs::read_to_string(manifest)
+        && let Ok(doc) = content.parse::<toml::Table>()
+    {
+        // Check [[bin]] entries
+        if let Some(bins) = doc.get("bin").and_then(|b| b.as_array()) {
+            for bin in bins {
+                if let Some(name) = bin.get("name").and_then(|n| n.as_str()) {
+                    bin_names.push(name.to_string());
                 }
             }
+        }
+
+        // Fallback to package name if no [[bin]]
+        if bin_names.is_empty()
+            && let Some(name) = doc
+                .get("package")
+                .and_then(|p| p.get("name"))
+                .and_then(|n| n.as_str())
+        {
+            bin_names.push(name.to_string());
         }
     }
 
@@ -239,13 +237,13 @@ fn discover_simple_binaries(dir: &Path, subdirs: &[&str]) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for subdir in subdirs {
         let bin_dir = dir.join(subdir);
-        if bin_dir.is_dir() {
-            if let Ok(entries) = fs::read_dir(&bin_dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_file() {
-                        paths.push(p);
-                    }
+        if bin_dir.is_dir()
+            && let Ok(entries) = fs::read_dir(&bin_dir)
+        {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    paths.push(p);
                 }
             }
         }

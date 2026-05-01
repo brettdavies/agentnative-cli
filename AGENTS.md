@@ -28,17 +28,64 @@ anc . --source
 
 # Suppress inapplicable MUSTs for a categorical exception
 anc . --audit-profile human-tui
+
+# Install the companion skill bundle into your host's skills dir
+anc skill install claude_code             # ~/.claude/skills/agent-native-cli
+anc skill install --dry-run codex         # print resolved git command, don't run
+anc skill install factory --output json   # emit envelope on success and error
 ```
 
 Bare `anc` (no arguments) prints help and exits 2. This is a non-negotiable fork-bomb guard: when agentnative dogfoods
-itself, children spawned without arguments must not recurse into `check .`.
+itself, children spawned without arguments must not recurse into `check .`. Bare `anc skill` likewise prints help and
+exits 2.
+
+## Skill install
+
+`anc skill install <host>` clones the `agentnative-skill` bundle into a host's canonical skills directory. Six hosts
+ship at v0.1: `claude_code`, `codex`, `cursor`, `factory`, `kiro`, `opencode`. `--help` enumerates them; the JSON
+envelope's `host` field reports the chosen one verbatim.
+
+Output envelope (`--output json`) is uniform across success and error and across `--dry-run` and live install:
+
+```json
+{
+  "action": "skill-install",
+  "host": "claude_code",
+  "mode": "dry-run",
+  "command": "git clone --depth 1 <url> <dest>",
+  "destination": "<resolved-dest>",
+  "destination_status": "absent",
+  "status": "success",
+  "would_succeed": true
+}
+```
+
+Field-presence rules: `would_succeed` only on `mode: "dry-run"`; `exit_code` only on `mode: "install"` AND only when
+`git` actually spawned (e.g. `git-not-found` leaves it absent); `reason` only when `status: "error"`, with one of the
+typed values `destination-not-empty` / `destination-is-file` / `home-not-set` / `git-not-found` / `git-clone-failed`.
+`destination_status` is one of `absent` / `empty-dir` / `non-empty-dir` / `file`.
+
+Exit codes follow the P4 convention: `0` for success, `1` for any envelope error (typed `reason` set), `2` for clap
+usage errors (unknown host, missing positional, bare `anc skill`).
+
+The `git clone` invocation runs with named-const hardening (`GIT_HARDEN_FLAGS`, `GIT_HARDEN_ENV_REMOVE`,
+`GIT_HARDEN_ENV_SET` — the last includes `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` to disable
+user-controlled git config, plus `GIT_TERMINAL_PROMPT=0`). No `sh -c`, no `env_clear`. Defense against `insteadOf`
+URL-rewriting comes from disabling user config wholesale, not from a `-c url.<repo>.insteadOf=` flag (which would do the
+opposite of blocking).
+
+The host map (`SkillHost` enum, `KNOWN_HOSTS`, `resolve_host`, `host_envelope_str`) is **build-time-generated** from
+`src/skill_install/skill.json` by `build.rs::emit_skill_hosts`. To add or change a host, edit the JSON (or run `bash
+scripts/sync-skill-fixture.sh` to pull the upstream site contract) and `cargo build` regenerates the Rust map — no hand
+edits to `src/skill_install.rs`. CI's `skill-fixture-drift.yml` runs `--check` on every PR to catch fixture vs upstream
+drift.
 
 ## Agent-facing JSON surface
 
-`anc check <target> --output json` emits a `schema_version: "0.3"` scorecard. The schema is at `0.x` while `anc` is
+`anc check <target> --output json` emits a `schema_version: "0.5"` scorecard. The schema is at `0.x` while `anc` is
 pre-launch — shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
-norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes five
-scorecard-level fields beyond the base `results` / `summary`:
+norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
+following scorecard-level fields beyond the base `results` / `summary`:
 
 - `audience` — `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral checks
   (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Informational only; never gates totals
@@ -51,6 +98,21 @@ scorecard-level fields beyond the base `results` / `summary`:
 - `spec_version` — the `agentnative-spec` version this CLI was built against. Sourced at build time from
   `src/principles/spec/VERSION` by `build.rs`; reads `"unknown"` if that file was missing at build time. Pin against
   this to know which spec contract the scorecard's requirement IDs reference.
+- `tool` — `{ name, binary, version }`. Identifies what was scored. `version` is best-effort (manifest field for project
+  mode, `<bin> --version` / `-V` for binary/command mode); `null` when probing fails or is declined by the self-spawn
+  guard. Schema `0.4` addition.
+- `anc` — `{ version, commit }`. Identifies the `anc` build that produced the scorecard. `commit` is `null` for builds
+  outside a Git checkout. Informational, not signed provenance. Schema `0.4` addition.
+- `run` — `{ invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` reflects what the user typed
+  (captured pre-injection). `started_at` is RFC 3339 UTC. Schema `0.4` addition.
+- `target` — `{ kind, path, command }`. `kind` is `"project"` / `"binary"` / `"command"`. The unused field is always
+  `null`, never missing. Schema `0.4` addition.
+- `badge` — `{ eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Agent-native badge
+  derivation from the live run. `score_pct` is the rounded percent of `pass / (pass + warn + fail)` (Skips and Errors
+  excluded from the ratio). `eligible` is true iff `score_pct >= 80` and a tool slug was derivable. `embed_markdown` is
+  `null` below the floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
+  below the floor; `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint
+  (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
 
 `--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
 values exit 2 with a structured error. The full per-category mapping of suppressed check IDs is committed to
@@ -111,17 +173,17 @@ cargo test -- --ignored       # fixture tests (slower)
 
 The canonical specification of the 7 agent-readiness principles lives in
 [`brettdavies/agentnative`](https://github.com/brettdavies/agentnative), one file per principle under `principles/`. A
-pinned snapshot is **vendored** into this crate at `src/principles/spec/`, and `build.rs` parses its frontmatter at
-build time to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI checks against.
-There is no manual sync of requirement IDs; only the `Check::covers()` declarations are hand-maintained.
+snapshot is **vendored** into this crate at `src/principles/spec/`, and `build.rs` parses its frontmatter at build time
+to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI checks against. There is no
+manual sync of requirement IDs; only the `Check::covers()` declarations are hand-maintained.
 
 The `anc` checks in `src/checks/` themselves are derived **manually** from each principle's prose. When a principle's
 spec adds, removes, or reworks a requirement, propagate to the relevant check(s) deliberately.
 
-**Resync cadence:** rerun `scripts/sync-spec.sh` after every new `agentnative-spec` tag. The default `SPEC_REF` in the
-script is the current pin; bump via `SPEC_REF=v0.2.1 scripts/sync-spec.sh` when adopting a newer spec release. The
-companion `repository_dispatch` from the spec's publish workflow is the canonical trigger; if a future GitHub Action
-opens a resync PR automatically, this script becomes that action's body.
+**Resync cadence:** rerun `scripts/sync-spec.sh` after every new `agentnative-spec` tag. The script queries the remote
+for the latest `v*` tag automatically and falls back to a local checkout (`$HOME/dev/agentnative-spec` by default) if
+the remote is unreachable. The companion `repository_dispatch` from the spec's publish workflow is the canonical
+trigger; if a future GitHub Action opens a resync PR automatically, this script becomes that action's body.
 
 For iteration workflow, pressure-test protocol, and per-file structure of the spec itself, see
 [`agentnative:principles/AGENTS.md`](https://github.com/brettdavies/agentnative/blob/main/principles/AGENTS.md). Read

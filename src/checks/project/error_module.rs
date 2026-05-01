@@ -55,22 +55,22 @@ impl Check for ErrorModuleCheck {
         }
 
         // Check subdirectories: src/*/error.rs, src/*/errors.rs
-        if src_dir.is_dir() {
-            if let Ok(entries) = fs::read_dir(&src_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        for name in &["error.rs", "errors.rs", "error.py", "errors.py"] {
-                            if path.join(name).exists() {
-                                return Ok(CheckResult {
-                                    id: self.id().to_string(),
-                                    label: self.label().into(),
-                                    group: self.group(),
-                                    layer: self.layer(),
-                                    status: CheckStatus::Pass,
-                                    confidence: Confidence::High,
-                                });
-                            }
+        if src_dir.is_dir()
+            && let Ok(entries) = fs::read_dir(&src_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    for name in &["error.rs", "errors.rs", "error.py", "errors.py"] {
+                        if path.join(name).exists() {
+                            return Ok(CheckResult {
+                                id: self.id().to_string(),
+                                label: self.label().into(),
+                                group: self.group(),
+                                layer: self.layer(),
+                                status: CheckStatus::Pass,
+                                confidence: Confidence::High,
+                            });
                         }
                     }
                 }

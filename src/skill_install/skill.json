@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "type": "agent-skill",
+  "name": "agent-native-cli",
+  "version": "0.1.0",
+  "description": "Build CLI tools that AI agents can operate reliably.",
+  "principles_url": "https://anc.dev/p1",
+  "license": "MIT",
+  "source": {
+    "type": "git",
+    "url": "https://github.com/brettdavies/agentnative-skill.git"
+  },
+  "install": {
+    "claude_code": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.claude/skills/agent-native-cli",
+    "codex": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.codex/skills/agent-native-cli",
+    "cursor": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.cursor/skills/agent-native-cli",
+    "factory": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.factory/skills/agent-native-cli",
+    "kiro": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.kiro/skills/agent-native-cli",
+    "opencode": "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git ~/.config/opencode/skills/agent-native-cli"
+  },
+  "update": "cd <install-dir> && git pull --ff-only",
+  "uninstall": "rm -rf <install-dir>",
+  "skill_page_html": "https://anc.dev/skill"
+}

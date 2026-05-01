@@ -14,8 +14,8 @@ Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-202603
 
 ## Skill Routing
 
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
+When the user's request matches an available skill, ALWAYS invoke it using the Skill tool as your FIRST action. Do NOT
+answer directly, do NOT use other tools first.
 
 **gstack skills (ideation, planning, shipping, ops):**
 
@@ -39,9 +39,9 @@ For the full routing table, see `~/.claude/skills/docs/workflow-routing.md`.
 
 ## Documented Solutions
 
-`docs/solutions/` (symlink to `~/dev/solutions-docs/`) — searchable archive of past
-solutions and best practices, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search
-with `qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in documented areas.
+`docs/solutions/` (symlink to `~/dev/solutions-docs/`) — searchable archive of past solutions and best practices,
+organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search with `qmd query "<topic>"
+--collection solutions`. Relevant when implementing or debugging in documented areas.
 
 ## gstack Project History
 
@@ -66,8 +66,8 @@ Key decisions already made:
 
 ## Source Check Convention
 
-Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use
-different helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
+Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use different
+helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
 
 - **Struct** implements `Check` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
 - **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
@@ -139,21 +139,122 @@ either source.
 Regenerate whenever you add a requirement, change a check's `covers()`, or rename a check ID. The regeneration is a
 deliberate commit, not a build-time artifact — the matrix is citable from outside this repo.
 
-## Scorecard v1.1 Fields
+## Scorecard v0.5 Fields
 
-`src/scorecard/mod.rs` emits `schema_version: "1.1"` with three additions over the v1.0 shape:
+`src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window —
+consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
-- `coverage_summary` — three-way `{must, should, may} × {total, verified}` counts, computed from the checks that
-  actually ran. Populated every run.
+- `0.2` — `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
+- `0.3` — `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).
+- `0.4` — four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
+- `0.5` — `badge` block surfacing agent-native badge eligibility, embed snippet, and badge/scorecard URLs derived from
+  the live run.
+
+Existing field semantics:
+
+- `coverage_summary` — populated every run. Checks suppressed by `--audit-profile` do not count toward `verified`.
 - `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral checks.
-  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing from results
-  (including when suppressed by `--audit-profile`). The classifier is read-only over results and never gates totals or
-  exit codes — per CEO review Finding #3, label mismatches are fixed via registry, not classifier logic.
+  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing (including
+  `--audit-profile` suppression). Read-only over results; never gates totals or exit codes — per CEO review Finding #3,
+  label mismatches are fixed via registry, not classifier logic.
 - `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,
   `"file-traversal"`, `"posix-utility"`, `"diagnostic-only"`). `null` when no profile is set.
+- `spec_version` — `&'static str` — the vendored spec version this `anc` build was compiled against.
 
-Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-v1.1 scorecards lack
-them. v0.1.2 scorecards carry `audience: null` and `audit_profile: null`; v0.1.3+ populates both.
+`0.4` additions (defined as serde-derived sub-structs in `src/scorecard/mod.rs`):
+
+- `tool` — `ToolInfo { name: String, binary: Option<String>, version: Option<String> }`. Built in `main.rs`'s
+  `build_tool_info`. Project mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`); command/binary mode
+  probes `<bin> --version` then `-V` via a fresh `BinaryRunner` with a 2-second timeout. Self-spawn guard compares the
+  resolved binary path against `std::env::current_exe()` — recursion declined → `tool.version: null`.
+- `anc` — `AncInfo { version: &'static str }`. `version` is a build-time constant emitted by `build.rs` into
+  `$OUT_DIR/build_info.rs` (re-exported from `src/build_info.rs`). The `commit` field shipped pre-`0.5` was dropped
+  before the v0.3.0 tag — the version pin is sufficient build identity for scorecard consumers and the
+  `cargo:rerun-if-changed` watches on `.git/` made cached-build SHAs fragile across local commits.
+- `run` — `RunInfo { invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` is captured **before**
+  `inject_default_subcommand` rewrites argv (so `anc .` records as `"anc ."`, not `"anc check ."`). `started_at` is RFC
+  3339 UTC via the `time` crate (pinned `=0.3.45`). `duration_ms` uses `Instant` for monotonic measurement.
+  `platform.{os,arch}` come from `std::env::consts`.
+- `target` — `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
+  `"binary"`, `"command"`. `path` is the **basename** of the resolved target (directory name in project mode, file name
+  in binary mode) — never the absolute path, which would leak operator PII (home-dir username, org/employer dir
+  structure) into committed scorecards, README badge URLs, and any agent-posted artifact. `null` for `command` mode.
+  Pathological paths where `Path::file_name()` returns `None` (e.g. `/`, `..`) fall back to `null`. The unused field is
+  always `null`, never missing. See `src/main.rs::build_target_info` for the leak-vector rationale; the regression guard
+  lives in `tests/scorecard_schema_v05.rs::schema_v05_target_path_carries_no_separators`.
+
+`0.5` addition (`BadgeInfo` in `src/scorecard/mod.rs`):
+
+- `badge` — `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Computed by
+  `compute_badge(results, tool_name)` from the leaderboard's pass-rate (`pass / (pass + warn + fail)`) — Skips and
+  Errors are excluded from both sides of the ratio. `eligible` is true iff `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT`
+  (currently `80`) **and** a tool slug was derivable; `embed_markdown` is `Some` only when `eligible` (the do-not-nag
+  contract from the site's badge convention). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
+  below the floor — the site renders an SVG for every scored tool so a regression below the floor shifts color rather
+  than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are anchored at `BADGE_BASE_URL =
+  "https://anc.dev"` so the URL pattern lives in one place. Authority for the floor is the site's published convention
+  (`agentnative-site/content/badge.md`); when the spec convention merges off `feat/badge-claim-convention` it will move
+  into the vendored spec via `sync-spec`. Text mode (`--output text`) appends a post-summary hint via
+  `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so the JSON `embed_markdown` and
+  the printed hint can never disagree.
+
+Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
+when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is
+`audience_reason`, which uses `skip_serializing_if = "Option::is_none"` — its absence carries information (audience has
+a label).
+
+Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-`0.4` scorecards lack the
+four metadata blocks; pre-`0.5` scorecards lack `badge`. The site's `agentnative-site/registry.yaml` will eventually
+drop its parallel `version` / `scored_at` fields once consumers read those facts from the scorecard's `tool.version` /
+`run.started_at`. That follow-up lives in the `agentnative-site` repo, not here.
+
+## Skill Install Verb
+
+`anc skill install <host>` ships the `agentnative-skill` bundle into a host's canonical skills directory. The host map
+is **build-time-generated** from `src/skill_install/skill.json` (a verbatim copy of
+`agentnative-site/src/data/skill.json`) into `$OUT_DIR/generated_hosts.rs` by `build.rs::emit_skill_hosts`.
+`src/skill_install.rs` `include!`s the generated file; there is no hand-maintained host enum or destination table. To
+add or change a host, edit `skill.json` (or run `bash scripts/sync-skill-fixture.sh` to pull the upstream site contract)
+and `cargo build` regenerates the Rust map. There is no `skill.json` parsing in production, no HTTPS fetch at runtime,
+and no allowlist validator — the host map is compile-time data.
+
+CI catches drift between the committed fixture and the upstream site contract:
+
+- `scripts/sync-skill-fixture.sh --check` (CI workflow `skill-fixture-drift.yml`) clones the upstream site at
+  `SKILL_SITE_REF` (default `dev`, since the site uses a dev/main forever-branch flow) and `cmp`s the live blob against
+  `src/skill_install/skill.json`. Runs on every PR and on push to main/dev.
+
+Drift between the fixture and the generated Rust map cannot occur within a single build: `cargo:rerun-if-changed` on the
+JSON file forces regeneration whenever the fixture moves. The earlier `host_map_matches_site_skill_json` test (test 12)
+was deleted as provably redundant after this refactor.
+
+The `git clone` invocation runs with named-const hardening that defeats ambient git-config and env subversion. The full
+surface lives in `src/skill_install.rs`:
+
+- `GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (`credential.helper=`, `core.askPass=`,
+  `protocol.allow=never`, `protocol.https.allow=always`, `http.followRedirects=false`). Applied via `Command::args`
+  *before* the `clone` subcommand — git's required position for top-level `-c` options.
+- `GIT_HARDEN_ENV_REMOVE: &[&str]` — five env vars stripped via `env_remove` (`GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`,
+  `GIT_ASKPASS`, `GIT_EXEC_PATH`).
+- `GIT_HARDEN_ENV_SET: &[(&str, &str)]` — three env vars **set** on the spawned process. The
+  `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` pair disables every layer of user-controlled git
+  config — the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried `-c
+  url.<repo>.insteadOf=`, which does the *opposite* of blocking and doubles the clone URL). `GIT_TERMINAL_PROMPT=0`
+  blocks credential prompts; git's default-when-unset is to prompt, which is the wrong default for a non-interactive
+  subcommand.
+
+**Rules for changes touching skill install:**
+
+- NEVER call `Command::env_clear()` — it strips PATH and breaks git's helper resolution. Use `env_remove` per var.
+- NEVER use `sh -c` or any shell-mediated invocation. Tokens go directly to `git` via `Command::args`.
+- NEVER reintroduce `skill.json` parsing in production code. The fixture is a build-time codegen input, not a runtime
+  resource.
+- NEVER hand-edit `SkillHost`, `KNOWN_HOSTS`, `resolve_host`, or `host_envelope_str` in `src/skill_install.rs` — those
+  identifiers come from the generated `$OUT_DIR/generated_hosts.rs` and any apparent definition in source is the
+  include! macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
+- The codegen rejects malformed install commands at build time. Each `install.<host>` value MUST tokenize as exactly
+  `git clone --depth 1 <url> <dest>` (six whitespace-separated tokens, dest not ending in `.git`). The validation
+  mirrors `agentnative-site/src/build/skill.mjs` so the two binaries reject the same inputs.
 
 ## Dogfooding Safety
 

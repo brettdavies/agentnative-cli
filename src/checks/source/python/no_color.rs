@@ -96,10 +96,10 @@ pub(crate) fn source_handles_no_color(source: &str) -> bool {
         r#"getenv('NO_COLOR')"#,
     ];
     for p_str in access_patterns {
-        if let Ok(pattern) = Pattern::try_new(p_str, Python) {
-            if root.root().find(&pattern).is_some() {
-                return true;
-            }
+        if let Ok(pattern) = Pattern::try_new(p_str, Python)
+            && root.root().find(&pattern).is_some()
+        {
+            return true;
         }
     }
 

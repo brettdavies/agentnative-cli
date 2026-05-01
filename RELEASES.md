@@ -12,12 +12,12 @@ feature branch → PR to dev (squash merge)
 
 ## Branches
 
-| Branch | Role | Lifetime | Protection |
-| ------ | ---- | -------- | ---------- |
-| `main` | Production. Only release commits. | Forever. | `.github/rulesets/protect-main.json` |
-| `dev` | Integration. All feature PRs land here. | Forever. Never delete. | `.github/rulesets/protect-dev.json` |
-| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work. | One PR's worth. Auto-deleted on merge. | None — squash into dev freely. |
-| `release/*` | Head of a dev → main PR. | One release's worth. Auto-deleted on merge. | None. |
+| Branch                                 | Role                                    | Lifetime                                    | Protection                           |
+| -------------------------------------- | --------------------------------------- | ------------------------------------------- | ------------------------------------ |
+| `main`                                 | Production. Only release commits.       | Forever.                                    | `.github/rulesets/protect-main.json` |
+| `dev`                                  | Integration. All feature PRs land here. | Forever. Never delete.                      | `.github/rulesets/protect-dev.json`  |
+| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None — squash into dev freely.       |
+| `release/*`                            | Head of a dev → main PR.                | One release's worth. Auto-deleted on merge. | None.                                |
 
 `dev` is a **forever branch**. Never delete it locally or remotely, even after a `release/* → main` merge. The next
 release cycle reuses the same `dev`. The repo's `deleteBranchOnMerge: true` setting doesn't touch `dev` as long as `dev`
@@ -41,10 +41,9 @@ gh pr create --base dev --title "feat(scope): what changed"
 
 ## Releasing dev to main
 
-Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`,
-`docs/reviews/`) live on `dev` only. `guard-main-docs.yml` blocks them from reaching `main`, and
-`guard-release-branch.yml` rejects any PR to main whose head isn't `release/*`. Use the release-branch cherry-pick
-pattern:
+Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`, `docs/reviews/`) live on `dev` only.
+`guard-main-docs.yml` blocks them from reaching `main`, and `guard-release-branch.yml` rejects any PR to main whose head
+isn't `release/*`. Use the release-branch cherry-pick pattern:
 
 **Branch naming**: `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
 `release/v0.2.0-python-checks`). The `v<version>` prefix is required — `scripts/generate-changelog.sh` extracts the
@@ -62,10 +61,59 @@ git log --oneline dev --not origin/main
 # 3. Cherry-pick the ones you want to ship. Docs commits stay on dev.
 git cherry-pick <sha1> <sha2> ...
 
-# 4. Verify no guarded paths leaked through:
-git diff origin/main --stat
-# If anything under docs/plans/, docs/solutions/, or docs/brainstorms/
-# shows up, you cherry-picked a docs commit by mistake — reset and redo.
+# 4. Triple-diff verification — belt-and-suspenders sweep that catches both
+#    directions of drift before the release tag goes out:
+#
+#    A. main → release  (what users will see; the intended ship surface)
+#    B. release → dev   (should be empty for non-doc paths until the
+#                        bump/completions/CHANGELOG commits land, and even
+#                        then should only list those release-prep files —
+#                        anything else is a missed cherry-pick)
+#    C. dev → main      (sanity: phantom commits dev "appears ahead" on
+#                        because cherry-pick rewrites SHAs post-squash)
+git diff origin/main..HEAD --stat                                                # A
+git diff HEAD..origin/dev --name-only | grep -v '^docs/' || echo "(none)"        # B
+git diff origin/dev..origin/main --stat | tail -5                                # C
+#
+# Re-confirm no guarded paths leaked (this caught the original miss class):
+git diff origin/main..HEAD --name-only \
+  | grep -E '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)' \
+  && echo "LEAKED — reset and redo" || echo "(clean — no guarded paths)"
+#
+# Patch-id cherry check — catches commits on dev that have NO patch-id
+# equivalent on release. The file-level diff in B misses this class when
+# the same content happens to land via a different commit.
+#
+# IMPORTANT: in a squash-merge workflow this output is noisy. Every '+'
+# line needs human triage — it does NOT auto-block the release. Expected
+# sources of '+' lines that are NOT real misses:
+#
+#   1. Historical commits squash-merged in prior releases. The squash
+#      commit on main has a different patch-id than the dev commits it
+#      consolidates, so old commits show as '+' forever. Anything older
+#      than the previous release tag is almost always this.
+#   2. Cherry-picks where conflict resolution stripped guarded paths
+#      (docs/plans, docs/brainstorms, etc.) or otherwise altered the
+#      tree. Same source-code intent, different patch-id.
+#   3. Intentionally skipped commits — docs-only commits, release-prep
+#      backports, revert-and-redo prep steps.
+#
+# A real miss looks like: a recent feat/fix/chore commit on dev whose
+# *file content* is not yet on main. To triage a '+' line:
+#
+#   git show <sha> --stat                       # what did it touch?
+#   git diff origin/main..HEAD -- <those-files> # already on release?
+#
+# If every touched file is guarded (docs/plans/, docs/brainstorms/, etc.)
+# OR the content is already on main via a prior squash, it's a false
+# positive — no action. Otherwise cherry-pick the commit and re-run the
+# triple-diff.
+git cherry HEAD origin/dev | grep '^+' || echo "(none — release is patch-equivalent through dev)"
+#
+# If B lists any non-docs path you didn't expect, fetch dev, identify the
+# commit (`git log dev --not origin/main`), cherry-pick it, re-run the
+# triple-diff. Missed cherry-picks have shipped to main on this and sibling
+# repos before — this step is the cheap way to catch them.
 
 # 5. Bump version in Cargo.toml and commit:
 #    sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
@@ -76,11 +124,22 @@ git diff origin/main --stat
 ./scripts/generate-completions.sh
 git add completions/ && git commit -m "chore: regenerate shell completions" || true
 
-# 7. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
+# 7. Refresh the skill.json fixture from upstream and review the diff. CI's
+#    skill-fixture-drift workflow runs --check on every PR, but pulling the
+#    latest content here catches any site changes since dev was branched and
+#    avoids tagging a release with the codegen-derived host map one revision
+#    behind upstream:
+bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
+# The Rust map (SkillHost / KNOWN_HOSTS / resolve_host) regenerates from the
+# JSON automatically on the next `cargo build` — no manual src edits needed.
+git add src/skill_install/skill.json && \
+    git commit -m "chore(skill): refresh fixture for v0.2.0" || true
+
+# 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
 ./scripts/generate-changelog.sh
 git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
 
-# 8. Push and open the PR:
+# 9. Push and open the PR:
 git push -u origin release/v0.2.0
 gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0"
 ```
@@ -112,18 +171,37 @@ git push origin main --tags
 The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
-| Step | What |
-| ---- | ---- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate). |
-| `audit` | `cargo deny check` (license + advisory + ban). |
-| `build` | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses. |
-| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish). |
-| `release` | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 5 archives + `sha256sum.txt`. |
-| `homebrew` | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`). |
+| Step            | What                                                                                                                                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                      |
+| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                           |
+| `build`         | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses.       |
+| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                         |
+| `release`       | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 5 archives + `sha256sum.txt`. |
+| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                   |
 
 After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
 this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest,
 Homebrew formula updated with bottles, all atomically advertised.
+
+### After publish — sync `dev` with the release
+
+Once `finalize-release.yml` has flipped the GitHub Release to `published`, backport the release-bookkeeping files from
+`main` to `dev` so future builds from `dev` report the released version (and so `anc check`'s embedded badge URL points
+at the right slug, not stale `0.1.0`):
+
+```bash
+./scripts/sync-dev-after-release.sh v0.2.0
+git push origin dev
+```
+
+The script surgically updates only `Cargo.toml`'s `[package].version` line (other `Cargo.toml` lines on `dev` —
+post-launch deps, rust-version bumps — are preserved), regenerates `Cargo.lock` via `cargo build --release`, and copies
+`CHANGELOG.md` verbatim from `origin/main`. The single commit lands directly on `dev` (signed via your normal commit
+signing — no PR), establishing release backport as a deliberate convention rather than the prior "never back-merged"
+norm.
+
+The backport is idempotent: re-running on a `dev` already in sync exits 0 with no commit.
 
 ### First-time publish (one-time)
 
@@ -197,10 +275,10 @@ gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_r
 
 ## Required secrets
 
-| Secret | Purpose | Lifecycle |
-| ------ | ------- | --------- |
-| `CI_RELEASE_TOKEN` | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually. |
-| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish. | Remove after Trusted Publishing is configured. |
+| Secret                 | Purpose                                                                                                           | Lifecycle                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `CI_RELEASE_TOKEN`     | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually.                              |
+| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Remove after Trusted Publishing is configured. |
 
 `GITHUB_TOKEN` is automatic; CI (`ci.yml`) only needs `contents: read` and uses no extra secrets.
 

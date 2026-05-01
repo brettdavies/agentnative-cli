@@ -21,7 +21,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use argv::{format_invocation, inject_default_subcommand};
-use build_info::{ANC_COMMIT, ANC_VERSION};
+use build_info::ANC_VERSION;
 use check::Check;
 use checks::behavioral::all_behavioral_checks;
 use checks::project::all_project_checks;
@@ -235,7 +235,6 @@ fn run() -> Result<i32, AppError> {
                 tool,
                 anc: AncInfo {
                     version: ANC_VERSION,
-                    commit: ANC_COMMIT,
                 },
                 run: RunInfo {
                     invocation,

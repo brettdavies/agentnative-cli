@@ -39,7 +39,6 @@ fn assert_v05_shape(parsed: &Value) {
         "tool.binary",
         "tool.version",
         "anc.version",
-        "anc.commit",
         "run.invocation",
         "run.started_at",
         "run.duration_ms",

@@ -167,10 +167,10 @@ Existing field semantics:
   `build_tool_info`. Project mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`); command/binary mode
   probes `<bin> --version` then `-V` via a fresh `BinaryRunner` with a 2-second timeout. Self-spawn guard compares the
   resolved binary path against `std::env::current_exe()` — recursion declined → `tool.version: null`.
-- `anc` — `AncInfo { version: &'static str, commit: Option<&'static str> }`. Both fields are build-time constants
-  emitted by `build.rs` into `$OUT_DIR/build_info.rs` (re-exported from `src/build_info.rs`). `commit` is `None` for
-  builds outside a Git checkout. `build.rs` declares `cargo:rerun-if-changed` directives for `.git/HEAD`,
-  `.git/refs/heads/<branch>`, and `.git/packed-refs` so cached builds don't embed a stale SHA across local commits.
+- `anc` — `AncInfo { version: &'static str }`. `version` is a build-time constant emitted by `build.rs` into
+  `$OUT_DIR/build_info.rs` (re-exported from `src/build_info.rs`). The `commit` field shipped pre-`0.5` was dropped
+  before the v0.3.0 tag — the version pin is sufficient build identity for scorecard consumers and the
+  `cargo:rerun-if-changed` watches on `.git/` made cached-build SHAs fragile across local commits.
 - `run` — `RunInfo { invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` is captured **before**
   `inject_default_subcommand` rewrites argv (so `anc .` records as `"anc ."`, not `"anc check ."`). `started_at` is RFC
   3339 UTC via the `time` crate (pinned `=0.3.45`). `duration_ms` uses `Instant` for monotonic measurement.

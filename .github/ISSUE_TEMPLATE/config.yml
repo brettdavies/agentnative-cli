@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: "Spec questions, principle edits, or CLI grading"
-    url: "https://github.com/brettdavies/agentnative/issues/new/choose"
+    url: "https://github.com/brettdavies/agentnative-cli/issues/new/choose"
     about: "For anything about the standard itself, file on the spec repo."
   - name: "Site bugs (rendering, performance, deployment)"
-    url: "https://github.com/brettdavies/agentnative-site/issues/new/choose"
+    url: "https://github.com/brettdavies/agentnative-cli-site/issues/new/choose"
     about: "For bugs on anc.dev, file on the site repo."

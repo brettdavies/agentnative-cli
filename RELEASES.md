@@ -82,10 +82,32 @@ git diff origin/main..HEAD --name-only \
 #
 # Patch-id cherry check — catches commits on dev that have NO patch-id
 # equivalent on release. The file-level diff in B misses this class when
-# the same content happens to land via a different commit. Each '+' line
-# is a potential miss; verify it's an intentional skip (docs commit) or
-# cherry-pick it. Lines starting with '-' are already on release via
-# patch-id match — no action needed.
+# the same content happens to land via a different commit.
+#
+# IMPORTANT: in a squash-merge workflow this output is noisy. Every '+'
+# line needs human triage — it does NOT auto-block the release. Expected
+# sources of '+' lines that are NOT real misses:
+#
+#   1. Historical commits squash-merged in prior releases. The squash
+#      commit on main has a different patch-id than the dev commits it
+#      consolidates, so old commits show as '+' forever. Anything older
+#      than the previous release tag is almost always this.
+#   2. Cherry-picks where conflict resolution stripped guarded paths
+#      (docs/plans, docs/brainstorms, etc.) or otherwise altered the
+#      tree. Same source-code intent, different patch-id.
+#   3. Intentionally skipped commits — docs-only commits, release-prep
+#      backports, revert-and-redo prep steps.
+#
+# A real miss looks like: a recent feat/fix/chore commit on dev whose
+# *file content* is not yet on main. To triage a '+' line:
+#
+#   git show <sha> --stat                       # what did it touch?
+#   git diff origin/main..HEAD -- <those-files> # already on release?
+#
+# If every touched file is guarded (docs/plans/, docs/brainstorms/, etc.)
+# OR the content is already on main via a prior squash, it's a false
+# positive — no action. Otherwise cherry-pick the commit and re-run the
+# triple-diff.
 git cherry HEAD origin/dev | grep '^+' || echo "(none — release is patch-equivalent through dev)"
 #
 # If B lists any non-docs path you didn't expect, fetch dev, identify the

@@ -80,6 +80,14 @@ git diff origin/main..HEAD --name-only \
   | grep -E '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)' \
   && echo "LEAKED — reset and redo" || echo "(clean — no guarded paths)"
 #
+# Patch-id cherry check — catches commits on dev that have NO patch-id
+# equivalent on release. The file-level diff in B misses this class when
+# the same content happens to land via a different commit. Each '+' line
+# is a potential miss; verify it's an intentional skip (docs commit) or
+# cherry-pick it. Lines starting with '-' are already on release via
+# patch-id match — no action needed.
+git cherry HEAD origin/dev | grep '^+' || echo "(none — release is patch-equivalent through dev)"
+#
 # If B lists any non-docs path you didn't expect, fetch dev, identify the
 # commit (`git log dev --not origin/main`), cherry-pick it, re-run the
 # triple-diff. Missed cherry-picks have shipped to main on this and sibling

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "type": "agent-skill",
   "name": "agent-native-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Build CLI tools that AI agents can operate reliably.",
   "principles_url": "https://anc.dev/p1",
   "license": "MIT",

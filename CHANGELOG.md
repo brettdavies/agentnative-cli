@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-05-04
+
+### Added
+
+- Ship `x86_64-` and `aarch64-unknown-linux-musl` static binaries on every release. Statically linked against musl libc, so they run on Alpine and other musl-libc-host distros without glibc, and on every glibc distro too. by @brettdavies in [#48](https://github.com/brettdavies/agentnative-cli/pull/48)
+
+### Documentation
+
+- Document the `cliff.toml` chore-skip footgun and the "CHANGELOG is generated, never hand-written" rule in `RELEASES.md` under `Releasing dev to main`. Adds a new review step (renumbered to 9) and tightens the existing "PRs and changelog generation" section. by @brettdavies in [#48](https://github.com/brettdavies/agentnative-cli/pull/48)
+
+**Full Changelog**: [v0.3.0...v0.3.1](https://github.com/brettdavies/agentnative-cli/compare/v0.3.0...v0.3.1)
+
 ## [0.3.0] - 2026-05-01
 
 ### Added

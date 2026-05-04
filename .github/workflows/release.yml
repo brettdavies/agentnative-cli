@@ -20,5 +20,12 @@ jobs:
     with:
       crate: agentnative
       bin: anc
+      # Block release on linux-musl build failure (anc has been spike-validated
+      # against both x86_64- and aarch64-unknown-linux-musl).
+      linux_musl_required: true
+      # Belt-and-suspenders: exec the x86_64-musl binary inside alpine:latest
+      # after build to catch dlopen/NSS/locale surprises that pass the
+      # static-link `file` assertion.
+      linux_musl_verify_alpine: true
     secrets:
       CI_RELEASE_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}

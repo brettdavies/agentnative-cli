@@ -137,9 +137,12 @@ git add src/skill_install/skill.json && \
 
 # 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
 ./scripts/generate-changelog.sh
+
+# 9. Review CHANGELOG.md. See "CHANGELOG is generated, never hand-written" below
+#    for the cliff.toml chore-skip footgun and how to recover. When clean, commit:
 git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
 
-# 9. Push and open the PR:
+# 10. Push and open the PR:
 git push -u origin release/v0.2.0
 gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0"
 ```
@@ -152,6 +155,24 @@ the remote on merge. `dev` is untouched.
 Branching from `dev` and then `gio trash`-ing the guarded paths seems simpler but produces `add/add` merge conflicts
 whenever `dev` and `main` have diverged (which they always do after the first squash merge). The file appears as "added"
 on both sides with different content. Always branch from `origin/main` and cherry-pick onto it.
+
+### CHANGELOG is generated, never hand-written
+
+`scripts/generate-changelog.sh` (with `cliff.toml`) is the only sanctioned way to update `CHANGELOG.md`. The script runs
+`git-cliff` to prepend a versioned entry for commits since the last tag, then walks each squash-merged PR's body to
+extract the `## Changelog` section's `### Added` / `### Changed` / `### Fixed` / `### Documentation` subsections,
+replacing the auto-generated bullets with the curated PR-body content (with author and PR-link attribution).
+
+If a PR's `## Changelog` section is empty, that PR's entry is omitted from the changelog (the convention in
+[`.github/pull_request_template.md`](.github/pull_request_template.md): empty section = no user-facing change). To fix a
+wrong CHANGELOG entry, fix the input — edit the squash-merged PR body, then re-run the script. Do **not** edit
+`CHANGELOG.md` directly.
+
+**`cliff.toml` skips `chore`/`style`/`test`/`ci`/`build` commits regardless of PR-body content.** If a cherry-picked PR
+has user-facing `## Changelog` content but its commit subject starts with one of those types, its bullets get silently
+dropped. After running the script, cross-check the generated section against `gh pr view <num> --json body` for each
+cherry-picked PR; correct mistyped PR titles (e.g. `chore` → `feat`) and re-amend the cherry-pick subject before
+re-running. See "Prefer `feat`/`fix` over `chore`" in global CLAUDE.md for prevention.
 
 ## Tagging and publishing
 
@@ -171,14 +192,14 @@ git push origin main --tags
 The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
-| Step            | What                                                                                                                                                                                                                                                     |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                      |
-| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                           |
-| `build`         | Cross-compile binaries for 5 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes the `anc` binary, completions, README, and licenses.       |
-| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                         |
-| `release`       | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 5 archives + `sha256sum.txt`. |
-| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                   |
+| Step            | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `build`         | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. The two musl rows are statically linked (Alpine and other musl-libc hosts can run them without glibc); `linux_musl_required: true` makes their failures hard-block the release, and `linux_musl_verify_alpine: true` runs the x86_64-musl binary inside `alpine:latest` after build as an exec-compat sanity check. Each archive includes the `anc` binary, completions, README, and licenses. |
+| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `release`       | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                                                                                                                                                                                                          |
+| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
 this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest,
@@ -228,9 +249,9 @@ subsections:
 - `### Removed` — removed features or APIs
 - `### Security` — security-relevant changes
 
-`scripts/generate-changelog.sh` (which wraps `git-cliff` per `cliff.toml`) reads the squash-merged commit bodies for
-these sections and assembles `CHANGELOG.md` entries. A PR that lands with an empty or missing `## Changelog` section
-silently drops its user-facing notes from the next release changelog.
+A PR that has no user-facing impact (pure refactor, test-only, CI-only) should leave the `## Changelog` section empty or
+omit it. See "CHANGELOG is generated, never hand-written" above for how the script consumes these sections at release
+time and the cliff.toml chore-skip footgun.
 
 ## Branch protection
 

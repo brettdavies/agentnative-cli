@@ -499,6 +499,30 @@ mod tests {
              mutating subcommands requires per-subcommand semantic \
              understanding beyond ast-grep's reach. Not auto-verified.",
         ),
+        // v0.4.0 spec sync — temporary entries during the multi-commit
+        // companion landing. Each entry is removed in the same commit
+        // that lands the corresponding live check (per docs/plans/
+        // 2026-05-07-001-feat-v0.4.0-spec-sync-plan.md).
+        (
+            "p1-must-secret-non-leaky-path",
+            "v0.4.0 spec sync — live check lands in U2 of plan \
+             2026-05-07-001; temporary entry until commit removes it.",
+        ),
+        (
+            "p2-must-schema-print",
+            "v0.4.0 spec sync — live check lands in U3 of plan \
+             2026-05-07-001; temporary entry until commit removes it.",
+        ),
+        (
+            "p6-must-sigterm",
+            "v0.4.0 spec sync — live check lands in U4 of plan \
+             2026-05-07-001; temporary entry until commit removes it.",
+        ),
+        (
+            "p8-must-bundle-install",
+            "v0.4.0 spec sync — live check lands in U5 of plan \
+             2026-05-07-001; temporary entry until commit removes it.",
+        ),
     ];
 
     /// R4 — every `Check::covers()` id in the live catalog resolves in the

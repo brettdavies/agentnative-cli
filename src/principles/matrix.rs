@@ -504,11 +504,6 @@ mod tests {
         // that lands the corresponding live check (per docs/plans/
         // 2026-05-07-001-feat-v0.4.0-spec-sync-plan.md).
         (
-            "p2-must-schema-print",
-            "v0.4.0 spec sync — live check lands in U3 of plan \
-             2026-05-07-001; temporary entry until commit removes it.",
-        ),
-        (
             "p6-must-sigterm",
             "v0.4.0 spec sync — live check lands in U4 of plan \
              2026-05-07-001; temporary entry until commit removes it.",

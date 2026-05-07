@@ -2,11 +2,13 @@ mod bad_args;
 mod env_hints;
 mod flag_existence;
 mod help;
+mod json_aliases;
 mod json_output;
 mod no_color;
 mod no_pager_behavioral;
 mod non_interactive;
 mod quiet;
+mod schema_print;
 mod secret_non_leaky_path;
 mod sigpipe;
 mod version;
@@ -27,6 +29,8 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(no_pager_behavioral::NoPagerBehavioralCheck),
         Box::new(no_color::NoColorBehavioralCheck),
         Box::new(secret_non_leaky_path::SecretNonLeakyPathCheck),
+        Box::new(schema_print::SchemaPrintCheck),
+        Box::new(json_aliases::JsonAliasesCheck),
     ]
 }
 

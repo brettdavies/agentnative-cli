@@ -1,7 +1,10 @@
 mod bad_args;
+mod bundle_install;
+mod bundle_update;
 mod env_hints;
 mod flag_existence;
 mod help;
+mod install_all;
 mod json_aliases;
 mod json_output;
 mod no_color;
@@ -33,6 +36,9 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(schema_print::SchemaPrintCheck),
         Box::new(json_aliases::JsonAliasesCheck),
         Box::new(standard_names::StandardNamesCheck),
+        Box::new(bundle_install::BundleInstallCheck),
+        Box::new(install_all::InstallAllCheck),
+        Box::new(bundle_update::BundleUpdateCheck),
     ]
 }
 

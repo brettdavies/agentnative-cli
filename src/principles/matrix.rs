@@ -503,11 +503,6 @@ mod tests {
         // companion landing. Each entry is removed in the same commit
         // that lands the corresponding live check (per docs/plans/
         // 2026-05-07-001-feat-v0.4.0-spec-sync-plan.md).
-        (
-            "p8-must-bundle-install",
-            "v0.4.0 spec sync — live check lands in U5 of plan \
-             2026-05-07-001; temporary entry until commit removes it.",
-        ),
     ];
 
     /// R4 — every `Check::covers()` id in the live catalog resolves in the

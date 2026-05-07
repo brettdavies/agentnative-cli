@@ -78,7 +78,7 @@ impl Check for EnumerateValidSetPythonCheck {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum EnumerateScan {
+pub(crate) enum EnumerateScan {
     ClosedSetDeclared,
     FrameworkWithoutClosedSet,
     NoFramework,

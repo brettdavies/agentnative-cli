@@ -63,10 +63,10 @@ pub(crate) fn check_schema_file(root: &std::path::Path) -> CheckStatus {
     // recursive walk needed for SHOULD-tier coverage.
     if let Ok(entries) = std::fs::read_dir(root) {
         for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.ends_with(".schema.json") {
-                    return CheckStatus::Pass;
-                }
+            if let Some(name) = entry.file_name().to_str()
+                && name.ends_with(".schema.json")
+            {
+                return CheckStatus::Pass;
             }
         }
     }

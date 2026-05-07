@@ -38,6 +38,9 @@ gh pr create --base dev --title "feat(scope): what changed"
 - **Commit style**: [Conventional Commits](https://www.conventionalcommits.org/).
 - **PR body**: follow `.github/pull_request_template.md`. The `## Changelog` section is the source of truth for
   user-facing release notes — `git-cliff` extracts these bullets verbatim into `CHANGELOG.md` during release prep.
+- **PR body prose scrub**: `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check
+  sees it. Save the body to `/tmp/`, run Vale + LanguageTool + unslop, fix findings, then submit via `--body-file`. See
+  [§ Prose scrubbing](#prose-scrubbing).
 
 ## Releasing dev to main
 
@@ -139,7 +142,12 @@ git add src/skill_install/skill.json && \
 ./scripts/generate-changelog.sh
 
 # 9. Review CHANGELOG.md. See "CHANGELOG is generated, never hand-written" below
-#    for the cliff.toml chore-skip footgun and how to recover. When clean, commit:
+#    for the cliff.toml chore-skip footgun and how to recover. Then scrub the
+#    generated content through Vale + LanguageTool + unslop — CHANGELOG.md is a
+#    generated artifact built from upstream PR bodies and inherits whatever prose
+#    those PR bodies carry. See "Prose scrubbing" below for the procedure. Fix
+#    findings on the upstream PR body and re-run scripts/generate-changelog.sh,
+#    not by hand-editing CHANGELOG.md. When clean, commit:
 git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
 
 # 10. Push and open the PR:
@@ -252,6 +260,52 @@ subsections:
 A PR that has no user-facing impact (pure refactor, test-only, CI-only) should leave the `## Changelog` section empty or
 omit it. See "CHANGELOG is generated, never hand-written" above for how the script consumes these sections at release
 time and the cliff.toml chore-skip footgun.
+
+## Prose scrubbing
+
+Three release-flow artifacts live outside any automated prose check and need a manual scrub before they ship:
+
+- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check has reach
+  there.
+- **`CHANGELOG.md`.** A generated artifact built from upstream PR bodies — it inherits whatever prose those PR bodies
+  carry, so scrubbing happens at generation time on the release branch.
+- **Release-PR bodies.** The `release/v<version>` PR to `main` gets wrap-up text contributors edit after `CHANGELOG.md`
+  has been generated, and the same out-of-repo gap applies.
+
+The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
+[`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
+Until those packs are vendored into this repo (a deferred follow-up tracked in the spec plan; expected to extend
+`scripts/sync-spec.sh`), point Vale at the spec checkout via `--config`.
+
+The scrub procedure:
+
+```bash
+# 1. Save the artifact to /tmp/. The auto-format hook skips /tmp paths, so the
+#    body keeps its authored shape and no soft-wrapping is injected.
+gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edits
+# cp CHANGELOG.md /tmp/body.md                                 # for changelog scrub
+
+# 2. Vale (against the spec's rule packs — until vendored locally, point at the spec checkout).
+vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
+
+# 3. LanguageTool (blocking categories: TYPOS|GRAMMAR|CONFUSED_WORDS, mirrors the orchestrator's whitelist).
+curl -sS -X POST "${LANGUAGETOOL_URL:-http://pool.tail42ba87.ts.net:8081}/v2/check" \
+  --data-urlencode "language=en-US" --data-urlencode "text@/tmp/body.md" \
+  | jaq '.matches[] | select(.rule.category.id | test("^(TYPOS|GRAMMAR|CONFUSED_WORDS)$"))'
+
+# 4. unslop (em-dash density and AI-unique structural patterns Vale + LT do not catch).
+~/.claude/skills/unslop/scripts/score.py /tmp/body.md
+
+# 5. Apply fixes per finding. Re-run until 0 blocking and unslop score is 0.
+
+# 6. Apply the cleaned version:
+gh pr edit <num> --body-file /tmp/body.md     # for PR body edits
+# ./scripts/generate-changelog.sh              # for CHANGELOG.md (re-runs the
+#                                              # PR-body fetch from GitHub)
+```
+
+For a `CHANGELOG.md` finding, fix the upstream PR body (which `generate-changelog.sh` re-fetches every run) and
+regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regeneration overwrites.
 
 ## Branch protection
 

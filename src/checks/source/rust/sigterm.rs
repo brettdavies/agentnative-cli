@@ -117,7 +117,10 @@ impl Check for SigtermCheck {
 }
 
 /// Core unit for tests. Returns Pass / Fail per the applicability + handler
-/// matrix. Unit testable without a `Project`.
+/// matrix. Unit testable without a `Project`. The trait `run()` aggregates
+/// across multiple parsed files (a server and its signal-installer can live in
+/// different files); this helper exists for single-source-string testing.
+#[cfg(test)]
 pub(crate) fn check_sigterm(source: &str) -> CheckStatus {
     let has_handler = SIGTERM_HANDLER_SIGNALS
         .iter()

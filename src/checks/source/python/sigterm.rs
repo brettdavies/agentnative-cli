@@ -102,6 +102,9 @@ impl Check for SigtermPythonCheck {
     }
 }
 
+/// Core unit for tests. The trait `run()` aggregates across multiple parsed
+/// files; this helper exists for single-source-string testing.
+#[cfg(test)]
 pub(crate) fn check_sigterm_python(source: &str) -> CheckStatus {
     let has_handler = SIGTERM_HANDLER_SIGNALS
         .iter()

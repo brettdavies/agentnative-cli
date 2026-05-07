@@ -84,7 +84,7 @@ impl Check for EnumerateValidSetCheck {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum EnumerateScan {
+pub(crate) enum EnumerateScan {
     ClosedSetDeclared,
     ClapWithoutClosedSet,
     NoClap,

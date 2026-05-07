@@ -1,4 +1,5 @@
 pub mod bare_except;
+pub mod enumerate_valid_set;
 pub mod no_color;
 pub mod sys_exit;
 
@@ -10,6 +11,7 @@ pub fn all_python_checks() -> Vec<Box<dyn Check>> {
         Box::new(bare_except::BareExceptCheck),
         Box::new(sys_exit::SysExitCheck),
         Box::new(no_color::NoColorPythonCheck),
+        Box::new(enumerate_valid_set::EnumerateValidSetPythonCheck),
     ]
 }
 

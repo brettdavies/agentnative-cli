@@ -7,6 +7,7 @@ mod no_color;
 mod no_pager_behavioral;
 mod non_interactive;
 mod quiet;
+mod secret_non_leaky_path;
 mod sigpipe;
 mod version;
 
@@ -25,6 +26,7 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(env_hints::EnvHintsCheck),
         Box::new(no_pager_behavioral::NoPagerBehavioralCheck),
         Box::new(no_color::NoColorBehavioralCheck),
+        Box::new(secret_non_leaky_path::SecretNonLeakyPathCheck),
     ]
 }
 

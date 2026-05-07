@@ -188,6 +188,11 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
             // handlers to redraw or exit cleanly; the default-disposition
             // check doesn't match the category's execution model.
             "p6-sigpipe",
+            // p6-must-sigterm — same rationale as p6-sigpipe. TUIs install
+            // their own SIGTERM handlers to render exit dialogs and save
+            // state; the default-disposition check doesn't match the
+            // category's execution model.
+            "p6-sigterm",
         ],
     ),
     (

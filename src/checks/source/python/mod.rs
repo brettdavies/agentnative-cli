@@ -1,6 +1,7 @@
 pub mod bare_except;
 pub mod enumerate_valid_set;
 pub mod no_color;
+pub mod sigterm;
 pub mod sys_exit;
 
 use crate::check::Check;
@@ -12,6 +13,7 @@ pub fn all_python_checks() -> Vec<Box<dyn Check>> {
         Box::new(sys_exit::SysExitCheck),
         Box::new(no_color::NoColorPythonCheck),
         Box::new(enumerate_valid_set::EnumerateValidSetPythonCheck),
+        Box::new(sigterm::SigtermPythonCheck),
     ]
 }
 

@@ -10,6 +10,7 @@ pub mod no_pager;
 pub mod output_clamping;
 pub mod output_module;
 pub mod process_exit;
+pub mod sigterm;
 pub mod structured_output;
 pub mod timeout_flag;
 pub mod try_parse;
@@ -38,5 +39,6 @@ pub fn all_rust_checks() -> Vec<Box<dyn Check>> {
         Box::new(tty_detection::TtyDetectionCheck),
         Box::new(output_module::OutputModuleCheck),
         Box::new(enumerate_valid_set::EnumerateValidSetCheck),
+        Box::new(sigterm::SigtermCheck),
     ]
 }

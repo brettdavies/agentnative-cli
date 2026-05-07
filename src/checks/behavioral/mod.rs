@@ -11,6 +11,7 @@ mod quiet;
 mod schema_print;
 mod secret_non_leaky_path;
 mod sigpipe;
+mod standard_names;
 mod version;
 
 use crate::check::Check;
@@ -31,6 +32,7 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(secret_non_leaky_path::SecretNonLeakyPathCheck),
         Box::new(schema_print::SchemaPrintCheck),
         Box::new(json_aliases::JsonAliasesCheck),
+        Box::new(standard_names::StandardNamesCheck),
     ]
 }
 

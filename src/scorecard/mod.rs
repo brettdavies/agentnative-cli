@@ -385,6 +385,7 @@ fn group_display(group: &CheckGroup) -> &'static str {
         CheckGroup::P5 => "P5 — Safe Retries",
         CheckGroup::P6 => "P6 — Composable Structure",
         CheckGroup::P7 => "P7 — Bounded Responses",
+        CheckGroup::P8 => "P8 — Discoverable Skill Bundles",
         CheckGroup::CodeQuality => "Code Quality",
         CheckGroup::ProjectStructure => "Project Structure",
     }
@@ -400,8 +401,9 @@ fn group_order(group: &CheckGroup) -> u8 {
         CheckGroup::P5 => 5,
         CheckGroup::P6 => 6,
         CheckGroup::P7 => 7,
-        CheckGroup::CodeQuality => 8,
-        CheckGroup::ProjectStructure => 9,
+        CheckGroup::P8 => 8,
+        CheckGroup::CodeQuality => 9,
+        CheckGroup::ProjectStructure => 10,
     }
 }
 

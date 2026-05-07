@@ -46,13 +46,14 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 
 **MUST:**
 
-- Every subcommand ships at least one concrete invocation example showing the command with realistic arguments, rendered
-  in the section that appears after the flags list. In clap this is the `after_help` attribute.
-- The top-level command ships 2–3 examples covering the primary use cases.
+- Every subcommand MUST render at least one concrete invocation example with realistic arguments, in the section that
+  appears after the flags list. Clap's `after_help` attribute is the Rust realization; other frameworks have equivalents
+  (see Evidence section below).
+- The top-level command MUST render 2–3 examples covering the primary use cases.
 
 **SHOULD:**
 
-- Examples show human and agent invocations side by side — a text-output example followed by its `--output json`
+- Examples show human and agent invocations side by side: a text-output example followed by its `--output json`
   equivalent. Readers see the pair; agents see the JSON form.
 - Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help` but
   not `-h`.
@@ -71,18 +72,18 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 
 ## Anti-Patterns
 
-- Relying solely on `///` doc comments — those populate `about` / `long_about`, not `after_help`, so no examples render
+- Relying solely on `///` doc comments: those populate `about` / `long_about`, not `after_help`, so no examples render
   after the flags list.
 - A single `about` string serving as both summary and usage documentation.
 - Examples buried in a README or man page but absent from `--help` output.
 - `after_help` text that describes the flags in prose instead of demonstrating them in code.
 
-Measured by check IDs `p3-help`, `p3-after-help`, `p3-version`. Run `agentnative check --principle 3 .` against your CLI
-to see each.
+Measured by check IDs `p3-help`, `p3-after-help`, `p3-version`. Run `agentnative check --principle 3 .` against the CLI
+under test to see each.
 
 ## Pressure test notes
 
-### 2026-04-27 — Show HN launch red-team pass
+### 2026-04-27: Show HN launch red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
@@ -93,7 +94,7 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   `universal` to conditional (`if: CLI exposes a structured-output mode`) fires the coupled-release norm (CLI registry
   parses `applicability`). Bundled with other applicability cleanups for a v0.4.0 PR with explicit registry
   coordination.
-- **[later]** *Must-vs-should.* "'Top-level command ships 2–3 examples' as a universal MUST is too strong for genuinely
+- **[later]** *MUST-vs-SHOULD.* "'Top-level command ships 2–3 examples' as a universal MUST is too strong for genuinely
   single-purpose CLIs (e.g., `cat`, `true`, a one-shot wrapper) where one canonical invocation is the entire surface.
   The '2–3' count baked into a MUST will draw HN fire as cargo-culted." Deferred: softening to "at least one example,
   and 2–3 when the tool has multiple primary use cases" is a MUST-content change that drifts the frontmatter summary.
@@ -103,4 +104,4 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   epilog, `cobra` Example field, `gh`/`kubectl` Examples convention). HN will call this 'a clap style guide, not a CLI
   standard.'" Deferred: a cross-framework analog appendix is a meaningful addition. The Definition / Why-Agents-Need-It
   sections are framework-agnostic; the Evidence section is intentionally clap-keyed. Worth revisiting in v0.4.0 once the
-  standard's multi-language reach is clearer; site copy may also be a better home than the principle file itself.
+  standard's multi-language reach is clearer; site copy could also be a better home than the principle file itself.

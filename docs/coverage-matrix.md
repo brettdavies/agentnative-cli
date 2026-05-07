@@ -7,19 +7,20 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 ## Summary
 
-- **Total**: 46 requirements (19 covered / 27 uncovered)
-- **Dual-layer**: 7 of 19 covered requirements have verifiers in two layers (behavioral + source or project)
-- **MUST**: 17 of 23 covered
-- **SHOULD**: 2 of 16 covered
-- **MAY**: 0 of 7 covered
+- **Total**: 57 requirements (30 covered / 27 uncovered)
+- **Dual-layer**: 9 of 30 covered requirements have verifiers in two layers (behavioral + source or project)
+- **MUST**: 21 of 27 covered
+- **SHOULD**: 6 of 20 covered
+- **MAY**: 3 of 10 covered
 
 ## P1: Non-Interactive by Default
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
 | `p1-must-env-var` | MUST | Universal | `p1-env-hints` (behavioral)<br>`p1-env-flags-source` (source) | Every flag settable via environment variable (falsey-value parser for booleans). |
-| `p1-must-no-interactive` | MUST | Universal | `p1-non-interactive` (behavioral)<br>`p1-flag-existence` (behavioral)<br>`p1-non-interactive-source` (project) | `--no-interactive` flag gates every prompt library call; when set or stdin is not a TTY, use defaults/stdin or exit with an actionable error. |
+| `p1-must-no-interactive` | MUST | Universal | `p1-non-interactive` (behavioral)<br>`p1-flag-existence` (behavioral)<br>`p1-non-interactive-source` (project) | When stdin is not a TTY or `--no-interactive` is set, every blocking-input surface (prompt libraries, read-line, TUI init) resolves from defaults/stdin or exits with an actionable error. |
 | `p1-must-no-browser` | MUST | If: CLI authenticates against a remote service | `p1-headless-auth` (source) | Headless authentication path (`--no-browser` / OAuth Device Authorization Grant). |
+| `p1-must-secret-non-leaky-path` | MUST | If: CLI accepts secret material (tokens, passwords, keys) as input | `p1-secret-non-leaky-path` (behavioral) | Sensitive inputs are readable via stdin or a `--*-file` flag; flag-value and env-var inputs MAY exist for convenience but MUST NOT be the only path. |
 | `p1-should-tty-detection` | SHOULD | Universal | `p1-tty-detection-source` (source) | Auto-detect non-interactive context via TTY detection; suppress prompts when stderr is not a terminal. |
 | `p1-should-defaults-in-help` | SHOULD | Universal | **UNCOVERED** | Document default values for prompted inputs in `--help` output. |
 | `p1-may-rich-tui` | MAY | Universal | **UNCOVERED** | Rich interactive experiences (spinners, progress bars, menus) when TTY is detected and `--no-interactive` is not set. |
@@ -28,11 +29,14 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p2-must-output-flag` | MUST | Universal | `p2-json-output` (behavioral)<br>`p2-structured-output` (source) | `--output text\|json\|jsonl` flag selects output format; `OutputFormat` enum threaded through output paths. |
-| `p2-must-stdout-stderr-split` | MUST | Universal | `p2-output-module` (source) | Data goes to stdout; diagnostics/progress/warnings go to stderr — never interleaved. |
+| `p2-must-output-flag` | MUST | Universal | `p2-json-output` (behavioral)<br>`p2-structured-output` (source) | `--output` flag selects format with `json` and `jsonl` as canonical machine-readable values; `text` is the default human-facing form. |
+| `p2-must-stdout-stderr-split` | MUST | Universal | `p2-output-module` (source) | Data goes to stdout; diagnostics/progress/warnings go to stderr, never interleaved. |
 | `p2-must-exit-codes` | MUST | Universal | **UNCOVERED** | Exit codes are structured and documented (0 success, 1 general, 2 usage, 77 auth, 78 config). |
 | `p2-must-json-errors` | MUST | Universal | **UNCOVERED** | When `--output json` is active, errors are emitted as JSON (to stderr) with at least `error`, `kind`, and `message` fields. |
-| `p2-should-consistent-envelope` | SHOULD | Universal | **UNCOVERED** | JSON output uses a consistent envelope — a top-level object with predictable keys — across every command. |
+| `p2-must-schema-print` | MUST | If: CLI emits structured output | `p2-schema-print` (behavioral) | CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier. |
+| `p2-should-consistent-envelope` | SHOULD | Universal | **UNCOVERED** | JSON output uses a consistent envelope (a top-level object with predictable keys) across every command. |
+| `p2-should-schema-file` | SHOULD | If: CLI emits structured output | `p2-schema-file` (project) | Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool. |
+| `p2-should-json-aliases` | SHOULD | Universal | `p2-json-aliases` (behavioral) | `--json` and `--jsonl` are accepted as aliases for `--output json` and `--output jsonl`; the short forms work alongside the canonical enum. |
 | `p2-may-more-formats` | MAY | Universal | **UNCOVERED** | Additional output formats (CSV, TSV, YAML) beyond the core three. |
 | `p2-may-raw-flag` | MAY | Universal | **UNCOVERED** | `--raw` flag for unformatted output suitable for piping to other tools. |
 
@@ -52,10 +56,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | --- | --- | --- | --- | --- |
 | `p4-must-try-parse` | MUST | Universal | `p4-try-parse` (source) | Parse arguments with `try_parse()` instead of `parse()` so `--output json` can emit JSON parse errors. |
 | `p4-must-exit-code-mapping` | MUST | Universal | `p4-bad-args` (behavioral)<br>`p4-exit-codes` (source) | Error types map to distinct exit codes (0, 1, 2, 77, 78). |
-| `p4-must-actionable-errors` | MUST | Universal | **UNCOVERED** | Every error message contains what failed, why, and what to do next. |
+| `p4-must-actionable-errors` | MUST | Universal | **UNCOVERED** | Every error message names the failure, the cause, and a concrete remediation (a command or a value, not a hint to consult docs). |
 | `p4-should-structured-enum` | SHOULD | Universal | `p4-error-module` (project)<br>`p4-error-types` (source) | Error types use a structured enum (via `thiserror` in Rust) with variant-to-kind mapping for JSON serialization. |
 | `p4-should-gating-before-network` | SHOULD | If: CLI makes network calls | **UNCOVERED** | Config and auth validation happen before any network call, failing at the earliest possible point. |
 | `p4-should-json-error-output` | SHOULD | Universal | **UNCOVERED** | Error output respects `--output json`: JSON-formatted errors go to stderr when JSON output is selected. |
+| `p4-should-enumerate-valid-set` | SHOULD | If: CLI rejects input against a closed set | `p4-enumerate-valid-set` (source)<br>`p4-enumerate-valid-set` (source) | When rejecting input against an enum or fixed-allowed-values set, the error message includes the valid set. |
 
 ## P5: Safe Retries, Mutation Boundaries
 
@@ -64,15 +69,16 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p5-must-force-yes` | MUST | If: CLI has destructive operations | **UNCOVERED** | Destructive operations (delete, overwrite, bulk modify) require an explicit `--force` or `--yes` flag. |
 | `p5-must-read-write-distinction` | MUST | If: CLI has both read and write operations | **UNCOVERED** | The distinction between read and write commands is clear from the command name and help text alone. |
 | `p5-must-dry-run` | MUST | If: CLI has write operations | `p5-dry-run` (project) | A `--dry-run` flag is present on every write command; dry-run output respects `--output json`. |
-| `p5-should-idempotency` | SHOULD | If: CLI has write operations | **UNCOVERED** | Write operations are idempotent where the domain allows it — running the same command twice produces the same result. |
+| `p5-should-idempotency` | SHOULD | If: CLI has write operations | **UNCOVERED** | Write operations are idempotent where the domain allows it: running the same command twice produces the same result. |
 
 ## P6: Composable, Predictable Command Structure
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
 | `p6-must-sigpipe` | MUST | Universal | `p6-sigpipe` (behavioral) | SIGPIPE is handled so piping to `head`/`tail` does not crash the process (Rust example below; Python/Go/Node have language-specific equivalents). |
-| `p6-must-no-color` | MUST | Universal | `p6-no-color-behavioral` (behavioral)<br>`p6-no-color` (source)<br>`p6-no-color` (source) | TTY detection plus support for `NO_COLOR` and `TERM=dumb` — color codes suppressed when stdout/stderr is not a terminal. |
-| `p6-must-completions` | MUST | Universal | `p6-completions` (project) | Shell completions available via a `completions` subcommand (Tier 1 meta-command — needs no config/auth/network). |
+| `p6-must-sigterm` | MUST | If: CLI has long-running operations | `p6-sigterm` (source)<br>`p6-sigterm` (source) | Long-running operations handle SIGTERM gracefully: flush or roll back partial writes, release locks, exit non-zero within a bounded window. Next invocation succeeds without manual cleanup. |
+| `p6-must-no-color` | MUST | Universal | `p6-no-color-behavioral` (behavioral)<br>`p6-no-color` (source)<br>`p6-no-color` (source) | TTY detection plus support for `NO_COLOR` and `TERM=dumb`: color codes suppressed when stdout/stderr is not a terminal. |
+| `p6-must-completions` | MUST | Universal | `p6-completions` (project) | Shell completions available via a `completions` subcommand (Tier 1 meta-command, needs no config/auth/network). |
 | `p6-must-timeout-network` | MUST | If: CLI makes network calls | `p6-timeout` (source) | Network CLIs ship a `--timeout` flag with a sensible default (e.g., 30 seconds). |
 | `p6-must-no-pager` | MUST | If: CLI invokes a pager for output | `p6-no-pager-behavioral` (behavioral)<br>`p6-no-pager` (source) | If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. |
 | `p6-must-global-flags` | MUST | If: CLI uses subcommands | `p6-global-flags` (source) | Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) propagate to every subcommand (e.g., `global = true` in clap). |
@@ -81,16 +87,26 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p6-should-tier-gating` | SHOULD | Universal | **UNCOVERED** | Three-tier dependency gating: Tier 1 (meta) needs nothing, Tier 2 (local) needs config, Tier 3 (network) needs config + auth. |
 | `p6-should-subcommand-operations` | SHOULD | If: CLI performs multiple distinct operations | **UNCOVERED** | Operations are modeled as subcommands, not flags (`tool search "q"`, not `tool --search "q"`). |
 | `p6-may-color-flag` | MAY | Universal | **UNCOVERED** | `--color auto\|always\|never` flag for explicit color control beyond TTY auto-detection. |
+| `p6-may-standard-names` | MAY | If: CLI uses subcommands | `p6-standard-names` (behavioral) | Subcommand verbs MAY follow community-standard names (`get`/`list`/`create`/`update`/`delete`); flag spellings MAY follow widely-used canonical forms (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`). |
 
 ## P7: Bounded, High-Signal Responses
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
 | `p7-must-quiet` | MUST | Universal | `p7-quiet` (behavioral) | A `--quiet` flag suppresses non-essential output; only requested data and errors appear. |
-| `p7-must-list-clamping` | MUST | If: CLI has list-style commands | `p7-output-clamping` (source) | List operations clamp to a sensible default maximum; when truncated, indicate it (`"truncated": true` in JSON, stderr note in text). |
+| `p7-must-list-clamping` | MUST | If: CLI has list-style commands | `p7-output-clamping` (source) | List operations clamp to a documented default maximum; when truncated, indicate it (`"truncated": true` in JSON, stderr note in text). |
 | `p7-should-verbose` | SHOULD | Universal | **UNCOVERED** | A `--verbose` flag (or `-v` / `-vv`) escalates diagnostic detail when agents need to debug failures. |
 | `p7-should-limit` | SHOULD | If: CLI has list-style commands | **UNCOVERED** | A `--limit` or `--max-results` flag lets callers request exactly the number of items they want. |
 | `p7-should-timeout` | SHOULD | Universal | **UNCOVERED** | A `--timeout` flag bounds execution time so agents are not blocked indefinitely. |
 | `p7-may-cursor-pagination` | MAY | If: CLI returns paginated results | **UNCOVERED** | Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets. |
 | `p7-may-auto-verbosity` | MAY | Universal | **UNCOVERED** | Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests). |
+
+## P8: Unknown
+
+| ID | Level | Applicability | Verifier(s) | Summary |
+| --- | --- | --- | --- | --- |
+| `p8-must-bundle-install` | MUST | If: CLI ships an agent skill bundle | `p8-bundle-install` (behavioral) | When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes. |
+| `p8-should-bundle-exists` | SHOULD | Universal | `p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
+| `p8-may-install-all` | MAY | If: CLI ships an agent skill bundle | `p8-install-all` (behavioral) | An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all. |
+| `p8-may-bundle-update` | MAY | If: CLI ships an agent skill bundle | `p8-bundle-update` (behavioral) | An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version. |
 

@@ -1,8 +1,67 @@
 # Changelog
 
-All notable changes to this repository are documented here — governance, validator, release infrastructure, README, decision records.
+All notable changes to this repository are documented here: governance, validator, release infrastructure, README, decision records.
 
-Changes to the standard itself — principle MUST/SHOULD/MAY tier moves, requirement IDs added/removed/renamed, applicability shifts — are tracked per-principle in `principles/p*-*.md` via the `last-revised:` calver frontmatter field and the `## Pressure test notes` section appended to each file.
+Changes to the standard itself (principle MUST/SHOULD/MAY tier moves, requirement IDs added/removed/renamed, applicability shifts) are tracked per-principle in `principles/p*-*.md` via the `last-revised:` calver frontmatter field and the `## Pressure test notes` section appended to each file.
+
+## [0.4.0] - 2026-05-07
+
+### Added
+
+- P1 MUST `p1-must-secret-non-leaky-path` (conditional on CLI accepting secret material): sensitive inputs are readable via stdin or a `--*-file` flag; flag-value and env-var inputs MAY exist for convenience but MUST NOT be the only path. by @brettdavies in [#25](https://github.com/brettdavies/agentnative/pull/25)
+- P2 MUST `p2-must-schema-print` (conditional on structured output): expose the output schema via a `schema` subcommand or `--schema` flag, runtime-discoverable, with a documented format identifier (canonical recommendation: JSON Schema 2020-12).
+- P2 SHOULD `p2-should-schema-file` (conditional on structured output): also export the schema to a stable file path so CI and static-analysis consumers can pin without invoking the tool.
+- P2 SHOULD `p2-should-json-aliases`: accept `--json` and `--jsonl` as aliases for `--output json` and `--output jsonl`.
+- P4 SHOULD `p4-should-enumerate-valid-set` (conditional on closed-set rejection): when rejecting input against an enum or fixed-allowed-values set, the error message includes the valid set.
+- P6 MUST `p6-must-sigterm` (conditional on long-running operations): flush or roll back partial writes, release locks, exit non-zero within a bounded shutdown window. Next invocation succeeds without manual cleanup.
+- P6 MAY `p6-may-standard-names` (conditional on subcommands): follow community-standard verbs (`get` / `list` / `create` / `update` / `delete`) and flag spellings (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`).
+- New principle **P8 Discoverable Through Agent Skill Bundles** (four requirements: `p8-must-bundle-install`, `p8-should-bundle-exists`, `p8-may-install-all`, `p8-may-bundle-update`). CLIs ship a top-level skill bundle (`AGENTS.md`, `SKILL.md`, or equivalent) and provide an install path that registers the bundle with installed agent runtimes (canonical form: `tool skill install [<host>]`).
+
+### Changed
+
+- `VERSION`: 0.3.1 → 0.4.0 (MINOR per `principles/AGENTS.md`'s versioning rules; new MUSTs added). by @brettdavies in [#25](https://github.com/brettdavies/agentnative/pull/25)
+- `.impeccable.md`: new spec-channel anti-pattern "No false canonicalization". When a bullet names an outcome the implementer can satisfy any way, prose uses indefinite articles and avoids language that canonicalizes one shape; when a bullet names a citable single-shape pattern, prose uses definite articles and cites the source.
+
+**Full Changelog**: [v0.4.0...v0.4.0](https://github.com/brettdavies/agentnative/compare/v0.4.0...v0.4.0)
+
+## [0.4.0] - 2026-05-07
+
+### Added
+
+- P1 MUST `p1-must-secret-non-leaky-path` (conditional on CLI accepting secret material): sensitive inputs are readable via stdin or a `--*-file` flag; flag-value and env-var inputs MAY exist for convenience but MUST NOT be the only path. by @brettdavies in [#25](https://github.com/brettdavies/agentnative/pull/25)
+- P2 MUST `p2-must-schema-print` (conditional on structured output): expose the output schema via a `schema` subcommand or `--schema` flag, runtime-discoverable, with a documented format identifier (canonical recommendation: JSON Schema 2020-12).
+- P2 SHOULD `p2-should-schema-file` (conditional on structured output): also export the schema to a stable file path so CI and static-analysis consumers can pin without invoking the tool.
+- P2 SHOULD `p2-should-json-aliases`: accept `--json` and `--jsonl` as aliases for `--output json` and `--output jsonl`.
+- P4 SHOULD `p4-should-enumerate-valid-set` (conditional on closed-set rejection): when rejecting input against an enum or fixed-allowed-values set, the error message includes the valid set.
+- P6 MUST `p6-must-sigterm` (conditional on long-running operations): flush or roll back partial writes, release locks, exit non-zero within a bounded shutdown window. Next invocation succeeds without manual cleanup.
+- P6 MAY `p6-may-standard-names` (conditional on subcommands): follow community-standard verbs (`get` / `list` / `create` / `update` / `delete`) and flag spellings (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`).
+- New principle **P8 Discoverable Through Agent Skill Bundles** (four requirements: `p8-must-bundle-install`, `p8-should-bundle-exists`, `p8-may-install-all`, `p8-may-bundle-update`). CLIs ship a top-level skill bundle (`AGENTS.md`, `SKILL.md`, or equivalent) and provide an install path that registers the bundle with installed agent runtimes (canonical form: `tool skill install [<host>]`).
+
+### Changed
+
+- `VERSION`: 0.3.1 → 0.4.0 (MINOR per `principles/AGENTS.md`'s versioning rules; new MUSTs added). by @brettdavies in [#25](https://github.com/brettdavies/agentnative/pull/25)
+- `.impeccable.md`: new spec-channel anti-pattern "No false canonicalization". When a bullet names an outcome the implementer can satisfy any way, prose uses indefinite articles and avoids language that canonicalizes one shape; when a bullet names a citable single-shape pattern, prose uses definite articles and cites the source.
+
+**Full Changelog**: [v0.3.1...v0.4.0](https://github.com/brettdavies/agentnative/compare/v0.3.1...v0.4.0)
+
+## [0.3.1] - 2026-05-07
+
+### Added
+
+- Badge claim convention (`docs/badge.md`) defines eligibility floor (≥80% pass-rate), embed shape, score-text format, color thresholds, and version-pinning posture for tool authors who self-host the agent-native badge linked to a live scorecard. by @brettdavies in [#20](https://github.com/brettdavies/agentnative/pull/20)
+- README and CONTRIBUTING pointers to the badge convention so HN visitors and tool authors land on the convention from the two top-level entry points.
+- Add `BRAND.md` at the repo root. Universal voice and identity SoT shared across the spec, site, linter, and skill bundle channels. Each channel inherits the shared identity and adds register and artifacts in its own `.impeccable.md`. by @brettdavies in [#22](https://github.com/brettdavies/agentnative/pull/22)
+- Add spec-channel `.impeccable.md`: RFC 2119 register rules, third-person standards voice, no-implementation-leakage anti-patterns. Narrative identity layer; literal phrase enforcement lives in the `spec` Vale rule pack.
+- Add `## Acknowledgements` to README. Names foundational CLI doctrine (12-factor, POSIX, clig.dev, NO_COLOR, XDG), parallel agent-CLI synthesis sources, the spec's proximate ancestors, and the anc.dev ecosystem's mechanism contribution.
+- Add deterministic pre-push voice enforcement: Vale rule packs (`styles/brand/`, `styles/spec/`), LanguageTool grammar checks over the Tailnet (graceful skip when unreachable), and pack-README drift detection. One-time setup per contributor: `brew install vale jaq bun && vale sync` after activating `core.hooksPath scripts/hooks`. The layered SoT, orchestrator behavior, contributor flow, and deferred follow-ups live in the `dev`-only architecture docs.
+
+### Changed
+
+- Rename README "trifecta" to "four artifacts"; add `agentnative-skill` as a first-class artifact alongside the spec, the linter, and the leaderboard. by @brettdavies in [#22](https://github.com/brettdavies/agentnative/pull/22)
+- Drop `docs/architecture/voice-enforcement.md` references from main-shipped files (`AGENTS.md`, `CONTRIBUTING.md`, `principles/AGENTS.md`, `.gitignore` comment). Replace the pointers with inline narrative that names the rule packs and the LT graceful-skip behavior. The architecture docs stay on `dev` as contributor-side reference and are not shipped to `main`. by @brettdavies in [#24](https://github.com/brettdavies/agentnative/pull/24)
+- Update the `RELEASES.md` Prose scrubbing procedure to scrub-before-submit. Step 1 covers three entry points (scratch authoring for `gh pr create`, fetch-then-clean for `gh pr edit`, `cp CHANGELOG.md` for changelog scrub); step 6 submits the cleaned version once via `--body-file`.
+
+**Full Changelog**: [v0.3.0...v0.3.1](https://github.com/brettdavies/agentnative/compare/v0.3.0...v0.3.1)
 
 ## [0.3.0] - 2026-04-28
 

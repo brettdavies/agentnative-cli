@@ -1,7 +1,7 @@
 # Releasing `agentnative`
 
-Every change reaches production via this pipeline. Direct commits to `dev` or `main` are not permitted — every change
-has a PR number in its squash commit message, which keeps the history scannable, attributable, and changelog-ready.
+Every change reaches production via this pipeline. Direct commits to `dev` or `main` are not permitted. Every change has
+a PR number in its squash commit message, which keeps the history scannable, attributable, and changelog-ready.
 
 ```text
 feature branch → PR to dev (squash merge)
@@ -16,12 +16,12 @@ feature branch → PR to dev (squash merge)
 | -------------------------------------- | --------------------------------------- | ------------------------------------------- | ------------------------------------ |
 | `main`                                 | Production. Only release commits.       | Forever.                                    | `.github/rulesets/protect-main.json` |
 | `dev`                                  | Integration. All feature PRs land here. | Forever. Never delete.                      | `.github/rulesets/protect-dev.json`  |
-| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None — squash into dev freely.       |
+| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None. Squash into dev freely.        |
 | `release/*`                            | Head of a dev → main PR.                | One release's worth. Auto-deleted on merge. | None.                                |
 
 `dev` is a **forever branch**. Never delete it locally or remotely, even after a `release/* → main` merge. The next
 release cycle reuses the same `dev`. The repo's `deleteBranchOnMerge: true` setting doesn't touch `dev` as long as `dev`
-is never the head of a PR — using a short-lived `release/*` head is what keeps the setting compatible with a forever
+is never the head of a PR. Using a short-lived `release/*` head is what keeps the setting compatible with a forever
 integration branch.
 
 ## Daily development (feature → dev)
@@ -38,6 +38,47 @@ gh pr create --base dev --title "feat(scope): what changed"
 - **Commit style**: [Conventional Commits](https://www.conventionalcommits.org/).
 - **PR body**: follow `.github/pull_request_template.md`. The `## Changelog` section is the source of truth for
   user-facing release notes — `git-cliff` extracts these bullets verbatim into `CHANGELOG.md` during release prep.
+- **PR body prose scrub**: `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check
+  sees it. Save the body to `/tmp/`, run Vale + LanguageTool + unslop, fix findings, then submit via `--body-file`. See
+  [§ Prose scrubbing](#prose-scrubbing).
+
+## PR body
+
+Every PR — feature, fix, docs, release — uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
+`## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`, `## Files Modified`, `## Testing`.
+
+- **Summary** is the NEW user-facing substance the PR ships. What is changing for the consumer that was not already
+  there. One short paragraph fits. Do NOT recap the workflow (cherry-pick / regenerate / pre-push gate / CI behavior is
+  documented in this file and `.github/`). Do NOT paste triple-diff output, pre-push gate results, or CI check status
+  into the body. Those are author verification artifacts that stay local; anomalies get fixed before push, not
+  audit-trailed in the body.
+- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`) hold the user-facing
+  entries. The template's RULES (in the HTML comment at the top of the section) are literal: 1-5 bullets, delete empty
+  subsections entirely, each bullet starts with a verb. Prose-only edits leave the section empty or omit it.
+- **Type of Change** is one checkbox. Prefer `feat` / `fix` over `chore` when the change has any user-observable effect
+  (config defaults, env vars, default behaviors). `cliff.toml` skips `^chore` (and `^style` / `^test` / `^ci` /
+  `^build`) regardless of body content; mistyping a user-facing change as `chore` silently strips it from release notes.
+- **Related Issues/Stories** has four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four are
+  required even when empty — write `- None.` or `n/a` rather than deleting the label.
+- **Files Modified** has four sub-headers (`**Modified:**` / `**Created:**` / `**Renamed:**` / `**Deleted:**`). All four
+  are required even when empty — `Renamed: None.` / `Deleted: None.`
+- **Internal tooling commits** (`chore(cliff): ...`, `chore(prose-check): ...`, etc.) do NOT appear in the PR body's `##
+  Changelog`. They are not user-facing.
+- **Release PRs** repeat the entries from the upstream feature PRs they cherry-pick. The repetition is intentional and
+  harmless: `cliff.toml`'s `^release` skip prevents the release-PR squash commit from being double-counted in any future
+  regeneration.
+- **No AI attribution.** Never append `Co-Authored-By: Claude …`, `🤖 Generated with [Claude Code]`, or any similar
+  AI-attribution trailer to PR bodies or commit messages. Commits and PRs stand on their own technical content.
+- **No hard line wraps.** Author each paragraph and each bullet as one logical line, however long. GitHub soft-wraps for
+  display; hard wraps within prose produce visible mid-sentence breaks in some renderers and interfere with the
+  prose-check pipeline (Vale's line-anchored output reports findings against split lines, LanguageTool's input handling
+  can choke on certain control-char interactions). The auto-format hook skips `/tmp/` paths so the body keeps its
+  authored shape — don't undo that with manual wrapping during composition. The same rule applies to commit messages
+  composed via heredoc and to any markdown that ships verbatim to GitHub.
+
+The PR body is read by humans reviewing what shipped. Workflow mechanics, verification output, and tool-fix provenance
+are noise from that perspective; they belong in this file (`RELEASES.md`), the script outputs, and the commit history
+respectively.
 
 ## Releasing dev to main
 
@@ -139,7 +180,12 @@ git add src/skill_install/skill.json && \
 ./scripts/generate-changelog.sh
 
 # 9. Review CHANGELOG.md. See "CHANGELOG is generated, never hand-written" below
-#    for the cliff.toml chore-skip footgun and how to recover. When clean, commit:
+#    for the cliff.toml chore-skip footgun and how to recover. Then scrub the
+#    generated content through Vale + LanguageTool + unslop — CHANGELOG.md is a
+#    generated artifact built from upstream PR bodies and inherits whatever prose
+#    those PR bodies carry. See "Prose scrubbing" below for the procedure. Fix
+#    findings on the upstream PR body and re-run scripts/generate-changelog.sh,
+#    not by hand-editing CHANGELOG.md. When clean, commit:
 git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
 
 # 10. Push and open the PR:
@@ -252,6 +298,52 @@ subsections:
 A PR that has no user-facing impact (pure refactor, test-only, CI-only) should leave the `## Changelog` section empty or
 omit it. See "CHANGELOG is generated, never hand-written" above for how the script consumes these sections at release
 time and the cliff.toml chore-skip footgun.
+
+## Prose scrubbing
+
+Three release-flow artifacts live outside any automated prose check and need a manual scrub before they ship:
+
+- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check has reach
+  there.
+- **`CHANGELOG.md`.** A generated artifact built from upstream PR bodies — it inherits whatever prose those PR bodies
+  carry, so scrubbing happens at generation time on the release branch.
+- **Release-PR bodies.** The `release/v<version>` PR to `main` gets wrap-up text contributors edit after `CHANGELOG.md`
+  has been generated, and the same out-of-repo gap applies.
+
+The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
+[`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
+Until those packs are vendored into this repo (a deferred follow-up tracked in the spec plan; expected to extend
+`scripts/sync-spec.sh`), point Vale at the spec checkout via `--config`.
+
+The scrub procedure:
+
+```bash
+# 1. Save the artifact to /tmp/. The auto-format hook skips /tmp paths, so the
+#    body keeps its authored shape and no soft-wrapping is injected.
+gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edits
+# cp CHANGELOG.md /tmp/body.md                                 # for changelog scrub
+
+# 2. Vale (against the spec's rule packs — until vendored locally, point at the spec checkout).
+vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
+
+# 3. LanguageTool (blocking categories: TYPOS|GRAMMAR|CONFUSED_WORDS, mirrors the orchestrator's whitelist).
+curl -sS -X POST "${LANGUAGETOOL_URL:-http://pool.tail42ba87.ts.net:8081}/v2/check" \
+  --data-urlencode "language=en-US" --data-urlencode "text@/tmp/body.md" \
+  | jaq '.matches[] | select(.rule.category.id | test("^(TYPOS|GRAMMAR|CONFUSED_WORDS)$"))'
+
+# 4. unslop (em-dash density and AI-unique structural patterns Vale + LT do not catch).
+~/.claude/skills/unslop/scripts/score.py /tmp/body.md
+
+# 5. Apply fixes per finding. Re-run until 0 blocking and unslop score is 0.
+
+# 6. Apply the cleaned version:
+gh pr edit <num> --body-file /tmp/body.md     # for PR body edits
+# ./scripts/generate-changelog.sh              # for CHANGELOG.md (re-runs the
+#                                              # PR-body fetch from GitHub)
+```
+
+For a `CHANGELOG.md` finding, fix the upstream PR body (which `generate-changelog.sh` re-fetches every run) and
+regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regeneration overwrites.
 
 ## Branch protection
 

@@ -25,7 +25,7 @@
       "id": "p1-must-no-interactive",
       "principle": 1,
       "level": "must",
-      "summary": "`--no-interactive` flag gates every prompt library call; when set or stdin is not a TTY, use defaults/stdin or exit with an actionable error.",
+      "summary": "When stdin is not a TTY or `--no-interactive` is set, every blocking-input surface (prompt libraries, read-line, TUI init) resolves from defaults/stdin or exits with an actionable error.",
       "applicability": {
         "kind": "universal"
       },
@@ -57,6 +57,22 @@
         {
           "check_id": "p1-headless-auth",
           "layer": "source"
+        }
+      ]
+    },
+    {
+      "id": "p1-must-secret-non-leaky-path",
+      "principle": 1,
+      "level": "must",
+      "summary": "Sensitive inputs are readable via stdin or a `--*-file` flag; flag-value and env-var inputs MAY exist for convenience but MUST NOT be the only path.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI accepts secret material (tokens, passwords, keys) as input"
+      },
+      "verifiers": [
+        {
+          "check_id": "p1-secret-non-leaky-path",
+          "layer": "behavioral"
         }
       ]
     },
@@ -99,7 +115,7 @@
       "id": "p2-must-output-flag",
       "principle": 2,
       "level": "must",
-      "summary": "`--output text|json|jsonl` flag selects output format; `OutputFormat` enum threaded through output paths.",
+      "summary": "`--output` flag selects format with `json` and `jsonl` as canonical machine-readable values; `text` is the default human-facing form.",
       "applicability": {
         "kind": "universal"
       },
@@ -118,7 +134,7 @@
       "id": "p2-must-stdout-stderr-split",
       "principle": 2,
       "level": "must",
-      "summary": "Data goes to stdout; diagnostics/progress/warnings go to stderr — never interleaved.",
+      "summary": "Data goes to stdout; diagnostics/progress/warnings go to stderr, never interleaved.",
       "applicability": {
         "kind": "universal"
       },
@@ -150,14 +166,61 @@
       "verifiers": []
     },
     {
+      "id": "p2-must-schema-print",
+      "principle": 2,
+      "level": "must",
+      "summary": "CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI emits structured output"
+      },
+      "verifiers": [
+        {
+          "check_id": "p2-schema-print",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
       "id": "p2-should-consistent-envelope",
       "principle": 2,
       "level": "should",
-      "summary": "JSON output uses a consistent envelope — a top-level object with predictable keys — across every command.",
+      "summary": "JSON output uses a consistent envelope (a top-level object with predictable keys) across every command.",
       "applicability": {
         "kind": "universal"
       },
       "verifiers": []
+    },
+    {
+      "id": "p2-should-schema-file",
+      "principle": 2,
+      "level": "should",
+      "summary": "Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI emits structured output"
+      },
+      "verifiers": [
+        {
+          "check_id": "p2-schema-file",
+          "layer": "project"
+        }
+      ]
+    },
+    {
+      "id": "p2-should-json-aliases",
+      "principle": 2,
+      "level": "should",
+      "summary": "`--json` and `--jsonl` are accepted as aliases for `--output json` and `--output jsonl`; the short forms work alongside the canonical enum.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p2-json-aliases",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p2-may-more-formats",
@@ -273,7 +336,7 @@
       "id": "p4-must-actionable-errors",
       "principle": 4,
       "level": "must",
-      "summary": "Every error message contains what failed, why, and what to do next.",
+      "summary": "Every error message names the failure, the cause, and a concrete remediation (a command or a value, not a hint to consult docs).",
       "applicability": {
         "kind": "universal"
       },
@@ -320,6 +383,26 @@
       "verifiers": []
     },
     {
+      "id": "p4-should-enumerate-valid-set",
+      "principle": 4,
+      "level": "should",
+      "summary": "When rejecting input against an enum or fixed-allowed-values set, the error message includes the valid set.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI rejects input against a closed set"
+      },
+      "verifiers": [
+        {
+          "check_id": "p4-enumerate-valid-set",
+          "layer": "source"
+        },
+        {
+          "check_id": "p4-enumerate-valid-set",
+          "layer": "source"
+        }
+      ]
+    },
+    {
       "id": "p5-must-force-yes",
       "principle": 5,
       "level": "must",
@@ -361,7 +444,7 @@
       "id": "p5-should-idempotency",
       "principle": 5,
       "level": "should",
-      "summary": "Write operations are idempotent where the domain allows it — running the same command twice produces the same result.",
+      "summary": "Write operations are idempotent where the domain allows it: running the same command twice produces the same result.",
       "applicability": {
         "kind": "conditional",
         "condition": "CLI has write operations"
@@ -384,10 +467,30 @@
       ]
     },
     {
+      "id": "p6-must-sigterm",
+      "principle": 6,
+      "level": "must",
+      "summary": "Long-running operations handle SIGTERM gracefully: flush or roll back partial writes, release locks, exit non-zero within a bounded window. Next invocation succeeds without manual cleanup.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI has long-running operations"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-sigterm",
+          "layer": "source"
+        },
+        {
+          "check_id": "p6-sigterm",
+          "layer": "source"
+        }
+      ]
+    },
+    {
       "id": "p6-must-no-color",
       "principle": 6,
       "level": "must",
-      "summary": "TTY detection plus support for `NO_COLOR` and `TERM=dumb` — color codes suppressed when stdout/stderr is not a terminal.",
+      "summary": "TTY detection plus support for `NO_COLOR` and `TERM=dumb`: color codes suppressed when stdout/stderr is not a terminal.",
       "applicability": {
         "kind": "universal"
       },
@@ -410,7 +513,7 @@
       "id": "p6-must-completions",
       "principle": 6,
       "level": "must",
-      "summary": "Shell completions available via a `completions` subcommand (Tier 1 meta-command — needs no config/auth/network).",
+      "summary": "Shell completions available via a `completions` subcommand (Tier 1 meta-command, needs no config/auth/network).",
       "applicability": {
         "kind": "universal"
       },
@@ -527,6 +630,22 @@
       "verifiers": []
     },
     {
+      "id": "p6-may-standard-names",
+      "principle": 6,
+      "level": "may",
+      "summary": "Subcommand verbs MAY follow community-standard names (`get`/`list`/`create`/`update`/`delete`); flag spellings MAY follow widely-used canonical forms (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`).",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI uses subcommands"
+      },
+      "verifiers": [
+        {
+          "check_id": "p6-standard-names",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
       "id": "p7-must-quiet",
       "principle": 7,
       "level": "must",
@@ -545,7 +664,7 @@
       "id": "p7-must-list-clamping",
       "principle": 7,
       "level": "must",
-      "summary": "List operations clamp to a sensible default maximum; when truncated, indicate it (`\"truncated\": true` in JSON, stderr note in text).",
+      "summary": "List operations clamp to a documented default maximum; when truncated, indicate it (`\"truncated\": true` in JSON, stderr note in text).",
       "applicability": {
         "kind": "conditional",
         "condition": "CLI has list-style commands"
@@ -608,24 +727,87 @@
         "kind": "universal"
       },
       "verifiers": []
+    },
+    {
+      "id": "p8-must-bundle-install",
+      "principle": 8,
+      "level": "must",
+      "summary": "When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI ships an agent skill bundle"
+      },
+      "verifiers": [
+        {
+          "check_id": "p8-bundle-install",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p8-should-bundle-exists",
+      "principle": 8,
+      "level": "should",
+      "summary": "CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p8-bundle-exists",
+          "layer": "project"
+        }
+      ]
+    },
+    {
+      "id": "p8-may-install-all",
+      "principle": 8,
+      "level": "may",
+      "summary": "An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI ships an agent skill bundle"
+      },
+      "verifiers": [
+        {
+          "check_id": "p8-install-all",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p8-may-bundle-update",
+      "principle": 8,
+      "level": "may",
+      "summary": "An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI ships an agent skill bundle"
+      },
+      "verifiers": [
+        {
+          "check_id": "p8-bundle-update",
+          "layer": "behavioral"
+        }
+      ]
     }
   ],
   "summary": {
-    "total": 46,
-    "covered": 19,
+    "total": 57,
+    "covered": 30,
     "uncovered": 27,
-    "dual_layer": 7,
+    "dual_layer": 9,
     "must": {
-      "total": 23,
-      "covered": 17
+      "total": 27,
+      "covered": 21
     },
     "should": {
-      "total": 16,
-      "covered": 2
+      "total": 20,
+      "covered": 6
     },
     "may": {
-      "total": 7,
-      "covered": 0
+      "total": 10,
+      "covered": 3
     }
   },
   "audit_profiles": [
@@ -637,7 +819,8 @@
         "p1-flag-existence",
         "p1-non-interactive-source",
         "p1-tty-detection-source",
-        "p6-sigpipe"
+        "p6-sigpipe",
+        "p6-sigterm"
       ]
     },
     {

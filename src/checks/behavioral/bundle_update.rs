@@ -40,45 +40,42 @@ impl Check for BundleUpdateCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        if find_bundle(&project.path).is_none() {
-            return Ok(make_result(self, CheckStatus::Pass));
-        }
+        let status = compute_status(project);
 
-        let Some(help) = project.help_output() else {
-            return Ok(make_result(
-                self,
-                CheckStatus::Skip("could not probe --help".into()),
-            ));
-        };
-        let has_skill = help
-            .subcommands()
-            .iter()
-            .any(|s| s.eq_ignore_ascii_case("skill"));
-        if !has_skill {
-            return Ok(make_result(self, CheckStatus::Pass));
-        }
-
-        let Some(runner) = project.runner.as_ref() else {
-            return Ok(make_result(
-                self,
-                CheckStatus::Skip("no runner available for chained probe".into()),
-            ));
-        };
-
-        let status = check_bundle_update(runner);
-        Ok(make_result(self, status))
+        Ok(CheckResult {
+            id: self.id().to_string(),
+            label: self.label().into(),
+            group: self.group(),
+            layer: self.layer(),
+            status,
+            confidence: Confidence::Medium,
+        })
     }
 }
 
-fn make_result(check: &BundleUpdateCheck, status: CheckStatus) -> CheckResult {
-    CheckResult {
-        id: check.id().to_string(),
-        label: check.label().into(),
-        group: check.group(),
-        layer: check.layer(),
-        status,
-        confidence: Confidence::Medium,
+/// Resolve the check's status without constructing a `CheckResult`. Per
+/// CLAUDE.md's Source Check Convention, only `run()` constructs the result.
+fn compute_status(project: &Project) -> CheckStatus {
+    if find_bundle(&project.path).is_none() {
+        return CheckStatus::Pass;
     }
+
+    let Some(help) = project.help_output() else {
+        return CheckStatus::Skip("could not probe --help".into());
+    };
+    let has_skill = help
+        .subcommands()
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case("skill"));
+    if !has_skill {
+        return CheckStatus::Pass;
+    }
+
+    let Some(runner) = project.runner.as_ref() else {
+        return CheckStatus::Skip("no runner available for chained probe".into());
+    };
+
+    check_bundle_update(runner)
 }
 
 /// Core unit. Probes `<binary> skill --help` for `update` / `upgrade` in the

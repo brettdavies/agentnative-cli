@@ -42,48 +42,45 @@ impl Check for InstallAllCheck {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
-        // Vacuous Pass when no bundle present.
-        if find_bundle(&project.path).is_none() {
-            return Ok(make_result(self, CheckStatus::Pass));
-        }
+        let status = compute_status(project);
 
-        // Vacuous Pass when no `skill` subcommand surface — `p8-bundle-install`
-        // already flags that case; this MAY check should not stack-fail.
-        let Some(help) = project.help_output() else {
-            return Ok(make_result(
-                self,
-                CheckStatus::Skip("could not probe --help".into()),
-            ));
-        };
-        let has_skill = help
-            .subcommands()
-            .iter()
-            .any(|s| s.eq_ignore_ascii_case("skill"));
-        if !has_skill {
-            return Ok(make_result(self, CheckStatus::Pass));
-        }
-
-        let Some(runner) = project.runner.as_ref() else {
-            return Ok(make_result(
-                self,
-                CheckStatus::Skip("no runner available for chained probe".into()),
-            ));
-        };
-
-        let status = check_install_all(runner);
-        Ok(make_result(self, status))
+        Ok(CheckResult {
+            id: self.id().to_string(),
+            label: self.label().into(),
+            group: self.group(),
+            layer: self.layer(),
+            status,
+            confidence: Confidence::Medium,
+        })
     }
 }
 
-fn make_result(check: &InstallAllCheck, status: CheckStatus) -> CheckResult {
-    CheckResult {
-        id: check.id().to_string(),
-        label: check.label().into(),
-        group: check.group(),
-        layer: check.layer(),
-        status,
-        confidence: Confidence::Medium,
+/// Resolve the check's status without constructing a `CheckResult`. Per
+/// CLAUDE.md's Source Check Convention, only `run()` constructs the result.
+fn compute_status(project: &Project) -> CheckStatus {
+    // Vacuous Pass when no bundle present.
+    if find_bundle(&project.path).is_none() {
+        return CheckStatus::Pass;
     }
+
+    // Vacuous Pass when no `skill` subcommand surface — `p8-bundle-install`
+    // already flags that case; this MAY check should not stack-fail.
+    let Some(help) = project.help_output() else {
+        return CheckStatus::Skip("could not probe --help".into());
+    };
+    let has_skill = help
+        .subcommands()
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case("skill"));
+    if !has_skill {
+        return CheckStatus::Pass;
+    }
+
+    let Some(runner) = project.runner.as_ref() else {
+        return CheckStatus::Skip("no runner available for chained probe".into());
+    };
+
+    check_install_all(runner)
 }
 
 /// Core unit. Probes `<binary> skill install --help` and inspects the

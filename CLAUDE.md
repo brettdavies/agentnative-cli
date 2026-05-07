@@ -259,17 +259,23 @@ surface lives in `src/skill_install.rs`:
 ## Dogfooding Safety
 
 Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS
-agentnative. Two rules prevent recursive fork bombs:
+agentnative. Three rules guard the probe:
 
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
    instant help output instead of running `check .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
+3. **Refresh `target/release` before dogfooding when both directories exist**
+   (`src/project.rs::discover_rust_binaries`): the function prefers `target/release/<bin>` over `target/debug/<bin>`.
+   `cargo run` and `cargo test` only build debug, so stale release binaries probe yesterday's `--help` and produce wrong
+   behavioral check results. Run `cargo build --release` before `anc check .`, or `trash target/release` to force the
+   debug fallback. Documented at `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`.
 
 **Rules for new behavioral checks:**
 
 - NEVER probe subcommands without `--help`/`--version` suffixes
 - NEVER remove `arg_required_else_help` from `Cli` — it prevents recursive self-invocation
+- When verifying a check by dogfooding `anc check .`, ensure `target/release/anc` is current (or absent) — see rule 3
 
 ## CI and Quality
 

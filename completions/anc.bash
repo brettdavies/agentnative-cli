@@ -28,6 +28,9 @@ _anc() {
             anc,help)
                 cmd="anc__help"
                 ;;
+            anc,skill)
+                cmd="anc__skill"
+                ;;
             anc__generate,coverage-matrix)
                 cmd="anc__generate__coverage__matrix"
                 ;;
@@ -52,8 +55,26 @@ _anc() {
             anc__help,help)
                 cmd="anc__help__help"
                 ;;
+            anc__help,skill)
+                cmd="anc__help__skill"
+                ;;
             anc__help__generate,coverage-matrix)
                 cmd="anc__help__generate__coverage__matrix"
+                ;;
+            anc__help__skill,install)
+                cmd="anc__help__skill__install"
+                ;;
+            anc__skill,help)
+                cmd="anc__skill__help"
+                ;;
+            anc__skill,install)
+                cmd="anc__skill__install"
+                ;;
+            anc__skill__help,help)
+                cmd="anc__skill__help__help"
+                ;;
+            anc__skill__help,install)
+                cmd="anc__skill__help__install"
                 ;;
             *)
                 ;;
@@ -62,7 +83,7 @@ _anc() {
 
     case "${cmd}" in
         anc)
-            opts="-q -h -V --quiet --help --version check completions generate help"
+            opts="-q -h -V --quiet --json --help --version check completions generate skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -76,7 +97,7 @@ _anc() {
             return 0
             ;;
         anc__check)
-            opts="-q -h --command --binary --source --principle --output --include-tests --audit-profile --quiet --help [PATH]"
+            opts="-q -h --command --binary --source --principle --output --include-tests --audit-profile --quiet --json --help [PATH]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -106,7 +127,7 @@ _anc() {
             return 0
             ;;
         anc__completions)
-            opts="-q -h --quiet --help bash elvish fish powershell zsh"
+            opts="-q -h --quiet --json --help bash elvish fish powershell zsh"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -120,7 +141,7 @@ _anc() {
             return 0
             ;;
         anc__generate)
-            opts="-q -h --quiet --help coverage-matrix help"
+            opts="-q -h --quiet --json --help coverage-matrix help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -134,7 +155,7 @@ _anc() {
             return 0
             ;;
         anc__generate__coverage__matrix)
-            opts="-q -h --out --json-out --check --quiet --help"
+            opts="-q -h --out --json-out --check --quiet --json --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -198,7 +219,7 @@ _anc() {
             return 0
             ;;
         anc__help)
-            opts="check completions generate help"
+            opts="check completions generate skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -274,6 +295,108 @@ _anc() {
                 return 0
             fi
             case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__help__skill)
+            opts="install"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__help__skill__install)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__skill)
+            opts="-q -h --quiet --json --help install help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__skill__help)
+            opts="install help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__skill__help__help)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__skill__help__install)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__skill__install)
+            opts="-q -h --dry-run --output --quiet --json --help claude_code codex cursor factory kiro opencode"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --output)
+                    COMPREPLY=($(compgen -W "text json" -- "${cur}"))
+                    return 0
+                    ;;
                 *)
                     COMPREPLY=()
                     ;;

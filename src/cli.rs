@@ -22,6 +22,12 @@ pub struct Cli {
     /// Suppress non-essential output
     #[arg(long, short = 'q', global = true, env = "AGENTNATIVE_QUIET")]
     pub quiet: bool,
+
+    /// Emit JSON output. Short alias for `--output json` on subcommands that
+    /// support it. Per the agent-native convention (`p2-should-json-aliases`),
+    /// the short form works alongside the canonical `--output` enum.
+    #[arg(long, global = true)]
+    pub json: bool,
 }
 
 #[derive(Subcommand)]

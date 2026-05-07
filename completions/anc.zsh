@@ -17,6 +17,7 @@ _anc() {
     _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '-V[Print version]' \
@@ -44,6 +45,7 @@ diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 '--include-tests[Include test code in source analysis]' \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '::path -- Path to project directory or binary:_files' \
@@ -53,6 +55,7 @@ diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':shell -- Shell to generate for:(bash elvish fish powershell zsh)' \
@@ -62,6 +65,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ":: :_anc__generate_commands" \
@@ -81,6 +85,7 @@ _arguments "${_arguments_options[@]}" : \
 '--check[Exit non-zero when committed artifacts differ from generated output. CI drift guard]' \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -98,6 +103,63 @@ _arguments "${_arguments_options[@]}" : \
         curcontext="${curcontext%:*:*}:anc-generate-help-command-$line[1]:"
         case $line[1] in
             (coverage-matrix)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+;;
+(skill)
+_arguments "${_arguments_options[@]}" : \
+'-q[Suppress non-essential output]' \
+'--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'-h[Print help]' \
+'--help[Print help]' \
+":: :_anc__skill_commands" \
+"*::: :->skill" \
+&& ret=0
+
+    case $state in
+    (skill)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:anc-skill-command-$line[1]:"
+        case $line[1] in
+            (install)
+_arguments "${_arguments_options[@]}" : \
+'--output=[Output format for the result envelope]:OUTPUT:(text json)' \
+'--dry-run[Print the resolved git command without spawning. Captures cleanly via \`eval \$(anc skill install --dry-run <host>)\`]' \
+'-q[Suppress non-essential output]' \
+'--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':host -- Target host (claude_code, codex, cursor, opencode):(claude_code codex cursor factory kiro opencode)' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_anc__skill__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:anc-skill-help-command-$line[1]:"
+        case $line[1] in
+            (install)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -153,6 +215,26 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(skill)
+_arguments "${_arguments_options[@]}" : \
+":: :_anc__help__skill_commands" \
+"*::: :->skill" \
+&& ret=0
+
+    case $state in
+    (skill)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:anc-help-skill-command-$line[1]:"
+        case $line[1] in
+            (install)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -172,6 +254,7 @@ _anc_commands() {
 'check:Check a CLI project or binary for agent-readiness' \
 'completions:Generate shell completions' \
 'generate:Generate build artifacts (coverage matrix, etc.)' \
+'skill:Install or manage the agentnative skill bundle' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'anc commands' commands "$@"
@@ -223,6 +306,7 @@ _anc__help_commands() {
 'check:Check a CLI project or binary for agent-readiness' \
 'completions:Generate shell completions' \
 'generate:Generate build artifacts (coverage matrix, etc.)' \
+'skill:Install or manage the agentnative skill bundle' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'anc help commands' commands "$@"
@@ -253,6 +337,49 @@ _anc__help__generate__coverage-matrix_commands() {
 _anc__help__help_commands() {
     local commands; commands=()
     _describe -t commands 'anc help help commands' commands "$@"
+}
+(( $+functions[_anc__help__skill_commands] )) ||
+_anc__help__skill_commands() {
+    local commands; commands=(
+'install:Install the skill bundle into a host'\''s canonical skills directory' \
+    )
+    _describe -t commands 'anc help skill commands' commands "$@"
+}
+(( $+functions[_anc__help__skill__install_commands] )) ||
+_anc__help__skill__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc help skill install commands' commands "$@"
+}
+(( $+functions[_anc__skill_commands] )) ||
+_anc__skill_commands() {
+    local commands; commands=(
+'install:Install the skill bundle into a host'\''s canonical skills directory' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'anc skill commands' commands "$@"
+}
+(( $+functions[_anc__skill__help_commands] )) ||
+_anc__skill__help_commands() {
+    local commands; commands=(
+'install:Install the skill bundle into a host'\''s canonical skills directory' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'anc skill help commands' commands "$@"
+}
+(( $+functions[_anc__skill__help__help_commands] )) ||
+_anc__skill__help__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc skill help help commands' commands "$@"
+}
+(( $+functions[_anc__skill__help__install_commands] )) ||
+_anc__skill__help__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc skill help install commands' commands "$@"
+}
+(( $+functions[_anc__skill__install_commands] )) ||
+_anc__skill__install_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc skill install commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_anc" ]; then

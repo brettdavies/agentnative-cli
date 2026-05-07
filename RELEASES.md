@@ -1,7 +1,7 @@
 # Releasing `agentnative`
 
-Every change reaches production via this pipeline. Direct commits to `dev` or `main` are not permitted — every change
-has a PR number in its squash commit message, which keeps the history scannable, attributable, and changelog-ready.
+Every change reaches production via this pipeline. Direct commits to `dev` or `main` are not permitted. Every change has
+a PR number in its squash commit message, which keeps the history scannable, attributable, and changelog-ready.
 
 ```text
 feature branch → PR to dev (squash merge)
@@ -16,12 +16,12 @@ feature branch → PR to dev (squash merge)
 | -------------------------------------- | --------------------------------------- | ------------------------------------------- | ------------------------------------ |
 | `main`                                 | Production. Only release commits.       | Forever.                                    | `.github/rulesets/protect-main.json` |
 | `dev`                                  | Integration. All feature PRs land here. | Forever. Never delete.                      | `.github/rulesets/protect-dev.json`  |
-| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None — squash into dev freely.       |
+| `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None. Squash into dev freely.        |
 | `release/*`                            | Head of a dev → main PR.                | One release's worth. Auto-deleted on merge. | None.                                |
 
 `dev` is a **forever branch**. Never delete it locally or remotely, even after a `release/* → main` merge. The next
 release cycle reuses the same `dev`. The repo's `deleteBranchOnMerge: true` setting doesn't touch `dev` as long as `dev`
-is never the head of a PR — using a short-lived `release/*` head is what keeps the setting compatible with a forever
+is never the head of a PR. Using a short-lived `release/*` head is what keeps the setting compatible with a forever
 integration branch.
 
 ## Daily development (feature → dev)
@@ -41,6 +41,38 @@ gh pr create --base dev --title "feat(scope): what changed"
 - **PR body prose scrub**: `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check
   sees it. Save the body to `/tmp/`, run Vale + LanguageTool + unslop, fix findings, then submit via `--body-file`. See
   [§ Prose scrubbing](#prose-scrubbing).
+
+## PR body
+
+Every PR — feature, fix, docs, release — uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
+`## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`, `## Files Modified`, `## Testing`.
+
+- **Summary** is the NEW user-facing substance the PR ships. What is changing for the consumer that was not already
+  there. One short paragraph fits. Do NOT recap the workflow (cherry-pick / regenerate / pre-push gate / CI behavior is
+  documented in this file and `.github/`). Do NOT paste triple-diff output, pre-push gate results, or CI check status
+  into the body. Those are author verification artifacts that stay local; anomalies get fixed before push, not
+  audit-trailed in the body.
+- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`) hold the user-facing
+  entries. The template's RULES (in the HTML comment at the top of the section) are literal: 1-5 bullets, delete empty
+  subsections entirely, each bullet starts with a verb. Prose-only edits leave the section empty or omit it.
+- **Type of Change** is one checkbox. Prefer `feat` / `fix` over `chore` when the change has any user-observable effect
+  (config defaults, env vars, default behaviors). `cliff.toml` skips `^chore` (and `^style` / `^test` / `^ci` /
+  `^build`) regardless of body content; mistyping a user-facing change as `chore` silently strips it from release notes.
+- **Related Issues/Stories** has four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four are
+  required even when empty — write `- None.` or `n/a` rather than deleting the label.
+- **Files Modified** has four sub-headers (`**Modified:**` / `**Created:**` / `**Renamed:**` / `**Deleted:**`). All four
+  are required even when empty — `Renamed: None.` / `Deleted: None.`
+- **Internal tooling commits** (`chore(cliff): ...`, `chore(prose-check): ...`, etc.) do NOT appear in the PR body's `##
+  Changelog`. They are not user-facing.
+- **Release PRs** repeat the entries from the upstream feature PRs they cherry-pick. The repetition is intentional and
+  harmless: `cliff.toml`'s `^release` skip prevents the release-PR squash commit from being double-counted in any future
+  regeneration.
+- **No AI attribution.** Never append `Co-Authored-By: Claude …`, `🤖 Generated with [Claude Code]`, or any similar
+  AI-attribution trailer to PR bodies or commit messages. Commits and PRs stand on their own technical content.
+
+The PR body is read by humans reviewing what shipped. Workflow mechanics, verification output, and tool-fix provenance
+are noise from that perspective; they belong in this file (`RELEASES.md`), the script outputs, and the commit history
+respectively.
 
 ## Releasing dev to main
 

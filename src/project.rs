@@ -221,16 +221,37 @@ fn discover_rust_binaries(dir: &Path, manifest_path: Option<&Path>) -> Vec<PathB
 
     let mut paths = Vec::new();
     for name in &bin_names {
-        // Prefer release over debug
+        // Pick the newer of release/debug by mtime so dev workflows
+        // (where `cargo run`/`cargo test` only refresh debug) don't probe
+        // a stale release binary. CI scenarios — where typically only one
+        // profile is built — fall through cleanly to the existence check.
+        // Documented at
+        // docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md.
         let release = dir.join("target/release").join(name);
         let debug = dir.join("target/debug").join(name);
-        if release.exists() {
-            paths.push(release);
-        } else if debug.exists() {
-            paths.push(debug);
+        let pick = match (release.exists(), debug.exists()) {
+            (true, true) => Some(pick_newer_artifact(&release, &debug)),
+            (true, false) => Some(release),
+            (false, true) => Some(debug),
+            (false, false) => None,
+        };
+        if let Some(p) = pick {
+            paths.push(p);
         }
     }
     paths
+}
+
+/// Return the path with the newer mtime. Ties and missing-mtime fall back
+/// to `b` (called with the debug path) — matches cargo's dev-flow default
+/// where debug is the canonical fresh artifact.
+fn pick_newer_artifact(a: &Path, b: &Path) -> PathBuf {
+    let a_m = fs::metadata(a).and_then(|m| m.modified()).ok();
+    let b_m = fs::metadata(b).and_then(|m| m.modified()).ok();
+    match (a_m, b_m) {
+        (Some(am), Some(bm)) if am > bm => a.to_path_buf(),
+        _ => b.to_path_buf(),
+    }
 }
 
 fn discover_simple_binaries(dir: &Path, subdirs: &[&str]) -> Vec<PathBuf> {
@@ -421,6 +442,103 @@ path = "src/cli2.rs"
     fn test_nonexistent_path_errors() {
         let result = Project::discover(Path::new("/tmp/agentnative-does-not-exist-xyz"));
         assert!(result.is_err());
+    }
+
+    /// Regression for the v0.4.0-spec-sync stale-release-binary trap:
+    /// when both `target/release/<bin>` and `target/debug/<bin>` exist,
+    /// pick the newer one by mtime (so dev workflows where `cargo run`
+    /// only refreshes debug don't probe a stale release binary). See
+    /// docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md.
+    #[cfg(unix)]
+    #[test]
+    fn test_discover_picks_newer_artifact_by_mtime() {
+        use std::fs::File;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{Duration, SystemTime};
+
+        let dir = temp_dir().join("mtime-pick");
+        fs::create_dir_all(dir.join("target/release")).expect("mkdir release");
+        fs::create_dir_all(dir.join("target/debug")).expect("mkdir debug");
+        fs::write(
+            dir.join("Cargo.toml"),
+            r#"[package]
+name = "myapp"
+version = "0.1.0"
+"#,
+        )
+        .expect("write Cargo.toml");
+
+        let release_bin = dir.join("target/release/myapp");
+        let debug_bin = dir.join("target/debug/myapp");
+        fs::write(&release_bin, "#!/bin/sh\necho stale").expect("write release binary");
+        fs::write(&debug_bin, "#!/bin/sh\necho fresh").expect("write debug binary");
+        fs::set_permissions(&release_bin, fs::Permissions::from_mode(0o755))
+            .expect("chmod release");
+        fs::set_permissions(&debug_bin, fs::Permissions::from_mode(0o755)).expect("chmod debug");
+
+        // Stamp release with an old mtime; debug stays at "now".
+        let one_hour_ago = SystemTime::now() - Duration::from_secs(3600);
+        File::options()
+            .write(true)
+            .open(&release_bin)
+            .expect("open release for mtime")
+            .set_modified(one_hour_ago)
+            .expect("set release mtime");
+
+        let project = Project::discover(&dir).expect("discover test project");
+        assert_eq!(project.binary_paths.len(), 1);
+        assert_eq!(
+            project.binary_paths[0], debug_bin,
+            "discover should pick the newer (debug) binary when release is stale; \
+             got {:?}",
+            project.binary_paths[0],
+        );
+    }
+
+    /// Symmetric case: when release is newer than debug (e.g., `cargo build
+    /// --release` was just run), `pick_newer_artifact` returns release.
+    #[cfg(unix)]
+    #[test]
+    fn test_discover_picks_release_when_newer() {
+        use std::fs::File;
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{Duration, SystemTime};
+
+        let dir = temp_dir().join("mtime-release");
+        fs::create_dir_all(dir.join("target/release")).expect("mkdir release");
+        fs::create_dir_all(dir.join("target/debug")).expect("mkdir debug");
+        fs::write(
+            dir.join("Cargo.toml"),
+            r#"[package]
+name = "myapp"
+version = "0.1.0"
+"#,
+        )
+        .expect("write Cargo.toml");
+
+        let release_bin = dir.join("target/release/myapp");
+        let debug_bin = dir.join("target/debug/myapp");
+        fs::write(&release_bin, "#!/bin/sh\necho fresh").expect("write release binary");
+        fs::write(&debug_bin, "#!/bin/sh\necho stale").expect("write debug binary");
+        fs::set_permissions(&release_bin, fs::Permissions::from_mode(0o755))
+            .expect("chmod release");
+        fs::set_permissions(&debug_bin, fs::Permissions::from_mode(0o755)).expect("chmod debug");
+
+        // Stamp debug with an old mtime; release stays at "now".
+        let one_hour_ago = SystemTime::now() - Duration::from_secs(3600);
+        File::options()
+            .write(true)
+            .open(&debug_bin)
+            .expect("open debug for mtime")
+            .set_modified(one_hour_ago)
+            .expect("set debug mtime");
+
+        let project = Project::discover(&dir).expect("discover test project");
+        assert_eq!(project.binary_paths.len(), 1);
+        assert_eq!(
+            project.binary_paths[0], release_bin,
+            "discover should pick release when it's newer than debug",
+        );
     }
 
     #[test]

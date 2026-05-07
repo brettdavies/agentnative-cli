@@ -28,9 +28,6 @@ _anc() {
             anc,help)
                 cmd="anc__help"
                 ;;
-            anc,schema)
-                cmd="anc__schema"
-                ;;
             anc,skill)
                 cmd="anc__skill"
                 ;;
@@ -57,9 +54,6 @@ _anc() {
                 ;;
             anc__help,help)
                 cmd="anc__help__help"
-                ;;
-            anc__help,schema)
-                cmd="anc__help__schema"
                 ;;
             anc__help,skill)
                 cmd="anc__help__skill"
@@ -89,7 +83,7 @@ _anc() {
 
     case "${cmd}" in
         anc)
-            opts="-q -h -V --quiet --json --help --version check completions generate skill schema help"
+            opts="-q -h -V --quiet --json --help --version check completions generate skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -225,7 +219,7 @@ _anc() {
             return 0
             ;;
         anc__help)
-            opts="check completions generate skill schema help"
+            opts="check completions generate skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -308,20 +302,6 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__schema)
-            opts=""
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
         anc__help__skill)
             opts="install"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -343,24 +323,6 @@ _anc() {
                 return 0
             fi
             case "${prev}" in
-                *)
-                    COMPREPLY=()
-                    ;;
-            esac
-            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-            return 0
-            ;;
-        anc__schema)
-            opts="-q -h --output --quiet --json --help"
-            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
-                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
-                return 0
-            fi
-            case "${prev}" in
-                --output)
-                    COMPREPLY=($(compgen -W "text json" -- "${cur}"))
-                    return 0
-                    ;;
                 *)
                     COMPREPLY=()
                     ;;

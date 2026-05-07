@@ -32,7 +32,6 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Generate shell completions')
             [CompletionResult]::new('generate', 'generate', [CompletionResultType]::ParameterValue, 'Generate build artifacts (coverage matrix, etc.)')
             [CompletionResult]::new('skill', 'skill', [CompletionResultType]::ParameterValue, 'Install or manage the agentnative skill bundle')
-            [CompletionResult]::new('schema', 'schema', [CompletionResultType]::ParameterValue, 'Print the JSON output schema for `anc check --output json`')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -122,21 +121,11 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         'anc;skill;help;help' {
             break
         }
-        'anc;schema' {
-            [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format for the schema document itself')
-            [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
-            [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
-            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
-            break
-        }
         'anc;help' {
             [CompletionResult]::new('check', 'check', [CompletionResultType]::ParameterValue, 'Check a CLI project or binary for agent-readiness')
             [CompletionResult]::new('completions', 'completions', [CompletionResultType]::ParameterValue, 'Generate shell completions')
             [CompletionResult]::new('generate', 'generate', [CompletionResultType]::ParameterValue, 'Generate build artifacts (coverage matrix, etc.)')
             [CompletionResult]::new('skill', 'skill', [CompletionResultType]::ParameterValue, 'Install or manage the agentnative skill bundle')
-            [CompletionResult]::new('schema', 'schema', [CompletionResultType]::ParameterValue, 'Print the JSON output schema for `anc check --output json`')
             [CompletionResult]::new('help', 'help', [CompletionResultType]::ParameterValue, 'Print this message or the help of the given subcommand(s)')
             break
         }
@@ -158,9 +147,6 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             break
         }
         'anc;help;skill;install' {
-            break
-        }
-        'anc;help;schema' {
             break
         }
         'anc;help;help' {

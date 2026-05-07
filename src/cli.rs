@@ -91,16 +91,6 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: SkillCmd,
     },
-    /// Print the JSON output schema for `anc check --output json`.
-    ///
-    /// Satisfies `p2-must-schema-print`: runtime-discoverable schema with a
-    /// documented format identifier (`schema_version`). Consumers pin against
-    /// the version and feature-detect new keys per the agent-native convention.
-    Schema {
-        /// Output format for the schema document itself.
-        #[arg(long, default_value = "text")]
-        output: OutputFormat,
-    },
 }
 
 #[derive(Subcommand)]

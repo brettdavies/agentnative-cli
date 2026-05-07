@@ -1,9 +1,3 @@
----
-name: agentnative
-binary: anc
-summary: The agent-native CLI linter — checks whether a CLI follows the seven agent-readiness principles. Run `anc check <path>` against a project or `anc check --command <name>` against a binary on PATH; emit JSON via `--json` or `--output json`. Schema discoverable via `anc schema`.
----
-
 # AGENTS.md
 
 ## Running anc

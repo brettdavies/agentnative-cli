@@ -311,9 +311,13 @@ fn emit_rust_produces_well_formed_source() {
 }
 
 #[test]
-fn vendored_v0_2_0_parses_to_46_requirements() {
+fn vendored_spec_parses_to_expected_requirement_count() {
     // Drives the same content build.rs will see. This asserts the parser
-    // remains consistent with the real spec we're shipping at v0.2.0.
+    // remains consistent with the real spec currently vendored under
+    // `src/principles/spec/`. Bumping the count is a deliberate act tied to
+    // a spec sync — the test deliberately fails until the new total is
+    // acknowledged here, mirroring `registry_size_matches_spec` in
+    // `src/principles/registry.rs`.
     use std::fs;
 
     let dir =
@@ -340,11 +344,13 @@ fn vendored_v0_2_0_parses_to_46_requirements() {
         parsed_per_file.push((name, reqs));
     }
 
-    let combined = aggregate(parsed_per_file).expect("no duplicates in v0.2.0");
-    assert_eq!(combined.len(), 46, "v0.2.0 ships 46 requirements");
+    let combined = aggregate(parsed_per_file).expect("no duplicates in vendored spec");
+    assert_eq!(combined.len(), 57, "v0.4.0 ships 57 requirements");
 
-    // First entry should be p1-must-env-var (matches existing hand-maintained order).
+    // First entry should still be p1-must-env-var — the order is filename-
+    // sorted then spec-frontmatter-order, and v0.4.0 only appended new IDs.
     assert_eq!(combined[0].id, "p1-must-env-var");
-    // Last entry should be p7-may-auto-verbosity.
-    assert_eq!(combined.last().unwrap().id, "p7-may-auto-verbosity");
+    // Last entry is now from the new P8 principle (last MAY in
+    // p8-discoverable-skill-bundle.md).
+    assert_eq!(combined.last().unwrap().id, "p8-may-bundle-update");
 }

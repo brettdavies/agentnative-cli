@@ -23,6 +23,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         'anc' {
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
@@ -44,6 +45,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             [CompletionResult]::new('--include-tests', '--include-tests', [CompletionResultType]::ParameterName, 'Include test code in source analysis')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break
@@ -51,6 +53,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         'anc;completions' {
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -58,6 +61,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         'anc;generate' {
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('coverage-matrix', 'coverage-matrix', [CompletionResultType]::ParameterValue, 'Render the spec coverage matrix (registry → checks → artifact)')
@@ -70,6 +74,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             [CompletionResult]::new('--check', '--check', [CompletionResultType]::ParameterName, 'Exit non-zero when committed artifacts differ from generated output. CI drift guard')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             break
@@ -88,6 +93,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         'anc;skill' {
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
             [CompletionResult]::new('install', 'install', [CompletionResultType]::ParameterValue, 'Install the skill bundle into a host''s canonical skills directory')
@@ -99,6 +105,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             [CompletionResult]::new('--dry-run', '--dry-run', [CompletionResultType]::ParameterName, 'Print the resolved git command without spawning. Captures cleanly via `eval $(anc skill install --dry-run <host>)`')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output')
+            [CompletionResult]::new('--json', '--json', [CompletionResultType]::ParameterName, 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum')
             [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             break

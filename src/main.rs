@@ -66,6 +66,7 @@ fn run() -> Result<i32, AppError> {
 
     // --quiet is global (visible in top-level --help for agent discoverability)
     let quiet = cli.quiet;
+    let json_alias = cli.json;
 
     // Bare invocation (no args at all) is handled by clap's arg_required_else_help.
     // A flag-only invocation like `anc -q` parses successfully with `command =
@@ -100,7 +101,7 @@ fn run() -> Result<i32, AppError> {
                 return run_generate(artifact);
             }
             Some(Commands::Skill { cmd }) => {
-                return run_skill(cmd);
+                return run_skill(cmd, json_alias);
             }
             None => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -117,6 +118,16 @@ fn run() -> Result<i32, AppError> {
     let started_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"));
+
+    // The top-level `--json` global flag short-circuits to JSON output
+    // regardless of what `--output` was set to. Both flags resolving to the
+    // same subcommand get coalesced here so the rest of run_check sees a
+    // single OutputFormat.
+    let output = if json_alias {
+        OutputFormat::Json
+    } else {
+        output
+    };
 
     // --command resolves a binary from PATH and runs behavioral checks against
     // it. conflicts_with = "path" ensures only one of the two is provided.
@@ -459,13 +470,21 @@ fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
     Ok(std::path::PathBuf::from(first))
 }
 
-fn run_skill(cmd: SkillCmd) -> Result<i32, AppError> {
+fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {
     match cmd {
         SkillCmd::Install {
             host,
             dry_run,
             output,
-        } => skill_install::run_install(host, dry_run, output),
+        } => {
+            // Top-level `--json` overrides the per-subcommand `--output` enum.
+            let output = if json_alias {
+                OutputFormat::Json
+            } else {
+                output
+            };
+            skill_install::run_install(host, dry_run, output)
+        }
     }
 }
 

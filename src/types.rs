@@ -37,6 +37,7 @@ pub enum CheckGroup {
     P5,
     P6,
     P7,
+    P8,
     CodeQuality,
     ProjectStructure,
 }

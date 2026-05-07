@@ -83,7 +83,7 @@ _anc() {
 
     case "${cmd}" in
         anc)
-            opts="-q -h -V --quiet --help --version check completions generate skill help"
+            opts="-q -h -V --quiet --json --help --version check completions generate skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -97,7 +97,7 @@ _anc() {
             return 0
             ;;
         anc__check)
-            opts="-q -h --command --binary --source --principle --output --include-tests --audit-profile --quiet --help [PATH]"
+            opts="-q -h --command --binary --source --principle --output --include-tests --audit-profile --quiet --json --help [PATH]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -127,7 +127,7 @@ _anc() {
             return 0
             ;;
         anc__completions)
-            opts="-q -h --quiet --help bash elvish fish powershell zsh"
+            opts="-q -h --quiet --json --help bash elvish fish powershell zsh"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -141,7 +141,7 @@ _anc() {
             return 0
             ;;
         anc__generate)
-            opts="-q -h --quiet --help coverage-matrix help"
+            opts="-q -h --quiet --json --help coverage-matrix help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -155,7 +155,7 @@ _anc() {
             return 0
             ;;
         anc__generate__coverage__matrix)
-            opts="-q -h --out --json-out --check --quiet --help"
+            opts="-q -h --out --json-out --check --quiet --json --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -331,7 +331,7 @@ _anc() {
             return 0
             ;;
         anc__skill)
-            opts="-q -h --quiet --help install help"
+            opts="-q -h --quiet --json --help install help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -387,7 +387,7 @@ _anc() {
             return 0
             ;;
         anc__skill__install)
-            opts="-q -h --dry-run --output --quiet --help claude_code codex cursor factory kiro opencode"
+            opts="-q -h --dry-run --output --quiet --json --help claude_code codex cursor factory kiro opencode"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

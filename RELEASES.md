@@ -69,6 +69,12 @@ Every PR — feature, fix, docs, release — uses `.github/pull_request_template
   regeneration.
 - **No AI attribution.** Never append `Co-Authored-By: Claude …`, `🤖 Generated with [Claude Code]`, or any similar
   AI-attribution trailer to PR bodies or commit messages. Commits and PRs stand on their own technical content.
+- **No hard line wraps.** Author each paragraph and each bullet as one logical line, however long. GitHub soft-wraps for
+  display; hard wraps within prose produce visible mid-sentence breaks in some renderers and interfere with the
+  prose-check pipeline (Vale's line-anchored output reports findings against split lines, LanguageTool's input handling
+  can choke on certain control-char interactions). The auto-format hook skips `/tmp/` paths so the body keeps its
+  authored shape — don't undo that with manual wrapping during composition. The same rule applies to commit messages
+  composed via heredoc and to any markdown that ships verbatim to GitHub.
 
 The PR body is read by humans reviewing what shipped. Workflow mechanics, verification output, and tool-fix provenance
 are noise from that perspective; they belong in this file (`RELEASES.md`), the script outputs, and the commit history

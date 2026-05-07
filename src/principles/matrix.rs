@@ -499,10 +499,6 @@ mod tests {
              mutating subcommands requires per-subcommand semantic \
              understanding beyond ast-grep's reach. Not auto-verified.",
         ),
-        // v0.4.0 spec sync — temporary entries during the multi-commit
-        // companion landing. Each entry is removed in the same commit
-        // that lands the corresponding live check (per docs/plans/
-        // 2026-05-07-001-feat-v0.4.0-spec-sync-plan.md).
     ];
 
     /// R4 — every `Check::covers()` id in the live catalog resolves in the

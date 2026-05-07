@@ -103,6 +103,14 @@ fn run() -> Result<i32, AppError> {
             Some(Commands::Skill { cmd }) => {
                 return run_skill(cmd, json_alias);
             }
+            Some(Commands::Schema { output }) => {
+                let output = if json_alias {
+                    OutputFormat::Json
+                } else {
+                    output
+                };
+                return run_schema(output);
+            }
             None => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
                 eprintln!("{}", cmd.render_help());
@@ -468,6 +476,66 @@ fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
     }
 
     Ok(std::path::PathBuf::from(first))
+}
+
+/// Print the JSON output schema for `anc check --output json`. Satisfies
+/// `p2-must-schema-print` by exposing a runtime-discoverable schema surface
+/// with a documented format identifier (`schema_version`). The schema body
+/// itself is intentionally compact: it pins the version, names the canonical
+/// top-level keys consumers see in `anc check --output json`, and points at
+/// the spec for the full shape contract. Consumers feature-detect new keys
+/// as the schema evolves additively across `0.x` releases.
+fn run_schema(output: OutputFormat) -> Result<i32, AppError> {
+    use crate::scorecard::SCHEMA_VERSION;
+
+    // Top-level key order matches the `Scorecard` struct definition in
+    // `src/scorecard/mod.rs`. Keep this list in sync with the struct fields
+    // when a new key lands; the integration test below catches drift.
+    const TOP_LEVEL_KEYS: &[&str] = &[
+        "schema_version",
+        "results",
+        "summary",
+        "coverage_summary",
+        "audience",
+        "audience_reason",
+        "audit_profile",
+        "spec_version",
+        "tool",
+        "anc",
+        "run",
+        "target",
+        "badge",
+    ];
+
+    match output {
+        OutputFormat::Text => {
+            println!("anc check --output json schema");
+            println!("  schema_version: {SCHEMA_VERSION}");
+            println!("  format: json");
+            println!("  spec: https://anc.dev/spec");
+            println!("  top-level keys:");
+            for key in TOP_LEVEL_KEYS {
+                println!("    - {key}");
+            }
+            println!();
+            println!("Schema evolves additively during 0.x; consumers feature-detect new keys.");
+        }
+        OutputFormat::Json => {
+            // Hand-rolled JSON so we don't pull in a schemars dep just to
+            // describe a schema. The shape is intentionally stable across
+            // schema_version bumps: only the version field and key list move.
+            let keys_json = TOP_LEVEL_KEYS
+                .iter()
+                .map(|k| format!("\"{k}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!(
+                "{{\"schema_version\":\"{SCHEMA_VERSION}\",\"format\":\"json\",\
+                 \"spec\":\"https://anc.dev/spec\",\"top_level_keys\":[{keys_json}]}}"
+            );
+        }
+    }
+    Ok(0)
 }
 
 fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {

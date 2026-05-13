@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Source: BRAND.md § Universal anti-patterns — No marketing register.
+extends: existence
+message: "Marketing register: '%s'. The standard speaks in third person about contracts, not first person about beliefs."
+link: https://github.com/brettdavies/agentnative/blob/main/BRAND.md#universal-anti-patterns
+level: warning
+ignorecase: true
+tokens:
+  - "we believe"
+  - "we recommend"
+  - "we know"
+  - "we think"
+  - "we feel"
+  - "we have found that"
+  - "we are excited"
+  - "it's really important to"
+  - "it is really important to"

@@ -162,6 +162,15 @@ include `Usage:` text; check failures don't.
 See `CLAUDE.md` §"Principle Registry" and §"`covers()` Declaration" for the registry conventions and drift-detector
 behavior.
 
+## Voice and prose rules
+
+User-facing prose follows the **linter channel** rules in [`PRODUCT.md`](PRODUCT.md). Short version: second-person
+imperative, no RFC 2119 keywords in error messages, no marketing voice, errors name "what failed / why / what to do."
+Run `bash scripts/prose-check.sh --vale-only` before changing markdown to surface findings; warnings are informational,
+blocking findings need a fix. The rule packs (`styles/brand/`) and the brand vocab (`styles/config/vocabularies/brand/`)
+are vendored from `agentnative-spec` via `scripts/sync-prose-tooling.sh`; CLI-specific terms live in
+`styles/config/vocabularies/cli/`.
+
 ## Testing
 
 ```bash

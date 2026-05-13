@@ -101,9 +101,9 @@ The pattern in [`BRAND.md`](BRAND.md), specialized for the linter channel:
 
 ## Status
 
-This file is the linter channel's `PRODUCT.md`. The spec channel's equivalent at `~/dev/agentnative-spec/PRODUCT.md`
-covers the RFC-2119 contract register; the site channel's at `~/dev/agentnative-site/PRODUCT.md` covers visual-system
-decisions; cross-channel content lives in [`BRAND.md`](BRAND.md).
+This file is the linter channel's `PRODUCT.md`. The spec channel's equivalent at `agentnative-spec/PRODUCT.md` covers
+the RFC-2119 contract register; the site channel's at `agentnative-site/PRODUCT.md` covers visual-system decisions;
+cross-channel content lives in [`BRAND.md`](BRAND.md).
 
 Coverage today: markdown surfaces only (`README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, this file). The
 high-leverage surface — clap `about=` / `help=` / `long_about=` literals, `eprintln!` / `anyhow::bail!` messages, panic

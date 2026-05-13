@@ -8,14 +8,19 @@
 # this script covers the shared prose-check tooling (BRAND.md, Vale rule
 # packs, vocabulary, orchestrator, generator, harness).
 #
-# Resolves the latest v* tag of agentnative-spec, preferring the remote
-# repository, and falls back to a local checkout if the remote is
-# unreachable. Extracts files via `git show <tag>:<path>` so neither
+# Resolves the HEAD of agentnative-spec's `main` branch, preferring the
+# remote repository, and falls back to a local checkout if the remote is
+# unreachable. Extracts files via `git show <sha>:<path>` so neither
 # checkout's working tree is perturbed. Mirrors the site repo's pattern
 # (agentnative-site/scripts/sync-prose-tooling.sh) so the two consumers
 # stay legible side-by-side.
 #
-# Vendored manifest (paths at the spec tag, mirrored verbatim into this
+# Tracks `main` HEAD by design — prose tooling is shared infrastructure
+# with a faster cadence than the principle contract, and consumers do not
+# pin to versions of it. Tag-pinning is for the principle contract via
+# scripts/sync-spec.sh, where consumers pin to a released spec version.
+#
+# Vendored manifest (paths from spec main, mirrored verbatim into this
 # repo at the same paths):
 #
 #   BRAND.md                                            (universal voice SoT)
@@ -52,10 +57,12 @@
 #   SPEC_ROOT        Local checkout to fall back to when the remote is
 #                    unreachable. Default: $HOME/dev/agentnative-spec
 #
-# Resync cadence: rerun after the spec ships a tag that touches any path
-# in the manifest above. Idempotent at a fixed spec tag: re-running
-# produces no `git diff`. CI workflow (prose-tooling-drift.yml, deferred
-# follow-up) runs `--check` on every PR and on a weekly schedule.
+# Resync cadence: rerun after any spec `main` push that touches any path
+# in the manifest above. Faster cadence than spec tags; this script tracks
+# `main` HEAD by design — tag-pinning is for the principle contract via
+# scripts/sync-spec.sh. Idempotent at a fixed spec sha: re-running at the
+# same HEAD produces no `git diff`. CI workflow (prose-tooling-drift.yml,
+# deferred follow-up) runs `--check` on every PR and on a weekly schedule.
 #
 # CLI-LOCAL DIVERGENCE: scripts/prose-check.sh carries CLI-specific path
 # exclusions (src/principles/spec/, docs/ideation/, tests/fixtures/) and
@@ -105,24 +112,21 @@ trap cleanup EXIT
 
 # === Remote-first resolution ===========================================
 spec_source=""
-spec_tag=""
+spec_ref=""
 
-echo "querying $SPEC_REMOTE_URL for latest v* tag..."
-remote_tag="$(git ls-remote --tags --sort='-version:refname' \
-    "$SPEC_REMOTE_URL" 'refs/tags/v*' 2>/dev/null \
-    | awk '{print $2}' \
-    | sed 's|refs/tags/||' \
-    | grep -v '\^{}$' \
+echo "querying $SPEC_REMOTE_URL for main HEAD..."
+remote_sha="$(git ls-remote "$SPEC_REMOTE_URL" 'refs/heads/main' 2>/dev/null \
+    | awk '{print $1}' \
     | head -n 1 || true)"
 
-if [[ -n "$remote_tag" ]]; then
+if [[ -n "$remote_sha" ]]; then
     tmp_root="$(mktemp -d -t agentnative-prose-XXXXXX)"
-    if git clone --depth 1 --branch "$remote_tag" --quiet \
+    if git clone --depth 1 --branch main --quiet \
             "$SPEC_REMOTE_URL" "$tmp_root" 2>/dev/null; then
         spec_source="$tmp_root"
-        spec_tag="$remote_tag"
-        resolved_sha="$(git -C "$spec_source" rev-parse --short=7 "$spec_tag^{commit}")"
-        echo "resolved $spec_tag ($resolved_sha) from remote $SPEC_REMOTE_URL"
+        spec_ref="main"
+        resolved_sha="$(git -C "$spec_source" rev-parse --short=7 main)"
+        echo "resolved main ($resolved_sha) from remote $SPEC_REMOTE_URL"
     fi
 fi
 
@@ -137,17 +141,17 @@ if [[ -z "$spec_source" ]]; then
     echo "warning: remote query failed; falling back to local $SPEC_ROOT" >&2
 
     spec_source="$SPEC_ROOT"
-    spec_tag="$(git -C "$spec_source" tag --list 'v*' --sort='-version:refname' | head -n 1)"
-    if [[ -z "$spec_tag" ]]; then
-        echo "error: no v* tags found in $SPEC_ROOT" >&2
-        echo "       try \`git -C $SPEC_ROOT fetch --tags\` to pick up upstream tags" >&2
+    if ! git -C "$spec_source" rev-parse --verify main >/dev/null 2>&1; then
+        echo "error: local $SPEC_ROOT has no 'main' branch" >&2
+        echo "       try \`git -C $SPEC_ROOT fetch origin main\` to pick up upstream HEAD" >&2
         exit 1
     fi
-    resolved_sha="$(git -C "$spec_source" rev-parse --short=7 "$spec_tag^{commit}")"
-    echo "resolved $spec_tag ($resolved_sha) from local $spec_source"
+    spec_ref="main"
+    resolved_sha="$(git -C "$spec_source" rev-parse --short=7 main)"
+    echo "resolved main ($resolved_sha) from local $spec_source"
 fi
 
-# === Verify expected paths exist at the tag ============================
+# === Verify expected paths exist at main HEAD ==========================
 required_paths=(
     "BRAND.md"
     "styles/brand"
@@ -157,9 +161,9 @@ required_paths=(
     "scripts/generate-pack-readme.mjs"
 )
 for path in "${required_paths[@]}"; do
-    if ! git -C "$spec_source" cat-file -e "$spec_tag:$path" 2>/dev/null; then
-        echo "error: $spec_tag is missing required path: $path" >&2
-        echo "       (the prose-check stack may not have shipped at this tag)" >&2
+    if ! git -C "$spec_source" cat-file -e "$spec_ref:$path" 2>/dev/null; then
+        echo "error: $spec_ref ($resolved_sha) is missing required path: $path" >&2
+        echo "       (the prose-check stack may not be present on main)" >&2
         exit 1
     fi
 done
@@ -174,7 +178,7 @@ top_level_files=(
 )
 
 # Directories vendored verbatim (all immediate file children, recursively where
-# needed). Each entry walks `git ls-tree -r` at the tag.
+# needed). Each entry walks `git ls-tree -r` at the resolved spec sha.
 tree_dirs=(
     "styles/brand"
     "styles/config"
@@ -205,7 +209,7 @@ if (( CHECK_MODE )); then
         fi
         local upstream_tmp
         upstream_tmp="$(mktemp -t anc-prose-check-XXXXXX)"
-        git -C "$spec_source" show "$spec_tag:$upstream_path" >"$upstream_tmp"
+        git -C "$spec_source" show "$spec_ref:$upstream_path" >"$upstream_tmp"
         if ! cmp -s "$upstream_tmp" "$local_path"; then
             echo "drift: $upstream_path" >&2
             drift=1
@@ -221,14 +225,14 @@ if (( CHECK_MODE )); then
         while IFS= read -r path; do
             [[ -n "$path" ]] || continue
             check_blob "$path"
-        done < <(git -C "$spec_source" ls-tree -r --name-only "$spec_tag" "$dir")
+        done < <(git -C "$spec_source" ls-tree -r --name-only "$spec_ref" "$dir")
     done
 
     if (( drift )); then
         echo "sync-prose-tooling: drift detected; rerun without --check to resolve" >&2
         exit 1
     fi
-    echo "sync-prose-tooling: --check OK (all files byte-equal upstream @ $spec_tag)"
+    echo "sync-prose-tooling: --check OK (all files byte-equal upstream main @ $resolved_sha)"
     exit 0
 fi
 
@@ -239,7 +243,7 @@ extract_blob() {
     local upstream_path="$1"
     local dest="$REPO_ROOT/$upstream_path"
     mkdir -p "$(dirname "$dest")"
-    git -C "$spec_source" show "$spec_tag:$upstream_path" >"$dest"
+    git -C "$spec_source" show "$spec_ref:$upstream_path" >"$dest"
     extracted=$((extracted + 1))
 }
 
@@ -251,13 +255,13 @@ for dir in "${tree_dirs[@]}"; do
     while IFS= read -r path; do
         [[ -n "$path" ]] || continue
         extract_blob "$path"
-    done < <(git -C "$spec_source" ls-tree -r --name-only "$spec_tag" "$dir")
+    done < <(git -C "$spec_source" ls-tree -r --name-only "$spec_ref" "$dir")
 done
 
 # git show drops the executable bit; restore it for the orchestrator.
 chmod +x "$REPO_ROOT/scripts/prose-check.sh"
 
-echo "wrote $extracted file(s) from $spec_tag ($resolved_sha)"
+echo "wrote $extracted file(s) from main @ $resolved_sha"
 echo
 echo "next: review \`git diff\` for unexpected changes; reapply CLI-LOCAL"
 echo "      DIVERGENCE block in scripts/prose-check.sh if sync overwrote it;"

@@ -99,7 +99,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p1-defaults-in-help",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p1-may-rich-tui",
@@ -109,7 +114,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p1-rich-tui",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p2-must-output-flag",
@@ -326,7 +336,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p3-about-long-about",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p3-may-examples-subcommand",
@@ -630,7 +645,12 @@
         "kind": "conditional",
         "condition": "CLI has commands that accept input data"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p6-stdin-input",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p6-should-consistent-naming",
@@ -641,7 +661,12 @@
         "kind": "conditional",
         "condition": "CLI uses subcommands"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p6-consistent-naming",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p6-should-tier-gating",
@@ -765,7 +790,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p7-timeout-behavioral",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p7-may-cursor-pagination",
@@ -863,8 +893,8 @@
   ],
   "summary": {
     "total": 59,
-    "covered": 39,
-    "uncovered": 20,
+    "covered": 45,
+    "uncovered": 14,
     "dual_layer": 10,
     "must": {
       "total": 28,
@@ -872,11 +902,11 @@
     },
     "should": {
       "total": 21,
-      "covered": 9
+      "covered": 14
     },
     "may": {
       "total": 10,
-      "covered": 8
+      "covered": 9
     }
   },
   "audit_profiles": [

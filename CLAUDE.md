@@ -251,7 +251,7 @@ surface lives in `src/skill_install.rs`:
   resource.
 - NEVER hand-edit `SkillHost`, `KNOWN_HOSTS`, `resolve_host`, or `host_envelope_str` in `src/skill_install.rs` — those
   identifiers come from the generated `$OUT_DIR/generated_hosts.rs` and any apparent definition in source is the
-  include! macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
+  `include!` macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
 - The codegen rejects malformed install commands at build time. Each `install.<host>` value MUST tokenize as exactly
   `git clone --depth 1 <url> <dest>` (six whitespace-separated tokens, dest not ending in `.git`). The validation
   mirrors `agentnative-site/src/build/skill.mjs` so the two binaries reject the same inputs.

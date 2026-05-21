@@ -3,18 +3,56 @@ title: "feat: Import shared prose tooling and author linter-channel design conte
 type: feat
 status: active
 date: 2026-05-07
+last_updated: 2026-05-12
 ---
 
 # feat: Import shared prose tooling and author linter-channel design context
 
 ## Summary
 
-Vendor the shared prose-linting tooling from `agentnative-spec` (`BRAND.md`, four vale rule packs, `prose-check.sh`,
-test harness) into `agentnative-cli` via a new `scripts/sync-prose-tooling.sh`, author a fresh CLI-channel
-`.impeccable.md` codifying linter-channel voice (distinct from spec-channel RFC-2119 register), wire prose-check into CI
-on every PR, and lay down a constrained design brief for ast-grep-based in-code prose extraction so future passes can
-lint clap help text, error messages, and panic strings. Sibling to the v0.4.0 spec sync (PR A); independent release
-cadence, no governance window.
+Vendor the shared prose-linting tooling from `agentnative-spec` (`BRAND.md`, vale config + brand rule pack + brand
+vocab, `prose-check.sh`, test harness, generator) into `agentnative-cli` via a new `scripts/sync-prose-tooling.sh`,
+author a fresh CLI-channel `.impeccable.md` codifying linter-channel voice (distinct from spec-channel RFC-2119
+register), wire prose-check into CI on every PR, and lay down a constrained design brief for ast-grep-based in-code
+prose extraction so future passes can lint clap help text, error messages, and panic strings. Sibling to the v0.4.0 spec
+sync (PR A); independent release cadence, no governance window.
+
+## Execution log (2026-05-12)
+
+- **Narrow scope chosen.** Working U1+U2+U3 this session. U4 (CI gate), U5 (drift workflow + manifest test), and U6
+  (ast-grep Rust extraction) deferred to follow-up PRs. Reason: validates the pipeline against ~6 markdown files before
+  pointing it at the 100+ Rust source files U6 would extract from.
+- **Plan deviation: tag-pinned sync, not branch-pinned.** Original plan said "Sync source ref is `dev`, not a tag" on
+  the rationale that prose tooling evolves continuously. After review, switched to tag-pinned (`v*` latest) for three
+  reasons: (a) `agentnative-site/scripts/sync-prose-tooling.sh` ships tag-pinned — established ecosystem precedent; (b)
+  `agentnative-cli/scripts/sync-spec.sh` is tag-pinned — within-repo precedent; (c) supply-chain hygiene — fixed refs
+  over moving branches.
+- **Plan deviation: manifest reality.** The original plan called for vendoring `styles/proselint/` and
+  `styles/write-good/`. These directories exist in the spec's working tree but are gitignored upstream — vale's
+  `Packages = ...` line in `.vale.ini` downloads them at runtime. Following the upstream pattern, this repo's
+  `.gitignore` excludes them and vale auto-fetches on first invocation. Final vendored manifest at `v0.4.0`: 11 files
+  (`BRAND.md`, `.vale.ini`, brand pack YAMLs + README, brand vocab accept/reject, orchestrator + test harness
+- generator).
+
+- **Plan deviation: upstream parameterization not landed.** Risk #1 confirmed — upstream `prose-check.sh` does not
+  support env-var-configurable file globs. The plan said "file an upstream PR before this PR lands"; instead followed
+  the `agentnative-site` precedent (PR #82, 2026-05-07) of vendoring verbatim and applying a marked CLI-LOCAL DIVERGENCE
+  block to the orchestrator. Upstream todo is
+  `agentnative-spec/.context/compound-engineering/todos/010-pending-p0-prose-check-consumer-exclusion-config.md` (Phase
+  1: `--exclude PATTERN` flag). When that ships, both site and CLI revert their divergence blocks together.
+- **Narrow-scope limit, stated explicitly.** With only U1+U2+U3 shipping, prose-check covers markdown only: `README.md`,
+  `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, `PRODUCT.md` (formerly `.impeccable.md` — see migration note below).
+  The high-leverage prose — clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, check `label()` returns
+  — is **NOT** covered until U6 ships. U6 is the unit that makes the CLI itself speak brand voice; U1+U2+U3 only ensures
+  contributor- and consumer-facing docs do.
+- **Filename migration: `.impeccable.md` → `PRODUCT.md` (2026-05-12).** Post-U3, invoking the `impeccable` skill in this
+  repo triggered its loader's legacy-rename: `.impeccable.md` is the long-standing ecosystem convention across
+  `agentnative-spec` / `agentnative-site` / `agentnative-cli`, but the skill standardized on `PRODUCT.md` / `DESIGN.md`
+  and auto-migrates the legacy filename at first invocation. The CLI accepted the migration; the spec and site repos
+  will migrate on their own cadence (the user is handling those manually). The body of this plan still references
+  `.impeccable.md` because that was the file shape when U1-U3 was scoped and implemented; treat any `.impeccable.md`
+  reference below as the file at the path that is now `PRODUCT.md`. AGENTS.md's pointer and PRODUCT.md's self-references
+  were updated to reflect the new filename and assume sibling-repo migrations are complete.
 
 ---
 
@@ -182,6 +220,9 @@ because there's no sync mechanism.
 
 ### U1. Author `scripts/sync-prose-tooling.sh` (new sync script with `--check` mode)
 
+**Status:** Complete (2026-05-12). Tag-pinned (not branch-pinned as originally planned — see Execution log). Vendored 11
+files from `agentnative-spec v0.4.0`. `--check` mode green.
+
 **Goal:** Land the cross-repo sync mechanism that vendors prose tooling from `agentnative-spec`. Remote-first, local
 fallback, `--check` drift mode. No content vendored yet — script only.
 
@@ -236,6 +277,9 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 ### U2. Vendor initial prose tooling + adapt `prose-check.sh` for CLI prose surfaces
 
+**Status:** In progress (2026-05-12 narrow-scope session). Content vendored via U1; remaining work: apply CLI-LOCAL
+DIVERGENCE patch to `scripts/prose-check.sh`, update `scripts/SYNCS.md`, surface first prose-check pass backlog.
+
 **Goal:** Run U1's script for the first time, then adapt the vendored `scripts/prose-check.sh` for CLI prose surfaces.
 Adaptation is path/glob changes only — rule logic stays untouched (any logic divergence breaks the byte-equivalence
 contract on next sync).
@@ -271,10 +315,10 @@ contract on next sync).
   is:
 - `scripts/prose-check.sh` — vendored verbatim from upstream. `--check` mode validates byte-equality against upstream.
 - `scripts/prose-check-cli.sh` — thin wrapper that exports the CLI's path globs as env vars and invokes
-    `prose-check.sh`. The wrapper is CLI-owned and not under sync.
+  `prose-check.sh`. The wrapper is CLI-owned and not under sync.
 - `prose-check.sh` upstream is parameterized via env vars (`PROSE_FILES`, `PROSE_VOCAB_PATH`) — verify upstream supports
-    this; if not, file an upstream PR before this PR lands. **Decision: verify upstream parameterization during
-    implementation; if absent, route to "fork-with-divergence-justification" pattern with a tracking issue.**
+  this; if not, file an upstream PR before this PR lands. **Decision: verify upstream parameterization during
+  implementation; if absent, route to "fork-with-divergence-justification" pattern with a tracking issue.**
 - Run `bash scripts/prose-check-cli.sh` (or equivalent) to record current findings on existing prose. Findings get fixed
   in-place when trivial (typo, em-dash density), or annotated with TODO comments and tracked separately.
 - Update `scripts/SYNCS.md` to document the new tooling and its sync rhythm.
@@ -305,6 +349,8 @@ contract on next sync).
 
 ### U3. Author `.impeccable.md` for the linter channel
 
+**Status:** In progress (2026-05-12 narrow-scope session). Authoring begins after U2 patch lands.
+
 **Goal:** Codify the CLI-channel voice rules in a fresh `.impeccable.md`. Inherits from `BRAND.md` (vendored in U2);
 explicitly diverges from spec-channel rules where the register differs.
 
@@ -325,17 +371,17 @@ explicitly diverges from spec-channel rules where the register differs.
   "Linter-specific anti-patterns", "Voice anchor application", "Status".
 - **Register rules to codify (key divergences from spec):**
 - **Second-person imperative IS the register.** "Run `anc check`", "Set `--audit-profile human-tui`", "Pipe to `jq`".
-    The spec channel bans this; the linter channel embraces it.
+  The spec channel bans this; the linter channel embraces it.
 - **RFC 2119 is NOT the register.** No MUST/SHOULD/MAY in error messages or help text — those map to spec requirement
-    IDs, not user-facing behavior.
+  IDs, not user-facing behavior.
 - **Errors name three things.** What failed, why it failed, what to do next. Maps to P4 spec requirement; the
-    `.impeccable.md` codifies the prose shape (not the structured-error JSON, which is a code concern).
+  `.impeccable.md` codifies the prose shape (not the structured-error JSON, which is a code concern).
 - **Help text follows clap conventions.** `<arg>` for required, `[arg]` for optional, `--flag <VALUE>` for valued flags.
-    No marketing copy in `--help` output.
+  No marketing copy in `--help` output.
 - **No marketing voice.** No "powerful", no "blazing-fast", no "elegant". Describe what it does, not how it feels to
-    use.
+  use.
 - **Diagnostic messages stay neutral.** No exclamation points, no apology, no anthropomorphizing the CLI ("I think this
-    might be wrong" → "the value is invalid").
+  might be wrong" → "the value is invalid").
 - **Linter-specific anti-patterns to call out:**
 - "Helpful" multi-paragraph error messages that bury the actionable line.
 - Suggestion text that names a flag that doesn't exist (false canonicalization).
@@ -368,6 +414,8 @@ explicitly diverges from spec-channel rules where the register differs.
 
 ### U4. Add CI workflow for prose-check on every PR
 
+**Status:** Deferred to follow-up PR (out of narrow-scope 2026-05-12 session).
+
 **Goal:** Ship the CI gate so prose-check fires on every PR that touches a prose-bearing file. Pinned-SHA actions per
 global supply-chain policy. Workflow scopes to dev/main as base branches.
 
@@ -388,7 +436,7 @@ global supply-chain policy. Workflow scopes to dev/main as base branches.
 
 1. Checkout (pinned `actions/checkout@<sha> # v4.x`).
 2. Install vale (download release binary or use `errata-ai/vale-action@<sha>`; pick whichever is more stable per pinning
-     helper output during implementation).
+   helper output during implementation).
 3. Install Bun or Node (pinned setup action) for the test harness.
 4. Run `bash scripts/prose-check-cli.sh` — fails on non-zero exit.
 5. Run `node scripts/test-prose-check.mjs` — sanity-tests the harness itself.
@@ -419,6 +467,9 @@ global supply-chain policy. Workflow scopes to dev/main as base branches.
 
 ### U5. Add drift-detection workflow + manifest test
 
+**Status:** Deferred to follow-up PR (out of narrow-scope 2026-05-12 session). `--check` mode lands with U1; the
+workflow that calls it on a schedule + push trigger ships separately.
+
 **Goal:** Wire `sync-prose-tooling.sh --check` into a scheduled workflow + push trigger so drift between vendored copies
 and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises the script's manifest list end-to-end.
 
@@ -441,7 +492,7 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 1. Checkout pinned.
 2. Run `bash scripts/sync-prose-tooling.sh --check`.
 3. On failure, post a GitHub issue (or comment on a tracking issue) summarizing the drift. Use existing
-     `actions/github-script` or similar — pinned per supply-chain policy.
+   `actions/github-script` or similar — pinned per supply-chain policy.
 
 - Rust integration test: walk the vendored files; for each, assert it exists. Don't run the network drift check from
   Rust (that's the workflow's job) — the test only validates that vendored files are present and non-empty.
@@ -468,6 +519,12 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 ---
 
 ### U6. Implement ast-grep-based in-code prose extraction (`scripts/prose-check-rust.sh`)
+
+**Status:** Deferred to follow-up PR (out of narrow-scope 2026-05-12 session). **This is the unit that makes the CLI
+itself speak brand voice** — U1-U5 only cover markdown. Without U6, prose-check is "voice consistency for docs" rather
+than "the tool's output speaks brand voice." Local pre-flight: `ast-grep` CLI is not installed locally (the repo uses
+`ast-grep-core` Rust library, not the binary); `brew install ast-grep` before U6 starts, or pivot U6 to a Rust binary
+that uses the already-vendored `ast-grep-core` directly.
 
 **Goal:** Extract prose from Rust source — clap macro arguments, panic strings, `eprintln!`/`println!` literals,
 `anyhow::bail!`/`Error::msg` literals — into a transient markdown file, then feed it through the existing

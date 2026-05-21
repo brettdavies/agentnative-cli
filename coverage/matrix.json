@@ -163,7 +163,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p2-structured-exit-codes",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p2-must-json-errors",
@@ -173,7 +178,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p2-json-errors",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p2-must-schema-print",
@@ -199,7 +209,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p2-consistent-envelope",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p2-should-schema-file",
@@ -271,7 +286,12 @@
         "kind": "conditional",
         "condition": "CLI uses subcommands"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p3-subcommand-examples",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p3-must-top-level-examples",
@@ -326,7 +346,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p3-paired-examples",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p3-should-about-long-about",
@@ -400,7 +425,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p4-actionable-errors",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p4-should-structured-enum",
@@ -440,7 +470,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p4-json-error-output",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p4-should-enumerate-valid-set",
@@ -471,7 +506,12 @@
         "kind": "conditional",
         "condition": "CLI has destructive operations"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p5-force-yes",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p5-must-read-write-distinction",
@@ -482,7 +522,12 @@
         "kind": "conditional",
         "condition": "CLI has both read and write operations"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p5-read-write-distinction",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p5-must-dry-run",
@@ -687,7 +732,12 @@
         "kind": "conditional",
         "condition": "CLI performs multiple distinct operations"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p6-subcommand-operations",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p6-may-color-flag",
@@ -821,7 +871,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p7-auto-verbosity",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p8-must-bundle-install",
@@ -893,20 +948,20 @@
   ],
   "summary": {
     "total": 59,
-    "covered": 45,
-    "uncovered": 14,
+    "covered": 56,
+    "uncovered": 3,
     "dual_layer": 10,
     "must": {
       "total": 28,
-      "covered": 22
+      "covered": 28
     },
     "should": {
       "total": 21,
-      "covered": 14
+      "covered": 18
     },
     "may": {
       "total": 10,
-      "covered": 9
+      "covered": 10
     }
   },
   "audit_profiles": [

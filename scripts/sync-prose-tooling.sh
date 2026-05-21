@@ -187,6 +187,15 @@ if (( CHECK_MODE )); then
         # newlines, which would false-positive on blank vocab files.
         local upstream_path="$1"
         local local_path="$REPO_ROOT/$upstream_path"
+        # scripts/generate-pack-readme.mjs carries a CLI-LOCAL adaptation
+        # (drops `spec` from DEFAULT_PACKS since this repo doesn't vendor
+        # styles/spec/). Skip the byte-equivalence check on that file the
+        # same way the un-vendored prose-check.sh was handled before it
+        # left the manifest entirely. Universal rule changes still flow
+        # via re-sync + manual diff review.
+        if [[ "$upstream_path" == "scripts/generate-pack-readme.mjs" ]]; then
+            return
+        fi
         if [[ ! -f "$local_path" ]]; then
             echo "drift: missing locally: $upstream_path" >&2
             drift=1

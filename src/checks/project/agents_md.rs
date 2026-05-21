@@ -26,6 +26,10 @@ impl Check for AgentsMdCheck {
         CheckLayer::Project
     }
 
+    fn covers(&self) -> &'static [&'static str] {
+        &["p8-should-bundle-exists"]
+    }
+
     fn applicable(&self, project: &Project) -> bool {
         project.path.is_dir()
     }

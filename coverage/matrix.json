@@ -230,7 +230,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p2-more-formats",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p2-may-raw-flag",
@@ -240,7 +245,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p2-raw-flag",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p3-must-subcommand-examples",
@@ -264,6 +274,36 @@
       "verifiers": [
         {
           "check_id": "p3-help",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p3-must-version",
+      "principle": 3,
+      "level": "must",
+      "summary": "Top-level `--version` prints a non-empty version line and exits 0.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p3-version",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
+      "id": "p3-should-version-short",
+      "principle": 3,
+      "level": "should",
+      "summary": "A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes.",
+      "applicability": {
+        "kind": "universal"
+      },
+      "verifiers": [
+        {
+          "check_id": "p3-version",
           "layer": "behavioral"
         }
       ]
@@ -296,7 +336,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p3-examples-subcommand",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p4-must-try-parse",
@@ -627,7 +672,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p6-color-flag",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p6-may-standard-names",
@@ -684,7 +734,12 @@
       "applicability": {
         "kind": "universal"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p7-verbose",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p7-should-limit",
@@ -695,7 +750,12 @@
         "kind": "conditional",
         "condition": "CLI has list-style commands"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p7-limit",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p7-should-timeout",
@@ -716,7 +776,12 @@
         "kind": "conditional",
         "condition": "CLI returns paginated results"
       },
-      "verifiers": []
+      "verifiers": [
+        {
+          "check_id": "p7-cursor-pagination",
+          "layer": "behavioral"
+        }
+      ]
     },
     {
       "id": "p7-may-auto-verbosity",
@@ -753,6 +818,10 @@
         "kind": "universal"
       },
       "verifiers": [
+        {
+          "check_id": "p6-agents-md",
+          "layer": "project"
+        },
         {
           "check_id": "p8-bundle-exists",
           "layer": "project"
@@ -793,21 +862,21 @@
     }
   ],
   "summary": {
-    "total": 57,
-    "covered": 30,
-    "uncovered": 27,
-    "dual_layer": 9,
+    "total": 59,
+    "covered": 39,
+    "uncovered": 20,
+    "dual_layer": 10,
     "must": {
-      "total": 27,
-      "covered": 21
+      "total": 28,
+      "covered": 22
     },
     "should": {
-      "total": 20,
-      "covered": 6
+      "total": 21,
+      "covered": 9
     },
     "may": {
       "total": 10,
-      "covered": 3
+      "covered": 8
     }
   },
   "audit_profiles": [

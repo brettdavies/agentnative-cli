@@ -1,7 +1,7 @@
 ---
 id: p3
 title: Progressive Help Discovery
-last-revised: 2026-04-22
+last-revised: 2026-05-21
 status: active
 requirements:
   - id: p3-must-subcommand-examples
@@ -13,6 +13,14 @@ requirements:
     level: must
     applicability: universal
     summary: The top-level command ships 2–3 examples covering the primary use cases.
+  - id: p3-must-version
+    level: must
+    applicability: universal
+    summary: Top-level `--version` prints a non-empty version line and exits 0.
+  - id: p3-should-version-short
+    level: should
+    applicability: universal
+    summary: A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes.
   - id: p3-should-paired-examples
     level: should
     applicability: universal
@@ -50,6 +58,9 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
   appears after the flags list. Clap's `after_help` attribute is the Rust realization; other frameworks have equivalents
   (see Evidence section below).
 - The top-level command MUST render 2–3 examples covering the primary use cases.
+- The top-level command MUST respond to `--version` with a non-empty version line on stdout and exit 0. Agents pin
+  against tool versions to detect breaking changes; a `--version` that errors, exits non-zero, or prints nothing forces
+  every consumer to scrape the binary path or manifest for a clue.
 
 **SHOULD:**
 
@@ -57,6 +68,10 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
   equivalent. Readers see the pair; agents see the JSON form.
 - Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help` but
   not `-h`.
+- A short alias for `--version` SHOULD work: `-V` (clap default, `curl`, `wget`, `gzip`), `-v` (`npm`, `node`, `bun`,
+  `yarn`, `make`), or `-version` (Go's `flag` package). Any one is sufficient. Agents probing tool versions across many
+  CLIs save token cost when they can pin against a one- or two-character form; the long-only path forces an extra parse
+  step.
 
 **MAY:**
 
@@ -83,7 +98,7 @@ under test to see each.
 
 ## Pressure test notes
 
-### 2026-04-27: Show HN launch red-team pass
+### 2026-04-27: Red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".

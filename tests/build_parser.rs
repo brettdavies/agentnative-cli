@@ -345,7 +345,7 @@ fn vendored_spec_parses_to_expected_requirement_count() {
     }
 
     let combined = aggregate(parsed_per_file).expect("no duplicates in vendored spec");
-    assert_eq!(combined.len(), 57, "v0.4.0 ships 57 requirements");
+    assert_eq!(combined.len(), 59, "vendored spec ships 59 requirements");
 
     // First entry should still be p1-must-env-var — the order is filename-
     // sorted then spec-frontmatter-order, and v0.4.0 only appended new IDs.

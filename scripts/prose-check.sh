@@ -70,14 +70,14 @@
 #   scripts/prose-check.sh --lt-only       skip Vale entirely (LT debugging)
 #
 # Env:
-#   LANGUAGETOOL_URL    LT base URL (default: http://pool.tail42ba87.ts.net:8081)
+#   LANGUAGETOOL_URL    LT base URL (default: http://languagetool:8081)
 #                       FQDN avoids macOS+Tailscale short-name DNS timeouts.
 #   PROSE_CHECK_BASE    git ref to diff against in --changed-only (default: origin/dev)
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-LT_URL_DEFAULT="http://pool.tail42ba87.ts.net:8081"
+LT_URL_DEFAULT="http://languagetool:8081"
 LT_URL="${LANGUAGETOOL_URL:-$LT_URL_DEFAULT}"
 PROSE_CHECK_BASE="${PROSE_CHECK_BASE:-origin/dev}"
 # LT blocking whitelist — narrowed from the plan's 7-category default

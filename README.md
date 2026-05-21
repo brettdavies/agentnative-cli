@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/agentnative.svg)](https://crates.io/crates/agentnative)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue.svg)](#license)
 
-The agent-native CLI linter. Checks whether your CLI follows the 7 agent-readiness principles.
+The agent-native CLI linter. Checks whether your CLI follows the 8 agent-readiness principles.
 
 `anc` dogfoods the spec it enforces — the badge above is its own live score.
 
@@ -84,19 +84,20 @@ anc . --principle 3
 anc . -q
 ```
 
-## The 7 Principles
+## The 8 Principles
 
-agentnative checks your CLI against seven agent-readiness principles:
+agentnative checks your CLI against eight agent-readiness principles:
 
 | # | Principle | What It Means |
 | - | --------- | ------------- |
 | P1 | Non-Interactive by Default | No prompts, no browser popups, stdin from `/dev/null` works |
-| P2 | Structured Output | `--output json` exists and produces valid JSON |
+| P2 | Structured Output | `--output json` exists, produces valid JSON, and the shape is discoverable via `schema` subcommand or `--schema` flag |
 | P3 | Progressive Help | `--help` has examples, `--version` works |
 | P4 | Actionable Errors | Structured error types, named exit codes, no `.unwrap()` |
 | P5 | Safe Retries | `--dry-run` for write operations |
-| P6 | Composable Structure | SIGPIPE handled, NO_COLOR respected, shell completions, AGENTS.md |
+| P6 | Composable Structure | SIGPIPE handled, NO_COLOR respected, shell completions, `AGENTS.md`, SIGTERM cleanup |
 | P7 | Bounded Responses | `--quiet` flag, no unbounded list output, clamped pagination |
+| P8 | Discoverable Skill Bundle | Top-level `AGENTS.md` / `SKILL.md` with YAML frontmatter, `tool skill install [<host>]` for agent runtimes |
 
 ## Example Output
 
@@ -164,7 +165,7 @@ Options:
       --command <NAME>           Resolve a command from PATH and run behavioral checks against it
       --binary                   Run only behavioral checks (skip source analysis)
       --source                   Run only source checks (skip behavioral)
-      --principle <PRINCIPLE>    Filter checks by principle number (1-7)
+      --principle <PRINCIPLE>    Filter checks by principle number (1-8)
       --output <OUTPUT>          Output format [default: text] [possible values: text, json]
   -q, --quiet                    Suppress non-essential output [env: AGENTNATIVE_QUIET=]
       --include-tests            Include test code in source analysis
@@ -221,9 +222,9 @@ Pre-generated scripts are also available in `completions/`.
 anc check . --output json
 ```
 
-Produces a self-describing scoring run record (`schema_version: "0.5"`) with results, summary, coverage against the 7
+Produces a self-describing scoring run record (`schema_version: "0.5"`) with results, summary, coverage against the 8
 principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform, and
-how:
+how. Validate against the JSON Schema emitted by `anc schema` (also committed at `schema/scorecard.schema.json`):
 
 ```json
 {
@@ -248,15 +249,15 @@ how:
     "error": 0
   },
   "coverage_summary": {
-    "must":   { "total": 23, "verified": 17 },
-    "should": { "total": 16, "verified": 2 },
-    "may":    { "total": 7,  "verified": 0 }
+    "must":   { "total": 27, "verified": 21 },
+    "should": { "total": 20, "verified": 6  },
+    "may":    { "total": 10, "verified": 3  }
   },
   "audience": "agent-optimized",
   "audit_profile": null,
-  "spec_version": "0.3.0",
-  "tool":   { "name": "ripgrep", "binary": "rg",  "version": "ripgrep 15.1.0" },
-  "anc":    { "version": "0.3.0", "commit": "abc1234" },
+  "spec_version": "0.4.0",
+  "tool":   { "name": "ripgrep", "binary": "rg", "version": "ripgrep 15.1.0" },
+  "anc":    { "version": "0.4.0" },
   "run":    {
     "invocation": "anc check --command rg --output json",
     "started_at": "2026-04-29T16:00:00Z",
@@ -297,9 +298,8 @@ how:
   `registry.yaml` `version_extract` snippets remain authoritative for tools whose self-report is unreliable. Schema
   `0.4` addition.
 - `anc` — identifies the `anc` build that produced the scorecard. `version` is the crate version at compile time.
-  `commit` is the short Git SHA at compile time, or `null` for builds outside a Git checkout (e.g., `cargo install` from
-  crates.io). Informational, not a signed provenance signal — pair with a Sigstore-signed release artifact if provenance
-  is required. Schema `0.4` addition.
+  Informational, not a signed provenance signal — pair with a Sigstore-signed release artifact if provenance is
+  required. Schema `0.4` addition.
 - `run` — run-level facts. `invocation` is the user's argv joined with shell-safe quoting, captured **before**
   default-subcommand injection so it reflects what the user typed (`anc .`, not `anc check .`). `started_at` is RFC 3339
   UTC. `duration_ms` is wall-clock milliseconds. `platform.os` / `platform.arch` come from `std::env::consts`. Schema

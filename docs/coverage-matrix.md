@@ -7,11 +7,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 ## Summary
 
-- **Total**: 59 requirements (45 covered / 14 uncovered)
-- **Dual-layer**: 10 of 45 covered requirements have verifiers in two layers (behavioral + source or project)
-- **MUST**: 22 of 28 covered
-- **SHOULD**: 14 of 21 covered
-- **MAY**: 9 of 10 covered
+- **Total**: 59 requirements (56 covered / 3 uncovered)
+- **Dual-layer**: 10 of 56 covered requirements have verifiers in two layers (behavioral + source or project)
+- **MUST**: 28 of 28 covered
+- **SHOULD**: 18 of 21 covered
+- **MAY**: 10 of 10 covered
 
 ## P1: Non-Interactive by Default
 
@@ -31,10 +31,10 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | --- | --- | --- | --- | --- |
 | `p2-must-output-flag` | MUST | Universal | `p2-json-output` (behavioral)<br>`p2-structured-output` (source) | `--output` flag selects format with `json` and `jsonl` as canonical machine-readable values; `text` is the default human-facing form. |
 | `p2-must-stdout-stderr-split` | MUST | Universal | `p2-output-module` (source) | Data goes to stdout; diagnostics/progress/warnings go to stderr, never interleaved. |
-| `p2-must-exit-codes` | MUST | Universal | **UNCOVERED** | Exit codes are structured and documented (0 success, 1 general, 2 usage, 77 auth, 78 config). |
-| `p2-must-json-errors` | MUST | Universal | **UNCOVERED** | When `--output json` is active, errors are emitted as JSON (to stderr) with at least `error`, `kind`, and `message` fields. |
+| `p2-must-exit-codes` | MUST | Universal | `p2-structured-exit-codes` (behavioral) | Exit codes are structured and documented (0 success, 1 general, 2 usage, 77 auth, 78 config). |
+| `p2-must-json-errors` | MUST | Universal | `p2-json-errors` (behavioral) | When `--output json` is active, errors are emitted as JSON (to stderr) with at least `error`, `kind`, and `message` fields. |
 | `p2-must-schema-print` | MUST | If: CLI emits structured output | `p2-schema-print` (behavioral) | CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier. |
-| `p2-should-consistent-envelope` | SHOULD | Universal | **UNCOVERED** | JSON output uses a consistent envelope (a top-level object with predictable keys) across every command. |
+| `p2-should-consistent-envelope` | SHOULD | Universal | `p2-consistent-envelope` (behavioral) | JSON output uses a consistent envelope (a top-level object with predictable keys) across every command. |
 | `p2-should-schema-file` | SHOULD | If: CLI emits structured output | `p2-schema-file` (project) | Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool. |
 | `p2-should-json-aliases` | SHOULD | Universal | `p2-json-aliases` (behavioral) | `--json` and `--jsonl` are accepted as aliases for `--output json` and `--output jsonl`; the short forms work alongside the canonical enum. |
 | `p2-may-more-formats` | MAY | Universal | `p2-more-formats` (behavioral) | Additional output formats (CSV, TSV, YAML) beyond the core three. |
@@ -44,11 +44,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p3-must-subcommand-examples` | MUST | If: CLI uses subcommands | **UNCOVERED** | Every subcommand ships at least one concrete invocation example (`after_help` in clap). |
+| `p3-must-subcommand-examples` | MUST | If: CLI uses subcommands | `p3-subcommand-examples` (behavioral) | Every subcommand ships at least one concrete invocation example (`after_help` in clap). |
 | `p3-must-top-level-examples` | MUST | Universal | `p3-help` (behavioral) | The top-level command ships 2–3 examples covering the primary use cases. |
 | `p3-must-version` | MUST | Universal | `p3-version` (behavioral) | Top-level `--version` prints a non-empty version line and exits 0. |
 | `p3-should-version-short` | SHOULD | Universal | `p3-version` (behavioral) | A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes. |
-| `p3-should-paired-examples` | SHOULD | Universal | **UNCOVERED** | Examples show human and agent invocations side by side (text then `--output json` equivalent). |
+| `p3-should-paired-examples` | SHOULD | Universal | `p3-paired-examples` (behavioral) | Examples show human and agent invocations side by side (text then `--output json` equivalent). |
 | `p3-should-about-long-about` | SHOULD | Universal | `p3-about-long-about` (behavioral) | Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`. |
 | `p3-may-examples-subcommand` | MAY | Universal | `p3-examples-subcommand` (behavioral) | Dedicated `examples` subcommand or `--examples` flag for curated usage patterns. |
 
@@ -58,18 +58,18 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | --- | --- | --- | --- | --- |
 | `p4-must-try-parse` | MUST | Universal | `p4-try-parse` (source) | Parse arguments with `try_parse()` instead of `parse()` so `--output json` can emit JSON parse errors. |
 | `p4-must-exit-code-mapping` | MUST | Universal | `p4-bad-args` (behavioral)<br>`p4-exit-codes` (source) | Error types map to distinct exit codes (0, 1, 2, 77, 78). |
-| `p4-must-actionable-errors` | MUST | Universal | **UNCOVERED** | Every error message names the failure, the cause, and a concrete remediation (a command or a value, not a hint to consult docs). |
+| `p4-must-actionable-errors` | MUST | Universal | `p4-actionable-errors` (behavioral) | Every error message names the failure, the cause, and a concrete remediation (a command or a value, not a hint to consult docs). |
 | `p4-should-structured-enum` | SHOULD | Universal | `p4-error-module` (project)<br>`p4-error-types` (source) | Error types use a structured enum (via `thiserror` in Rust) with variant-to-kind mapping for JSON serialization. |
 | `p4-should-gating-before-network` | SHOULD | If: CLI makes network calls | **UNCOVERED** | Config and auth validation happen before any network call, failing at the earliest possible point. |
-| `p4-should-json-error-output` | SHOULD | Universal | **UNCOVERED** | Error output respects `--output json`: JSON-formatted errors go to stderr when JSON output is selected. |
+| `p4-should-json-error-output` | SHOULD | Universal | `p4-json-error-output` (behavioral) | Error output respects `--output json`: JSON-formatted errors go to stderr when JSON output is selected. |
 | `p4-should-enumerate-valid-set` | SHOULD | If: CLI rejects input against a closed set | `p4-enumerate-valid-set` (source)<br>`p4-enumerate-valid-set` (source) | When rejecting input against an enum or fixed-allowed-values set, the error message includes the valid set. |
 
 ## P5: Safe Retries, Mutation Boundaries
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p5-must-force-yes` | MUST | If: CLI has destructive operations | **UNCOVERED** | Destructive operations (delete, overwrite, bulk modify) require an explicit `--force` or `--yes` flag. |
-| `p5-must-read-write-distinction` | MUST | If: CLI has both read and write operations | **UNCOVERED** | The distinction between read and write commands is clear from the command name and help text alone. |
+| `p5-must-force-yes` | MUST | If: CLI has destructive operations | `p5-force-yes` (behavioral) | Destructive operations (delete, overwrite, bulk modify) require an explicit `--force` or `--yes` flag. |
+| `p5-must-read-write-distinction` | MUST | If: CLI has both read and write operations | `p5-read-write-distinction` (behavioral) | The distinction between read and write commands is clear from the command name and help text alone. |
 | `p5-must-dry-run` | MUST | If: CLI has write operations | `p5-dry-run` (project) | A `--dry-run` flag is present on every write command; dry-run output respects `--output json`. |
 | `p5-should-idempotency` | SHOULD | If: CLI has write operations | **UNCOVERED** | Write operations are idempotent where the domain allows it: running the same command twice produces the same result. |
 
@@ -87,7 +87,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p6-should-stdin-input` | SHOULD | If: CLI has commands that accept input data | `p6-stdin-input` (behavioral) | Commands that accept input read from stdin when no file argument is provided. |
 | `p6-should-consistent-naming` | SHOULD | If: CLI uses subcommands | `p6-consistent-naming` (behavioral) | Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. |
 | `p6-should-tier-gating` | SHOULD | Universal | **UNCOVERED** | Three-tier dependency gating: Tier 1 (meta) needs nothing, Tier 2 (local) needs config, Tier 3 (network) needs config + auth. |
-| `p6-should-subcommand-operations` | SHOULD | If: CLI performs multiple distinct operations | **UNCOVERED** | Operations are modeled as subcommands, not flags (`tool search "q"`, not `tool --search "q"`). |
+| `p6-should-subcommand-operations` | SHOULD | If: CLI performs multiple distinct operations | `p6-subcommand-operations` (behavioral) | Operations are modeled as subcommands, not flags (`tool search "q"`, not `tool --search "q"`). |
 | `p6-may-color-flag` | MAY | Universal | `p6-color-flag` (behavioral) | `--color auto\|always\|never` flag for explicit color control beyond TTY auto-detection. |
 | `p6-may-standard-names` | MAY | If: CLI uses subcommands | `p6-standard-names` (behavioral) | Subcommand verbs MAY follow community-standard names (`get`/`list`/`create`/`update`/`delete`); flag spellings MAY follow widely-used canonical forms (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`). |
 
@@ -101,7 +101,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p7-should-limit` | SHOULD | If: CLI has list-style commands | `p7-limit` (behavioral) | A `--limit` or `--max-results` flag lets callers request exactly the number of items they want. |
 | `p7-should-timeout` | SHOULD | Universal | `p7-timeout-behavioral` (behavioral) | A `--timeout` flag bounds execution time so agents are not blocked indefinitely. |
 | `p7-may-cursor-pagination` | MAY | If: CLI returns paginated results | `p7-cursor-pagination` (behavioral) | Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets. |
-| `p7-may-auto-verbosity` | MAY | Universal | **UNCOVERED** | Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests). |
+| `p7-may-auto-verbosity` | MAY | Universal | `p7-auto-verbosity` (behavioral) | Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests). |
 
 ## P8: Unknown
 

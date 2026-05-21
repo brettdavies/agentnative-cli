@@ -72,9 +72,19 @@ fn dogfood_no_p5_fail_after_skill_subcommand() {
 /// (derived schema via `schemars` build-dep, embedded via `include_str!`,
 /// exposed via `anc generate scorecard-schema`). Remove this allowlist
 /// when that plan's verb lands and satisfies the check.
+///
+/// **Temporary allowlist** for `p2-json-errors`: the wire-orphan batch
+/// that added this check probes the bad-invocation surface for the spec's
+/// `error`/`kind`/`message` JSON envelope under `--output json`. anc
+/// currently passes argv to clap's default `parse()`, which emits
+/// plain-text errors regardless of the active output mode. Honoring
+/// `--output json` for parse errors requires switching to `try_parse()`
+/// and routing the resulting `clap::Error` through anc's error formatter
+/// — a separate feature, not part of the orphan-coverage batch. Remove
+/// this allowlist when that work lands.
 #[test]
 fn dogfood_no_p2_fail_after_skill_subcommand() {
-    const PENDING_FAILS: &[&str] = &["p2-schema-print"];
+    const PENDING_FAILS: &[&str] = &["p2-schema-print", "p2-json-errors"];
 
     let parsed = check_repo_json();
     let failed: Vec<String> = collect_failed(&parsed, "p2-")

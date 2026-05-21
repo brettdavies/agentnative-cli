@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anc.dev/scorecard-v0.5.schema.json",
+  "title": "agentnative scorecard",
+  "description": "JSON Schema for `anc check --output json` scorecards (schema version 0.5). Hand-written for v0.4.0. A schemars-derived version generated from src/scorecard/mod.rs is planned for a follow-up release; see docs/plans/2026-04-30-002-feat-scorecard-json-schema-plan.md on the `dev` branch.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "results",
+    "summary",
+    "coverage_summary",
+    "audience",
+    "audit_profile",
+    "spec_version",
+    "tool",
+    "anc",
+    "run",
+    "target",
+    "badge"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Scorecard schema version. Pre-launch additive — consumers feature-detect new fields rather than pin to an exact value.",
+      "examples": ["0.5"]
+    },
+    "results": {
+      "type": "array",
+      "description": "Per-check outcomes. One entry per check the runner produced.",
+      "items": { "$ref": "#/$defs/CheckResultView" }
+    },
+    "summary": { "$ref": "#/$defs/Summary" },
+    "coverage_summary": { "$ref": "#/$defs/CoverageSummary" },
+    "audience": {
+      "type": ["string", "null"],
+      "description": "Derived audience classification. `null` when the classifier could not produce a label (e.g., signal check suppressed by `--audit-profile`, source-only run). Read-only over results; never gates totals or exit codes.",
+      "enum": ["agent-optimized", "mixed", "human-primary", null]
+    },
+    "audience_reason": {
+      "type": "string",
+      "description": "Reason the classifier declined a label, when `audience` is null. Omitted from JSON when `audience` has a value.",
+      "enum": ["suppressed", "insufficient_signal"]
+    },
+    "audit_profile": {
+      "type": ["string", "null"],
+      "description": "The `--audit-profile` value applied to this run, or null when no profile was set. Drives suppression of checks listed in the registry's SUPPRESSION_TABLE for that category.",
+      "enum": ["human-tui", "file-traversal", "posix-utility", "diagnostic-only", null]
+    },
+    "spec_version": {
+      "type": "string",
+      "description": "agentnative-spec version this `anc` build was compiled against. Sourced at build time from `src/principles/spec/VERSION`. Reads `unknown` when the vendored VERSION file was missing at build time.",
+      "examples": ["0.4.0"]
+    },
+    "tool": { "$ref": "#/$defs/ToolInfo" },
+    "anc": { "$ref": "#/$defs/AncInfo" },
+    "run": { "$ref": "#/$defs/RunInfo" },
+    "target": { "$ref": "#/$defs/TargetInfo" },
+    "badge": { "$ref": "#/$defs/BadgeInfo" }
+  },
+  "$defs": {
+    "CheckResultView": {
+      "type": "object",
+      "required": ["id", "label", "group", "layer", "status", "evidence", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable check identifier (e.g., `p1-non-interactive`). The site's `/score/<tool>` page and external leaderboards pin on these strings."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable summary of what the check verifies."
+        },
+        "group": {
+          "type": "string",
+          "description": "Principle bucket the check belongs to. Cross-cutting groups (`CodeQuality`, `ProjectStructure`) appear regardless of `--principle` filter.",
+          "examples": ["P1", "P2", "P8", "CodeQuality", "ProjectStructure"]
+        },
+        "layer": {
+          "type": "string",
+          "description": "Where the check ran. Serialized as snake_case.",
+          "enum": ["behavioral", "source", "project"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Outcome of the check. Skips and Errors are excluded from badge scoring.",
+          "enum": ["pass", "warn", "fail", "skip", "error"]
+        },
+        "evidence": {
+          "type": ["string", "null"],
+          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path. `null` for clean Pass."
+        },
+        "confidence": {
+          "type": "string",
+          "description": "How directly the check verifies its requirement. `high` for direct probes; `medium` for heuristics. Older consumers feature-detect.",
+          "enum": ["high", "medium"]
+        }
+      }
+    },
+    "Summary": {
+      "type": "object",
+      "description": "Run-level outcome counts.",
+      "required": ["total", "pass", "warn", "fail", "skip", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "pass": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "skip": { "type": "integer", "minimum": 0 },
+        "error": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "LevelCounts": {
+      "type": "object",
+      "description": "Per-level verification counts. `verified` counts requirements that had at least one check declare `covers()` against them in this run, regardless of pass/fail.",
+      "required": ["total", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "verified": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "CoverageSummary": {
+      "type": "object",
+      "description": "Three-way coverage rollup over registry requirements: how many `must` / `should` / `may` requirements were verified by this run's checks.",
+      "required": ["must", "should", "may"],
+      "additionalProperties": false,
+      "properties": {
+        "must": { "$ref": "#/$defs/LevelCounts" },
+        "should": { "$ref": "#/$defs/LevelCounts" },
+        "may": { "$ref": "#/$defs/LevelCounts" }
+      }
+    },
+    "ToolInfo": {
+      "type": "object",
+      "description": "Identity of the scored target. `binary` is `null` for project-mode runs without a built artifact; `version` is `null` when probing failed, produced no parseable output, or was declined by the self-spawn guard.",
+      "required": ["name", "binary", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "binary": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] }
+      }
+    },
+    "AncInfo": {
+      "type": "object",
+      "description": "Identity of the `anc` build that produced this scorecard.",
+      "required": ["version"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string", "examples": ["0.4.0"] }
+      }
+    },
+    "PlatformInfo": {
+      "type": "object",
+      "description": "OS / architecture pair sourced from `std::env::consts::{OS, ARCH}`.",
+      "required": ["os", "arch"],
+      "additionalProperties": false,
+      "properties": {
+        "os": { "type": "string", "examples": ["linux", "macos", "windows"] },
+        "arch": { "type": "string", "examples": ["x86_64", "aarch64"] }
+      }
+    },
+    "RunInfo": {
+      "type": "object",
+      "description": "Run-level facts. `invocation` is argv joined with spaces, captured before `inject_default_subcommand` rewrites bare paths. `started_at` is RFC 3339 UTC. `duration_ms` is wall-clock.",
+      "required": ["invocation", "started_at", "duration_ms", "platform"],
+      "additionalProperties": false,
+      "properties": {
+        "invocation": { "type": "string", "examples": ["anc ."] },
+        "started_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "platform": { "$ref": "#/$defs/PlatformInfo" }
+      }
+    },
+    "TargetInfo": {
+      "type": "object",
+      "description": "What `anc check` was pointed at. `path` is the basename (never an absolute path — protects against home-dir PII leaks). Always-present-null keys keep consumer code simple.",
+      "required": ["kind", "path", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["project", "binary", "command"] },
+        "path": { "type": ["string", "null"] },
+        "command": { "type": ["string", "null"] }
+      }
+    },
+    "BadgeInfo": {
+      "type": "object",
+      "description": "Agent-native badge metadata derived from this run. `score_pct` is `pass / (pass + warn + fail)` rounded to an integer percent — Skips and Errors are excluded from both sides of the ratio. `eligible` is `true` iff `score_pct >= 80` and a tool slug was derivable. `embed_markdown` is populated only when `eligible` (do-not-nag contract); `scorecard_url` / `badge_url` are populated whenever a slug exists so below-floor regressions shift color rather than 404.",
+      "required": ["eligible", "score_pct", "embed_markdown", "scorecard_url", "badge_url", "convention_url"],
+      "additionalProperties": false,
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "score_pct": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "embed_markdown": { "type": ["string", "null"] },
+        "scorecard_url": { "type": ["string", "null"], "format": "uri" },
+        "badge_url": { "type": ["string", "null"], "format": "uri" },
+        "convention_url": { "type": "string", "format": "uri", "const": "https://anc.dev/badge" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "0.5",
+      "results": [
+        {
+          "id": "p1-non-interactive",
+          "label": "Non-interactive by default",
+          "group": "P1",
+          "layer": "behavioral",
+          "status": "pass",
+          "evidence": null,
+          "confidence": "high"
+        }
+      ],
+      "summary": { "total": 1, "pass": 1, "warn": 0, "fail": 0, "skip": 0, "error": 0 },
+      "coverage_summary": {
+        "must": { "total": 23, "verified": 17 },
+        "should": { "total": 14, "verified": 9 },
+        "may": { "total": 7, "verified": 3 }
+      },
+      "audience": "agent-optimized",
+      "audit_profile": null,
+      "spec_version": "0.4.0",
+      "tool": { "name": "ripgrep", "binary": "rg", "version": "14.1.0" },
+      "anc": { "version": "0.4.0" },
+      "run": {
+        "invocation": "anc --command ripgrep",
+        "started_at": "2026-05-21T17:03:00Z",
+        "duration_ms": 1240,
+        "platform": { "os": "linux", "arch": "x86_64" }
+      },
+      "target": { "kind": "command", "path": null, "command": "ripgrep" },
+      "badge": {
+        "eligible": true,
+        "score_pct": 100,
+        "embed_markdown": "[![agent-native](https://anc.dev/badge/ripgrep.svg)](https://anc.dev/score/ripgrep)",
+        "scorecard_url": "https://anc.dev/score/ripgrep",
+        "badge_url": "https://anc.dev/badge/ripgrep.svg",
+        "convention_url": "https://anc.dev/badge"
+      }
+    }
+  ]
+}

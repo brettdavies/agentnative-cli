@@ -1,20 +1,28 @@
 mod bad_args;
 mod bundle_install;
 mod bundle_update;
+mod color_flag;
+mod cursor_pagination;
 mod env_hints;
+mod examples_subcommand;
 mod flag_existence;
 mod help;
 mod install_all;
 mod json_aliases;
 mod json_output;
+mod limit_flag;
+mod list_style;
+mod more_formats;
 mod no_color;
 mod no_pager_behavioral;
 mod non_interactive;
 mod quiet;
+mod raw_flag;
 mod schema_print;
 mod secret_non_leaky_path;
 mod sigpipe;
 mod standard_names;
+mod verbose_flag;
 mod version;
 
 use crate::check::Check;
@@ -39,6 +47,13 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(bundle_install::BundleInstallCheck),
         Box::new(install_all::InstallAllCheck),
         Box::new(bundle_update::BundleUpdateCheck),
+        Box::new(raw_flag::RawFlagCheck),
+        Box::new(more_formats::MoreFormatsCheck),
+        Box::new(examples_subcommand::ExamplesSubcommandCheck),
+        Box::new(color_flag::ColorFlagCheck),
+        Box::new(verbose_flag::VerboseFlagCheck),
+        Box::new(limit_flag::LimitFlagCheck),
+        Box::new(cursor_pagination::CursorPaginationCheck),
     ]
 }
 

@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-05-21
+
+### Added
+
+- Add P1 secret-handling check (`p1-must-secret-non-leaky-path`): scans target CLIs' `--help` for secret-bearing flag families (`--token`, `--password`, `--api-key`, `--secret`, `--auth`, `--credential`) and verifies each has either a `--*-file` companion or stdin path advertised. Vacuous Pass when no secret-bearing flag is detected. by @brettdavies in [#50](https://github.com/brettdavies/agentnative-cli/pull/50)
+- Add P2 schema trio (`p2-must-schema-print`, `p2-should-schema-file`, `p2-should-json-aliases`): runtime-discoverable output schema via `schema` subcommand or `--schema` flag, file-export of schemas (`schema/*.json`, `*.schema.json` at repo root), and `--json` / `--jsonl` short aliases for `--output`.
+- Add P4 closed-set rejection check (`p4-should-enumerate-valid-set`, Rust + Python): detects clap `ValueEnum`, `PossibleValuesParser`, `value_parser!`, and Python `argparse.choices=` / `click.Choice()`.
+- Add P6 lifecycle and naming checks (`p6-must-sigterm`, Rust + Python; `p6-may-standard-names`): SIGTERM-handler detection across `signal_hook`, `tokio::signal::unix`, `signal.signal`, and `loop.add_signal_handler`; community-standard-verb allow-list applied to top-level subcommands.
+- Add P8 skill-bundle suite (`p8-should-bundle-exists`, `p8-must-bundle-install`, `p8-may-install-all`, `p8-may-bundle-update`): repo-root detection of `AGENTS.md` / `SKILL.md` with YAML frontmatter, plus help-surface probes for `skill install`, `skill install --all`, and `skill update` / `skill upgrade`. Brand-new principle in the registry.
+- New `PRODUCT.md` at repo root codifies linter-channel voice: second-person imperative register, three-part error shape (what failed, why, what to do), no marketing voice in CLI surface. Inherits universal rules from vendored `BRAND.md`. by @brettdavies in [#52](https://github.com/brettdavies/agentnative-cli/pull/52)
+- New `CONTRIBUTING.md` documents the three-tier intake (signal / proposal / code), routes principle-level discussion to the spec repo, and names the dev-setup gates.
+- New `add-tool-to-registry` issue template for proposing CLI tools to the anc100 registry.
+
+### Changed
+
+- Bump CLI from 0.3.1 to 0.4.0 (MINOR; meaningful coverage growth across five principles, including a brand-new principle). by @brettdavies in [#50](https://github.com/brettdavies/agentnative-cli/pull/50)
+- Binary discovery in `src/project.rs::discover_rust_binaries` now picks the newer of `target/release/<bin>` and `target/debug/<bin>` by mtime when both exist. Ties and metadata failures fall back to debug (matches cargo's dev-flow default). CI scenarios where only one profile is built are unchanged. by @brettdavies in [#51](https://github.com/brettdavies/agentnative-cli/pull/51)
+- `RELEASES.md` slims to operational runbook (95 lines); rationale moves to companion `RELEASES-RATIONALE.md` (243 lines). Each runbook section ends with a section-pointer at the rationale. by @brettdavies in [#52](https://github.com/brettdavies/agentnative-cli/pull/52)
+- Issue-template config adds `agentnative-skill` as a fourth cross-repo destination; renames "CLI grading" to "grading findings" to match spec-repo terminology.
+
+### Documentation
+
+- Document prose-scrubbing runbook in `RELEASES.md` for release-flow artifacts (PR bodies, `CHANGELOG.md`, release-PR bodies) using Vale + LanguageTool + unslop. by @brettdavies in [#50](https://github.com/brettdavies/agentnative-cli/pull/50)
+- Add `## PR body` section to `RELEASES.md` codifying what belongs in PR bodies (NEW user-facing substance, six required template sections) and what does not (workflow recap, triple-diff output, pre-push gate results, CI status, AI attribution).
+- Add Dogfooding Safety rule 3 to `CLAUDE.md` describing the mtime-based selection, with a `NEVER` directive against reverting to the always-prefer-release shape. by @brettdavies in [#51](https://github.com/brettdavies/agentnative-cli/pull/51)
+- `AGENTS.md` gains a "Voice and prose rules" section pointing at `PRODUCT.md` for the linter-channel register and `scripts/prose-check.sh` for the local gate. by @brettdavies in [#52](https://github.com/brettdavies/agentnative-cli/pull/52)
+- `scripts/SYNCS.md` documents the new `sync-prose-tooling.sh` row and the consumer-owned status of `scripts/prose-check.sh`.
+
+**Full Changelog**: [v0.3.1...v0.4.0](https://github.com/brettdavies/agentnative-cli/compare/v0.3.1...v0.4.0)
+
 ## [0.3.1] - 2026-05-04
 
 ### Added

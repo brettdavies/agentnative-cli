@@ -1,8 +1,11 @@
+mod about_long_about;
 mod bad_args;
 mod bundle_install;
 mod bundle_update;
 mod color_flag;
+mod consistent_naming;
 mod cursor_pagination;
+mod defaults_in_help;
 mod env_hints;
 mod examples_subcommand;
 mod flag_existence;
@@ -18,10 +21,13 @@ mod no_pager_behavioral;
 mod non_interactive;
 mod quiet;
 mod raw_flag;
+mod rich_tui;
 mod schema_print;
 mod secret_non_leaky_path;
 mod sigpipe;
 mod standard_names;
+mod stdin_input;
+mod timeout_behavioral;
 mod verbose_flag;
 mod version;
 
@@ -54,6 +60,12 @@ pub fn all_behavioral_checks() -> Vec<Box<dyn Check>> {
         Box::new(verbose_flag::VerboseFlagCheck),
         Box::new(limit_flag::LimitFlagCheck),
         Box::new(cursor_pagination::CursorPaginationCheck),
+        Box::new(defaults_in_help::DefaultsInHelpCheck),
+        Box::new(rich_tui::RichTuiCheck),
+        Box::new(about_long_about::AboutLongAboutCheck),
+        Box::new(stdin_input::StdinInputCheck),
+        Box::new(consistent_naming::ConsistentNamingCheck),
+        Box::new(timeout_behavioral::TimeoutBehavioralCheck),
     ]
 }
 

@@ -7,11 +7,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 ## Summary
 
-- **Total**: 59 requirements (39 covered / 20 uncovered)
-- **Dual-layer**: 10 of 39 covered requirements have verifiers in two layers (behavioral + source or project)
+- **Total**: 59 requirements (45 covered / 14 uncovered)
+- **Dual-layer**: 10 of 45 covered requirements have verifiers in two layers (behavioral + source or project)
 - **MUST**: 22 of 28 covered
-- **SHOULD**: 9 of 21 covered
-- **MAY**: 8 of 10 covered
+- **SHOULD**: 14 of 21 covered
+- **MAY**: 9 of 10 covered
 
 ## P1: Non-Interactive by Default
 
@@ -22,8 +22,8 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p1-must-no-browser` | MUST | If: CLI authenticates against a remote service | `p1-headless-auth` (source) | Headless authentication path (`--no-browser` / OAuth Device Authorization Grant). |
 | `p1-must-secret-non-leaky-path` | MUST | If: CLI accepts secret material (tokens, passwords, keys) as input | `p1-secret-non-leaky-path` (behavioral) | Sensitive inputs are readable via stdin or a `--*-file` flag; flag-value and env-var inputs MAY exist for convenience but MUST NOT be the only path. |
 | `p1-should-tty-detection` | SHOULD | Universal | `p1-tty-detection-source` (source) | Auto-detect non-interactive context via TTY detection; suppress prompts when stderr is not a terminal. |
-| `p1-should-defaults-in-help` | SHOULD | Universal | **UNCOVERED** | Document default values for prompted inputs in `--help` output. |
-| `p1-may-rich-tui` | MAY | Universal | **UNCOVERED** | Rich interactive experiences (spinners, progress bars, menus) when TTY is detected and `--no-interactive` is not set. |
+| `p1-should-defaults-in-help` | SHOULD | Universal | `p1-defaults-in-help` (behavioral) | Document default values for prompted inputs in `--help` output. |
+| `p1-may-rich-tui` | MAY | Universal | `p1-rich-tui` (behavioral) | Rich interactive experiences (spinners, progress bars, menus) when TTY is detected and `--no-interactive` is not set. |
 
 ## P2: Structured, Parseable Output
 
@@ -49,7 +49,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p3-must-version` | MUST | Universal | `p3-version` (behavioral) | Top-level `--version` prints a non-empty version line and exits 0. |
 | `p3-should-version-short` | SHOULD | Universal | `p3-version` (behavioral) | A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes. |
 | `p3-should-paired-examples` | SHOULD | Universal | **UNCOVERED** | Examples show human and agent invocations side by side (text then `--output json` equivalent). |
-| `p3-should-about-long-about` | SHOULD | Universal | **UNCOVERED** | Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`. |
+| `p3-should-about-long-about` | SHOULD | Universal | `p3-about-long-about` (behavioral) | Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`. |
 | `p3-may-examples-subcommand` | MAY | Universal | `p3-examples-subcommand` (behavioral) | Dedicated `examples` subcommand or `--examples` flag for curated usage patterns. |
 
 ## P4: Fail Fast, Actionable Errors
@@ -84,8 +84,8 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p6-must-timeout-network` | MUST | If: CLI makes network calls | `p6-timeout` (source) | Network CLIs ship a `--timeout` flag with a sensible default (e.g., 30 seconds). |
 | `p6-must-no-pager` | MUST | If: CLI invokes a pager for output | `p6-no-pager-behavioral` (behavioral)<br>`p6-no-pager` (source) | If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. |
 | `p6-must-global-flags` | MUST | If: CLI uses subcommands | `p6-global-flags` (source) | Agentic flags (`--output`, `--quiet`, `--no-interactive`, `--timeout`) propagate to every subcommand (e.g., `global = true` in clap). |
-| `p6-should-stdin-input` | SHOULD | If: CLI has commands that accept input data | **UNCOVERED** | Commands that accept input read from stdin when no file argument is provided. |
-| `p6-should-consistent-naming` | SHOULD | If: CLI uses subcommands | **UNCOVERED** | Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. |
+| `p6-should-stdin-input` | SHOULD | If: CLI has commands that accept input data | `p6-stdin-input` (behavioral) | Commands that accept input read from stdin when no file argument is provided. |
+| `p6-should-consistent-naming` | SHOULD | If: CLI uses subcommands | `p6-consistent-naming` (behavioral) | Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. |
 | `p6-should-tier-gating` | SHOULD | Universal | **UNCOVERED** | Three-tier dependency gating: Tier 1 (meta) needs nothing, Tier 2 (local) needs config, Tier 3 (network) needs config + auth. |
 | `p6-should-subcommand-operations` | SHOULD | If: CLI performs multiple distinct operations | **UNCOVERED** | Operations are modeled as subcommands, not flags (`tool search "q"`, not `tool --search "q"`). |
 | `p6-may-color-flag` | MAY | Universal | `p6-color-flag` (behavioral) | `--color auto\|always\|never` flag for explicit color control beyond TTY auto-detection. |
@@ -99,7 +99,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p7-must-list-clamping` | MUST | If: CLI has list-style commands | `p7-output-clamping` (source) | List operations clamp to a documented default maximum; when truncated, indicate it (`"truncated": true` in JSON, stderr note in text). |
 | `p7-should-verbose` | SHOULD | Universal | `p7-verbose` (behavioral) | A `--verbose` flag (or `-v` / `-vv`) escalates diagnostic detail when agents need to debug failures. |
 | `p7-should-limit` | SHOULD | If: CLI has list-style commands | `p7-limit` (behavioral) | A `--limit` or `--max-results` flag lets callers request exactly the number of items they want. |
-| `p7-should-timeout` | SHOULD | Universal | **UNCOVERED** | A `--timeout` flag bounds execution time so agents are not blocked indefinitely. |
+| `p7-should-timeout` | SHOULD | Universal | `p7-timeout-behavioral` (behavioral) | A `--timeout` flag bounds execution time so agents are not blocked indefinitely. |
 | `p7-may-cursor-pagination` | MAY | If: CLI returns paginated results | `p7-cursor-pagination` (behavioral) | Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets. |
 | `p7-may-auto-verbosity` | MAY | Universal | **UNCOVERED** | Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests). |
 

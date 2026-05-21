@@ -187,8 +187,8 @@ any spec changes since `dev` was branched and avoids tagging a release with the 
 behind upstream.
 
 The skill-fixture refresh (`scripts/sync-skill-fixture.sh`) is the analogous pipeline for skill metadata: the Rust map
-(SkillHost / KNOWN_HOSTS / resolve_host) regenerates from the JSON automatically on the next `cargo build`. No manual
-src edits needed.
+(`SkillHost` / `KNOWN_HOSTS` / `resolve_host`) regenerates from the JSON automatically on the next `cargo build`. No
+manual src edits needed.
 
 ## Prose scrubbing scope
 

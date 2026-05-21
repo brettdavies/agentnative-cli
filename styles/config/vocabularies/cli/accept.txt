@@ -35,6 +35,7 @@ mtime
 musl
 renderers
 resync
+runbook
 rustc
 Rustup
 SHAs

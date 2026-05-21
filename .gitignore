@@ -4,3 +4,11 @@
 .env
 .env.local
 *.local
+
+# Vale rule packs downloaded at runtime via .vale.ini's `Packages = ...`.
+# Vendored by sync-prose-tooling.sh as a side-effect: vale fetches and
+# caches them on first invocation. Gitignored upstream (agentnative-spec,
+# agentnative-site) — mirror the same exclusion here.
+/styles/proselint/
+/styles/write-good/
+/styles/.vale-config/

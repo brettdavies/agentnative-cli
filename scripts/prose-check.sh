@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
+# === CONSUMER-OWNED (un-vendored 2026-05-13) ===
+# This script is no longer vendored from agentnative-spec via
+# sync-prose-tooling.sh. The vendored upstream kept clobbering the
+# CLI-LOCAL DIVERGENCE block (consumer-specific path exclusions and
+# LT denylist additions) on every sync.
+#
+# Universal changes to the prose-check pipeline (new check stage, LT
+# URL change, severity routing) now need coordinated PRs across all
+# four channel repos:
+#   - agentnative-spec      (origin / SoT)
+#   - agentnative-site
+#   - agentnative-cli       (this repo)
+#   - agentnative-skill
+#
+# Long-term fix tracked at agentnative-spec/.context/compound-engineering/todos/
+# (sidecar-config migration; once shipped, vendoring can resume with
+# universal logic vendored and consumer config in a sidecar file).
+# === END CONSUMER-OWNED ===
+#
 # Pre-push prose-check orchestrator.
 #
 # Walks the in-scope *.md set, runs Vale (custom Brand+Spec packs +

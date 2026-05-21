@@ -26,24 +26,32 @@
 #   BRAND.md                                            (universal voice SoT)
 #   styles/brand/                                       (universal rule pack + README)
 #   styles/config/                                      (vocab: brand accept/reject lists)
-#   scripts/prose-check.sh                              (orchestrator)
 #   scripts/test-prose-check.mjs                        (test harness)
 #   scripts/generate-pack-readme.mjs                    (generator)
 #
 # Skipped on purpose:
 #
-#   .vale.ini           Per-consumer vale config; upstream's references
-#                       the `spec` rule pack which is wrong for CLI prose.
-#                       Site repo follows the same pattern (vendors brand
-#                       content + orchestrator only; authors its own
-#                       `.vale.ini`).
-#   styles/spec/        RFC 2119 register, wrong for CLI prose. Vendoring
-#                       would systematic-false-positive every README install
-#                       instruction.
-#   styles/proselint/   Downloaded by vale at runtime via .vale.ini's
-#   styles/write-good/  `Packages = ...` line; gitignored upstream. Mirror
-#                       the same gitignore here so vale auto-fetches on
-#                       first invocation.
+#   .vale.ini                Per-consumer vale config; upstream's references
+#                            the `spec` rule pack which is wrong for CLI prose.
+#                            Site repo follows the same pattern (vendors brand
+#                            content + orchestrator only; authors its own
+#                            `.vale.ini`).
+#   styles/spec/             RFC 2119 register, wrong for CLI prose. Vendoring
+#                            would systematic-false-positive every README install
+#                            instruction.
+#   styles/proselint/        Downloaded by vale at runtime via .vale.ini's
+#   styles/write-good/       `Packages = ...` line; gitignored upstream. Mirror
+#                            the same gitignore here so vale auto-fetches on
+#                            first invocation.
+#   scripts/prose-check.sh   Un-vendored 2026-05-13. The orchestrator carries
+#                            CLI-LOCAL DIVERGENCE (consumer-specific path
+#                            exclusions and LT denylist additions) that the
+#                            sync kept clobbering. Now consumer-owned; see the
+#                            CONSUMER-OWNED header inside the script itself.
+#                            Universal pipeline changes (new check stage, LT
+#                            URL change, severity routing) require coordinated
+#                            PRs across spec + site + cli + skill until the
+#                            spec-side sidecar-config migration lands.
 #
 # Usage:
 #   scripts/sync-prose-tooling.sh
@@ -63,20 +71,6 @@
 # scripts/sync-spec.sh. Idempotent at a fixed spec sha: re-running at the
 # same HEAD produces no `git diff`. CI workflow (prose-tooling-drift.yml,
 # deferred follow-up) runs `--check` on every PR and on a weekly schedule.
-#
-# CLI-LOCAL DIVERGENCE: scripts/prose-check.sh carries CLI-specific path
-# exclusions (src/principles/spec/, docs/ideation/, tests/fixtures/) and
-# is therefore EXCLUDED from --check byte-equivalence verification. The
-# inline edits cannot be reversibly bracketed because the upstream `find`
-# invocation and the upstream `grep -v -E` regex are single multi-line
-# expressions; representing both upstream and CLI variants inline would
-# require either duplicate executions or post-strip code restructuring,
-# neither of which earns its complexity. Re-running this script overwrites
-# the orchestrator and forces re-applying the divergence; `git diff
-# scripts/prose-check.sh` post-sync surfaces what got reset. Until
-# upstream lands the `--exclude PATTERN` flag tracked at
-# agentnative-spec/.context/compound-engineering/todos/010-pending-p0-prose-check-consumer-exclusion-config.md,
-# this divergence is expected.
 
 set -euo pipefail
 
@@ -156,7 +150,6 @@ required_paths=(
     "BRAND.md"
     "styles/brand"
     "styles/config"
-    "scripts/prose-check.sh"
     "scripts/test-prose-check.mjs"
     "scripts/generate-pack-readme.mjs"
 )
@@ -172,7 +165,6 @@ done
 # Format: "<upstream-path>"
 top_level_files=(
     "BRAND.md"
-    "scripts/prose-check.sh"
     "scripts/test-prose-check.mjs"
     "scripts/generate-pack-readme.mjs"
 )
@@ -195,13 +187,6 @@ if (( CHECK_MODE )); then
         # newlines, which would false-positive on blank vocab files.
         local upstream_path="$1"
         local local_path="$REPO_ROOT/$upstream_path"
-        # scripts/prose-check.sh carries a CLI-LOCAL DIVERGENCE block (see
-        # script header). It is intentionally excluded from byte-equivalence
-        # checking until upstream todo #010 lands. Re-syncing overwrites
-        # the divergence; operators re-apply by hand post-sync.
-        if [[ "$upstream_path" == "scripts/prose-check.sh" ]]; then
-            return
-        fi
         if [[ ! -f "$local_path" ]]; then
             echo "drift: missing locally: $upstream_path" >&2
             drift=1
@@ -258,11 +243,6 @@ for dir in "${tree_dirs[@]}"; do
     done < <(git -C "$spec_source" ls-tree -r --name-only "$spec_ref" "$dir")
 done
 
-# git show drops the executable bit; restore it for the orchestrator.
-chmod +x "$REPO_ROOT/scripts/prose-check.sh"
-
 echo "wrote $extracted file(s) from main @ $resolved_sha"
 echo
-echo "next: review \`git diff\` for unexpected changes; reapply CLI-LOCAL"
-echo "      DIVERGENCE block in scripts/prose-check.sh if sync overwrote it;"
-echo "      then commit."
+echo "next: review \`git diff\` for unexpected changes, then commit."

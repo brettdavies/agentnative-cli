@@ -1,3 +1,11 @@
+---
+name: agentnative
+binary: anc
+description: Agent-native CLI linter that checks whether a CLI follows the 8 agent-readiness principles. Bundle covers operator-facing usage, project structure, and the check catalog.
+homepage: https://anc.dev
+repository: https://github.com/brettdavies/agentnative-cli
+---
+
 # AGENTS.md
 
 ## Running anc

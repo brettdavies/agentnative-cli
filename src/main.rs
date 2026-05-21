@@ -38,6 +38,8 @@ use scorecard::{
 };
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
+const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
+
 fn main() {
     // Fix SIGPIPE handling so piping to head/grep works correctly.
     #[cfg(unix)]
@@ -102,6 +104,10 @@ fn run() -> Result<i32, AppError> {
             }
             Some(Commands::Skill { cmd }) => {
                 return run_skill(cmd, json_alias);
+            }
+            Some(Commands::Schema) => {
+                output::emit(SCORECARD_SCHEMA_JSON);
+                return Ok(0);
             }
             None => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -314,22 +320,61 @@ fn basename_string(path: &std::path::Path) -> Option<String> {
     path.file_name().map(|n| n.to_string_lossy().into_owned())
 }
 
-/// Cheap slug derivation: the same `name` `build_tool_info` would emit, but
-/// without the manifest read or `--version` subprocess probe. Used by the
-/// text-mode badge hint, where we need the slug to render the embed URL but
-/// have no use for the version. Keeping this in lock-step with
-/// `build_tool_info`'s `name` calculation guarantees the text-mode hint
-/// references the same `<tool>` slug a `--output json` consumer would see.
+/// Slug derivation used by both `build_tool_info` (JSON `tool.name`) and the
+/// text-mode badge hint. The fallback chain mirrors how the site's
+/// `registry.yaml` keys tools — the binary name is canonical, the directory
+/// basename is the last resort. Reads the manifest synchronously (no
+/// subprocess probe), so it remains cheap.
+///
+/// Fallbacks, in order:
+///
+/// 1. `command_name` when `--command <name>` was passed.
+/// 2. Binary basename from `project.binary_paths[0]`.
+/// 3. Manifest package name (`[package].name` in `Cargo.toml`,
+///    `[project].name` in `pyproject.toml`).
+/// 4. Project directory basename.
+///
+/// The previous shape (directory-basename only) produced 404-bound badge URLs
+/// for any tool whose registered slug differed from its directory name. See
+/// `.context/compound-engineering/todos/023-pending-p1-derive-tool-name-uses-dir-basename-not-registry-slug.md`
+/// on `dev` for the bug context this addresses.
 fn derive_tool_name(command_name: Option<&str>, project: &Project) -> String {
-    match command_name {
-        Some(cmd) => cmd.to_string(),
-        None => project
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(String::from)
-            .unwrap_or_default(),
+    derive_tool_name_inner(
+        command_name,
+        project
+            .binary_paths
+            .first()
+            .map(std::path::PathBuf::as_path),
+        project.manifest_path.as_deref(),
+        &project.path,
+    )
+}
+
+/// Pure core of `derive_tool_name`. Takes the four inputs verbatim so unit
+/// tests can exercise the fallback chain without constructing a `Project`.
+fn derive_tool_name_inner(
+    command_name: Option<&str>,
+    binary_path: Option<&std::path::Path>,
+    manifest_path: Option<&std::path::Path>,
+    project_path: &std::path::Path,
+) -> String {
+    if let Some(cmd) = command_name {
+        return cmd.to_string();
     }
+    if let Some(bin) = binary_path
+        .and_then(std::path::Path::file_name)
+        .and_then(|n| n.to_str())
+    {
+        return bin.to_string();
+    }
+    if let Some(name) = manifest_path.and_then(read_manifest_name) {
+        return name;
+    }
+    project_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(String::from)
+        .unwrap_or_default()
 }
 
 /// Build the scorecard's `tool` block. `name` is always present (deterministic
@@ -431,6 +476,27 @@ fn read_manifest_version(manifest: &std::path::Path) -> Option<String> {
     if let Some(v) = parsed
         .get("project")
         .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(v.to_string());
+    }
+    None
+}
+
+fn read_manifest_name(manifest: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(manifest).ok()?;
+    let parsed: toml::Value = content.parse().ok()?;
+
+    if let Some(v) = parsed
+        .get("package")
+        .and_then(|p| p.get("name"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(v.to_string());
+    }
+    if let Some(v) = parsed
+        .get("project")
+        .and_then(|p| p.get("name"))
         .and_then(|v| v.as_str())
     {
         return Some(v.to_string());
@@ -595,5 +661,89 @@ fn matches_principle(group: &CheckGroup, principle: u8) -> bool {
             | (CheckGroup::P5, 5)
             | (CheckGroup::P6, 6)
             | (CheckGroup::P7, 7)
+            | (CheckGroup::P8, 8)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    fn tmp(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "anc-derive-tool-name-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time after UNIX epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&p).expect("create test dir");
+        p
+    }
+
+    #[test]
+    fn command_mode_takes_command_name() {
+        let dir = tmp("cmd");
+        let got =
+            derive_tool_name_inner(Some("ripgrep"), Some(Path::new("/usr/bin/rg")), None, &dir);
+        assert_eq!(got, "ripgrep");
+    }
+
+    #[test]
+    fn project_mode_prefers_binary_basename_over_manifest_and_dir() {
+        let dir = tmp("project-with-binary");
+        let manifest = dir.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"agentnative\"\nversion = \"0.0.0\"\n",
+        )
+        .expect("write manifest");
+        let got = derive_tool_name_inner(
+            None,
+            Some(Path::new("target/release/anc")),
+            Some(&manifest),
+            &dir,
+        );
+        assert_eq!(got, "anc");
+    }
+
+    #[test]
+    fn falls_back_to_cargo_package_name_when_binary_missing() {
+        let dir = tmp("project-no-binary-cargo");
+        let manifest = dir.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"my-tool\"\nversion = \"0.0.0\"\n",
+        )
+        .expect("write manifest");
+        let got = derive_tool_name_inner(None, None, Some(&manifest), &dir);
+        assert_eq!(got, "my-tool");
+    }
+
+    #[test]
+    fn falls_back_to_pyproject_project_name_when_binary_missing() {
+        let dir = tmp("project-no-binary-pyproject");
+        let manifest = dir.join("pyproject.toml");
+        std::fs::write(
+            &manifest,
+            "[project]\nname = \"py-tool\"\nversion = \"0.0.0\"\n",
+        )
+        .expect("write manifest");
+        let got = derive_tool_name_inner(None, None, Some(&manifest), &dir);
+        assert_eq!(got, "py-tool");
+    }
+
+    #[test]
+    fn last_resort_uses_directory_basename() {
+        let dir = tmp("last-resort");
+        let got = derive_tool_name_inner(None, None, None, &dir);
+        let basename = dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .expect("tmp dir has a utf-8 basename")
+            .to_string();
+        assert_eq!(got, basename);
+    }
 }

@@ -74,8 +74,17 @@ anc ./target/release/mycli
 # Resolve a command on PATH and run behavioral checks against it
 anc --command ripgrep
 
+# Run only behavioral checks (skip source analysis)
+anc . --binary
+
+# Run only source checks (skip the compiled binary)
+anc . --source
+
 # JSON output for CI
 anc . --output json
+
+# Print the scorecard JSON Schema (draft 2020-12)
+anc schema
 
 # Filter by principle
 anc . --principle 3
@@ -143,11 +152,15 @@ prints nothing badge-related. The convention is to surface the embed only when e
 agentnative uses three layers to analyze your CLI:
 
 - **Behavioral**: runs the compiled binary, checks `--help`, `--version`, `--output json`, SIGPIPE, NO_COLOR, SIGTERM,
-  exit codes. Language-agnostic.
+  exit codes. Language-agnostic. Isolate with `anc . --binary`.
 - **Source**: ast-grep pattern matching on source code. Detects `.unwrap()`, missing error types, naked `println!`,
-  closed-set rejection, and more. Supports Rust and Python.
+  closed-set rejection, and more. Supports Rust and Python. Isolate with `anc . --source`.
 - **Project**: inspects files and manifests. Checks for `AGENTS.md` / `SKILL.md` bundle, recommended dependencies,
-  dedicated error/output modules, output-schema file at the repo root.
+  dedicated error/output modules, output-schema file at the repo root. Runs alongside the other layers; no isolation
+  flag.
+
+`--binary` and `--source` are useful when one layer regresses and you want a focused gate (CI step for source quality,
+release-gate against the compiled artifact). Without either flag, all three layers run together.
 
 ## CLI Reference
 

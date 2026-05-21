@@ -162,6 +162,45 @@ agentnative uses three layers to analyze your CLI:
 `--binary` and `--source` are useful when one layer regresses and you want a focused gate (CI step for source quality,
 release-gate against the compiled artifact). Without either flag, all three layers run together.
 
+## Scoring
+
+Every check result lands in one of five statuses. The score is a percent computed from how many checks passed out of
+those that actually verified something. Skips and Errors are excluded from both sides of the ratio.
+
+| Status  | Counts toward `pass` | Counts toward denominator | Meaning                                         |
+| ------- | -------------------- | ------------------------- | ----------------------------------------------- |
+| `pass`  | yes                  | yes                       | Requirement verified.                           |
+| `warn`  | no                   | yes                       | SHOULD- or MAY-tier requirement not satisfied.  |
+| `fail`  | no                   | yes                       | MUST-tier requirement not satisfied.            |
+| `skip`  | no                   | no                        | Check not applicable to this target.            |
+| `error` | no                   | no                        | Check itself raised an exception (probe panic). |
+
+`score_pct = round(pass / (pass + warn + fail) * 100)`. Badge eligibility floor: 80%.
+
+### Tier mapping
+
+Each spec requirement is tagged MUST / SHOULD / MAY. A missing requirement maps to a different result status depending
+on tier:
+
+| Tier   | On miss | Example                  |
+| ------ | ------- | ------------------------ |
+| MUST   | `fail`  | `p1-must-no-interactive` |
+| SHOULD | `warn`  | `p2-should-schema-file`  |
+| MAY    | `warn`  | `p8-may-install-all`     |
+
+### v0.4.0 dogfood
+
+`anc` runs the same scoring on itself. The v0.4.0 split:
+
+| Mode                   | Checks | Pass | Warn | Fail | Skip | Error | Score |
+| ---------------------- | -----: | ---: | ---: | ---: | ---: | ----: | ----: |
+| `anc check . --binary` |     18 |   13 |    3 |    0 |    2 |     0 |   81% |
+| `anc check . --source` |     26 |   24 |    0 |    0 |    2 |     0 |  100% |
+| `anc check .` (full)   |     44 |   37 |    3 |    0 |    4 |     0 |   93% |
+
+Full-mode warnings: `p2-json-output` (a safe-probe limitation on tools whose `--help` masks `--output`),
+`p8-install-all` and `p8-bundle-update` (both MAY-tier features the binary does not ship yet).
+
 ## CLI Reference
 
 When the first non-flag argument is not a recognized subcommand, `check` is inserted automatically. `anc .`, `anc -q .`,

@@ -2,7 +2,11 @@
 
 Source of truth for the voice and identity of the agentnative standard. Shared across the spec, the website, the linter,
 the skill bundle, and any future channel. Each channel inherits from this document and adds channel-specific register
-and artifacts in its own `.impeccable.md`.
+and artifacts in its own `PRODUCT.md`.
+
+> **Source of truth: `agentnative-spec/BRAND.md`.** This file is vendored into each channel repo (`agentnative-site`,
+> `agentnative-cli`, `agentnative-skill`) via `scripts/sync-prose-tooling.sh`. Edits in
+> a consumer repo will be overwritten on the next sync. File issues and PRs against this repo.
 
 ## Brand identity
 
@@ -29,7 +33,7 @@ Two first-class consumers across all channels:
 
 - **Humans** evaluating, adopting, implementing, or extending the standard. Spec-channel readers are technically deep
   and arrive with skepticism; site-channel readers are time-pressured and decide in 60 seconds whether to take the
-  standard seriously; linter users invoke at the terminal. Each channel narrows further in its own `.impeccable.md`.
+  standard seriously; linter users invoke at the terminal. Each channel narrows further in its own `PRODUCT.md`.
 - **AI agents** consuming the standard programmatically: markdown via `Accept: text/markdown`, requirement IDs via
   frontmatter parsing, skill bundles via `SKILL.md`/`AGENTS.md` discovery, linter findings via JSON. Their UX is "do
   anchors stay stable, do IDs survive reorganizations, does the channel render cleanly across versions." This is not a
@@ -64,19 +68,35 @@ failure each ✓ phrasing replaces.
 
 ## Channels
 
-The shared identity above applies to every channel. Each channel adds register and artifacts in its own
-`.impeccable.md`:
+The shared identity above applies to every channel. Each channel adds register and artifacts in its own `PRODUCT.md`:
 
-- **Spec** (`agentnative-spec/.impeccable.md`): RFC 2119 register, third-person standards voice, present tense, no
+- **Spec** (`agentnative-spec/PRODUCT.md`): RFC 2119 register, third-person standards voice, present tense, no
   first-person plural, no implementation leakage in MUSTs.
-- **Site** (`agentnative-site/.impeccable.md`): visual system (palette, typography, code-block treatment, OG image),
+- **Site** (`agentnative-site/PRODUCT.md`): visual system (palette, typography, code-block treatment, OG image),
   tech-stack decisions (SSG, Worker, content negotiation), JS budget, dark-mode design.
 - **Skill bundle**: instructional voice, second-person imperative is allowed, agent-loadable.
 - **Linter (`anc`)**: terse error messages, ≤80-column help text, four-part error rubric (offending value, constraint,
   valid example, remediation).
 
-Skill-bundle and linter channels add their own `.impeccable.md` only when channel-specific decisions accumulate enough
-to earn one. Today, the spec and site channels do.
+## Channel artifacts
+
+Each channel's repo carries its own narrow stack on top of this universal `BRAND.md`. The canonical layout:
+
+| Channel      | `PRODUCT.md` location                           | Deep tier-3                                            | Vale rule pack | How `BRAND.md` arrives          |
+| ------------ | ----------------------------------------------- | ------------------------------------------------------ | -------------- | ------------------------------- |
+| Spec         | `agentnative-spec/PRODUCT.md`                   | `principles/`, `docs/architecture/`, `docs/decisions/` | `styles/spec/` | (origin — this repo)            |
+| Site         | `agentnative-site/PRODUCT.md`                   | `DESIGN.md` (root)                                     | (none yet)     | `scripts/sync-prose-tooling.sh` |
+| CLI (`anc`)  | `agentnative-cli/PRODUCT.md` (when warranted)   | `src/` (Rust source IS the artifact)                   | (planned)      | `scripts/sync-prose-tooling.sh` |
+| Skill bundle | `agentnative-skill/PRODUCT.md` (when warranted) | `bundle/`                                              | (planned)      | `scripts/sync-prose-tooling.sh` |
+
+A channel earns its `PRODUCT.md` when channel-specific decisions (visual system, error rubric, instructional voice,
+etc.) accumulate enough that the universal `BRAND.md` cannot carry them. The spec and site channels have crossed that
+threshold today.
+
+**Convention: deep tier-3 artifacts live at the repo root, not in `docs/`.** The site channel's `DESIGN.md` sits at
+`agentnative-site/DESIGN.md` (not `docs/DESIGN.md`) so the `/impeccable` skill loader and human readers find it without
+traversal. Future deep companions (e.g., a hypothetical `GOVERNANCE.md`) follow the same pattern. Only research
+artifacts and historical plans live under `docs/`.
 
 ## Sync
 

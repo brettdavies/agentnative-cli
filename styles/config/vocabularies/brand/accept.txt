@@ -58,6 +58,7 @@ gitignored
 gws
 hardcoded
 healthcheck
+heredoc
 idempotency
 kubectl
 larksuite
@@ -73,6 +74,8 @@ overfits
 preprocessor
 reachability
 regenerable
+renderer
+renderers
 repo
 repos
 rsync

@@ -1,0 +1,92 @@
+name: "Add a tool to the registry"
+description: "Propose a CLI tool for inclusion in the anc100 registry + leaderboard at anc.dev/scorecards."
+labels: ["registry-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The anc100 registry is the list of CLI tools scored against the agent-native spec and rendered on
+        [anc.dev/scorecards](https://anc.dev/scorecards). This template proposes a new tool. After triage, the
+        actual entry lands via a PR against [`src/principles/registry.rs`](../../src/principles/registry.rs)
+        and the scoring pipeline generates the scorecard.
+
+        **Want to give feedback on the spec from grading experience?** Use the
+        [`grading-finding`](https://github.com/brettdavies/agentnative/issues/new?template=grading-finding.yml)
+        template in the spec repo instead — that's the pressure-test path for "the spec got it wrong here."
+  - type: input
+    id: tool
+    attributes:
+      label: Tool name
+      description: "Canonical name (matches the executable, e.g., `ripgrep`, `fd`, `gh`)."
+      placeholder: "ripgrep"
+    validations:
+      required: true
+  - type: input
+    id: binary
+    attributes:
+      label: Binary name (if different from tool name)
+      description: "What you actually type at the shell (e.g., `rg` for ripgrep)."
+      placeholder: "rg"
+    validations:
+      required: false
+  - type: input
+    id: repo
+    attributes:
+      label: Source repo URL
+      description: "Public source. GitHub, GitLab, sr.ht — anywhere the tool is actually maintained."
+      placeholder: "https://github.com/BurntSushi/ripgrep"
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Install command (one canonical path)
+      description: "How an agent-native user would install this today. Prefer brew / cargo / npm / go install over manual download."
+      placeholder: "brew install ripgrep"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: One-line description
+      description: "What does the tool do? (For the leaderboard's tool list.)"
+      placeholder: "Fast recursive search across files with regex support."
+    validations:
+      required: true
+  - type: textarea
+    id: anc-check
+    attributes:
+      label: "Optional: `anc check` results"
+      description: |
+        If you've already run `anc check` against the tool's source tree, paste the summary line.
+        Not required — the scoring pipeline will run it on merge — but accelerates triage.
+      placeholder: |
+        33 checks: 26 pass, 2 warn, 1 fail, 4 skip, 0 error
+    validations:
+      required: false
+  - type: textarea
+    id: ai-disclosure
+    attributes:
+      label: AI disclosure
+      description: "One sentence: what part of this report was AI-written, what was human-written?"
+      placeholder: "Tool selection and description are mine; install-command verified by hand."
+    validations:
+      required: true
+  - type: textarea
+    id: agent-instructions
+    attributes:
+      label: For agents
+      description: "Agents: expand this section before filing."
+      value: |
+        <details>
+        <summary>Agent filing instructions</summary>
+
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<tool-name>"` and check the
+           registry source at `src/principles/registry.rs` for an existing entry.
+        2. **Verify the install command** actually works on a fresh shell.
+        3. **AI disclosure is required.** Fill the field above honestly.
+        4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative-cli/blob/main/CONTRIBUTING.md) for the
+           full registry submission flow (PR shape, naming conventions, what the scoring pipeline does after merge).
+        </details>
+    validations:
+      required: false

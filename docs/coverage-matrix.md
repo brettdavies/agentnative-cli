@@ -7,11 +7,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 ## Summary
 
-- **Total**: 57 requirements (30 covered / 27 uncovered)
-- **Dual-layer**: 9 of 30 covered requirements have verifiers in two layers (behavioral + source or project)
-- **MUST**: 21 of 27 covered
-- **SHOULD**: 6 of 20 covered
-- **MAY**: 3 of 10 covered
+- **Total**: 59 requirements (39 covered / 20 uncovered)
+- **Dual-layer**: 10 of 39 covered requirements have verifiers in two layers (behavioral + source or project)
+- **MUST**: 22 of 28 covered
+- **SHOULD**: 9 of 21 covered
+- **MAY**: 8 of 10 covered
 
 ## P1: Non-Interactive by Default
 
@@ -37,8 +37,8 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p2-should-consistent-envelope` | SHOULD | Universal | **UNCOVERED** | JSON output uses a consistent envelope (a top-level object with predictable keys) across every command. |
 | `p2-should-schema-file` | SHOULD | If: CLI emits structured output | `p2-schema-file` (project) | Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool. |
 | `p2-should-json-aliases` | SHOULD | Universal | `p2-json-aliases` (behavioral) | `--json` and `--jsonl` are accepted as aliases for `--output json` and `--output jsonl`; the short forms work alongside the canonical enum. |
-| `p2-may-more-formats` | MAY | Universal | **UNCOVERED** | Additional output formats (CSV, TSV, YAML) beyond the core three. |
-| `p2-may-raw-flag` | MAY | Universal | **UNCOVERED** | `--raw` flag for unformatted output suitable for piping to other tools. |
+| `p2-may-more-formats` | MAY | Universal | `p2-more-formats` (behavioral) | Additional output formats (CSV, TSV, YAML) beyond the core three. |
+| `p2-may-raw-flag` | MAY | Universal | `p2-raw-flag` (behavioral) | `--raw` flag for unformatted output suitable for piping to other tools. |
 
 ## P3: Progressive Help Discovery
 
@@ -46,9 +46,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | --- | --- | --- | --- | --- |
 | `p3-must-subcommand-examples` | MUST | If: CLI uses subcommands | **UNCOVERED** | Every subcommand ships at least one concrete invocation example (`after_help` in clap). |
 | `p3-must-top-level-examples` | MUST | Universal | `p3-help` (behavioral) | The top-level command ships 2–3 examples covering the primary use cases. |
+| `p3-must-version` | MUST | Universal | `p3-version` (behavioral) | Top-level `--version` prints a non-empty version line and exits 0. |
+| `p3-should-version-short` | SHOULD | Universal | `p3-version` (behavioral) | A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes. |
 | `p3-should-paired-examples` | SHOULD | Universal | **UNCOVERED** | Examples show human and agent invocations side by side (text then `--output json` equivalent). |
 | `p3-should-about-long-about` | SHOULD | Universal | **UNCOVERED** | Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`. |
-| `p3-may-examples-subcommand` | MAY | Universal | **UNCOVERED** | Dedicated `examples` subcommand or `--examples` flag for curated usage patterns. |
+| `p3-may-examples-subcommand` | MAY | Universal | `p3-examples-subcommand` (behavioral) | Dedicated `examples` subcommand or `--examples` flag for curated usage patterns. |
 
 ## P4: Fail Fast, Actionable Errors
 
@@ -86,7 +88,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p6-should-consistent-naming` | SHOULD | If: CLI uses subcommands | **UNCOVERED** | Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. |
 | `p6-should-tier-gating` | SHOULD | Universal | **UNCOVERED** | Three-tier dependency gating: Tier 1 (meta) needs nothing, Tier 2 (local) needs config, Tier 3 (network) needs config + auth. |
 | `p6-should-subcommand-operations` | SHOULD | If: CLI performs multiple distinct operations | **UNCOVERED** | Operations are modeled as subcommands, not flags (`tool search "q"`, not `tool --search "q"`). |
-| `p6-may-color-flag` | MAY | Universal | **UNCOVERED** | `--color auto\|always\|never` flag for explicit color control beyond TTY auto-detection. |
+| `p6-may-color-flag` | MAY | Universal | `p6-color-flag` (behavioral) | `--color auto\|always\|never` flag for explicit color control beyond TTY auto-detection. |
 | `p6-may-standard-names` | MAY | If: CLI uses subcommands | `p6-standard-names` (behavioral) | Subcommand verbs MAY follow community-standard names (`get`/`list`/`create`/`update`/`delete`); flag spellings MAY follow widely-used canonical forms (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`). |
 
 ## P7: Bounded, High-Signal Responses
@@ -95,10 +97,10 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | --- | --- | --- | --- | --- |
 | `p7-must-quiet` | MUST | Universal | `p7-quiet` (behavioral) | A `--quiet` flag suppresses non-essential output; only requested data and errors appear. |
 | `p7-must-list-clamping` | MUST | If: CLI has list-style commands | `p7-output-clamping` (source) | List operations clamp to a documented default maximum; when truncated, indicate it (`"truncated": true` in JSON, stderr note in text). |
-| `p7-should-verbose` | SHOULD | Universal | **UNCOVERED** | A `--verbose` flag (or `-v` / `-vv`) escalates diagnostic detail when agents need to debug failures. |
-| `p7-should-limit` | SHOULD | If: CLI has list-style commands | **UNCOVERED** | A `--limit` or `--max-results` flag lets callers request exactly the number of items they want. |
+| `p7-should-verbose` | SHOULD | Universal | `p7-verbose` (behavioral) | A `--verbose` flag (or `-v` / `-vv`) escalates diagnostic detail when agents need to debug failures. |
+| `p7-should-limit` | SHOULD | If: CLI has list-style commands | `p7-limit` (behavioral) | A `--limit` or `--max-results` flag lets callers request exactly the number of items they want. |
 | `p7-should-timeout` | SHOULD | Universal | **UNCOVERED** | A `--timeout` flag bounds execution time so agents are not blocked indefinitely. |
-| `p7-may-cursor-pagination` | MAY | If: CLI returns paginated results | **UNCOVERED** | Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets. |
+| `p7-may-cursor-pagination` | MAY | If: CLI returns paginated results | `p7-cursor-pagination` (behavioral) | Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets. |
 | `p7-may-auto-verbosity` | MAY | Universal | **UNCOVERED** | Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests). |
 
 ## P8: Unknown
@@ -106,7 +108,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
 | `p8-must-bundle-install` | MUST | If: CLI ships an agent skill bundle | `p8-bundle-install` (behavioral) | When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes. |
-| `p8-should-bundle-exists` | SHOULD | Universal | `p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
+| `p8-should-bundle-exists` | SHOULD | Universal | `p6-agents-md` (project)<br>`p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
 | `p8-may-install-all` | MAY | If: CLI ships an agent skill bundle | `p8-install-all` (behavioral) | An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all. |
 | `p8-may-bundle-update` | MAY | If: CLI ships an agent skill bundle | `p8-bundle-update` (behavioral) | An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version. |
 

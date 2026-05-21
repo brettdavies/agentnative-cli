@@ -337,15 +337,15 @@ mod tests {
 
     #[test]
     fn registry_size_matches_spec() {
-        // Spec snapshot 2026-05-07: 57 requirements across P1-P8.
+        // Spec snapshot 2026-05-21: 59 requirements across P1-P8.
         // Bumping this counter is a deliberate act; it means the spec grew.
-        assert_eq!(REQUIREMENTS.len(), 57);
+        assert_eq!(REQUIREMENTS.len(), 59);
     }
 
     #[test]
     fn level_counts_match_spec() {
-        assert_eq!(count_at_level(Level::Must), 27);
-        assert_eq!(count_at_level(Level::Should), 20);
+        assert_eq!(count_at_level(Level::Must), 28);
+        assert_eq!(count_at_level(Level::Should), 21);
         assert_eq!(count_at_level(Level::May), 10);
     }
 

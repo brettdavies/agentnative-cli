@@ -1,7 +1,6 @@
 # Releasing `agentnative`
 
-Every change reaches production via this pipeline. Direct commits to `dev` or `main` are not permitted. Every change has
-a PR number in its squash commit message, which keeps the history scannable, attributable, and changelog-ready.
+Operational runbook. Rationale lives in [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md).
 
 ```text
 feature branch → PR to dev (squash merge)
@@ -9,6 +8,8 @@ feature branch → PR to dev (squash merge)
               → PR to main (squash merge)
               → tag push triggers crates.io publish + GitHub Release + Homebrew dispatch
 ```
+
+Direct commits to `dev` or `main` are not permitted: every change has a PR number in its squash commit message.
 
 ## Branches
 
@@ -19,10 +20,7 @@ feature branch → PR to dev (squash merge)
 | `feat/*`, `fix/*`, `chore/*`, `docs/*` | Feature work.                           | One PR's worth. Auto-deleted on merge.      | None. Squash into dev freely.        |
 | `release/*`                            | Head of a dev → main PR.                | One release's worth. Auto-deleted on merge. | None.                                |
 
-`dev` is a **forever branch**. Never delete it locally or remotely, even after a `release/* → main` merge. The next
-release cycle reuses the same `dev`. The repo's `deleteBranchOnMerge: true` setting doesn't touch `dev` as long as `dev`
-is never the head of a PR. Using a short-lived `release/*` head is what keeps the setting compatible with a forever
-integration branch.
+→ Rationale: [`RELEASES-RATIONALE.md` § Branching model](./RELEASES-RATIONALE.md#branching-model).
 
 ## Daily development (feature → dev)
 
@@ -36,189 +34,93 @@ gh pr create --base dev --title "feat(scope): what changed"
 ```
 
 - **Commit style**: [Conventional Commits](https://www.conventionalcommits.org/).
-- **PR body**: follow `.github/pull_request_template.md`. The `## Changelog` section is the source of truth for
-  user-facing release notes — `git-cliff` extracts these bullets verbatim into `CHANGELOG.md` during release prep.
-- **PR body prose scrub**: `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check
-  sees it. Save the body to `/tmp/`, run Vale + LanguageTool + unslop, fix findings, then submit via `--body-file`. See
-  [§ Prose scrubbing](#prose-scrubbing).
+- **PR body**: follow `.github/pull_request_template.md`. See [§ PR body](#pr-body).
+- **PR body prose scrub**: see [§ Prose scrubbing](#prose-scrubbing).
 
 ## PR body
 
-Every PR — feature, fix, docs, release — uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
+Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
 `## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`, `## Files Modified`, `## Testing`.
 
-- **Summary** is the NEW user-facing substance the PR ships. What is changing for the consumer that was not already
-  there. One short paragraph fits. Do NOT recap the workflow (cherry-pick / regenerate / pre-push gate / CI behavior is
-  documented in this file and `.github/`). Do NOT paste triple-diff output, pre-push gate results, or CI check status
-  into the body. Those are author verification artifacts that stay local; anomalies get fixed before push, not
-  audit-trailed in the body.
-- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`) hold the user-facing
-  entries. The template's RULES (in the HTML comment at the top of the section) are literal: 1-5 bullets, delete empty
-  subsections entirely, each bullet starts with a verb. Prose-only edits leave the section empty or omit it.
-- **Type of Change** is one checkbox. Prefer `feat` / `fix` over `chore` when the change has any user-observable effect
-  (config defaults, env vars, default behaviors). `cliff.toml` skips `^chore` (and `^style` / `^test` / `^ci` /
-  `^build`) regardless of body content; mistyping a user-facing change as `chore` silently strips it from release notes.
-- **Related Issues/Stories** has four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four are
-  required even when empty — write `- None.` or `n/a` rather than deleting the label.
-- **Files Modified** has four sub-headers (`**Modified:**` / `**Created:**` / `**Renamed:**` / `**Deleted:**`). All four
-  are required even when empty — `Renamed: None.` / `Deleted: None.`
-- **Internal tooling commits** (`chore(cliff): ...`, `chore(prose-check): ...`, etc.) do NOT appear in the PR body's `##
-  Changelog`. They are not user-facing.
-- **Release PRs** repeat the entries from the upstream feature PRs they cherry-pick. The repetition is intentional and
-  harmless: `cliff.toml`'s `^release` skip prevents the release-PR squash commit from being double-counted in any future
-  regeneration.
-- **No AI attribution.** Never append `Co-Authored-By: Claude …`, `🤖 Generated with [Claude Code]`, or any similar
-  AI-attribution trailer to PR bodies or commit messages. Commits and PRs stand on their own technical content.
-- **No hard line wraps.** Author each paragraph and each bullet as one logical line, however long. GitHub soft-wraps for
-  display; hard wraps within prose produce visible mid-sentence breaks in some renderers and interfere with the
-  prose-check pipeline (Vale's line-anchored output reports findings against split lines, LanguageTool's input handling
-  can choke on certain control-char interactions). The auto-format hook skips `/tmp/` paths so the body keeps its
-  authored shape — don't undo that with manual wrapping during composition. The same rule applies to commit messages
-  composed via heredoc and to any markdown that ships verbatim to GitHub.
+- **No explainer prose anywhere in the body.** User-facing substance only.
+- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`): 1-5 bullets each, delete
+  empty subsections, each bullet starts with a verb.
+- **Type of Change**: one checkbox. Prefer `feat`/`fix` over `chore` for any user-observable change.
+- **Related Issues/Stories**: four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four required
+  even when empty (`- None.` / `n/a`).
+- **Files Modified**: four sub-headers (`Modified` / `Created` / `Renamed` / `Deleted`). All four required even when
+  empty.
+- **No AI attribution** in commits or PR bodies.
+- **No hard line wraps**: one logical line per paragraph or bullet.
 
-The PR body is read by humans reviewing what shipped. Workflow mechanics, verification output, and tool-fix provenance
-are noise from that perspective; they belong in this file (`RELEASES.md`), the script outputs, and the commit history
-respectively.
+→ Rationale: [`RELEASES-RATIONALE.md` § PR body conventions](./RELEASES-RATIONALE.md#pr-body-conventions).
 
 ## Releasing dev to main
 
 Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`, `docs/reviews/`) live on `dev` only.
 `guard-main-docs.yml` blocks them from reaching `main`, and `guard-release-branch.yml` rejects any PR to main whose head
-isn't `release/*`. Use the release-branch cherry-pick pattern:
+isn't `release/*`.
 
 **Branch naming**: `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
-`release/v0.2.0-python-checks`). The `v<version>` prefix is required — `scripts/generate-changelog.sh` extracts the
+`release/v0.2.0-python-checks`). The `v<version>` prefix is required: `scripts/generate-changelog.sh` extracts the
 version from the branch name.
 
 ```bash
-# 1. Branch from main, NOT dev. Branching from dev causes add/add conflicts
-#    when dev and main have divergent histories (the post-squash-merge norm).
+# 1. Branch from main, NOT dev.
 git fetch origin
 git checkout -b release/v0.2.0 origin/main
 
-# 2. List the dev commits not yet on main:
+# 2. List the dev commits not yet on main.
 git log --oneline dev --not origin/main
 
-# 3. Cherry-pick the ones you want to ship. Docs commits stay on dev.
+# 3. Cherry-pick the ones to ship. Docs commits stay on dev.
 git cherry-pick <sha1> <sha2> ...
 
-# 4. Triple-diff verification — belt-and-suspenders sweep that catches both
-#    directions of drift before the release tag goes out:
-#
-#    A. main → release  (what users will see; the intended ship surface)
-#    B. release → dev   (should be empty for non-doc paths until the
-#                        bump/completions/CHANGELOG commits land, and even
-#                        then should only list those release-prep files —
-#                        anything else is a missed cherry-pick)
-#    C. dev → main      (sanity: phantom commits dev "appears ahead" on
-#                        because cherry-pick rewrites SHAs post-squash)
-git diff origin/main..HEAD --stat                                                # A
-git diff HEAD..origin/dev --name-only | grep -v '^docs/' || echo "(none)"        # B
-git diff origin/dev..origin/main --stat | tail -5                                # C
-#
-# Re-confirm no guarded paths leaked (this caught the original miss class):
+# 4. Triple-diff verification.
+git diff origin/main..HEAD --stat                                              # A: ship surface
+git diff HEAD..origin/dev --name-only | grep -v '^docs/' || echo "(none)"      # B: no missed picks
+git diff origin/dev..origin/main --stat | tail -5                              # C: phantom-commits sanity
+
+# Re-confirm no guarded paths leaked.
 git diff origin/main..HEAD --name-only \
   | grep -E '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)' \
-  && echo "LEAKED — reset and redo" || echo "(clean — no guarded paths)"
-#
-# Patch-id cherry check — catches commits on dev that have NO patch-id
-# equivalent on release. The file-level diff in B misses this class when
-# the same content happens to land via a different commit.
-#
-# IMPORTANT: in a squash-merge workflow this output is noisy. Every '+'
-# line needs human triage — it does NOT auto-block the release. Expected
-# sources of '+' lines that are NOT real misses:
-#
-#   1. Historical commits squash-merged in prior releases. The squash
-#      commit on main has a different patch-id than the dev commits it
-#      consolidates, so old commits show as '+' forever. Anything older
-#      than the previous release tag is almost always this.
-#   2. Cherry-picks where conflict resolution stripped guarded paths
-#      (docs/plans, docs/brainstorms, etc.) or otherwise altered the
-#      tree. Same source-code intent, different patch-id.
-#   3. Intentionally skipped commits — docs-only commits, release-prep
-#      backports, revert-and-redo prep steps.
-#
-# A real miss looks like: a recent feat/fix/chore commit on dev whose
-# *file content* is not yet on main. To triage a '+' line:
-#
-#   git show <sha> --stat                       # what did it touch?
-#   git diff origin/main..HEAD -- <those-files> # already on release?
-#
-# If every touched file is guarded (docs/plans/, docs/brainstorms/, etc.)
-# OR the content is already on main via a prior squash, it's a false
-# positive — no action. Otherwise cherry-pick the commit and re-run the
-# triple-diff.
-git cherry HEAD origin/dev | grep '^+' || echo "(none — release is patch-equivalent through dev)"
-#
-# If B lists any non-docs path you didn't expect, fetch dev, identify the
-# commit (`git log dev --not origin/main`), cherry-pick it, re-run the
-# triple-diff. Missed cherry-picks have shipped to main on this and sibling
-# repos before — this step is the cheap way to catch them.
+  && echo "LEAKED — reset and redo" || echo "(clean)"
 
-# 5. Bump version in Cargo.toml and commit:
-#    sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
-#    cargo update -p agentnative   # refresh Cargo.lock
-#    git add Cargo.toml Cargo.lock && git commit -m "chore: bump version to 0.2.0"
+# Patch-id cherry check (noisy in squash-merge workflow; triage per-line).
+git cherry HEAD origin/dev | grep '^+' || echo "(none)"
 
-# 6. Regenerate completions (catches any subcommand/flag changes missed during dev):
+# 5. Bump version in Cargo.toml and commit.
+sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
+cargo update -p agentnative   # refresh Cargo.lock
+git add Cargo.toml Cargo.lock && git commit -m "chore: bump version to 0.2.0"
+
+# 6. Regenerate completions (catches any subcommand/flag changes missed during dev).
 ./scripts/generate-completions.sh
 git add completions/ && git commit -m "chore: regenerate shell completions" || true
 
-# 7. Refresh the skill.json fixture from upstream and review the diff. CI's
-#    skill-fixture-drift workflow runs --check on every PR, but pulling the
-#    latest content here catches any site changes since dev was branched and
-#    avoids tagging a release with the codegen-derived host map one revision
-#    behind upstream:
+# 7. Refresh the skill.json fixture from upstream and review the diff.
 bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
-# The Rust map (SkillHost / KNOWN_HOSTS / resolve_host) regenerates from the
-# JSON automatically on the next `cargo build` — no manual src edits needed.
 git add src/skill_install/skill.json && \
     git commit -m "chore(skill): refresh fixture for v0.2.0" || true
 
-# 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this):
+# 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this).
 ./scripts/generate-changelog.sh
 
-# 9. Review CHANGELOG.md. See "CHANGELOG is generated, never hand-written" below
-#    for the cliff.toml chore-skip footgun and how to recover. Then scrub the
-#    generated content through Vale + LanguageTool + unslop — CHANGELOG.md is a
-#    generated artifact built from upstream PR bodies and inherits whatever prose
-#    those PR bodies carry. See "Prose scrubbing" below for the procedure. Fix
-#    findings on the upstream PR body and re-run scripts/generate-changelog.sh,
-#    not by hand-editing CHANGELOG.md. When clean, commit:
+# 9. Scrub CHANGELOG.md via Vale + LanguageTool + unslop. See § Prose scrubbing.
+#    Fix findings on upstream PR bodies, never by hand-editing CHANGELOG.md. When clean:
 git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
 
-# 10. Push and open the PR:
+# 10. Push and open the PR. Scrub body in /tmp/ first.
 git push -u origin release/v0.2.0
-gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0"
+gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0" --body-file /tmp/body.md
 ```
 
 When the PR merges, the deploy / publish workflow picks up the push to `main`. Auto-delete removes `release/v0.2.0` from
 the remote on merge. `dev` is untouched.
 
-### Why branch from main, not dev
-
-Branching from `dev` and then `gio trash`-ing the guarded paths seems simpler but produces `add/add` merge conflicts
-whenever `dev` and `main` have diverged (which they always do after the first squash merge). The file appears as "added"
-on both sides with different content. Always branch from `origin/main` and cherry-pick onto it.
-
-### CHANGELOG is generated, never hand-written
-
-`scripts/generate-changelog.sh` (with `cliff.toml`) is the only sanctioned way to update `CHANGELOG.md`. The script runs
-`git-cliff` to prepend a versioned entry for commits since the last tag, then walks each squash-merged PR's body to
-extract the `## Changelog` section's `### Added` / `### Changed` / `### Fixed` / `### Documentation` subsections,
-replacing the auto-generated bullets with the curated PR-body content (with author and PR-link attribution).
-
-If a PR's `## Changelog` section is empty, that PR's entry is omitted from the changelog (the convention in
-[`.github/pull_request_template.md`](.github/pull_request_template.md): empty section = no user-facing change). To fix a
-wrong CHANGELOG entry, fix the input — edit the squash-merged PR body, then re-run the script. Do **not** edit
-`CHANGELOG.md` directly.
-
-**`cliff.toml` skips `chore`/`style`/`test`/`ci`/`build` commits regardless of PR-body content.** If a cherry-picked PR
-has user-facing `## Changelog` content but its commit subject starts with one of those types, its bullets get silently
-dropped. After running the script, cross-check the generated section against `gh pr view <num> --json body` for each
-cherry-picked PR; correct mistyped PR titles (e.g. `chore` → `feat`) and re-amend the cherry-pick subject before
-re-running. See "Prefer `feat`/`fix` over `chore`" in global CLAUDE.md for prevention.
+→ Rationale + triple-diff false-positive triage:
+[`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification). CHANGELOG mechanics:
+[`RELEASES-RATIONALE.md` § CHANGELOG generation](./RELEASES-RATIONALE.md#changelog-generation).
 
 ## Tagging and publishing
 
@@ -230,49 +132,41 @@ git tag -a -m "Release v0.2.0" v0.2.0
 git push origin main --tags
 ```
 
-> Always use annotated tags (`-a -m`). Bare `git tag <name>` silently fails with
-> `fatal: no tag message?` on machines where `tag.gpgsign=true` is set globally
-> (a brettdavies dotfile default). See
-> [solutions: git tag fails with tag.gpgsign — use annotated tags](https://github.com/brettdavies/solutions-docs/blob/main/best-practices/git-tag-fails-with-tag-gpgsign-use-annotated-tags-2026-04-13.md).
-
-The tag push triggers `.github/workflows/release.yml`, which calls the reusable
+Always use annotated tags (`-a -m`). The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
-| Step            | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `build`         | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. The two musl rows are statically linked (Alpine and other musl-libc hosts can run them without glibc); `linux_musl_required: true` makes their failures hard-block the release, and `linux_musl_verify_alpine: true` runs the x86_64-musl binary inside `alpine:latest` after build as an exec-compat sanity check. Each archive includes the `anc` binary, completions, README, and licenses. |
-| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `release`       | Create a **non-draft** GitHub Release with `make_latest: false` — visible immediately (so `cargo-binstall` and `/releases/latest` don't 404 during the bottle-build window) but not yet promoted to "Latest". Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                                                                                                                                                                                                          |
-| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Step            | What                                                                                                                                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
+| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
+| `build`         | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
+| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                |
+| `release`       | Create a **non-draft** GitHub Release with `make_latest: false`. Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                     |
+| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                          |
 
 After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
-this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest,
-Homebrew formula updated with bottles, all atomically advertised.
+this repo, which idempotently flips `make_latest: true`.
+
+→ Rationale (`make_latest` flow, musl hard-block, annotated-tag gotcha):
+[`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
 
 ### After publish — sync `dev` with the release
 
 Once `finalize-release.yml` has flipped the GitHub Release to `published`, backport the release-bookkeeping files from
-`main` to `dev` so future builds from `dev` report the released version (and so `anc check`'s embedded badge URL points
-at the right slug, not stale `0.1.0`):
+`main` to `dev`:
 
 ```bash
 ./scripts/sync-dev-after-release.sh v0.2.0
 git push origin dev
 ```
 
-The script surgically updates only `Cargo.toml`'s `[package].version` line (other `Cargo.toml` lines on `dev` —
-post-launch deps, rust-version bumps — are preserved), regenerates `Cargo.lock` via `cargo build --release`, and copies
-`CHANGELOG.md` verbatim from `origin/main`. The single commit lands directly on `dev` (signed via your normal commit
-signing — no PR), establishing release backport as a deliberate convention rather than the prior "never back-merged"
-norm.
-
 The backport is idempotent: re-running on a `dev` already in sync exits 0 with no commit.
+
+→ Rationale: [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
 
 ### First-time publish (one-time)
 
-The very first crate publish requires a regular crates.io API token (Trusted Publishing needs the crate to exist first).
+The initial crate publish requires a regular crates.io API token (Trusted Publishing needs the crate to exist first).
 Steps for `v0.1.0`:
 
 1. Verify your email on crates.io (`https://crates.io/settings/profile`).
@@ -282,83 +176,62 @@ Steps for `v0.1.0`:
 4. Enable "Enforce Trusted Publishing" to block token-based publishes.
 5. Remove the `CARGO_REGISTRY_TOKEN` repository secret.
 
-Subsequent releases use the OIDC flow built into `release.yml` — no static token in CI.
-
-## PRs and changelog generation
-
-Every PR **must** follow `.github/pull_request_template.md`. The template has a `## Changelog` section with these
-subsections:
-
-- `### Added` — new user-visible features or capabilities
-- `### Changed` — changes to existing behavior
-- `### Fixed` — bug fixes
-- `### Removed` — removed features or APIs
-- `### Security` — security-relevant changes
-
-A PR that has no user-facing impact (pure refactor, test-only, CI-only) should leave the `## Changelog` section empty or
-omit it. See "CHANGELOG is generated, never hand-written" above for how the script consumes these sections at release
-time and the cliff.toml chore-skip footgun.
+Subsequent releases use the OIDC flow built into `release.yml`: no static token in CI.
 
 ## Prose scrubbing
 
 Three release-flow artifacts live outside any automated prose check and need a manual scrub before they ship:
 
-- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check has reach
-  there.
-- **`CHANGELOG.md`.** A generated artifact built from upstream PR bodies — it inherits whatever prose those PR bodies
-  carry, so scrubbing happens at generation time on the release branch.
-- **Release-PR bodies.** The `release/v<version>` PR to `main` gets wrap-up text contributors edit after `CHANGELOG.md`
-  has been generated, and the same out-of-repo gap applies.
+- PR bodies (`gh pr create` / `gh pr edit` send body text directly to GitHub).
+- `CHANGELOG.md` (a generated artifact built from upstream PR bodies).
+- Release-PR bodies (composed after `CHANGELOG.md` has been generated).
 
 The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
 [`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-Until those packs are vendored into this repo (a deferred follow-up tracked in the spec plan; expected to extend
-`scripts/sync-spec.sh`), point Vale at the spec checkout via `--config`.
-
-The scrub procedure:
+Until those packs are vendored into this repo (a deferred follow-up expected to extend `scripts/sync-spec.sh`), point
+Vale at the spec checkout via `--config`.
 
 ```bash
-# 1. Save the artifact to /tmp/. The auto-format hook skips /tmp paths, so the
-#    body keeps its authored shape and no soft-wrapping is injected.
+# 1. Save the artifact to /tmp/.
 gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edits
 # cp CHANGELOG.md /tmp/body.md                                 # for changelog scrub
 
-# 2. Vale (against the spec's rule packs — until vendored locally, point at the spec checkout).
+# 2. Vale (against the spec's rule packs).
 vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
 
-# 3. LanguageTool (blocking categories: TYPOS|GRAMMAR|CONFUSED_WORDS, mirrors the orchestrator's whitelist).
-curl -sS -X POST "${LANGUAGETOOL_URL:-http://pool.tail42ba87.ts.net:8081}/v2/check" \
+# 3. LanguageTool (blocking categories: TYPOS|GRAMMAR|CONFUSED_WORDS).
+curl -sS -X POST "${LANGUAGETOOL_URL:-http://languagetool:8081}/v2/check" \
   --data-urlencode "language=en-US" --data-urlencode "text@/tmp/body.md" \
   | jaq '.matches[] | select(.rule.category.id | test("^(TYPOS|GRAMMAR|CONFUSED_WORDS)$"))'
 
-# 4. unslop (em-dash density and AI-unique structural patterns Vale + LT do not catch).
+# 4. unslop (em-dash density and AI-unique structural patterns).
 ~/.claude/skills/unslop/scripts/score.py /tmp/body.md
 
 # 5. Apply fixes per finding. Re-run until 0 blocking and unslop score is 0.
 
-# 6. Apply the cleaned version:
+# 6. Apply the cleaned version.
 gh pr edit <num> --body-file /tmp/body.md     # for PR body edits
-# ./scripts/generate-changelog.sh              # for CHANGELOG.md (re-runs the
-#                                              # PR-body fetch from GitHub)
+# ./scripts/generate-changelog.sh             # for CHANGELOG.md (re-runs the PR-body fetch from GitHub)
 ```
 
-For a `CHANGELOG.md` finding, fix the upstream PR body (which `generate-changelog.sh` re-fetches every run) and
-regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regeneration overwrites.
+For a `CHANGELOG.md` finding, fix the upstream PR body and regenerate. Hand-editing `CHANGELOG.md` directly produces
+drift the next regeneration overwrites.
+
+→ Rationale + which artifacts need this:
+[`RELEASES-RATIONALE.md` § Prose scrubbing scope](./RELEASES-RATIONALE.md#prose-scrubbing-scope).
 
 ## Branch protection
 
 Two rulesets are committed under `.github/rulesets/` and applied to the repo via the GitHub API:
 
-- `protect-main.json` — required signatures, linear history, squash-only merges via PR, required status checks (`ci /
+- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks (`ci /
   Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`, `guard-docs
   / check-forbidden-docs`, `guard-provenance / check-provenance`, `guard-release / check-release-branch-name`),
-  creation/deletion blocked, non-fast-forward blocked.
-- `protect-dev.json` — required signatures, deletion blocked, non-fast-forward blocked. No PR-requirement at the ruleset
-  level; the PR-only norm is enforced by convention + `guard-release-branch` on the main side.
+  creation/deletion blocked, non-fast-forward blocked).
+- `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked). PR-only norm is convention +
+  `guard-release-branch` on the main side.
 
 ### Applying changes
-
-Edit the JSON locally, then sync to the remote:
 
 ```bash
 # First apply (creating a ruleset):
@@ -368,23 +241,8 @@ gh api -X POST repos/brettdavies/agentnative-cli/rulesets --input .github/rulese
 gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/rulesets/protect-main.json
 ```
 
-Committing the JSON alongside code means ruleset changes land via the same review process as workflow changes — a
-`chore(ci): tighten protect-main` change goes through dev → release/* → main like anything else.
-
-### Status-check context pitfall
-
-The `required_status_checks[].context` strings in `protect-main.json` must match exactly what GitHub publishes for each
-check:
-
-- **Inline job** (with `name:` field): published as just `<job-name>` (no workflow-name prefix).
-- **Reusable-workflow caller** (`uses: .../foo.yml@ref`): published as `<caller-job-id> / <reusable-job-id-or-name>`.
-
-Mixing these produces a stuck-but-green PR: all actual checks report green, but the ruleset waits forever on a context
-that will never appear. Confirm the real contexts after a first CI run with:
-
-```bash
-gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_runs[].name'
-```
+→ Status-check context strings (inline vs reusable):
+[`RELEASES-RATIONALE.md` § Status-check context strings](./RELEASES-RATIONALE.md#status-check-context-strings).
 
 ## Required secrets
 
@@ -397,6 +255,7 @@ gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_r
 
 ## Related docs
 
-- [`.github/pull_request_template.md`](.github/pull_request_template.md) — PR body structure with changelog sections
-- [`AGENTS.md`](AGENTS.md) — running `anc`, project structure, adding new checks
-- [`README.md`](README.md) — install channels, principles, CLI reference
+- [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection pitfalls)
+- [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)
+- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
+- [`README.md`](README.md) (install channels, principles, CLI reference)

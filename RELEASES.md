@@ -119,8 +119,8 @@ When the PR merges, the deploy / publish workflow picks up the push to `main`. A
 the remote on merge. `dev` is untouched.
 
 → Rationale + triple-diff false-positive triage:
-[`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification). CHANGELOG mechanics:
-[`RELEASES-RATIONALE.md` § CHANGELOG generation](./RELEASES-RATIONALE.md#changelog-generation).
+[`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification). CHANGELOG
+mechanics: [`RELEASES-RATIONALE.md` § CHANGELOG generation](./RELEASES-RATIONALE.md#changelog-generation).
 
 ## Tagging and publishing
 
@@ -199,10 +199,11 @@ gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edi
 # 2. Vale (against the spec's rule packs).
 vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
 
-# 3. LanguageTool (blocking categories: TYPOS|GRAMMAR|CONFUSED_WORDS).
-curl -sS -X POST "${LANGUAGETOOL_URL:-http://languagetool:8081}/v2/check" \
-  --data-urlencode "language=en-US" --data-urlencode "text@/tmp/body.md" \
-  | jaq '.matches[] | select(.rule.category.id | test("^(TYPOS|GRAMMAR|CONFUSED_WORDS)$"))'
+# 3. LanguageTool grammar check via lt_check (~/dotfiles/config/shell/languagetool.sh).
+#    Skips cleanly if LT is unreachable. Inspect: `lt_rules`, `lt_info`. See
+#    ~/dev/agentnative-spec/CONTRIBUTING.md § Voice enforcement for the
+#    install-vs-required nuance.
+lt_check /tmp/body.md
 
 # 4. unslop (em-dash density and AI-unique structural patterns).
 ~/.claude/skills/unslop/scripts/score.py /tmp/body.md
@@ -255,7 +256,8 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 
 ## Related docs
 
-- [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection pitfalls)
+- [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection
+  pitfalls)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)
 - [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
 - [`README.md`](README.md) (install channels, principles, CLI reference)

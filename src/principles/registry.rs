@@ -188,6 +188,11 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
             // handlers to redraw or exit cleanly; the default-disposition
             // check doesn't match the category's execution model.
             "p6-sigpipe",
+            // p6-must-sigterm — same rationale as p6-sigpipe. TUIs install
+            // their own SIGTERM handlers to render exit dialogs and save
+            // state; the default-disposition check doesn't match the
+            // category's execution model.
+            "p6-sigterm",
         ],
     ),
     (
@@ -304,7 +309,7 @@ mod tests {
     fn principle_range_is_valid() {
         for r in REQUIREMENTS {
             assert!(
-                (1..=7).contains(&r.principle),
+                (1..=8).contains(&r.principle),
                 "requirement {} has invalid principle {}",
                 r.id,
                 r.principle
@@ -332,16 +337,16 @@ mod tests {
 
     #[test]
     fn registry_size_matches_spec() {
-        // Spec snapshot 2026-04-20: 46 requirements across P1-P7.
+        // Spec snapshot 2026-05-07: 57 requirements across P1-P8.
         // Bumping this counter is a deliberate act; it means the spec grew.
-        assert_eq!(REQUIREMENTS.len(), 46);
+        assert_eq!(REQUIREMENTS.len(), 57);
     }
 
     #[test]
     fn level_counts_match_spec() {
-        assert_eq!(count_at_level(Level::Must), 23);
-        assert_eq!(count_at_level(Level::Should), 16);
-        assert_eq!(count_at_level(Level::May), 7);
+        assert_eq!(count_at_level(Level::Must), 27);
+        assert_eq!(count_at_level(Level::Should), 20);
+        assert_eq!(count_at_level(Level::May), 10);
     }
 
     #[test]

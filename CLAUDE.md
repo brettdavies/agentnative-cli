@@ -251,7 +251,7 @@ surface lives in `src/skill_install.rs`:
   resource.
 - NEVER hand-edit `SkillHost`, `KNOWN_HOSTS`, `resolve_host`, or `host_envelope_str` in `src/skill_install.rs` — those
   identifiers come from the generated `$OUT_DIR/generated_hosts.rs` and any apparent definition in source is the
-  include! macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
+  `include!` macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
 - The codegen rejects malformed install commands at build time. Each `install.<host>` value MUST tokenize as exactly
   `git clone --depth 1 <url> <dest>` (six whitespace-separated tokens, dest not ending in `.git`). The validation
   mirrors `agentnative-site/src/build/skill.mjs` so the two binaries reject the same inputs.
@@ -259,17 +259,25 @@ surface lives in `src/skill_install.rs`:
 ## Dogfooding Safety
 
 Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS
-agentnative. Two rules prevent recursive fork bombs:
+agentnative. Three rules guard the probe:
 
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
    instant help output instead of running `check .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
+3. **Binary discovery picks the newer of release/debug by mtime** (`src/project.rs::discover_rust_binaries`): when both
+   `target/release/<bin>` and `target/debug/<bin>` exist, the function returns the one with the more recent mtime.
+   Avoids the stale-release-binary trap in dev workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios
+   where only one profile is built fall through cleanly to the existence check. Ties go to debug (cargo's dev-flow
+   default). Test coverage: `test_discover_picks_newer_artifact_by_mtime` + `test_discover_picks_release_when_newer`.
+   Backstory: `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`.
 
 **Rules for new behavioral checks:**
 
 - NEVER probe subcommands without `--help`/`--version` suffixes
 - NEVER remove `arg_required_else_help` from `Cli` — it prevents recursive self-invocation
+- NEVER revert binary discovery to the always-prefer-release shape (rule 3) — that pattern silently masked
+  `p2-must-schema-print` regressions during the v0.4.0 spec sync
 
 ## CI and Quality
 

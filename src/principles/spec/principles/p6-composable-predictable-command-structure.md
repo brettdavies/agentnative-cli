@@ -1,21 +1,26 @@
 ---
 id: p6
 title: Composable and Predictable Command Structure
-last-revised: 2026-04-22
+last-revised: 2026-05-06
 status: active
 requirements:
   - id: p6-must-sigpipe
     level: must
     applicability: universal
     summary: SIGPIPE is handled so piping to `head`/`tail` does not crash the process (Rust example below; Python/Go/Node have language-specific equivalents).
+  - id: p6-must-sigterm
+    level: must
+    applicability:
+      if: CLI has long-running operations
+    summary: "Long-running operations handle SIGTERM gracefully: flush or roll back partial writes, release locks, exit non-zero within a bounded window. Next invocation succeeds without manual cleanup."
   - id: p6-must-no-color
     level: must
     applicability: universal
-    summary: TTY detection plus support for `NO_COLOR` and `TERM=dumb` — color codes suppressed when stdout/stderr is not a terminal.
+    summary: "TTY detection plus support for `NO_COLOR` and `TERM=dumb`: color codes suppressed when stdout/stderr is not a terminal."
   - id: p6-must-completions
     level: must
     applicability: universal
-    summary: Shell completions available via a `completions` subcommand (Tier 1 meta-command — needs no config/auth/network).
+    summary: Shell completions available via a `completions` subcommand (Tier 1 meta-command, needs no config/auth/network).
   - id: p6-must-timeout-network
     level: must
     applicability:
@@ -54,6 +59,11 @@ requirements:
     level: may
     applicability: universal
     summary: "`--color auto|always|never` flag for explicit color control beyond TTY auto-detection."
+  - id: p6-may-standard-names
+    level: may
+    applicability:
+      if: CLI uses subcommands
+    summary: "Subcommand verbs MAY follow community-standard names (`get`/`list`/`create`/`update`/`delete`); flag spellings MAY follow widely-used canonical forms (`--force`, `--yes`, `--limit`, `--quiet`, `--verbose`)."
 ---
 
 # P6: Composable and Predictable Command Structure
@@ -88,14 +98,20 @@ tool a building block rather than a dead end.
   unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }
   ```
 
-  Equivalents in other languages: Python — restore the default `SIGPIPE` handler at startup
-  (`signal.signal(signal.SIGPIPE, signal.SIG_DFL)`); Go — the runtime's default handling already exits cleanly on
-  EPIPE writes; Node.js — handle `EPIPE` on `process.stdout`.
+  Equivalents in other languages: in Python, restore the default `SIGPIPE` handler at startup
+  (`signal.signal(signal.SIGPIPE, signal.SIG_DFL)`); in Go, the runtime's default handling already exits cleanly on
+  EPIPE writes; in Node.js, handle `EPIPE` on `process.stdout`.
+
+- Agent harnesses send SIGTERM when their own timeout fires. A CLI that exits abruptly leaving a half-written file, a
+  stale `*.tmp` artifact, or a held flock makes the next invocation fail with a confusing error the agent cannot
+  diagnose. Long-running operations MUST handle SIGTERM by flushing or rolling back partial writes, releasing acquired
+  locks, and exiting non-zero within a bounded shutdown window. The next invocation MUST succeed without manual cleanup
+  of the previous run's state. This complements the existing SIGPIPE MUST (`p6-must-sigpipe`).
 
 - TTY detection, plus support for `NO_COLOR` and `TERM=dumb`. When stdout or stderr is not a terminal, color codes are
   suppressed automatically.
 - Shell completions available via a `completions` subcommand (clap_complete in Rust; equivalents elsewhere). This is a
-  Tier 1 meta-command — it works without config, auth, or network.
+  Tier 1 meta-command: it works without config, auth, or network.
 - Network CLIs ship a `--timeout` flag with a sensible default (30 seconds). Agents operating under their own time
   budgets need to fail fast rather than block on a slow upstream.
 - If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. Pagers block
@@ -105,18 +121,23 @@ tool a building block rather than a dead end.
 
 **SHOULD:**
 
-- Commands that accept input read from stdin when no file argument is provided. Pipeline composition depends on it.
-- Subcommand naming follows a consistent `noun verb` or `verb noun` convention throughout the tool. Mixing patterns
-  (e.g., `list-users` alongside `user show`) forces agents to learn exceptions.
+- Commands that accept input data SHOULD read from stdin when no file argument is provided. Pipeline composition depends
+  on it.
+- Subcommand naming SHOULD follow one consistent grammar (`noun verb` or `verb noun`) throughout the tool. Mixed
+  patterns (e.g., `list-users` alongside `user show`) force consumers to memorize exceptions instead of applying a rule.
 - A three-tier dependency gating pattern: Tier 1 (meta-commands like `completions`, `version`) needs nothing; Tier 2
   (local commands) needs config; Tier 3 (network commands) needs config + auth. `completions` and `version` always work,
   even in broken environments.
-- Operations are modeled as subcommands, not flags. `tool search "query"` is correct; `tool --search "query"` is wrong.
-  Flags modify behavior (`--quiet`, `--output json`); subcommands select operations.
+- Operations SHOULD be modeled as subcommands, not flags. `tool search "query"` is correct; `tool --search "query"`
+  conflates two roles. Flags modify behavior (`--quiet`, `--output json`); subcommands select operations.
 
 **MAY:**
 
 - A `--color auto|always|never` flag for explicit color control beyond TTY auto-detection.
+- Subcommand verbs MAY follow community-standard names (`get` / `list` / `create` / `update` / `delete`); flag spellings
+  MAY follow widely-used canonical forms (`--force` for confirmation bypass, `--yes` for prompt bypass, `--limit` for
+  pagination, `--quiet`/`--verbose` for volume control). Convergence reduces an agent's per-tool relearning cost: an
+  agent that has seen `kubectl get` and `gh repo list` recognizes `tool list` immediately, without re-reading `--help`.
 
 ## Evidence
 
@@ -130,31 +151,31 @@ tool a building block rather than a dead end.
 
 ## Anti-Patterns
 
-- Missing SIGPIPE handler — `cargo run -- list | head` panics with "broken pipe".
+- Missing SIGPIPE handler: `cargo run -- list | head` panics with "broken pipe".
 - Hard-coded ANSI escape codes without TTY detection.
-- Color output in JSON mode — ANSI codes inside JSON string values break downstream parsing.
+- Color output in JSON mode: ANSI codes inside JSON string values break downstream parsing.
 - A `completions` command that requires auth or config to run.
 - No stdin support on commands where piped input is a natural use case.
 
 Measured by check IDs `p6-sigpipe`, `p6-no-color`, `p6-completions`, `p6-timeout`, `p6-agents-md`. Run `agentnative
-check --principle 6 .` against your CLI to see each.
+check --principle 6 .` against the CLI under test to see each.
 
 ## Pressure test notes
 
-### 2026-04-27 — Show HN launch red-team pass
+### 2026-04-27: Show HN launch red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
 
 - **[edit]** *Prior art / vague agent-native.* "The SIGPIPE MUST prescribes `unsafe { libc::signal(libc::SIGPIPE,
-  libc::SIG_DFL); }` as the first `main()` statement — that is a Rust-specific remedy. Python raises `BrokenPipeError`
-  by default (different fix), Go's runtime already exits cleanly on EPIPE writes (no fix needed), Node.js needs
+  libc::SIG_DFL); }` as the first `main()` statement. That is a Rust-specific remedy. Python raises `BrokenPipeError` by
+  default (different fix), Go's runtime already exits cleanly on EPIPE writes (no fix needed), Node.js needs
   `process.stdout.on('error')`. The MUST as written is correct in spirit but the prescription leaks Rust into a
   universal-applicability rule." Resolved: prose bullet now leads with the language-neutral MUST ("SIGPIPE is handled so
   that piping to `head`, `tail`, or any tool that closes the pipe early does not crash the process"); the Rust snippet
   stays as the canonical example; per-language one-liners cover Python, Go, and Node. Frontmatter summary updated to
   match.
-- **[edit]** *Must-vs-should.* "The `global = true` MUST is a clap-API artifact — the behavioral requirement is 'agentic
+- **[edit]** *MUST-vs-SHOULD.* "The `global = true` MUST is a clap-API artifact. The behavioral requirement is 'agentic
   flags propagate to every subcommand,' which is what the prose actually says. The frontmatter summary baking `global =
   true` into a universal contract overfits to one library." Resolved: frontmatter summary and prose bullet now lead with
   the behavioral requirement ("propagate to every subcommand"), with `global = true` cited as the clap-specific example.

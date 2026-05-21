@@ -1,6 +1,6 @@
 # Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
 function __fish_anc_global_optspecs
-	string join \n q/quiet h/help V/version
+	string join \n q/quiet json h/help V/version
 end
 
 function __fish_anc_needs_command
@@ -25,15 +25,17 @@ function __fish_anc_using_subcommand
 end
 
 complete -c anc -n "__fish_anc_needs_command" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_needs_command" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_needs_command" -s h -l help -d 'Print help'
 complete -c anc -n "__fish_anc_needs_command" -s V -l version -d 'Print version'
 complete -c anc -n "__fish_anc_needs_command" -f -a "check" -d 'Check a CLI project or binary for agent-readiness'
 complete -c anc -n "__fish_anc_needs_command" -f -a "completions" -d 'Generate shell completions'
 complete -c anc -n "__fish_anc_needs_command" -f -a "generate" -d 'Generate build artifacts (coverage matrix, etc.)'
 complete -c anc -n "__fish_anc_needs_command" -f -a "skill" -d 'Install or manage the agentnative skill bundle'
+complete -c anc -n "__fish_anc_needs_command" -f -a "schema" -d 'Print the scorecard JSON Schema to stdout'
 complete -c anc -n "__fish_anc_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c anc -n "__fish_anc_using_subcommand check" -l command -d 'Resolve a command from PATH and run behavioral checks against it' -r -f -a "(__fish_complete_command)"
-complete -c anc -n "__fish_anc_using_subcommand check" -l principle -d 'Filter checks by principle number (1-7)' -r
+complete -c anc -n "__fish_anc_using_subcommand check" -l principle -d 'Filter checks by principle number (1-8)' -r
 complete -c anc -n "__fish_anc_using_subcommand check" -l output -d 'Output format' -r -f -a "text\t''
 json\t''"
 complete -c anc -n "__fish_anc_using_subcommand check" -l audit-profile -d 'Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed checks emit `Skip` with structured evidence so readers see what was excluded' -r -f -a "human-tui\t'TUI-by-design tools (lazygit, k9s, btop). Suppresses interactive-prompt MUSTs and SIGPIPE — their contract is the TTY'
@@ -44,10 +46,13 @@ complete -c anc -n "__fish_anc_using_subcommand check" -l binary -d 'Run only be
 complete -c anc -n "__fish_anc_using_subcommand check" -l source -d 'Run only source checks (skip behavioral)'
 complete -c anc -n "__fish_anc_using_subcommand check" -l include-tests -d 'Include test code in source analysis'
 complete -c anc -n "__fish_anc_using_subcommand check" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand check" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand check" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c anc -n "__fish_anc_using_subcommand completions" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand completions" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand completions" -s h -l help -d 'Print help'
 complete -c anc -n "__fish_anc_using_subcommand generate; and not __fish_seen_subcommand_from coverage-matrix help" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand generate; and not __fish_seen_subcommand_from coverage-matrix help" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand generate; and not __fish_seen_subcommand_from coverage-matrix help" -s h -l help -d 'Print help'
 complete -c anc -n "__fish_anc_using_subcommand generate; and not __fish_seen_subcommand_from coverage-matrix help" -f -a "coverage-matrix" -d 'Render the spec coverage matrix (registry → checks → artifact)'
 complete -c anc -n "__fish_anc_using_subcommand generate; and not __fish_seen_subcommand_from coverage-matrix help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
@@ -55,10 +60,12 @@ complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcom
 complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from coverage-matrix" -l json-out -d 'Path for the JSON artifact. Defaults to `coverage/matrix.json`' -r -F
 complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from coverage-matrix" -l check -d 'Exit non-zero when committed artifacts differ from generated output. CI drift guard'
 complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from coverage-matrix" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from coverage-matrix" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from coverage-matrix" -s h -l help -d 'Print help'
 complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from help" -f -a "coverage-matrix" -d 'Render the spec coverage matrix (registry → checks → artifact)'
 complete -c anc -n "__fish_anc_using_subcommand generate; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install help" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install help" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install help" -s h -l help -d 'Print help'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install help" -f -a "install" -d 'Install the skill bundle into a host\'s canonical skills directory'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
@@ -66,13 +73,18 @@ complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcomman
 json\t''"
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l dry-run -d 'Print the resolved git command without spawning. Captures cleanly via `eval $(anc skill install --dry-run <host>)`'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from help" -f -a "install" -d 'Install the skill bundle into a host\'s canonical skills directory'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
-complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill help" -f -a "check" -d 'Check a CLI project or binary for agent-readiness'
-complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill help" -f -a "completions" -d 'Generate shell completions'
-complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill help" -f -a "generate" -d 'Generate build artifacts (coverage matrix, etc.)'
-complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill help" -f -a "skill" -d 'Install or manage the agentnative skill bundle'
-complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
+complete -c anc -n "__fish_anc_using_subcommand schema" -s q -l quiet -d 'Suppress non-essential output'
+complete -c anc -n "__fish_anc_using_subcommand schema" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
+complete -c anc -n "__fish_anc_using_subcommand schema" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill schema help" -f -a "check" -d 'Check a CLI project or binary for agent-readiness'
+complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill schema help" -f -a "completions" -d 'Generate shell completions'
+complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill schema help" -f -a "generate" -d 'Generate build artifacts (coverage matrix, etc.)'
+complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill schema help" -f -a "skill" -d 'Install or manage the agentnative skill bundle'
+complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill schema help" -f -a "schema" -d 'Print the scorecard JSON Schema to stdout'
+complete -c anc -n "__fish_anc_using_subcommand help; and not __fish_seen_subcommand_from check completions generate skill schema help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c anc -n "__fish_anc_using_subcommand help; and __fish_seen_subcommand_from generate" -f -a "coverage-matrix" -d 'Render the spec coverage matrix (registry → checks → artifact)'
 complete -c anc -n "__fish_anc_using_subcommand help; and __fish_seen_subcommand_from skill" -f -a "install" -d 'Install the skill bundle into a host\'s canonical skills directory'

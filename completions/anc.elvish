@@ -20,6 +20,7 @@ set edit:completion:arg-completer[anc] = {|@words|
         &'anc'= {
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help'
             cand --help 'Print help'
             cand -V 'Print version'
@@ -28,11 +29,12 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand completions 'Generate shell completions'
             cand generate 'Generate build artifacts (coverage matrix, etc.)'
             cand skill 'Install or manage the agentnative skill bundle'
+            cand schema 'Print the scorecard JSON Schema to stdout'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;check'= {
             cand --command 'Resolve a command from PATH and run behavioral checks against it'
-            cand --principle 'Filter checks by principle number (1-7)'
+            cand --principle 'Filter checks by principle number (1-8)'
             cand --output 'Output format'
             cand --audit-profile 'Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed checks emit `Skip` with structured evidence so readers see what was excluded'
             cand --binary 'Run only behavioral checks (skip source analysis)'
@@ -40,18 +42,21 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --include-tests 'Include test code in source analysis'
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
         &'anc;completions'= {
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help'
             cand --help 'Print help'
         }
         &'anc;generate'= {
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help'
             cand --help 'Print help'
             cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
@@ -63,6 +68,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --check 'Exit non-zero when committed artifacts differ from generated output. CI drift guard'
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help'
             cand --help 'Print help'
         }
@@ -77,6 +83,7 @@ set edit:completion:arg-completer[anc] = {|@words|
         &'anc;skill'= {
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help'
             cand --help 'Print help'
             cand install 'Install the skill bundle into a host''s canonical skills directory'
@@ -87,6 +94,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --dry-run 'Print the resolved git command without spawning. Captures cleanly via `eval $(anc skill install --dry-run <host>)`'
             cand -q 'Suppress non-essential output'
             cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
@@ -98,11 +106,19 @@ set edit:completion:arg-completer[anc] = {|@words|
         }
         &'anc;skill;help;help'= {
         }
+        &'anc;schema'= {
+            cand -q 'Suppress non-essential output'
+            cand --quiet 'Suppress non-essential output'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'anc;help'= {
             cand check 'Check a CLI project or binary for agent-readiness'
             cand completions 'Generate shell completions'
             cand generate 'Generate build artifacts (coverage matrix, etc.)'
             cand skill 'Install or manage the agentnative skill bundle'
+            cand schema 'Print the scorecard JSON Schema to stdout'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;help;check'= {
@@ -118,6 +134,8 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand install 'Install the skill bundle into a host''s canonical skills directory'
         }
         &'anc;help;skill;install'= {
+        }
+        &'anc;help;schema'= {
         }
         &'anc;help;help'= {
         }

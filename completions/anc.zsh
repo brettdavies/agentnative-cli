@@ -17,6 +17,7 @@ _anc() {
     _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 '-V[Print version]' \
@@ -33,7 +34,7 @@ _anc() {
             (check)
 _arguments "${_arguments_options[@]}" : \
 '(--source)--command=[Resolve a command from PATH and run behavioral checks against it]:NAME:_command_names -e' \
-'--principle=[Filter checks by principle number (1-7)]:PRINCIPLE:_default' \
+'--principle=[Filter checks by principle number (1-8)]:PRINCIPLE:_default' \
 '--output=[Output format]:OUTPUT:(text json)' \
 '--audit-profile=[Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so \`--audit-profile human-tui\` skips the interactive-prompt MUSTs. Suppressed checks emit \`Skip\` with structured evidence so readers see what was excluded]:CATEGORY:((human-tui\:"TUI-by-design tools (lazygit, k9s, btop). Suppresses interactive-prompt MUSTs and SIGPIPE — their contract is the TTY"
 file-traversal\:"File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those checks land"
@@ -44,6 +45,7 @@ diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 '--include-tests[Include test code in source analysis]' \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '::path -- Path to project directory or binary:_files' \
@@ -53,6 +55,7 @@ diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ':shell -- Shell to generate for:(bash elvish fish powershell zsh)' \
@@ -62,6 +65,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ":: :_anc__generate_commands" \
@@ -81,6 +85,7 @@ _arguments "${_arguments_options[@]}" : \
 '--check[Exit non-zero when committed artifacts differ from generated output. CI drift guard]' \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 && ret=0
@@ -117,6 +122,7 @@ esac
 _arguments "${_arguments_options[@]}" : \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help]' \
 '--help[Print help]' \
 ":: :_anc__skill_commands" \
@@ -135,6 +141,7 @@ _arguments "${_arguments_options[@]}" : \
 '--dry-run[Print the resolved git command without spawning. Captures cleanly via \`eval \$(anc skill install --dry-run <host>)\`]' \
 '-q[Suppress non-essential output]' \
 '--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 ':host -- Target host (claude_code, codex, cursor, opencode):(claude_code codex cursor factory kiro opencode)' \
@@ -167,6 +174,15 @@ esac
         esac
     ;;
 esac
+;;
+(schema)
+_arguments "${_arguments_options[@]}" : \
+'-q[Suppress non-essential output]' \
+'--quiet[Suppress non-essential output]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
 ;;
 (help)
 _arguments "${_arguments_options[@]}" : \
@@ -228,6 +244,10 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(schema)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -248,6 +268,7 @@ _anc_commands() {
 'completions:Generate shell completions' \
 'generate:Generate build artifacts (coverage matrix, etc.)' \
 'skill:Install or manage the agentnative skill bundle' \
+'schema:Print the scorecard JSON Schema to stdout' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'anc commands' commands "$@"
@@ -300,6 +321,7 @@ _anc__help_commands() {
 'completions:Generate shell completions' \
 'generate:Generate build artifacts (coverage matrix, etc.)' \
 'skill:Install or manage the agentnative skill bundle' \
+'schema:Print the scorecard JSON Schema to stdout' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'anc help commands' commands "$@"
@@ -331,6 +353,11 @@ _anc__help__help_commands() {
     local commands; commands=()
     _describe -t commands 'anc help help commands' commands "$@"
 }
+(( $+functions[_anc__help__schema_commands] )) ||
+_anc__help__schema_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc help schema commands' commands "$@"
+}
 (( $+functions[_anc__help__skill_commands] )) ||
 _anc__help__skill_commands() {
     local commands; commands=(
@@ -342,6 +369,11 @@ _anc__help__skill_commands() {
 _anc__help__skill__install_commands() {
     local commands; commands=()
     _describe -t commands 'anc help skill install commands' commands "$@"
+}
+(( $+functions[_anc__schema_commands] )) ||
+_anc__schema_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc schema commands' commands "$@"
 }
 (( $+functions[_anc__skill_commands] )) ||
 _anc__skill_commands() {

@@ -58,7 +58,7 @@ requested a research spike first. The spike produces a written report that infor
 - R5. Integration tests: one new fixture per language exercising at least one passing and one failing check path.
 - R6. Documentation: README, CLAUDE.md conventions, and the design doc reference table updated to reflect the new
   language coverage; scorecard/output remains stable for existing Rust/Python consumers.
-- R7. All existing Rust and Python checks continue to pass dogfooding (`anc check .`) with no regressions in scorecard
+- R7. All existing Rust and Python checks continue to pass dogfooding (`anc audit .`) with no regressions in scorecard
   output, binary size beyond the new grammar cost, or CI matrix.
 
 ## Scope Boundaries
@@ -405,7 +405,7 @@ test green; splitting further would create awkward intermediate states where the
 - `cargo test --locked` passes on all three platforms covered by the current CI matrix (Linux, macOS, Windows).
 - `cargo build --release --locked` produces a binary whose size delta matches the spike's recorded measurement to within
   ~10% (larger deltas indicate an unexpected dependency addition).
-- `anc check .` (dogfooding) returns the same scorecard it did before the change — no Go/TS/Ruby checks run on this Rust
+- `anc audit .` (dogfooding) returns the same scorecard it did before the change — no Go/TS/Ruby checks run on this Rust
   repo, so the scorecard is unchanged.
 
 ---
@@ -472,8 +472,8 @@ spike pattern decisions are validated empirically per check.
 **Verification:**
 
 - `cargo test --locked` passes all new Go tests plus every existing test.
-- `anc check` against a small Go fixture repo (see Unit 6) produces the expected scorecard rows for the new checks.
-- Dogfooding (`anc check .`) remains green — Go checks are not applicable to this Rust repo.
+- `anc audit` against a small Go fixture repo (see Unit 6) produces the expected scorecard rows for the new checks.
+- Dogfooding (`anc audit .`) remains green — Go checks are not applicable to this Rust repo.
 
 ---
 
@@ -536,7 +536,7 @@ so the entry-point heuristic is validated against real code before the check shi
 **Verification:**
 
 - `cargo test --locked` passes.
-- `anc check` against a small TS fixture produces expected scorecard rows.
+- `anc audit` against a small TS fixture produces expected scorecard rows.
 - Dogfooding remains green.
 
 ---
@@ -605,7 +605,7 @@ confidence in pattern correctness should come from tests, not eye-balling.
 **Verification:**
 
 - `cargo test --locked` passes.
-- `anc check` against a small Ruby fixture produces expected scorecard rows.
+- `anc audit` against a small Ruby fixture produces expected scorecard rows.
 - Dogfooding remains green.
 
 ---
@@ -631,7 +631,7 @@ table to reflect the new coverage.
 - Create: `tests/fixtures/broken-ruby/` with `Gemfile` plus `.rb` files containing at least one violation per Ruby
   starter check.
 - Create: `tests/fixtures/perfect-ruby/` (clean Ruby project).
-- Modify: `tests/integration.rs` — add test cases that run `anc check` against each new fixture and assert on the
+- Modify: `tests/integration.rs` — add test cases that run `anc audit` against each new fixture and assert on the
   scorecard output. Follow the existing Rust/Python integration test structure.
 - Modify: `README.md` — update the Supported Languages section (list Go, TypeScript, Ruby with their starter check
   counts).
@@ -663,9 +663,9 @@ table to reflect the new coverage.
 
 **Test scenarios:**
 
-- Integration: `anc check tests/fixtures/broken-go` exits non-zero and the scorecard shows each Go starter check with a
+- Integration: `anc audit tests/fixtures/broken-go` exits non-zero and the scorecard shows each Go starter check with a
   failure/warning as appropriate.
-- Integration: `anc check tests/fixtures/perfect-go` exits zero and the scorecard shows each Go starter check as Pass.
+- Integration: `anc audit tests/fixtures/perfect-go` exits zero and the scorecard shows each Go starter check as Pass.
 - Integration: Same pair for TypeScript and Ruby fixtures.
 - Integration: Scorecard output format remains stable for existing Rust/Python fixtures (regression guard — Unit 6 must
   not change existing snapshots beyond adding rows for newly registered checks).
@@ -675,7 +675,7 @@ table to reflect the new coverage.
 **Verification:**
 
 - `cargo test --locked` passes including all new integration tests.
-- Manual: `anc check tests/fixtures/broken-ruby/` (etc.) produces human-readable scorecard output consistent with
+- Manual: `anc audit tests/fixtures/broken-ruby/` (etc.) produces human-readable scorecard output consistent with
   existing output for broken-python.
 - README renders correctly when previewed locally (headings, code blocks, tables).
 - CLAUDE.md changes merged without accidentally breaking the existing `Source Check Convention` instructions the team
@@ -765,9 +765,9 @@ table to reflect the new coverage.
 - `cargo test --locked` runs the full new suite green on Linux, macOS, and Windows CI runners.
 - `anc` binary size growth falls within the cap documented in the spike (strictly below 15 MB total delta across all
   three grammars).
-- `anc check tests/fixtures/broken-<lang>/` produces non-zero exit and scorecard rows that match the checks defined for
+- `anc audit tests/fixtures/broken-<lang>/` produces non-zero exit and scorecard rows that match the checks defined for
   that language, for all three languages.
-- Dogfooding (`anc check .` on the agentnative repo itself) remains green throughout — no regressions in the scorecard
+- Dogfooding (`anc audit .` on the agentnative repo itself) remains green throughout — no regressions in the scorecard
   for this Rust repo.
 - Zero breaking changes to the public Rust API (none today beyond the binary) or JSON output schema for existing
   consumers.

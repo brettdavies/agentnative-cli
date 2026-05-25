@@ -52,13 +52,13 @@ checks).
 
 | Scenario | Binary? | Source? | What runs |
 |----------|:-------:|:-------:|-----------|
-| `anc check ./project/` (Rust, built) | yes | yes | behavioral + source |
-| `anc check ./project/` (Rust, not built) | no | yes | source only, warn "build for full coverage" |
-| `anc check ./project/` (Python) | maybe | yes | behavioral (if binary found) + source (when checks exist) |
-| `anc check ./project/` (unknown lang) | no | no | warn "no checks applicable" |
-| `anc check /usr/bin/rg` (executable file) | yes | no | behavioral only |
-| `anc check . --binary target/debug/foo` | yes | skip | behavioral only (forced) |
-| `anc check . --source` | skip | yes | source only (forced) |
+| `anc audit ./project/` (Rust, built) | yes | yes | behavioral + source |
+| `anc audit ./project/` (Rust, not built) | no | yes | source only, warn "build for full coverage" |
+| `anc audit ./project/` (Python) | maybe | yes | behavioral (if binary found) + source (when checks exist) |
+| `anc audit ./project/` (unknown lang) | no | no | warn "no checks applicable" |
+| `anc audit /usr/bin/rg` (executable file) | yes | no | behavioral only |
+| `anc audit . --binary target/debug/foo` | yes | skip | behavioral only (forced) |
+| `anc audit . --source` | skip | yes | source only (forced) |
 
 Behavioral checks are always language-agnostic. Source checks are language-specific. The orchestrator selects which
 source check set based on `Project.language`.

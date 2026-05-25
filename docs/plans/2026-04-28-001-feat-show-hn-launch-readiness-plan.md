@@ -190,7 +190,7 @@ None applicable — this is repo-internal release choreography.
   `scripts/sync-spec.sh` (current default `SPEC_REF=v0.2.0`). **Spec tagged `v0.3.0` on 2026-04-29 09:26 PT** (the
   `draft → active` principle-status flip, central tracker Gate 2 — wave step 1/7 closed). U1.5 re-vendors against
   `v0.3.0` so the published CLI binary reports `spec_version: 0.3.0` and bundles `active`-status principles, matching
-  what `anc.dev` renders. Without this re-vendor, Show HN readers running `anc check .` would see `draft` status while
+  what `anc.dev` renders. Without this re-vendor, Show HN readers running `anc audit .` would see `draft` status while
   the site shows `active` — a coherence gap.
 - **Hard sequencing: spec `v0.3.0` tag must exist on `agentnative-spec` `main` before U1.5 runs.** ✅ **Cleared
   2026-04-29 09:26 PT** (release URL: `https://github.com/brettdavies/agentnative/releases/tag/v0.3.0`). The CLI's

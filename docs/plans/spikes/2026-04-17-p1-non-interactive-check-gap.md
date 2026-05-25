@@ -8,7 +8,7 @@ date: 2026-04-17
 
 ## Question
 
-Running `anc check` against the Claude Code binary at `/home/brett/.local/share/claude/versions/2.1.113` reports `[PASS]
+Running `anc audit` against the Claude Code binary at `/home/brett/.local/share/claude/versions/2.1.113` reports `[PASS]
 Non-interactive by default (p1-non-interactive)`. But typing `claude` with no arguments in an interactive terminal
 launches Claude's TUI. That feels like a straight-up P1 violation — an agent-native linter should not be handing out
 passes to tools whose bare-invocation UX is a full-screen interactive session. So: is the pass a bug, a principle gap,
@@ -16,7 +16,7 @@ or a real P1-compliant case that only *looks* wrong from the outside?
 
 ## TL;DR
 
-- **Reproduced the pass.** `anc check /home/brett/.local/share/claude/versions/2.1.113` prints `[PASS] Non-interactive
+- **Reproduced the pass.** `anc audit /home/brett/.local/share/claude/versions/2.1.113` prints `[PASS] Non-interactive
   by default (p1-non-interactive)`.
 - **The pass is technically correct per the principle as written.** Claude auto-detects non-TTY stdin, suppresses the
   TUI, and exits with an actionable error in 2.2s. That is exactly what P1's SHOULD clause asks for, and P1's MAY clause

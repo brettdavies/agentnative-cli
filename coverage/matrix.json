@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "generated_by": "anc generate coverage-matrix",
+  "generated_by": "anc emit coverage-matrix",
   "rows": [
     {
       "id": "p1-must-env-var",

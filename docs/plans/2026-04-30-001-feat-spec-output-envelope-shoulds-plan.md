@@ -55,9 +55,9 @@ behavioral checks that *induce* an error path and inspect the envelope — genui
   audit-profile category. Specifically: `output-applies-to-every-subcommand` joins the empty `FileTraversal` slot
   reserved for "subcommand-structure SHOULDs" (`src/principles/registry.rs:196-201`). Verify the other three against
   each existing category and document the mapping decision.
-- R7. Extend `tests/dogfood.rs` to pin all four new IDs against the `anc` binary itself — `anc check . --output json`
+- R7. Extend `tests/dogfood.rs` to pin all four new IDs against the `anc` binary itself — `anc audit . --output json`
   must show no `fail` on any of the new check IDs.
-- R8. Regenerate `docs/coverage-matrix.md` and `coverage/matrix.json` via `anc generate coverage-matrix`. CI's existing
+- R8. Regenerate `docs/coverage-matrix.md` and `coverage/matrix.json` via `anc emit coverage-matrix`. CI's existing
   `--check` integration test
   (`tests/integration.rs::test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts`) will fail until both
   artifacts ship in the same PR.
@@ -156,7 +156,7 @@ behavioral checks that *induce* an error path and inspect the envelope — genui
   (clap-rejected bad arg) is the safe path because it's universally side-effect-free.
 - **Reliable static-analysis compliance checkers — SRP scripts, no multi-signal scoring**
   (`docs/solutions/best-practices/reliable-static-analysis-compliance-checkers-20260327.md`) — four distinct checks, not
-  one bundled. Each requirement independently visible in `anc check .` output.
+  one bundled. Each requirement independently visible in `anc audit .` output.
 - **Audit scripts are documentation's immune system**
   (`docs/solutions/best-practices/audit-scripts-as-documentation-immune-system-2026-04-20.md`) — strongest argument for
   landing the checks. Decline any reviewer suggestion to "just document the convention more clearly" — the convention is
@@ -198,7 +198,7 @@ None — internal/cross-repo work, no external doc gathering needed.
   Add four new test functions, one per new check ID, so a regression names the broken contract — collective assertions
   hide which check newly broke.
 - **Land coverage-matrix regen in the same PR.** Both `docs/coverage-matrix.md` and `coverage/matrix.json` are committed
-  artifacts. `tests/integration.rs` runs `anc generate coverage-matrix --check` and fails when stale. The PR cannot
+  artifacts. `tests/integration.rs` runs `anc emit coverage-matrix --check` and fails when stale. The PR cannot
   merge without regenerated artifacts.
 
 ---
@@ -350,7 +350,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 
   **Verification:**
 - `cargo test --bin anc behavioral::output_every_subcommand::tests` passes.
-- `anc check . --output json` includes the new ID in `results[]`.
+- `anc audit . --output json` includes the new ID in `results[]`.
 
 - U4. **`p2-json-envelope-on-error` check**
 
@@ -391,7 +391,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 - **Skip:** Tool's `--help` text doesn't mention `--output` → `Skip`.
 - **Edge case:** `RunStatus::Crash` from the probe → `Skip` with `"probe crashed: <signal>"`.
 
-  **Verification:** `cargo test` passes; `anc check .` emits the new ID.
+  **Verification:** `cargo test` passes; `anc audit .` emits the new ID.
 
 - U5. **`p2-envelope-schema-uniform` check**
 
@@ -430,7 +430,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 - **Edge case:** Success probe couldn't elicit a usable envelope (some tools refuse `--help --output json`) → `Skip`.
 - **Skip:** Tool doesn't accept `--output` → `Skip`.
 
-  **Verification:** `cargo test` passes; new ID in `anc check .` output.
+  **Verification:** `cargo test` passes; new ID in `anc audit .` output.
 
 - U6. **`p4-typed-error-reason` check**
 
@@ -470,7 +470,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 - **Error path:** Envelope has only `"message": "..."`, no typed-identifier field → `Fail`.
 - **Skip:** No envelope elicited → `Skip`.
 
-  **Verification:** `cargo test` passes; new ID in `anc check .` output.
+  **Verification:** `cargo test` passes; new ID in `anc audit .` output.
 
 - U7. **Suppression entries, dogfood guards, and coverage-matrix regen**
 
@@ -488,12 +488,12 @@ None — internal/cross-repo work, no external doc gathering needed.
   confirms the entry.
 - Modify: `tests/dogfood.rs` — add four new test functions: `dogfood_no_p2_should_output_every_subcommand_fail`,
   `dogfood_no_p2_should_json_envelope_on_error_fail`, `dogfood_no_p2_should_envelope_schema_uniform_fail`,
-  `dogfood_no_p4_should_json_error_typed_reason_fail`. Each spawns `anc check . --output json` and asserts no `fail`
+  `dogfood_no_p4_should_json_error_typed_reason_fail`. Each spawns `anc audit . --output json` and asserts no `fail`
   status on the named check ID. Mirrors existing `dogfood_no_p2_fail_after_skill_subcommand` shape but names the check
   ID specifically.
-- Modify: `docs/coverage-matrix.md` — regenerated by `anc generate coverage-matrix`. Manual prose summary at the top
+- Modify: `docs/coverage-matrix.md` — regenerated by `anc emit coverage-matrix`. Manual prose summary at the top
   updates the requirement counts and notes the four new SHOULDs.
-- Modify: `coverage/matrix.json` — regenerated by `anc generate coverage-matrix`.
+- Modify: `coverage/matrix.json` — regenerated by `anc emit coverage-matrix`.
 
   **Approach:**
 - Run `cargo run -- generate coverage-matrix` to regenerate both artifacts. Review `git diff coverage/matrix.json` for
@@ -508,13 +508,13 @@ None — internal/cross-repo work, no external doc gathering needed.
   **Test scenarios:**
 - **Happy path:** All four new dogfood tests pass against the current `anc` binary (proves the dogfood loop — `anc skill
   install` already implements all four contracts).
-- **Drift catch:** `anc generate coverage-matrix --check` exits 0 after the regen commit; exits 2 if either artifact is
+- **Drift catch:** `anc emit coverage-matrix --check` exits 0 after the regen commit; exits 2 if either artifact is
   stale.
 
   **Verification:**
 - `cargo test` passes (all 519+ tests, including new dogfood tests).
-- `anc generate coverage-matrix --check` exits 0.
-- `anc check . --output json` shows all four new check IDs at status `pass` (or appropriately `skip`/`warn`).
+- `anc emit coverage-matrix --check` exits 0.
+- `anc audit . --output json` shows all four new check IDs at status `pass` (or appropriately `skip`/`warn`).
 
 ---
 
@@ -531,7 +531,7 @@ None — internal/cross-repo work, no external doc gathering needed.
   site `/coverage` page, by user-written `--audit-profile` consumers). Once published, IDs are stable — rename requires
   a deliberate spec edit and downstream coordination.
 - **Integration coverage:** existing integration tests at `tests/integration.rs` will pick up the new checks
-  automatically (any test that runs `anc check . --output json` and inspects `results[]` sees the new IDs). The
+  automatically (any test that runs `anc audit . --output json` and inspects `results[]` sees the new IDs). The
   `test_check_json_output` family already exercises this surface.
 - **Unchanged invariants:**
 - `arg_required_else_help` stays on `Cli`. The new behavioral checks must NOT bare-probe subcommands (per fork-

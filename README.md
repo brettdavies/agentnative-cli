@@ -84,7 +84,7 @@ anc . --source
 anc . --output json
 
 # Print the scorecard JSON Schema (draft 2020-12)
-anc schema
+anc emit schema
 
 # Filter by principle
 anc . --principle 3
@@ -194,9 +194,9 @@ on tier:
 
 | Mode                   | Checks | Pass | Warn | Fail | Skip | Error | Score |
 | ---------------------- | -----: | ---: | ---: | ---: | ---: | ----: | ----: |
-| `anc check . --binary` |     18 |   13 |    3 |    0 |    2 |     0 |   81% |
-| `anc check . --source` |     26 |   24 |    0 |    0 |    2 |     0 |  100% |
-| `anc check .` (full)   |     44 |   37 |    3 |    0 |    4 |     0 |   93% |
+| `anc audit . --binary` |     18 |   13 |    3 |    0 |    2 |     0 |   81% |
+| `anc audit . --source` |     26 |   24 |    0 |    0 |    2 |     0 |  100% |
+| `anc audit .` (full)   |     44 |   37 |    3 |    0 |    4 |     0 |   93% |
 
 Full-mode warnings: `p2-json-output` (a safe-probe limitation on tools whose `--help` masks `--output`),
 `p8-install-all` and `p8-bundle-update` (both MAY-tier features the binary does not ship yet).
@@ -204,11 +204,11 @@ Full-mode warnings: `p2-json-output` (a safe-probe limitation on tools whose `--
 ## CLI Reference
 
 When the first non-flag argument is not a recognized subcommand, `check` is inserted automatically. `anc .`, `anc -q .`,
-and `anc --command ripgrep` all resolve to `anc check …`. Bare `anc` (no arguments) still prints help and exits 2: a
+and `anc --command ripgrep` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
 deliberate fork-bomb guard for when agentnative dogfoods itself.
 
 ```text
-Usage: anc check [OPTIONS] [PATH]
+Usage: anc audit [OPTIONS] [PATH]
 
 Arguments:
   [PATH]  Path to project directory or binary [default: .]
@@ -272,12 +272,12 @@ Pre-generated scripts are also available in `completions/`.
 ## JSON Output
 
 ```bash
-anc check . --output json
+anc audit . --output json
 ```
 
 Produces a self-describing scoring run record (`schema_version: "0.5"`) with results, summary, coverage against the
 eight principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform,
-and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (also committed at
+and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema` (also committed at
 `schema/scorecard.schema.json`):
 
 ```json
@@ -313,7 +313,7 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (als
   "tool":   { "name": "ripgrep", "binary": "rg", "version": "ripgrep 15.1.0" },
   "anc":    { "version": "0.4.0" },
   "run":    {
-    "invocation": "anc check --command rg --output json",
+    "invocation": "anc audit --command rg --output json",
     "started_at": "2026-04-29T16:00:00Z",
     "duration_ms": 412,
     "platform":   { "os": "linux", "arch": "x86_64" }
@@ -356,7 +356,7 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (als
   Informational, not a signed provenance signal. Pair with a Sigstore-signed release artifact when provenance is
   required. Schema `0.4` addition.
 - `run`: run-level facts. `invocation` is the user's argv joined with shell-safe quoting, captured **before**
-  default-subcommand injection so it reflects what the user typed (`anc .`, not `anc check .`). `started_at` is RFC 3339
+  default-subcommand injection so it reflects what the user typed (`anc .`, not `anc audit .`). `started_at` is RFC 3339
   UTC. `duration_ms` is wall-clock milliseconds. `platform.os` / `platform.arch` come from `std::env::consts`. Schema
   `0.4` addition.
 - `target`: what `anc` was pointed at. `kind` is `"project"` (directory), `"binary"` (executable file), or `"command"`

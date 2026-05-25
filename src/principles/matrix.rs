@@ -6,7 +6,7 @@
 //! - `coverage/matrix.json` — machine-readable, consumed by the site's
 //!   `/coverage` page.
 //!
-//! The CLI surfaces this as `anc generate coverage-matrix` with `--check`
+//! The CLI surfaces this as `anc emit coverage-matrix` with `--check`
 //! to fail CI when committed artifacts drift from the registry + checks.
 
 use std::collections::BTreeMap;
@@ -44,7 +44,7 @@ pub struct MatrixRow {
 #[derive(Debug, Serialize)]
 pub struct AuditProfileEntry {
     /// Kebab-case flag value (e.g., `"human-tui"`) — exactly what a
-    /// caller passes to `anc check --audit-profile <name>`.
+    /// caller passes to `anc audit --audit-profile <name>`.
     pub name: &'static str,
     /// One-line human description of the category.
     pub description: &'static str,
@@ -62,7 +62,7 @@ pub struct Matrix {
     pub rows: Vec<MatrixRow>,
     pub summary: MatrixSummary,
     /// Every `--audit-profile` category in a stable order. Agents can
-    /// read this instead of running `anc check --help` to discover the
+    /// read this instead of running `anc audit --help` to discover the
     /// valid profile values and what each one excludes.
     pub audit_profiles: Vec<AuditProfileEntry>,
 }
@@ -89,7 +89,7 @@ pub struct LevelSummary {
 }
 
 const SCHEMA_VERSION: &str = "1.0";
-const GENERATED_BY: &str = "anc generate coverage-matrix";
+const GENERATED_BY: &str = "anc emit coverage-matrix";
 
 /// Build the matrix from the requirement registry + a slice of checks.
 /// Ownership stays with the caller; this reads `check.covers()` references.

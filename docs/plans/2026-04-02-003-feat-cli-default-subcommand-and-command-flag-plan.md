@@ -26,19 +26,19 @@ and what actually shipped.
 
 ## Overview
 
-Two CLI contract additions from the design doc: (1) `anc .` should work as shorthand for `anc check .`, making `check`
+Two CLI contract additions from the design doc: (1) `anc .` should work as shorthand for `anc audit .`, making `check`
 the implicit default subcommand; (2) `--command <name>` resolves a binary from PATH via `which` for behavioral-only
 checking. Both improve ergonomics for the primary use case.
 
 ## Problem Frame
 
-Today, `anc .` fails because `.` is not a recognized subcommand. Users must always type `anc check .`. The design doc
+Today, `anc .` fails because `.` is not a recognized subcommand. Users must always type `anc audit .`. The design doc
 (line 126) explicitly shows `anc .` as a supported invocation. Similarly, there's no way to check a binary already on
 PATH without manually resolving its location — the design doc (line 209) specifies `--command <name>` for this.
 
 ## Requirements Trace
 
-- R1. `anc .` must behave identically to `anc check .`
+- R1. `anc .` must behave identically to `anc audit .`
 - R2. `anc` with no arguments must still print help and exit with code 2 (handled by clap's
   `arg_required_else_help=true` — non-negotiable fork bomb safety constraint)
 - R3. `--command <name>` resolves binary from PATH and runs behavioral checks only
@@ -93,10 +93,10 @@ PATH without manually resolving its location — the design doc (line 209) speci
 
 - **Will default subcommand break `arg_required_else_help`?**: No — the pre-parse only activates when argv has
   arguments. Bare invocation (`anc` with no args) still hits clap's help gate before any pre-parse logic runs.
-- **Should `anc check` still work?**: Yes — all existing invocations continue to work. The pre-parse only triggers when
+- **Should `anc audit` still work?**: Yes — all existing invocations continue to work. The pre-parse only triggers when
   the first non-flag arg is not a known subcommand.
 - **Does `anc --command rg` work via default subcommand?**: Yes — `--command` is not a known subcommand, so the
-  pre-parse injects `check`, producing `anc check --command rg`. This is correct by design since `--command` belongs to
+  pre-parse injects `check`, producing `anc audit --command rg`. This is correct by design since `--command` belongs to
   the `Check` subcommand.
 - **Does `Project::from_binary()` need to be created?**: No. `Project::discover()` already handles executable file paths
   correctly — sets `language: None` (skipping source checks), and `is_dir()` returns false (skipping project checks).
@@ -104,7 +104,7 @@ PATH without manually resolving its location — the design doc (line 209) speci
 
 ### Deferred to Implementation
 
-- **Typo handling** _(status: as planned)_: `anc chekc .` (typo of `check`) becomes `anc check chekc .` where `chekc`
+- **Typo handling** _(status: as planned)_: `anc chekc .` (typo of `check`) becomes `anc audit chekc .` where `chekc`
   becomes the path. Produces "path does not exist: chekc" instead of "unrecognized subcommand 'chekc'." Acceptable for
   v0.1 — the error is still actionable. Note: the `help` subcommand is special-cased in PR #13 because clap's
   auto-generated `help` is not returned by `get_subcommands()` and would otherwise hit this path.
@@ -155,7 +155,7 @@ argv = ["anc", "--command", "ripgrep"]
 
 ## Implementation Units
 
-- [x] **Unit 1: Default subcommand — `anc .` as `anc check .`**
+- [x] **Unit 1: Default subcommand — `anc .` as `anc audit .`**
 
 **Goal:** Make `anc .` work by injecting `check` when the first non-flag arg is not a known
 subcommand.
@@ -188,12 +188,12 @@ subcommand.
 
 **Test scenarios:**
 
-- Happy path: `anc .` produces the same output as `anc check .`
+- Happy path: `anc .` produces the same output as `anc audit .`
 - Happy path: `anc . --output json` produces valid JSON (flags pass through)
 - Happy path: `anc . -q` respects quiet flag
 - Happy path: `anc -q .` respects quiet flag (global flag before path)
 - Happy path: `anc --quiet .` respects quiet flag (long form before path)
-- Happy path: `anc check .` still works (explicit subcommand unchanged)
+- Happy path: `anc audit .` still works (explicit subcommand unchanged)
 - Happy path: `anc completions bash` still works (other subcommands unaffected)
 - Edge case: `anc` with no args still prints help (exit 2) — safety constraint preserved
 - Edge case: `anc --help` still prints help (flags are not treated as paths)
@@ -241,13 +241,13 @@ known subcommand, so pre-parse injects `check`)
 
 **Test scenarios:**
 
-- Happy path: `anc check --command ls` runs behavioral checks against `/bin/ls`, output contains only behavioral check
+- Happy path: `anc audit --command ls` runs behavioral checks against `/bin/ls`, output contains only behavioral check
   results (no source or project checks)
 - Happy path: `anc --command echo` works via default subcommand (pre-parse injects `check`)
-- Happy path: `anc check --command ls --output json` produces valid JSON containing only behavioral-layer results
-- Error path: `anc check --command nonexistent-binary-xyz` exits with code 2 and error message "command
+- Happy path: `anc audit --command ls --output json` produces valid JSON containing only behavioral-layer results
+- Error path: `anc audit --command nonexistent-binary-xyz` exits with code 2 and error message "command
   'nonexistent-binary-xyz' not found on PATH"
-- Error path: `anc check --command rg .` — conflicts_with prevents both path and command
+- Error path: `anc audit --command rg .` — conflicts_with prevents both path and command
 
 **Verification:**
 

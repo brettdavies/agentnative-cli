@@ -73,7 +73,7 @@ Carried verbatim from origin requirements doc. R-IDs stable.
   `p2-structured-output` depends on the Strong-tier resolution from `Open Questions → Deferred from Document Review`** —
   `Confidence::High` if option (b) "any same-crate `serde_json`" is chosen, `Confidence::Medium` if option (a)
   "within-arm strict" is chosen (anc's match arm calls `format_json` in `scorecard/`, not `serde_json` directly).
-- R14. `docs/coverage-matrix.md` and `coverage/matrix.json` are regenerated via `anc generate coverage-matrix` as part
+- R14. `docs/coverage-matrix.md` and `coverage/matrix.json` are regenerated via `anc emit coverage-matrix` as part
   of the same PR. The integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
 
 ---
@@ -209,7 +209,7 @@ during implementation unless contradicting evidence surfaces.**
   list literal; click wraps it in a `Choice` constructor. Both must be supported. Tuned against the U4 Python fixtures
   during U3.
 - **Concrete enumeration of audience-label shifts on currently-scored tools** (R10). Resolve at the end of U5 by running
-  `anc check` against each leaderboard member with the new detection enabled and diffing the audience field; cite the
+  `anc audit` against each leaderboard member with the new detection enabled and diffing the audience field; cite the
   diff in the PR description.
 - **Whether any leaderboard tool's stderr enumeration uses a format the regex misses on first iteration** (R3 fallback
   shape). Implementation-time discovery; the fallback path is intentionally conservative.
@@ -474,7 +474,7 @@ each U4 Rust fixture before integrating into `run()` — the pattern-shape itera
 **Verification:**
 
 - `cargo test -p anc --lib checks::source::rust::structured_output` passes (existing tests + new per-tier scenarios).
-- `anc check tests/fixtures/perfect-rust` reports `p2-structured-output` as Pass at Confidence::High.
+- `anc audit tests/fixtures/perfect-rust` reports `p2-structured-output` as Pass at Confidence::High.
 - `cargo test --test integration` passes (no regression on the structured_output integration assertions).
 
 ---
@@ -564,7 +564,7 @@ no behavior it just shares wording.
 
 - `cargo test -p anc --lib checks::source::python::structured_output` passes.
 - `cargo test -p anc --lib principles::matrix::tests::live_catalog_has_no_dangling_cover_ids` passes.
-- `anc check tests/fixtures/known-shapes/argparse/strong/` (or equivalent U4 fixture) reports
+- `anc audit tests/fixtures/known-shapes/argparse/strong/` (or equivalent U4 fixture) reports
   `p2-structured-output-python` as Pass at Confidence::High.
 
 ---
@@ -599,7 +599,7 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
   click idioms.
 - Create: `tests/fixtures/known-shapes/README.md` — declares the matrix layout, expected verdicts per fixture, and the
   parser-family family classification rationale.
-- Modify: `tests/integration.rs` (this unit) — add U4 smoke tests that run `anc check` against every known-shape fixture
+- Modify: `tests/integration.rs` (this unit) — add U4 smoke tests that run `anc audit` against every known-shape fixture
   and assert it does not panic against the pre-tightening detection (catches malformed fixtures, missing manifests, and
   shell-script syntax errors at U4 time rather than during U1/U2/U3 implementation). The verdict-asserting integration
   tests still land in U5 — they need U1/U2/U3 detection to be present.
@@ -633,7 +633,7 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
 - Each fixture's `README.md` declares the expected verdict, Confidence, the tier classification rationale, and (for
   behavioral fixtures) the source field (`tool-derived` with the leaderboard tool name + version, or
   `synthetic-minimal-tool` with the synthetic tool's source path + parser library version).
-- The tests against these fixtures split: U4 ships **smoke tests** (does `anc check <fixture>` panic? does the fixture's
+- The tests against these fixtures split: U4 ships **smoke tests** (does `anc audit <fixture>` panic? does the fixture's
   binary run? does the captured stderr file match the script output?), and U5 ships the **verdict-asserting integration
   tests** (which need U1/U2/U3 detection present). U4's smoke tests give U1/U2/U3 implementers immediate breakage signal
   during iteration without depending on detection that doesn't exist yet.
@@ -649,11 +649,11 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
 
 **Test scenarios:**
 
-- *Documentation.* Each fixture's `README.md` documents the parser-family or tier represented, the exact `anc check`
+- *Documentation.* Each fixture's `README.md` documents the parser-family or tier represented, the exact `anc audit`
   invocation expected to verify it, the expected verdict (Pass / Warn / Skip) + Confidence + evidence-message excerpt,
   and (for behavioral fixtures) the `source` field (`tool-derived` with the leaderboard tool name + version, or
   `synthetic-minimal-tool` with the synthetic tool's source path + parser library version).
-- *Smoke test — fixture loads.* For each fixture under `tests/fixtures/known-shapes/`, `anc check <fixture-path>`
+- *Smoke test — fixture loads.* For each fixture under `tests/fixtures/known-shapes/`, `anc audit <fixture-path>`
   completes without panicking against the current pre-tightening detection.
 - *Smoke test — sh-script reproduces the value enumeration from captured stderr.* For each behavioral fixture with
   `expected-stderr.txt`, the test runs the sh-script with the bad-arg-VALUE argv and asserts that the script's stderr
@@ -663,7 +663,7 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
   detection.
 - *Smoke test — source fixtures parse.* For each Rust source fixture, the test shells out to `cargo metadata --offline
   --manifest-path <fixture>/Cargo.toml --format-version=1` and asserts exit zero — `--offline` avoids network flake on
-  CI; the shell-out posture matches `tests/dogfood.rs`'s existing approach for `anc check` and avoids growing
+  CI; the shell-out posture matches `tests/dogfood.rs`'s existing approach for `anc audit` and avoids growing
   `[dev-dependencies]` with the `cargo_metadata` crate. For each Python source fixture, the test parses the `.py` files
   via the existing `Project::discover` path. Catches manifest-parseability problems (malformed `Cargo.toml`, missing
   `[package]`, unresolvable path-deps); does NOT cover detection-relevant issues — those land in U5's verdict-asserting
@@ -706,14 +706,14 @@ verdicts).
   surface.
 - Modify: `tests/dogfood.rs` — add explicit assertions for `p2-json-output` Pass at Confidence::Medium and
   `p2-structured-output` Pass at Confidence::High against the agentnative-cli repo itself.
-- Regenerate: `docs/coverage-matrix.md` (via `anc generate coverage-matrix`).
+- Regenerate: `docs/coverage-matrix.md` (via `anc emit coverage-matrix`).
 - Regenerate: `coverage/matrix.json` (via the same command).
 - Modify: `CHANGELOG.md` — add the next-version entry (per project convention; not bumping VERSION here — `/ship`
   handles version bumps).
 
 **Approach:**
 
-- Integration tests run `anc check <fixture-path> --output json` per fixture, parse the result, and assert the verdict
+- Integration tests run `anc audit <fixture-path> --output json` per fixture, parse the result, and assert the verdict
 - Confidence + evidence-message excerpt match the fixture's documented expectations. Drift catches both regression
   (fixture passes but should fail) and rebound (fixture fails but should pass). Pattern follows
   `tests/dogfood.rs::collect_failed`.
@@ -723,7 +723,7 @@ verdicts).
   resolves to Pass with `confidence == "high"`. R13 explicit.
 - Coverage matrix regen is mechanical: `cargo run -- generate coverage-matrix` writes the artifacts; the existing
   `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` integration test verifies parity. R14.
-- The audience-classifier shift enumeration (R10) is a manual research step at the end of this unit: run `anc check`
+- The audience-classifier shift enumeration (R10) is a manual research step at the end of this unit: run `anc audit`
   against each currently-scored leaderboard member with the new detection, diff the `audience` field against the
   pre-merge baseline, list every shift in the changelog and PR description. The changelog entry names tools that shift
   `human-primary` → `mixed`, `mixed` → `agent-optimized`, etc. — each shift framed as a correctness win.
@@ -742,13 +742,13 @@ verdicts).
 **Test scenarios:**
 
 - *Integration — every U4 behavioral fixture resolves correctly.* For each fixture under
-  `tests/fixtures/known-shapes/<family>/value-enum-echoes/`, `anc check` reports the documented `p2-json-output` verdict
+  `tests/fixtures/known-shapes/<family>/value-enum-echoes/`, `anc audit` reports the documented `p2-json-output` verdict
 - Confidence.
 - *Integration — every U4 source fixture resolves correctly.* For each fixture under
-  `tests/fixtures/known-shapes/<family>/<tier>/`, `anc check` reports the documented `p2-structured-output` (Rust) or
+  `tests/fixtures/known-shapes/<family>/<tier>/`, `anc audit` reports the documented `p2-structured-output` (Rust) or
   `p2-structured-output-python` (Python) verdict + Confidence.
 - *Dogfood — `anc` self-check produces Pass + Medium for `p2-json-output`.* Assertion against the JSON envelope from
-  `anc check $CARGO_MANIFEST_DIR --output json`. **Covers R13.**
+  `anc audit $CARGO_MANIFEST_DIR --output json`. **Covers R13.**
 - *Dogfood — `anc` self-check resolves `p2-structured-output` to its Strong-tier-resolution-dependent Confidence.* Same
   envelope. The asserted `confidence` value depends on the Strong-tier decision from `Open Questions → Deferred from
   Document Review`: `"high"` under option (b) "any same-crate `serde_json`", `"medium"` under option (a) "within-arm

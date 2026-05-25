@@ -290,11 +290,19 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic(expected = "duplicate signal check ID")]
     fn duplicate_signal_in_results_trips_debug_assert() {
         // Two results with the same signal ID is a registry drift hazard —
         // the catalog should guarantee uniqueness. classify() must trip
         // in debug builds rather than silently picking the first entry.
+        //
+        // Gated on `debug_assertions` because `cargo test --release` compiles
+        // `debug_assert!` to a no-op, so the panic this test asserts cannot
+        // fire there. The drift hazard the test guards is a development-time
+        // concern (refactors that introduce duplicate IDs); the release-build
+        // surface is the registry uniqueness contract enforced by the
+        // catalog assembly, which has its own dedicated tests.
         let mut results = all_pass();
         // Duplicate p1-non-interactive.
         results.push(signal_result(SIGNAL_CHECK_IDS[0], CheckStatus::Pass));

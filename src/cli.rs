@@ -51,9 +51,10 @@ pub struct Cli {
     )]
     pub verbose: bool,
 
-    /// Print a curated examples block and exit. Equivalent to
-    /// `anc examples` for tools that prefer a flag-shaped entry point.
-    #[arg(long, global = true, exclusive = true)]
+    /// Print a curated examples block and exit. Pairs with `--output json`
+    /// (or `--json`) so structured-output consumers can fetch the examples
+    /// without parsing the full `--help` body.
+    #[arg(long, global = true)]
     pub examples: bool,
 
     /// Emit JSON output. Short alias for `--output json` on subcommands that

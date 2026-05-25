@@ -334,14 +334,15 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
 /// (`data`) they get from `--help --output json`.
 const EXAMPLES_BLOCK: &str = "\
 Examples:
-  anc check .                                  # default: project at cwd
-  anc check . --output json                    # JSON envelope (agent-friendly)
-  anc check . --output json --principle 2      # filter to P2 (Structured Output)
-  anc check --command ripgrep                  # PATH-resolved binary
-  anc check ./target/release/anc --binary      # behavioral checks only
-  anc generate coverage-matrix                 # emit the spec coverage matrix
+  anc audit .                                  # default: project at cwd
+  anc audit . --output json                    # JSON envelope (agent-friendly)
+  anc audit . --output json --principle 2      # filter to P2 (Structured Output)
+  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit ./target/release/anc --binary      # behavioral checks only
+  anc emit coverage-matrix                     # emit the spec coverage matrix
+  anc emit schema                              # print the scorecard JSON Schema
   anc skill install claude_code                # install the bundle to a host
-  anc schema | jq '.title'                     # inspect the scorecard schema
+  anc emit schema | jq '.title'                # inspect the scorecard schema
 ";
 
 fn emit_examples(json_mode: bool) {

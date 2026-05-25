@@ -365,12 +365,12 @@ fn test_bare_invocation_prints_help() {
 
 // ── Default subcommand tests ──────────────────────────────────────
 //
-// `anc .` should behave like `anc check .` via pre-parse injection.
+// `anc .` should behave like `anc audit .` via pre-parse injection.
 // The injection must NOT fire for bare invocation, --help, or --version.
 
 #[test]
 fn test_default_subcommand_dot_matches_explicit_check() {
-    // `anc .` and `anc check .` must produce the same JSON scorecard.
+    // `anc .` and `anc audit .` must produce the same JSON scorecard.
     let implicit = cmd()
         .args([".", "--output", "json"])
         .output()
@@ -461,7 +461,7 @@ fn test_default_subcommand_does_not_fire_for_version() {
 
 #[test]
 fn test_explicit_subcommand_still_works() {
-    // `anc check .` — must still pass through unchanged.
+    // `anc audit .` — must still pass through unchanged.
     cmd()
         .args(["audit", "."])
         .assert()
@@ -476,7 +476,7 @@ fn test_explicit_subcommand_still_works() {
 
 #[test]
 fn test_command_flag_resolves_path_and_runs_behavioral_only() {
-    // `anc check --command ls` — runs behavioral checks against /bin/ls.
+    // `anc audit --command ls` — runs behavioral checks against /bin/ls.
     // ls is on every POSIX system, so this is safe to rely on in CI.
     #[cfg(unix)]
     {
@@ -504,7 +504,7 @@ fn test_command_flag_resolves_path_and_runs_behavioral_only() {
 #[test]
 fn test_command_flag_via_default_subcommand() {
     // `anc --command ls` — default-subcommand injection yields
-    // `anc check --command ls` which runs behavioral checks.
+    // `anc audit --command ls` which runs behavioral checks.
     #[cfg(unix)]
     {
         cmd()
@@ -528,7 +528,7 @@ fn test_command_flag_unknown_binary_errors() {
 
 #[test]
 fn test_command_flag_conflicts_with_path() {
-    // `anc check --command ls .` — clap rejects both arguments.
+    // `anc audit --command ls .` — clap rejects both arguments.
     cmd()
         .args(["audit", "--command", "ls", "."])
         .assert()
@@ -607,7 +607,7 @@ fn test_quiet_long_flag_alone_exits_2() {
 }
 
 #[test]
-fn test_subcommand_flag_alone_injects_check() {
+fn test_subcommand_flag_alone_injects_audit() {
     // `anc --command ls` — no positional, but `--command` is subcommand-scoped
     // so injection fires. Without this, clap would reject `--command` at the
     // top level.

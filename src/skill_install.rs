@@ -488,7 +488,7 @@ pub fn emit_result_text(env: &InstallEnvelope) -> String {
 }
 
 /// Render the envelope as pretty-printed JSON. Pretty-print matches the
-/// existing `anc check --output json` style and keeps grep / `jaq` queries
+/// existing `anc audit --output json` style and keeps grep / `jaq` queries
 /// readable. `serde_json::to_string_pretty` is infallible for this struct
 /// (no map keys, no non-string keys, no skipped serializer), so we
 /// `expect()` rather than propagate.

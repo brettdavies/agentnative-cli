@@ -44,7 +44,7 @@ pub struct MatrixRow {
 #[derive(Debug, Serialize)]
 pub struct AuditProfileEntry {
     /// Kebab-case flag value (e.g., `"human-tui"`) — exactly what a
-    /// caller passes to `anc check --audit-profile <name>`.
+    /// caller passes to `anc audit --audit-profile <name>`.
     pub name: &'static str,
     /// One-line human description of the category.
     pub description: &'static str,
@@ -62,7 +62,7 @@ pub struct Matrix {
     pub rows: Vec<MatrixRow>,
     pub summary: MatrixSummary,
     /// Every `--audit-profile` category in a stable order. Agents can
-    /// read this instead of running `anc check --help` to discover the
+    /// read this instead of running `anc audit --help` to discover the
     /// valid profile values and what each one excludes.
     pub audit_profiles: Vec<AuditProfileEntry>,
 }

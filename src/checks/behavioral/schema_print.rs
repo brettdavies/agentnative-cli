@@ -128,7 +128,7 @@ pub(crate) fn check_schema_print(help: &HelpOutput) -> CheckStatus {
 
 /// Extended check that also walks one level into each top-level subcommand
 /// to find `schema` exposed as a nested verb (e.g., `anc emit schema`,
-/// `anc generate schema`). Mirrors how an agent discovers the surface by
+/// `anc emit schema`). Mirrors how an agent discovers the surface by
 /// chaining `--help` calls — depth-1 walks are the realistic discovery
 /// bound for an agent that does not have prior knowledge of the CLI.
 pub(crate) fn check_schema_print_with_subhelp(

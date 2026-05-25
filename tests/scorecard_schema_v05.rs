@@ -1,6 +1,6 @@
 //! End-to-end schema 0.5 drift guard.
 //!
-//! Spawns the real binary in each of the three `anc check` modes (project,
+//! Spawns the real binary in each of the three `anc audit` modes (project,
 //! binary, command) and asserts the documented v0.5 keys are all present in
 //! the JSON output. Catches gaps that unit tests can't — argv capture must
 //! actually flow through `inject_default_subcommand`, version probing must
@@ -158,7 +158,7 @@ fn schema_v05_command_mode_emits_full_shape() {
 #[test]
 fn schema_v05_run_invocation_captures_user_intent_pre_injection() {
     // Plan R4: a user who typed `anc <path>` (default-subcommand injection)
-    // must see `anc <path>` in the scorecard, NOT `anc check <path>`.
+    // must see `anc <path>` in the scorecard, NOT `anc audit <path>`.
     let path = fixture_path("perfect-rust");
     let output = cmd()
         .args([&path, "--output", "json"]) // no explicit `check`

@@ -43,7 +43,7 @@ pub const BADGE_ELIGIBILITY_FLOOR_PCT: u32 = 80;
 /// source of truth across `text_hint`, JSON emission, and tests.
 pub const BADGE_BASE_URL: &str = "https://anc.dev";
 
-/// Pre-launch (`0.x`) scorecard shape emitted by `anc check --output json`.
+/// Pre-launch (`0.x`) scorecard shape emitted by `anc audit --output json`.
 ///
 /// **Scorecard-level enum values are kebab-case.** Both `audience` and
 /// `audit_profile` serialize their enum values as kebab-case strings
@@ -241,7 +241,7 @@ pub struct AncInfo {
 /// `Commands::Audit` arm so the scorecard reflects this specific scoring run.
 ///
 /// `invocation` is the user's argv joined with spaces, captured *before*
-/// `inject_default_subcommand` rewrites bare paths into `check <path>`.
+/// `inject_default_subcommand` rewrites bare paths into `audit <path>`.
 /// `started_at` is RFC 3339 / ISO 8601 in UTC. `duration_ms` is wall-clock
 /// milliseconds.
 #[derive(Serialize)]
@@ -259,7 +259,7 @@ pub struct PlatformInfo {
     pub arch: &'static str,
 }
 
-/// What `anc check` was pointed at. `kind` is one of `"project"`, `"binary"`,
+/// What `anc audit` was pointed at. `kind` is one of `"project"`, `"binary"`,
 /// or `"command"`. `path` carries the **basename** of the resolved target
 /// (directory name in project mode, file name in binary mode) — never the
 /// full filesystem path, which would leak operator PII (home-dir username,
@@ -708,7 +708,7 @@ mod tests {
                 version: "0.0.0-test",
             },
             run: RunInfo {
-                invocation: "anc check .".into(),
+                invocation: "anc audit .".into(),
                 started_at: "1970-01-01T00:00:00Z".into(),
                 duration_ms: 0,
                 platform: PlatformInfo {
@@ -1192,7 +1192,7 @@ mod tests {
                 version: "0.0.1-test",
             },
             run: RunInfo {
-                invocation: "anc check .".into(),
+                invocation: "anc audit .".into(),
                 started_at: "2026-04-29T16:00:00Z".into(),
                 duration_ms: 42,
                 platform: PlatformInfo {
@@ -1261,7 +1261,7 @@ mod tests {
         // Emitted values match the synthetic input.
         assert_eq!(parsed["tool"]["name"], "demo");
         assert_eq!(parsed["anc"]["version"], "0.0.1-test");
-        assert_eq!(parsed["run"]["invocation"], "anc check .");
+        assert_eq!(parsed["run"]["invocation"], "anc audit .");
         assert_eq!(parsed["run"]["duration_ms"], 42);
         assert_eq!(parsed["run"]["platform"]["os"], "linux");
         assert_eq!(parsed["target"]["kind"], "project");
@@ -1518,7 +1518,7 @@ mod tests {
                 version: "0.0.0-test",
             },
             run: RunInfo {
-                invocation: "anc check .".into(),
+                invocation: "anc audit .".into(),
                 started_at: "1970-01-01T00:00:00Z".into(),
                 duration_ms: 0,
                 platform: PlatformInfo {

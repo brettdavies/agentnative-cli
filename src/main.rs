@@ -73,7 +73,7 @@ fn main() {
 
 fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // Raw argv is captured by `main()` *before* `inject_default_subcommand`
-    // rewrites bare paths into `check <path>`, so the scorecard's
+    // rewrites bare paths into `audit <path>`, so the scorecard's
     // `run.invocation` reflects what the user actually typed (R4). The
     // injection rewrite is an internal detail; recording it would lie about
     // user intent.
@@ -422,7 +422,7 @@ fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
     }
 }
 
-/// Classify what `anc check` was pointed at into structured `target` metadata.
+/// Classify what `anc audit` was pointed at into structured `target` metadata.
 /// Three modes: `command` (PATH-resolved), `binary` (file argument), `project`
 /// (directory argument).
 ///
@@ -571,7 +571,7 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,
-/// `anc check --command anc` would recursively score `anc` — bounded only by
+/// `anc audit --command anc` would recursively score `anc` — bounded only by
 /// `arg_required_else_help` in `Cli`. Belt-and-suspenders.
 fn probe_tool_version(project: &Project) -> Option<String> {
     let binary = project.binary_paths.first()?;

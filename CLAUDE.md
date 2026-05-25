@@ -125,13 +125,13 @@ is missing from the registry — typos surface at test time, not at render time.
 
 ## Coverage Matrix Artifact Lifecycle
 
-`anc generate coverage-matrix` emits two committed artifacts:
+`anc render coverage-matrix` emits two committed artifacts:
 
 - `docs/coverage-matrix.md` — human-readable table, grouped by principle.
 - `coverage/matrix.json` — machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
   page.
 
-Both files are tracked in git, not `.gitignore`d. `anc generate coverage-matrix --check` exits non-zero when the
+Both files are tracked in git, not `.gitignore`d. `anc render coverage-matrix --check` exits non-zero when the
 committed artifacts disagree with the current registry + `covers()` declarations. The integration test
 `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
 either source.
@@ -172,7 +172,7 @@ Existing field semantics:
   before the v0.3.0 tag — the version pin is sufficient build identity for scorecard consumers and the
   `cargo:rerun-if-changed` watches on `.git/` made cached-build SHAs fragile across local commits.
 - `run` — `RunInfo { invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` is captured **before**
-  `inject_default_subcommand` rewrites argv (so `anc .` records as `"anc ."`, not `"anc check ."`). `started_at` is RFC
+  `inject_default_subcommand` rewrites argv (so `anc .` records as `"anc ."`, not `"anc inspect ."`). `started_at` is RFC
   3339 UTC via the `time` crate (pinned `=0.3.45`). `duration_ms` uses `Instant` for monotonic measurement.
   `platform.{os,arch}` come from `std::env::consts`.
 - `target` — `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
@@ -258,7 +258,7 @@ surface lives in `src/skill_install.rs`:
 
 ## Dogfooding Safety
 
-Behavioral checks spawn the target binary as a child process. When dogfooding (`anc check .`), the target IS
+Behavioral checks spawn the target binary as a child process. When dogfooding (`anc inspect .`), the target IS
 agentnative. Three rules guard the probe:
 
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get

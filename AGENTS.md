@@ -90,7 +90,7 @@ drift.
 
 ## Agent-facing JSON surface
 
-`anc check <target> --output json` emits a `schema_version: "0.5"` scorecard. The schema is at `0.x` while `anc` is
+`anc inspect <target> --output json` emits a `schema_version: "0.5"` scorecard. The schema is at `0.x` while `anc` is
 pre-launch — shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
 norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
 following scorecard-level fields beyond the base `results` / `summary`:

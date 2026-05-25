@@ -8,20 +8,50 @@ use crate::skill_install::SkillHost;
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
 #[command(
-    after_help = "When the first argument is not a subcommand, `check` is inserted automatically:
+    long_about = "The agent-native CLI linter — checks a CLI tool against the agent-readiness spec.
+
+Runs three layers of checks against a target: behavioral (spawn the binary and inspect output), source (ast-grep over Rust/Python files), and project (manifest, completions, bundle presence). The result is a scorecard you can read interactively (text mode) or pipe into another tool (`--output json`).
+
+Default output format is text; color and progress affordances auto-detect the TTY and disappear when stdout is piped or redirected (NO_COLOR-compatible). Use `--verbose` / `-v` to escalate diagnostic detail when debugging unexpected results."
+)]
+#[command(after_help = "Examples:
+  anc check .                          # human scorecard for the current project
+  anc check . --output json            # JSON envelope for agents (--json works too)
+  anc check --command ripgrep          # check a PATH-resolved binary by name
+  anc generate coverage-matrix         # render the spec coverage matrix
+  anc skill install claude_code        # install the bundle into Claude Code
+
+When the first argument is not a subcommand, `check` is inserted automatically:
   anc .                  ≡  anc check .
   anc --command ripgrep  ≡  anc check --command ripgrep
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative checks itself."
-)]
+that prevents recursive self-invocation when agentnative checks itself.")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Suppress non-essential output
+    /// Suppress non-essential output. Default: false (warnings and progress
+    /// notes are written to stderr).
     #[arg(long, short = 'q', global = true, env = "AGENTNATIVE_QUIET")]
     pub quiet: bool,
+
+    /// Escalate diagnostic detail. `-v` is shorthand for `--verbose`.
+    /// Mutually exclusive with `--quiet`; the last flag on the command line
+    /// wins when both appear.
+    #[arg(
+        long,
+        short = 'v',
+        global = true,
+        env = "AGENTNATIVE_VERBOSE",
+        conflicts_with = "quiet"
+    )]
+    pub verbose: bool,
+
+    /// Print a curated examples block and exit. Equivalent to
+    /// `anc examples` for tools that prefer a flag-shaped entry point.
+    #[arg(long, global = true, exclusive = true)]
+    pub examples: bool,
 
     /// Emit JSON output. Short alias for `--output json` on subcommands that
     /// support it. Per the agent-native convention (`p2-should-json-aliases`),
@@ -33,6 +63,20 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Check a CLI project or binary for agent-readiness
+    ///
+    /// Reads the target's project layout (Cargo.toml / pyproject.toml),
+    /// language detection, and binary discovery. Stdin is not consumed —
+    /// pass the target as a positional argument or via `--command <name>`
+    /// to resolve from PATH. `-` is reserved and behaves like any other
+    /// path argument (no special stdin meaning).
+    #[command(after_help = "Examples:
+  anc check .                                  # default: project at cwd
+  anc check . --output json                    # JSON envelope for agents
+  anc check . --output json --principle 2      # filter to P2 (Structured Output)
+  anc check --command ripgrep                  # PATH-resolved binary
+  anc check ./target/release/anc --binary      # behavioral checks only
+
+Defaults: path = `.`, output = text, no principle filter.")]
     Check {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
@@ -82,11 +126,19 @@ pub enum Commands {
         shell: Shell,
     },
     /// Generate build artifacts (coverage matrix, etc.)
+    #[command(after_help = "Examples:
+  anc generate coverage-matrix                          # write docs/coverage-matrix.md + coverage/matrix.json
+  anc generate coverage-matrix --check                  # CI drift guard (non-zero on mismatch)
+  anc generate coverage-matrix --out /tmp/cov.md        # custom output path")]
     Generate {
         #[command(subcommand)]
         artifact: GenerateKind,
     },
     /// Install or manage the agentnative skill bundle
+    #[command(after_help = "Examples:
+  anc skill install claude_code                # install bundle to Claude Code
+  anc skill install claude_code --dry-run      # print the git command without spawning
+  anc skill install codex --output json        # JSON envelope for agent consumption")]
     Skill {
         #[command(subcommand)]
         cmd: SkillCmd,
@@ -98,6 +150,10 @@ pub enum Commands {
     /// agent integrations) validate scorecards against this contract instead
     /// of inferring the shape from sample output. The schema is the same
     /// document committed at `schema/scorecard.schema.json` in this repo.
+    #[command(after_help = "Examples:
+  anc schema                                   # write the schema to stdout
+  anc schema | jq '.title'                     # pipe into jq for inspection
+  anc schema > schema/scorecard.schema.json    # refresh the committed copy")]
     Schema,
 }
 

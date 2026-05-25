@@ -90,6 +90,23 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // --quiet is global (visible in top-level --help for agent discoverability)
     let quiet = cli.quiet;
     let json_alias = cli.json;
+    let verbose = cli.verbose;
+
+    // `--examples` is an early-exit affordance for agents that want the
+    // curated invocation block without parsing the full --help body. Works
+    // in both text and JSON modes; pairs with the `after_help` examples
+    // section so the same content is reachable two ways.
+    if cli.examples {
+        emit_examples(json_mode || json_alias);
+        return Ok(0);
+    }
+
+    if verbose && !quiet {
+        eprintln!(
+            "verbose: anc {ANC_VERSION} starting; raw argv has {} tokens",
+            raw_argv.len()
+        );
+    }
 
     // Bare invocation (no args at all) is handled by clap's arg_required_else_help.
     // A flag-only invocation like `anc -q` parses successfully with `command =
@@ -307,6 +324,31 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     output::emit(&output_str);
 
     Ok(exit_code(&results))
+}
+
+/// Curated invocation block — same content as the top-level `after_help`
+/// `Examples:` section, exposed via `--examples` so agents can fetch it
+/// without parsing the full --help body. JSON mode wraps the block in the
+/// shared envelope shape so structured consumers see the same payload key
+/// (`data`) they get from `--help --output json`.
+const EXAMPLES_BLOCK: &str = "\
+Examples:
+  anc check .                                  # default: project at cwd
+  anc check . --output json                    # JSON envelope (agent-friendly)
+  anc check . --output json --principle 2      # filter to P2 (Structured Output)
+  anc check --command ripgrep                  # PATH-resolved binary
+  anc check ./target/release/anc --binary      # behavioral checks only
+  anc generate coverage-matrix                 # render the spec coverage matrix
+  anc skill install claude_code                # install the bundle to a host
+  anc schema | jq '.title'                     # inspect the scorecard schema
+";
+
+fn emit_examples(json_mode: bool) {
+    if json_mode {
+        output::emit_line(&json_error::render_help(EXAMPLES_BLOCK));
+    } else {
+        output::emit(EXAMPLES_BLOCK);
+    }
 }
 
 /// Convert a `clap::Error` into an exit code, emitting either clap's default

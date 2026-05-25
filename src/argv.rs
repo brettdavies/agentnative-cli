@@ -1,4 +1,4 @@
-//! Pre-parse argv transformation that inserts `audit` as the implicit default
+//! Pre-parse argv transformation that inserts `inspect` as the implicit default
 //! subcommand. Lives separately so `main.rs` stays focused on orchestration
 //! and so the injection logic is unit-testable in isolation.
 
@@ -7,16 +7,16 @@ use std::ffi::{OsStr, OsString};
 
 use crate::cli::Cli;
 
-/// Inject `audit` as the default subcommand when the first non-flag argument
+/// Inject `inspect` as the default subcommand when the first non-flag argument
 /// is not a recognized subcommand.
 ///
 /// Bare invocation (no args beyond the program name) is left untouched so
 /// clap's `arg_required_else_help` still prints help and exits 2. This is a
 /// non-negotiable fork-bomb guard: when agentnative dogfoods itself, a bare
-/// spawn must not recurse into `audit .`.
+/// spawn must not recurse into `inspect .`.
 ///
-/// Flag-value pairing is essential: `anc --command audit` must not be misread
-/// as the explicit `audit` subcommand just because `audit` happens to follow a
+/// Flag-value pairing is essential: `anc --command inspect` must not be misread
+/// as the explicit `inspect` subcommand just because `inspect` happens to follow a
 /// value-taking flag. The scanner consults clap introspection to learn which
 /// flags consume the next token.
 pub fn inject_default_subcommand<I>(args: I) -> Vec<OsString>
@@ -48,7 +48,7 @@ where
     //     subcommand (e.g. `--command`, `--output`, `--principle`).
     // Any flag whose base name is missing from `top_level_flags` is
     // subcommand-scoped — its presence is a strong signal the user wants
-    // the implicit `audit` subcommand even if no positional arg follows.
+    // the implicit `inspect` subcommand even if no positional arg follows.
     let top_level_flags: HashSet<String> = cmd
         .get_arguments()
         .filter(|a| !a.is_positional())
@@ -135,7 +135,7 @@ where
     while i < args.len() {
         let token = args[i].to_string_lossy();
 
-        // POSIX `--` separator: anything after is positional. Inject `audit`
+        // POSIX `--` separator: anything after is positional. Inject `inspect`
         // before it so clap routes the remaining tokens to the Inspect subcommand.
         if token == "--" {
             return if i + 1 >= args.len() {
@@ -147,13 +147,13 @@ where
 
         if token.starts_with('-') {
             // Track whether this flag belongs to a subcommand rather than the
-            // top-level Cli. If so, the user clearly intends `audit` even when
+            // top-level Cli. If so, the user clearly intends `inspect` even when
             // no positional argument follows (e.g. `anc --command rg`).
             if let Some(base) = base_form(&token) {
                 // `--help` / `-h` / `--version` / `-V` are top-level
                 // terminators: clap renders help or version and exits before
                 // any subcommand parser runs. If they appear, the user is
-                // operating on the top-level Cli, not requesting `audit`
+                // operating on the top-level Cli, not requesting `inspect`
                 // injection — even when a value-taking flag like `--output`
                 // follows (which the JSON-mode sniff in main re-reads to
                 // decide envelope shape).
@@ -174,7 +174,7 @@ where
         };
     }
 
-    // No non-flag token. Inject `audit` if any subcommand-scoped flag appeared
+    // No non-flag token. Inject `inspect` if any subcommand-scoped flag appeared
     // (e.g. `anc --command rg`, `anc --output json`). Otherwise leave the args
     // alone so clap can handle bare `--help` / `--version` / `-q` natively.
     if saw_subcommand_flag && !saw_top_level_terminator {
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn global_short_flag_before_path_gets_inspect_injected_in_canonical_position() {
-        // `audit` goes before the global flag so clap parses
+        // `inspect` goes before the global flag so clap parses
         // ["anc", "inspect", "-q", "."] cleanly.
         let out = inject_default_subcommand(args(&["anc", "-q", "."]));
         assert_eq!(names(out), vec!["anc", "inspect", "-q", "."]);
@@ -347,9 +347,9 @@ mod tests {
 
     #[test]
     fn command_flag_value_matching_subcommand_name_is_paired() {
-        // `anc --command audit` — `audit` is the value of `--command`, NOT the
+        // `anc --command inspect` — `inspect` is the value of `--command`, NOT the
         // explicit subcommand. The scanner pairs the value-taking flag with
-        // its argument and proceeds to inject `audit` (because `--command` is
+        // its argument and proceeds to inject `inspect` (because `--command` is
         // a subcommand-scoped flag with no positional following).
         let out = inject_default_subcommand(args(&["anc", "--command", "inspect"]));
         assert_eq!(names(out), vec!["anc", "inspect", "--command", "inspect"]);
@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn output_flag_with_no_positional_injects_inspect() {
         // `anc --output json --source` — only flags, but `--output` and
-        // `--source` are both subcommand-scoped, so inject `audit`.
+        // `--source` are both subcommand-scoped, so inject `inspect`.
         let out = inject_default_subcommand(args(&["anc", "--output", "json", "--source"]));
         assert_eq!(
             names(out),
@@ -378,7 +378,7 @@ mod tests {
     fn equals_form_value_flag_is_recognized_as_subcommand_scoped() {
         // `anc --output=json --source` — equals form. The scanner classifies
         // `--output=json` as a single subcommand-scoped token (no separate
-        // value to skip) and still injects `audit`.
+        // value to skip) and still injects `inspect`.
         let out = inject_default_subcommand(args(&["anc", "--output=json", "--source"]));
         assert_eq!(
             names(out),
@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn double_dash_separator_injects_inspect_before_separator() {
         // `anc -- .` — POSIX `--` ends option parsing. Inject before it so
-        // clap's `audit` parser sees `-- .`.
+        // clap's `inspect` parser sees `-- .`.
         let out = inject_default_subcommand(args(&["anc", "--", "."]));
         assert_eq!(names(out), vec!["anc", "inspect", "--", "."]);
     }

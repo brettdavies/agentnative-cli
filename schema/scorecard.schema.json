@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://anc.dev/scorecard-v0.5.schema.json",
   "title": "agentnative scorecard",
-  "description": "JSON Schema for `anc check --output json` scorecards (schema version 0.5). Hand-written for v0.4.0. A schemars-derived version generated from src/scorecard/mod.rs is planned for a follow-up release; see docs/plans/2026-04-30-002-feat-scorecard-json-schema-plan.md on the `dev` branch.",
+  "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.5). Hand-written for v0.4.0. A schemars-derived version generated from src/scorecard/mod.rs is planned for a follow-up release; see docs/plans/2026-04-30-002-feat-scorecard-json-schema-plan.md on the `dev` branch.",
   "type": "object",
   "required": [
     "schema_version",
@@ -177,7 +177,7 @@
     },
     "TargetInfo": {
       "type": "object",
-      "description": "What `anc check` was pointed at. `path` is the basename (never an absolute path — protects against home-dir PII leaks). Always-present-null keys keep consumer code simple.",
+      "description": "What `anc audit` was pointed at. `path` is the basename (never an absolute path — protects against home-dir PII leaks). Always-present-null keys keep consumer code simple.",
       "required": ["kind", "path", "command"],
       "additionalProperties": false,
       "properties": {

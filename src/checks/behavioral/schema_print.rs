@@ -12,6 +12,7 @@
 //! either a `schema` subcommand or `--schema` flag.
 
 use crate::check::Check;
+use crate::checks::behavioral::subcommand_help::probe_subcommands;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
@@ -51,7 +52,21 @@ impl Check for SchemaPrintCheck {
     fn run(&self, project: &Project) -> anyhow::Result<CheckResult> {
         let status = match project.help_output() {
             None => CheckStatus::Skip("could not probe --help".into()),
-            Some(help) => check_schema_print(help),
+            Some(help) => {
+                // First try the top-level help only. If that's inconclusive,
+                // walk one level into each top-level subcommand to find
+                // `schema` exposed as a nested subcommand (e.g.,
+                // `anc emit schema`). One-level walk matches how an agent
+                // would discover the surface via `--help` chaining.
+                match check_schema_print(help) {
+                    CheckStatus::Fail(_) => {
+                        let runner = project.runner_ref();
+                        let subhelp = probe_subcommands(runner, help);
+                        check_schema_print_with_subhelp(help, &subhelp)
+                    }
+                    other => other,
+                }
+            }
         };
 
         Ok(CheckResult {
@@ -107,6 +122,51 @@ pub(crate) fn check_schema_print(help: &HelpOutput) -> CheckStatus {
         "CLI emits structured output but exposes no `schema` subcommand or \
          `--schema` flag. Agents need a runtime-discoverable schema to pin \
          against shape changes."
+            .into(),
+    )
+}
+
+/// Extended check that also walks one level into each top-level subcommand
+/// to find `schema` exposed as a nested verb (e.g., `anc emit schema`,
+/// `anc emit schema`). Mirrors how an agent discovers the surface by
+/// chaining `--help` calls — depth-1 walks are the realistic discovery
+/// bound for an agent that does not have prior knowledge of the CLI.
+pub(crate) fn check_schema_print_with_subhelp(
+    top_help: &HelpOutput,
+    subhelp: &[(String, HelpOutput)],
+) -> CheckStatus {
+    // Re-run the top-level check first so the applicability gate and
+    // top-level positives short-circuit before we inspect nested help.
+    match check_schema_print(top_help) {
+        CheckStatus::Fail(_) => {}
+        other => return other,
+    }
+
+    for (_name, help) in subhelp {
+        let has_schema_flag = help.flags().iter().any(|f| f.matches("--schema"));
+        if has_schema_flag {
+            return CheckStatus::Pass;
+        }
+        let schema_in_subs = help
+            .subcommands()
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case("schema"));
+        if schema_in_subs {
+            return CheckStatus::Pass;
+        }
+        let schema_section_match = help
+            .raw()
+            .lines()
+            .any(|line| line.starts_with("  ") && line.trim_start().starts_with("schema"));
+        if schema_section_match {
+            return CheckStatus::Pass;
+        }
+    }
+
+    CheckStatus::Fail(
+        "CLI emits structured output but exposes no `schema` subcommand or \
+         `--schema` flag at top level or nested one level deep. Agents need \
+         a runtime-discoverable schema to pin against shape changes."
             .into(),
     )
 }

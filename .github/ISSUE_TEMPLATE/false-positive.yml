@@ -1,12 +1,12 @@
 name: "False positive / false negative"
-description: "Report an anc check that produces the wrong result."
+description: "Report an anc audit that produces the wrong result."
 labels: ["checker-bug"]
 body:
   - type: input
     id: check-id
     attributes:
       label: Check ID
-      description: "The check ID from `anc check` output (e.g., `p4-process-exit`)."
+      description: "The check ID from `anc audit` output (e.g., `p4-process-exit`)."
       placeholder: "p1-non-interactive"
     validations:
       required: true
@@ -25,7 +25,7 @@ body:
       label: Reproduction
       description: "The command you ran, the output, and what the correct result should be."
       placeholder: |
-        $ anc check --command mytool --output json
+        $ anc audit --command mytool --output json
         Check p1-non-interactive: FAIL
         Evidence: "No --no-interactive flag found"
 

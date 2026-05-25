@@ -18,12 +18,12 @@ fn cmd() -> Command {
 fn check_repo_json() -> Value {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let out = cmd()
-        .args(["check", manifest, "--output", "json"])
+        .args(["audit", manifest, "--output", "json"])
         .output()
-        .expect("anc check spawn");
+        .expect("anc audit spawn");
     let stdout = String::from_utf8(out.stdout).expect("utf-8 stdout");
     serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("failed to parse `anc check` JSON: {e}\nstdout:\n{stdout}"))
+        .unwrap_or_else(|e| panic!("failed to parse `anc audit` JSON: {e}\nstdout:\n{stdout}"))
 }
 
 fn collect_failed(parsed: &Value, prefix: &str) -> Vec<String> {
@@ -70,7 +70,7 @@ fn dogfood_no_p5_fail_after_skill_subcommand() {
 /// surface is yet-unshipped — the planned implementation lives at
 /// `docs/plans/2026-04-30-002-feat-scorecard-json-schema-plan.md`
 /// (derived schema via `schemars` build-dep, embedded via `include_str!`,
-/// exposed via `anc generate scorecard-schema`). Remove this allowlist
+/// exposed via `anc emit schema`). Remove this allowlist
 /// when that plan's verb lands and satisfies the check.
 ///
 /// **Temporary allowlist** for `p2-json-errors`: the wire-orphan batch

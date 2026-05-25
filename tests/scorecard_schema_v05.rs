@@ -1,6 +1,6 @@
 //! End-to-end schema 0.5 drift guard.
 //!
-//! Spawns the real binary in each of the three `anc check` modes (project,
+//! Spawns the real binary in each of the three `anc audit` modes (project,
 //! binary, command) and asserts the documented v0.5 keys are all present in
 //! the JSON output. Catches gaps that unit tests can't — argv capture must
 //! actually flow through `inject_default_subcommand`, version probing must
@@ -76,7 +76,7 @@ fn assert_v05_shape(parsed: &Value) {
 fn schema_v05_project_mode_emits_full_shape() {
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -96,7 +96,7 @@ fn schema_v05_project_mode_emits_full_shape() {
 fn schema_v05_binary_mode_emits_full_shape() {
     let path = fixture_path("binary-only/test.sh");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -121,7 +121,7 @@ fn schema_v05_binary_mode_emits_full_shape() {
 fn schema_v05_target_path_carries_no_separators() {
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -141,7 +141,7 @@ fn schema_v05_command_mode_emits_full_shape() {
     // `echo` exists on every supported platform; the version probe is
     // best-effort and tolerates whatever `echo --version` happens to print.
     let output = cmd()
-        .args(["check", "--command", "echo", "--output", "json"])
+        .args(["audit", "--command", "echo", "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -158,7 +158,7 @@ fn schema_v05_command_mode_emits_full_shape() {
 #[test]
 fn schema_v05_run_invocation_captures_user_intent_pre_injection() {
     // Plan R4: a user who typed `anc <path>` (default-subcommand injection)
-    // must see `anc <path>` in the scorecard, NOT `anc check <path>`.
+    // must see `anc <path>` in the scorecard, NOT `anc audit <path>`.
     let path = fixture_path("perfect-rust");
     let output = cmd()
         .args([&path, "--output", "json"]) // no explicit `check`
@@ -180,7 +180,7 @@ fn schema_v05_run_invocation_captures_user_intent_pre_injection() {
 fn schema_v05_run_platform_matches_runtime_os_arch() {
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -194,7 +194,7 @@ fn schema_v05_run_platform_matches_runtime_os_arch() {
 fn schema_v05_run_started_at_parses_as_rfc3339() {
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -226,7 +226,7 @@ fn schema_v05_run_started_at_parses_as_rfc3339() {
 fn schema_v05_anc_version_matches_cargo_pkg_version() {
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -245,7 +245,7 @@ fn schema_v05_badge_block_reflects_live_tool_slug() {
     // checks evolve, so we only assert URL shape, not eligibility).
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -279,7 +279,7 @@ fn schema_v05_badge_eligibility_flag_matches_score() {
     // hard-coded `eligible: true` would slip the floor — caught here.
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args(["check", &path, "--output", "json"])
+        .args(["audit", &path, "--output", "json"])
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");

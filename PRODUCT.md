@@ -34,7 +34,7 @@ can act on without re-reading.
 - **Humans running `anc`** during a refactor or pre-release pass. They are on the command line, mid-flow, and want a
   verdict plus an action. They read at terminal speed, not at desk speed. The high-leverage moment is the first line of
   a finding — if the actionable lede sits in paragraph three, the human stops reading.
-- **AI agents invoking `anc check --output json`** as a step in a larger pipeline. They consume the structured envelope,
+- **AI agents invoking `anc audit --output json`** as a step in a larger pipeline. They consume the structured envelope,
   not the diagnostic prose. But when a finding's `message` field appears in a downstream agent's reasoning trace, that
   message has to make sense without the surrounding context. Agent UX is "does each `message` stand on its own; does
   each `id` stay stable across versions."
@@ -48,7 +48,7 @@ The narrative below describes the linter channel's voice rules; the executable c
 [`styles/brand/README.md`](styles/brand/README.md), generated from the Vale rule pack at `styles/brand/*.yml`, plus the
 CLI-local vocabulary at [`styles/config/vocabularies/cli/`](styles/config/vocabularies/cli/).
 
-- **Second-person imperative IS the register.** "Run `anc check`", "Set `--audit-profile human-tui`", "Pipe the output
+- **Second-person imperative IS the register.** "Run `anc audit`", "Set `--audit-profile human-tui`", "Pipe the output
   to `jq`". This is the linter channel's defining departure from the spec channel — the spec describes contracts in
   third-person standards register; the linter addresses the reader directly. README install steps, CLI examples, and
   help text all use this voice.
@@ -65,7 +65,7 @@ CLI-local vocabulary at [`styles/config/vocabularies/cli/`](styles/config/vocabu
   wrong" → "the value is invalid". "Sorry, that didn't work!" → "exit code 2: invalid argument". Failure is a state, not
   an apology.
 - **Present tense for state, imperative for actions.** "The binary is unreadable" + "make the file readable, then re-run
-  `anc check`." Not "The binary was unreadable" or "You would need to make the file readable."
+  `anc audit`." Not "The binary was unreadable" or "You would need to make the file readable."
 
 ## Linter-specific anti-patterns
 
@@ -77,7 +77,7 @@ These extend the universal bans in [`BRAND.md`](BRAND.md):
 - **Suggestion text that names a flag that doesn't exist.** False canonicalization on the CLI surface — a "did you mean
   `--audit-profiles`?" hint that points at a non-existent flag is worse than no hint at all because the reader acts on
   it. If the suggester can't verify the suggestion is real, the suggester does not run.
-- **Mixing structured output and diagnostic prose on the same stream.** `anc check --output json` writes JSON to stdout;
+- **Mixing structured output and diagnostic prose on the same stream.** `anc audit --output json` writes JSON to stdout;
   diagnostics go to stderr. Mixing them strands consumers who pipe stdout into `jq` and get a parse error from a banner.
   The prose shape (verb + artifact) is the same on either stream; the stream choice is the load-bearing part.
 - **Color codes in the prose itself.** Vale and prose-check operate on content, not formatting. ANSI escapes belong in

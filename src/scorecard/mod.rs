@@ -43,7 +43,7 @@ pub const BADGE_ELIGIBILITY_FLOOR_PCT: u32 = 80;
 /// source of truth across `text_hint`, JSON emission, and tests.
 pub const BADGE_BASE_URL: &str = "https://anc.dev";
 
-/// Pre-launch (`0.x`) scorecard shape emitted by `anc check --output json`.
+/// Pre-launch (`0.x`) scorecard shape emitted by `anc audit --output json`.
 ///
 /// **Scorecard-level enum values are kebab-case.** Both `audience` and
 /// `audit_profile` serialize their enum values as kebab-case strings
@@ -238,10 +238,10 @@ pub struct AncInfo {
 }
 
 /// Run-level metadata. Captured by the runner immediately around the
-/// `Commands::Check` arm so the scorecard reflects this specific scoring run.
+/// `Commands::Audit` arm so the scorecard reflects this specific scoring run.
 ///
 /// `invocation` is the user's argv joined with spaces, captured *before*
-/// `inject_default_subcommand` rewrites bare paths into `check <path>`.
+/// `inject_default_subcommand` rewrites bare paths into `audit <path>`.
 /// `started_at` is RFC 3339 / ISO 8601 in UTC. `duration_ms` is wall-clock
 /// milliseconds.
 #[derive(Serialize)]
@@ -259,7 +259,7 @@ pub struct PlatformInfo {
     pub arch: &'static str,
 }
 
-/// What `anc check` was pointed at. `kind` is one of `"project"`, `"binary"`,
+/// What `anc audit` was pointed at. `kind` is one of `"project"`, `"binary"`,
 /// or `"command"`. `path` carries the **basename** of the resolved target
 /// (directory name in project mode, file name in binary mode) — never the
 /// full filesystem path, which would leak operator PII (home-dir username,
@@ -411,7 +411,29 @@ fn group_order(group: &CheckGroup) -> u8 {
 /// post-summary embed hint when the tool qualifies for the agent-native
 /// badge; below-floor runs see `text_hint()` return `None`, so nothing is
 /// appended (the "do not nag" rule from the badge convention).
-pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInfo>) -> String {
+/// Rendering options for [`format_text`]. Grouped here so future flags
+/// (raw mode, color choice, etc.) can be added without churning every
+/// call site's argument list.
+#[derive(Clone, Copy, Default)]
+pub struct TextOptions {
+    /// Suppress group headers, PASS/SKIP rows, summary, and badge hint —
+    /// emit only `id<TAB>status` per check. Wired to `--raw`.
+    pub raw: bool,
+    /// Apply ANSI styling to status prefixes. Computed by the caller from
+    /// `--color` plus TTY / `NO_COLOR` introspection so the renderer stays
+    /// pure.
+    pub color: bool,
+}
+
+pub fn format_text(
+    results: &[CheckResult],
+    quiet: bool,
+    badge: Option<&BadgeInfo>,
+    opts: TextOptions,
+) -> String {
+    if opts.raw {
+        return format_text_raw(results);
+    }
     let mut out = String::new();
 
     // Group results by CheckGroup
@@ -447,7 +469,9 @@ pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInf
                 }
                 CheckStatus::Error(_) => "ERR ",
             };
-            let _ = writeln!(out, "  [{prefix}] {} ({})", r.label, r.id);
+            let painted =
+                crate::color::paint(crate::color::status_style(prefix, opts.color), prefix);
+            let _ = writeln!(out, "  [{painted}] {} ({})", r.label, r.id);
             match &r.status {
                 CheckStatus::Warn(e) | CheckStatus::Fail(e) | CheckStatus::Error(e) => {
                     for line in e.lines() {
@@ -480,7 +504,26 @@ pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInf
     out
 }
 
-/// Bundle of run-level metadata captured by the runner around `Commands::Check`
+/// `--raw` rendering: one `id<TAB>status` line per result, nothing else.
+/// Status maps to the same five tokens the rich renderer uses (`PASS`,
+/// `WARN`, `FAIL`, `SKIP`, `ERR`) so downstream pipelines see the same
+/// vocabulary in both modes.
+fn format_text_raw(results: &[CheckResult]) -> String {
+    let mut out = String::with_capacity(results.len() * 32);
+    for r in results {
+        let token = match &r.status {
+            CheckStatus::Pass => "PASS",
+            CheckStatus::Warn(_) => "WARN",
+            CheckStatus::Fail(_) => "FAIL",
+            CheckStatus::Skip(_) => "SKIP",
+            CheckStatus::Error(_) => "ERR",
+        };
+        let _ = writeln!(out, "{}\t{token}", r.id);
+    }
+    out
+}
+
+/// Bundle of run-level metadata captured by the runner around `Commands::Audit`
 /// and threaded into the scorecard. Grouped to keep `build_scorecard`'s
 /// signature manageable as schema `0.x` continues to add fields. The runner
 /// owns capture; this module owns serialization shape.
@@ -665,7 +708,7 @@ mod tests {
                 version: "0.0.0-test",
             },
             run: RunInfo {
-                invocation: "anc check .".into(),
+                invocation: "anc audit .".into(),
                 started_at: "1970-01-01T00:00:00Z".into(),
                 duration_ms: 0,
                 platform: PlatformInfo {
@@ -1149,7 +1192,7 @@ mod tests {
                 version: "0.0.1-test",
             },
             run: RunInfo {
-                invocation: "anc check .".into(),
+                invocation: "anc audit .".into(),
                 started_at: "2026-04-29T16:00:00Z".into(),
                 duration_ms: 42,
                 platform: PlatformInfo {
@@ -1218,7 +1261,7 @@ mod tests {
         // Emitted values match the synthetic input.
         assert_eq!(parsed["tool"]["name"], "demo");
         assert_eq!(parsed["anc"]["version"], "0.0.1-test");
-        assert_eq!(parsed["run"]["invocation"], "anc check .");
+        assert_eq!(parsed["run"]["invocation"], "anc audit .");
         assert_eq!(parsed["run"]["duration_ms"], 42);
         assert_eq!(parsed["run"]["platform"]["os"], "linux");
         assert_eq!(parsed["target"]["kind"], "project");
@@ -1390,7 +1433,7 @@ mod tests {
     fn format_text_appends_hint_when_badge_eligible() {
         let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
         let badge = compute_badge(&results, "demo");
-        let text = format_text(&results, false, Some(&badge));
+        let text = format_text(&results, false, Some(&badge), TextOptions::default());
         assert!(
             text.contains("qualifies for the agent-native badge"),
             "format_text must append the badge hint when eligible:\n{text}",
@@ -1408,7 +1451,7 @@ mod tests {
             make_result("c2", CheckStatus::Fail("b".into()), CheckGroup::P2),
         ];
         let badge = compute_badge(&results, "needs-work");
-        let text = format_text(&results, false, Some(&badge));
+        let text = format_text(&results, false, Some(&badge), TextOptions::default());
         assert!(
             !text.contains("agent-native badge"),
             "below-floor runs must not nag:\n{text}",
@@ -1421,8 +1464,40 @@ mod tests {
         // exercising the formatter alone) get the historical output with
         // no badge tail.
         let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
-        let text = format_text(&results, false, None);
+        let text = format_text(&results, false, None, TextOptions::default());
         assert!(!text.contains("agent-native badge"));
+    }
+
+    #[test]
+    fn format_text_raw_emits_id_tab_status_per_line() {
+        let results = vec![
+            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c2", CheckStatus::Warn("watch this".into()), CheckGroup::P2),
+            make_result("c3", CheckStatus::Fail("broken".into()), CheckGroup::P3),
+            make_result("c4", CheckStatus::Skip("n/a".into()), CheckGroup::P4),
+        ];
+        let opts = TextOptions {
+            raw: true,
+            color: false,
+        };
+        let text = format_text(&results, false, None, opts);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines, vec!["c1\tPASS", "c2\tWARN", "c3\tFAIL", "c4\tSKIP"]);
+    }
+
+    #[test]
+    fn format_text_color_wraps_status_prefix() {
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let opts = TextOptions {
+            raw: false,
+            color: true,
+        };
+        let text = format_text(&results, false, None, opts);
+        // Color enabled means the PASS prefix carries ANSI escapes.
+        assert!(
+            text.contains('\u{1b}'),
+            "color=true should embed ANSI escapes around the PASS prefix:\n{text}",
+        );
     }
 
     #[test]
@@ -1443,7 +1518,7 @@ mod tests {
                 version: "0.0.0-test",
             },
             run: RunInfo {
-                invocation: "anc check .".into(),
+                invocation: "anc audit .".into(),
                 started_at: "1970-01-01T00:00:00Z".into(),
                 duration_ms: 0,
                 platform: PlatformInfo {

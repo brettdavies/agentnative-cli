@@ -28,7 +28,7 @@ use check::Check;
 use checks::behavioral::all_behavioral_checks;
 use checks::project::all_project_checks;
 use checks::source::all_source_checks;
-use cli::{Cli, Commands, OutputFormat, RenderKind, SkillCmd};
+use cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
 use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
@@ -138,8 +138,8 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 generate(shell, &mut cmd, "anc", &mut std::io::stdout());
                 return Ok(0);
             }
-            Some(Commands::Render { artifact }) => {
-                return run_render(artifact);
+            Some(Commands::Emit { artifact }) => {
+                return run_emit(artifact);
             }
             Some(Commands::Skill { cmd }) => {
                 return run_skill(cmd, json_alias);
@@ -339,7 +339,7 @@ Examples:
   anc check . --output json --principle 2      # filter to P2 (Structured Output)
   anc check --command ripgrep                  # PATH-resolved binary
   anc check ./target/release/anc --binary      # behavioral checks only
-  anc generate coverage-matrix                 # render the spec coverage matrix
+  anc generate coverage-matrix                 # emit the spec coverage matrix
   anc skill install claude_code                # install the bundle to a host
   anc schema | jq '.title'                     # inspect the scorecard schema
 ";
@@ -711,9 +711,9 @@ fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {
     }
 }
 
-fn run_render(artifact: RenderKind) -> Result<i32, AppError> {
+fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
     match artifact {
-        RenderKind::CoverageMatrix {
+        EmitKind::CoverageMatrix {
             out,
             json_out,
             check,
@@ -741,7 +741,7 @@ fn run_render(artifact: RenderKind) -> Result<i32, AppError> {
             if check {
                 // Drift mode: compare rendered output to committed artifacts.
                 // Fail with actionable evidence so CI points the operator at
-                // `anc render coverage-matrix` as the fix.
+                // `anc emit coverage-matrix` as the fix.
                 let existing_md = std::fs::read_to_string(&out).unwrap_or_default();
                 let existing_json = std::fs::read_to_string(&json_out).unwrap_or_default();
                 let md_matches = normalize_trailing_newline(&existing_md)
@@ -750,13 +750,13 @@ fn run_render(artifact: RenderKind) -> Result<i32, AppError> {
                     == normalize_trailing_newline(&rendered_json);
                 if !md_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc render coverage-matrix`",
+                        "error: {} is out of date — run `anc emit coverage-matrix`",
                         out.display()
                     );
                 }
                 if !json_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc render coverage-matrix`",
+                        "error: {} is out of date — run `anc emit coverage-matrix`",
                         json_out.display()
                     );
                 }
@@ -797,7 +797,7 @@ fn run_render(artifact: RenderKind) -> Result<i32, AppError> {
             );
             Ok(0)
         }
-        RenderKind::Schema => {
+        EmitKind::Schema => {
             output::emit(SCORECARD_SCHEMA_JSON);
             Ok(0)
         }

@@ -125,13 +125,13 @@ is missing from the registry — typos surface at test time, not at render time.
 
 ## Coverage Matrix Artifact Lifecycle
 
-`anc render coverage-matrix` emits two committed artifacts:
+`anc emit coverage-matrix` emits two committed artifacts:
 
 - `docs/coverage-matrix.md` — human-readable table, grouped by principle.
 - `coverage/matrix.json` — machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
   page.
 
-Both files are tracked in git, not `.gitignore`d. `anc render coverage-matrix --check` exits non-zero when the
+Both files are tracked in git, not `.gitignore`d. `anc emit coverage-matrix --check` exits non-zero when the
 committed artifacts disagree with the current registry + `covers()` declarations. The integration test
 `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
 either source.

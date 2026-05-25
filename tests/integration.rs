@@ -42,7 +42,7 @@ fn test_generate_coverage_matrix_writes_artifacts() {
 
     cmd()
         .args([
-            "render",
+            "emit",
             "coverage-matrix",
             "--out",
             md.to_str().expect("utf8 path"),
@@ -68,7 +68,7 @@ fn test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts() {
     // coverage/matrix.json must pass. If this fails, the registry or a
     // check's covers() drifted without the artifacts being regenerated.
     cmd()
-        .args(["render", "coverage-matrix", "--check"])
+        .args(["emit", "coverage-matrix", "--check"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .assert()
         .success();
@@ -516,7 +516,11 @@ fn test_command_flag_via_default_subcommand() {
 #[test]
 fn test_command_flag_unknown_binary_errors() {
     cmd()
-        .args(["inspect", "--command", "this-binary-does-not-exist-xyz-12345"])
+        .args([
+            "inspect",
+            "--command",
+            "this-binary-does-not-exist-xyz-12345",
+        ])
         .assert()
         .code(2)
         .stderr(predicate::str::contains(

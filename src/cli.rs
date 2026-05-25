@@ -20,8 +20,8 @@ Input model: targets are passed as positional path arguments or via `--command <
   anc inspect .                          # human scorecard for the current project
   anc inspect . --output json            # JSON envelope for agents (--json works too)
   anc inspect --command ripgrep          # inspect a PATH-resolved binary by name
-  anc render coverage-matrix             # render the spec coverage matrix
-  anc render schema                      # print the scorecard JSON Schema
+  anc emit coverage-matrix             # emit the spec coverage matrix
+  anc emit schema                      # print the scorecard JSON Schema
   anc skill install claude_code          # install the bundle into Claude Code
 
 When the first argument is not a subcommand, `inspect` is inserted automatically:
@@ -163,14 +163,14 @@ Defaults: path = `.`, output = text, no principle filter.")]
     },
     /// Render build artifacts (coverage matrix, scorecard schema)
     #[command(after_help = "Examples:
-  anc render coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
-  anc render coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
-  anc render coverage-matrix --out /tmp/cov.md          # custom output path
-  anc render schema                                     # print the scorecard JSON Schema to stdout
-  anc render schema | jq '.title'                       # pipe into jq for inspection")]
-    Render {
+  anc emit coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
+  anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
+  anc emit coverage-matrix --out /tmp/cov.md          # custom output path
+  anc emit schema                                     # print the scorecard JSON Schema to stdout
+  anc emit schema | jq '.title'                       # pipe into jq for inspection")]
+    Emit {
         #[command(subcommand)]
-        artifact: RenderKind,
+        artifact: EmitKind,
     },
     /// Install or manage the agentnative skill bundle
     ///
@@ -236,7 +236,7 @@ pub enum SkillCmd {
 }
 
 #[derive(Subcommand)]
-pub enum RenderKind {
+pub enum EmitKind {
     /// Render the spec coverage matrix (registry → checks → artifact).
     CoverageMatrix {
         /// Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`.

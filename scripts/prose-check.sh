@@ -129,7 +129,7 @@ done
 #      exclusion list does not cover it).
 #   3. `tests/fixtures/` — Rust integration-test fixtures, some of which carry
 #      deliberately malformed prose (perfect-rust/AGENTS.md and siblings).
-#   4. `coverage-matrix.md` — generated artifact emitted by `anc render
+#   4. `coverage-matrix.md` — generated artifact emitted by `anc emit
 #      coverage-matrix`; not authored prose.
 # These edits are restored after each `bash scripts/sync-prose-tooling.sh` run
 # until upstream lands the `--exclude PATTERN` flag tracked at

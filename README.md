@@ -84,7 +84,7 @@ anc . --source
 anc . --output json
 
 # Print the scorecard JSON Schema (draft 2020-12)
-anc render schema
+anc emit schema
 
 # Filter by principle
 anc . --principle 3
@@ -277,7 +277,7 @@ anc inspect . --output json
 
 Produces a self-describing scoring run record (`schema_version: "0.5"`) with results, summary, coverage against the
 eight principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform,
-and how. Each scorecard conforms to the JSON Schema emitted by `anc render schema` (also committed at
+and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema` (also committed at
 `schema/scorecard.schema.json`):
 
 ```json

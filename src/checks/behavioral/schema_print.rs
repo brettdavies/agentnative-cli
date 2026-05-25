@@ -56,7 +56,7 @@ impl Check for SchemaPrintCheck {
                 // First try the top-level help only. If that's inconclusive,
                 // walk one level into each top-level subcommand to find
                 // `schema` exposed as a nested subcommand (e.g.,
-                // `anc render schema`). One-level walk matches how an agent
+                // `anc emit schema`). One-level walk matches how an agent
                 // would discover the surface via `--help` chaining.
                 match check_schema_print(help) {
                     CheckStatus::Fail(_) => {
@@ -127,7 +127,7 @@ pub(crate) fn check_schema_print(help: &HelpOutput) -> CheckStatus {
 }
 
 /// Extended check that also walks one level into each top-level subcommand
-/// to find `schema` exposed as a nested verb (e.g., `anc render schema`,
+/// to find `schema` exposed as a nested verb (e.g., `anc emit schema`,
 /// `anc generate schema`). Mirrors how an agent discovers the surface by
 /// chaining `--help` calls — depth-1 walks are the realistic discovery
 /// bound for an agent that does not have prior knowledge of the CLI.

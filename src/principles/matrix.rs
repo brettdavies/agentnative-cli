@@ -6,7 +6,7 @@
 //! - `coverage/matrix.json` — machine-readable, consumed by the site's
 //!   `/coverage` page.
 //!
-//! The CLI surfaces this as `anc render coverage-matrix` with `--check`
+//! The CLI surfaces this as `anc emit coverage-matrix` with `--check`
 //! to fail CI when committed artifacts drift from the registry + checks.
 
 use std::collections::BTreeMap;
@@ -89,7 +89,7 @@ pub struct LevelSummary {
 }
 
 const SCHEMA_VERSION: &str = "1.0";
-const GENERATED_BY: &str = "anc render coverage-matrix";
+const GENERATED_BY: &str = "anc emit coverage-matrix";
 
 /// Build the matrix from the requirement registry + a slice of checks.
 /// Ownership stays with the caller; this reads `check.covers()` references.

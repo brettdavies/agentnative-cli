@@ -8,7 +8,7 @@ body:
       label: What happened?
       description: "Describe the bug. Include the command, actual output, and expected output."
       placeholder: |
-        $ anc inspect --command mytool --output json
+        $ anc audit --command mytool --output json
         Error: thread 'main' panicked at 'index out of bounds'
 
         Expected: valid JSON output or a clean error message.

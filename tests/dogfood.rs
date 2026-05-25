@@ -18,7 +18,7 @@ fn cmd() -> Command {
 fn check_repo_json() -> Value {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let out = cmd()
-        .args(["inspect", manifest, "--output", "json"])
+        .args(["audit", manifest, "--output", "json"])
         .output()
         .expect("anc check spawn");
     let stdout = String::from_utf8(out.stdout).expect("utf-8 stdout");

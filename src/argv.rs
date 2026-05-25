@@ -1,4 +1,4 @@
-//! Pre-parse argv transformation that inserts `inspect` as the implicit default
+//! Pre-parse argv transformation that inserts `audit` as the implicit default
 //! subcommand. Lives separately so `main.rs` stays focused on orchestration
 //! and so the injection logic is unit-testable in isolation.
 
@@ -7,16 +7,16 @@ use std::ffi::{OsStr, OsString};
 
 use crate::cli::Cli;
 
-/// Inject `inspect` as the default subcommand when the first non-flag argument
+/// Inject `audit` as the default subcommand when the first non-flag argument
 /// is not a recognized subcommand.
 ///
 /// Bare invocation (no args beyond the program name) is left untouched so
 /// clap's `arg_required_else_help` still prints help and exits 2. This is a
 /// non-negotiable fork-bomb guard: when agentnative dogfoods itself, a bare
-/// spawn must not recurse into `inspect .`.
+/// spawn must not recurse into `audit .`.
 ///
-/// Flag-value pairing is essential: `anc --command inspect` must not be misread
-/// as the explicit `inspect` subcommand just because `inspect` happens to follow a
+/// Flag-value pairing is essential: `anc --command audit` must not be misread
+/// as the explicit `audit` subcommand just because `audit` happens to follow a
 /// value-taking flag. The scanner consults clap introspection to learn which
 /// flags consume the next token.
 pub fn inject_default_subcommand<I>(args: I) -> Vec<OsString>
@@ -48,7 +48,7 @@ where
     //     subcommand (e.g. `--command`, `--output`, `--principle`).
     // Any flag whose base name is missing from `top_level_flags` is
     // subcommand-scoped — its presence is a strong signal the user wants
-    // the implicit `inspect` subcommand even if no positional arg follows.
+    // the implicit `audit` subcommand even if no positional arg follows.
     let top_level_flags: HashSet<String> = cmd
         .get_arguments()
         .filter(|a| !a.is_positional())
@@ -121,10 +121,10 @@ where
         false
     };
 
-    let inject_inspect = |args: Vec<OsString>| -> Vec<OsString> {
+    let inject_audit = |args: Vec<OsString>| -> Vec<OsString> {
         let mut injected = Vec::with_capacity(args.len() + 1);
         injected.push(args[0].clone());
-        injected.push(OsString::from("inspect"));
+        injected.push(OsString::from("audit"));
         injected.extend(args.into_iter().skip(1));
         injected
     };
@@ -135,25 +135,25 @@ where
     while i < args.len() {
         let token = args[i].to_string_lossy();
 
-        // POSIX `--` separator: anything after is positional. Inject `inspect`
-        // before it so clap routes the remaining tokens to the Inspect subcommand.
+        // POSIX `--` separator: anything after is positional. Inject `audit`
+        // before it so clap routes the remaining tokens to the Audit subcommand.
         if token == "--" {
             return if i + 1 >= args.len() {
                 args
             } else {
-                inject_inspect(args)
+                inject_audit(args)
             };
         }
 
         if token.starts_with('-') {
             // Track whether this flag belongs to a subcommand rather than the
-            // top-level Cli. If so, the user clearly intends `inspect` even when
+            // top-level Cli. If so, the user clearly intends `audit` even when
             // no positional argument follows (e.g. `anc --command rg`).
             if let Some(base) = base_form(&token) {
                 // `--help` / `-h` / `--version` / `-V` are top-level
                 // terminators: clap renders help or version and exits before
                 // any subcommand parser runs. If they appear, the user is
-                // operating on the top-level Cli, not requesting `inspect`
+                // operating on the top-level Cli, not requesting `audit`
                 // injection — even when a value-taking flag like `--output`
                 // follows (which the JSON-mode sniff in main re-reads to
                 // decide envelope shape).
@@ -170,15 +170,15 @@ where
         return if known.iter().any(|k| k == &*token) {
             args
         } else {
-            inject_inspect(args)
+            inject_audit(args)
         };
     }
 
-    // No non-flag token. Inject `inspect` if any subcommand-scoped flag appeared
+    // No non-flag token. Inject `audit` if any subcommand-scoped flag appeared
     // (e.g. `anc --command rg`, `anc --output json`). Otherwise leave the args
     // alone so clap can handle bare `--help` / `--version` / `-q` natively.
     if saw_subcommand_flag && !saw_top_level_terminator {
-        return inject_inspect(args);
+        return inject_audit(args);
     }
 
     args
@@ -193,7 +193,7 @@ where
 ///
 /// Captured *before* `inject_default_subcommand` rewrites the args, so the
 /// recorded command reflects user intent (`anc .` stays as `anc .`, not
-/// `anc inspect .`).
+/// `anc audit .`).
 pub fn format_invocation(args: &[OsString]) -> String {
     args.iter()
         .map(|a| quote_arg(a))
@@ -277,29 +277,29 @@ mod tests {
     }
 
     #[test]
-    fn dot_path_gets_inspect_injected() {
+    fn dot_path_gets_audit_injected() {
         let out = inject_default_subcommand(args(&["anc", "."]));
-        assert_eq!(names(out), vec!["anc", "inspect", "."]);
+        assert_eq!(names(out), vec!["anc", "audit", "."]);
     }
 
     #[test]
-    fn global_short_flag_before_path_gets_inspect_injected_in_canonical_position() {
-        // `inspect` goes before the global flag so clap parses
-        // ["anc", "inspect", "-q", "."] cleanly.
+    fn global_short_flag_before_path_gets_audit_injected_in_canonical_position() {
+        // `audit` goes before the global flag so clap parses
+        // ["anc", "audit", "-q", "."] cleanly.
         let out = inject_default_subcommand(args(&["anc", "-q", "."]));
-        assert_eq!(names(out), vec!["anc", "inspect", "-q", "."]);
+        assert_eq!(names(out), vec!["anc", "audit", "-q", "."]);
     }
 
     #[test]
-    fn global_long_flag_before_path_gets_inspect_injected() {
+    fn global_long_flag_before_path_gets_audit_injected() {
         let out = inject_default_subcommand(args(&["anc", "--quiet", "."]));
-        assert_eq!(names(out), vec!["anc", "inspect", "--quiet", "."]);
+        assert_eq!(names(out), vec!["anc", "audit", "--quiet", "."]);
     }
 
     #[test]
-    fn explicit_inspect_subcommand_is_untouched() {
-        let out = inject_default_subcommand(args(&["anc", "inspect", "."]));
-        assert_eq!(names(out), vec!["anc", "inspect", "."]);
+    fn explicit_audit_subcommand_is_untouched() {
+        let out = inject_default_subcommand(args(&["anc", "audit", "."]));
+        assert_eq!(names(out), vec!["anc", "audit", "."]);
     }
 
     #[test]
@@ -341,36 +341,36 @@ mod tests {
 
     #[test]
     fn help_subcommand_with_target_passes_through() {
-        let out = inject_default_subcommand(args(&["anc", "help", "inspect"]));
-        assert_eq!(names(out), vec!["anc", "help", "inspect"]);
+        let out = inject_default_subcommand(args(&["anc", "help", "audit"]));
+        assert_eq!(names(out), vec!["anc", "help", "audit"]);
     }
 
     #[test]
     fn command_flag_value_matching_subcommand_name_is_paired() {
-        // `anc --command inspect` — `inspect` is the value of `--command`, NOT the
+        // `anc --command audit` — `audit` is the value of `--command`, NOT the
         // explicit subcommand. The scanner pairs the value-taking flag with
-        // its argument and proceeds to inject `inspect` (because `--command` is
+        // its argument and proceeds to inject `audit` (because `--command` is
         // a subcommand-scoped flag with no positional following).
-        let out = inject_default_subcommand(args(&["anc", "--command", "inspect"]));
-        assert_eq!(names(out), vec!["anc", "inspect", "--command", "inspect"]);
+        let out = inject_default_subcommand(args(&["anc", "--command", "audit"]));
+        assert_eq!(names(out), vec!["anc", "audit", "--command", "audit"]);
     }
 
     #[test]
-    fn command_flag_with_no_positional_injects_inspect() {
+    fn command_flag_with_no_positional_injects_audit() {
         // `anc --command rg` — subcommand-scoped flag with no positional.
         // Without injection, clap would reject `--command` at the top level.
         let out = inject_default_subcommand(args(&["anc", "--command", "rg"]));
-        assert_eq!(names(out), vec!["anc", "inspect", "--command", "rg"]);
+        assert_eq!(names(out), vec!["anc", "audit", "--command", "rg"]);
     }
 
     #[test]
-    fn output_flag_with_no_positional_injects_inspect() {
+    fn output_flag_with_no_positional_injects_audit() {
         // `anc --output json --source` — only flags, but `--output` and
-        // `--source` are both subcommand-scoped, so inject `inspect`.
+        // `--source` are both subcommand-scoped, so inject `audit`.
         let out = inject_default_subcommand(args(&["anc", "--output", "json", "--source"]));
         assert_eq!(
             names(out),
-            vec!["anc", "inspect", "--output", "json", "--source"]
+            vec!["anc", "audit", "--output", "json", "--source"]
         );
     }
 
@@ -378,11 +378,11 @@ mod tests {
     fn equals_form_value_flag_is_recognized_as_subcommand_scoped() {
         // `anc --output=json --source` — equals form. The scanner classifies
         // `--output=json` as a single subcommand-scoped token (no separate
-        // value to skip) and still injects `inspect`.
+        // value to skip) and still injects `audit`.
         let out = inject_default_subcommand(args(&["anc", "--output=json", "--source"]));
         assert_eq!(
             names(out),
-            vec!["anc", "inspect", "--output=json", "--source"]
+            vec!["anc", "audit", "--output=json", "--source"]
         );
     }
 
@@ -390,15 +390,15 @@ mod tests {
     fn principle_value_flag_pairs_with_numeric_value() {
         // `anc --principle 4` — `4` is the value, not a path candidate.
         let out = inject_default_subcommand(args(&["anc", "--principle", "4"]));
-        assert_eq!(names(out), vec!["anc", "inspect", "--principle", "4"]);
+        assert_eq!(names(out), vec!["anc", "audit", "--principle", "4"]);
     }
 
     #[test]
-    fn double_dash_separator_injects_inspect_before_separator() {
+    fn double_dash_separator_injects_audit_before_separator() {
         // `anc -- .` — POSIX `--` ends option parsing. Inject before it so
-        // clap's `inspect` parser sees `-- .`.
+        // clap's `audit` parser sees `-- .`.
         let out = inject_default_subcommand(args(&["anc", "--", "."]));
-        assert_eq!(names(out), vec!["anc", "inspect", "--", "."]);
+        assert_eq!(names(out), vec!["anc", "audit", "--", "."]);
     }
 
     #[test]
@@ -409,29 +409,29 @@ mod tests {
     }
 
     #[test]
-    fn directory_path_gets_inspect_injected() {
+    fn directory_path_gets_audit_injected() {
         let out = inject_default_subcommand(args(&["anc", "/some/dir"]));
-        assert_eq!(names(out), vec!["anc", "inspect", "/some/dir"]);
+        assert_eq!(names(out), vec!["anc", "audit", "/some/dir"]);
     }
 
     #[test]
     fn trailing_flags_pass_through() {
         let out = inject_default_subcommand(args(&["anc", ".", "--output", "json"]));
-        assert_eq!(names(out), vec!["anc", "inspect", ".", "--output", "json"]);
+        assert_eq!(names(out), vec!["anc", "audit", ".", "--output", "json"]);
     }
 
     // ---- format_invocation ----
 
     #[test]
     fn format_invocation_simple_args_unquoted() {
-        let out = format_invocation(&args(&["anc", "inspect", "."]));
-        assert_eq!(out, "anc inspect .");
+        let out = format_invocation(&args(&["anc", "audit", "."]));
+        assert_eq!(out, "anc audit .");
     }
 
     #[test]
     fn format_invocation_pre_injection_user_intent_preserved() {
         // Plan R4 intent check: a user who typed `anc .` MUST see `anc .` in
-        // the scorecard, not `anc inspect .` (which would be a fact about anc's
+        // the scorecard, not `anc audit .` (which would be a fact about anc's
         // internals, not the user's command).
         let out = format_invocation(&args(&["anc", "."]));
         assert_eq!(out, "anc .");
@@ -439,21 +439,21 @@ mod tests {
 
     #[test]
     fn format_invocation_arg_with_space_is_single_quoted() {
-        let out = format_invocation(&args(&["anc", "inspect", "/tmp/with space/repo"]));
-        assert_eq!(out, "anc inspect '/tmp/with space/repo'");
+        let out = format_invocation(&args(&["anc", "audit", "/tmp/with space/repo"]));
+        assert_eq!(out, "anc audit '/tmp/with space/repo'");
     }
 
     #[test]
     fn format_invocation_arg_with_single_quote_is_escaped() {
         // POSIX-shell escape: close, emit `\'`, reopen.
-        let out = format_invocation(&args(&["anc", "inspect", "ab'cd"]));
-        assert_eq!(out, "anc inspect 'ab'\\''cd'");
+        let out = format_invocation(&args(&["anc", "audit", "ab'cd"]));
+        assert_eq!(out, "anc audit 'ab'\\''cd'");
     }
 
     #[test]
     fn format_invocation_arg_with_metacharacters_is_quoted() {
-        let out = format_invocation(&args(&["anc", "inspect", "$(rm -rf)"]));
-        assert_eq!(out, "anc inspect '$(rm -rf)'");
+        let out = format_invocation(&args(&["anc", "audit", "$(rm -rf)"]));
+        assert_eq!(out, "anc audit '$(rm -rf)'");
     }
 
     #[test]

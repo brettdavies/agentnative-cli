@@ -1,5 +1,5 @@
 name: "Feature request"
-description: "Suggest a new feature or improvement for the anc inspecter."
+description: "Suggest a new feature or improvement for the anc auditer."
 labels: ["enhancement"]
 body:
   - type: textarea

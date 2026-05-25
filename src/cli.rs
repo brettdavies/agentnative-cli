@@ -17,19 +17,19 @@ Default output format is text; color and progress affordances auto-detect the TT
 Input model: targets are passed as positional path arguments or via `--command <name>`. Stdin is not consumed; `-` is reserved and behaves like a literal filename rather than a stdin sentinel."
 )]
 #[command(after_help = "Examples:
-  anc inspect .                          # human scorecard for the current project
-  anc inspect . --output json            # JSON envelope for agents (--json works too)
-  anc inspect --command ripgrep          # inspect a PATH-resolved binary by name
+  anc audit .                          # human scorecard for the current project
+  anc audit . --output json            # JSON envelope for agents (--json works too)
+  anc audit --command ripgrep          # audit a PATH-resolved binary by name
   anc emit coverage-matrix             # emit the spec coverage matrix
   anc emit schema                      # print the scorecard JSON Schema
   anc skill install claude_code          # install the bundle into Claude Code
 
-When the first argument is not a subcommand, `inspect` is inserted automatically:
-  anc .                  ≡  anc inspect .
-  anc --command ripgrep  ≡  anc inspect --command ripgrep
+When the first argument is not a subcommand, `audit` is inserted automatically:
+  anc .                  ≡  anc audit .
+  anc --command ripgrep  ≡  anc audit --command ripgrep
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative inspects itself.")]
+that prevents recursive self-invocation when agentnative audits itself.")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -98,7 +98,7 @@ pub enum ColorChoice {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Inspect a CLI project or binary for agent-readiness
+    /// Audit a CLI project or binary for agent-readiness
     ///
     /// Reads the target's project layout (Cargo.toml / pyproject.toml),
     /// language detection, and binary discovery. Stdin is not consumed.
@@ -106,14 +106,14 @@ pub enum Commands {
     /// to resolve from PATH. `-` is reserved and behaves like any other
     /// path argument (no special stdin meaning).
     #[command(after_help = "Examples:
-  anc inspect .                                  # default: project at cwd
-  anc inspect . --output json                    # JSON envelope for agents
-  anc inspect . --output json --principle 2      # filter to P2 (Structured Output)
-  anc inspect --command ripgrep                  # PATH-resolved binary
-  anc inspect ./target/release/anc --binary      # behavioral checks only
+  anc audit .                                  # default: project at cwd
+  anc audit . --output json                    # JSON envelope for agents
+  anc audit . --output json --principle 2      # filter to P2 (Structured Output)
+  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit ./target/release/anc --binary      # behavioral checks only
 
 Defaults: path = `.`, output = text, no principle filter.")]
-    Inspect {
+    Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
         path: std::path::PathBuf,

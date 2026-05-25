@@ -114,7 +114,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // None` — render help to stderr and exit 2 to mirror clap's contract.
     let (path, command, binary_only, source_only, principle, output, include_tests, audit_profile) =
         match cli.command {
-            Some(Commands::Inspect {
+            Some(Commands::Audit {
                 path,
                 command,
                 binary,
@@ -161,7 +161,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             }
         };
 
-    // Run-level timing starts at the top of the Inspect arm (R4): wall-clock
+    // Run-level timing starts at the top of the Audit arm (R4): wall-clock
     // milliseconds and an RFC 3339 UTC timestamp. We use `OffsetDateTime` for
     // formatting only — duration math goes through `Instant` which is
     // monotonic and unaffected by wall-clock adjustments.
@@ -172,7 +172,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
 
     // The top-level `--json` global flag short-circuits to JSON output
     // regardless of what `--output` was set to. Both flags resolving to the
-    // same subcommand get coalesced here so the rest of the inspect arm sees
+    // same subcommand get coalesced here so the rest of the audit arm sees
     // a single OutputFormat.
     let output = if json_alias {
         OutputFormat::Json

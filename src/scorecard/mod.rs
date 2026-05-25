@@ -414,7 +414,7 @@ fn group_order(group: &CheckGroup) -> u8 {
 /// Rendering options for [`format_text`]. Grouped here so future flags
 /// (raw mode, color choice, etc.) can be added without churning every
 /// call site's argument list.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct TextOptions {
     /// Suppress group headers, PASS/SKIP rows, summary, and badge hint —
     /// emit only `id<TAB>status` per check. Wired to `--raw`.
@@ -423,15 +423,6 @@ pub struct TextOptions {
     /// `--color` plus TTY / `NO_COLOR` introspection so the renderer stays
     /// pure.
     pub color: bool,
-}
-
-impl Default for TextOptions {
-    fn default() -> Self {
-        Self {
-            raw: false,
-            color: false,
-        }
-    }
 }
 
 pub fn format_text(

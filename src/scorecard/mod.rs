@@ -238,7 +238,7 @@ pub struct AncInfo {
 }
 
 /// Run-level metadata. Captured by the runner immediately around the
-/// `Commands::Check` arm so the scorecard reflects this specific scoring run.
+/// `Commands::Inspect` arm so the scorecard reflects this specific scoring run.
 ///
 /// `invocation` is the user's argv joined with spaces, captured *before*
 /// `inject_default_subcommand` rewrites bare paths into `check <path>`.
@@ -523,7 +523,7 @@ fn format_text_raw(results: &[CheckResult]) -> String {
     out
 }
 
-/// Bundle of run-level metadata captured by the runner around `Commands::Check`
+/// Bundle of run-level metadata captured by the runner around `Commands::Inspect`
 /// and threaded into the scorecard. Grouped to keep `build_scorecard`'s
 /// signature manageable as schema `0.x` continues to add fields. The runner
 /// owns capture; this module owns serialization shape.

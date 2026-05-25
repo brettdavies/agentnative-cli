@@ -32,10 +32,10 @@ fn test_help() {
         .stdout(predicate::str::contains("Usage"));
 }
 
-// ── Generate subcommand ────────────────────────────────────────────
+// ── Emit subcommand ────────────────────────────────────────────
 
 #[test]
-fn test_generate_coverage_matrix_writes_artifacts() {
+fn test_emit_coverage_matrix_writes_artifacts() {
     let dir = integration_tempdir();
     let md = dir.join("matrix.md");
     let json = dir.join("matrix.json");
@@ -63,7 +63,7 @@ fn test_generate_coverage_matrix_writes_artifacts() {
 }
 
 #[test]
-fn test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts() {
+fn test_emit_coverage_matrix_drift_check_passes_on_committed_artifacts() {
     // Running --check against the committed docs/coverage-matrix.md +
     // coverage/matrix.json must pass. If this fails, the registry or a
     // check's covers() drifted without the artifacts being regenerated.
@@ -87,10 +87,10 @@ fn integration_tempdir() -> std::path::PathBuf {
     root
 }
 
-// ── Check subcommand tests ─────────────────────────────────────────
+// ── Inspect subcommand tests ─────────────────────────────────────────
 
 #[test]
-fn test_check_self() {
+fn test_inspect_self() {
     // Running against the project root should produce a parseable scorecard.
     // anc passes its own dogfood as of the PR3 cleanup, so exit code is 0;
     // earlier in development it returned 1 (warnings) or 2 (failures). All
@@ -104,7 +104,7 @@ fn test_check_self() {
 }
 
 #[test]
-fn test_check_json_output() {
+fn test_inspect_json_output() {
     let assert = cmd().args(["inspect", ".", "--output", "json"]).assert();
 
     let output = assert.get_output().stdout.clone();
@@ -123,7 +123,7 @@ fn test_check_json_output() {
 }
 
 #[test]
-fn test_check_quiet() {
+fn test_inspect_quiet() {
     let normal = cmd()
         .args(["inspect", "."])
         .output()
@@ -156,7 +156,7 @@ fn test_check_quiet() {
 }
 
 #[test]
-fn test_check_principle_filter() {
+fn test_inspect_principle_filter() {
     let assert = cmd()
         .args(["inspect", ".", "--principle", "3", "--output", "json"])
         .assert();
@@ -183,7 +183,7 @@ fn test_check_principle_filter() {
 // ── Error handling tests ───────────────────────────────────────────
 
 #[test]
-fn test_check_nonexistent_path() {
+fn test_inspect_nonexistent_path() {
     cmd()
         .args(["inspect", "/nonexistent/path/that/does/not/exist"])
         .assert()
@@ -192,7 +192,7 @@ fn test_check_nonexistent_path() {
 }
 
 #[test]
-fn test_check_bogus_flag() {
+fn test_inspect_bogus_flag() {
     cmd()
         .arg("--bogus-flag")
         .assert()
@@ -831,7 +831,7 @@ fn test_audience_non_null_on_self_dogfood() {
     // End-to-end guard for the main.rs → scorecard audience handoff.
     // A unit test in `src/scorecard` feeds synthetic `CheckResult`s into
     // `classify()`, but only an integration run exercises
-    // `run_check()` → `classify()` → `build_scorecard()` on real data.
+    // `run_inspect()` → `classify()` → `build_scorecard()` on real data.
     // A regression that passes `None` at the main.rs call site would pass
     // every existing unit test and only fail here.
     //

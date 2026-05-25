@@ -3,6 +3,7 @@ mod build_info;
 mod check;
 mod checks;
 mod cli;
+mod color;
 mod error;
 mod json_error;
 mod output;
@@ -27,15 +28,15 @@ use check::Check;
 use checks::behavioral::all_behavioral_checks;
 use checks::project::all_project_checks;
 use checks::source::all_source_checks;
-use cli::{Cli, Commands, GenerateKind, OutputFormat, SkillCmd};
+use cli::{Cli, Commands, OutputFormat, RenderKind, SkillCmd};
 use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
 use project::Project;
 use runner::{BinaryRunner, RunStatus};
 use scorecard::{
-    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, ToolInfo, audience, compute_badge,
-    exit_code, format_json, format_text,
+    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
+    compute_badge, exit_code, format_json, format_text,
 };
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
@@ -113,7 +114,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // None` — render help to stderr and exit 2 to mirror clap's contract.
     let (path, command, binary_only, source_only, principle, output, include_tests, audit_profile) =
         match cli.command {
-            Some(Commands::Check {
+            Some(Commands::Inspect {
                 path,
                 command,
                 binary,
@@ -137,15 +138,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 generate(shell, &mut cmd, "anc", &mut std::io::stdout());
                 return Ok(0);
             }
-            Some(Commands::Generate { artifact }) => {
-                return run_generate(artifact);
+            Some(Commands::Render { artifact }) => {
+                return run_render(artifact);
             }
             Some(Commands::Skill { cmd }) => {
                 return run_skill(cmd, json_alias);
-            }
-            Some(Commands::Schema) => {
-                output::emit(SCORECARD_SCHEMA_JSON);
-                return Ok(0);
             }
             None => {
                 if json_mode || json_alias {
@@ -288,7 +285,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         OutputFormat::Text => {
             let tool_name = derive_tool_name(command_name.as_deref(), &project);
             let badge = compute_badge(&results, &tool_name);
-            format_text(&results, quiet, Some(&badge))
+            let opts = TextOptions {
+                raw: cli.raw,
+                color: color::should_color(cli.color),
+            };
+            format_text(&results, quiet, Some(&badge), opts)
         }
         OutputFormat::Json => {
             let target = build_target_info(command_name.as_deref(), &project);
@@ -682,6 +683,7 @@ fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {
     match cmd {
         SkillCmd::Install {
             host,
+            all,
             dry_run,
             output,
         } => {
@@ -691,14 +693,27 @@ fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {
             } else {
                 output
             };
-            skill_install::run_install(host, dry_run, output)
+            skill_install::run_install_multi(host, all, dry_run, output)
+        }
+        SkillCmd::Update {
+            host,
+            all,
+            dry_run,
+            output,
+        } => {
+            let output = if json_alias {
+                OutputFormat::Json
+            } else {
+                output
+            };
+            skill_install::run_update_multi(host, all, dry_run, output)
         }
     }
 }
 
-fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
+fn run_render(artifact: RenderKind) -> Result<i32, AppError> {
     match artifact {
-        GenerateKind::CoverageMatrix {
+        RenderKind::CoverageMatrix {
             out,
             json_out,
             check,
@@ -707,7 +722,7 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
 
             // Dangling `covers()` references are a registry bug — surface
             // them before writing artifacts so CI catches the regression
-            // at `generate --check` time too.
+            // at `render --check` time too.
             let dangling = matrix::dangling_cover_ids(&catalog);
             if !dangling.is_empty() {
                 for (check_id, req_id) in &dangling {
@@ -724,9 +739,9 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
             let rendered_json = matrix::render_json(&m);
 
             if check {
-                // Drift mode: compare generated output to committed artifacts.
+                // Drift mode: compare rendered output to committed artifacts.
                 // Fail with actionable evidence so CI points the operator at
-                // `anc generate coverage-matrix` as the fix.
+                // `anc render coverage-matrix` as the fix.
                 let existing_md = std::fs::read_to_string(&out).unwrap_or_default();
                 let existing_json = std::fs::read_to_string(&json_out).unwrap_or_default();
                 let md_matches = normalize_trailing_newline(&existing_md)
@@ -735,13 +750,13 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
                     == normalize_trailing_newline(&rendered_json);
                 if !md_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc generate coverage-matrix`",
+                        "error: {} is out of date — run `anc render coverage-matrix`",
                         out.display()
                     );
                 }
                 if !json_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc generate coverage-matrix`",
+                        "error: {} is out of date — run `anc render coverage-matrix`",
                         json_out.display()
                     );
                 }
@@ -780,6 +795,10 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
                 m.rows.len(),
                 json_out.display()
             );
+            Ok(0)
+        }
+        RenderKind::Schema => {
+            output::emit(SCORECARD_SCHEMA_JSON);
             Ok(0)
         }
     }

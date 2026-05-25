@@ -411,7 +411,38 @@ fn group_order(group: &CheckGroup) -> u8 {
 /// post-summary embed hint when the tool qualifies for the agent-native
 /// badge; below-floor runs see `text_hint()` return `None`, so nothing is
 /// appended (the "do not nag" rule from the badge convention).
-pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInfo>) -> String {
+/// Rendering options for [`format_text`]. Grouped here so future flags
+/// (raw mode, color choice, etc.) can be added without churning every
+/// call site's argument list.
+#[derive(Clone, Copy)]
+pub struct TextOptions {
+    /// Suppress group headers, PASS/SKIP rows, summary, and badge hint —
+    /// emit only `id<TAB>status` per check. Wired to `--raw`.
+    pub raw: bool,
+    /// Apply ANSI styling to status prefixes. Computed by the caller from
+    /// `--color` plus TTY / `NO_COLOR` introspection so the renderer stays
+    /// pure.
+    pub color: bool,
+}
+
+impl Default for TextOptions {
+    fn default() -> Self {
+        Self {
+            raw: false,
+            color: false,
+        }
+    }
+}
+
+pub fn format_text(
+    results: &[CheckResult],
+    quiet: bool,
+    badge: Option<&BadgeInfo>,
+    opts: TextOptions,
+) -> String {
+    if opts.raw {
+        return format_text_raw(results);
+    }
     let mut out = String::new();
 
     // Group results by CheckGroup
@@ -447,7 +478,9 @@ pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInf
                 }
                 CheckStatus::Error(_) => "ERR ",
             };
-            let _ = writeln!(out, "  [{prefix}] {} ({})", r.label, r.id);
+            let painted =
+                crate::color::paint(crate::color::status_style(prefix, opts.color), prefix);
+            let _ = writeln!(out, "  [{painted}] {} ({})", r.label, r.id);
             match &r.status {
                 CheckStatus::Warn(e) | CheckStatus::Fail(e) | CheckStatus::Error(e) => {
                     for line in e.lines() {
@@ -477,6 +510,25 @@ pub fn format_text(results: &[CheckResult], quiet: bool, badge: Option<&BadgeInf
         out.push_str(&hint);
     }
 
+    out
+}
+
+/// `--raw` rendering: one `id<TAB>status` line per result, nothing else.
+/// Status maps to the same five tokens the rich renderer uses (`PASS`,
+/// `WARN`, `FAIL`, `SKIP`, `ERR`) so downstream pipelines see the same
+/// vocabulary in both modes.
+fn format_text_raw(results: &[CheckResult]) -> String {
+    let mut out = String::with_capacity(results.len() * 32);
+    for r in results {
+        let token = match &r.status {
+            CheckStatus::Pass => "PASS",
+            CheckStatus::Warn(_) => "WARN",
+            CheckStatus::Fail(_) => "FAIL",
+            CheckStatus::Skip(_) => "SKIP",
+            CheckStatus::Error(_) => "ERR",
+        };
+        let _ = writeln!(out, "{}\t{token}", r.id);
+    }
     out
 }
 
@@ -1390,7 +1442,7 @@ mod tests {
     fn format_text_appends_hint_when_badge_eligible() {
         let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
         let badge = compute_badge(&results, "demo");
-        let text = format_text(&results, false, Some(&badge));
+        let text = format_text(&results, false, Some(&badge), TextOptions::default());
         assert!(
             text.contains("qualifies for the agent-native badge"),
             "format_text must append the badge hint when eligible:\n{text}",
@@ -1408,7 +1460,7 @@ mod tests {
             make_result("c2", CheckStatus::Fail("b".into()), CheckGroup::P2),
         ];
         let badge = compute_badge(&results, "needs-work");
-        let text = format_text(&results, false, Some(&badge));
+        let text = format_text(&results, false, Some(&badge), TextOptions::default());
         assert!(
             !text.contains("agent-native badge"),
             "below-floor runs must not nag:\n{text}",
@@ -1421,8 +1473,40 @@ mod tests {
         // exercising the formatter alone) get the historical output with
         // no badge tail.
         let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
-        let text = format_text(&results, false, None);
+        let text = format_text(&results, false, None, TextOptions::default());
         assert!(!text.contains("agent-native badge"));
+    }
+
+    #[test]
+    fn format_text_raw_emits_id_tab_status_per_line() {
+        let results = vec![
+            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c2", CheckStatus::Warn("watch this".into()), CheckGroup::P2),
+            make_result("c3", CheckStatus::Fail("broken".into()), CheckGroup::P3),
+            make_result("c4", CheckStatus::Skip("n/a".into()), CheckGroup::P4),
+        ];
+        let opts = TextOptions {
+            raw: true,
+            color: false,
+        };
+        let text = format_text(&results, false, None, opts);
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines, vec!["c1\tPASS", "c2\tWARN", "c3\tFAIL", "c4\tSKIP"]);
+    }
+
+    #[test]
+    fn format_text_color_wraps_status_prefix() {
+        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let opts = TextOptions {
+            raw: false,
+            color: true,
+        };
+        let text = format_text(&results, false, None, opts);
+        // Color enabled means the PASS prefix carries ANSI escapes.
+        assert!(
+            text.contains('\u{1b}'),
+            "color=true should embed ANSI escapes around the PASS prefix:\n{text}",
+        );
     }
 
     #[test]

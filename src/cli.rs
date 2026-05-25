@@ -8,25 +8,28 @@ use crate::skill_install::SkillHost;
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
 #[command(
-    long_about = "The agent-native CLI linter — checks a CLI tool against the agent-readiness spec.
+    long_about = "The agent-native CLI linter — audits a CLI tool against the agent-readiness spec.
 
 Runs three layers of checks against a target: behavioral (spawn the binary and inspect output), source (ast-grep over Rust/Python files), and project (manifest, completions, bundle presence). The result is a scorecard you can read interactively (text mode) or pipe into another tool (`--output json`).
 
-Default output format is text; color and progress affordances auto-detect the TTY and disappear when stdout is piped or redirected (NO_COLOR-compatible). Use `--verbose` / `-v` to escalate diagnostic detail when debugging unexpected results."
+Default output format is text; color and progress affordances auto-detect the TTY and disappear when stdout is piped or redirected (NO_COLOR-compatible). Use `--verbose` / `-v` to escalate diagnostic detail when debugging unexpected results.
+
+Input model: targets are passed as positional path arguments or via `--command <name>`. Stdin is not consumed; `-` is reserved and behaves like a literal filename rather than a stdin sentinel."
 )]
 #[command(after_help = "Examples:
-  anc check .                          # human scorecard for the current project
-  anc check . --output json            # JSON envelope for agents (--json works too)
-  anc check --command ripgrep          # check a PATH-resolved binary by name
-  anc generate coverage-matrix         # render the spec coverage matrix
-  anc skill install claude_code        # install the bundle into Claude Code
+  anc inspect .                          # human scorecard for the current project
+  anc inspect . --output json            # JSON envelope for agents (--json works too)
+  anc inspect --command ripgrep          # inspect a PATH-resolved binary by name
+  anc render coverage-matrix             # render the spec coverage matrix
+  anc render schema                      # print the scorecard JSON Schema
+  anc skill install claude_code          # install the bundle into Claude Code
 
-When the first argument is not a subcommand, `check` is inserted automatically:
-  anc .                  ≡  anc check .
-  anc --command ripgrep  ≡  anc check --command ripgrep
+When the first argument is not a subcommand, `inspect` is inserted automatically:
+  anc .                  ≡  anc inspect .
+  anc --command ripgrep  ≡  anc inspect --command ripgrep
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative checks itself.")]
+that prevents recursive self-invocation when agentnative inspects itself.")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -58,26 +61,59 @@ pub struct Cli {
     /// the short form works alongside the canonical `--output` enum.
     #[arg(long, global = true)]
     pub json: bool,
+
+    /// Color control for text output. `auto` (default) emits ANSI styling
+    /// when stdout is a terminal and `NO_COLOR` is unset. `always` forces
+    /// styling on; `never` strips it. Honors the `NO_COLOR` environment
+    /// variable in `auto` mode (https://no-color.org/).
+    #[arg(
+        long,
+        global = true,
+        value_name = "WHEN",
+        default_value = "auto",
+        env = "AGENTNATIVE_COLOR"
+    )]
+    pub color: ColorChoice,
+
+    /// Strip section headers, evidence lines, summary line, and badge hint
+    /// — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and
+    /// downstream tooling that wants the raw verdict stream without prose.
+    /// Ignored in `--output json` mode.
+    #[arg(long, global = true)]
+    pub raw: bool,
+}
+
+/// `--color auto|always|never` — choice of when to emit ANSI styling.
+/// Aligns with the cargo / rustc convention. `auto` consults TTY detection
+/// and `NO_COLOR` at output time; the choice itself stays inert until
+/// `format_text` queries `should_color()`.
+#[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq, Eq)]
+#[value(rename_all = "kebab-case")]
+pub enum ColorChoice {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Check a CLI project or binary for agent-readiness
+    /// Inspect a CLI project or binary for agent-readiness
     ///
     /// Reads the target's project layout (Cargo.toml / pyproject.toml),
-    /// language detection, and binary discovery. Stdin is not consumed —
-    /// pass the target as a positional argument or via `--command <name>`
+    /// language detection, and binary discovery. Stdin is not consumed.
+    /// Pass the target as a positional argument or via `--command <name>`
     /// to resolve from PATH. `-` is reserved and behaves like any other
     /// path argument (no special stdin meaning).
     #[command(after_help = "Examples:
-  anc check .                                  # default: project at cwd
-  anc check . --output json                    # JSON envelope for agents
-  anc check . --output json --principle 2      # filter to P2 (Structured Output)
-  anc check --command ripgrep                  # PATH-resolved binary
-  anc check ./target/release/anc --binary      # behavioral checks only
+  anc inspect .                                  # default: project at cwd
+  anc inspect . --output json                    # JSON envelope for agents
+  anc inspect . --output json --principle 2      # filter to P2 (Structured Output)
+  anc inspect --command ripgrep                  # PATH-resolved binary
+  anc inspect ./target/release/anc --binary      # behavioral checks only
 
 Defaults: path = `.`, output = text, no principle filter.")]
-    Check {
+    Inspect {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
         path: std::path::PathBuf,
@@ -125,36 +161,32 @@ Defaults: path = `.`, output = text, no principle filter.")]
         /// Shell to generate for
         shell: Shell,
     },
-    /// Generate build artifacts (coverage matrix, etc.)
+    /// Render build artifacts (coverage matrix, scorecard schema)
     #[command(after_help = "Examples:
-  anc generate coverage-matrix                          # write docs/coverage-matrix.md + coverage/matrix.json
-  anc generate coverage-matrix --check                  # CI drift guard (non-zero on mismatch)
-  anc generate coverage-matrix --out /tmp/cov.md        # custom output path")]
-    Generate {
+  anc render coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
+  anc render coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
+  anc render coverage-matrix --out /tmp/cov.md          # custom output path
+  anc render schema                                     # print the scorecard JSON Schema to stdout
+  anc render schema | jq '.title'                       # pipe into jq for inspection")]
+    Render {
         #[command(subcommand)]
-        artifact: GenerateKind,
+        artifact: RenderKind,
     },
     /// Install or manage the agentnative skill bundle
+    ///
+    /// Namespace for bundle operations. `anc skill install <host>` clones
+    /// the agentnative-skill bundle into a host's canonical skills
+    /// directory; `anc skill update <host>` refreshes an existing install.
     #[command(after_help = "Examples:
   anc skill install claude_code                # install bundle to Claude Code
   anc skill install claude_code --dry-run      # print the git command without spawning
+  anc skill install --all                      # install across every known host
+  anc skill update claude_code                 # refresh an existing install
   anc skill install codex --output json        # JSON envelope for agent consumption")]
     Skill {
         #[command(subcommand)]
         cmd: SkillCmd,
     },
-    /// Print the scorecard JSON Schema to stdout
-    ///
-    /// Emits the JSON Schema (draft 2020-12) that describes the shape of
-    /// `anc check --output json`. Consumers (site renderer, leaderboards,
-    /// agent integrations) validate scorecards against this contract instead
-    /// of inferring the shape from sample output. The schema is the same
-    /// document committed at `schema/scorecard.schema.json` in this repo.
-    #[command(after_help = "Examples:
-  anc schema                                   # write the schema to stdout
-  anc schema | jq '.title'                     # pipe into jq for inspection
-  anc schema > schema/scorecard.schema.json    # refresh the committed copy")]
-    Schema,
 }
 
 #[derive(Subcommand)]
@@ -167,8 +199,13 @@ pub enum SkillCmd {
     ///
     ///     git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
     Install {
-        /// Target host (claude_code, codex, cursor, opencode).
-        host: SkillHost,
+        /// Target host (claude_code, codex, cursor, opencode). Required
+        /// unless `--all` is set.
+        host: Option<SkillHost>,
+
+        /// Install into every known host in one invocation.
+        #[arg(long, conflicts_with = "host")]
+        all: bool,
 
         /// Print the resolved git command without spawning. Captures cleanly
         /// via `eval $(anc skill install --dry-run <host>)`.
@@ -179,10 +216,27 @@ pub enum SkillCmd {
         #[arg(long, default_value = "text")]
         output: OutputFormat,
     },
+    /// Refresh an installed skill bundle to the latest upstream revision.
+    Update {
+        /// Target host. Required unless `--all` is set.
+        host: Option<SkillHost>,
+
+        /// Refresh every known host in one invocation.
+        #[arg(long, conflicts_with = "host")]
+        all: bool,
+
+        /// Print the resolved commands without spawning.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output format for the result envelope.
+        #[arg(long, default_value = "text")]
+        output: OutputFormat,
+    },
 }
 
 #[derive(Subcommand)]
-pub enum GenerateKind {
+pub enum RenderKind {
     /// Render the spec coverage matrix (registry → checks → artifact).
     CoverageMatrix {
         /// Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`.
@@ -197,10 +251,17 @@ pub enum GenerateKind {
         )]
         json_out: std::path::PathBuf,
 
-        /// Exit non-zero when committed artifacts differ from generated output. CI drift guard.
+        /// Exit non-zero when committed artifacts differ from rendered output. CI drift guard.
         #[arg(long)]
         check: bool,
     },
+    /// Print the scorecard JSON Schema (draft 2020-12) to stdout.
+    ///
+    /// Consumers (site renderer, leaderboards, agent integrations) validate
+    /// scorecards against this contract instead of inferring shape from
+    /// sample output. The schema is the same document committed at
+    /// `schema/scorecard.schema.json` in this repo.
+    Schema,
 }
 
 #[derive(Clone, ValueEnum)]

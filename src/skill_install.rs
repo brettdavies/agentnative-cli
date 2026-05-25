@@ -503,17 +503,135 @@ pub fn emit_result_json(env: &InstallEnvelope) -> String {
 /// `main` (exit 2 — internal-error reserved per P4).
 pub fn run_install(host: SkillHost, dry_run: bool, output: OutputFormat) -> Result<i32, AppError> {
     let envelope = compute_install_envelope(host, dry_run)?;
-    let rendered = match output {
-        OutputFormat::Text => emit_result_text(&envelope),
-        OutputFormat::Json => emit_result_json(&envelope),
-    };
-    crate::output::emit_line(&rendered);
+    emit_envelope(&envelope, output);
     Ok(if envelope.status == STATUS_SUCCESS {
         0
     } else {
         1
     })
 }
+
+/// Multi-host wrapper exposed via the top-level `Install` verb (and the
+/// hidden `skill install` back-compat path). When `all` is set, iterates
+/// every entry in `KNOWN_HOSTS`; otherwise dispatches to `run_install` for
+/// the single host. Per-host failures are reported in the result stream
+/// but do not abort the run — the exit code is the worst observed.
+pub fn run_install_multi(
+    host: Option<SkillHost>,
+    all: bool,
+    dry_run: bool,
+    output: OutputFormat,
+) -> Result<i32, AppError> {
+    if !all {
+        let Some(host) = host else {
+            return Err(AppError::ProjectDetection(anyhow::anyhow!(
+                "missing target host; pass <host> or --all"
+            )));
+        };
+        return run_install(host, dry_run, output);
+    }
+    run_for_all_hosts(dry_run, output, compute_install_envelope)
+}
+
+/// Refresh an existing install by removing the destination directory and
+/// re-running the install pipeline. The pre-removal is gated on the
+/// destination being a directory — refuses to operate on regular files or
+/// nonexistent paths (which `compute_install_envelope` already handles via
+/// the typed `DestNotEmpty` / `DestIsFile` reasons).
+pub fn run_update_multi(
+    host: Option<SkillHost>,
+    all: bool,
+    dry_run: bool,
+    output: OutputFormat,
+) -> Result<i32, AppError> {
+    if !all {
+        let Some(host) = host else {
+            return Err(AppError::ProjectDetection(anyhow::anyhow!(
+                "missing target host; pass <host> or --all"
+            )));
+        };
+        let envelope = compute_update_envelope(host, dry_run)?;
+        emit_envelope(&envelope, output);
+        return Ok(if envelope.status == STATUS_SUCCESS {
+            0
+        } else {
+            1
+        });
+    }
+    run_for_all_hosts(dry_run, output, compute_update_envelope)
+}
+
+/// Shared dispatch for `--all`. Walks `KNOWN_HOSTS` in registration order,
+/// emits each envelope as it completes, and folds the per-host exit codes
+/// into a single worst-case value.
+fn run_for_all_hosts(
+    dry_run: bool,
+    output: OutputFormat,
+    op: fn(SkillHost, bool) -> Result<InstallEnvelope, AppError>,
+) -> Result<i32, AppError> {
+    use clap::ValueEnum as _;
+
+    let mut worst = 0;
+    for host in SkillHost::value_variants() {
+        let envelope = op(*host, dry_run)?;
+        emit_envelope(&envelope, output.clone());
+        if envelope.status != STATUS_SUCCESS {
+            worst = worst.max(1);
+        }
+    }
+    Ok(worst)
+}
+
+fn emit_envelope(envelope: &InstallEnvelope, output: OutputFormat) {
+    let rendered = match output {
+        OutputFormat::Text => emit_result_text(envelope),
+        OutputFormat::Json => emit_result_json(envelope),
+    };
+    crate::output::emit_line(&rendered);
+}
+
+/// Compute the update envelope: same shape as install, but the action
+/// label switches to `skill-update` and a pre-step removes the resolved
+/// destination if it already contains an installed bundle.
+///
+/// Removal scope is narrow: we only proceed if the destination is a
+/// directory (the install pipeline's normal output). Symlinks, regular
+/// files, and missing paths fall through to `compute_install_envelope`
+/// where the typed reasons (`destination-is-file` / `home-not-set`)
+/// surface in the envelope.
+pub fn compute_update_envelope(
+    host: SkillHost,
+    dry_run: bool,
+) -> Result<InstallEnvelope, AppError> {
+    let (_, dest_template) = resolve_host(host);
+    let dest = match expand_tilde(dest_template) {
+        Ok(p) => p,
+        Err(_) => {
+            // Tilde expansion failed; delegate to install which surfaces
+            // the `home-not-set` reason in the same shape.
+            let mut env = compute_install_envelope(host, dry_run)?;
+            env.action = ACTION_UPDATE;
+            return Ok(env);
+        }
+    };
+
+    if !dry_run && dest.is_dir() {
+        // Refuse if the directory does not contain a marker file from the
+        // skill bundle — protects against `update` deleting an unrelated
+        // path the user typed by mistake. The marker is the bundle's
+        // SKILL.md (committed at the bundle root by agentnative-skill).
+        let marker = dest.join("SKILL.md");
+        if marker.is_file() {
+            std::fs::remove_dir_all(&dest).map_err(AppError::Io)?;
+        }
+    }
+
+    let mut env = compute_install_envelope(host, dry_run)?;
+    env.action = ACTION_UPDATE;
+    Ok(env)
+}
+
+const ACTION_UPDATE: &str = "skill-update";
 
 #[cfg(test)]
 mod tests {

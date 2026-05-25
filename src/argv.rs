@@ -131,6 +131,7 @@ where
 
     let mut i = 1;
     let mut saw_subcommand_flag = false;
+    let mut saw_top_level_terminator = false;
     while i < args.len() {
         let token = args[i].to_string_lossy();
 
@@ -148,10 +149,19 @@ where
             // Track whether this flag belongs to a subcommand rather than the
             // top-level Cli. If so, the user clearly intends `check` even when
             // no positional argument follows (e.g. `anc --command rg`).
-            if let Some(base) = base_form(&token)
-                && !top_level_flags.contains(&base)
-            {
-                saw_subcommand_flag = true;
+            if let Some(base) = base_form(&token) {
+                // `--help` / `-h` / `--version` / `-V` are top-level
+                // terminators: clap renders help or version and exits before
+                // any subcommand parser runs. If they appear, the user is
+                // operating on the top-level Cli, not requesting `check`
+                // injection — even when a value-taking flag like `--output`
+                // follows (which the JSON-mode sniff in main re-reads to
+                // decide envelope shape).
+                if matches!(base.as_str(), "--help" | "-h" | "--version" | "-V") {
+                    saw_top_level_terminator = true;
+                } else if !top_level_flags.contains(&base) {
+                    saw_subcommand_flag = true;
+                }
             }
             i += if consumes_next(&token) { 2 } else { 1 };
             continue;
@@ -167,7 +177,7 @@ where
     // No non-flag token. Inject `check` if any subcommand-scoped flag appeared
     // (e.g. `anc --command rg`, `anc --output json`). Otherwise leave the args
     // alone so clap can handle bare `--help` / `--version` / `-q` natively.
-    if saw_subcommand_flag {
+    if saw_subcommand_flag && !saw_top_level_terminator {
         return inject_check(args);
     }
 

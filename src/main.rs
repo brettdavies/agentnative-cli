@@ -4,6 +4,7 @@ mod check;
 mod checks;
 mod cli;
 mod error;
+mod json_error;
 mod output;
 mod principles;
 mod project;
@@ -47,24 +48,44 @@ fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
-    let code = match run() {
+    // Capture raw argv once for the JSON-mode sniff. `run()` re-reads it
+    // for `format_invocation`, but the sniff has to happen before
+    // `try_parse_from` so clap-internal failures route through the JSON
+    // envelope when the user asked for JSON.
+    let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let json_mode = json_error::json_mode_in_argv(&raw_argv);
+
+    let code = match run(raw_argv) {
         Ok(code) => code,
         Err(e) => {
-            eprintln!("error: {e}");
+            if json_mode {
+                let envelope = json_error::render_error("runtime", "app-error", &e.to_string(), 2);
+                eprintln!("{envelope}");
+            } else {
+                eprintln!("error: {e}");
+            }
             2
         }
     };
     std::process::exit(code);
 }
 
-fn run() -> Result<i32, AppError> {
-    // Capture argv *before* `inject_default_subcommand` rewrites bare paths
-    // into `check <path>`, so the scorecard's `run.invocation` reflects what
-    // the user actually typed (R4). The injection rewrite is an internal
-    // detail; recording it would lie about user intent.
-    let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
+    // Raw argv is captured by `main()` *before* `inject_default_subcommand`
+    // rewrites bare paths into `check <path>`, so the scorecard's
+    // `run.invocation` reflects what the user actually typed (R4). The
+    // injection rewrite is an internal detail; recording it would lie about
+    // user intent.
 
-    let cli = Cli::parse_from(inject_default_subcommand(raw_argv.iter().cloned()));
+    // JSON-mode sniff runs against raw argv, so clap-internal exits
+    // (--help, --version, parse failures) can route through the JSON
+    // envelope before clap drops back to its default text-rendering path.
+    let json_mode = json_error::json_mode_in_argv(&raw_argv);
+
+    let cli = match Cli::try_parse_from(inject_default_subcommand(raw_argv.iter().cloned())) {
+        Ok(cli) => cli,
+        Err(e) => return Ok(handle_clap_error(e, json_mode)),
+    };
 
     // --quiet is global (visible in top-level --help for agent discoverability)
     let quiet = cli.quiet;
@@ -110,8 +131,18 @@ fn run() -> Result<i32, AppError> {
                 return Ok(0);
             }
             None => {
-                let mut cmd = <Cli as clap::CommandFactory>::command();
-                eprintln!("{}", cmd.render_help());
+                if json_mode || json_alias {
+                    let envelope = json_error::render_error(
+                        "usage",
+                        "missing-subcommand",
+                        "no subcommand provided; run with --help for usage",
+                        2,
+                    );
+                    eprintln!("{envelope}");
+                } else {
+                    let mut cmd = <Cli as clap::CommandFactory>::command();
+                    eprintln!("{}", cmd.render_help());
+                }
                 return Ok(2);
             }
         };
@@ -276,6 +307,75 @@ fn run() -> Result<i32, AppError> {
     output::emit(&output_str);
 
     Ok(exit_code(&results))
+}
+
+/// Convert a `clap::Error` into an exit code, emitting either clap's default
+/// rendering (text mode) or a JSON envelope (`--output json` / `--json`).
+///
+/// Clap exits the process internally when `--help` / `--version` are passed
+/// to `parse_from`, so the JSON-mode contract can only be honored by routing
+/// through `try_parse_from` and rebuilding the envelope here. Help and
+/// version map to `{"kind":"help"|"version", ...}` envelopes; every other
+/// error variant maps to `{"kind":"usage", "error":<slug>, "message":...}`.
+///
+/// Exit codes mirror clap's defaults: help / version exit `0`, every other
+/// failure exits `2` (matches `p2-must-structured-exit-codes`).
+fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
+    use clap::error::ErrorKind as K;
+    match error.kind() {
+        K::DisplayHelp => {
+            if json_mode {
+                output::emit_line(&json_error::render_help(&error.to_string()));
+            } else {
+                let _ = error.print();
+            }
+            0
+        }
+        K::DisplayVersion => {
+            if json_mode {
+                output::emit_line(&json_error::render_version("anc", ANC_VERSION));
+            } else {
+                let _ = error.print();
+            }
+            0
+        }
+        K::DisplayHelpOnMissingArgumentOrSubcommand => {
+            if json_mode {
+                let envelope = json_error::render_error(
+                    "usage",
+                    "missing-subcommand",
+                    "no subcommand provided; run with --help for usage",
+                    2,
+                );
+                eprintln!("{envelope}");
+            } else {
+                let _ = error.print();
+            }
+            2
+        }
+        kind => {
+            if json_mode {
+                let (envelope_kind, slug) = json_error::classify_clap_error(kind);
+                // `clap::Error::to_string()` includes its rendered template
+                // (Usage / hint lines). For the JSON envelope, distill to
+                // the first non-empty line so consumers see the actionable
+                // summary without the multi-line template noise.
+                let raw = error.to_string();
+                let first_line = raw
+                    .lines()
+                    .find_map(|l| {
+                        let t = l.trim_start_matches("error: ").trim();
+                        (!t.is_empty()).then_some(t)
+                    })
+                    .unwrap_or(&raw);
+                let envelope = json_error::render_error(envelope_kind, slug, first_line, 2);
+                eprintln!("{envelope}");
+            } else {
+                let _ = error.print();
+            }
+            2
+        }
+    }
 }
 
 /// Classify what `anc check` was pointed at into structured `target` metadata.

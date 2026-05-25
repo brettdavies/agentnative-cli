@@ -1156,3 +1156,101 @@ fn convention_check_result_constructed_only_in_run_body() {
         }
     }
 }
+
+// ── JSON envelope intercept (p2-must-json-errors) ─────────────────
+
+/// Bad invocation under `--output json` MUST emit a JSON envelope with
+/// `error`, `kind`, and `message`. Without this, agents that pinned to JSON
+/// can't recover failure mode without a separate text parser.
+#[test]
+fn test_bad_invocation_emits_json_error_envelope() {
+    let assert = cmd()
+        .args(["--this-flag-does-not-exist-anc", "--output", "json"])
+        .assert()
+        .code(2);
+
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
+    let line = stderr
+        .lines()
+        .next()
+        .expect("envelope should be on the first stderr line");
+    let parsed: serde_json::Value =
+        serde_json::from_str(line).expect("first stderr line should parse as JSON");
+    let obj = parsed.as_object().expect("envelope is a JSON object");
+    assert!(obj.contains_key("error"));
+    assert!(obj.contains_key("kind"));
+    assert!(obj.contains_key("message"));
+    assert_eq!(obj["exit_code"], 2);
+}
+
+/// Top-level `--json` alias must trigger the same JSON envelope contract.
+#[test]
+fn test_bad_invocation_with_json_alias_emits_envelope() {
+    let assert = cmd()
+        .args(["--json", "--this-flag-does-not-exist-anc"])
+        .assert()
+        .code(2);
+
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
+    let line = stderr.lines().next().expect("envelope on first line");
+    let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+    let obj = parsed.as_object().expect("object");
+    assert_eq!(obj["kind"], "usage");
+}
+
+/// `--help --output json` must emit a JSON envelope wrapping the help text.
+/// Tests the success-envelope arm of `p2-should-consistent-envelope`.
+#[test]
+fn test_help_under_json_mode_emits_json_envelope() {
+    let assert = cmd().args(["--help", "--output", "json"]).assert().code(0);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    let line = stdout
+        .lines()
+        .next()
+        .expect("help envelope on first stdout line");
+    let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+    let obj = parsed.as_object().expect("object");
+    assert_eq!(obj["kind"], "help");
+    assert!(obj["data"].is_string());
+}
+
+/// `--version --output json` must emit a JSON envelope with name + version.
+#[test]
+fn test_version_under_json_mode_emits_json_envelope() {
+    let assert = cmd()
+        .args(["--version", "--output", "json"])
+        .assert()
+        .code(0);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    let line = stdout
+        .lines()
+        .next()
+        .expect("version envelope on first stdout line");
+    let parsed: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+    let obj = parsed.as_object().expect("object");
+    assert_eq!(obj["kind"], "version");
+    assert_eq!(obj["data"]["name"], "anc");
+    assert!(obj["data"]["version"].is_string());
+}
+
+/// Text mode (no JSON flag) must still produce clap's default rendering for
+/// bad invocations — confirms the envelope path is gated on JSON mode.
+#[test]
+fn test_bad_invocation_without_json_uses_clap_rendering() {
+    let assert = cmd()
+        .args(["--this-flag-does-not-exist-anc"])
+        .assert()
+        .code(2);
+    let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8 stderr");
+    assert!(
+        stderr.contains("error:"),
+        "expected clap text error rendering, got: {stderr}"
+    );
+    // Ensure the first line is NOT JSON — proves we didn't accidentally
+    // route text-mode errors through the envelope.
+    let first = stderr.lines().next().unwrap_or("");
+    assert!(
+        serde_json::from_str::<serde_json::Value>(first).is_err(),
+        "text-mode error must not be JSON, but first line parsed: {first}"
+    );
+}

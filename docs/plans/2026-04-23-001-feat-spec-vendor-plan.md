@@ -26,7 +26,7 @@ replacing the hand-maintained `&'static [Requirement]` slice currently in `src/p
   drift.
 - Drift-check tests — every check's `covers()` ID exists in the generated `REQUIREMENTS` set; every MUST/SHOULD/MAY in
   the vendored spec is addressable; vendored frontmatter schema matches what the Rust parser expects.
-- Scorecard emits a `spec_version` field (from vendored `VERSION`) so consumers of `anc check --output json` can pin
+- Scorecard emits a `spec_version` field (from vendored `VERSION`) so consumers of `anc audit --output json` can pin
   against the exact spec build the CLI was compiled against.
 
 Tracked upstream as item 5 of
@@ -66,7 +66,7 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
 - R5. A `cargo test` target asserts every MUST in the vendored spec is referenced by at least one check OR is explicitly
   listed as "unverified at current scale" in an allowlist with rationale — catches spec-side additions that this crate
   silently ignores.
-- R6. `anc check --output json` emits a new `spec_version` field (value from vendored `VERSION`) as an additive v1.2
+- R6. `anc audit --output json` emits a new `spec_version` field (value from vendored `VERSION`) as an additive v1.2
   scorecard field. v1.1 consumers feature-detect and tolerate its presence, per the existing additive-schema policy in
   `AGENTS.md`.
 - R7. The coupled-release protocol in
@@ -83,7 +83,7 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
   anything).
 - No CI automation to auto-sync when spec cuts a new release. Manual `sync-spec.sh` matches the site-side model and the
   existing `sync-coverage-matrix.sh` precedent.
-- No change to the existing `coverage-matrix.json` artifact that the site vendors from this crate — `anc generate
+- No change to the existing `coverage-matrix.json` artifact that the site vendors from this crate — `anc emit
   coverage-matrix` still runs against the generated `REQUIREMENTS` and produces the same output shape.
 - No dependency on `serde_yaml`'s 0.9+ API surface beyond basic parsing — keep the `build.rs` yaml handling narrow.
 
@@ -495,9 +495,9 @@ feature.
 **Test scenarios:**
 
 - Happy path: `cargo test` passes unchanged (every existing test continues to pass).
-- Integration: `anc check . --output json` against a known target produces identical output (byte-for-byte) to pre-U4.
+- Integration: `anc audit . --output json` against a known target produces identical output (byte-for-byte) to pre-U4.
   Run before and after U4 against a golden target (e.g., `ripgrep`) and diff the scorecards.
-- Integration: `anc generate coverage-matrix` produces identical output to pre-U4.
+- Integration: `anc emit coverage-matrix` produces identical output to pre-U4.
 - Edge case: running the pre-push hook's `cargo clippy -- -D warnings` produces no new warnings from the generated code
   (generated file should carry `#[allow(...)]` attributes if needed for clippy lints that trip on auto-generated
   patterns — decide case-by-case in U3/U4).
@@ -506,7 +506,7 @@ feature.
 
 - `cargo build --release` succeeds.
 - `cargo test` passes (full existing suite).
-- `diff <(anc check ~/dev/ripgrep --output json) <previous-known-good>` is empty (or the only difference is the new
+- `diff <(anc audit ~/dev/ripgrep --output json) <previous-known-good>` is empty (or the only difference is the new
   `spec_version` field added by U6, not U4 — if U6 hasn't run yet, it's empty).
 - `cargo clippy --all-targets -- -D warnings` clean.
 - Line count of `src/principles/registry.rs` drops by ~320 lines (the hand-maintained `REQUIREMENTS` block).
@@ -571,7 +571,7 @@ feature.
 
 - [ ] U6. **Emit `spec_version` in scorecard JSON**
 
-**Goal:** Additive v1.2 scorecard field — `anc check --output json` includes `spec_version` sourced from vendored
+**Goal:** Additive v1.2 scorecard field — `anc audit --output json` includes `spec_version` sourced from vendored
 `VERSION`.
 
 **Requirements:** R6
@@ -616,7 +616,7 @@ feature.
 
 **Test scenarios:**
 
-- Happy path: `anc check <target> --output json` contains `"spec_version": "0.2.0"` (or whatever the vendored `VERSION`
+- Happy path: `anc audit <target> --output json` contains `"spec_version": "0.2.0"` (or whatever the vendored `VERSION`
   reads).
 - Edge case: if the vendored `VERSION` file is missing (U3's fallback path), `spec_version` reads `"unknown"` in the
   JSON output.
@@ -630,7 +630,7 @@ feature.
 **Verification:**
 
 - `cargo test` passes (including updated snapshots).
-- `anc check --output json . | jaq '.spec_version'` outputs `"0.2.0"`.
+- `anc audit --output json . | jaq '.spec_version'` outputs `"0.2.0"`.
 - `AGENTS.md` lists the new field and the bumped `schema_version`.
 
 ---

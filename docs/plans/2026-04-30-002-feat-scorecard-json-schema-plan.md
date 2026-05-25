@@ -9,12 +9,12 @@ date: 2026-04-30
 
 ## Overview
 
-Publish a JSON Schema for `anc check --output json` so consumers (the `agentnative-site` renderer, third-party
+Publish a JSON Schema for `anc audit --output json` so consumers (the `agentnative-site` renderer, third-party
 leaderboards, agent integrations, README badge tooling) can validate scorecards against a stable, versioned contract
 instead of reverse-engineering the shape from sample output. The schema lives upstream in this repo (single source of
 truth), is **derived from the existing `serde::Serialize` structs** in `src/scorecard/mod.rs` via the
 [`schemars`](https://crates.io/crates/schemars) crate, **prebuilt at compile time** via `build.rs` and embedded into the
-binary, and surfaced through a new `anc generate scorecard-schema` verb.
+binary, and surfaced through a new `anc emit schema` verb.
 
 The repo holds **only the current schema version** in committed form (`schemas/scorecard.schema.json` — always the
 latest); the `agentnative-site` repo archives past versions under versioned URLs
@@ -61,17 +61,17 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 ## Requirements
 
 - R1. **`schemas/scorecard.schema.json`** is committed to the repo, contains the current schema version's full shape,
-  and is regenerable via `anc generate scorecard-schema --output schemas/scorecard.schema.json`.
+  and is regenerable via `anc emit schema --output schemas/scorecard.schema.json`.
 - R2. **Derived from Rust types.** Every key in the schema corresponds 1:1 to a field on `Scorecard` or its sub-structs
   in `src/scorecard/mod.rs`. No hand-written JSON paths. Drift between struct and schema is caught at CI by the
   integration test in R7.
 - R3. **`build.rs` writes the schema to `$OUT_DIR/scorecard.schema.json`** and the binary `include_str!`s it. The verb's
   output is byte-identical to what `build.rs` produced. No runtime schemars invocation.
-- R4. **`anc generate scorecard-schema` verb** with two operating modes:
+- R4. **`anc emit schema` verb** with two operating modes:
 - `--output -` (default) — write the embedded schema to stdout.
 - `--output <path>` — write to a file (used by the committed-artifact regeneration step).
 - `--check` — exit non-zero with a structured error if `<path>` (or `schemas/scorecard.schema.json` when no path given)
-    disagrees with the embedded schema. Mirrors `anc generate coverage-matrix --check`.
+    disagrees with the embedded schema. Mirrors `anc emit coverage-matrix --check`.
 - R5. **Rich descriptions** sourced from doc comments on the Rust types. `schemars`'s `derive(JsonSchema)` already
   surfaces doc comments as `description` fields; the existing struct doc comments carry most of what's needed and the
   remainder land via additions to those comments (not via overlay files).
@@ -80,10 +80,10 @@ The build/distribution shape matters too. Three constraints from the kickoff:
   Rust functions producing the example values. The example functions live alongside the struct definitions and are
   unit-testable (the test asserts the example values themselves serialize cleanly through the struct).
 - R7. **Integration drift test** at `tests/scorecard_schema_drift.rs::generated_schema_matches_committed_artifact`
-  spawns the binary, runs `anc generate scorecard-schema --check`, and asserts exit zero. CI fails when the embedded
+  spawns the binary, runs `anc emit schema --check`, and asserts exit zero. CI fails when the embedded
   schema and `schemas/scorecard.schema.json` disagree.
 - R8. **Round-trip validation test** at `tests/scorecard_schema_drift.rs::scorecards_validate_against_embedded_schema`
-  runs `anc check tests/fixtures/perfect-rust --output json`, parses the output, and validates against the embedded
+  runs `anc audit tests/fixtures/perfect-rust --output json`, parses the output, and validates against the embedded
   schema using a JSON Schema validator (likely `jsonschema` crate, dev-dep only). Catches bugs where the schema is
   internally consistent but doesn't match what the binary actually emits.
 - R9. **`$schema` and `$id`** at the schema root:
@@ -97,7 +97,7 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 
 ## Scope Boundaries
 
-- **In scope:** schema generation in this repo, the new `anc generate scorecard-schema` verb, the committed
+- **In scope:** schema generation in this repo, the new `anc emit schema` verb, the committed
   `schemas/scorecard.schema.json` artifact, drift + round-trip integration tests, doc-comment additions to existing
   scorecard types, example-value functions for the top-level type and a small selection of sub-types.
 - **Out of scope:** the site-side sync script (`sync-scorecard-schema.sh`) — that lives in `agentnative-site` and is
@@ -114,7 +114,7 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 ### Deferred to Follow-Up Work
 
 - Multi-version support **inside the binary** (today's binary embeds only the current schema version). If consumers ever
-  need `anc generate scorecard-schema --version 0.4`, that's a follow-up; the site's archive surface handles
+  need `anc emit schema --version 0.4`, that's a follow-up; the site's archive surface handles
   past-version retrieval today.
 - A schema linter / style-guide (e.g., "every property has a description"). schemars + careful doc comments handle it
   without ceremony for v0.5; revisit if descriptions go missing on additions.
@@ -128,7 +128,7 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 
 The repo already ships one machine-readable artifact via the same workflow this plan extends:
 
-- **`anc generate coverage-matrix [--check]`** emits `docs/coverage-matrix.md` (human) + `coverage/matrix.json`
+- **`anc emit coverage-matrix [--check]`** emits `docs/coverage-matrix.md` (human) + `coverage/matrix.json`
   (machine, `schema_version: "1.0"`).
 - Both files are committed; `--check` exits non-zero on drift.
 - Integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors `--check` so CI
@@ -420,7 +420,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 ---
 
-- U5. **`anc generate scorecard-schema` CLI verb.**
+- U5. **`anc emit schema` CLI verb.**
 
   **Goal:** expose the embedded schema via the documented verb.
 
@@ -447,21 +447,21 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
      logic for our case is just `embedded == file_contents` (pretty-printed JSON byte-for-byte equal); wrap in a
      friendly error message naming the file path and instructing to re-run without `--check`.
 3. Regenerate completions; commit them.
-4. Manual smoke: `anc generate scorecard-schema` prints to stdout; `anc generate scorecard-schema --output /tmp/x`
-     writes a file; `anc generate scorecard-schema --check --output schemas/scorecard.schema.json` exits zero (after U7
+4. Manual smoke: `anc emit schema` prints to stdout; `anc emit schema --output /tmp/x`
+     writes a file; `anc emit schema --check --output schemas/scorecard.schema.json` exits zero (after U7
      lands the committed file); flipping a byte in the committed file makes `--check` exit nonzero with a clear diff.
 
   **Patterns to follow:** `src/cli.rs`'s existing `Generate::CoverageMatrix` is the canonical model.
 
   **Test scenarios:**
 
-- **Happy path stdout:** `anc generate scorecard-schema` prints the embedded JSON to stdout; exits zero.
-- **Happy path file:** `anc generate scorecard-schema --output /tmp/test-schema.json` writes the file; content matches
+- **Happy path stdout:** `anc emit schema` prints the embedded JSON to stdout; exits zero.
+- **Happy path file:** `anc emit schema --output /tmp/test-schema.json` writes the file; content matches
     the embedded copy byte-for-byte.
-- **Drift detected:** `anc generate scorecard-schema --check --output /tmp/wrong.json` (where `/tmp/wrong.json` has
+- **Drift detected:** `anc emit schema --check --output /tmp/wrong.json` (where `/tmp/wrong.json` has
     unrelated content) exits nonzero with a structured error envelope (per repo convention — text mode prints a message,
     JSON mode emits the standard error envelope).
-- **No drift:** `anc generate scorecard-schema --check --output schemas/scorecard.schema.json` exits zero after U7's
+- **No drift:** `anc emit schema --check --output schemas/scorecard.schema.json` exits zero after U7's
     committed-file regeneration.
 
   **Verification:** all four scenarios above pass when run by hand. Real automation lives in U6.
@@ -487,11 +487,11 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
   **Approach:**
 
-1. **`generated_schema_matches_committed_artifact`** — spawns the binary with `assert_cmd::Command`, runs `anc generate
+1. **`generated_schema_matches_committed_artifact`** — spawns the binary with `assert_cmd::Command`, runs `anc emit
      scorecard-schema --check --output schemas/scorecard.schema.json`, asserts exit zero. If the committed file is
-     stale, the test prints a clear "run `anc generate scorecard-schema --output schemas/scorecard.schema.json && git
+     stale, the test prints a clear "run `anc emit schema --output schemas/scorecard.schema.json && git
      add schemas/`" hint.
-2. **`scorecards_validate_against_embedded_schema`** — spawn the binary with `anc check tests/fixtures/perfect-rust
+2. **`scorecards_validate_against_embedded_schema`** — spawn the binary with `anc audit tests/fixtures/perfect-rust
      --output json`. Parse stdout. Load the embedded schema from `schemas/scorecard.schema.json` (committed file is the
      test's source of truth). Validate the parsed scorecard against the schema. Assert validation passes with zero
      errors.
@@ -528,7 +528,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Approach:**
 
 1. `cargo build --release`.
-2. `./target/release/anc generate scorecard-schema --output schemas/scorecard.schema.json`.
+2. `./target/release/anc emit schema --output schemas/scorecard.schema.json`.
 3. `git add schemas/scorecard.schema.json`.
 4. Commit on the feature branch as `feat(scorecard): commit initial scorecard.schema.json`.
 
@@ -541,7 +541,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 ---
 
-- U8. **`anc generate --help` parity + AGENTS.md / README updates.**
+- U8. **`anc emit --help` parity + AGENTS.md / README updates.**
 
   **Goal:** discoverability — readers landing on `anc --help` see the new verb and a one-line description; CLAUDE.md
 - AGENTS.md mention the artifact.
@@ -556,7 +556,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - Modify: `src/cli.rs` — verify the clap `about` / `long_about` on the new arm reads cleanly. The verb's help is the
     only doc most readers will see.
-- Modify: `AGENTS.md` — add a one-line entry under the existing `anc generate coverage-matrix` callout pointing at `anc
+- Modify: `AGENTS.md` — add a one-line entry under the existing `anc emit coverage-matrix` callout pointing at `anc
     generate scorecard-schema`.
 - Modify: `README.md` — if there's a "Scorecard" or "JSON output" section, add a sentence linking to
     `https://anc.dev/scorecard-v0.5.schema.json`.
@@ -564,11 +564,11 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
     parallel paragraph for the scorecard schema. Keep the same shape (committed, drift-checked, regeneration is a
     deliberate commit).
 
-  **Patterns to follow:** the existing AGENTS.md and CLAUDE.md sections describing `anc generate coverage-matrix`.
+  **Patterns to follow:** the existing AGENTS.md and CLAUDE.md sections describing `anc emit coverage-matrix`.
 
   **Test scenarios:** none beyond manual eyeball — these are docs.
 
-  **Verification:** `anc generate scorecard-schema --help` renders cleanly; AGENTS.md and README.md grep cleanly for
+  **Verification:** `anc emit schema --help` renders cleanly; AGENTS.md and README.md grep cleanly for
   the new verb name.
 
 ---

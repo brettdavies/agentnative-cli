@@ -370,7 +370,7 @@ explicitly diverges from spec-channel rules where the register differs.
   CLI (developers using the tool, agents probing the tool, CI integrators), "Register" rules specific to CLI prose,
   "Linter-specific anti-patterns", "Voice anchor application", "Status".
 - **Register rules to codify (key divergences from spec):**
-- **Second-person imperative IS the register.** "Run `anc check`", "Set `--audit-profile human-tui`", "Pipe to `jq`".
+- **Second-person imperative IS the register.** "Run `anc audit`", "Set `--audit-profile human-tui`", "Pipe to `jq`".
   The spec channel bans this; the linter channel embraces it.
 - **RFC 2119 is NOT the register.** No MUST/SHOULD/MAY in error messages or help text — those map to spec requirement
   IDs, not user-facing behavior.

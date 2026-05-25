@@ -245,7 +245,7 @@ to re-justify its own hardening from scratch.
 ### Relevant Code and Patterns
 
 - `src/cli.rs` — `Commands` enum and `Subcommand` derives. `Skill` becomes a sibling of `Check`, `Completions`,
-  `Generate`. The closest precedent for a nested verb enum is `GenerateKind`.
+  `Generate`. The closest precedent for a nested verb enum is `EmitKind`.
 - `src/main.rs` — top-level command dispatch. Adding a `Commands::Skill { … }` arm is purely additive.
 - `src/error.rs` — existing `AppError` enum. New variants (`MissingHome`, `GitNotFound`, `GitCloneFailed { code: i32 }`,
   `DestIsFile`, `DestNotEmpty`, `DestReadFailed`) follow the existing typed-variant pattern with the same `thiserror`
@@ -254,7 +254,7 @@ to re-justify its own hardening from scratch.
   mirrors that pattern: vendored under `src/` (not `tests/`, which `Cargo.toml` excludes from the package) so
   `build.rs::emit_skill_hosts` can read it at compile time.
 - `scripts/sync-spec.sh` — sync-script precedent. `scripts/sync-skill-fixture.sh` mirrors its shape and adds a `--check`
-  mode (matches `anc generate coverage-matrix --check`).
+  mode (matches `anc emit coverage-matrix --check`).
 
 ### Institutional Learnings
 
@@ -327,7 +327,7 @@ to re-justify its own hardening from scratch.
   added on 2026-04-30 via the upstream `agentnative-site#53` PR before the codegen refactor; the planning-time list
   named four.)* New hosts ship via `anc` patch release after the site updates `skill.json`; `--help` documents the
   manual `git clone` fallback for users on a too-old `anc`.
-- **Output format default** → `text` (matches existing `anc check` default). `json` is opt-in.
+- **Output format default** → `text` (matches existing `anc audit` default). `json` is opt-in.
 
 ### Deferred to Implementation
 
@@ -384,7 +384,7 @@ flowchart TD
   input).
 - Modify: `build.rs` — add `emit_skill_hosts` to read the JSON and emit `$OUT_DIR/generated_hosts.rs`. Add `serde_json`
   to `[build-dependencies]`.
-- Create: `scripts/sync-skill-fixture.sh` (with `--check` mode mirroring `anc generate coverage-matrix --check`).
+- Create: `scripts/sync-skill-fixture.sh` (with `--check` mode mirroring `anc emit coverage-matrix --check`).
 - Modify: existing CI workflow YAML — add a step running `scripts/sync-skill-fixture.sh --check` on every PR.
 
 **Module shape (`src/skill_install.rs`):**
@@ -417,9 +417,9 @@ flowchart TD
 
 **Patterns to follow:**
 
-- `Commands::Generate { artifact: GenerateKind }` is the precedent for nested subcommands.
+- `Commands::Emit { artifact: EmitKind }` is the precedent for nested subcommands.
 - `src/error.rs` existing `AppError` shape with `thiserror::Error` derives.
-- `anc generate coverage-matrix --check` is the precedent for `scripts/sync-skill-fixture.sh --check`.
+- `anc emit coverage-matrix --check` is the precedent for `scripts/sync-skill-fixture.sh --check`.
 
 **Test scenarios** (target ★★★ on every critical path; numbering tracks the eng-review test plan at
 `~/.gstack/projects/brettdavies-agentnative-cli/brett-dev-eng-review-test-plan-20260429-220823.md`):
@@ -473,9 +473,9 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 23. **[Integration]** `exit_codes_match_p4_convention` — table-driven: happy=0; user-error=1 across `DestNotEmpty`,
     `DestIsFile`, `MissingHome`, `GitNotFound`, `GitCloneFailed`; internal-error=2 reserved. Pins the P4 exit-code
     contract in one place rather than relying on per-error-path assertions scattered across tests 15/19/20/21.
-24. **[Dogfood — CRITICAL]** `anc check . --output json` on this repo shows no FAIL on `p5-*` for the new verb. Without
+24. **[Dogfood — CRITICAL]** `anc audit . --output json` on this repo shows no FAIL on `p5-*` for the new verb. Without
     this, the dogfood claim breaks.
-25. **[Dogfood — CRITICAL]** `anc check . --output json` on this repo shows no FAIL on `p2-*` for the new verb. Without
+25. **[Dogfood — CRITICAL]** `anc audit . --output json` on this repo shows no FAIL on `p2-*` for the new verb. Without
     this, the dogfood claim breaks.
 26. **[CI drift gate]** `scripts/sync-skill-fixture.sh --check` exits 0 on a clean tree, non-zero when
     `src/skill_install/skill.json` drifts from the upstream `agentnative-site/src/data/skill.json`. CI runs the check on
@@ -575,7 +575,7 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 - Existing top-level orchestration: `src/main.rs`
 - Existing error enum: `src/error.rs`
 - Existing pre-release sync precedent: `scripts/sync-spec.sh`, `RELEASES.md`
-- Existing CI drift-check precedent: `anc generate coverage-matrix --check`
+- Existing CI drift-check precedent: `anc emit coverage-matrix --check`
 - Site contract (canonical): `agentnative-site/src/data/skill.json`, `agentnative-site/src/build/skill.mjs`
 - Skill repo update mechanism: `agentnative-skill/bin/check-update`
 - Sibling plan (scorecard schema): `docs/plans/2026-04-29-001-feat-scorecard-schema-metadata-plan.md`
@@ -644,7 +644,7 @@ the security review applied substantial pressure. Key findings absorbed:
 - One reviewer cited CLAUDE.md's "Scorecard v1.1 Fields" section — that's stale documentation for the *scorecard*, not
   the *skill*; not relevant to this plan. Plan 1 owns the scorecard doc cleanup.
 - One reviewer flagged `--quiet` and `--output text` references in U5 as undefined for `skill install`. Re-checked: U5's
-  exit-code paragraph parenthetically references the existing `anc check` text-output convention to anchor the exit-code
+  exit-code paragraph parenthetically references the existing `anc audit` text-output convention to anchor the exit-code
   semantics, not to imply `skill install` accepts those flags. The intent is `0/1/2` exit-code shape parity. Wording
   could be tighter at implementation time.
 
@@ -678,7 +678,7 @@ alternative each decision rejected.
 - **F2 (KNOWN_HOSTS for completions):** `pub const KNOWN_HOSTS: &[&str]` exposed at the module boundary so a future
   `list` verb is a one-arm match and shell completions can resolve the host enum without re-listing.
 - **F3 (CI drift gate):** `scripts/sync-skill-fixture.sh --check` runs on every PR via the existing CI workflow,
-  matching the `anc generate coverage-matrix --check` precedent.
+  matching the `anc emit coverage-matrix --check` precedent.
 - **F4 (canonicalize hardcoded dest):** `fs::canonicalize` in `check_destination` defends against the case where the
   user's host skills directory is itself a symlink. Defensive over the hardcoded map's literal paths.
 - **F5 (`--help` mentions manual fallback):** The `--help` text for `anc skill install` and the README both call out the
@@ -895,7 +895,7 @@ dispatch) — fold into U1.
   tests/fixtures/skill.json` to surface drift before tag.
 - `tests/fixtures/skill.json` — vendored copy of `agentnative-site/src/data/skill.json`.
 - `scripts/sync-skill-fixture.sh` — mirrors `scripts/sync-spec.sh` for the fixture. Supports `--check` mode that exits
-  non-zero on drift, mirroring `anc generate coverage-matrix --check`.
+  non-zero on drift, mirroring `anc emit coverage-matrix --check`.
 - `.github/workflows/<existing>.yml` — add a step that runs `scripts/sync-skill-fixture.sh --check` on every PR.
 
 ### Risks Table
@@ -950,7 +950,7 @@ Test list (target ★★★ per path):
 dogfood tests per the same plan. Test 15 splits into 15a (unit, Command introspection, no network) and 15b (`#[ignore]`,
 exec into tempdir HOME).
 
-Tests 21 and 22 are CRITICAL — `anc check . --output json` must show no FAIL on `p5-*` or `p2-*` for the new verb.
+Tests 21 and 22 are CRITICAL — `anc audit . --output json` must show no FAIL on `p5-*` or `p2-*` for the new verb.
 Without them, the dogfood claim breaks.
 
 ### Frontmatter

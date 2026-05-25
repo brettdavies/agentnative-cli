@@ -92,7 +92,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
 - R13. Dogfood guards (`tests/dogfood.rs`) update to reflect the new verdict for `p2-json-output` against `anc` itself
   (Pass at `Confidence::Medium`) and the tier `p2-structured-output` resolves to (Strong, given `anc`'s `OutputFormat`
   enum is wired to `serde_json::to_string_pretty` via the scorecard module).
-- R14. Coverage matrix artifacts (`docs/coverage-matrix.md`, `coverage/matrix.json`) are regenerated via `anc generate
+- R14. Coverage matrix artifacts (`docs/coverage-matrix.md`, `coverage/matrix.json`) are regenerated via `anc emit
   coverage-matrix` as part of the same PR. The integration test
   `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
 
@@ -101,7 +101,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
 ## Acceptance Examples
 
 - AE1. **Covers R1, R2.** Given a clap-derived CLI with `#[arg(long = "output", value_enum)] format: OutputFormat` and
-  `enum OutputFormat { Json, Text }`, when `anc check` runs `<bin> --output __invalid_format_value_agentnative_probe__`
+  `enum OutputFormat { Json, Text }`, when `anc audit` runs `<bin> --output __invalid_format_value_agentnative_probe__`
   and the binary emits `error: invalid value '__invalid_format_value_agentnative_probe__' for '--output <FORMAT>': must
   be one of [text, json]` to stderr, then `p2-json-output` returns Pass at `Confidence::Medium` with evidence message
   naming the probe shape and the declared values.
@@ -126,7 +126,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
 
 ## Success Criteria
 
-- `anc check .` against the agentnative-cli repo reports `p2-json-output` at Pass (Confidence::Medium) and
+- `anc audit .` against the agentnative-cli repo reports `p2-json-output` at Pass (Confidence::Medium) and
   `p2-structured-output` at Pass (Confidence::High) — both contributing to the badge `score_pct` numerator. The dogfood
   project-mode score moves meaningfully above the current ~97% cap; binary-mode score moves above the current ~89% cap.
 - Every fixture in the new fixture matrix produces its documented expected verdict exactly. No silent regression on
@@ -212,7 +212,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
   `Choice([...])` shape. argparse exposes `choices` as a list literal; click wraps it in a `Choice` constructor. Both
   must be supported.
 - `Affects R10` · `Operational` — Concrete enumeration of which currently-scored tools shift audience labels. Resolve by
-  running `anc check` against each leaderboard member with the new detection enabled and diffing the audience field;
+  running `anc audit` against each leaderboard member with the new detection enabled and diffing the audience field;
   cite the diff in the PR description.
 - `Affects R12` · `Operational` — Whether the fixture matrix lives under `tests/fixtures/known-shapes/<tool>/` (per the
   ideation F4.7 shape) or extends the existing `tests/fixtures/` layout. Lightweight infrastructure decision; planner

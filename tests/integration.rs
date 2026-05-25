@@ -91,13 +91,15 @@ fn integration_tempdir() -> std::path::PathBuf {
 
 #[test]
 fn test_check_self() {
-    // Running against the project root should produce warnings (exit 1) or failures (exit 2).
-    // Either way, it should not exit 0 (we know agentnative has warnings from dogfooding).
+    // Running against the project root should produce a parseable scorecard.
+    // anc passes its own dogfood as of the PR3 cleanup, so exit code is 0;
+    // earlier in development it returned 1 (warnings) or 2 (failures). All
+    // three are valid signals that the run completed normally — the
+    // assertion targets the summary line shape, not a specific verdict.
     let assert = cmd().args(["inspect", "."]).assert();
 
-    // Exit code 1 (warnings) or 2 (failures) — not 0
     assert
-        .code(predicate::in_iter([1, 2]))
+        .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("checks:"));
 }
 
@@ -401,7 +403,7 @@ fn test_default_subcommand_preserves_global_flag_before_path() {
     cmd()
         .args(["-q", "."])
         .assert()
-        .code(predicate::in_iter([1, 2]))
+        .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("[PASS]").not())
         .stdout(predicate::str::contains("[SKIP]").not());
 }
@@ -412,7 +414,7 @@ fn test_default_subcommand_preserves_global_long_flag_before_path() {
     cmd()
         .args(["--quiet", "."])
         .assert()
-        .code(predicate::in_iter([1, 2]))
+        .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("[PASS]").not());
 }
 
@@ -463,7 +465,7 @@ fn test_explicit_subcommand_still_works() {
     cmd()
         .args(["inspect", "."])
         .assert()
-        .code(predicate::in_iter([1, 2]))
+        .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("checks:"));
 }
 
@@ -626,12 +628,12 @@ fn test_subcommand_flag_alone_injects_check() {
 // ── Flag-value pairing ───────────────────────────────────────────
 //
 // Tokens following a value-taking flag are values, NOT subcommand candidates.
-// `anc --command audit` must resolve "inspect" as a binary name on PATH, not
-// route to the explicit `audit` subcommand.
+// `anc --command inspect` must resolve "inspect" as a binary name on PATH,
+// not route to the explicit `inspect` subcommand.
 
 #[test]
 fn test_command_flag_value_matching_subcommand_name() {
-    // `anc --command audit` — `audit` is the value of `--command`. Should
+    // `anc --command inspect` — `inspect` is the value of `--command`. Should
     // try to resolve a binary named "inspect" on PATH (which doesn't exist on
     // a typical system) and surface a clean "not found" error.
     cmd()
@@ -639,7 +641,7 @@ fn test_command_flag_value_matching_subcommand_name() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains(
-            "command 'audit' not found on PATH",
+            "command 'inspect' not found on PATH",
         ));
 }
 
@@ -652,7 +654,7 @@ fn test_double_dash_separator_with_path() {
     cmd()
         .args(["--", "."])
         .assert()
-        .code(predicate::in_iter([1, 2]))
+        .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("checks:"));
 }
 

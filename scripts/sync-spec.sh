@@ -4,7 +4,7 @@
 # Default behavior: resolves the latest v* tag of agentnative-spec via the
 # GitHub API and pulls VERSION, CHANGELOG.md, and principles/p*-*.md at
 # that tag. The vendored tree is the build-time input for build.rs, which
-# generates the REQUIREMENTS slice consumed by `anc check`.
+# generates the REQUIREMENTS slice consumed by `anc audit`.
 #
 # Override behavior (--ref / SPEC_REF): vendors an explicit branch HEAD,
 # tag, or commit SHA instead of the latest v* tag. Use for cross-repo

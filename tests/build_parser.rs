@@ -475,3 +475,200 @@ fn vendored_spec_parses_to_expected_requirement_count() {
     // p8-discoverable-skill-bundle.md).
     assert_eq!(combined.last().unwrap().id, "p8-may-bundle-update");
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Red team: adversarial YAML inputs that try to slip past the parser.
+// Every entry below tests a footgun a future spec author could fall into,
+// or a subtle malformed value that the parser must surface loudly.
+// ─────────────────────────────────────────────────────────────────────────
+
+const RT_FIXTURE_HEAD: &str = r#"---
+id: p2
+title: Red team
+last-revised: 2026-01-01
+status: draft
+requirements:
+"#;
+
+fn rt_assert_error_mentions(content: &str, expected_substrings: &[&str]) {
+    // Append the closing frontmatter fence so each fixture is a complete
+    // markdown file. The body is intentionally empty — every fixture
+    // exercises the requirement-parsing path, not body content.
+    let full = format!("{content}---\n");
+    let err = parse_principle_file("p2-rt.md", &full).unwrap_err();
+    let msg = format!("{err}");
+    for s in expected_substrings {
+        assert!(
+            msg.contains(s),
+            "error message must contain {s:?}, got: {msg}"
+        );
+    }
+}
+
+#[test]
+fn rt_rejects_whitespace_only_check_id() {
+    // Subtle footgun — `is_empty` catches "" but not "   ". The parser must
+    // trim before deciding "non-empty".
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent:\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20check_id: '   '\n\
+         \x20\x20\x20\x20summary: bad check_id\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "check_id", "non-empty"]);
+}
+
+#[test]
+fn rt_rejects_antecedent_as_string() {
+    // YAML author wrote `antecedent: p2-json-output` instead of the mapping
+    // form. The parser must surface this with a hint at the expected shape.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent: p2-json-output\n\
+         \x20\x20\x20\x20summary: antecedent-as-string\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "antecedent", "mapping"]);
+}
+
+#[test]
+fn rt_rejects_antecedent_as_list() {
+    // Compound antecedents (`all_of` / `any_of`) are deferred to v2 per plan
+    // Sub-decision 2b. v1 must reject the list form.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent:\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20- check_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20- check_id: p2-yaml-output\n\
+         \x20\x20\x20\x20summary: antecedent-as-list\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "antecedent", "mapping"]);
+}
+
+#[test]
+fn rt_rejects_kind_with_wrong_case() {
+    // YAML is case-sensitive; "Conditional" is not "conditional". An author
+    // copying from a markdown example might capitalize and silently get a
+    // different code path.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: Conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent:\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20check_id: p2-json-output\n\
+         \x20\x20\x20\x20summary: capitalized kind\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "Conditional"]);
+}
+
+#[test]
+fn rt_rejects_mixed_legacy_if_and_new_kind() {
+    // Author mid-migration writes both shapes in the same row. The legacy
+    // `if:` branch only fires for `map.len() == 1`, so today both keys would
+    // silently pick the new shape and drop the legacy prose. The parser
+    // rejects the mixed shape outright.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20if: CLI emits structured output\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent:\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20check_id: p2-json-output\n\
+         \x20\x20\x20\x20summary: mixed legacy+new shape\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "if:", "kind:"]);
+}
+
+#[test]
+fn rt_rejects_antecedent_with_compound_op_key() {
+    // The v1 schema is strict about `antecedent` contents: only `check_id`
+    // is permitted. A v2-style `op: any_of` accidentally added to a v1 row
+    // must error so v2 syntax doesn't ship under v1 semantics.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent:\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20check_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20op: any_of\n\
+         \x20\x20\x20\x20summary: smuggled v2 syntax\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "op", "v1 schema"]);
+}
+
+#[test]
+fn rt_rejects_antecedent_null() {
+    // `antecedent: null` slipped past an earlier draft; the parser must
+    // treat it the same as a non-mapping value and refuse the row.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent: null\n\
+         \x20\x20\x20\x20summary: null antecedent\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "antecedent", "mapping"]);
+}
+
+#[test]
+fn rt_rejects_empty_antecedent_mapping() {
+    // `antecedent: {}` is a mapping with no `check_id`. Surface the missing
+    // field by name.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent: {{}}\n\
+         \x20\x20\x20\x20summary: empty antecedent\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "check_id"]);
+}
+
+#[test]
+fn rt_emit_rust_escapes_quotes_in_antecedent_check_id() {
+    // Defense-in-depth: the parser already rejects whitespace-only
+    // check_ids, but emit_rust should still escape any string content
+    // that ends up in the generated source. A check_id containing a
+    // quote (impossible today but cheap to guard against) must not break
+    // the generated Rust literal.
+    let reqs = vec![ParsedRequirement {
+        id: "p2-must-quoted".into(),
+        principle: 2,
+        level: Level::Must,
+        summary: "row with a hostile check_id".into(),
+        applicability: Applicability::Conditional {
+            condition: None,
+            antecedent: Some(Antecedent {
+                check_id: r#"p2-"injected""#.into(),
+            }),
+        },
+    }];
+    let src = emit_rust(&reqs, "0.0.0");
+    // The check_id literal must escape the embedded quotes; the generated
+    // line should parse as valid Rust.
+    assert!(
+        src.contains(r#"check_id: "p2-\"injected\"""#),
+        "generated source must escape quotes in check_id, got:\n{src}",
+    );
+}

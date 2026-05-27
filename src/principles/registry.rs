@@ -464,4 +464,85 @@ mod tests {
             }
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // U2 (schema 0.6): conditional applicability red-team guards.
+    // Each conditional row in the registry names an antecedent `check_id`
+    // that drives propagation. A typo or rename in the antecedent would
+    // silently mute propagation in production — the consequent row would
+    // forever look up `None` and pass through with its own probe status.
+    // The asserts below pin the contract loudly.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn every_conditional_antecedent_resolves_to_a_real_check() {
+        use crate::check::Check;
+        use crate::checks::all_checks_catalog;
+
+        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
+        let catalog_ids: Vec<&str> = catalog.iter().map(|c| c.id()).collect();
+
+        let mut dangling: Vec<(&str, &str)> = Vec::new();
+        for req in REQUIREMENTS {
+            if let Applicability::Conditional {
+                antecedent: Some(ante),
+                ..
+            } = req.applicability
+                && !catalog_ids.contains(&ante.check_id)
+            {
+                dangling.push((req.id, ante.check_id));
+            }
+        }
+        assert!(
+            dangling.is_empty(),
+            "conditional requirements with dangling antecedent check_ids:\n{}\n\
+             Fix the spec's `antecedent.check_id` or add the missing check to the catalog.",
+            dangling
+                .iter()
+                .map(|(req, ante)| format!(
+                    "  - row `{req}` → antecedent `{ante}` (not in catalog)"
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+
+    #[test]
+    fn no_conditional_row_names_itself_as_antecedent() {
+        // Edge case: a conditional row's covering check is the same as its
+        // antecedent. The propagation table would then read the row's own
+        // probe status and could collapse the row to n_a based on itself —
+        // a logic loop that's never the right model. The spec should never
+        // produce this shape; this test catches it if it does.
+        use crate::check::Check;
+        use crate::checks::all_checks_catalog;
+
+        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
+        let mut covers_by_check: std::collections::HashMap<&'static str, &'static [&'static str]> =
+            std::collections::HashMap::new();
+        for c in &catalog {
+            covers_by_check.insert(Box::leak(c.id().to_string().into_boxed_str()), c.covers());
+        }
+
+        for req in REQUIREMENTS {
+            let Applicability::Conditional {
+                antecedent: Some(ante),
+                ..
+            } = req.applicability
+            else {
+                continue;
+            };
+            if let Some(covers) = covers_by_check.get(ante.check_id) {
+                assert!(
+                    !covers.contains(&req.id),
+                    "conditional row `{}` declares antecedent `{}`, but that \
+                     check already covers `{}` directly — the row would gate \
+                     its own status against itself.",
+                    req.id,
+                    ante.check_id,
+                    req.id,
+                );
+            }
+        }
+    }
 }

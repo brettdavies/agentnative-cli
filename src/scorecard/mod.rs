@@ -312,7 +312,7 @@ pub struct CoverageSummary {
 /// Run-level outcome counts. The 7-status taxonomy added `opt_out` and
 /// `n_a` in schema 0.6; pre-0.6 consumers tolerate the new keys (additive
 /// extension).
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Summary {
     pub total: usize,
     pub pass: usize,
@@ -2030,5 +2030,270 @@ mod tests {
         let view = CheckResultView::from_result(&r);
         assert_eq!(view.status, "n_a");
         assert_eq!(view.evidence.as_deref(), Some("antecedent unmet"));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // U2 red team: adversarial inputs that try to break the per-row +
+    // propagation pipeline or the score formula.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn rt_propagation_is_idempotent() {
+        // Propagation reads raw probe statuses (not row statuses), so a
+        // second pass over an already-propagated row vector must produce
+        // an identical result. Pins the no-feedback contract — a future
+        // refactor that reads `rows` in place would break this and
+        // potentially loop or oscillate on chained conditionals.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        let after_first: Vec<(String, String)> = rows
+            .iter()
+            .map(|(r, c)| {
+                (
+                    serde_json::to_string(&r.status).expect("status serializes"),
+                    c.clone(),
+                )
+            })
+            .collect();
+        propagate_antecedents(&mut rows, &raw);
+        let after_second: Vec<(String, String)> = rows
+            .iter()
+            .map(|(r, c)| {
+                (
+                    serde_json::to_string(&r.status).expect("status serializes"),
+                    c.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(after_first, after_second, "propagation must be idempotent");
+    }
+
+    #[test]
+    fn rt_propagation_no_op_when_antecedent_did_not_run() {
+        // Source-only or filtered run: the antecedent probe didn't produce
+        // a raw result. The row keeps its own status — propagation can't
+        // override what it can't read. This is the exact path tools using
+        // `--source` or `--principle <N>` exercise in production.
+        let raw = vec![make_raw("p2-schema-print", CheckStatus::Pass)];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        assert!(
+            matches!(rows[0].0.status, CheckStatus::Pass),
+            "no antecedent in raw → row untouched, got: {:?}",
+            rows[0].0.status,
+        );
+    }
+
+    #[test]
+    fn rt_propagation_inherits_audit_profile_suppression_as_skip() {
+        // Adversarial case: a CLI runs with `--audit-profile <X>` that
+        // suppresses the antecedent probe. The suppressed Skip carries the
+        // SUPPRESSION_EVIDENCE_PREFIX sentinel. The consequent row should
+        // inherit Skip (cannot meaningfully evaluate). The new evidence
+        // string cites the antecedent so a reader can still trace the
+        // root cause back to the audit profile.
+        use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        match &rows[0].0.status {
+            CheckStatus::Skip(reason) => {
+                assert!(
+                    reason.contains("p2-json-output"),
+                    "propagated Skip must cite the antecedent, got: {reason}",
+                );
+                assert!(
+                    reason.contains("human-tui"),
+                    "propagated Skip must preserve the suppression reason, got: {reason}",
+                );
+            }
+            other => panic!("expected Skip, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rt_score_pct_only_n_a_returns_zero_without_panic() {
+        // Pathological: every result is NotApplicable. Denominator is zero;
+        // score must surface as 0 with no division-by-zero or NaN.
+        let results: Vec<CheckResult> = (0..100)
+            .map(|i| {
+                make_raw(
+                    &format!("row-{i}"),
+                    CheckStatus::NotApplicable("conditional unmet".into()),
+                )
+            })
+            .collect();
+        assert_eq!(score_pct(&results), 0);
+    }
+
+    #[test]
+    fn rt_score_pct_only_opt_out_returns_zero_without_panic() {
+        // Mirror of the n_a case: opt_out also excluded from denominator.
+        let results: Vec<CheckResult> = (0..50)
+            .map(|i| {
+                make_raw(
+                    &format!("row-{i}"),
+                    CheckStatus::OptOut("deliberate".into()),
+                )
+            })
+            .collect();
+        assert_eq!(score_pct(&results), 0);
+    }
+
+    #[test]
+    fn rt_score_pct_one_pass_amid_999_n_a_returns_100() {
+        // n_a must not dilute. One genuine pass against a thousand
+        // inapplicable rows is still 100%.
+        let mut results: Vec<CheckResult> = (0..999)
+            .map(|i| {
+                make_raw(
+                    &format!("row-{i}"),
+                    CheckStatus::NotApplicable("conditional unmet".into()),
+                )
+            })
+            .collect();
+        results.push(make_raw("row-last", CheckStatus::Pass));
+        assert_eq!(score_pct(&results), 100);
+    }
+
+    #[test]
+    fn rt_score_pct_skip_and_error_still_excluded() {
+        // Carry the legacy contract forward: Skip and Error contribute to
+        // neither side. A run of (1 Pass + 100 Skip + 100 Error) is 100%.
+        let mut results = vec![make_raw("good", CheckStatus::Pass)];
+        for i in 0..100 {
+            results.push(make_raw(
+                &format!("s-{i}"),
+                CheckStatus::Skip("limit".into()),
+            ));
+            results.push(make_raw(
+                &format!("e-{i}"),
+                CheckStatus::Error("boom".into()),
+            ));
+        }
+        assert_eq!(score_pct(&results), 100);
+    }
+
+    #[test]
+    fn rt_evidence_with_control_chars_roundtrips_through_json() {
+        // Evidence strings come from probe output and may contain quotes,
+        // backslashes, newlines, tabs. serde_json must escape them. The
+        // roundtrip parse must recover the exact byte sequence.
+        let hostile: &str = "line1\nline2\t\"quoted\"\\backslash\u{0007}bell";
+        let r = make_raw("c1", CheckStatus::Warn(hostile.to_string()));
+        let view = CheckResultView::from_result(&r);
+        let json = serde_json::to_string(&view).expect("view serializes");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("re-parses");
+        assert_eq!(
+            parsed["evidence"].as_str(),
+            Some(hostile),
+            "evidence must roundtrip through JSON without loss",
+        );
+    }
+
+    #[test]
+    fn rt_evidence_with_unicode_zero_width_and_rtl_roundtrips() {
+        // Zero-width joiner and RTL override are common smuggling vectors
+        // in display contexts. They must roundtrip through JSON unchanged;
+        // any sanitization belongs at the render layer (site), not here.
+        let hostile = "left\u{202e}right\u{200b}invisible";
+        let r = make_raw("c1", CheckStatus::OptOut(hostile.to_string()));
+        let view = CheckResultView::from_result(&r);
+        let json = serde_json::to_string(&view).expect("view serializes");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("re-parses");
+        assert_eq!(parsed["evidence"].as_str(), Some(hostile));
+        assert_eq!(parsed["status"], "opt_out");
+    }
+
+    #[test]
+    fn rt_summary_total_equals_sum_of_per_status_counts() {
+        // Invariant: total == pass + warn + fail + opt_out + n_a + skip + error.
+        // A new variant added without updating build_summary would break this.
+        let statuses = vec![
+            CheckStatus::Pass,
+            CheckStatus::Pass,
+            CheckStatus::Warn("w".into()),
+            CheckStatus::Fail("f".into()),
+            CheckStatus::OptOut("o".into()),
+            CheckStatus::OptOut("o".into()),
+            CheckStatus::OptOut("o".into()),
+            CheckStatus::NotApplicable("n".into()),
+            CheckStatus::Skip("s".into()),
+            CheckStatus::Error("e".into()),
+        ];
+        let results: Vec<CheckResult> = statuses
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| make_raw(&format!("c{i}"), s))
+            .collect();
+        let s = build_summary(&results);
+        assert_eq!(
+            s.total,
+            s.pass + s.warn + s.fail + s.opt_out + s.n_a + s.skip + s.error,
+            "summary.total must equal the sum of every per-status counter",
+        );
+    }
+
+    #[test]
+    fn rt_full_pipeline_n_a_excluded_from_summary_n_a_and_score() {
+        // End-to-end: a probe emits OptOut for the antecedent. After
+        // fan-out + propagation, the consequent row carries n_a. The
+        // summary counts both. The score reflects the non-conditional
+        // pass-rate, untouched by the opt_out / n_a pair.
+        let raw = vec![
+            make_raw("p2-json-output", CheckStatus::OptOut("no flag".into())),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p1-non-interactive", CheckStatus::Pass),
+        ];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+            Box::new(FakeCheck {
+                id: "p1-non-interactive",
+                covers: &["p1-must-no-interactive"],
+            }),
+        ];
+        let mut rows = fan_out_per_row(&raw, &catalog);
+        propagate_antecedents(&mut rows, &raw);
+        let per_row: Vec<CheckResult> = rows.into_iter().map(|(r, _)| r).collect();
+
+        let s = build_summary(&per_row);
+        assert_eq!(s.opt_out, 1, "p2-must-output-flag → opt_out: got {s:?}");
+        assert_eq!(
+            s.n_a, 1,
+            "p2-must-schema-print → n_a via propagation: got {s:?}",
+        );
+        // Score: 2 passes (p2-must-output-flag is opt_out, p2-must-schema-print
+        // is n_a; only 2 pass rows remain). Denominator = 2 (both passes), so
+        // 100%. The opt_out + n_a do not pull the score down.
+        assert_eq!(score_pct(&per_row), 100);
     }
 }

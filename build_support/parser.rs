@@ -436,6 +436,19 @@ fn parse_applicability(
         let if_key = serde_yaml::Value::String("if".into());
         let kind_key = serde_yaml::Value::String("kind".into());
 
+        // Mixing the legacy `if:` and new `kind:` shape in one applicability
+        // block is ambiguous: the legacy branch only fires when `if:` is the
+        // single key, so a row carrying both would silently use the new shape
+        // and drop the legacy prose. Reject early with a pointer at the
+        // schema the author probably meant to use.
+        if map.contains_key(&if_key) && map.contains_key(&kind_key) {
+            return Err(ParseError::UnknownApplicability {
+                file: file.to_string(),
+                requirement_id: req_id.to_string(),
+                hint: "`if:` and `kind:` cannot both be set; choose one (legacy `{ if: \"<prose>\" }` or new `{ kind: conditional, antecedent: { check_id: ... } }`)".into(),
+            });
+        }
+
         // Legacy single-key `{ if: "<prose>" }` shape.
         if map.len() == 1
             && let Some(if_val) = map.get(&if_key)
@@ -493,16 +506,34 @@ fn parse_applicability(
                                 .into(),
                         })?;
                 let check_id_key = serde_yaml::Value::String("check_id".into());
+                // v1 schema is strict: only `check_id` is permitted inside
+                // `antecedent`. Compound antecedents (`op: any_of | all_of`)
+                // and any other key are explicitly deferred to a future
+                // schema bump per plan Sub-decision 2b. Silently ignoring
+                // unknown keys would let v2 syntax land in v1 vendored spec
+                // and behave subtly wrong.
+                for (k, _) in ante_map {
+                    let k_str = k.as_str().unwrap_or("<non-string>");
+                    if k_str != "check_id" {
+                        return Err(ParseError::UnknownApplicability {
+                            file: file.to_string(),
+                            requirement_id: req_id.to_string(),
+                            hint: format!(
+                                "`antecedent.{k_str}` is not part of the v1 schema (only `check_id` is permitted; compound antecedents deferred to v2 per plan Sub-decision 2b)"
+                            ),
+                        });
+                    }
+                }
                 let check_id = ante_map.get(&check_id_key).and_then(|v| v.as_str()).ok_or_else(|| ParseError::UnknownApplicability {
                     file: file.to_string(),
                     requirement_id: req_id.to_string(),
                     hint: "`antecedent.check_id` must be a non-empty string (v1 schema supports a single antecedent only)".into(),
                 })?;
-                if check_id.is_empty() {
+                if check_id.trim().is_empty() {
                     return Err(ParseError::UnknownApplicability {
                         file: file.to_string(),
                         requirement_id: req_id.to_string(),
-                        hint: "`antecedent.check_id` must be a non-empty string".into(),
+                        hint: "`antecedent.check_id` must be a non-empty string (whitespace-only is rejected)".into(),
                     });
                 }
                 Some(Antecedent {

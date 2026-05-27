@@ -267,7 +267,17 @@ pub fn render_markdown(matrix: &Matrix) -> String {
             };
             let applicability = match row.applicability {
                 Applicability::Universal => "Universal".to_string(),
-                Applicability::Conditional(cond) => format!("If: {cond}"),
+                Applicability::Conditional {
+                    condition,
+                    antecedent,
+                } => match (condition, antecedent) {
+                    (Some(cond), Some(ante)) => {
+                        format!("If: {cond} (antecedent: `{}`)", ante.check_id)
+                    }
+                    (Some(cond), None) => format!("If: {cond}"),
+                    (None, Some(ante)) => format!("If: `{}` is present", ante.check_id),
+                    (None, None) => "Conditional".to_string(),
+                },
             };
             let verifiers = if row.verifiers.is_empty() {
                 "**UNCOVERED**".to_string()

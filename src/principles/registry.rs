@@ -18,11 +18,34 @@ pub enum Level {
 }
 
 /// Whether a requirement applies to every CLI or only when a condition holds.
+///
+/// `Conditional` carries an optional prose `condition` (legacy `{ if: "<prose>"
+/// }` shape) and an optional machine-readable `antecedent` (new `{ kind:
+/// conditional, antecedent: { check_id: ... } }` shape). The antecedent's check
+/// status drives the propagation table documented in
+/// `docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md`
+/// Decision 2a: when the antecedent resolves to `opt_out` / `n_a`, this
+/// requirement's row in the scorecard collapses to `n_a`; `skip` / `error`
+/// inherit; `pass` / `warn` / `fail` let the consequent verifier's own status
+/// stand.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-#[serde(tag = "kind", content = "condition", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Applicability {
     Universal,
-    Conditional(&'static str),
+    Conditional {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        condition: Option<&'static str>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        antecedent: Option<Antecedent>,
+    },
+}
+
+/// Machine-readable antecedent for a conditional requirement. The
+/// `check_id` names the verifier whose status decides whether the consequent
+/// row applies (see `Applicability` for the propagation rules).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct Antecedent {
+    pub check_id: &'static str,
 }
 
 /// Categories under which a tool may be exempt from specific requirements.

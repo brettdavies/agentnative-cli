@@ -9,7 +9,8 @@
 mod parser;
 
 use parser::{
-    Applicability, Level, ParseError, ParsedRequirement, aggregate, emit_rust, parse_principle_file,
+    Antecedent, Applicability, Level, ParseError, ParsedRequirement, aggregate, emit_rust,
+    parse_principle_file,
 };
 
 const VALID_P1: &str = r#"---
@@ -73,7 +74,10 @@ fn parses_valid_principle_file_in_source_order() {
     assert_eq!(parsed[1].id, "p1-must-bar");
     assert_eq!(
         parsed[1].applicability,
-        Applicability::Conditional("condition holds".to_string())
+        Applicability::Conditional {
+            condition: Some("condition holds".to_string()),
+            antecedent: None,
+        }
     );
 
     assert_eq!(parsed[2].id, "p1-should-baz");
@@ -292,7 +296,22 @@ fn emit_rust_produces_well_formed_source() {
             principle: 1,
             level: Level::Must,
             summary: r#"Quotes "inside" and \ backslash."#.into(),
-            applicability: Applicability::Conditional("auth flow".into()),
+            applicability: Applicability::Conditional {
+                condition: Some("auth flow".into()),
+                antecedent: None,
+            },
+        },
+        ParsedRequirement {
+            id: "p1-must-baz".into(),
+            principle: 1,
+            level: Level::Must,
+            summary: "Conditional with check_id antecedent.".into(),
+            applicability: Applicability::Conditional {
+                condition: None,
+                antecedent: Some(Antecedent {
+                    check_id: "p1-prereq".into(),
+                }),
+            },
         },
     ];
     let src = emit_rust(&reqs, "0.2.0");
@@ -302,12 +321,114 @@ fn emit_rust_produces_well_formed_source() {
     assert!(src.contains(r#"id: "p1-must-bar""#));
     assert!(src.contains("Level::Must"));
     assert!(src.contains("Applicability::Universal"));
-    assert!(src.contains(r#"Applicability::Conditional("auth flow")"#));
+    assert!(src.contains(r#"condition: Some("auth flow")"#));
+    assert!(src.contains(r#"check_id: "p1-prereq""#));
     assert!(
         src.contains(r#"Quotes \"inside\" and \\ backslash."#),
         "summary must escape quotes and backslashes for Rust string literal"
     );
     assert!(src.contains(r#"pub const SPEC_VERSION: &str = "0.2.0";"#));
+}
+
+#[test]
+fn parses_new_conditional_antecedent_shape() {
+    let src = r#"---
+id: p2
+title: Conditional check_id shape
+last-revised: 2026-01-01
+status: draft
+requirements:
+  - id: p2-must-schema-when-json
+    level: must
+    applicability:
+      kind: conditional
+      antecedent:
+        check_id: p2-json-output
+    summary: If --output json is supported, the schema must be discoverable.
+---
+"#;
+    let parsed = parse_principle_file("p2-cond.md", src).expect("valid input parses");
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(
+        parsed[0].applicability,
+        Applicability::Conditional {
+            condition: None,
+            antecedent: Some(Antecedent {
+                check_id: "p2-json-output".to_string(),
+            }),
+        }
+    );
+}
+
+#[test]
+fn rejects_unknown_kind_value() {
+    let src = r#"---
+id: p2
+title: Bad kind
+last-revised: 2026-01-01
+status: draft
+requirements:
+  - id: p2-must-foo
+    level: must
+    applicability:
+      kind: optional
+      antecedent:
+        check_id: p2-something
+    summary: Bad kind.
+---
+"#;
+    let err = parse_principle_file("p2-bad.md", src).unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("kind: optional"),
+        "should cite the bad kind: {msg}"
+    );
+}
+
+#[test]
+fn rejects_conditional_kind_with_no_condition_or_antecedent() {
+    let src = r#"---
+id: p2
+title: Empty conditional
+last-revised: 2026-01-01
+status: draft
+requirements:
+  - id: p2-must-foo
+    level: must
+    applicability:
+      kind: conditional
+    summary: Bare conditional.
+---
+"#;
+    let err = parse_principle_file("p2-bad.md", src).unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("p2-must-foo"));
+    assert!(msg.contains("conditional"));
+}
+
+#[test]
+fn rejects_antecedent_missing_check_id() {
+    let src = r#"---
+id: p2
+title: Bad antecedent
+last-revised: 2026-01-01
+status: draft
+requirements:
+  - id: p2-must-foo
+    level: must
+    applicability:
+      kind: conditional
+      antecedent:
+        kind: bundle-present
+    summary: antecedent without check_id.
+---
+"#;
+    let err = parse_principle_file("p2-bad.md", src).unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("check_id"),
+        "should hint check_id is required: {msg}"
+    );
 }
 
 #[test]

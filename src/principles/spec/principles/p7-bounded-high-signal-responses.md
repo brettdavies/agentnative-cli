@@ -107,7 +107,7 @@ under test to see each.
 
 ## Pressure test notes
 
-### 2026-04-27: Show HN launch red-team pass
+### 2026-04-27: Red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".

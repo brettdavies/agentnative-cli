@@ -108,11 +108,9 @@ if [[ -z "$spec_repo" || "$spec_repo" == "$SPEC_REMOTE_URL" || "$spec_repo" != *
 fi
 
 # === Resolution =========================================================
-# spec_ref: the ref the user requested (or "" if auto-resolving latest tag)
 # resolved_ref: what we actually vendor (e.g., "v0.4.0" or a SHA)
 # resolved_sha: 7-char SHA for display (always set after resolution)
 # source_label: human-readable origin string for the "vendoring" line
-spec_ref=""
 resolved_ref=""
 resolved_sha=""
 source_label=""

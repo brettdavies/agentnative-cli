@@ -18,12 +18,14 @@ fn fixture_path(name: &str) -> String {
     format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Assert every documented v0.5 key path resolves on the parsed JSON. The
-/// segmented walk gives a precise failure message when a field is missing.
+/// Assert every documented v0.5 key path resolves on the parsed JSON, plus
+/// the v0.6 additions (per-row emission, `tier` + `check_id` on each
+/// result, `opt_out` / `n_a` summary counters). The segmented walk gives a
+/// precise failure message when a field is missing.
 fn assert_v05_shape(parsed: &Value) {
     assert_eq!(
-        parsed["schema_version"], "0.5",
-        "schema_version must be 0.5",
+        parsed["schema_version"], "0.6",
+        "schema_version must be 0.6 (per-row emission + 7-status taxonomy)",
     );
 
     for path in [
@@ -54,12 +56,30 @@ fn assert_v05_shape(parsed: &Value) {
         "badge.scorecard_url",
         "badge.badge_url",
         "badge.convention_url",
+        // 0.6 additions — 7-status summary counters.
+        "summary.opt_out",
+        "summary.n_a",
     ] {
         let mut node = parsed;
         for segment in path.split('.') {
             node = node
                 .get(segment)
                 .unwrap_or_else(|| panic!("expected key `{path}` — segment `{segment}` missing"));
+        }
+    }
+
+    // 0.6: every result row carries `tier` and `check_id`. The shape is
+    // assertable as soon as `results[]` is non-empty.
+    if let Some(results) = parsed["results"].as_array() {
+        for (i, row) in results.iter().enumerate() {
+            assert!(
+                row.get("tier").is_some(),
+                "results[{i}] missing `tier` (schema 0.6): {row}",
+            );
+            assert!(
+                row.get("check_id").is_some(),
+                "results[{i}] missing `check_id` (schema 0.6): {row}",
+            );
         }
     }
 

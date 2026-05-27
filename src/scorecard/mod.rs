@@ -20,8 +20,11 @@ use crate::types::{CheckGroup, CheckResult, CheckStatus};
 /// target metadata blocks — self-describing scoring run), `0.5` (`badge`
 /// block — eligibility, embed snippet, and badge/scorecard URLs derived
 /// from the run, so authors learn about the badge from the CLI itself
-/// rather than a round-trip to the site).
-pub const SCHEMA_VERSION: &str = "0.5";
+/// rather than a round-trip to the site), `0.6` (7-status taxonomy:
+/// `opt_out` + `n_a` added to `status`; matching counters in `summary`;
+/// `tier` field on each result; one result per requirement-row instead of
+/// per-check_id; antecedent propagation for conditional rows).
+pub const SCHEMA_VERSION: &str = "0.6";
 
 /// Eligibility floor for the agent-native badge, expressed as an integer
 /// percent. A score that meets or exceeds this floor qualifies a tool to
@@ -186,11 +189,22 @@ pub fn compute_badge(results: &[CheckResult], tool_name: &str) -> BadgeInfo {
     }
 }
 
-/// Compute the rounded integer percent score using the leaderboard's
-/// denominator (`pass + warn + fail`). Skips and errors are excluded from
-/// both sides of the ratio. Returns `0` when no checks contribute (every
-/// status was Skip or Error, or no checks ran at all) — pairs with
-/// `BadgeInfo::eligible == false` so a zero score never qualifies.
+/// Compute the rounded integer percent score using the transitional
+/// leaderboard denominator. Pass/Warn/Fail count in the denominator. Pass
+/// counts in the numerator. Skip, Error, OptOut, and NotApplicable are
+/// excluded from both sides of the ratio.
+///
+/// **Transitional formula choice.** The 7-status taxonomy semantically
+/// treats `opt_out` as in-denominator (deliberate non-adoption is a real
+/// signal), but plan U2 explicitly keeps the U2 formula conservative:
+/// "leave the existing formula but exclude `opt_out` from the denominator
+/// and exclude `n_a` from both — minimal change that respects the new
+/// semantics without committing to a new formula." Whether `opt_out`
+/// re-enters the denominator (and at what weight) is the U3 spec issue,
+/// after the disambiguated input has been rescored.
+///
+/// Returns `0` when no checks contribute — pairs with `BadgeInfo::eligible
+/// == false` so a zero score never qualifies.
 fn score_pct(results: &[CheckResult]) -> u32 {
     let mut pass = 0u32;
     let mut denom = 0u32;
@@ -203,7 +217,10 @@ fn score_pct(results: &[CheckResult]) -> u32 {
             CheckStatus::Warn(_) | CheckStatus::Fail(_) => {
                 denom += 1;
             }
-            CheckStatus::Skip(_) | CheckStatus::Error(_) => {}
+            CheckStatus::Skip(_)
+            | CheckStatus::Error(_)
+            | CheckStatus::OptOut(_)
+            | CheckStatus::NotApplicable(_) => {}
         }
     }
     if denom == 0 {
@@ -292,16 +309,30 @@ pub struct CoverageSummary {
     pub may: LevelCounts,
 }
 
+/// Run-level outcome counts. The 7-status taxonomy added `opt_out` and
+/// `n_a` in schema 0.6; pre-0.6 consumers tolerate the new keys (additive
+/// extension).
 #[derive(Serialize)]
 pub struct Summary {
     pub total: usize,
     pub pass: usize,
     pub warn: usize,
     pub fail: usize,
+    pub opt_out: usize,
+    pub n_a: usize,
     pub skip: usize,
     pub error: usize,
 }
 
+/// One row of `results[]` in the scorecard JSON.
+///
+/// Schema 0.6 changed the unit of emission from "per check_id" to "per
+/// requirement-row". `id` is now the requirement row id (matches
+/// `coverage/matrix.json` row IDs). `tier` carries the row's RFC 2119
+/// level (`must`/`should`/`may`) so downstream scoring consumers do not
+/// need a matrix join. `check_id` is the probe that produced this row,
+/// preserved for provenance and so the site renderer / audience classifier
+/// can find the originating probe without a registry walk.
 #[derive(Serialize)]
 pub struct CheckResultView {
     pub id: String,
@@ -313,14 +344,42 @@ pub struct CheckResultView {
     /// `high` for direct probes, `medium` for heuristics. Older consumers
     /// feature-detect and tolerate missing keys.
     pub confidence: String,
+    /// Requirement tier (`must`/`should`/`may`). Pre-launch additive
+    /// (schema `0.6`). `null` only for results whose row id is not in the
+    /// registry — an internal inconsistency that should be loud.
+    pub tier: Option<String>,
+    /// Underlying probe that produced this row (e.g., `p3-version` covers
+    /// both `p3-must-version` and `p3-should-version-short` — two rows
+    /// share one `check_id`). Pre-launch additive (schema `0.6`). Falls
+    /// back to the row `id` itself when no provenance was threaded in
+    /// (legacy test fixtures that hand-build a `CheckResult` without the
+    /// fan-out pipeline).
+    pub check_id: String,
 }
 
 impl CheckResultView {
+    /// Construct from a raw probe result (pre-fan-out callers and test
+    /// fixtures). `check_id` defaults to `r.id` and `tier` is looked up
+    /// from the registry (which fails to find anything for arbitrary test
+    /// IDs — surfaces as JSON null). Production code uses `from_row`
+    /// directly with the threaded probe provenance; this fallback exists
+    /// for tests and any future caller that builds a per-check view
+    /// without the fan-out pipeline.
+    #[allow(dead_code)]
     pub fn from_result(r: &CheckResult) -> Self {
+        Self::from_row(r, &r.id)
+    }
+
+    /// Construct from a fanned-out per-row result with explicit probe
+    /// provenance. `check_id` is the probe's `Check::id()`; `r.id` is the
+    /// requirement row id.
+    pub fn from_row(r: &CheckResult, check_id: &str) -> Self {
         let (status, evidence) = match &r.status {
             CheckStatus::Pass => ("pass".to_string(), None),
             CheckStatus::Warn(e) => ("warn".to_string(), Some(e.clone())),
             CheckStatus::Fail(e) => ("fail".to_string(), Some(e.clone())),
+            CheckStatus::OptOut(e) => ("opt_out".to_string(), Some(e.clone())),
+            CheckStatus::NotApplicable(e) => ("n_a".to_string(), Some(e.clone())),
             CheckStatus::Skip(e) => ("skip".to_string(), Some(e.clone())),
             CheckStatus::Error(e) => ("error".to_string(), Some(e.clone())),
         };
@@ -338,6 +397,16 @@ impl CheckResultView {
             .ok()
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| format!("{:?}", r.confidence));
+        // Look up tier from the registry. The row ID is the result ID under
+        // the per-row emission contract introduced in schema 0.6. Per-check
+        // results fed in by older callers (or test fixtures) won't find a
+        // match here — `tier` falls back to None, which surfaces as JSON
+        // null and is a visible sign of inconsistency.
+        let tier = crate::principles::registry::find(&r.id).map(|req| match req.level {
+            crate::principles::registry::Level::Must => "must".to_string(),
+            crate::principles::registry::Level::Should => "should".to_string(),
+            crate::principles::registry::Level::May => "may".to_string(),
+        });
         CheckResultView {
             id: r.id.clone(),
             label: r.label.clone(),
@@ -346,6 +415,8 @@ impl CheckResultView {
             status,
             evidence,
             confidence,
+            tier,
+            check_id: check_id.to_string(),
         }
     }
 }
@@ -364,6 +435,14 @@ fn build_summary(results: &[CheckResult]) -> Summary {
         fail: results
             .iter()
             .filter(|r| matches!(r.status, CheckStatus::Fail(_)))
+            .count(),
+        opt_out: results
+            .iter()
+            .filter(|r| matches!(r.status, CheckStatus::OptOut(_)))
+            .count(),
+        n_a: results
+            .iter()
+            .filter(|r| matches!(r.status, CheckStatus::NotApplicable(_)))
             .count(),
         skip: results
             .iter()
@@ -461,6 +540,18 @@ pub fn format_text(
                 }
                 CheckStatus::Warn(_) => "WARN",
                 CheckStatus::Fail(_) => "FAIL",
+                CheckStatus::OptOut(_) => {
+                    if quiet {
+                        continue;
+                    }
+                    "OPT "
+                }
+                CheckStatus::NotApplicable(_) => {
+                    if quiet {
+                        continue;
+                    }
+                    "N/A "
+                }
                 CheckStatus::Skip(_) => {
                     if quiet {
                         continue;
@@ -478,7 +569,11 @@ pub fn format_text(
                         let _ = writeln!(out, "         {line}");
                     }
                 }
-                CheckStatus::Skip(reason) if !quiet => {
+                CheckStatus::Skip(reason)
+                | CheckStatus::OptOut(reason)
+                | CheckStatus::NotApplicable(reason)
+                    if !quiet =>
+                {
                     let _ = writeln!(out, "         {reason}");
                 }
                 _ => {}
@@ -490,8 +585,8 @@ pub fn format_text(
     let s = build_summary(results);
     let _ = writeln!(
         out,
-        "\n{} checks: {} pass, {} warn, {} fail, {} skip, {} error",
-        s.total, s.pass, s.warn, s.fail, s.skip, s.error
+        "\n{} checks: {} pass, {} warn, {} fail, {} opt_out, {} n_a, {} skip, {} error",
+        s.total, s.pass, s.warn, s.fail, s.opt_out, s.n_a, s.skip, s.error
     );
 
     // Badge embed hint — appended only when eligible. Below the floor the
@@ -505,9 +600,9 @@ pub fn format_text(
 }
 
 /// `--raw` rendering: one `id<TAB>status` line per result, nothing else.
-/// Status maps to the same five tokens the rich renderer uses (`PASS`,
-/// `WARN`, `FAIL`, `SKIP`, `ERR`) so downstream pipelines see the same
-/// vocabulary in both modes.
+/// Status maps to one of the seven tokens (`PASS`, `WARN`, `FAIL`,
+/// `OPT_OUT`, `N_A`, `SKIP`, `ERR`) so downstream pipelines see the same
+/// vocabulary as the JSON `status` field (uppercased).
 fn format_text_raw(results: &[CheckResult]) -> String {
     let mut out = String::with_capacity(results.len() * 32);
     for r in results {
@@ -515,12 +610,109 @@ fn format_text_raw(results: &[CheckResult]) -> String {
             CheckStatus::Pass => "PASS",
             CheckStatus::Warn(_) => "WARN",
             CheckStatus::Fail(_) => "FAIL",
+            CheckStatus::OptOut(_) => "OPT_OUT",
+            CheckStatus::NotApplicable(_) => "N_A",
             CheckStatus::Skip(_) => "SKIP",
             CheckStatus::Error(_) => "ERR",
         };
         let _ = writeln!(out, "{}\t{token}", r.id);
     }
     out
+}
+
+/// Fan one probe-level result out into one entry per requirement-row in
+/// the check's `Check::covers()` slice. The probe's status, label, group,
+/// layer, and confidence propagate to every row; the `id` field is
+/// replaced with the row id. Returns a pair `(row_result, check_id)` per
+/// emitted row so downstream consumers (CheckResultView, propagation) know
+/// the originating probe without a registry walk.
+///
+/// Checks that declare no `covers()` rows produce a single passthrough
+/// entry keyed by their own id — preserves the legacy per-check_id shape
+/// for checks not yet wired into the requirement registry.
+pub fn fan_out_per_row(
+    raw: &[CheckResult],
+    catalog: &[Box<dyn Check>],
+) -> Vec<(CheckResult, String)> {
+    let covers_by_id: HashMap<&str, &'static [&'static str]> =
+        catalog.iter().map(|c| (c.id(), c.covers())).collect();
+    let mut out: Vec<(CheckResult, String)> = Vec::with_capacity(raw.len());
+    for r in raw {
+        let covers = covers_by_id.get(r.id.as_str()).copied().unwrap_or(&[]);
+        if covers.is_empty() {
+            out.push((r.clone(), r.id.clone()));
+            continue;
+        }
+        for row_id in covers {
+            let mut row = r.clone();
+            row.id = (*row_id).to_string();
+            out.push((row, r.id.clone()));
+        }
+    }
+    out
+}
+
+/// Apply the antecedent-status propagation table from plan Decision 2a.
+///
+/// For each row whose registry entry has a conditional applicability with
+/// an `antecedent.check_id`, look up the antecedent probe's raw status and
+/// rewrite the row's status accordingly:
+///
+/// | Antecedent status | Consequent row becomes              |
+/// | ----------------- | ----------------------------------- |
+/// | `pass` / `warn` / `fail` | unchanged (evaluated normally) |
+/// | `opt_out` / `n_a` | `n_a` (prerequisite absent)         |
+/// | `skip`            | `skip` (inherited indeterminacy)    |
+/// | `error`           | `error` (inherited indeterminacy)   |
+///
+/// Rows with no registry entry (legacy / unknown ids) are left untouched.
+/// Rows whose antecedent did not produce a raw result (the antecedent
+/// probe didn't run this invocation, e.g., source-only mode) are left
+/// untouched — propagation needs an antecedent status to act on.
+pub fn propagate_antecedents(rows: &mut [(CheckResult, String)], raw: &[CheckResult]) {
+    use crate::principles::registry::{Applicability, find};
+    let raw_by_id: HashMap<&str, &CheckStatus> =
+        raw.iter().map(|r| (r.id.as_str(), &r.status)).collect();
+    for (row, _check_id) in rows.iter_mut() {
+        let Some(req) = find(&row.id) else { continue };
+        let Applicability::Conditional { antecedent, .. } = req.applicability else {
+            continue;
+        };
+        let Some(ante) = antecedent else { continue };
+        let Some(ante_status) = raw_by_id.get(ante.check_id) else {
+            continue;
+        };
+        let new_status = match ante_status {
+            CheckStatus::Pass | CheckStatus::Warn(_) | CheckStatus::Fail(_) => continue,
+            CheckStatus::OptOut(reason) | CheckStatus::NotApplicable(reason) => {
+                CheckStatus::NotApplicable(format!(
+                    "antecedent `{}` is {}: {reason}",
+                    ante.check_id,
+                    short_status_name(ante_status),
+                ))
+            }
+            CheckStatus::Skip(reason) => CheckStatus::Skip(format!(
+                "antecedent `{}` could not be measured: {reason}",
+                ante.check_id,
+            )),
+            CheckStatus::Error(reason) => {
+                CheckStatus::Error(format!("antecedent `{}` errored: {reason}", ante.check_id,))
+            }
+        };
+        row.status = new_status;
+    }
+}
+
+fn short_status_name(s: &CheckStatus) -> &'static str {
+    match s {
+        CheckStatus::Pass => "pass",
+        CheckStatus::Warn(_) => "warn",
+        CheckStatus::Fail(_) => "fail",
+        CheckStatus::OptOut(_) => "opt_out",
+        CheckStatus::NotApplicable(_) => "n_a",
+        CheckStatus::Skip(_) => "skip",
+        CheckStatus::Error(_) => "error",
+    }
 }
 
 /// Bundle of run-level metadata captured by the runner around `Commands::Audit`
@@ -535,24 +727,32 @@ pub struct RunMetadata {
 }
 
 /// Build the scorecard. The `ran_checks` slice is the catalog of checks
-/// that produced `results` — needed to translate check IDs back to the
-/// requirement IDs they cover for `coverage_summary`.
+/// that produced `raw_results`.
+///
+/// Pipeline (schema 0.6):
+///   raw probe results → fan out per requirement-row → antecedent
+///   propagation → JSON view. Audience and coverage_summary still consume
+///   raw probe results (signal classification keys on check_ids; coverage
+///   counts requirements covered by the underlying probes).
 pub fn build_scorecard(
-    results: &[CheckResult],
+    raw_results: &[CheckResult],
     ran_checks: &[Box<dyn Check>],
     audience: Option<String>,
     audit_profile: Option<String>,
     metadata: RunMetadata,
 ) -> Scorecard {
-    // `audience_reason` is derived from `results` rather than threaded
+    let mut row_results = fan_out_per_row(raw_results, ran_checks);
+    propagate_antecedents(&mut row_results, raw_results);
+
+    // `audience_reason` is derived from `raw_results` rather than threaded
     // through as a caller parameter — the reason is a property of the
-    // result set, not a caller decision, and deriving it here keeps the
-    // label and its explanation in lock-step. When audience has a label
-    // the field is omitted from JSON (see Scorecard's serde skip rule).
+    // probe-level result set, not a caller decision, and deriving it here
+    // keeps the label and its explanation in lock-step. When audience has
+    // a label the field is omitted from JSON.
     let audience_reason = if audience.is_some() {
         None
     } else {
-        audience::classify_reason(results).map(|s| s.to_string())
+        audience::classify_reason(raw_results).map(|s| s.to_string())
     };
     let RunMetadata {
         tool,
@@ -560,16 +760,21 @@ pub fn build_scorecard(
         run,
         target,
     } = metadata;
-    // Compute the badge from the same `tool.name` the JSON emits, so the
-    // embed URL in `badge.embed_markdown` and the slug in `tool.name` can
-    // never disagree (a regression that diverges them would mislead any
-    // author copy-pasting from the JSON).
-    let badge = compute_badge(results, &tool.name);
+
+    // Per-row results drive `summary` and `score_pct`. The badge uses the
+    // same per-row vector so the embed URL the JSON emits agrees with the
+    // post-summary text hint.
+    let per_row_only: Vec<CheckResult> = row_results.iter().map(|(r, _)| r.clone()).collect();
+    let badge = compute_badge(&per_row_only, &tool.name);
+
     Scorecard {
         schema_version: SCHEMA_VERSION,
-        results: results.iter().map(CheckResultView::from_result).collect(),
-        summary: build_summary(results),
-        coverage_summary: build_coverage_summary(results, ran_checks),
+        results: row_results
+            .iter()
+            .map(|(r, check_id)| CheckResultView::from_row(r, check_id))
+            .collect(),
+        summary: build_summary(&per_row_only),
+        coverage_summary: build_coverage_summary(raw_results, ran_checks),
         audience,
         audience_reason,
         audit_profile,
@@ -583,13 +788,13 @@ pub fn build_scorecard(
 }
 
 pub fn format_json(
-    results: &[CheckResult],
+    raw_results: &[CheckResult],
     ran_checks: &[Box<dyn Check>],
     audience: Option<String>,
     audit_profile: Option<String>,
     metadata: RunMetadata,
 ) -> String {
-    let scorecard = build_scorecard(results, ran_checks, audience, audit_profile, metadata);
+    let scorecard = build_scorecard(raw_results, ran_checks, audience, audit_profile, metadata);
     serde_json::to_string_pretty(&scorecard).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"))
 }
 
@@ -732,7 +937,7 @@ mod tests {
         ];
         let json = format_json(&results, &[], None, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "0.5");
+        assert_eq!(parsed["schema_version"], "0.6");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -951,7 +1156,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "0.5");
+        assert_eq!(parsed["schema_version"], "0.6");
     }
 
     #[test]
@@ -1227,7 +1432,7 @@ mod tests {
         }
 
         // 0.4 + 0.5 additions — every documented sub-key resolves.
-        assert_eq!(parsed["schema_version"], "0.5");
+        assert_eq!(parsed["schema_version"], "0.6");
         for path in [
             // 0.4
             "tool.name",
@@ -1549,5 +1754,281 @@ mod tests {
             "https://anc.dev/badge/navi.svg"
         );
         assert_eq!(parsed["badge"]["convention_url"], "https://anc.dev/badge");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // U2 (schema 0.6): per-row emission, tier, 7-status taxonomy,
+    // antecedent propagation. Plan reference:
+    // docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md
+    // in agentnative-site.
+    // ──────────────────────────────────────────────────────────────────
+
+    fn make_raw(id: &str, status: CheckStatus) -> CheckResult {
+        make_result(id, status, CheckGroup::P2)
+    }
+
+    /// Minimal `Check` impl that lets per-row fan-out tests express a
+    /// `covers()` slice without spinning up a real probe.
+    struct FakeCheck {
+        id: &'static str,
+        covers: &'static [&'static str],
+    }
+
+    impl crate::check::Check for FakeCheck {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn label(&self) -> &'static str {
+            "fake"
+        }
+        fn group(&self) -> CheckGroup {
+            CheckGroup::P2
+        }
+        fn layer(&self) -> CheckLayer {
+            CheckLayer::Behavioral
+        }
+        fn applicable(&self, _p: &crate::project::Project) -> bool {
+            true
+        }
+        fn run(&self, _p: &crate::project::Project) -> anyhow::Result<CheckResult> {
+            unreachable!()
+        }
+        fn covers(&self) -> &'static [&'static str] {
+            self.covers
+        }
+    }
+
+    #[test]
+    fn fan_out_emits_one_row_per_covered_requirement() {
+        // Single probe (`p3-version`) covers two requirement rows. Fan-out
+        // produces two entries with id = row_id and check_id = probe id.
+        let raw = vec![make_raw(
+            "p3-version",
+            CheckStatus::Warn("short alias missing".into()),
+        )];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![Box::new(FakeCheck {
+            id: "p3-version",
+            covers: &["p3-must-version", "p3-should-version-short"],
+        })];
+        let rows = fan_out_per_row(&raw, &catalog);
+        assert_eq!(rows.len(), 2);
+        let ids: Vec<&str> = rows.iter().map(|(r, _)| r.id.as_str()).collect();
+        assert!(ids.contains(&"p3-must-version"));
+        assert!(ids.contains(&"p3-should-version-short"));
+        for (r, check_id) in &rows {
+            assert_eq!(
+                check_id, "p3-version",
+                "check_id provenance lost on row {}",
+                r.id
+            );
+            assert!(
+                matches!(r.status, CheckStatus::Warn(_)),
+                "probe status must propagate to every covered row pre-propagation",
+            );
+        }
+    }
+
+    #[test]
+    fn fan_out_emits_passthrough_for_checks_without_covers() {
+        // Checks that don't declare any covers() pass through as a single
+        // row keyed by check.id() — preserves the legacy shape for any
+        // future check not yet wired into the registry.
+        let raw = vec![make_raw("orphan-check", CheckStatus::Pass)];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![Box::new(FakeCheck {
+            id: "orphan-check",
+            covers: &[],
+        })];
+        let rows = fan_out_per_row(&raw, &catalog);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0.id, "orphan-check");
+        assert_eq!(rows[0].1, "orphan-check");
+    }
+
+    #[test]
+    fn propagation_passes_through_when_antecedent_is_pass_warn_fail() {
+        // Antecedent statuses that mean "feature present" (pass / warn /
+        // fail) leave the consequent row untouched.
+        let raw = vec![
+            make_raw("p2-json-output", CheckStatus::Pass),
+            make_raw("p2-schema-print", CheckStatus::Fail("missing".into())),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Fail("missing".into())),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        assert!(matches!(rows[0].0.status, CheckStatus::Fail(_)));
+    }
+
+    #[test]
+    fn propagation_collapses_consequent_when_antecedent_is_opt_out() {
+        // Antecedent OptOut → consequent becomes NotApplicable, regardless
+        // of what the consequent's own probe emitted.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        match &rows[0].0.status {
+            CheckStatus::NotApplicable(reason) => {
+                assert!(
+                    reason.contains("p2-json-output") && reason.contains("opt_out"),
+                    "evidence should cite the antecedent + its status, got: {reason}",
+                );
+            }
+            other => panic!("expected NotApplicable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn propagation_collapses_consequent_when_antecedent_is_n_a() {
+        // n_a antecedent (e.g., a chained conditional) propagates the same
+        // way as opt_out.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::NotApplicable("upstream n/a".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        assert!(matches!(rows[0].0.status, CheckStatus::NotApplicable(_)));
+    }
+
+    #[test]
+    fn propagation_inherits_skip_from_antecedent() {
+        // Skip antecedent → consequent inherits Skip (couldn't measure
+        // upstream means can't meaningfully evaluate downstream).
+        let raw = vec![
+            make_raw("p2-json-output", CheckStatus::Skip("probe limit".into())),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        assert!(matches!(rows[0].0.status, CheckStatus::Skip(_)));
+    }
+
+    #[test]
+    fn propagation_inherits_error_from_antecedent() {
+        let raw = vec![
+            make_raw("p2-json-output", CheckStatus::Error("probe crashed".into())),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let mut rows = vec![(
+            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            "p2-schema-print".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        assert!(matches!(rows[0].0.status, CheckStatus::Error(_)));
+    }
+
+    #[test]
+    fn propagation_leaves_universal_rows_untouched() {
+        // A row with applicability: universal must not be touched by
+        // propagation even if a check with the same id exists in `raw`.
+        let raw = vec![make_raw("p1-non-interactive", CheckStatus::Pass)];
+        let mut rows = vec![(
+            make_raw("p1-must-no-interactive", CheckStatus::Pass),
+            "p1-non-interactive".to_string(),
+        )];
+        propagate_antecedents(&mut rows, &raw);
+        assert!(matches!(rows[0].0.status, CheckStatus::Pass));
+    }
+
+    #[test]
+    fn score_pct_excludes_opt_out_and_n_a_from_denominator() {
+        // Transitional formula (U2): pass / (pass + warn + fail). opt_out
+        // and n_a do not count in either side of the ratio. A run of
+        // 1 Pass + 1 OptOut + 1 NotApplicable scores 100% (1/1), not 33%.
+        let results = vec![
+            make_raw("c1", CheckStatus::Pass),
+            make_raw("c2", CheckStatus::OptOut("deliberate".into())),
+            make_raw("c3", CheckStatus::NotApplicable("conditional unmet".into())),
+        ];
+        assert_eq!(score_pct(&results), 100);
+
+        // Adding one Fail pulls the score down to 50%; opt_out / n_a still
+        // do not contribute to the denominator.
+        let mixed = vec![
+            make_raw("c1", CheckStatus::Pass),
+            make_raw("c2", CheckStatus::Fail("violates".into())),
+            make_raw("c3", CheckStatus::OptOut("deliberate".into())),
+            make_raw("c4", CheckStatus::NotApplicable("conditional unmet".into())),
+        ];
+        assert_eq!(score_pct(&mixed), 50);
+    }
+
+    #[test]
+    fn summary_counts_seven_statuses_independently() {
+        // build_summary surfaces opt_out and n_a alongside the historical
+        // five counters; total covers all seven.
+        let results = vec![
+            make_raw("a", CheckStatus::Pass),
+            make_raw("b", CheckStatus::Warn("w".into())),
+            make_raw("c", CheckStatus::Fail("f".into())),
+            make_raw("d", CheckStatus::OptOut("o".into())),
+            make_raw("e", CheckStatus::NotApplicable("n".into())),
+            make_raw("f", CheckStatus::Skip("s".into())),
+            make_raw("g", CheckStatus::Error("e".into())),
+        ];
+        let s = build_summary(&results);
+        assert_eq!(s.total, 7);
+        assert_eq!(s.pass, 1);
+        assert_eq!(s.warn, 1);
+        assert_eq!(s.fail, 1);
+        assert_eq!(s.opt_out, 1);
+        assert_eq!(s.n_a, 1);
+        assert_eq!(s.skip, 1);
+        assert_eq!(s.error, 1);
+    }
+
+    #[test]
+    fn check_result_view_carries_tier_and_check_id() {
+        // Per-row CheckResultView built via from_row exposes the requirement
+        // tier (looked up from the registry) and the originating probe.
+        let r = make_raw("p3-must-version", CheckStatus::Pass);
+        let view = CheckResultView::from_row(&r, "p3-version");
+        assert_eq!(view.id, "p3-must-version");
+        assert_eq!(view.check_id, "p3-version");
+        assert_eq!(view.tier.as_deref(), Some("must"));
+    }
+
+    #[test]
+    fn check_result_view_tier_is_null_for_unknown_row_id() {
+        // Test fixtures with synthetic ids that don't exist in the registry
+        // surface as JSON null for tier — visible signal of inconsistency.
+        let r = make_raw("not-a-real-row-id", CheckStatus::Pass);
+        let view = CheckResultView::from_row(&r, "some-check");
+        assert!(view.tier.is_none(), "got: {:?}", view.tier);
+    }
+
+    #[test]
+    fn opt_out_status_serializes_as_opt_out_in_json() {
+        let r = make_raw("c1", CheckStatus::OptOut("test reason".into()));
+        let view = CheckResultView::from_result(&r);
+        assert_eq!(view.status, "opt_out");
+        assert_eq!(view.evidence.as_deref(), Some("test reason"));
+    }
+
+    #[test]
+    fn n_a_status_serializes_as_n_a_in_json() {
+        let r = make_raw("c1", CheckStatus::NotApplicable("antecedent unmet".into()));
+        let view = CheckResultView::from_result(&r);
+        assert_eq!(view.status, "n_a");
+        assert_eq!(view.evidence.as_deref(), Some("antecedent unmet"));
     }
 }

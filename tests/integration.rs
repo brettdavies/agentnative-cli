@@ -745,7 +745,7 @@ fn test_audit_profile_echoed_in_json_output() {
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
     assert_eq!(parsed["audit_profile"], "human-tui");
-    assert_eq!(parsed["schema_version"], "0.5");
+    assert_eq!(parsed["schema_version"], "0.6");
 }
 
 #[test]
@@ -935,17 +935,16 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     );
 
     // Fixed enumerations also pin against the renderer contract.
-    assert_eq!(obj["schema_version"], "0.5");
+    assert_eq!(obj["schema_version"], "0.6");
 }
 
 #[test]
 fn test_audit_profile_diagnostic_does_not_panic_on_self() {
     // Dogfood edge case from the plan: `diagnostic-only` suppresses
-    // p5-dry-run on the self-target. A regression that drops the
-    // suppression (check runs normally) would still exit with a valid
-    // code, so a stronger assertion is required: `p5-dry-run` must
-    // appear in `results[]` as `status: "skip"` with the structured
-    // suppression evidence.
+    // p5-dry-run on the self-target. Schema 0.6 emits one result per
+    // requirement-row, so the suppressed probe surfaces under its row id
+    // `p5-must-dry-run` (covered by the `p5-dry-run` check) with
+    // `check_id: "p5-dry-run"` for provenance.
     let assert = cmd()
         .args([
             "audit",
@@ -964,15 +963,15 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
     let results = parsed["results"].as_array().expect("results is array");
     let p5 = results
         .iter()
-        .find(|r| r["id"] == "p5-dry-run")
-        .expect("p5-dry-run check should appear in results[]");
+        .find(|r| r["id"] == "p5-must-dry-run" && r["check_id"] == "p5-dry-run")
+        .expect("p5-must-dry-run row (from p5-dry-run probe) should appear in results[]");
     assert_eq!(
         p5["status"], "skip",
         "diagnostic-only must suppress p5-dry-run to Skip (got {p5})",
     );
     let evidence = p5["evidence"]
         .as_str()
-        .expect("suppressed p5-dry-run carries evidence string");
+        .expect("suppressed p5-must-dry-run carries evidence string");
     assert!(
         evidence.contains("suppressed by audit_profile: diagnostic-only"),
         "expected suppression evidence prefix, got {evidence:?}",

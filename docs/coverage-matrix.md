@@ -33,9 +33,9 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p2-must-stdout-stderr-split` | MUST | Universal | `p2-output-module` (source) | Data goes to stdout; diagnostics/progress/warnings go to stderr, never interleaved. |
 | `p2-must-exit-codes` | MUST | Universal | `p2-structured-exit-codes` (behavioral) | Exit codes are structured and documented (0 success, 1 general, 2 usage, 77 auth, 78 config). |
 | `p2-must-json-errors` | MUST | Universal | `p2-json-errors` (behavioral) | When `--output json` is active, errors are emitted as JSON (to stderr) with at least `error`, `kind`, and `message` fields. |
-| `p2-must-schema-print` | MUST | If: CLI emits structured output | `p2-schema-print` (behavioral) | CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier. |
+| `p2-must-schema-print` | MUST | If: `p2-json-output` is present | `p2-schema-print` (behavioral) | CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier. |
 | `p2-should-consistent-envelope` | SHOULD | Universal | `p2-consistent-envelope` (behavioral) | JSON output uses a consistent envelope (a top-level object with predictable keys) across every command. |
-| `p2-should-schema-file` | SHOULD | If: CLI emits structured output | `p2-schema-file` (project) | Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool. |
+| `p2-should-schema-file` | SHOULD | If: `p2-json-output` is present | `p2-schema-file` (project) | Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool. |
 | `p2-should-json-aliases` | SHOULD | Universal | `p2-json-aliases` (behavioral) | `--json` and `--jsonl` are accepted as aliases for `--output json` and `--output jsonl`; the short forms work alongside the canonical enum. |
 | `p2-may-more-formats` | MAY | Universal | `p2-more-formats` (behavioral) | Additional output formats (CSV, TSV, YAML) beyond the core three. |
 | `p2-may-raw-flag` | MAY | Universal | `p2-raw-flag` (behavioral) | `--raw` flag for unformatted output suitable for piping to other tools. |
@@ -107,8 +107,8 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p8-must-bundle-install` | MUST | If: CLI ships an agent skill bundle | `p8-bundle-install` (behavioral) | When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes. |
+| `p8-must-bundle-install` | MUST | If: `p8-bundle-exists` is present | `p8-bundle-install` (behavioral) | When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes. |
 | `p8-should-bundle-exists` | SHOULD | Universal | `p6-agents-md` (project)<br>`p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
-| `p8-may-install-all` | MAY | If: CLI ships an agent skill bundle | `p8-install-all` (behavioral) | An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all. |
-| `p8-may-bundle-update` | MAY | If: CLI ships an agent skill bundle | `p8-bundle-update` (behavioral) | An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version. |
+| `p8-may-install-all` | MAY | If: `p8-bundle-exists` is present | `p8-install-all` (behavioral) | An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all. |
+| `p8-may-bundle-update` | MAY | If: `p8-bundle-exists` is present | `p8-bundle-update` (behavioral) | An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version. |
 

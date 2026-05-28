@@ -36,7 +36,7 @@ use project::Project;
 use runner::{BinaryRunner, RunStatus};
 use scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
-    compute_badge, exit_code, format_json, format_text,
+    build_row_results, compute_badge, exit_code, format_json, format_text,
 };
 use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
 
@@ -275,6 +275,18 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let audience_label = audience::classify(&results);
     let audit_profile_label = exception_category.map(|c| c.as_kebab_case().to_string());
 
+    // Fan the raw probe results out to per-requirement rows and apply
+    // antecedent propagation — the same pipeline `build_scorecard` runs for
+    // JSON. The text renderer, the badge, and the exit code all read this
+    // projected set, so every surface agrees on the row set, counts, score,
+    // and status. JSON re-derives the identical set inside `format_json`
+    // from the raw results plus catalog; `audience` above stays on the raw
+    // probe results because signal classification keys on probe check ids.
+    let per_row: Vec<CheckResult> = build_row_results(&results, &all_checks)
+        .into_iter()
+        .map(|(row, _check_id)| row)
+        .collect();
+
     // Format output. `format_json` needs the check catalog so it can map
     // result IDs back to the requirements each check covers, plus the
     // run-level metadata (`tool`, `anc`, `run`, `target`). For text mode
@@ -284,12 +296,12 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let output_str = match output {
         OutputFormat::Text => {
             let tool_name = derive_tool_name(command_name.as_deref(), &project);
-            let badge = compute_badge(&results, &tool_name);
+            let badge = compute_badge(&per_row, &tool_name);
             let opts = TextOptions {
                 raw: cli.raw,
                 color: color::should_color(cli.color),
             };
-            format_text(&results, quiet, Some(&badge), opts)
+            format_text(&per_row, quiet, Some(&badge), opts)
         }
         OutputFormat::Json => {
             let target = build_target_info(command_name.as_deref(), &project);
@@ -324,7 +336,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     };
     output::emit(&output_str);
 
-    Ok(exit_code(&results))
+    Ok(exit_code(&per_row))
 }
 
 /// Curated invocation block — same content as the top-level `after_help`

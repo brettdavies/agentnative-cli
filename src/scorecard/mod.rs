@@ -402,11 +402,8 @@ impl CheckResultView {
         // results fed in by older callers (or test fixtures) won't find a
         // match here — `tier` falls back to None, which surfaces as JSON
         // null and is a visible sign of inconsistency.
-        let tier = crate::principles::registry::find(&r.id).map(|req| match req.level {
-            crate::principles::registry::Level::Must => "must".to_string(),
-            crate::principles::registry::Level::Should => "should".to_string(),
-            crate::principles::registry::Level::May => "may".to_string(),
-        });
+        let tier =
+            crate::principles::registry::find(&r.id).map(|req| req.level.as_str().to_string());
         CheckResultView {
             id: r.id.clone(),
             label: r.label.clone(),
@@ -567,12 +564,8 @@ pub fn format_text(
             // no suffix rather than panicking — the same tolerance
             // `CheckResultView::from_row` applies for the JSON `tier` field.
             let tier_suffix = crate::principles::registry::find(&r.id)
-                .map(|req| match req.level {
-                    Level::Must => " (must)",
-                    Level::Should => " (should)",
-                    Level::May => " (may)",
-                })
-                .unwrap_or("");
+                .map(|req| format!(" ({})", req.level.as_str()))
+                .unwrap_or_default();
             let _ = writeln!(out, "  [{painted}] {} ({}){tier_suffix}", r.label, r.id);
             match &r.status {
                 CheckStatus::Warn(e) | CheckStatus::Fail(e) | CheckStatus::Error(e) => {
@@ -727,9 +720,9 @@ fn short_status_name(s: &CheckStatus) -> &'static str {
 }
 
 /// Fan raw probe results out to per-requirement rows and apply antecedent
-/// propagation. The single producer of the per-row result set every output
-/// surface consumes — the JSON scorecard, the text renderer, the badge, and
-/// the process exit code all derive from this one function so they cannot
+/// propagation. The shared derivation every output surface routes through —
+/// the JSON scorecard, the text renderer, the badge, and the process exit
+/// code all build their per-row set with this one function, so they cannot
 /// disagree on the row set, counts, score, or status of any requirement.
 ///
 /// Each pair carries the row plus its originating probe `Check::id()` for

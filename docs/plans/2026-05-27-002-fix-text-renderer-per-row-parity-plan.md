@@ -1,7 +1,7 @@
 ---
 title: "fix: Route the text renderer through the per-row + propagation pipeline so text and JSON agree"
 type: fix
-status: proposed
+status: completed
 date: 2026-05-27
 origin: U2 (PR #62 / commit 3839696, scorecard 7-status taxonomy + schema 0.6) shipped the per-row pipeline on the JSON path only; the `--output text` path was never migrated. Repro by auditing `bat`.
 ---

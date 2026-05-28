@@ -2014,6 +2014,43 @@ mod tests {
     }
 
     #[test]
+    fn exit_code_drops_to_zero_when_consequent_propagates_to_n_a() {
+        // Key Technical Decision §4: exit_code reads the per-row set, not
+        // raw probes. A probe that raw-Fails a requirement whose row
+        // collapses to n_a (its antecedent opted out) must not lift the
+        // exit code — the requirement does not apply. Raw results would
+        // exit 2; the per-row set exits 0.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Fail("no schema".into())),
+        ];
+        assert_eq!(exit_code(&raw), 2, "raw probe Fail would exit 2");
+
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+        ];
+        let per_row: Vec<CheckResult> = build_row_results(&raw, &catalog)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        assert_eq!(
+            exit_code(&per_row),
+            0,
+            "consequent propagated to n_a must not lift the exit code",
+        );
+    }
+
+    #[test]
     fn score_pct_excludes_opt_out_and_n_a_from_denominator() {
         // Transitional formula (U2): pass / (pass + warn + fail). opt_out
         // and n_a do not count in either side of the ratio. A run of

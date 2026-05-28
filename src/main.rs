@@ -336,7 +336,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     };
     output::emit(&output_str);
 
-    Ok(exit_code(&results))
+    Ok(exit_code(&per_row))
 }
 
 /// Curated invocation block — same content as the top-level `after_help`

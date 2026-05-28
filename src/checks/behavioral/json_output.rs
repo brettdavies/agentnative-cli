@@ -71,7 +71,12 @@ impl Check for JsonOutputCheck {
 fn probe_subcommands(runner: &BinaryRunner, help_output: &str) -> CheckStatus {
     let subcommands = parse_subcommand_names(help_output);
     if subcommands.is_empty() {
-        return CheckStatus::Skip("no --output/--format flag detected".into());
+        return CheckStatus::OptOut(
+            "no --output/--format flag detected — tool does not ship structured output. \
+             Schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
+             collapse to n/a via antecedent propagation."
+                .into(),
+        );
     }
 
     for subcmd in &subcommands {
@@ -90,7 +95,11 @@ fn probe_subcommands(runner: &BinaryRunner, help_output: &str) -> CheckStatus {
         }
     }
 
-    CheckStatus::Skip("no --output/--format flag detected in any subcommand".into())
+    CheckStatus::OptOut(
+        "no --output/--format flag detected in any subcommand — tool does not ship \
+         structured output."
+            .into(),
+    )
 }
 
 /// Extract subcommand names from CLI --help output.
@@ -293,12 +302,15 @@ esac
     }
 
     #[test]
-    fn json_output_skip_no_flag() {
+    fn json_output_opt_out_no_flag() {
+        // Schema 0.6: "no flag at all" is opt_out (deliberate non-adoption),
+        // not Skip (probe limitation). Distinguishes "tool doesn't ship
+        // structured output" from "we couldn't measure it".
         let project = test_project_with_sh_script("echo 'just some help text'");
         let result = JsonOutputCheck.run(&project).expect("check should run");
         match &result.status {
-            CheckStatus::Skip(msg) => assert!(msg.contains("no --output")),
-            other => panic!("expected Skip, got {other:?}"),
+            CheckStatus::OptOut(msg) => assert!(msg.contains("no --output")),
+            other => panic!("expected OptOut, got {other:?}"),
         }
     }
 

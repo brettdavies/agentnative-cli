@@ -1,7 +1,7 @@
 ---
 id: p5
 title: Safe Retries and Explicit Mutation Boundaries
-last-revised: 2026-04-22
+last-revised: 2026-05-07
 status: active
 requirements:
   - id: p5-must-force-yes
@@ -79,7 +79,7 @@ under test to see each.
 
 ## Pressure test notes
 
-### 2026-04-27: Show HN launch red-team pass
+### 2026-04-27: Red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".

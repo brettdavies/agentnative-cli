@@ -18,11 +18,34 @@ pub enum Level {
 }
 
 /// Whether a requirement applies to every CLI or only when a condition holds.
+///
+/// `Conditional` carries an optional prose `condition` (legacy `{ if: "<prose>"
+/// }` shape) and an optional machine-readable `antecedent` (new `{ kind:
+/// conditional, antecedent: { check_id: ... } }` shape). The antecedent's check
+/// status drives the propagation table documented in
+/// `docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md`
+/// Decision 2a: when the antecedent resolves to `opt_out` / `n_a`, this
+/// requirement's row in the scorecard collapses to `n_a`; `skip` / `error`
+/// inherit; `pass` / `warn` / `fail` let the consequent verifier's own status
+/// stand.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-#[serde(tag = "kind", content = "condition", rename_all = "lowercase")]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Applicability {
     Universal,
-    Conditional(&'static str),
+    Conditional {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        condition: Option<&'static str>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        antecedent: Option<Antecedent>,
+    },
+}
+
+/// Machine-readable antecedent for a conditional requirement. The
+/// `check_id` names the verifier whose status decides whether the consequent
+/// row applies (see `Applicability` for the propagation rules).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct Antecedent {
+    pub check_id: &'static str,
 }
 
 /// Categories under which a tool may be exempt from specific requirements.
@@ -437,6 +460,87 @@ mod tests {
                      check ID `{id}` — either the check was renamed/removed \
                      or the table has a typo. Fix the table, not the \
                      catalog.",
+                );
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // U2 (schema 0.6): conditional applicability red-team guards.
+    // Each conditional row in the registry names an antecedent `check_id`
+    // that drives propagation. A typo or rename in the antecedent would
+    // silently mute propagation in production — the consequent row would
+    // forever look up `None` and pass through with its own probe status.
+    // The asserts below pin the contract loudly.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn every_conditional_antecedent_resolves_to_a_real_check() {
+        use crate::check::Check;
+        use crate::checks::all_checks_catalog;
+
+        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
+        let catalog_ids: Vec<&str> = catalog.iter().map(|c| c.id()).collect();
+
+        let mut dangling: Vec<(&str, &str)> = Vec::new();
+        for req in REQUIREMENTS {
+            if let Applicability::Conditional {
+                antecedent: Some(ante),
+                ..
+            } = req.applicability
+                && !catalog_ids.contains(&ante.check_id)
+            {
+                dangling.push((req.id, ante.check_id));
+            }
+        }
+        assert!(
+            dangling.is_empty(),
+            "conditional requirements with dangling antecedent check_ids:\n{}\n\
+             Fix the spec's `antecedent.check_id` or add the missing check to the catalog.",
+            dangling
+                .iter()
+                .map(|(req, ante)| format!(
+                    "  - row `{req}` → antecedent `{ante}` (not in catalog)"
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
+
+    #[test]
+    fn no_conditional_row_names_itself_as_antecedent() {
+        // Edge case: a conditional row's covering check is the same as its
+        // antecedent. The propagation table would then read the row's own
+        // probe status and could collapse the row to n_a based on itself —
+        // a logic loop that's never the right model. The spec should never
+        // produce this shape; this test catches it if it does.
+        use crate::check::Check;
+        use crate::checks::all_checks_catalog;
+
+        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
+        let mut covers_by_check: std::collections::HashMap<&'static str, &'static [&'static str]> =
+            std::collections::HashMap::new();
+        for c in &catalog {
+            covers_by_check.insert(Box::leak(c.id().to_string().into_boxed_str()), c.covers());
+        }
+
+        for req in REQUIREMENTS {
+            let Applicability::Conditional {
+                antecedent: Some(ante),
+                ..
+            } = req.applicability
+            else {
+                continue;
+            };
+            if let Some(covers) = covers_by_check.get(ante.check_id) {
+                assert!(
+                    !covers.contains(&req.id),
+                    "conditional row `{}` declares antecedent `{}`, but that \
+                     check already covers `{}` directly — the row would gate \
+                     its own status against itself.",
+                    req.id,
+                    ante.check_id,
+                    req.id,
                 );
             }
         }

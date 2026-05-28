@@ -2051,6 +2051,77 @@ mod tests {
     }
 
     #[test]
+    fn text_and_json_agree_on_a_propagated_conditional_row() {
+        // $100 guard for the text/JSON data-flow gap this plan closed: both
+        // surfaces must derive the same row set from the same raw results +
+        // catalog. A bat-shaped fixture — an opt_out antecedent
+        // (p2-json-output) plus a raw-Fail consequent (p2-schema-print) —
+        // exercises the n_a propagation both surfaces share. If the text
+        // path ever stops routing through build_row_results, the row id,
+        // count, status, and badge score diverge and this fails.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw(
+                "p2-schema-print",
+                CheckStatus::Fail("no schema surface".into()),
+            ),
+        ];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+        ];
+
+        // Text path: exactly the projection main::run feeds the renderer.
+        let per_row: Vec<CheckResult> = build_row_results(&raw, &catalog)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        let text_badge = compute_badge(&per_row, "fixture-tool");
+        let text = format_text(&per_row, false, Some(&text_badge), TextOptions::default());
+
+        // JSON path.
+        let scorecard = build_scorecard(&raw, &catalog, None, None, fixture_metadata());
+
+        // (a) The consequent renders n_a, never fail, on both surfaces.
+        let json_consequent = scorecard
+            .results
+            .iter()
+            .find(|v| v.id == "p2-must-schema-print")
+            .expect("consequent row present in JSON");
+        assert_eq!(json_consequent.status, "n_a");
+        assert!(
+            text.contains("[N/A ]") && text.contains("p2-must-schema-print"),
+            "text must render the consequent row as N/A:\n{text}",
+        );
+        assert!(
+            !text.contains("[FAIL]"),
+            "the only raw-Fail probe propagated to n_a; no row may render FAIL:\n{text}",
+        );
+
+        // (b) Row counts agree.
+        assert_eq!(
+            per_row.len(),
+            scorecard.results.len(),
+            "text row count must equal JSON results.len()",
+        );
+
+        // (c) Badge scores agree.
+        assert_eq!(
+            text_badge.score_pct, scorecard.badge.score_pct,
+            "text badge score must equal JSON badge.score_pct",
+        );
+    }
+
+    #[test]
     fn score_pct_excludes_opt_out_and_n_a_from_denominator() {
         // Transitional formula (U2): pass / (pass + warn + fail). opt_out
         // and n_a do not count in either side of the ratio. A run of

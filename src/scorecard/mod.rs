@@ -562,7 +562,18 @@ pub fn format_text(
             };
             let painted =
                 crate::color::paint(crate::color::status_style(prefix, opts.color), prefix);
-            let _ = writeln!(out, "  [{painted}] {} ({})", r.label, r.id);
+            // Tier comes from the requirement registry keyed on the row id.
+            // Unregistered ids (legacy per-check rows, test fixtures) yield
+            // no suffix rather than panicking — the same tolerance
+            // `CheckResultView::from_row` applies for the JSON `tier` field.
+            let tier_suffix = crate::principles::registry::find(&r.id)
+                .map(|req| match req.level {
+                    Level::Must => " (must)",
+                    Level::Should => " (should)",
+                    Level::May => " (may)",
+                })
+                .unwrap_or("");
+            let _ = writeln!(out, "  [{painted}] {} ({}){tier_suffix}", r.label, r.id);
             match &r.status {
                 CheckStatus::Warn(e) | CheckStatus::Fail(e) | CheckStatus::Error(e) => {
                     for line in e.lines() {

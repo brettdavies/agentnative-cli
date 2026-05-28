@@ -69,9 +69,9 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 - Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help` but
   not `-h`.
 - A short alias for `--version` SHOULD work: `-V` (clap default, `curl`, `wget`, `gzip`), `-v` (`npm`, `node`, `bun`,
-  `yarn`, `make`), or `-version` (Go's `flag` package). Any one is sufficient. Agents probing tool versions across many
-  CLIs save token cost when they can pin against a one- or two-character form; the long-only path forces an extra parse
-  step.
+  `yarn`, `make`), or `-version` (Go's `flag` package). Any of the three forms is sufficient. Agents probing tool
+  versions across many CLIs save token cost when they can pin against a one- or two-character flag; the long-only path
+  forces an extra parse step.
 
 **MAY:**
 

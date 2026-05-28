@@ -77,10 +77,17 @@ pub(crate) fn find_bundle(root: &Path) -> Option<std::path::PathBuf> {
     None
 }
 
-/// Core unit. SHOULD-tier: every miss is Warn, never Fail.
+/// Core unit. SHOULD-tier: every miss is Warn, never Fail. The "no bundle
+/// at all" case emits `OptOut` so antecedent propagation (Decision 2a) can
+/// collapse the conditional MUSTs/MAYs that depend on `p8-bundle-exists`
+/// (`p8-must-bundle-install`, `p8-may-install-all`, `p8-may-bundle-update`)
+/// to `n_a` rather than dragging them through their own probe and emitting
+/// double-penalty Skips. A bundle that exists but is malformed (missing
+/// frontmatter or `name:` field) is a real SHOULD violation and stays
+/// `Warn` — the feature is present, just incomplete.
 pub(crate) fn check_bundle_exists(root: &Path) -> CheckStatus {
     let Some(path) = find_bundle(root) else {
-        return CheckStatus::Warn(
+        return CheckStatus::OptOut(
             "no top-level AGENTS.md or SKILL.md found. Agents discover \
              skill bundles via filesystem convention; ship one with YAML \
              frontmatter naming the tool."
@@ -179,12 +186,12 @@ mod tests {
     }
 
     #[test]
-    fn warn_no_bundle() {
+    fn opt_out_no_bundle() {
         let dir = temp_dir("nobundle");
         fs::write(dir.join("README.md"), "# Tool\n").expect("write");
         match check_bundle_exists(&dir) {
-            CheckStatus::Warn(msg) => assert!(msg.contains("AGENTS.md")),
-            other => panic!("expected Warn, got {other:?}"),
+            CheckStatus::OptOut(msg) => assert!(msg.contains("AGENTS.md")),
+            other => panic!("expected OptOut, got {other:?}"),
         }
     }
 

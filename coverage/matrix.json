@@ -192,7 +192,9 @@
       "summary": "CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier.",
       "applicability": {
         "kind": "conditional",
-        "condition": "CLI emits structured output"
+        "antecedent": {
+          "check_id": "p2-json-output"
+        }
       },
       "verifiers": [
         {
@@ -223,7 +225,9 @@
       "summary": "Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool.",
       "applicability": {
         "kind": "conditional",
-        "condition": "CLI emits structured output"
+        "antecedent": {
+          "check_id": "p2-json-output"
+        }
       },
       "verifiers": [
         {
@@ -885,7 +889,9 @@
       "summary": "When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes.",
       "applicability": {
         "kind": "conditional",
-        "condition": "CLI ships an agent skill bundle"
+        "antecedent": {
+          "check_id": "p8-bundle-exists"
+        }
       },
       "verifiers": [
         {
@@ -920,7 +926,9 @@
       "summary": "An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all.",
       "applicability": {
         "kind": "conditional",
-        "condition": "CLI ships an agent skill bundle"
+        "antecedent": {
+          "check_id": "p8-bundle-exists"
+        }
       },
       "verifiers": [
         {
@@ -936,7 +944,9 @@
       "summary": "An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version.",
       "applicability": {
         "kind": "conditional",
-        "condition": "CLI ships an agent skill bundle"
+        "antecedent": {
+          "check_id": "p8-bundle-exists"
+        }
       },
       "verifiers": [
         {

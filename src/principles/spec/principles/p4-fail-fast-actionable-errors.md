@@ -1,7 +1,7 @@
 ---
 id: p4
 title: Fail Fast with Actionable Errors
-last-revised: 2026-05-06
+last-revised: 2026-05-07
 status: active
 requirements:
   - id: p4-must-try-parse
@@ -124,7 +124,7 @@ Measured by check IDs `p4-bad-args`, `p4-process-exit`, `p4-unwrap`, `p4-exit-co
 
 ## Pressure test notes
 
-### 2026-04-27: Show HN launch red-team pass
+### 2026-04-27: Red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".

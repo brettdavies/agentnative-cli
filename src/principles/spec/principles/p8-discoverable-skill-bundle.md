@@ -1,7 +1,7 @@
 ---
 id: p8
 title: Discoverable Through Agent Skill Bundles
-last-revised: 2026-05-06
+last-revised: 2026-05-21
 status: active
 requirements:
   - id: p8-must-bundle-install

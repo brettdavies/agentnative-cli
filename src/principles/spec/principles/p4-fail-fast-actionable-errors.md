@@ -1,7 +1,7 @@
 ---
 id: p4
 title: Fail Fast with Actionable Errors
-last-revised: 2026-05-06
+last-revised: 2026-05-07
 status: active
 requirements:
   - id: p4-must-try-parse

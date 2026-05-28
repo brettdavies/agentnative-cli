@@ -1,7 +1,7 @@
 ---
 id: p6
 title: Composable and Predictable Command Structure
-last-revised: 2026-05-06
+last-revised: 2026-05-07
 status: active
 requirements:
   - id: p6-must-sigpipe

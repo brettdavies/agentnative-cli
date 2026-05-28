@@ -1,7 +1,7 @@
 ---
 id: p1
 title: Non-Interactive by Default
-last-revised: 2026-05-06
+last-revised: 2026-05-07
 status: active
 requirements:
   - id: p1-must-env-var

@@ -715,6 +715,23 @@ fn short_status_name(s: &CheckStatus) -> &'static str {
     }
 }
 
+/// Fan raw probe results out to per-requirement rows and apply antecedent
+/// propagation. The single producer of the per-row result set every output
+/// surface consumes — the JSON scorecard, the text renderer, the badge, and
+/// the process exit code all derive from this one function so they cannot
+/// disagree on the row set, counts, score, or status of any requirement.
+///
+/// Each pair carries the row plus its originating probe `Check::id()` for
+/// provenance; callers that only need the rows project the `String` away.
+pub fn build_row_results(
+    raw: &[CheckResult],
+    catalog: &[Box<dyn Check>],
+) -> Vec<(CheckResult, String)> {
+    let mut rows = fan_out_per_row(raw, catalog);
+    propagate_antecedents(&mut rows, raw);
+    rows
+}
+
 /// Bundle of run-level metadata captured by the runner around `Commands::Audit`
 /// and threaded into the scorecard. Grouped to keep `build_scorecard`'s
 /// signature manageable as schema `0.x` continues to add fields. The runner
@@ -741,8 +758,7 @@ pub fn build_scorecard(
     audit_profile: Option<String>,
     metadata: RunMetadata,
 ) -> Scorecard {
-    let mut row_results = fan_out_per_row(raw_results, ran_checks);
-    propagate_antecedents(&mut row_results, raw_results);
+    let row_results = build_row_results(raw_results, ran_checks);
 
     // `audience_reason` is derived from `raw_results` rather than threaded
     // through as a caller parameter — the reason is a property of the
@@ -1947,6 +1963,43 @@ mod tests {
         )];
         propagate_antecedents(&mut rows, &raw);
         assert!(matches!(rows[0].0.status, CheckStatus::Pass));
+    }
+
+    #[test]
+    fn build_row_results_fans_out_then_propagates() {
+        // End-to-end through the shared entry point both output surfaces
+        // use: fan-out keys rows to requirement ids, then propagation
+        // collapses the conditional consequent because its antecedent
+        // opted out. A refactor that drops either step is caught here.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+        ];
+        let rows = build_row_results(&raw, &catalog);
+        let schema_row = rows
+            .iter()
+            .find(|(r, _)| r.id == "p2-must-schema-print")
+            .expect("schema-print requirement row present");
+        match &schema_row.0.status {
+            CheckStatus::NotApplicable(reason) => assert!(
+                reason.contains("p2-json-output") && reason.contains("opt_out"),
+                "consequent must collapse to n_a citing the antecedent, got: {reason}",
+            ),
+            other => panic!("expected NotApplicable, got {other:?}"),
+        }
     }
 
     #[test]

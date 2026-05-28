@@ -17,6 +17,20 @@ pub enum Level {
     May,
 }
 
+impl Level {
+    /// Lowercase RFC-2119 token (`must` / `should` / `may`). Single source
+    /// of truth for the scorecard `tier` field and the text-mode tier
+    /// suffix, kept in lock-step with the `serde(rename_all = "lowercase")`
+    /// spelling so the JSON and text surfaces never disagree on the token.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Level::Must => "must",
+            Level::Should => "should",
+            Level::May => "may",
+        }
+    }
+}
+
 /// Whether a requirement applies to every CLI or only when a condition holds.
 ///
 /// `Conditional` carries an optional prose `condition` (legacy `{ if: "<prose>"

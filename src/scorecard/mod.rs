@@ -402,11 +402,8 @@ impl CheckResultView {
         // results fed in by older callers (or test fixtures) won't find a
         // match here — `tier` falls back to None, which surfaces as JSON
         // null and is a visible sign of inconsistency.
-        let tier = crate::principles::registry::find(&r.id).map(|req| match req.level {
-            crate::principles::registry::Level::Must => "must".to_string(),
-            crate::principles::registry::Level::Should => "should".to_string(),
-            crate::principles::registry::Level::May => "may".to_string(),
-        });
+        let tier =
+            crate::principles::registry::find(&r.id).map(|req| req.level.as_str().to_string());
         CheckResultView {
             id: r.id.clone(),
             label: r.label.clone(),
@@ -562,7 +559,14 @@ pub fn format_text(
             };
             let painted =
                 crate::color::paint(crate::color::status_style(prefix, opts.color), prefix);
-            let _ = writeln!(out, "  [{painted}] {} ({})", r.label, r.id);
+            // Tier comes from the requirement registry keyed on the row id.
+            // Unregistered ids (legacy per-check rows, test fixtures) yield
+            // no suffix rather than panicking — the same tolerance
+            // `CheckResultView::from_row` applies for the JSON `tier` field.
+            let tier_suffix = crate::principles::registry::find(&r.id)
+                .map(|req| format!(" ({})", req.level.as_str()))
+                .unwrap_or_default();
+            let _ = writeln!(out, "  [{painted}] {} ({}){tier_suffix}", r.label, r.id);
             match &r.status {
                 CheckStatus::Warn(e) | CheckStatus::Fail(e) | CheckStatus::Error(e) => {
                     for line in e.lines() {
@@ -715,6 +719,23 @@ fn short_status_name(s: &CheckStatus) -> &'static str {
     }
 }
 
+/// Fan raw probe results out to per-requirement rows and apply antecedent
+/// propagation. The shared derivation every output surface routes through —
+/// the JSON scorecard, the text renderer, the badge, and the process exit
+/// code all build their per-row set with this one function, so they cannot
+/// disagree on the row set, counts, score, or status of any requirement.
+///
+/// Each pair carries the row plus its originating probe `Check::id()` for
+/// provenance; callers that only need the rows project the `String` away.
+pub fn build_row_results(
+    raw: &[CheckResult],
+    catalog: &[Box<dyn Check>],
+) -> Vec<(CheckResult, String)> {
+    let mut rows = fan_out_per_row(raw, catalog);
+    propagate_antecedents(&mut rows, raw);
+    rows
+}
+
 /// Bundle of run-level metadata captured by the runner around `Commands::Audit`
 /// and threaded into the scorecard. Grouped to keep `build_scorecard`'s
 /// signature manageable as schema `0.x` continues to add fields. The runner
@@ -741,8 +762,7 @@ pub fn build_scorecard(
     audit_profile: Option<String>,
     metadata: RunMetadata,
 ) -> Scorecard {
-    let mut row_results = fan_out_per_row(raw_results, ran_checks);
-    propagate_antecedents(&mut row_results, raw_results);
+    let row_results = build_row_results(raw_results, ran_checks);
 
     // `audience_reason` is derived from `raw_results` rather than threaded
     // through as a caller parameter — the reason is a property of the
@@ -1947,6 +1967,151 @@ mod tests {
         )];
         propagate_antecedents(&mut rows, &raw);
         assert!(matches!(rows[0].0.status, CheckStatus::Pass));
+    }
+
+    #[test]
+    fn build_row_results_fans_out_then_propagates() {
+        // End-to-end through the shared entry point both output surfaces
+        // use: fan-out keys rows to requirement ids, then propagation
+        // collapses the conditional consequent because its antecedent
+        // opted out. A refactor that drops either step is caught here.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Pass),
+        ];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+        ];
+        let rows = build_row_results(&raw, &catalog);
+        let schema_row = rows
+            .iter()
+            .find(|(r, _)| r.id == "p2-must-schema-print")
+            .expect("schema-print requirement row present");
+        match &schema_row.0.status {
+            CheckStatus::NotApplicable(reason) => assert!(
+                reason.contains("p2-json-output") && reason.contains("opt_out"),
+                "consequent must collapse to n_a citing the antecedent, got: {reason}",
+            ),
+            other => panic!("expected NotApplicable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn exit_code_drops_to_zero_when_consequent_propagates_to_n_a() {
+        // Key Technical Decision §4: exit_code reads the per-row set, not
+        // raw probes. A probe that raw-Fails a requirement whose row
+        // collapses to n_a (its antecedent opted out) must not lift the
+        // exit code — the requirement does not apply. Raw results would
+        // exit 2; the per-row set exits 0.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw("p2-schema-print", CheckStatus::Fail("no schema".into())),
+        ];
+        assert_eq!(exit_code(&raw), 2, "raw probe Fail would exit 2");
+
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+        ];
+        let per_row: Vec<CheckResult> = build_row_results(&raw, &catalog)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        assert_eq!(
+            exit_code(&per_row),
+            0,
+            "consequent propagated to n_a must not lift the exit code",
+        );
+    }
+
+    #[test]
+    fn text_and_json_agree_on_a_propagated_conditional_row() {
+        // $100 guard for the text/JSON data-flow gap this plan closed: both
+        // surfaces must derive the same row set from the same raw results +
+        // catalog. A bat-shaped fixture — an opt_out antecedent
+        // (p2-json-output) plus a raw-Fail consequent (p2-schema-print) —
+        // exercises the n_a propagation both surfaces share. If the text
+        // path ever stops routing through build_row_results, the row id,
+        // count, status, and badge score diverge and this fails.
+        let raw = vec![
+            make_raw(
+                "p2-json-output",
+                CheckStatus::OptOut("no --output flag".into()),
+            ),
+            make_raw(
+                "p2-schema-print",
+                CheckStatus::Fail("no schema surface".into()),
+            ),
+        ];
+        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
+            Box::new(FakeCheck {
+                id: "p2-json-output",
+                covers: &["p2-must-output-flag"],
+            }),
+            Box::new(FakeCheck {
+                id: "p2-schema-print",
+                covers: &["p2-must-schema-print"],
+            }),
+        ];
+
+        // Text path: exactly the projection main::run feeds the renderer.
+        let per_row: Vec<CheckResult> = build_row_results(&raw, &catalog)
+            .into_iter()
+            .map(|(r, _)| r)
+            .collect();
+        let text_badge = compute_badge(&per_row, "fixture-tool");
+        let text = format_text(&per_row, false, Some(&text_badge), TextOptions::default());
+
+        // JSON path.
+        let scorecard = build_scorecard(&raw, &catalog, None, None, fixture_metadata());
+
+        // (a) The consequent renders n_a, never fail, on both surfaces.
+        let json_consequent = scorecard
+            .results
+            .iter()
+            .find(|v| v.id == "p2-must-schema-print")
+            .expect("consequent row present in JSON");
+        assert_eq!(json_consequent.status, "n_a");
+        assert!(
+            text.contains("[N/A ]") && text.contains("p2-must-schema-print"),
+            "text must render the consequent row as N/A:\n{text}",
+        );
+        assert!(
+            !text.contains("[FAIL]"),
+            "the only raw-Fail probe propagated to n_a; no row may render FAIL:\n{text}",
+        );
+
+        // (b) Row counts agree.
+        assert_eq!(
+            per_row.len(),
+            scorecard.results.len(),
+            "text row count must equal JSON results.len()",
+        );
+
+        // (c) Badge scores agree.
+        assert_eq!(
+            text_badge.score_pct, scorecard.badge.score_pct,
+            "text badge score must equal JSON badge.score_pct",
+        );
     }
 
     #[test]

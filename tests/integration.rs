@@ -502,6 +502,48 @@ fn test_command_flag_resolves_path_and_runs_behavioral_only() {
 }
 
 #[test]
+fn test_text_and_json_agree_on_row_count_and_exit_code() {
+    // Parity guard for the text-renderer fix: the default text view and the
+    // JSON view must derive the same per-row set from one pipeline. If
+    // main::run ever feeds the text renderer raw probe results again, the
+    // text row count (probe-keyed) diverges from JSON results.len()
+    // (requirement-keyed), and the two exit codes can disagree. ls is on
+    // every POSIX system, so this is safe to rely on in CI.
+    #[cfg(unix)]
+    {
+        let json_assert = cmd()
+            .args(["audit", "--command", "ls", "--output", "json"])
+            .assert();
+        let json_exit = json_assert.get_output().status.code();
+        let json_out = json_assert.get_output().stdout.clone();
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&json_out).expect("output should be valid JSON");
+        let json_rows = parsed["results"]
+            .as_array()
+            .expect("results should be an array")
+            .len();
+
+        let text_assert = cmd().args(["audit", "--command", "ls"]).assert();
+        let text_exit = text_assert.get_output().status.code();
+        let text_out = String::from_utf8(text_assert.get_output().stdout.clone())
+            .expect("text output should be utf8");
+        // Status-prefixed rows are the only lines that open with two spaces
+        // then a bracket; group headers, the summary, evidence (deeper
+        // indent), and the badge hint do not.
+        let text_rows = text_out.lines().filter(|l| l.starts_with("  [")).count();
+
+        assert_eq!(
+            text_rows, json_rows,
+            "text row count must equal JSON results.len(); text output:\n{text_out}",
+        );
+        assert_eq!(
+            text_exit, json_exit,
+            "exit code must agree between text and JSON modes",
+        );
+    }
+}
+
+#[test]
 fn test_command_flag_via_default_subcommand() {
     // `anc --command ls` — default-subcommand injection yields
     // `anc audit --command ls` which runs behavioral checks.

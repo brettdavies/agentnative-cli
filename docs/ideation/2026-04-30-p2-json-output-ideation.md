@@ -218,7 +218,7 @@ Sub-agents generated 64 raw + 5 cross-cutting = 69 candidates. 63 rejected.
 | F6.2                       | N=3 consistency probe                                                           | Orthogonal property                                    |
 | F2.10                      | Delete probe; trust vocabulary                                                  | Too weak alone                                         |
 | F1.12 / F3.5               | Improve evidence string / rebrand UI                                            | Incremental presentation-only                          |
-| F2.11 / F3.7               | Cross-audit triangulation in derived block                                      | Violates `aggregate-verdicts-not-authoritative`        |
+| F2.11 / F3.7               | Cross-check triangulation in derived block                                      | Violates `aggregate-verdicts-not-authoritative`        |
 | F5.2-9                     | ELISA / ZK / abstract-interpretation / refinement-types / OPA-Rego / traceroute | Duplicates of A with weaker framing                    |
 | F4.8                       | Probe cache as ProbeContext                                                     | Supporting infra                                       |
 | F4.1 / F4.2                | ProbeKind enum / shared help_parser                                             | Supporting infra subsumed by A                         |

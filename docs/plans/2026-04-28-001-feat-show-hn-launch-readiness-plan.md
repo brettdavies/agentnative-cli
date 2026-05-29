@@ -467,7 +467,7 @@ cold device).
    trivial Rust project
 6. `anc . --output json | jq '.scorecard.spec_version'` — confirm `"0.3.0"` (this is the post-launch receipt that the
    tagged release bundles the U1.5 re-vendor + spec-vendor field)
-7. `anc . --output json | jq -r '.scorecard.results[] | select(.id|startswith("p1-")) | .label'` — sanity-audit that the
+7. `anc . --output json | jq -r '.scorecard.results[] | select(.id|startswith("p1-")) | .label'` — sanity-check that the
    principle labels match the spec `v0.3.0` content (no leftover `draft`-era labels).
 
 - If anything fails, **do not post**. Open an incident issue and diagnose.
@@ -577,7 +577,7 @@ shipped, here's the evidence" summary on top of a stale body.
 - U2 (filesystem rename `~/dev/agentnative` → `~/dev/agentnative-cli`): non-commit, complete.
 - U3 (in-place CLI repo drift fix on a then-uncommitted plan file): healed in place; the host file was committed later
   under the spec-vendor plan.
-- Cross-audit: `rg 'brettdavies/agentnative-spec' .` from the repo root returns 0 hits. **Confirmed at plan-write
+- Cross-check: `rg 'brettdavies/agentnative-spec' .` from the repo root returns 0 hits. **Confirmed at plan-write
   time.**
 - This unit is a status-acknowledgement only. No work remains.
 

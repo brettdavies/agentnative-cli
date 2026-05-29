@@ -45,8 +45,8 @@ Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` v
 - **No explainer prose anywhere in the body.** User-facing substance only.
 - **Summary describes the net diff only** — what merged `main` looks like vs the base branch. Not commit history,
   intermediate state, or cherry-pick mechanics.
-- **Zero verification artifacts in the body.** No triple-diff stats, leak-audit output ("`guard-main-docs` runs clean"),
-  patch-id cherry-audit counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
+- **Zero verification artifacts in the body.** No triple-diff stats, leak-check output ("`guard-main-docs` runs clean"),
+  patch-id cherry-check counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
   push, not audit-trailed.
 - **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`): 1-5 bullets each, delete
   empty subsections, each bullet starts with a verb.
@@ -247,8 +247,8 @@ gh api -X POST repos/brettdavies/agentnative-cli/rulesets --input .github/rulese
 gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/rulesets/protect-main.json
 ```
 
-→ Status-audit context strings (inline vs reusable):
-[`RELEASES-RATIONALE.md` § Status-audit context strings](./RELEASES-RATIONALE.md#status-audit-context-strings).
+→ Status-check context strings (inline vs reusable):
+[`RELEASES-RATIONALE.md` § Status-check context strings](./RELEASES-RATIONALE.md#status-check-context-strings).
 
 ## Required secrets
 

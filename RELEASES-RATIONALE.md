@@ -1,7 +1,7 @@
 # Releases rationale
 
 Companion to [`RELEASES.md`](./RELEASES.md). RELEASES.md is the runbook (commands, paths, decision tables). This file
-holds the WHY behind those rules: branching model, PR conventions, release pipeline, CHANGELOG generation, prose-audit
+holds the WHY behind those rules: branching model, PR conventions, release pipeline, CHANGELOG generation, prose-check
 pipeline, spec-vendor pipeline, branch-protection pitfalls.
 
 Read this when:
@@ -42,8 +42,8 @@ kebab-case, short, descriptive.
 Every section of a PR body is user-facing substance only: what is changing for the consumer that was not already there —
 the **net diff**, not the commit history or intermediate state that produced it. Workflow mechanics (cherry-pick,
 regenerate, pre-push gate, CI behavior) is documented in RELEASES.md and `.github/`, NOT in the PR body. Triple-diff
-output ("A: 12 files, B: none, C: clean"), leak-audit narration ("`guard-main-docs` runs clean", "no guarded paths
-leaked"), patch-id cherry-audit counts, pre-push gate results, CI audit status, exclusion rationale, and other
+output ("A: 12 files, B: none, C: clean"), leak-check narration ("`guard-main-docs` runs clean", "no guarded paths
+leaked"), patch-id cherry-check counts, pre-push gate results, CI audit status, exclusion rationale, and other
 verification artifacts stay local; anomalies get fixed before push, not audit-trailed in the body.
 
 The PR body is read by humans reviewing what shipped. Workflow mechanics and tool-fix provenance are noise from that
@@ -71,7 +71,7 @@ they age poorly as tools shift.
 ### Why no hard line wraps
 
 Author each paragraph and each bullet as one logical line, however long. GitHub soft-wraps for display. Hard wraps
-within prose produce visible mid-sentence breaks in some renderers and interfere with the prose-audit pipeline: Vale's
+within prose produce visible mid-sentence breaks in some renderers and interfere with the prose-check pipeline: Vale's
 line-anchored output reports findings against split lines, LanguageTool's input handling can choke on certain
 control-char interactions. The auto-format hook skips `/tmp/` paths so the body keeps its authored shape, don't undo
 that with manual wrapping during composition. Same rule applies to commit messages composed via heredoc.
@@ -84,7 +84,7 @@ squash commit from being double-counted in any future regeneration.
 
 ### Why internal-tooling commits don't appear in `## Changelog`
 
-`chore(cliff): ...`, `chore(prose-audit): ...`, and similar internal tooling commits don't appear in the PR body's `##
+`chore(cliff): ...`, `chore(prose-check): ...`, and similar internal tooling commits don't appear in the PR body's `##
 Changelog`. They are not user-facing. They belong in commit history and in the Files Modified / Key Details sections of
 the PR body, not in the source-of-truth release notes.
 
@@ -94,7 +94,7 @@ The release-PR procedure runs three diffs (A: main→release, B: release→dev f
 patch-id cherry audit. This is belt-and-suspenders because missed cherry-picks have shipped to `main` on this and
 sibling repos before, and the file-level diff in B alone doesn't catch the patch-id false-negative class.
 
-### Why patch-id cherry-audit output is noisy
+### Why patch-id cherry-check output is noisy
 
 In a squash-merge workflow, `git cherry HEAD origin/dev` produces many `+` lines that need human triage. They do NOT
 auto-block the release. Expected sources of false positives:
@@ -217,7 +217,7 @@ regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regener
 
 ## Branch protection
 
-### Status-audit context strings
+### Status-check context strings
 
 The `required_status_audits[].context` strings in `protect-main.json` MUST match exactly what GitHub publishes for each
 audit:

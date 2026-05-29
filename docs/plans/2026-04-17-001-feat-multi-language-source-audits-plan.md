@@ -686,7 +686,7 @@ table to reflect the new coverage.
 - **Interaction graph:** `Project::discover` → `detect_language` → `parsed_files` → `all_source_audits` per-language
   routing. All four touchpoints change in Unit 2 and must stay mutually consistent — a new Language variant without a
   corresponding `detect_language` branch, `parsed_files` extension entry, or `all_source_audits` arm creates a
-  silently-dead code path. Unit 2's cross-audits (exhaustive match arms, new tests per extension) are the guard.
+  silently-dead code path. Unit 2's cross-checks (exhaustive match arms, new tests per extension) are the guard.
 - **Error propagation:** Ast-grep parse failures for malformed sources remain silent — ast-grep does best-effort
   parsing. Audits rely on `find_pattern_matches_in` / `has_pattern_in` returning empty-or-false on parse failure; this
   contract holds for the new languages via the existing dispatch pattern. No changes to error propagation semantics.

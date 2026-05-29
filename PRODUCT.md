@@ -80,7 +80,7 @@ These extend the universal bans in [`BRAND.md`](BRAND.md):
 - **Mixing structured output and diagnostic prose on the same stream.** `anc audit --output json` writes JSON to stdout;
   diagnostics go to stderr. Mixing them strands consumers who pipe stdout into `jq` and get a parse error from a banner.
   The prose shape (verb + artifact) is the same on either stream; the stream choice is the load-bearing part.
-- **Color codes in the prose itself.** Vale and prose-audit operate on content, not formatting. ANSI escapes belong in
+- **Color codes in the prose itself.** Vale and prose-check operate on content, not formatting. ANSI escapes belong in
   the rendering layer, never in the source `&str` literal. The literal `"\x1b[31merror\x1b[0m"` is content rot; a
   separate `colorize(level, "error")` is the right shape.
 - **Marketing voice in CLI surface.** "blazing-fast", "elegant", "powerful", "delightful" — banned. Describe what `anc`

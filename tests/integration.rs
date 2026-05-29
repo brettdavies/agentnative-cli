@@ -63,7 +63,7 @@ fn test_emit_coverage_matrix_writes_artifacts() {
 }
 
 #[test]
-fn test_emit_coverage_matrix_drift_audit_passes_on_committed_artifacts() {
+fn test_emit_coverage_matrix_drift_check_passes_on_committed_artifacts() {
     // Running --check against the committed docs/coverage-matrix.md +
     // coverage/matrix.json must pass. If this fails, the registry or a
     // audit's covers() drifted without the artifacts being regenerated.

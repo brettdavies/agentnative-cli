@@ -11,9 +11,9 @@ last_updated: 2026-05-12
 ## Summary
 
 Vendor the shared prose-linting tooling from `agentnative-spec` (`BRAND.md`, vale config + brand rule pack + brand
-vocab, `prose-audit.sh`, test harness, generator) into `agentnative-cli` via a new `scripts/sync-prose-tooling.sh`,
+vocab, `prose-check.sh`, test harness, generator) into `agentnative-cli` via a new `scripts/sync-prose-tooling.sh`,
 author a fresh CLI-channel `.impeccable.md` codifying linter-channel voice (distinct from spec-channel RFC-2119
-register), wire prose-audit into CI on every PR, and lay down a constrained design brief for ast-grep-based in-code
+register), wire prose-check into CI on every PR, and lay down a constrained design brief for ast-grep-based in-code
 prose extraction so future passes can lint clap help text, error messages, and panic strings. Sibling to the v0.4.0 spec
 sync (PR A); independent release cadence, no governance window.
 
@@ -34,13 +34,13 @@ sync (PR A); independent release cadence, no governance window.
   (`BRAND.md`, `.vale.ini`, brand pack YAMLs + README, brand vocab accept/reject, orchestrator + test harness
 - generator).
 
-- **Plan deviation: upstream parameterization not landed.** Risk #1 confirmed — upstream `prose-audit.sh` does not
+- **Plan deviation: upstream parameterization not landed.** Risk #1 confirmed — upstream `prose-check.sh` does not
   support env-var-configurable file globs. The plan said "file an upstream PR before this PR lands"; instead followed
   the `agentnative-site` precedent (PR #82, 2026-05-07) of vendoring verbatim and applying a marked CLI-LOCAL DIVERGENCE
   block to the orchestrator. Upstream todo is
-  `agentnative-spec/.context/compound-engineering/todos/010-pending-p0-prose-audit-consumer-exclusion-config.md` (Phase
+  `agentnative-spec/.context/compound-engineering/todos/010-pending-p0-prose-check-consumer-exclusion-config.md` (Phase
   1: `--exclude PATTERN` flag). When that ships, both site and CLI revert their divergence blocks together.
-- **Narrow-scope limit, stated explicitly.** With only U1+U2+U3 shipping, prose-audit covers markdown only: `README.md`,
+- **Narrow-scope limit, stated explicitly.** With only U1+U2+U3 shipping, prose-check covers markdown only: `README.md`,
   `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, `PRODUCT.md` (formerly `.impeccable.md` — see migration note below).
   The high-leverage prose — clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, audit `label()` returns
   — is **NOT** covered until U6 ships. U6 is the unit that makes the CLI itself speak brand voice; U1+U2+U3 only ensures
@@ -58,7 +58,7 @@ sync (PR A); independent release cadence, no governance window.
 
 ## Problem Frame
 
-The `agentnative-spec` repo ships a five-pack vale config plus a 10K-line `prose-audit.sh` that gate every prose change
+The `agentnative-spec` repo ships a five-pack vale config plus a 10K-line `prose-check.sh` that gate every prose change
 against community style rules (proselint, write-good) and brand voice. The CLI repo has zero prose tooling — its README,
 AGENTS.md, RELEASES.md, CHANGELOG.md, and (eventually) Rust string literals (clap `about=`, `eprintln!`,
 `anyhow::bail!`) ship without any voice or quality gate. The spec channel and the CLI channel have *different* prose
@@ -77,33 +77,33 @@ because there's no sync mechanism.
 - R1. A new `scripts/sync-prose-tooling.sh` exists and follows the same shape as `scripts/sync-spec.sh`: remote-first
   resolution, `git show <ref>:<path>` extraction (no working-tree perturbation), local fallback, `--check` drift mode.
 - R2. The script vendors `BRAND.md`, `.vale.ini`, four vale style packs (`styles/{brand,config,proselint,write-good}/`),
-  `scripts/prose-audit.sh`, and `scripts/test-prose-audit.mjs` from `agentnative-spec`. The `styles/spec/` pack is
+  `scripts/prose-check.sh`, and `scripts/test-prose-check.mjs` from `agentnative-spec`. The `styles/spec/` pack is
   explicitly skipped (RFC-2119 register doesn't apply to CLI prose).
-- R3. The vendored `prose-audit.sh` is adapted to lint the CLI's prose-bearing surfaces: `README.md`, `AGENTS.md`,
+- R3. The vendored `prose-check.sh` is adapted to lint the CLI's prose-bearing surfaces: `README.md`, `AGENTS.md`,
   `RELEASES.md`, `CHANGELOG.md`, `.impeccable.md`, `docs/**/*.md`. Adaptation is path/glob changes only — rule logic is
   not forked.
 - R4. A new `.impeccable.md` at repo root codifies linter-channel voice. Inherits from `BRAND.md`. Documents the
   CLI-prose register (second-person imperative *is* allowed and expected; RFC-2119 *is not* the register; error messages
   name what failed + why + what to do; help text follows clap conventions).
-- R5. A new CI workflow `.github/workflows/prose-audit.yml` runs `scripts/prose-audit.sh` on every PR touching a
+- R5. A new CI workflow `.github/workflows/prose-check.yml` runs `scripts/prose-check.sh` on every PR touching a
   prose-bearing file. Workflow uses pinned-SHA actions per global supply-chain policy.
 - R6. A new CI workflow `.github/workflows/prose-tooling-drift.yml` runs `sync-prose-tooling.sh --check` on push to
   `dev`/`main` and on a weekly schedule. Catches drift between vendored copies and the upstream `agentnative-spec`.
-- R7. A constrained design brief exists for ast-grep-based in-code prose extraction (`scripts/prose-audit-rust.sh`) with
+- R7. A constrained design brief exists for ast-grep-based in-code prose extraction (`scripts/prose-check-rust.sh`) with
   implementation landing in this PR. Extracts clap `about=`/`long_about=`/`help=` strings, panic strings,
   `eprintln!`/`println!` literal args, and `anyhow::bail!`/`Error::msg` literals to a transient markdown file fed
-  through `prose-audit.sh`. False-positive rules skip ID strings (`pN-must-*`), file paths, and semver-shaped version
+  through `prose-check.sh`. False-positive rules skip ID strings (`pN-must-*`), file paths, and semver-shaped version
   constants.
 - R8. Existing `scripts/SYNCS.md` documents the new sync script alongside `sync-spec.sh` and `sync-skill-fixture.sh`.
 - R9. PR follows `.github/pull_request_template.md`. No AI attribution. Conventional Commits.
 - R10. The auto-format hook on the developer's machine continues to handle markdown wrapping (120-col + markdownlint);
-  prose-audit is additive, not replacing.
+  prose-check is additive, not replacing.
 
 ---
 
 ## Scope Boundaries
 
-- **Out: Pre-push integration.** Prose-audit runs in CI only on first delivery. Adding it to `scripts/hooks/pre-push` is
+- **Out: Pre-push integration.** Prose-check runs in CI only on first delivery. Adding it to `scripts/hooks/pre-push` is
   deferred — gate friction is real, and CI-only catches the same regressions one merge cycle later. Revisit if drift
   becomes painful.
 - **Out: The `styles/spec/` vale pack.** RFC-2119 register doesn't apply to CLI prose. Vendoring it would produce
@@ -138,8 +138,8 @@ because there's no sync mechanism.
 - `BRAND.md` (~5.8K, repo root)
 - `.vale.ini` (~1.1K, repo root)
 - `styles/{brand,config,proselint,spec,write-good}/*.yml` (~2.8KB across 5 packs; we vendor 4)
-- `scripts/prose-audit.sh` (~10.5K)
-- `scripts/test-prose-audit.mjs` (~2.3K)
+- `scripts/prose-check.sh` (~10.5K)
+- `scripts/test-prose-check.mjs` (~2.3K)
 - `.impeccable.md` (~4.8K — read for shape, NOT copied)
 
 ### Institutional Learnings
@@ -167,7 +167,7 @@ because there's no sync mechanism.
 - **Skip the `styles/spec/` vale pack.** RFC-2119 register is wrong for CLI prose. Vendoring would systematic-false-
   positive every README install instruction. The four packs we vendor (`brand`, `config`, `proselint`, `write-good`) are
   register-neutral.
-- **CI-only on first delivery; pre-push deferred.** Prose-audit runtime is a few seconds per file but cumulative
+- **CI-only on first delivery; pre-push deferred.** Prose-check runtime is a few seconds per file but cumulative
   pre-push pain is real. CI catches the same regressions; if drift between PR-only and merge-time becomes painful, add
   to pre-push as a follow-up.
 - **`.impeccable.md` lives at repo root.** Mirrors spec's location. The name is unconventional but established; rename
@@ -210,7 +210,7 @@ because there's no sync mechanism.
   patterns. The plan specifies extraction *targets* and *false-positive rules*, not the literal selectors.
 - **Output format for extracted strings.** Concrete shape (one literal per line vs. grouped by file vs.
   source-location-anchored) decided at U6 implementation. Constraint: must be valid markdown so existing
-  `prose-audit.sh` consumes it without further adaptation.
+  `prose-check.sh` consumes it without further adaptation.
 - **Whether to run drift workflow nightly or weekly.** Default to weekly in plan; switch to nightly if a quarter of
   noise from spec-side commits without flow-down proves the cadence wrong.
 
@@ -275,12 +275,12 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 ---
 
-### U2. Vendor initial prose tooling + adapt `prose-audit.sh` for CLI prose surfaces
+### U2. Vendor initial prose tooling + adapt `prose-check.sh` for CLI prose surfaces
 
 **Status:** In progress (2026-05-12 narrow-scope session). Content vendored via U1; remaining work: apply CLI-LOCAL
-DIVERGENCE patch to `scripts/prose-audit.sh`, update `scripts/SYNCS.md`, surface first prose-audit pass backlog.
+DIVERGENCE patch to `scripts/prose-check.sh`, update `scripts/SYNCS.md`, surface first prose-check pass backlog.
 
-**Goal:** Run U1's script for the first time, then adapt the vendored `scripts/prose-audit.sh` for CLI prose surfaces.
+**Goal:** Run U1's script for the first time, then adapt the vendored `scripts/prose-check.sh` for CLI prose surfaces.
 Adaptation is path/glob changes only — rule logic stays untouched (any logic divergence breaks the byte-equivalence
 contract on next sync).
 
@@ -296,52 +296,52 @@ contract on next sync).
 - Create: `styles/config/*.yml` (vendored)
 - Create: `styles/proselint/*.yml` (vendored)
 - Create: `styles/write-good/*.yml` (vendored)
-- Create: `scripts/prose-audit.sh` (vendored)
-- Create: `scripts/test-prose-audit.mjs` (vendored)
-- Modify: `scripts/prose-audit.sh` — adjust path globs ONLY (point at CLI prose surfaces, not spec's `principles/*.md`).
+- Create: `scripts/prose-check.sh` (vendored)
+- Create: `scripts/test-prose-check.mjs` (vendored)
+- Modify: `scripts/prose-check.sh` — adjust path globs ONLY (point at CLI prose surfaces, not spec's `principles/*.md`).
   All rule logic, vocabulary handling, LT denylist handling preserved verbatim.
 - Modify: `.gitignore` — verify `styles/` and `BRAND.md` aren't accidentally ignored; tighten if needed.
-- Test: invoke `bash scripts/prose-audit.sh` on the existing `README.md` and `AGENTS.md` to surface any current prose
+- Test: invoke `bash scripts/prose-check.sh` on the existing `README.md` and `AGENTS.md` to surface any current prose
   findings (record but don't fix in this PR — see U3 / future work).
 
 **Approach:**
 
 - Run `bash scripts/sync-prose-tooling.sh` to write all vendored files. Verify the diff matches expected manifest.
-- Adapt `prose-audit.sh` path globs by editing the file's "files to lint" section. The CLI surfaces: `README.md`,
+- Adapt `prose-check.sh` path globs by editing the file's "files to lint" section. The CLI surfaces: `README.md`,
   `AGENTS.md`, `RELEASES.md`, `CHANGELOG.md`, `.impeccable.md` (will exist post-U3), `docs/**/*.md`. Spec-side globs
   (`principles/*.md`) are removed.
 - **Critical: the adaptation must be tracked separately from the vendored content.** The byte-equivalence audit in U1
-  runs against the upstream `prose-audit.sh`. To keep both mechanisms (vendor + adapt) coexisting, the recommended shape
+  runs against the upstream `prose-check.sh`. To keep both mechanisms (vendor + adapt) coexisting, the recommended shape
   is:
-- `scripts/prose-audit.sh` — vendored verbatim from upstream. `--check` mode validates byte-equality against upstream.
-- `scripts/prose-audit-cli.sh` — thin wrapper that exports the CLI's path globs as env vars and invokes
-  `prose-audit.sh`. The wrapper is CLI-owned and not under sync.
-- `prose-audit.sh` upstream is parameterized via env vars (`PROSE_FILES`, `PROSE_VOCAB_PATH`) — verify upstream supports
+- `scripts/prose-check.sh` — vendored verbatim from upstream. `--check` mode validates byte-equality against upstream.
+- `scripts/prose-check-cli.sh` — thin wrapper that exports the CLI's path globs as env vars and invokes
+  `prose-check.sh`. The wrapper is CLI-owned and not under sync.
+- `prose-check.sh` upstream is parameterized via env vars (`PROSE_FILES`, `PROSE_VOCAB_PATH`) — verify upstream supports
   this; if not, file an upstream PR before this PR lands. **Decision: verify upstream parameterization during
   implementation; if absent, route to "fork-with-divergence-justification" pattern with a tracking issue.**
-- Run `bash scripts/prose-audit-cli.sh` (or equivalent) to record current findings on existing prose. Findings get fixed
+- Run `bash scripts/prose-check-cli.sh` (or equivalent) to record current findings on existing prose. Findings get fixed
   in-place when trivial (typo, em-dash density), or annotated with TODO comments and tracked separately.
 - Update `scripts/SYNCS.md` to document the new tooling and its sync rhythm.
 
 **Patterns to follow:**
 
 - `scripts/sync-spec.sh` invocation pattern (one-time vendoring, then standard developer workflow).
-- The unslop / vale workflow on the spec side — `prose-audit.sh` already supports vocab additions and LT denylist; reuse
+- The unslop / vale workflow on the spec side — `prose-check.sh` already supports vocab additions and LT denylist; reuse
   those mechanisms verbatim.
 
 **Test scenarios:**
 
 - *Happy path*: Vendored files exist after script run; `bash scripts/sync-prose-tooling.sh --check` exits 0.
-- *Happy path*: `bash scripts/prose-audit-cli.sh` runs end-to-end without crashing; produces a prose-findings report.
+- *Happy path*: `bash scripts/prose-check-cli.sh` runs end-to-end without crashing; produces a prose-findings report.
 - *Edge case*: A markdown file with no prose findings → script exits 0 with "OK" output.
 - *Failure path*: A markdown file with deliberate slop (e.g., `It's not a feature, it's a way of life`) → script exits
   non-zero and names the offending line.
-- *Integration*: Re-run `--check` after the wrapper edits → upstream `prose-audit.sh` byte-equal, wrapper script not
+- *Integration*: Re-run `--check` after the wrapper edits → upstream `prose-check.sh` byte-equal, wrapper script not
   under audit (correct — wrapper is CLI-owned).
 
 **Verification:**
 
-- `bash scripts/prose-audit-cli.sh` runs clean (or surfaces only acknowledged-and-tracked findings).
+- `bash scripts/prose-check-cli.sh` runs clean (or surfaces only acknowledged-and-tracked findings).
 - `vale --version` shows the binary is callable from `.vale.ini`.
 - `git diff` shows the expected file-creation pattern (no spurious deletions, no spec/ pack vendored).
 
@@ -397,8 +397,8 @@ explicitly diverges from spec-channel rules where the register differs.
 
 **Test scenarios:**
 
-- *Happy path*: `bash scripts/prose-audit-cli.sh .impeccable.md` runs clean (the voice rules eat their own dogfood).
-- *Edge case*: After `.impeccable.md` is added, re-running prose-audit on `README.md` doesn't suddenly flip from green
+- *Happy path*: `bash scripts/prose-check-cli.sh .impeccable.md` runs clean (the voice rules eat their own dogfood).
+- *Edge case*: After `.impeccable.md` is added, re-running prose-check on `README.md` doesn't suddenly flip from green
   to red (the new rules document existing voice; they don't impose new constraints retroactively).
 - *Integration*: A future PR that violates a rule (e.g., adds "blazing-fast" to README) gets flagged by the proselint
   pack — manual verification with a test edit.
@@ -412,11 +412,11 @@ explicitly diverges from spec-channel rules where the register differs.
 
 ---
 
-### U4. Add CI workflow for prose-audit on every PR
+### U4. Add CI workflow for prose-check on every PR
 
 **Status:** Deferred to follow-up PR (out of narrow-scope 2026-05-12 session).
 
-**Goal:** Ship the CI gate so prose-audit fires on every PR that touches a prose-bearing file. Pinned-SHA actions per
+**Goal:** Ship the CI gate so prose-check fires on every PR that touches a prose-bearing file. Pinned-SHA actions per
 global supply-chain policy. Workflow scopes to dev/main as base branches.
 
 **Requirements:** R5, R9.
@@ -425,12 +425,12 @@ global supply-chain policy. Workflow scopes to dev/main as base branches.
 
 **Files:**
 
-- Create: `.github/workflows/prose-audit.yml`
+- Create: `.github/workflows/prose-check.yml`
 
 **Approach:**
 
 - Trigger on `pull_request: { branches: [dev, main], paths: ['**.md', '.impeccable.md', 'styles/**', '.vale.ini',
-  'scripts/prose-audit*.sh'] }`. Path filter ensures the workflow doesn't fire on Rust-only PRs.
+  'scripts/prose-check*.sh'] }`. Path filter ensures the workflow doesn't fire on Rust-only PRs.
 - Single job, single OS (`ubuntu-latest` is fine — vale is cross-platform but CI parity is one concern less).
 - Steps:
 
@@ -438,8 +438,8 @@ global supply-chain policy. Workflow scopes to dev/main as base branches.
 2. Install vale (download release binary or use `errata-ai/vale-action@<sha>`; pick whichever is more stable per pinning
    helper output during implementation).
 3. Install Bun or Node (pinned setup action) for the test harness.
-4. Run `bash scripts/prose-audit-cli.sh` — fails on non-zero exit.
-5. Run `node scripts/test-prose-audit.mjs` — sanity-tests the harness itself.
+4. Run `bash scripts/prose-check-cli.sh` — fails on non-zero exit.
+5. Run `node scripts/test-prose-check.mjs` — sanity-tests the harness itself.
 
 - All `uses:` lines pin to 40-char SHAs with trailing `# vX.Y.Z` comment per global SHA-pinning policy.
 - Use `~/.claude/skills/github-repo-setup/scripts/pin-actions.sh` (per global CLAUDE.md) to resolve and validate pinned
@@ -455,12 +455,12 @@ global supply-chain policy. Workflow scopes to dev/main as base branches.
 - *Happy path*: Open a PR that edits `README.md` cleanly → workflow runs and passes.
 - *Edge case*: PR that doesn't touch any prose → workflow doesn't fire (path filter).
 - *Failure path*: PR that introduces an em-dash density violation → workflow runs and fails; PR is blocked.
-- *Pre-flight*: `actionlint .github/workflows/prose-audit.yml` clean before merge.
+- *Pre-flight*: `actionlint .github/workflows/prose-check.yml` clean before merge.
 
 **Verification:**
 
 - Workflow runs on PRs against `dev`.
-- A test PR that introduces deliberate slop fails CI on the prose-audit step.
+- A test PR that introduces deliberate slop fails CI on the prose-check step.
 - All actions show 40-char SHA pins with trailing version comments.
 
 ---
@@ -518,30 +518,30 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 
 ---
 
-### U6. Implement ast-grep-based in-code prose extraction (`scripts/prose-audit-rust.sh`)
+### U6. Implement ast-grep-based in-code prose extraction (`scripts/prose-check-rust.sh`)
 
 **Status:** Deferred to follow-up PR (out of narrow-scope 2026-05-12 session). **This is the unit that makes the CLI
-itself speak brand voice** — U1-U5 only cover markdown. Without U6, prose-audit is "voice consistency for docs" rather
+itself speak brand voice** — U1-U5 only cover markdown. Without U6, prose-check is "voice consistency for docs" rather
 than "the tool's output speaks brand voice." Local pre-flight: `ast-grep` CLI is not installed locally (the repo uses
 `ast-grep-core` Rust library, not the binary); `brew install ast-grep` before U6 starts, or pivot U6 to a Rust binary
 that uses the already-vendored `ast-grep-core` directly.
 
 **Goal:** Extract prose from Rust source — clap macro arguments, panic strings, `eprintln!`/`println!` literals,
 `anyhow::bail!`/`Error::msg` literals — into a transient markdown file, then feed it through the existing
-`prose-audit.sh` pipeline. False-positive rules skip ID strings, file paths, and version constants.
+`prose-check.sh` pipeline. False-positive rules skip ID strings, file paths, and version constants.
 
 **Requirements:** R7.
 
-**Dependencies:** U2 (the prose-audit pipeline must be vendored and adapted first).
+**Dependencies:** U2 (the prose-check pipeline must be vendored and adapted first).
 
 **Files:**
 
-- Create: `scripts/prose-audit-rust.sh`
+- Create: `scripts/prose-check-rust.sh`
 - Create: `scripts/prose-extract-rust.sh` (or merge into above — implementer's call) — the ast-grep extraction step
-- Create: `scripts/prose-audit-rust.test.sh` — bash-based test using fixture Rust files
+- Create: `scripts/prose-check-rust.test.sh` — bash-based test using fixture Rust files
 - Create: `tests/fixtures/prose_extraction/` — small Rust fixture files exercising extraction targets and false-positive
   rules
-- Modify: `.github/workflows/prose-audit.yml` (from U4) — add a step that runs `prose-audit-rust.sh` on `src/**/*.rs`
+- Modify: `.github/workflows/prose-check.yml` (from U4) — add a step that runs `prose-check-rust.sh` on `src/**/*.rs`
   changes
 
 **Approach:**
@@ -576,14 +576,14 @@ that uses the already-vendored `ast-grep-core` directly.
   - [src/main.rs:118] "the value is invalid"
   ```
 
-- Existing `prose-audit.sh` consumes markdown — the format is markdown lists with prose content inside double-quotes.
+- Existing `prose-check.sh` consumes markdown — the format is markdown lists with prose content inside double-quotes.
 - vale processes prose-bearing strings; anchor lines are skipped via vale comment markers.
 - File written under `target/` so it's gitignored (Rust convention).
 
 **Integration point:**
 
-- `scripts/prose-audit-rust.sh` orchestrates: invoke ast-grep extraction → write transient markdown → invoke
-  `prose-audit.sh` (or `prose-audit-cli.sh`) on the transient file → propagate exit code.
+- `scripts/prose-check-rust.sh` orchestrates: invoke ast-grep extraction → write transient markdown → invoke
+  `prose-check.sh` (or `prose-check-cli.sh`) on the transient file → propagate exit code.
 - Optionally: support `--source-files <glob>` arg so CI runs only on changed files in a PR (faster gate).
 
 **Patterns to follow:**
@@ -603,18 +603,18 @@ that uses the already-vendored `ast-grep-core` directly.
 - *False-positive (skip)*: Fixture with `let path = "src/main.rs";` → NOT extracted.
 - *False-positive (skip)*: Fixture with `const VERSION: &str = "0.4.0";` → NOT extracted.
 - *False-positive (skip)*: Fixture with `let separator = "|";` → NOT extracted (sub-5-char filter).
-- *Happy path (pipeline)*: Fixture file produces transient markdown; `prose-audit.sh` runs on it; offending strings fail
+- *Happy path (pipeline)*: Fixture file produces transient markdown; `prose-check.sh` runs on it; offending strings fail
   the audit.
 - *Failure path*: Fixture with `panic!("Oh no something went wrong!!!")` (multi-bang em-dash density violation) →
-  prose-audit fails.
+  prose-check fails.
 - *Edge case*: Empty source file → no extraction; pipeline exits 0.
 - *Integration*: Run on real `src/` tree; record the prose findings (don't fix in this PR; track separately).
 
 **Verification:**
 
-- `bash scripts/prose-audit-rust.test.sh` exits 0 (all fixture-based tests pass).
-- `bash scripts/prose-audit-rust.sh src/cli.rs` runs end-to-end and produces a prose-findings report or clean exit.
-- `actionlint` validates the updated `.github/workflows/prose-audit.yml`.
+- `bash scripts/prose-check-rust.test.sh` exits 0 (all fixture-based tests pass).
+- `bash scripts/prose-check-rust.sh src/cli.rs` runs end-to-end and produces a prose-findings report or clean exit.
+- `actionlint` validates the updated `.github/workflows/prose-check.yml`.
 - ast-grep selectors handled in U6 are documented inline in the script (not just in the plan).
 
 ---
@@ -624,18 +624,18 @@ that uses the already-vendored `ast-grep-core` directly.
 - **Interaction graph:** New CI workflows fire on PR + push + schedule. They don't interact with existing Rust gates
   (separate workflow files). Drift workflow may post issues — confirm `permissions: { issues: write }` is set if it
   does.
-- **Error propagation:** Prose-audit failures in CI block PR merges (good). The drift workflow failures don't block
+- **Error propagation:** Prose-check failures in CI block PR merges (good). The drift workflow failures don't block
   merges directly but should page someone via issue creation.
 - **State lifecycle risks:** Vendored files are a new commit-discipline surface. The byte-equivalence contract means
-  hand-edits to vendored files break the drift gate. Document this loudly in `scripts/prose-audit.sh` header (or
+  hand-edits to vendored files break the drift gate. Document this loudly in `scripts/prose-check.sh` header (or
   whatever the vendored content is) and in `scripts/SYNCS.md`.
 - **API surface parity:** No CLI flags, no env vars in `anc` itself. The new env vars (`SYNC_PROSE_REMOTE_URL`,
   `SYNC_PROSE_ROOT`, `SYNC_REF`) are script-internal.
-- **Integration coverage:** The U6 ast-grep extraction interacts with U2's adapted `prose-audit.sh` via a transient
+- **Integration coverage:** The U6 ast-grep extraction interacts with U2's adapted `prose-check.sh` via a transient
   markdown file. Integration test in U6's bash test harness exercises this end-to-end.
 - **Unchanged invariants:** Existing `scripts/hooks/pre-push` Rust gates (fmt/clippy/test/deny/Windows) untouched.
   Existing CHANGELOG generation untouched. The auto-format hook on the developer's machine (markdown 120-col +
-  markdownlint-cli2) continues to handle markdown wrapping; prose-audit is additive on top.
+  markdownlint-cli2) continues to handle markdown wrapping; prose-check is additive on top.
 
 ---
 
@@ -643,11 +643,11 @@ that uses the already-vendored `ast-grep-core` directly.
 
 | Risk                                                                                                                                                     | Mitigation                                                                                                                                                                                                                                                                                                                                                     |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Upstream `prose-audit.sh` doesn't support env-var-configurable file globs.                                                                               | Discover during U2; if absent, file an upstream PR (`agentnative-spec`) parameterizing the file list and add `prose-audit.sh` to a tracking list of "fork-with-justification" until upstream merges. The wrapper-script pattern (U2) softens the impact.                                                                                                       |
-| Drift workflow noisy due to weekly spec-side commits.                                                                                                    | Drift workflow only fails if vendored files diverge from upstream — most spec commits don't touch BRAND.md/vale-packs/prose-audit.sh. If it does prove noisy, drop the schedule trigger and rely on push-only.                                                                                                                                                 |
-| ast-grep false-positive rules under-coverage causes spurious prose findings on legitimate non-prose strings (URLs, regex patterns, format placeholders). | U6 fixture set must include every false-positive class encountered during initial real-source extraction. Triage cycle: extract → review findings → expand false-positive rules → re-run. Document the cycle in `scripts/prose-audit-rust.sh` header.                                                                                                          |
-| Vendored vale packs ship rules that fire on existing CLI prose (massive day-1 backlog).                                                                  | Run `prose-audit-cli.sh` during U2 implementation; if backlog is huge, scope U2 to "wire the gate, don't fail CI yet" — make the new CI workflow run with `continue-on-error: true` until backlog is addressed in a follow-up PR. Decision deferred to implementation based on actual backlog size.                                                            |
-| ast-grep CLI binary not available in CI.                                                                                                                 | Add an install step in `prose-audit.yml` that downloads ast-grep release binary at a pinned SHA. The repo already uses `ast-grep-core` library; the CLI binary is a separate concern.                                                                                                                                                                          |
+| Upstream `prose-check.sh` doesn't support env-var-configurable file globs.                                                                               | Discover during U2; if absent, file an upstream PR (`agentnative-spec`) parameterizing the file list and add `prose-check.sh` to a tracking list of "fork-with-justification" until upstream merges. The wrapper-script pattern (U2) softens the impact.                                                                                                       |
+| Drift workflow noisy due to weekly spec-side commits.                                                                                                    | Drift workflow only fails if vendored files diverge from upstream — most spec commits don't touch BRAND.md/vale-packs/prose-check.sh. If it does prove noisy, drop the schedule trigger and rely on push-only.                                                                                                                                                 |
+| ast-grep false-positive rules under-coverage causes spurious prose findings on legitimate non-prose strings (URLs, regex patterns, format placeholders). | U6 fixture set must include every false-positive class encountered during initial real-source extraction. Triage cycle: extract → review findings → expand false-positive rules → re-run. Document the cycle in `scripts/prose-check-rust.sh` header.                                                                                                          |
+| Vendored vale packs ship rules that fire on existing CLI prose (massive day-1 backlog).                                                                  | Run `prose-check-cli.sh` during U2 implementation; if backlog is huge, scope U2 to "wire the gate, don't fail CI yet" — make the new CI workflow run with `continue-on-error: true` until backlog is addressed in a follow-up PR. Decision deferred to implementation based on actual backlog size.                                                            |
+| ast-grep CLI binary not available in CI.                                                                                                                 | Add an install step in `prose-check.yml` that downloads ast-grep release binary at a pinned SHA. The repo already uses `ast-grep-core` library; the CLI binary is a separate concern.                                                                                                                                                                          |
 | Sync-script SHA pinning rule violated for one-off `git clone` invocation.                                                                                | The sync script clones a CLI tool target (not running CI actions); the SHA-pinning rule applies to GitHub Actions `uses:` lines, not arbitrary `git clone` in shell scripts. The script does pin the *ref* (`SYNC_REF`); SHA pinning of upstream tags applies if/when the script switches from branch to tag-based sync. Document the choice in script header. |
 | `.impeccable.md` voice rules conflict with proselint/write-good defaults.                                                                                | The four vendored vale packs are register-neutral (not RFC-2119); conflicts unlikely. If found, vale supports per-file `<!-- vale off -->` comments — use surgically, not as a global escape valve.                                                                                                                                                            |
 
@@ -663,7 +663,7 @@ that uses the already-vendored `ast-grep-core` directly.
 - Post-merge, run `scripts/sync-prose-tooling.sh --check` locally on `dev` to confirm stability.
 - The follow-up sequence after this PR ships:
 
-1. Address the prose-audit backlog on existing prose surfaces (separate PR or PRs).
+1. Address the prose-check backlog on existing prose surfaces (separate PR or PRs).
 2. Decide whether to flip CI from `continue-on-error` to hard-fail (if the backlog approach was used).
 3. Eventually consider pre-push integration after CI proves the gate is reliable.
 

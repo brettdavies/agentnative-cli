@@ -1,5 +1,5 @@
 ---
-title: "feat: vendor agentnative-spec — generate REQUIREMENTS at build time + drift-audit"
+title: "feat: vendor agentnative-spec — generate REQUIREMENTS at build time + drift-check"
 type: feat
 status: completed
 date: 2026-04-23
@@ -9,7 +9,7 @@ parents:
 roadmap-item: 5 (spec-repo roadmap 002, item 5)
 ---
 
-# feat: vendor agentnative-spec — generate REQUIREMENTS at build time + drift-audit
+# feat: vendor agentnative-spec — generate REQUIREMENTS at build time + drift-check
 
 ## Overview
 
@@ -24,7 +24,7 @@ replacing the hand-maintained `&'static [Requirement]` slice currently in `src/p
 - `build.rs` at the crate root — parses vendored frontmatter, emits `OUT_DIR/generated_requirements.rs` consumed via
   `include!()` from `src/principles/registry.rs`. Fails the build loudly on parse errors, duplicate IDs, or schema
   drift.
-- Drift-audit tests — every audit's `covers()` ID exists in the generated `REQUIREMENTS` set; every MUST/SHOULD/MAY in
+- Drift-check tests — every audit's `covers()` ID exists in the generated `REQUIREMENTS` set; every MUST/SHOULD/MAY in
   the vendored spec is addressable; vendored frontmatter schema matches what the Rust parser expects.
 - Scorecard emits a `spec_version` field (from vendored `VERSION`) so consumers of `anc audit --output json` can pin
   against the exact spec build the CLI was compiled against.
@@ -182,7 +182,7 @@ Feature-detect new fields rather than version-gate. -
 - **`VERSION` file is vendored but not strictly required at build time.** The `spec_version` field reads from the
   vendored file; if missing, emit `null` in the scorecard (matches existing `audience_reason` pattern for unresolvable
   fields). Build succeeds without `VERSION` but emits a warning — errors only on malformed `principles/` content.
-- **Drift-audit tests live alongside the generated data.** New test file `tests/requirements_drift.rs` uses
+- **Drift-check tests live alongside the generated data.** New test file `tests/requirements_drift.rs` uses
   `agentnative::principles::REQUIREMENTS` and `agentnative::audits::all_audits_catalog()`. Failing these tests is a
   legitimate release-blocking signal; they run in the same `cargo test` invocation the pre-push hook already executes.
 
@@ -513,7 +513,7 @@ feature.
 
 ---
 
-- [ ] U5. **Drift-audit tests**
+- [ ] U5. **Drift-check tests**
 
 **Goal:** Lock in the invariants R4 and R5 so any future change to audits or spec surfaces the mismatch immediately.
 

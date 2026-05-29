@@ -1,7 +1,7 @@
 ---
 id: p2
 title: Structured, Parseable Output
-last-revised: 2026-05-21
+last-revised: 2026-05-29
 status: active
 requirements:
   - id: p2-must-output-flag
@@ -132,8 +132,8 @@ catastrophically later.
 - `process::exit()` in library code, bypassing structured error propagation.
 - Human-formatted tables as the only output mode with no JSON alternative.
 
-Measured by check IDs `p2-output-json`, `p2-output-format`, `p2-stderr-diagnostics`. Run `agentnative check --principle
-2 .` against the CLI under test to see each.
+Measured by audit IDs `p2-output-json`, `p2-output-format`, `p2-stderr-diagnostics`. Run `anc audit --principle 2 .`
+against the CLI under test to see each.
 
 ## Pressure test notes
 

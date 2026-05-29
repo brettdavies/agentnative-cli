@@ -59,7 +59,7 @@ behavioral audits that *induce* an error path and inspect the envelope — genui
   must show no `fail` on any of the new audit IDs.
 - R8. Regenerate `docs/coverage-matrix.md` and `coverage/matrix.json` via `anc emit coverage-matrix`. CI's existing
   `--check` integration test
-  (`tests/integration.rs::test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts`) will fail until both
+  (`tests/integration.rs::test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts`) will fail until both
   artifacts ship in the same PR.
 
 ---
@@ -121,7 +121,7 @@ behavioral audits that *induce* an error path and inspect the envelope — genui
 - `src/principles/spec/principles/p4-fail-fast-actionable-errors.md` — target file for the fourth SHOULD.
 - `tests/dogfood.rs` — extension point for dogfood guards. Existing tests pin `p2-*` and `p5-*` collectively; add new
   assertions naming the four new IDs explicitly so a future regression names the broken contract.
-- `tests/integration.rs` (lines 66-75) — `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts`. Will
+- `tests/integration.rs` (lines 66-75) — `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts`. Will
   fail CI if `docs/coverage-matrix.md` or `coverage/matrix.json` are stale at PR time.
 - `scripts/sync-spec.sh` — vendor the new spec tag remote-first. Mirrors the `scripts/sync-skill-fixture.sh` shape.
 - `agentnative-spec/principles/AGENTS.md` — pressure-test protocol for new requirements. Apply when drafting prose.

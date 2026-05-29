@@ -131,7 +131,7 @@ The repo already ships one machine-readable artifact via the same workflow this 
 - **`anc emit coverage-matrix [--check]`** emits `docs/coverage-matrix.md` (human) + `coverage/matrix.json`
   (machine, `schema_version: "1.0"`).
 - Both files are committed; `--check` exits non-zero on drift.
-- Integration test `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` mirrors `--check` so CI
+- Integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors `--check` so CI
   catches drift from either side.
 - Project CLAUDE.md § "Coverage Matrix Artifact Lifecycle" documents the contract.
 
@@ -627,7 +627,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 | `schemars` 1.x defaults to a different draft than 2020-12 at the time of implementation                                                                                             | U2 explicitly verifies the default and either pins to a 2020-12-emitting version or accepts the default with a Risks-table entry on consumer-validator compat.                                                                                                                         |
 | Build-time schemars version conflicts with another build-dep                                                                                                                        | Cargo's resolver handles this; pre-launch dep graph is small (`serde`, `serde_yaml` build-deps today). Low likelihood.                                                                                                                                                                 |
 | The `$id` URL anchors at `anc.dev` but the site repo never wires up the corresponding archive endpoint                                                                              | U9 files the cross-repo plan that owns this. Until the site lands the archive, the `$id` URL 404s — a visible failure rather than a silent one. Document this as a transient state in the U9 plan.                                                                                     |
-| Doc comments diverge from CLAUDE.md's "Scorecard v0.5 Fields" prose section                                                                                                         | Once the schema ships with rich descriptions, CLAUDE.md's prose becomes redundant for the *content* and is rewritten in U8 to point at the schema as authoritative. CLAUDE.md retains operator workflow notes (regeneration cadence, drift-audit semantics) that aren't in the schema. |
+| Doc comments diverge from CLAUDE.md's "Scorecard v0.5 Fields" prose section                                                                                                         | Once the schema ships with rich descriptions, CLAUDE.md's prose becomes redundant for the *content* and is rewritten in U8 to point at the schema as authoritative. CLAUDE.md retains operator workflow notes (regeneration cadence, drift-check semantics) that aren't in the schema. |
 | Drift test is flaky (e.g., due to JSON pretty-print whitespace differences across Rust versions)                                                                                    | Pin `serde_json` `to_string_pretty` indentation explicitly (default is 2 spaces; spell it out). Sort schema keys deterministically — schemars usually does, verify at U6.                                                                                                              |
 | Round-trip test runtime cost exceeds CI budget                                                                                                                                      | Q5 — measure post-implementation, refactor to one binary spawn if needed.                                                                                                                                                                                                              |
 
@@ -649,7 +649,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 ## Sources & References
 
 - **Coverage matrix artifact lifecycle** (the precedent this plan extends): `CLAUDE.md` § "Coverage Matrix Artifact
-  Lifecycle"; `tests/integration.rs::test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts`.
+  Lifecycle"; `tests/integration.rs::test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts`.
 - **Scorecard v0.5 fields reference**: `CLAUDE.md` § "Scorecard v0.5 Fields".
 - **Scorecard struct definitions**: `src/scorecard/mod.rs`; `src/scorecard/audience.rs`; `src/types.rs` (per-result
   enums).

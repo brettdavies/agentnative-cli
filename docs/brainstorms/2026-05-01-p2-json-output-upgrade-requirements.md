@@ -94,7 +94,7 @@ Python has no equivalent source-layer audit at all (`src/audits/source/python/` 
   enum is wired to `serde_json::to_string_pretty` via the scorecard module).
 - R14. Coverage matrix artifacts (`docs/coverage-matrix.md`, `coverage/matrix.json`) are regenerated via `anc emit
   coverage-matrix` as part of the same PR. The integration test
-  `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` passes.
+  `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
 
 ---
 

@@ -133,7 +133,7 @@ is missing from the registry — typos surface at test time, not at render time.
 
 Both files are tracked in git, not `.gitignore`d. `anc emit coverage-matrix --check` exits non-zero when the committed
 artifacts disagree with the current registry + `covers()` declarations. The integration test
-`test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
+`test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
 either source.
 
 Regenerate whenever you add a requirement, change an audit's `covers()`, or rename an audit ID. The regeneration is a

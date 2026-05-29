@@ -575,7 +575,7 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 - Existing top-level orchestration: `src/main.rs`
 - Existing error enum: `src/error.rs`
 - Existing pre-release sync precedent: `scripts/sync-spec.sh`, `RELEASES.md`
-- Existing CI drift-audit precedent: `anc emit coverage-matrix --check`
+- Existing CI drift-check precedent: `anc emit coverage-matrix --check`
 - Site contract (canonical): `agentnative-site/src/data/skill.json`, `agentnative-site/src/build/skill.mjs`
 - Skill repo update mechanism: `agentnative-skill/bin/audit-update`
 - Sibling plan (scorecard schema): `docs/plans/2026-04-29-001-feat-scorecard-schema-metadata-plan.md`

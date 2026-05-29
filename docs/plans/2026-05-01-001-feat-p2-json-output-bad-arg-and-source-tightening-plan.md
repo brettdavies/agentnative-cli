@@ -74,7 +74,7 @@ Carried verbatim from origin requirements doc. R-IDs stable.
   `Confidence::High` if option (b) "any same-crate `serde_json`" is chosen, `Confidence::Medium` if option (a)
   "within-arm strict" is chosen (anc's match arm calls `format_json` in `scorecard/`, not `serde_json` directly).
 - R14. `docs/coverage-matrix.md` and `coverage/matrix.json` are regenerated via `anc emit coverage-matrix` as part
-  of the same PR. The integration test `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` passes.
+  of the same PR. The integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
 
 ---
 
@@ -722,7 +722,7 @@ verdicts).
   additional assertions: `p2-json-output` resolves to Pass with `confidence == "medium"`, `p2-structured-output`
   resolves to Pass with `confidence == "high"`. R13 explicit.
 - Coverage matrix regen is mechanical: `cargo run -- generate coverage-matrix` writes the artifacts; the existing
-  `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` integration test verifies parity. R14.
+  `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` integration test verifies parity. R14.
 - The audience-classifier shift enumeration (R10) is a manual research step at the end of this unit: run `anc audit`
   against each currently-scored leaderboard member with the new detection, diff the `audience` field against the
   pre-merge baseline, list every shift in the changelog and PR description. The changelog entry names tools that shift
@@ -732,7 +732,7 @@ verdicts).
   entry.
 
 **Execution note:** Coverage-matrix regen happens **after** all detection changes are merged into the branch but
-**before** the PR is opened. CI's drift-audit test would fail otherwise.
+**before** the PR is opened. CI's drift-check test would fail otherwise.
 
 **Patterns to follow:**
 
@@ -755,7 +755,7 @@ verdicts).
   strict" (since anc's match arm calls `format_json` in `scorecard/`, not `serde_json` directly). The concrete value is
   set when that question is resolved; until then this scenario is parametric. **Covers R13.**
 - *Coverage matrix drift — committed artifacts agree with registry + audits.*
-  `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` continues to pass after the regen. **Covers
+  `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` continues to pass after the regen. **Covers
   R14.**
 - *Schema parity — scorecard JSON `schema_version` stays `"0.5"`.* `tests/scorecard_schema_v05.rs` continues to pass
   unchanged (R11).
@@ -782,7 +782,7 @@ verdicts).
   error type, no new propagation surface.
 - **State lifecycle risks:** None. Source audits and behavioral audits both operate on per-invocation state (parsed
   files / runner output) with no shared mutable state. Coverage-matrix regen is the only persistent-write step, and the
-  drift-audit test guards correctness.
+  drift-check test guards correctness.
 - **API surface parity:** No change to the scorecard envelope shape, the CLI surface, or any exported type. The
   `Confidence` field on `p2-json-output` shifts from `High` (line 62 of json_output.rs) to `Medium` for **all** Pass
   paths — this is a deliberate honesty fix that downstream consumers need only feature-detect via the existing
@@ -813,7 +813,7 @@ verdicts).
 | U1's stderr-enumeration regex misses a parser family's idiomatic format → silent regression on currently-Pass tools.                                    | U4 lands first with one fixture per parser family encoding the literal stderr shape. U1 implementation is regex-iterated against the U4 fixtures; PR review audits fixture coverage against current leaderboard parser-family spread. |
 | U2's ast-grep reachability misses a real Strong-tier wiring (false Medium) → reviewer misreads the verdict as a regression on a previously-Strong tool. | U2's evidence message names the detection gap explicitly. Confidence::Medium is honest under this doctrine. PR description enumerates every Rust-tool tier shift; reviewers can spot misclassifications.                              |
 | U3's argparse / click pattern misses a Python idiom (e.g. `argparse.ArgumentParser` configured via class methods, click groups) → false Skip / Weak.    | U4 includes click + argparse fixtures at each tier. The Python sibling can be tightened iteratively without changing its public contract; first iteration covers the dominant idioms named in R7.                                     |
-| Coverage-matrix regen runs before all detection changes land → committed artifacts disagree with detection → CI drift-audit fails on the PR.            | U5 explicitly sequences regen as the **last** step before opening the PR. The pre-push hook (`scripts/hooks/pre-push`) runs the drift-audit test and would catch the gap locally.                                                     |
+| Coverage-matrix regen runs before all detection changes land → committed artifacts disagree with detection → CI drift-check fails on the PR.            | U5 explicitly sequences regen as the **last** step before opening the PR. The pre-push hook (`scripts/hooks/pre-push`) runs the drift-check test and would catch the gap locally.                                                     |
 
 ---
 

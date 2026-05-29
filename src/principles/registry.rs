@@ -123,7 +123,7 @@ impl ExceptionCategory {
 
 /// Every `ExceptionCategory` variant in order. Anchor for parity drift
 /// tests (CLI `AuditProfile` must stay isomorphic) and for callers that
-/// need to iterate the full set (suppression-table drift audit,
+/// need to iterate the full set (suppression-table drift check,
 /// `coverage/matrix.json` audit_profile section).
 ///
 /// A new variant on the enum is a breaking plan change — land it in

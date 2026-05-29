@@ -1,7 +1,7 @@
 ---
 name: agentnative
 binary: anc
-description: Agent-native CLI linter that checks whether a CLI follows the 8 agent-readiness principles. Bundle covers operator-facing usage, project structure, and the check catalog.
+description: Agent-native CLI linter that audits whether a CLI follows the 8 agent-readiness principles. Bundle covers operator-facing usage, project structure, and the audit catalog.
 homepage: https://anc.dev
 repository: https://github.com/brettdavies/agentnative-cli
 ---
@@ -13,10 +13,10 @@ repository: https://github.com/brettdavies/agentnative-cli
 The crate is `agentnative`. The installed binary is `anc`.
 
 ```bash
-# Check current project — `check` is implicit when the first non-flag arg is a path
+# Audit current project — `audit` is implicit when the first non-flag arg is a path
 anc .
 
-# Resolve a command on PATH and run behavioral checks against it
+# Resolve a command on PATH and run behavioral audits against it
 anc --command ripgrep
 
 # JSON output for parsing
@@ -28,10 +28,10 @@ anc . -q
 # Filter by principle (1-7)
 anc . --principle 4
 
-# Behavioral checks only (no source analysis)
+# Behavioral audits only (no source analysis)
 anc . --binary
 
-# Source checks only (no binary execution)
+# Source audits only (no binary execution)
 anc . --source
 
 # Suppress inapplicable MUSTs for a categorical exception
@@ -44,7 +44,7 @@ anc skill install factory --output json   # emit envelope on success and error
 ```
 
 Bare `anc` (no arguments) prints help and exits 2. This is a non-negotiable fork-bomb guard: when agentnative dogfoods
-itself, children spawned without arguments must not recurse into `check .`. Bare `anc skill` likewise prints help and
+itself, children spawned without arguments must not recurse into `audit .`. Bare `anc skill` likewise prints help and
 exits 2.
 
 ## Skill install
@@ -95,13 +95,13 @@ pre-launch — shape may evolve before first public release, when it locks at `1
 norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
 following scorecard-level fields beyond the base `results` / `summary`:
 
-- `audience` — `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral checks
+- `audience` — `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral audits
   (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Informational only; never gates totals
   or exit codes.
-- `audience_reason` — present only when `audience` is `null`. Values: `"suppressed"` (signal check masked by
-  `--audit-profile`) or `"insufficient_signal"` (signal check never produced). Tells an agent *why* there's no label.
+- `audience_reason` — present only when `audience` is `null`. Values: `"suppressed"` (signal audit masked by
+  `--audit-profile`) or `"insufficient_signal"` (signal audit never produced). Tells an agent *why* there's no label.
 - `audit_profile` — echoes the applied `--audit-profile <category>` flag value. `null` when no profile is set.
-- `coverage_summary.{must,should,may}.verified` — requirements verified by a check that actually ran. Checks suppressed
+- `coverage_summary.{must,should,may}.verified` — requirements verified by an audit that actually ran. Audits suppressed
   by `--audit-profile` do not count as verified; suppression means verification was intentionally skipped.
 - `spec_version` — the `agentnative-spec` version this CLI was built against. Sourced at build time from
   `src/principles/spec/VERSION` by `build.rs`; reads `"unknown"` if that file was missing at build time. Pin against
@@ -123,46 +123,46 @@ following scorecard-level fields beyond the base `results` / `summary`:
   (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
 
 `--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
-values exit 2 with a structured error. The full per-category mapping of suppressed check IDs is committed to
+values exit 2 with a structured error. The full per-category mapping of suppressed audit IDs is committed to
 `coverage/matrix.json` under the `audit_profiles` section — agents should read that file rather than scraping `--help`:
 
 ```bash
 jaq '.audit_profiles' coverage/matrix.json
 ```
 
-Suppressed checks appear in `results[]` as `status: "skip"` with evidence starting with `"suppressed by audit_profile:
+Suppressed audits appear in `results[]` as `status: "skip"` with evidence starting with `"suppressed by audit_profile:
 "` (the shared prefix is pinned in `src/principles/registry.rs` as `SUPPRESSION_EVIDENCE_PREFIX`).
 
 ## Exit Codes
 
-- `0` — all checks passed
+- `0` — all audits passed
 - `1` — warnings present, no failures
 - `2` — failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on
   PATH)
 
 Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr — usage errors
-include `Usage:` text; check failures don't.
+include `Usage:` text; audit failures don't.
 
 ## Project Structure
 
-- `src/check.rs` — Check trait definition
-- `src/checks/behavioral/` — checks that run the compiled binary
-- `src/checks/source/rust/` — ast-grep source analysis checks
-- `src/checks/project/` — file and manifest inspection checks
+- `src/audit.rs` — Audit trait definition
+- `src/audits/behavioral/` — audits that run the compiled binary
+- `src/audits/source/rust/` — ast-grep source analysis audits
+- `src/audits/project/` — file and manifest inspection audits
 - `src/runner.rs` — binary execution with timeout and caching
 - `src/project.rs` — project discovery and source file walking
 - `src/scorecard.rs` — output formatting (text and JSON)
-- `src/types.rs` — CheckResult, CheckStatus, CheckGroup, CheckLayer
+- `src/types.rs` — AuditResult, AuditStatus, AuditGroup, AuditLayer
 - `src/principles/registry.rs` — single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the
-  checks that verify them
+  audits that verify them
 - `src/principles/matrix.rs` — coverage-matrix generator + drift detector
 
-## Adding a New Check
+## Adding a New Audit
 
-1. Create a file in the appropriate `src/checks/` subdirectory
-2. Implement the `Check` trait: `id()`, `group()`, `layer()`, `applicable()`, `run()`, and `covers()` if the check
+1. Create a file in the appropriate `src/audits/` subdirectory
+2. Implement the `Audit` trait: `id()`, `group()`, `layer()`, `applicable()`, `run()`, and `covers()` if the audit
    verifies requirements in `src/principles/registry.rs` (return a `&'static [&'static str]` of requirement IDs)
-3. Register in the layer's `mod.rs` (e.g., `all_rust_checks()`)
+3. Register in the layer's `mod.rs` (e.g., `all_rust_audits()`)
 4. Add inline `#[cfg(test)]` tests
 5. Regenerate the coverage matrix: `cargo run -- generate coverage-matrix` (produces `docs/coverage-matrix.md` +
    `coverage/matrix.json`, both tracked in git)
@@ -191,11 +191,11 @@ cargo test -- --ignored       # fixture tests (slower)
 The canonical specification of the 7 agent-readiness principles lives in
 [`brettdavies/agentnative`](https://github.com/brettdavies/agentnative), one file per principle under `principles/`. A
 snapshot is **vendored** into this crate at `src/principles/spec/`, and `build.rs` parses its frontmatter at build time
-to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI checks against. There is no
-manual sync of requirement IDs; only the `Check::covers()` declarations are hand-maintained.
+to generate the `REQUIREMENTS` slice — IDs in the spec frontmatter are the contract this CLI audits against. There is no
+manual sync of requirement IDs; only the `Audit::covers()` declarations are hand-maintained.
 
-The `anc` checks in `src/checks/` themselves are derived **manually** from each principle's prose. When a principle's
-spec adds, removes, or reworks a requirement, propagate to the relevant check(s) deliberately.
+The `anc` audits in `src/audits/` themselves are derived **manually** from each principle's prose. When a principle's
+spec adds, removes, or reworks a requirement, propagate to the relevant audit(s) deliberately.
 
 **Resync cadence:** rerun `scripts/sync-spec.sh` after every new `agentnative-spec` tag. The script queries the remote
 for the latest `v*` tag automatically and falls back to a local checkout (`$HOME/dev/agentnative-spec` by default) if
@@ -204,21 +204,21 @@ trigger; if a future GitHub Action opens a resync PR automatically, this script 
 
 For iteration workflow, pressure-test protocol, and per-file structure of the spec itself, see
 [`agentnative:principles/AGENTS.md`](https://github.com/brettdavies/agentnative/blob/main/principles/AGENTS.md). Read
-before proposing a new check that stretches the existing `P<n>` coverage.
+before proposing a new audit that stretches the existing `P<n>` coverage.
 
-When a check is added or revised, its code or doc comment should name the principle code (`P<n>`) it implements for
-traceability. Do not embed the principle text in the check source.
+When an audit is added or revised, its code or doc comment should name the principle code (`P<n>`) it implements for
+traceability. Do not embed the principle text in the audit source.
 
 ## External signal / research
 
-Curated external signal that informs principle iteration, check rules, and positioning lives in the sibling research
+Curated external signal that informs principle iteration, audit rules, and positioning lives in the sibling research
 folder:
 
 - `~/obsidian-vault/Projects/brettdavies-agentnative/research/index.md` — top of the research tree. Lists every extract
-  with date, topic, and which principles it maps to. Read this before adding new checks driven by external patterns or
+  with date, topic, and which principles it maps to. Read this before adding new audits driven by external patterns or
   competitor behavior.
 - `extracts/` — curated, topic-scoped files (verbatim quotes, principle mapping, recommended uses).
 - `raw/` — full-text captures.
 
 When an extract names concrete linter-rule candidates, walk its **"Linter rule coverage audit"** or equivalent section
-against existing checks in `src/checks/` before opening a new check.
+against existing audits in `src/audits/` before opening a new audit.

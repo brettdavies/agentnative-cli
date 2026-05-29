@@ -54,14 +54,14 @@ body:
     validations:
       required: true
   - type: textarea
-    id: anc-check
+    id: anc-audit
     attributes:
       label: "Optional: `anc audit` results"
       description: |
         If you've already run `anc audit` against the tool's source tree, paste the summary line.
         Not required — the scoring pipeline will run it on merge — but accelerates triage.
       placeholder: |
-        33 checks: 26 pass, 2 warn, 1 fail, 4 skip, 0 error
+        33 audits: 26 pass, 2 warn, 1 fail, 4 skip, 0 error
     validations:
       required: false
   - type: textarea

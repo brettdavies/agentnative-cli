@@ -12,11 +12,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-env-hints",
+          "audit_id": "p1-env-hints",
           "layer": "behavioral"
         },
         {
-          "check_id": "p1-env-flags-source",
+          "audit_id": "p1-env-flags-source",
           "layer": "source"
         }
       ]
@@ -31,15 +31,15 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-non-interactive",
+          "audit_id": "p1-non-interactive",
           "layer": "behavioral"
         },
         {
-          "check_id": "p1-flag-existence",
+          "audit_id": "p1-flag-existence",
           "layer": "behavioral"
         },
         {
-          "check_id": "p1-non-interactive-source",
+          "audit_id": "p1-non-interactive-source",
           "layer": "project"
         }
       ]
@@ -55,7 +55,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-headless-auth",
+          "audit_id": "p1-headless-auth",
           "layer": "source"
         }
       ]
@@ -71,7 +71,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-secret-non-leaky-path",
+          "audit_id": "p1-secret-non-leaky-path",
           "layer": "behavioral"
         }
       ]
@@ -86,7 +86,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-tty-detection-source",
+          "audit_id": "p1-tty-detection-source",
           "layer": "source"
         }
       ]
@@ -101,7 +101,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-defaults-in-help",
+          "audit_id": "p1-defaults-in-help",
           "layer": "behavioral"
         }
       ]
@@ -116,7 +116,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p1-rich-tui",
+          "audit_id": "p1-rich-tui",
           "layer": "behavioral"
         }
       ]
@@ -131,11 +131,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-json-output",
+          "audit_id": "p2-json-output",
           "layer": "behavioral"
         },
         {
-          "check_id": "p2-structured-output",
+          "audit_id": "p2-structured-output",
           "layer": "source"
         }
       ]
@@ -150,7 +150,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-output-module",
+          "audit_id": "p2-output-module",
           "layer": "source"
         }
       ]
@@ -165,7 +165,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-structured-exit-codes",
+          "audit_id": "p2-structured-exit-codes",
           "layer": "behavioral"
         }
       ]
@@ -180,7 +180,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-json-errors",
+          "audit_id": "p2-json-errors",
           "layer": "behavioral"
         }
       ]
@@ -193,12 +193,12 @@
       "applicability": {
         "kind": "conditional",
         "antecedent": {
-          "check_id": "p2-json-output"
+          "audit_id": "p2-json-output"
         }
       },
       "verifiers": [
         {
-          "check_id": "p2-schema-print",
+          "audit_id": "p2-schema-print",
           "layer": "behavioral"
         }
       ]
@@ -213,7 +213,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-consistent-envelope",
+          "audit_id": "p2-consistent-envelope",
           "layer": "behavioral"
         }
       ]
@@ -226,12 +226,12 @@
       "applicability": {
         "kind": "conditional",
         "antecedent": {
-          "check_id": "p2-json-output"
+          "audit_id": "p2-json-output"
         }
       },
       "verifiers": [
         {
-          "check_id": "p2-schema-file",
+          "audit_id": "p2-schema-file",
           "layer": "project"
         }
       ]
@@ -246,7 +246,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-json-aliases",
+          "audit_id": "p2-json-aliases",
           "layer": "behavioral"
         }
       ]
@@ -261,7 +261,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-more-formats",
+          "audit_id": "p2-more-formats",
           "layer": "behavioral"
         }
       ]
@@ -276,7 +276,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p2-raw-flag",
+          "audit_id": "p2-raw-flag",
           "layer": "behavioral"
         }
       ]
@@ -292,7 +292,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-subcommand-examples",
+          "audit_id": "p3-subcommand-examples",
           "layer": "behavioral"
         }
       ]
@@ -307,7 +307,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-help",
+          "audit_id": "p3-help",
           "layer": "behavioral"
         }
       ]
@@ -322,7 +322,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-version",
+          "audit_id": "p3-version",
           "layer": "behavioral"
         }
       ]
@@ -337,7 +337,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-version",
+          "audit_id": "p3-version",
           "layer": "behavioral"
         }
       ]
@@ -352,7 +352,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-paired-examples",
+          "audit_id": "p3-paired-examples",
           "layer": "behavioral"
         }
       ]
@@ -367,7 +367,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-about-long-about",
+          "audit_id": "p3-about-long-about",
           "layer": "behavioral"
         }
       ]
@@ -382,7 +382,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p3-examples-subcommand",
+          "audit_id": "p3-examples-subcommand",
           "layer": "behavioral"
         }
       ]
@@ -397,7 +397,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p4-try-parse",
+          "audit_id": "p4-try-parse",
           "layer": "source"
         }
       ]
@@ -412,11 +412,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p4-bad-args",
+          "audit_id": "p4-bad-args",
           "layer": "behavioral"
         },
         {
-          "check_id": "p4-exit-codes",
+          "audit_id": "p4-exit-codes",
           "layer": "source"
         }
       ]
@@ -431,7 +431,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p4-actionable-errors",
+          "audit_id": "p4-actionable-errors",
           "layer": "behavioral"
         }
       ]
@@ -446,11 +446,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p4-error-module",
+          "audit_id": "p4-error-module",
           "layer": "project"
         },
         {
-          "check_id": "p4-error-types",
+          "audit_id": "p4-error-types",
           "layer": "source"
         }
       ]
@@ -476,7 +476,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p4-json-error-output",
+          "audit_id": "p4-json-error-output",
           "layer": "behavioral"
         }
       ]
@@ -492,11 +492,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p4-enumerate-valid-set",
+          "audit_id": "p4-enumerate-valid-set",
           "layer": "source"
         },
         {
-          "check_id": "p4-enumerate-valid-set",
+          "audit_id": "p4-enumerate-valid-set",
           "layer": "source"
         }
       ]
@@ -512,7 +512,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p5-force-yes",
+          "audit_id": "p5-force-yes",
           "layer": "behavioral"
         }
       ]
@@ -528,7 +528,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p5-read-write-distinction",
+          "audit_id": "p5-read-write-distinction",
           "layer": "behavioral"
         }
       ]
@@ -544,7 +544,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p5-dry-run",
+          "audit_id": "p5-dry-run",
           "layer": "project"
         }
       ]
@@ -570,7 +570,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-sigpipe",
+          "audit_id": "p6-sigpipe",
           "layer": "behavioral"
         }
       ]
@@ -586,11 +586,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-sigterm",
+          "audit_id": "p6-sigterm",
           "layer": "source"
         },
         {
-          "check_id": "p6-sigterm",
+          "audit_id": "p6-sigterm",
           "layer": "source"
         }
       ]
@@ -605,15 +605,15 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-no-color-behavioral",
+          "audit_id": "p6-no-color-behavioral",
           "layer": "behavioral"
         },
         {
-          "check_id": "p6-no-color",
+          "audit_id": "p6-no-color",
           "layer": "source"
         },
         {
-          "check_id": "p6-no-color",
+          "audit_id": "p6-no-color",
           "layer": "source"
         }
       ]
@@ -628,7 +628,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-completions",
+          "audit_id": "p6-completions",
           "layer": "project"
         }
       ]
@@ -644,7 +644,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-timeout",
+          "audit_id": "p6-timeout",
           "layer": "source"
         }
       ]
@@ -660,11 +660,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-no-pager-behavioral",
+          "audit_id": "p6-no-pager-behavioral",
           "layer": "behavioral"
         },
         {
-          "check_id": "p6-no-pager",
+          "audit_id": "p6-no-pager",
           "layer": "source"
         }
       ]
@@ -680,7 +680,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-global-flags",
+          "audit_id": "p6-global-flags",
           "layer": "source"
         }
       ]
@@ -696,7 +696,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-stdin-input",
+          "audit_id": "p6-stdin-input",
           "layer": "behavioral"
         }
       ]
@@ -712,7 +712,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-consistent-naming",
+          "audit_id": "p6-consistent-naming",
           "layer": "behavioral"
         }
       ]
@@ -738,7 +738,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-subcommand-operations",
+          "audit_id": "p6-subcommand-operations",
           "layer": "behavioral"
         }
       ]
@@ -753,7 +753,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-color-flag",
+          "audit_id": "p6-color-flag",
           "layer": "behavioral"
         }
       ]
@@ -769,7 +769,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-standard-names",
+          "audit_id": "p6-standard-names",
           "layer": "behavioral"
         }
       ]
@@ -784,7 +784,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-quiet",
+          "audit_id": "p7-quiet",
           "layer": "behavioral"
         }
       ]
@@ -800,7 +800,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-output-clamping",
+          "audit_id": "p7-output-clamping",
           "layer": "source"
         }
       ]
@@ -815,7 +815,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-verbose",
+          "audit_id": "p7-verbose",
           "layer": "behavioral"
         }
       ]
@@ -831,7 +831,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-limit",
+          "audit_id": "p7-limit",
           "layer": "behavioral"
         }
       ]
@@ -846,7 +846,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-timeout-behavioral",
+          "audit_id": "p7-timeout-behavioral",
           "layer": "behavioral"
         }
       ]
@@ -862,7 +862,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-cursor-pagination",
+          "audit_id": "p7-cursor-pagination",
           "layer": "behavioral"
         }
       ]
@@ -877,7 +877,7 @@
       },
       "verifiers": [
         {
-          "check_id": "p7-auto-verbosity",
+          "audit_id": "p7-auto-verbosity",
           "layer": "behavioral"
         }
       ]
@@ -890,12 +890,12 @@
       "applicability": {
         "kind": "conditional",
         "antecedent": {
-          "check_id": "p8-bundle-exists"
+          "audit_id": "p8-bundle-exists"
         }
       },
       "verifiers": [
         {
-          "check_id": "p8-bundle-install",
+          "audit_id": "p8-bundle-install",
           "layer": "behavioral"
         }
       ]
@@ -910,11 +910,11 @@
       },
       "verifiers": [
         {
-          "check_id": "p6-agents-md",
+          "audit_id": "p6-agents-md",
           "layer": "project"
         },
         {
-          "check_id": "p8-bundle-exists",
+          "audit_id": "p8-bundle-exists",
           "layer": "project"
         }
       ]
@@ -927,12 +927,12 @@
       "applicability": {
         "kind": "conditional",
         "antecedent": {
-          "check_id": "p8-bundle-exists"
+          "audit_id": "p8-bundle-exists"
         }
       },
       "verifiers": [
         {
-          "check_id": "p8-install-all",
+          "audit_id": "p8-install-all",
           "layer": "behavioral"
         }
       ]
@@ -945,12 +945,12 @@
       "applicability": {
         "kind": "conditional",
         "antecedent": {
-          "check_id": "p8-bundle-exists"
+          "audit_id": "p8-bundle-exists"
         }
       },
       "verifiers": [
         {
-          "check_id": "p8-bundle-update",
+          "audit_id": "p8-bundle-update",
           "layer": "behavioral"
         }
       ]

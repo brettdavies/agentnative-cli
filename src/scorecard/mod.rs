@@ -5,9 +5,9 @@ use std::fmt::Write as _;
 
 use serde::Serialize;
 
-use crate::check::Check;
+use crate::audit::Audit;
 use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
-use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
+use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus};
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
 /// leaderboard pipeline) pin against this to detect shape changes.
@@ -23,8 +23,8 @@ use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 /// rather than a round-trip to the site), `0.6` (7-status taxonomy:
 /// `opt_out` + `n_a` added to `status`; matching counters in `summary`;
 /// `tier` field on each result; one result per requirement-row instead of
-/// per-check_id; antecedent propagation for conditional rows).
-pub const SCHEMA_VERSION: &str = "0.6";
+/// per-audit_id; antecedent propagation for conditional rows).
+pub const SCHEMA_VERSION: &str = "0.7";
 
 /// Eligibility floor for the agent-native badge, expressed as an integer
 /// percent. A score that meets or exceeds this floor qualifies a tool to
@@ -58,7 +58,7 @@ pub const BADGE_BASE_URL: &str = "https://anc.dev";
 ///
 /// Per-result enum values in `results[].group` / `layer` / `confidence`
 /// stay snake_case via their `#[serde(rename_all = "snake_case")]`
-/// derives — they are a different contract (one row per check) with
+/// derives — they are a different contract (one row per audit) with
 /// broader consumer history, and share spelling with the Rust
 /// type-system identifiers they come from.
 ///
@@ -66,7 +66,7 @@ pub const BADGE_BASE_URL: &str = "https://anc.dev";
 #[derive(Serialize)]
 pub struct Scorecard {
     pub schema_version: &'static str,
-    pub results: Vec<CheckResultView>,
+    pub results: Vec<AuditResultView>,
     pub summary: Summary,
     pub coverage_summary: CoverageSummary,
     /// Derived audience classification (`agent-optimized`, `mixed`,
@@ -75,8 +75,8 @@ pub struct Scorecard {
     /// consumers feature-detect.
     pub audience: Option<String>,
     /// When `audience` is `null`, the reason the classifier declined to
-    /// label: `suppressed` (signal check masked by `--audit-profile`) or
-    /// `insufficient_signal` (signal check never produced, e.g. source-only
+    /// label: `suppressed` (signal audit masked by `--audit-profile`) or
+    /// `insufficient_signal` (signal audit never produced, e.g. source-only
     /// run). Omitted from JSON when `audience` has a label. Pre-launch
     /// additive (schema `0.2`).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -114,7 +114,7 @@ pub struct Scorecard {
 /// `score_pct` is the credit-weighted leaderboard score defined in
 /// `agentnative-spec` `principles/scoring.md`, computed by [`score_pct`]
 /// over behavioral-layer rows only. When the denominator set is empty (no
-/// scoring data — e.g., `--principle 99` filters every check out) the
+/// scoring data — e.g., `--principle 99` filters every audit out) the
 /// score is reported as `0` and `eligible` is `false`.
 ///
 /// `eligible` is `true` iff `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT`
@@ -124,7 +124,7 @@ pub struct Scorecard {
 ///
 /// `embed_markdown` is `Some` only when the tool is eligible — the field
 /// drives the gating contract: a consumer that emits `embed_markdown` to
-/// a README knows it's safe to show because the floor was checked here.
+/// a README knows it's safe to show because the floor was verified here.
 ///
 /// `scorecard_url` and `badge_url` are populated whenever a tool slug
 /// exists, even below the floor. The site renders the SVG for every
@@ -161,7 +161,7 @@ impl BadgeInfo {
 /// by both `build_scorecard` (for JSON emission) and the runner's text
 /// path (for the post-summary hint), so a single source of truth backs
 /// both surfaces.
-pub fn compute_badge(results: &[CheckResult], tool_name: &str) -> BadgeInfo {
+pub fn compute_badge(results: &[AuditResult], tool_name: &str) -> BadgeInfo {
     let pct = score_pct(results);
     let trimmed = tool_name.trim();
     let has_slug = !trimmed.is_empty();
@@ -189,7 +189,7 @@ pub fn compute_badge(results: &[CheckResult], tool_name: &str) -> BadgeInfo {
 
 /// Per-tier weights for the leaderboard formula, published **flat** per
 /// `agentnative-spec` `principles/scoring.md` (`w(must) = w(should) =
-/// w(may) = 1`): every behavioral check counts the same regardless of its
+/// w(may) = 1`): every behavioral audit counts the same regardless of its
 /// RFC-2119 tier. The weights are a tunable parameter, not a constant baked
 /// into the formula — a future non-flat re-tune (e.g. weighting MUST
 /// failures more heavily) changes only these constants while the general
@@ -218,12 +218,12 @@ fn tier_weight(level: Option<Level>) -> f64 {
 /// and `opt_out` zero — both count against, since `opt_out` is deliberate
 /// non-adoption and a real signal. `n_a` / `skip` / `error` are excluded
 /// from `D` entirely.
-fn status_credit(status: &CheckStatus) -> Option<f64> {
+fn status_credit(status: &AuditStatus) -> Option<f64> {
     match status {
-        CheckStatus::Pass => Some(1.0),
-        CheckStatus::Warn(_) => Some(0.5),
-        CheckStatus::Fail(_) | CheckStatus::OptOut(_) => Some(0.0),
-        CheckStatus::NotApplicable(_) | CheckStatus::Skip(_) | CheckStatus::Error(_) => None,
+        AuditStatus::Pass => Some(1.0),
+        AuditStatus::Warn(_) => Some(0.5),
+        AuditStatus::Fail(_) | AuditStatus::OptOut(_) => Some(0.0),
+        AuditStatus::NotApplicable(_) | AuditStatus::Skip(_) | AuditStatus::Error(_) => None,
     }
 }
 
@@ -247,11 +247,11 @@ fn status_credit(status: &CheckStatus) -> Option<f64> {
 /// `n_a` / `skip` / `error` are excluded from `D`. Returns `0` when `D` is
 /// empty — pairs with `BadgeInfo::eligible == false` so a zero score never
 /// qualifies.
-fn score_pct(results: &[CheckResult]) -> u32 {
+fn score_pct(results: &[AuditResult]) -> u32 {
     let mut weighted_credit = 0.0_f64;
     let mut weight_sum = 0.0_f64;
     for r in results {
-        if r.layer != CheckLayer::Behavioral {
+        if r.layer != AuditLayer::Behavioral {
             continue;
         }
         let Some(credit) = status_credit(&r.status) else {
@@ -329,7 +329,7 @@ pub struct TargetInfo {
 }
 
 /// Per-level verification counts: how many requirements at this level had
-/// at least one check in this run that declared `covers()` against them.
+/// at least one audit in this run that declared `covers()` against them.
 /// A requirement is "verified" regardless of pass/fail — the status tells
 /// the consumer whether verification succeeded, this counter tells them
 /// whether it was attempted at all.
@@ -363,15 +363,15 @@ pub struct Summary {
 
 /// One row of `results[]` in the scorecard JSON.
 ///
-/// Schema 0.6 changed the unit of emission from "per check_id" to "per
+/// Schema 0.6 changed the unit of emission from "per audit_id" to "per
 /// requirement-row". `id` is now the requirement row id (matches
 /// `coverage/matrix.json` row IDs). `tier` carries the row's RFC 2119
 /// level (`must`/`should`/`may`) so downstream scoring consumers do not
-/// need a matrix join. `check_id` is the probe that produced this row,
+/// need a matrix join. `audit_id` is the probe that produced this row,
 /// preserved for provenance and so the site renderer / audience classifier
 /// can find the originating probe without a registry walk.
 #[derive(Serialize)]
-pub struct CheckResultView {
+pub struct AuditResultView {
     pub id: String,
     pub label: String,
     pub group: String,
@@ -387,40 +387,40 @@ pub struct CheckResultView {
     pub tier: Option<String>,
     /// Underlying probe that produced this row (e.g., `p3-version` covers
     /// both `p3-must-version` and `p3-should-version-short` — two rows
-    /// share one `check_id`). Pre-launch additive (schema `0.6`). Falls
+    /// share one `audit_id`). Pre-launch additive (schema `0.6`). Falls
     /// back to the row `id` itself when no provenance was threaded in
-    /// (legacy test fixtures that hand-build a `CheckResult` without the
+    /// (legacy test fixtures that hand-build a `AuditResult` without the
     /// fan-out pipeline).
-    pub check_id: String,
+    pub audit_id: String,
 }
 
-impl CheckResultView {
+impl AuditResultView {
     /// Construct from a raw probe result (pre-fan-out callers and test
-    /// fixtures). `check_id` defaults to `r.id` and `tier` is looked up
+    /// fixtures). `audit_id` defaults to `r.id` and `tier` is looked up
     /// from the registry (which fails to find anything for arbitrary test
     /// IDs — surfaces as JSON null). Production code uses `from_row`
     /// directly with the threaded probe provenance; this fallback exists
-    /// for tests and any future caller that builds a per-check view
+    /// for tests and any future caller that builds a per-audit view
     /// without the fan-out pipeline.
     #[allow(dead_code)]
-    pub fn from_result(r: &CheckResult) -> Self {
+    pub fn from_result(r: &AuditResult) -> Self {
         Self::from_row(r, &r.id)
     }
 
     /// Construct from a fanned-out per-row result with explicit probe
-    /// provenance. `check_id` is the probe's `Check::id()`; `r.id` is the
+    /// provenance. `audit_id` is the probe's `Audit::id()`; `r.id` is the
     /// requirement row id.
-    pub fn from_row(r: &CheckResult, check_id: &str) -> Self {
+    pub fn from_row(r: &AuditResult, audit_id: &str) -> Self {
         let (status, evidence) = match &r.status {
-            CheckStatus::Pass => ("pass".to_string(), None),
-            CheckStatus::Warn(e) => ("warn".to_string(), Some(e.clone())),
-            CheckStatus::Fail(e) => ("fail".to_string(), Some(e.clone())),
-            CheckStatus::OptOut(e) => ("opt_out".to_string(), Some(e.clone())),
-            CheckStatus::NotApplicable(e) => ("n_a".to_string(), Some(e.clone())),
-            CheckStatus::Skip(e) => ("skip".to_string(), Some(e.clone())),
-            CheckStatus::Error(e) => ("error".to_string(), Some(e.clone())),
+            AuditStatus::Pass => ("pass".to_string(), None),
+            AuditStatus::Warn(e) => ("warn".to_string(), Some(e.clone())),
+            AuditStatus::Fail(e) => ("fail".to_string(), Some(e.clone())),
+            AuditStatus::OptOut(e) => ("opt_out".to_string(), Some(e.clone())),
+            AuditStatus::NotApplicable(e) => ("n_a".to_string(), Some(e.clone())),
+            AuditStatus::Skip(e) => ("skip".to_string(), Some(e.clone())),
+            AuditStatus::Error(e) => ("error".to_string(), Some(e.clone())),
         };
-        // Serialize CheckGroup / CheckLayer / Confidence via serde_json so
+        // Serialize AuditGroup / AuditLayer / Confidence via serde_json so
         // the JSON mirrors the canonical enum spelling (snake_case).
         let group = serde_json::to_value(r.group)
             .ok()
@@ -435,13 +435,13 @@ impl CheckResultView {
             .and_then(|v| v.as_str().map(|s| s.to_string()))
             .unwrap_or_else(|| format!("{:?}", r.confidence));
         // Look up tier from the registry. The row ID is the result ID under
-        // the per-row emission contract introduced in schema 0.6. Per-check
+        // the per-row emission contract introduced in schema 0.6. Per-audit
         // results fed in by older callers (or test fixtures) won't find a
         // match here — `tier` falls back to None, which surfaces as JSON
         // null and is a visible sign of inconsistency.
         let tier =
             crate::principles::registry::find(&r.id).map(|req| req.level.as_str().to_string());
-        CheckResultView {
+        AuditResultView {
             id: r.id.clone(),
             label: r.label.clone(),
             group,
@@ -450,73 +450,73 @@ impl CheckResultView {
             evidence,
             confidence,
             tier,
-            check_id: check_id.to_string(),
+            audit_id: audit_id.to_string(),
         }
     }
 }
 
-fn build_summary(results: &[CheckResult]) -> Summary {
+fn build_summary(results: &[AuditResult]) -> Summary {
     Summary {
         total: results.len(),
         pass: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::Pass))
+            .filter(|r| matches!(r.status, AuditStatus::Pass))
             .count(),
         warn: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::Warn(_)))
+            .filter(|r| matches!(r.status, AuditStatus::Warn(_)))
             .count(),
         fail: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::Fail(_)))
+            .filter(|r| matches!(r.status, AuditStatus::Fail(_)))
             .count(),
         opt_out: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::OptOut(_)))
+            .filter(|r| matches!(r.status, AuditStatus::OptOut(_)))
             .count(),
         n_a: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::NotApplicable(_)))
+            .filter(|r| matches!(r.status, AuditStatus::NotApplicable(_)))
             .count(),
         skip: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::Skip(_)))
+            .filter(|r| matches!(r.status, AuditStatus::Skip(_)))
             .count(),
         error: results
             .iter()
-            .filter(|r| matches!(r.status, CheckStatus::Error(_)))
+            .filter(|r| matches!(r.status, AuditStatus::Error(_)))
             .count(),
     }
 }
 
-fn group_display(group: &CheckGroup) -> &'static str {
+fn group_display(group: &AuditGroup) -> &'static str {
     match group {
-        CheckGroup::P1 => "P1 — Non-Interactive by Default",
-        CheckGroup::P2 => "P2 — Structured Output",
-        CheckGroup::P3 => "P3 — Progressive Help",
-        CheckGroup::P4 => "P4 — Actionable Errors",
-        CheckGroup::P5 => "P5 — Safe Retries",
-        CheckGroup::P6 => "P6 — Composable Structure",
-        CheckGroup::P7 => "P7 — Bounded Responses",
-        CheckGroup::P8 => "P8 — Discoverable Skill Bundles",
-        CheckGroup::CodeQuality => "Code Quality",
-        CheckGroup::ProjectStructure => "Project Structure",
+        AuditGroup::P1 => "P1 — Non-Interactive by Default",
+        AuditGroup::P2 => "P2 — Structured Output",
+        AuditGroup::P3 => "P3 — Progressive Help",
+        AuditGroup::P4 => "P4 — Actionable Errors",
+        AuditGroup::P5 => "P5 — Safe Retries",
+        AuditGroup::P6 => "P6 — Composable Structure",
+        AuditGroup::P7 => "P7 — Bounded Responses",
+        AuditGroup::P8 => "P8 — Discoverable Skill Bundles",
+        AuditGroup::CodeQuality => "Code Quality",
+        AuditGroup::ProjectStructure => "Project Structure",
     }
 }
 
 /// Order groups for consistent display.
-fn group_order(group: &CheckGroup) -> u8 {
+fn group_order(group: &AuditGroup) -> u8 {
     match group {
-        CheckGroup::P1 => 1,
-        CheckGroup::P2 => 2,
-        CheckGroup::P3 => 3,
-        CheckGroup::P4 => 4,
-        CheckGroup::P5 => 5,
-        CheckGroup::P6 => 6,
-        CheckGroup::P7 => 7,
-        CheckGroup::P8 => 8,
-        CheckGroup::CodeQuality => 9,
-        CheckGroup::ProjectStructure => 10,
+        AuditGroup::P1 => 1,
+        AuditGroup::P2 => 2,
+        AuditGroup::P3 => 3,
+        AuditGroup::P4 => 4,
+        AuditGroup::P5 => 5,
+        AuditGroup::P6 => 6,
+        AuditGroup::P7 => 7,
+        AuditGroup::P8 => 8,
+        AuditGroup::CodeQuality => 9,
+        AuditGroup::ProjectStructure => 10,
     }
 }
 
@@ -530,7 +530,7 @@ fn group_order(group: &CheckGroup) -> u8 {
 #[derive(Clone, Copy, Default)]
 pub struct TextOptions {
     /// Suppress group headers, PASS/SKIP rows, summary, and badge hint —
-    /// emit only `id<TAB>status` per check. Wired to `--raw`.
+    /// emit only `id<TAB>status` per audit. Wired to `--raw`.
     pub raw: bool,
     /// Apply ANSI styling to status prefixes. Computed by the caller from
     /// `--color` plus TTY / `NO_COLOR` introspection so the renderer stays
@@ -539,7 +539,7 @@ pub struct TextOptions {
 }
 
 pub fn format_text(
-    results: &[CheckResult],
+    results: &[AuditResult],
     quiet: bool,
     badge: Option<&BadgeInfo>,
     opts: TextOptions,
@@ -549,8 +549,8 @@ pub fn format_text(
     }
     let mut out = String::new();
 
-    // Group results by CheckGroup
-    let mut grouped: BTreeMap<u8, (CheckGroup, Vec<&CheckResult>)> = BTreeMap::new();
+    // Group results by AuditGroup
+    let mut grouped: BTreeMap<u8, (AuditGroup, Vec<&AuditResult>)> = BTreeMap::new();
     for r in results {
         let order = group_order(&r.group);
         grouped
@@ -560,59 +560,59 @@ pub fn format_text(
             .push(r);
     }
 
-    for (group, checks) in grouped.values() {
+    for (group, audits) in grouped.values() {
         if !quiet {
             let _ = writeln!(out, "\n{}", group_display(group));
         }
-        for r in checks {
+        for r in audits {
             let prefix = match &r.status {
-                CheckStatus::Pass => {
+                AuditStatus::Pass => {
                     if quiet {
                         continue;
                     }
                     "PASS"
                 }
-                CheckStatus::Warn(_) => "WARN",
-                CheckStatus::Fail(_) => "FAIL",
-                CheckStatus::OptOut(_) => {
+                AuditStatus::Warn(_) => "WARN",
+                AuditStatus::Fail(_) => "FAIL",
+                AuditStatus::OptOut(_) => {
                     if quiet {
                         continue;
                     }
                     "OPT "
                 }
-                CheckStatus::NotApplicable(_) => {
+                AuditStatus::NotApplicable(_) => {
                     if quiet {
                         continue;
                     }
                     "N/A "
                 }
-                CheckStatus::Skip(_) => {
+                AuditStatus::Skip(_) => {
                     if quiet {
                         continue;
                     }
                     "SKIP"
                 }
-                CheckStatus::Error(_) => "ERR ",
+                AuditStatus::Error(_) => "ERR ",
             };
             let painted =
                 crate::color::paint(crate::color::status_style(prefix, opts.color), prefix);
             // Tier comes from the requirement registry keyed on the row id.
-            // Unregistered ids (legacy per-check rows, test fixtures) yield
+            // Unregistered ids (legacy per-audit rows, test fixtures) yield
             // no suffix rather than panicking — the same tolerance
-            // `CheckResultView::from_row` applies for the JSON `tier` field.
+            // `AuditResultView::from_row` applies for the JSON `tier` field.
             let tier_suffix = crate::principles::registry::find(&r.id)
                 .map(|req| format!(" ({})", req.level.as_str()))
                 .unwrap_or_default();
             let _ = writeln!(out, "  [{painted}] {} ({}){tier_suffix}", r.label, r.id);
             match &r.status {
-                CheckStatus::Warn(e) | CheckStatus::Fail(e) | CheckStatus::Error(e) => {
+                AuditStatus::Warn(e) | AuditStatus::Fail(e) | AuditStatus::Error(e) => {
                     for line in e.lines() {
                         let _ = writeln!(out, "         {line}");
                     }
                 }
-                CheckStatus::Skip(reason)
-                | CheckStatus::OptOut(reason)
-                | CheckStatus::NotApplicable(reason)
+                AuditStatus::Skip(reason)
+                | AuditStatus::OptOut(reason)
+                | AuditStatus::NotApplicable(reason)
                     if !quiet =>
                 {
                     let _ = writeln!(out, "         {reason}");
@@ -626,7 +626,7 @@ pub fn format_text(
     let s = build_summary(results);
     let _ = writeln!(
         out,
-        "\n{} checks: {} pass, {} warn, {} fail, {} opt_out, {} n_a, {} skip, {} error",
+        "\n{} audits: {} pass, {} warn, {} fail, {} opt_out, {} n_a, {} skip, {} error",
         s.total, s.pass, s.warn, s.fail, s.opt_out, s.n_a, s.skip, s.error
     );
 
@@ -644,17 +644,17 @@ pub fn format_text(
 /// Status maps to one of the seven tokens (`PASS`, `WARN`, `FAIL`,
 /// `OPT_OUT`, `N_A`, `SKIP`, `ERR`) so downstream pipelines see the same
 /// vocabulary as the JSON `status` field (uppercased).
-fn format_text_raw(results: &[CheckResult]) -> String {
+fn format_text_raw(results: &[AuditResult]) -> String {
     let mut out = String::with_capacity(results.len() * 32);
     for r in results {
         let token = match &r.status {
-            CheckStatus::Pass => "PASS",
-            CheckStatus::Warn(_) => "WARN",
-            CheckStatus::Fail(_) => "FAIL",
-            CheckStatus::OptOut(_) => "OPT_OUT",
-            CheckStatus::NotApplicable(_) => "N_A",
-            CheckStatus::Skip(_) => "SKIP",
-            CheckStatus::Error(_) => "ERR",
+            AuditStatus::Pass => "PASS",
+            AuditStatus::Warn(_) => "WARN",
+            AuditStatus::Fail(_) => "FAIL",
+            AuditStatus::OptOut(_) => "OPT_OUT",
+            AuditStatus::NotApplicable(_) => "N_A",
+            AuditStatus::Skip(_) => "SKIP",
+            AuditStatus::Error(_) => "ERR",
         };
         let _ = writeln!(out, "{}\t{token}", r.id);
     }
@@ -662,22 +662,22 @@ fn format_text_raw(results: &[CheckResult]) -> String {
 }
 
 /// Fan one probe-level result out into one entry per requirement-row in
-/// the check's `Check::covers()` slice. The probe's status, label, group,
+/// the audit's `Audit::covers()` slice. The probe's status, label, group,
 /// layer, and confidence propagate to every row; the `id` field is
-/// replaced with the row id. Returns a pair `(row_result, check_id)` per
-/// emitted row so downstream consumers (CheckResultView, propagation) know
+/// replaced with the row id. Returns a pair `(row_result, audit_id)` per
+/// emitted row so downstream consumers (AuditResultView, propagation) know
 /// the originating probe without a registry walk.
 ///
-/// Checks that declare no `covers()` rows produce a single passthrough
-/// entry keyed by their own id — preserves the legacy per-check_id shape
-/// for checks not yet wired into the requirement registry.
+/// Audits that declare no `covers()` rows produce a single passthrough
+/// entry keyed by their own id — preserves the legacy per-audit_id shape
+/// for audits not yet wired into the requirement registry.
 pub fn fan_out_per_row(
-    raw: &[CheckResult],
-    catalog: &[Box<dyn Check>],
-) -> Vec<(CheckResult, String)> {
+    raw: &[AuditResult],
+    catalog: &[Box<dyn Audit>],
+) -> Vec<(AuditResult, String)> {
     let covers_by_id: HashMap<&str, &'static [&'static str]> =
         catalog.iter().map(|c| (c.id(), c.covers())).collect();
-    let mut out: Vec<(CheckResult, String)> = Vec::with_capacity(raw.len());
+    let mut out: Vec<(AuditResult, String)> = Vec::with_capacity(raw.len());
     for r in raw {
         let covers = covers_by_id.get(r.id.as_str()).copied().unwrap_or(&[]);
         if covers.is_empty() {
@@ -696,7 +696,7 @@ pub fn fan_out_per_row(
 /// Apply the antecedent-status propagation table from plan Decision 2a.
 ///
 /// For each row whose registry entry has a conditional applicability with
-/// an `antecedent.check_id`, look up the antecedent probe's raw status and
+/// an `antecedent.audit_id`, look up the antecedent probe's raw status and
 /// rewrite the row's status accordingly:
 ///
 /// | Antecedent status | Consequent row becomes              |
@@ -710,49 +710,49 @@ pub fn fan_out_per_row(
 /// Rows whose antecedent did not produce a raw result (the antecedent
 /// probe didn't run this invocation, e.g., source-only mode) are left
 /// untouched — propagation needs an antecedent status to act on.
-pub fn propagate_antecedents(rows: &mut [(CheckResult, String)], raw: &[CheckResult]) {
+pub fn propagate_antecedents(rows: &mut [(AuditResult, String)], raw: &[AuditResult]) {
     use crate::principles::registry::{Applicability, find};
-    let raw_by_id: HashMap<&str, &CheckStatus> =
+    let raw_by_id: HashMap<&str, &AuditStatus> =
         raw.iter().map(|r| (r.id.as_str(), &r.status)).collect();
-    for (row, _check_id) in rows.iter_mut() {
+    for (row, _audit_id) in rows.iter_mut() {
         let Some(req) = find(&row.id) else { continue };
         let Applicability::Conditional { antecedent, .. } = req.applicability else {
             continue;
         };
         let Some(ante) = antecedent else { continue };
-        let Some(ante_status) = raw_by_id.get(ante.check_id) else {
+        let Some(ante_status) = raw_by_id.get(ante.audit_id) else {
             continue;
         };
         let new_status = match ante_status {
-            CheckStatus::Pass | CheckStatus::Warn(_) | CheckStatus::Fail(_) => continue,
-            CheckStatus::OptOut(reason) | CheckStatus::NotApplicable(reason) => {
-                CheckStatus::NotApplicable(format!(
+            AuditStatus::Pass | AuditStatus::Warn(_) | AuditStatus::Fail(_) => continue,
+            AuditStatus::OptOut(reason) | AuditStatus::NotApplicable(reason) => {
+                AuditStatus::NotApplicable(format!(
                     "antecedent `{}` is {}: {reason}",
-                    ante.check_id,
+                    ante.audit_id,
                     short_status_name(ante_status),
                 ))
             }
-            CheckStatus::Skip(reason) => CheckStatus::Skip(format!(
+            AuditStatus::Skip(reason) => AuditStatus::Skip(format!(
                 "antecedent `{}` could not be measured: {reason}",
-                ante.check_id,
+                ante.audit_id,
             )),
-            CheckStatus::Error(reason) => {
-                CheckStatus::Error(format!("antecedent `{}` errored: {reason}", ante.check_id,))
+            AuditStatus::Error(reason) => {
+                AuditStatus::Error(format!("antecedent `{}` errored: {reason}", ante.audit_id,))
             }
         };
         row.status = new_status;
     }
 }
 
-fn short_status_name(s: &CheckStatus) -> &'static str {
+fn short_status_name(s: &AuditStatus) -> &'static str {
     match s {
-        CheckStatus::Pass => "pass",
-        CheckStatus::Warn(_) => "warn",
-        CheckStatus::Fail(_) => "fail",
-        CheckStatus::OptOut(_) => "opt_out",
-        CheckStatus::NotApplicable(_) => "n_a",
-        CheckStatus::Skip(_) => "skip",
-        CheckStatus::Error(_) => "error",
+        AuditStatus::Pass => "pass",
+        AuditStatus::Warn(_) => "warn",
+        AuditStatus::Fail(_) => "fail",
+        AuditStatus::OptOut(_) => "opt_out",
+        AuditStatus::NotApplicable(_) => "n_a",
+        AuditStatus::Skip(_) => "skip",
+        AuditStatus::Error(_) => "error",
     }
 }
 
@@ -762,12 +762,12 @@ fn short_status_name(s: &CheckStatus) -> &'static str {
 /// code all build their per-row set with this one function, so they cannot
 /// disagree on the row set, counts, score, or status of any requirement.
 ///
-/// Each pair carries the row plus its originating probe `Check::id()` for
+/// Each pair carries the row plus its originating probe `Audit::id()` for
 /// provenance; callers that only need the rows project the `String` away.
 pub fn build_row_results(
-    raw: &[CheckResult],
-    catalog: &[Box<dyn Check>],
-) -> Vec<(CheckResult, String)> {
+    raw: &[AuditResult],
+    catalog: &[Box<dyn Audit>],
+) -> Vec<(AuditResult, String)> {
     let mut rows = fan_out_per_row(raw, catalog);
     propagate_antecedents(&mut rows, raw);
     rows
@@ -784,22 +784,22 @@ pub struct RunMetadata {
     pub target: TargetInfo,
 }
 
-/// Build the scorecard. The `ran_checks` slice is the catalog of checks
+/// Build the scorecard. The `ran_audits` slice is the catalog of audits
 /// that produced `raw_results`.
 ///
 /// Pipeline (schema 0.6):
 ///   raw probe results → fan out per requirement-row → antecedent
 ///   propagation → JSON view. Audience and coverage_summary still consume
-///   raw probe results (signal classification keys on check_ids; coverage
+///   raw probe results (signal classification keys on audit_ids; coverage
 ///   counts requirements covered by the underlying probes).
 pub fn build_scorecard(
-    raw_results: &[CheckResult],
-    ran_checks: &[Box<dyn Check>],
+    raw_results: &[AuditResult],
+    ran_audits: &[Box<dyn Audit>],
     audience: Option<String>,
     audit_profile: Option<String>,
     metadata: RunMetadata,
 ) -> Scorecard {
-    let row_results = build_row_results(raw_results, ran_checks);
+    let row_results = build_row_results(raw_results, ran_audits);
 
     // `audience_reason` is derived from `raw_results` rather than threaded
     // through as a caller parameter — the reason is a property of the
@@ -821,17 +821,17 @@ pub fn build_scorecard(
     // Per-row results drive `summary` and `score_pct`. The badge uses the
     // same per-row vector so the embed URL the JSON emits agrees with the
     // post-summary text hint.
-    let per_row_only: Vec<CheckResult> = row_results.iter().map(|(r, _)| r.clone()).collect();
+    let per_row_only: Vec<AuditResult> = row_results.iter().map(|(r, _)| r.clone()).collect();
     let badge = compute_badge(&per_row_only, &tool.name);
 
     Scorecard {
         schema_version: SCHEMA_VERSION,
         results: row_results
             .iter()
-            .map(|(r, check_id)| CheckResultView::from_row(r, check_id))
+            .map(|(r, audit_id)| AuditResultView::from_row(r, audit_id))
             .collect(),
         summary: build_summary(&per_row_only),
-        coverage_summary: build_coverage_summary(raw_results, ran_checks),
+        coverage_summary: build_coverage_summary(raw_results, ran_audits),
         audience,
         audience_reason,
         audit_profile,
@@ -845,27 +845,27 @@ pub fn build_scorecard(
 }
 
 pub fn format_json(
-    raw_results: &[CheckResult],
-    ran_checks: &[Box<dyn Check>],
+    raw_results: &[AuditResult],
+    ran_audits: &[Box<dyn Audit>],
     audience: Option<String>,
     audit_profile: Option<String>,
     metadata: RunMetadata,
 ) -> String {
-    let scorecard = build_scorecard(raw_results, ran_checks, audience, audit_profile, metadata);
+    let scorecard = build_scorecard(raw_results, ran_audits, audience, audit_profile, metadata);
     serde_json::to_string_pretty(&scorecard).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"))
 }
 
 fn build_coverage_summary(
-    results: &[CheckResult],
-    ran_checks: &[Box<dyn Check>],
+    results: &[AuditResult],
+    ran_audits: &[Box<dyn Audit>],
 ) -> CoverageSummary {
-    // Map each ran check to its covers() so we can turn the set of ran
-    // check IDs into a set of covered requirement IDs.
+    // Map each ran audit to its covers() so we can turn the set of ran
+    // audit IDs into a set of covered requirement IDs.
     let covers_by_id: HashMap<&str, &'static [&'static str]> =
-        ran_checks.iter().map(|c| (c.id(), c.covers())).collect();
+        ran_audits.iter().map(|c| (c.id(), c.covers())).collect();
 
-    // Verified = requirements covered by a check that actually executed.
-    // A check suppressed by --audit-profile did NOT verify its
+    // Verified = requirements covered by an audit that actually executed.
+    // An audit suppressed by --audit-profile did NOT verify its
     // requirement — it emitted Skip with the `SUPPRESSION_EVIDENCE_PREFIX`
     // sentinel. Counting it toward `verified` would overstate coverage on
     // any --audit-profile run (a misleading public metric for the site
@@ -911,26 +911,26 @@ fn build_coverage_summary(
 
 /// Derive the process exit code from the full result set.
 ///
-/// - `0` — every check Pass or Skip.
+/// - `0` — every audit Pass or Skip.
 /// - `1` — at least one Warn.
 /// - `2` — at least one Fail or Error.
 ///
 /// **`--audit-profile` affects the exit code by masking Fails to Skips.**
-/// A check that would otherwise Fail but is suppressed by the applied
+/// An audit that would otherwise Fail but is suppressed by the applied
 /// profile contributes nothing to `has_fail_or_error` and cannot lift the
 /// code above `0`/`1`. This is intentional per plan R4: the caller is
-/// declaring "this category of check doesn't apply to this tool", so
+/// declaring "this category of audit doesn't apply to this tool", so
 /// scoring against that requirement would produce a misleading non-zero
 /// exit. The tradeoff is that callers passing the wrong profile can
 /// silently bless a broken tool — guarding against that lives upstream
 /// (site's regen script, CI policy), not here.
-pub fn exit_code(results: &[CheckResult]) -> i32 {
+pub fn exit_code(results: &[AuditResult]) -> i32 {
     let has_fail_or_error = results
         .iter()
-        .any(|r| matches!(r.status, CheckStatus::Fail(_) | CheckStatus::Error(_)));
+        .any(|r| matches!(r.status, AuditStatus::Fail(_) | AuditStatus::Error(_)));
     let has_warn = results
         .iter()
-        .any(|r| matches!(r.status, CheckStatus::Warn(_)));
+        .any(|r| matches!(r.status, AuditStatus::Warn(_)));
 
     if has_fail_or_error {
         2
@@ -944,14 +944,14 @@ pub fn exit_code(results: &[CheckResult]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
+    use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-    fn make_result(id: &str, status: CheckStatus, group: CheckGroup) -> CheckResult {
-        CheckResult {
+    fn make_result(id: &str, status: AuditStatus, group: AuditGroup) -> AuditResult {
+        AuditResult {
             id: id.to_string(),
             label: format!("Test {id}"),
             group,
-            layer: CheckLayer::Behavioral,
+            layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
         }
@@ -989,12 +989,12 @@ mod tests {
     #[test]
     fn test_format_json_valid() {
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Fail("bad".into()), CheckGroup::P2),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Fail("bad".into()), AuditGroup::P2),
         ];
         let json = format_json(&results, &[], None, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "0.6");
+        assert_eq!(parsed["schema_version"], "0.7");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -1019,40 +1019,40 @@ mod tests {
 
     #[test]
     fn medium_confidence_serializes_as_medium() {
-        let mut r = make_result("c3", CheckStatus::Warn("soft".into()), CheckGroup::P6);
+        let mut r = make_result("c3", AuditStatus::Warn("soft".into()), AuditGroup::P6);
         r.confidence = Confidence::Medium;
-        let view = CheckResultView::from_result(&r);
+        let view = AuditResultView::from_result(&r);
         assert_eq!(view.confidence, "medium");
     }
 
     #[test]
     fn coverage_summary_counts_verified_requirements() {
-        use crate::check::Check;
+        use crate::audit::Audit;
         use crate::project::Project;
-        use crate::types::CheckLayer;
+        use crate::types::AuditLayer;
 
-        struct FakeCheck {
+        struct FakeAudit {
             id: &'static str,
             covers: &'static [&'static str],
         }
 
-        impl Check for FakeCheck {
+        impl Audit for FakeAudit {
             fn id(&self) -> &str {
                 self.id
             }
             fn label(&self) -> &'static str {
                 "fake"
             }
-            fn group(&self) -> CheckGroup {
-                CheckGroup::P1
+            fn group(&self) -> AuditGroup {
+                AuditGroup::P1
             }
-            fn layer(&self) -> CheckLayer {
-                CheckLayer::Behavioral
+            fn layer(&self) -> AuditLayer {
+                AuditLayer::Behavioral
             }
             fn applicable(&self, _p: &Project) -> bool {
                 true
             }
-            fn run(&self, _p: &Project) -> anyhow::Result<CheckResult> {
+            fn run(&self, _p: &Project) -> anyhow::Result<AuditResult> {
                 unreachable!()
             }
             fn covers(&self) -> &'static [&'static str] {
@@ -1060,13 +1060,13 @@ mod tests {
             }
         }
 
-        let results = vec![make_result("verifier-a", CheckStatus::Pass, CheckGroup::P1)];
-        let checks: Vec<Box<dyn Check>> = vec![Box::new(FakeCheck {
+        let results = vec![make_result("verifier-a", AuditStatus::Pass, AuditGroup::P1)];
+        let audits: Vec<Box<dyn Audit>> = vec![Box::new(FakeAudit {
             id: "verifier-a",
             covers: &["p1-must-no-interactive"],
         })];
 
-        let summary = build_coverage_summary(&results, &checks);
+        let summary = build_coverage_summary(&results, &audits);
         assert_eq!(summary.must.verified, 1);
         assert_eq!(summary.should.verified, 0);
         assert_eq!(summary.may.verified, 0);
@@ -1075,34 +1075,34 @@ mod tests {
     }
 
     #[test]
-    fn coverage_summary_excludes_audit_profile_suppressed_checks() {
-        use crate::check::Check;
+    fn coverage_summary_excludes_audit_profile_suppressed_audits() {
+        use crate::audit::Audit;
         use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
         use crate::project::Project;
-        use crate::types::CheckLayer;
+        use crate::types::AuditLayer;
 
-        struct FakeCheck {
+        struct FakeAudit {
             id: &'static str,
             covers: &'static [&'static str],
         }
 
-        impl Check for FakeCheck {
+        impl Audit for FakeAudit {
             fn id(&self) -> &str {
                 self.id
             }
             fn label(&self) -> &'static str {
                 "fake"
             }
-            fn group(&self) -> CheckGroup {
-                CheckGroup::P1
+            fn group(&self) -> AuditGroup {
+                AuditGroup::P1
             }
-            fn layer(&self) -> CheckLayer {
-                CheckLayer::Behavioral
+            fn layer(&self) -> AuditLayer {
+                AuditLayer::Behavioral
             }
             fn applicable(&self, _p: &Project) -> bool {
                 true
             }
-            fn run(&self, _p: &Project) -> anyhow::Result<CheckResult> {
+            fn run(&self, _p: &Project) -> anyhow::Result<AuditResult> {
                 unreachable!()
             }
             fn covers(&self) -> &'static [&'static str] {
@@ -1110,29 +1110,29 @@ mod tests {
             }
         }
 
-        // Two checks: one ran (Pass → counts as verified), one was
+        // Two audits: one ran (Pass → counts as verified), one was
         // suppressed by --audit-profile (Skip with the sentinel prefix →
         // MUST NOT count as verified).
         let results = vec![
-            make_result("verifier-ran", CheckStatus::Pass, CheckGroup::P1),
+            make_result("verifier-ran", AuditStatus::Pass, AuditGroup::P1),
             make_result(
                 "verifier-suppressed",
-                CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
-                CheckGroup::P1,
+                AuditStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
+                AuditGroup::P1,
             ),
         ];
-        let checks: Vec<Box<dyn Check>> = vec![
-            Box::new(FakeCheck {
+        let audits: Vec<Box<dyn Audit>> = vec![
+            Box::new(FakeAudit {
                 id: "verifier-ran",
                 covers: &["p1-must-no-interactive"],
             }),
-            Box::new(FakeCheck {
+            Box::new(FakeAudit {
                 id: "verifier-suppressed",
                 covers: &["p1-should-tty-detection"],
             }),
         ];
 
-        let summary = build_coverage_summary(&results, &checks);
+        let summary = build_coverage_summary(&results, &audits);
         assert_eq!(
             summary.must.verified, 1,
             "only the non-suppressed verifier's requirement should count; \
@@ -1144,8 +1144,8 @@ mod tests {
     #[test]
     fn test_exit_code_all_pass() {
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Skip("n/a".into()), CheckGroup::P2),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Skip("n/a".into()), AuditGroup::P2),
         ];
         assert_eq!(exit_code(&results), 0);
     }
@@ -1153,8 +1153,8 @@ mod tests {
     #[test]
     fn test_exit_code_warn() {
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Warn("meh".into()), CheckGroup::P2),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Warn("meh".into()), AuditGroup::P2),
         ];
         assert_eq!(exit_code(&results), 1);
     }
@@ -1162,8 +1162,8 @@ mod tests {
     #[test]
     fn test_exit_code_fail() {
         let results = vec![
-            make_result("c1", CheckStatus::Fail("bad".into()), CheckGroup::P1),
-            make_result("c2", CheckStatus::Warn("meh".into()), CheckGroup::P2),
+            make_result("c1", AuditStatus::Fail("bad".into()), AuditGroup::P1),
+            make_result("c2", AuditStatus::Warn("meh".into()), AuditGroup::P2),
         ];
         assert_eq!(exit_code(&results), 2);
     }
@@ -1172,20 +1172,20 @@ mod tests {
     fn test_exit_code_error() {
         let results = vec![make_result(
             "c1",
-            CheckStatus::Error("boom".into()),
-            CheckGroup::P1,
+            AuditStatus::Error("boom".into()),
+            AuditGroup::P1,
         )];
         assert_eq!(exit_code(&results), 2);
     }
 
     #[test]
-    fn test_check_result_view_conversion() {
+    fn test_audit_result_view_conversion() {
         let r = make_result(
             "test-id",
-            CheckStatus::Warn("warning msg".into()),
-            CheckGroup::P3,
+            AuditStatus::Warn("warning msg".into()),
+            AuditGroup::P3,
         );
-        let view = CheckResultView::from_result(&r);
+        let view = AuditResultView::from_result(&r);
         assert_eq!(view.id, "test-id");
         assert_eq!(view.status, "warn");
         assert_eq!(view.evidence.as_deref(), Some("warning msg"));
@@ -1193,43 +1193,43 @@ mod tests {
     }
 
     #[test]
-    fn test_check_result_view_pass_has_no_evidence() {
-        let r = make_result("pass-id", CheckStatus::Pass, CheckGroup::P1);
-        let view = CheckResultView::from_result(&r);
+    fn test_audit_result_view_pass_has_no_evidence() {
+        let r = make_result("pass-id", AuditStatus::Pass, AuditGroup::P1);
+        let view = AuditResultView::from_result(&r);
         assert_eq!(view.status, "pass");
         assert!(view.evidence.is_none());
     }
 
     #[test]
     fn format_json_emits_audience_when_all_signals_present() {
-        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+        use crate::scorecard::audience::{SIGNAL_AUDIT_IDS, classify};
 
-        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+        let results: Vec<AuditResult> = SIGNAL_AUDIT_IDS
             .iter()
-            .map(|id| make_result(id, CheckStatus::Pass, CheckGroup::P1))
+            .map(|id| make_result(id, AuditStatus::Pass, AuditGroup::P1))
             .collect();
         let audience = classify(&results);
         let json = format_json(&results, &[], audience, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "0.6");
+        assert_eq!(parsed["schema_version"], "0.7");
     }
 
     #[test]
     fn format_json_emits_human_primary_when_signals_warn() {
-        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+        use crate::scorecard::audience::{SIGNAL_AUDIT_IDS, classify};
 
-        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+        let results: Vec<AuditResult> = SIGNAL_AUDIT_IDS
             .iter()
             .enumerate()
             .map(|(i, id)| {
                 let status = if i < 3 {
-                    CheckStatus::Warn(format!("missing {id}"))
+                    AuditStatus::Warn(format!("missing {id}"))
                 } else {
-                    CheckStatus::Pass
+                    AuditStatus::Pass
                 };
-                make_result(id, status, CheckGroup::P1)
+                make_result(id, status, AuditGroup::P1)
             })
             .collect();
         let audience = classify(&results);
@@ -1242,11 +1242,11 @@ mod tests {
     fn format_json_audience_null_when_signals_missing() {
         use crate::scorecard::audience::classify;
 
-        // Source-only-style run: no behavioral checks, so no signal IDs.
+        // Source-only-style run: no behavioral audits, so no signal IDs.
         let results = vec![make_result(
             "p1-env-flags-source",
-            CheckStatus::Pass,
-            CheckGroup::P1,
+            AuditStatus::Pass,
+            AuditGroup::P1,
         )];
         let audience = classify(&results);
         let json = format_json(&results, &[], audience, None, fixture_metadata());
@@ -1256,7 +1256,7 @@ mod tests {
 
     #[test]
     fn format_json_echoes_audit_profile() {
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let json = format_json(
             &results,
             &[],
@@ -1270,12 +1270,12 @@ mod tests {
 
     #[test]
     fn format_json_audience_reason_insufficient_signal() {
-        // Source-only-style run: no signal checks → audience null and
+        // Source-only-style run: no signal audits → audience null and
         // audience_reason must explain why.
         let results = vec![make_result(
             "p1-env-flags-source",
-            CheckStatus::Pass,
-            CheckGroup::P1,
+            AuditStatus::Pass,
+            AuditGroup::P1,
         )];
         let json = format_json(&results, &[], None, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
@@ -1285,11 +1285,11 @@ mod tests {
 
     #[test]
     fn format_json_audience_reason_omitted_when_audience_labeled() {
-        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+        use crate::scorecard::audience::{SIGNAL_AUDIT_IDS, classify};
 
-        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+        let results: Vec<AuditResult> = SIGNAL_AUDIT_IDS
             .iter()
-            .map(|id| make_result(id, CheckStatus::Pass, CheckGroup::P1))
+            .map(|id| make_result(id, AuditStatus::Pass, AuditGroup::P1))
             .collect();
         let audience = classify(&results);
         let json = format_json(&results, &[], audience, None, fixture_metadata());
@@ -1308,19 +1308,19 @@ mod tests {
     #[test]
     fn format_json_audience_reason_suppressed() {
         use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
-        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+        use crate::scorecard::audience::{SIGNAL_AUDIT_IDS, classify};
 
         // One signal suppressed → audience null and reason "suppressed".
-        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+        let results: Vec<AuditResult> = SIGNAL_AUDIT_IDS
             .iter()
             .enumerate()
             .map(|(i, id)| {
                 let status = if i == 0 {
-                    CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui"))
+                    AuditStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui"))
                 } else {
-                    CheckStatus::Pass
+                    AuditStatus::Pass
                 };
-                make_result(id, status, CheckGroup::P1)
+                make_result(id, status, AuditGroup::P1)
             })
             .collect();
         let audience = classify(&results);
@@ -1337,36 +1337,36 @@ mod tests {
     }
 
     #[test]
-    fn exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_check() {
+    fn exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_audit() {
         // Intentional behavior per plan R4: when --audit-profile suppresses
-        // a check that would otherwise Fail, the check emits Skip with the
+        // an audit that would otherwise Fail, the audit emits Skip with the
         // suppression prefix and the overall exit code reflects the
         // masked state. This is a trust-boundary choice — the caller
         // declared the requirement doesn't apply, so failing on it would
         // be misleading.
         //
         // This test pins the behavior against a future well-meaning
-        // change that tries to "refuse to exit 0 if any check was
+        // change that tries to "refuse to exit 0 if any audit was
         // suppressed." Such a change must update this test deliberately
         // and resolve the conflict with plan R4, not sneak through.
         use crate::principles::registry::SUPPRESSION_EVIDENCE_PREFIX;
 
         let baseline = vec![
-            make_result("c-pass", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c-pass", AuditStatus::Pass, AuditGroup::P1),
             make_result(
                 "c-would-fail",
-                CheckStatus::Fail("violates MUST".into()),
-                CheckGroup::P1,
+                AuditStatus::Fail("violates MUST".into()),
+                AuditGroup::P1,
             ),
         ];
         assert_eq!(exit_code(&baseline), 2, "baseline: a Fail → exit 2");
 
         let suppressed = vec![
-            make_result("c-pass", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c-pass", AuditStatus::Pass, AuditGroup::P1),
             make_result(
                 "c-would-fail",
-                CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
-                CheckGroup::P1,
+                AuditStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
+                AuditGroup::P1,
             ),
         ];
         assert_eq!(
@@ -1389,12 +1389,12 @@ mod tests {
         // migration that silently flips either convention must fail here
         // loudly. The snake_case negative assertions below guard against
         // the most likely regression direction (adopting the per-result
-        // enum convention from `CheckGroup` / `CheckLayer` / `Confidence`).
-        use crate::scorecard::audience::{SIGNAL_CHECK_IDS, classify};
+        // enum convention from `AuditGroup` / `AuditLayer` / `Confidence`).
+        use crate::scorecard::audience::{SIGNAL_AUDIT_IDS, classify};
 
-        let results: Vec<CheckResult> = SIGNAL_CHECK_IDS
+        let results: Vec<AuditResult> = SIGNAL_AUDIT_IDS
             .iter()
-            .map(|id| make_result(id, CheckStatus::Pass, CheckGroup::P1))
+            .map(|id| make_result(id, AuditStatus::Pass, AuditGroup::P1))
             .collect();
         let audience = classify(&results);
         let json = format_json(
@@ -1443,7 +1443,7 @@ mod tests {
         // A field rename, deletion, or accidental top-level relocation is
         // caught here loudly with a named-field assertion. New fields land
         // alongside this test, not at the expense of it.
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let metadata = RunMetadata {
             tool: ToolInfo {
                 name: "demo".into(),
@@ -1489,7 +1489,7 @@ mod tests {
         }
 
         // 0.4 + 0.5 additions — every documented sub-key resolves.
-        assert_eq!(parsed["schema_version"], "0.6");
+        assert_eq!(parsed["schema_version"], "0.7");
         for path in [
             // 0.4
             "tool.name",
@@ -1541,9 +1541,9 @@ mod tests {
     fn compute_badge_eligible_when_all_pass_and_slug_present() {
         // Three Pass and zero failures → 100% → above the 70% floor.
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Pass, CheckGroup::P2),
-            make_result("c3", CheckStatus::Pass, CheckGroup::P3),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Pass, AuditGroup::P2),
+            make_result("c3", AuditStatus::Pass, AuditGroup::P3),
         ];
         let badge = compute_badge(&results, "navi");
         assert!(badge.eligible);
@@ -1567,11 +1567,11 @@ mod tests {
     fn compute_badge_below_floor_emits_urls_but_no_embed() {
         // 4 of 5 fail → 1 pass / 5 denom = 20% → below floor.
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Fail("a".into()), CheckGroup::P2),
-            make_result("c3", CheckStatus::Fail("b".into()), CheckGroup::P3),
-            make_result("c4", CheckStatus::Fail("c".into()), CheckGroup::P4),
-            make_result("c5", CheckStatus::Fail("d".into()), CheckGroup::P5),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Fail("a".into()), AuditGroup::P2),
+            make_result("c3", AuditStatus::Fail("b".into()), AuditGroup::P3),
+            make_result("c4", AuditStatus::Fail("c".into()), AuditGroup::P4),
+            make_result("c5", AuditStatus::Fail("d".into()), AuditGroup::P5),
         ];
         let badge = compute_badge(&results, "needs-work");
         assert!(!badge.eligible);
@@ -1590,16 +1590,16 @@ mod tests {
     fn compute_badge_at_floor_is_eligible() {
         // 7 pass / 10 denom = 70% — exactly at the floor must qualify.
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Pass, CheckGroup::P2),
-            make_result("c3", CheckStatus::Pass, CheckGroup::P3),
-            make_result("c4", CheckStatus::Pass, CheckGroup::P4),
-            make_result("c5", CheckStatus::Pass, CheckGroup::P5),
-            make_result("c6", CheckStatus::Pass, CheckGroup::P6),
-            make_result("c7", CheckStatus::Pass, CheckGroup::P7),
-            make_result("c8", CheckStatus::Fail("one".into()), CheckGroup::P8),
-            make_result("c9", CheckStatus::Fail("two".into()), CheckGroup::P8),
-            make_result("c10", CheckStatus::Fail("three".into()), CheckGroup::P8),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Pass, AuditGroup::P2),
+            make_result("c3", AuditStatus::Pass, AuditGroup::P3),
+            make_result("c4", AuditStatus::Pass, AuditGroup::P4),
+            make_result("c5", AuditStatus::Pass, AuditGroup::P5),
+            make_result("c6", AuditStatus::Pass, AuditGroup::P6),
+            make_result("c7", AuditStatus::Pass, AuditGroup::P7),
+            make_result("c8", AuditStatus::Fail("one".into()), AuditGroup::P8),
+            make_result("c9", AuditStatus::Fail("two".into()), AuditGroup::P8),
+            make_result("c10", AuditStatus::Fail("three".into()), AuditGroup::P8),
         ];
         let badge = compute_badge(&results, "edge-case");
         assert!(badge.eligible, "score == floor must qualify");
@@ -1613,13 +1613,13 @@ mod tests {
         // Skips and Errors must not pull the score down — they're not
         // verdicts, so the leaderboard formula excludes them.
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
             make_result(
                 "c2",
-                CheckStatus::Skip("not applicable".into()),
-                CheckGroup::P2,
+                AuditStatus::Skip("not applicable".into()),
+                AuditGroup::P2,
             ),
-            make_result("c3", CheckStatus::Error("boom".into()), CheckGroup::P3),
+            make_result("c3", AuditStatus::Error("boom".into()), AuditGroup::P3),
         ];
         let badge = compute_badge(&results, "skipper");
         assert_eq!(badge.score_pct, 100);
@@ -1632,8 +1632,8 @@ mod tests {
         // eligible — guard against division-by-zero turning into NaN or a
         // misleading 100%.
         let results = vec![
-            make_result("c1", CheckStatus::Skip("filtered".into()), CheckGroup::P1),
-            make_result("c2", CheckStatus::Skip("filtered".into()), CheckGroup::P2),
+            make_result("c1", AuditStatus::Skip("filtered".into()), AuditGroup::P1),
+            make_result("c2", AuditStatus::Skip("filtered".into()), AuditGroup::P2),
         ];
         let badge = compute_badge(&results, "ghost");
         assert_eq!(badge.score_pct, 0);
@@ -1646,7 +1646,7 @@ mod tests {
         // Without a tool slug the embed URL would be malformed
         // (`/badge/.svg`); ineligible is the safe default — better to omit
         // the hint than to emit a broken URL.
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let badge = compute_badge(&results, "");
         assert_eq!(badge.score_pct, 100);
         assert!(!badge.eligible);
@@ -1660,7 +1660,7 @@ mod tests {
     #[test]
     fn badge_text_hint_present_when_eligible() {
         let badge = compute_badge(
-            &[make_result("c1", CheckStatus::Pass, CheckGroup::P1)],
+            &[make_result("c1", AuditStatus::Pass, AuditGroup::P1)],
             "demo",
         );
         let hint = badge.text_hint().expect("eligible run must produce hint");
@@ -1688,8 +1688,8 @@ mod tests {
         // we print nothing badge-related.
         let badge = compute_badge(
             &[
-                make_result("c1", CheckStatus::Fail("a".into()), CheckGroup::P1),
-                make_result("c2", CheckStatus::Fail("b".into()), CheckGroup::P2),
+                make_result("c1", AuditStatus::Fail("a".into()), AuditGroup::P1),
+                make_result("c2", AuditStatus::Fail("b".into()), AuditGroup::P2),
             ],
             "needs-work",
         );
@@ -1698,7 +1698,7 @@ mod tests {
 
     #[test]
     fn format_text_appends_hint_when_badge_eligible() {
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let badge = compute_badge(&results, "demo");
         let text = format_text(&results, false, Some(&badge), TextOptions::default());
         assert!(
@@ -1714,8 +1714,8 @@ mod tests {
     #[test]
     fn format_text_omits_hint_when_below_floor() {
         let results = vec![
-            make_result("c1", CheckStatus::Fail("a".into()), CheckGroup::P1),
-            make_result("c2", CheckStatus::Fail("b".into()), CheckGroup::P2),
+            make_result("c1", AuditStatus::Fail("a".into()), AuditGroup::P1),
+            make_result("c2", AuditStatus::Fail("b".into()), AuditGroup::P2),
         ];
         let badge = compute_badge(&results, "needs-work");
         let text = format_text(&results, false, Some(&badge), TextOptions::default());
@@ -1730,7 +1730,7 @@ mod tests {
         // Callers that pass `None` (e.g., legacy plumbing or tests
         // exercising the formatter alone) get the historical output with
         // no badge tail.
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let text = format_text(&results, false, None, TextOptions::default());
         assert!(!text.contains("agent-native badge"));
     }
@@ -1738,10 +1738,10 @@ mod tests {
     #[test]
     fn format_text_raw_emits_id_tab_status_per_line() {
         let results = vec![
-            make_result("c1", CheckStatus::Pass, CheckGroup::P1),
-            make_result("c2", CheckStatus::Warn("watch this".into()), CheckGroup::P2),
-            make_result("c3", CheckStatus::Fail("broken".into()), CheckGroup::P3),
-            make_result("c4", CheckStatus::Skip("n/a".into()), CheckGroup::P4),
+            make_result("c1", AuditStatus::Pass, AuditGroup::P1),
+            make_result("c2", AuditStatus::Warn("watch this".into()), AuditGroup::P2),
+            make_result("c3", AuditStatus::Fail("broken".into()), AuditGroup::P3),
+            make_result("c4", AuditStatus::Skip("n/a".into()), AuditGroup::P4),
         ];
         let opts = TextOptions {
             raw: true,
@@ -1754,7 +1754,7 @@ mod tests {
 
     #[test]
     fn format_text_color_wraps_status_prefix() {
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let opts = TextOptions {
             raw: false,
             color: true,
@@ -1774,7 +1774,7 @@ mod tests {
         // `tool.name`. Pins the contract that JSON consumers (notably the
         // site's `/score/<tool>` renderer) can rely on without re-running
         // `compute_badge` themselves.
-        let results = vec![make_result("c1", CheckStatus::Pass, CheckGroup::P1)];
+        let results = vec![make_result("c1", AuditStatus::Pass, AuditGroup::P1)];
         let metadata = RunMetadata {
             tool: ToolInfo {
                 name: "navi".into(),
@@ -1825,43 +1825,43 @@ mod tests {
     // in agentnative-site.
     // ──────────────────────────────────────────────────────────────────
 
-    fn make_raw(id: &str, status: CheckStatus) -> CheckResult {
-        make_result(id, status, CheckGroup::P2)
+    fn make_raw(id: &str, status: AuditStatus) -> AuditResult {
+        make_result(id, status, AuditGroup::P2)
     }
 
     /// A raw result on a chosen layer, for tests that exercise the
     /// behavioral-only scope of `score_pct`.
-    fn make_raw_on(id: &str, status: CheckStatus, layer: CheckLayer) -> CheckResult {
-        CheckResult {
+    fn make_raw_on(id: &str, status: AuditStatus, layer: AuditLayer) -> AuditResult {
+        AuditResult {
             layer,
             ..make_raw(id, status)
         }
     }
 
-    /// Minimal `Check` impl that lets per-row fan-out tests express a
+    /// Minimal `Audit` impl that lets per-row fan-out tests express a
     /// `covers()` slice without spinning up a real probe.
-    struct FakeCheck {
+    struct FakeAudit {
         id: &'static str,
         covers: &'static [&'static str],
     }
 
-    impl crate::check::Check for FakeCheck {
+    impl crate::audit::Audit for FakeAudit {
         fn id(&self) -> &str {
             self.id
         }
         fn label(&self) -> &'static str {
             "fake"
         }
-        fn group(&self) -> CheckGroup {
-            CheckGroup::P2
+        fn group(&self) -> AuditGroup {
+            AuditGroup::P2
         }
-        fn layer(&self) -> CheckLayer {
-            CheckLayer::Behavioral
+        fn layer(&self) -> AuditLayer {
+            AuditLayer::Behavioral
         }
         fn applicable(&self, _p: &crate::project::Project) -> bool {
             true
         }
-        fn run(&self, _p: &crate::project::Project) -> anyhow::Result<CheckResult> {
+        fn run(&self, _p: &crate::project::Project) -> anyhow::Result<AuditResult> {
             unreachable!()
         }
         fn covers(&self) -> &'static [&'static str] {
@@ -1872,12 +1872,12 @@ mod tests {
     #[test]
     fn fan_out_emits_one_row_per_covered_requirement() {
         // Single probe (`p3-version`) covers two requirement rows. Fan-out
-        // produces two entries with id = row_id and check_id = probe id.
+        // produces two entries with id = row_id and audit_id = probe id.
         let raw = vec![make_raw(
             "p3-version",
-            CheckStatus::Warn("short alias missing".into()),
+            AuditStatus::Warn("short alias missing".into()),
         )];
-        let catalog: Vec<Box<dyn crate::check::Check>> = vec![Box::new(FakeCheck {
+        let catalog: Vec<Box<dyn crate::audit::Audit>> = vec![Box::new(FakeAudit {
             id: "p3-version",
             covers: &["p3-must-version", "p3-should-version-short"],
         })];
@@ -1886,33 +1886,33 @@ mod tests {
         let ids: Vec<&str> = rows.iter().map(|(r, _)| r.id.as_str()).collect();
         assert!(ids.contains(&"p3-must-version"));
         assert!(ids.contains(&"p3-should-version-short"));
-        for (r, check_id) in &rows {
+        for (r, audit_id) in &rows {
             assert_eq!(
-                check_id, "p3-version",
-                "check_id provenance lost on row {}",
+                audit_id, "p3-version",
+                "audit_id provenance lost on row {}",
                 r.id
             );
             assert!(
-                matches!(r.status, CheckStatus::Warn(_)),
+                matches!(r.status, AuditStatus::Warn(_)),
                 "probe status must propagate to every covered row pre-propagation",
             );
         }
     }
 
     #[test]
-    fn fan_out_emits_passthrough_for_checks_without_covers() {
-        // Checks that don't declare any covers() pass through as a single
-        // row keyed by check.id() — preserves the legacy shape for any
-        // future check not yet wired into the registry.
-        let raw = vec![make_raw("orphan-check", CheckStatus::Pass)];
-        let catalog: Vec<Box<dyn crate::check::Check>> = vec![Box::new(FakeCheck {
-            id: "orphan-check",
+    fn fan_out_emits_passthrough_for_audits_without_covers() {
+        // Audits that don't declare any covers() pass through as a single
+        // row keyed by audit.id() — preserves the legacy shape for any
+        // future audit not yet wired into the registry.
+        let raw = vec![make_raw("orphan-audit", AuditStatus::Pass)];
+        let catalog: Vec<Box<dyn crate::audit::Audit>> = vec![Box::new(FakeAudit {
+            id: "orphan-audit",
             covers: &[],
         })];
         let rows = fan_out_per_row(&raw, &catalog);
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0.id, "orphan-check");
-        assert_eq!(rows[0].1, "orphan-check");
+        assert_eq!(rows[0].0.id, "orphan-audit");
+        assert_eq!(rows[0].1, "orphan-audit");
     }
 
     #[test]
@@ -1920,15 +1920,15 @@ mod tests {
         // Antecedent statuses that mean "feature present" (pass / warn /
         // fail) leave the consequent row untouched.
         let raw = vec![
-            make_raw("p2-json-output", CheckStatus::Pass),
-            make_raw("p2-schema-print", CheckStatus::Fail("missing".into())),
+            make_raw("p2-json-output", AuditStatus::Pass),
+            make_raw("p2-schema-print", AuditStatus::Fail("missing".into())),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Fail("missing".into())),
+            make_raw("p2-must-schema-print", AuditStatus::Fail("missing".into())),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
-        assert!(matches!(rows[0].0.status, CheckStatus::Fail(_)));
+        assert!(matches!(rows[0].0.status, AuditStatus::Fail(_)));
     }
 
     #[test]
@@ -1938,17 +1938,17 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::OptOut("no --output flag".into()),
+                AuditStatus::OptOut("no --output flag".into()),
             ),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
         match &rows[0].0.status {
-            CheckStatus::NotApplicable(reason) => {
+            AuditStatus::NotApplicable(reason) => {
                 assert!(
                     reason.contains("p2-json-output") && reason.contains("opt_out"),
                     "evidence should cite the antecedent + its status, got: {reason}",
@@ -1965,16 +1965,16 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::NotApplicable("upstream n/a".into()),
+                AuditStatus::NotApplicable("upstream n/a".into()),
             ),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
-        assert!(matches!(rows[0].0.status, CheckStatus::NotApplicable(_)));
+        assert!(matches!(rows[0].0.status, AuditStatus::NotApplicable(_)));
     }
 
     #[test]
@@ -1982,42 +1982,42 @@ mod tests {
         // Skip antecedent → consequent inherits Skip (couldn't measure
         // upstream means can't meaningfully evaluate downstream).
         let raw = vec![
-            make_raw("p2-json-output", CheckStatus::Skip("probe limit".into())),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-json-output", AuditStatus::Skip("probe limit".into())),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
-        assert!(matches!(rows[0].0.status, CheckStatus::Skip(_)));
+        assert!(matches!(rows[0].0.status, AuditStatus::Skip(_)));
     }
 
     #[test]
     fn propagation_inherits_error_from_antecedent() {
         let raw = vec![
-            make_raw("p2-json-output", CheckStatus::Error("probe crashed".into())),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-json-output", AuditStatus::Error("probe crashed".into())),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
-        assert!(matches!(rows[0].0.status, CheckStatus::Error(_)));
+        assert!(matches!(rows[0].0.status, AuditStatus::Error(_)));
     }
 
     #[test]
     fn propagation_leaves_universal_rows_untouched() {
         // A row with applicability: universal must not be touched by
-        // propagation even if a check with the same id exists in `raw`.
-        let raw = vec![make_raw("p1-non-interactive", CheckStatus::Pass)];
+        // propagation even if an audit with the same id exists in `raw`.
+        let raw = vec![make_raw("p1-non-interactive", AuditStatus::Pass)];
         let mut rows = vec![(
-            make_raw("p1-must-no-interactive", CheckStatus::Pass),
+            make_raw("p1-must-no-interactive", AuditStatus::Pass),
             "p1-non-interactive".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
-        assert!(matches!(rows[0].0.status, CheckStatus::Pass));
+        assert!(matches!(rows[0].0.status, AuditStatus::Pass));
     }
 
     #[test]
@@ -2029,16 +2029,16 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::OptOut("no --output flag".into()),
+                AuditStatus::OptOut("no --output flag".into()),
             ),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
-        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
-            Box::new(FakeCheck {
+        let catalog: Vec<Box<dyn crate::audit::Audit>> = vec![
+            Box::new(FakeAudit {
                 id: "p2-json-output",
                 covers: &["p2-must-output-flag"],
             }),
-            Box::new(FakeCheck {
+            Box::new(FakeAudit {
                 id: "p2-schema-print",
                 covers: &["p2-must-schema-print"],
             }),
@@ -2049,7 +2049,7 @@ mod tests {
             .find(|(r, _)| r.id == "p2-must-schema-print")
             .expect("schema-print requirement row present");
         match &schema_row.0.status {
-            CheckStatus::NotApplicable(reason) => assert!(
+            AuditStatus::NotApplicable(reason) => assert!(
                 reason.contains("p2-json-output") && reason.contains("opt_out"),
                 "consequent must collapse to n_a citing the antecedent, got: {reason}",
             ),
@@ -2067,23 +2067,23 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::OptOut("no --output flag".into()),
+                AuditStatus::OptOut("no --output flag".into()),
             ),
-            make_raw("p2-schema-print", CheckStatus::Fail("no schema".into())),
+            make_raw("p2-schema-print", AuditStatus::Fail("no schema".into())),
         ];
         assert_eq!(exit_code(&raw), 2, "raw probe Fail would exit 2");
 
-        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
-            Box::new(FakeCheck {
+        let catalog: Vec<Box<dyn crate::audit::Audit>> = vec![
+            Box::new(FakeAudit {
                 id: "p2-json-output",
                 covers: &["p2-must-output-flag"],
             }),
-            Box::new(FakeCheck {
+            Box::new(FakeAudit {
                 id: "p2-schema-print",
                 covers: &["p2-must-schema-print"],
             }),
         ];
-        let per_row: Vec<CheckResult> = build_row_results(&raw, &catalog)
+        let per_row: Vec<AuditResult> = build_row_results(&raw, &catalog)
             .into_iter()
             .map(|(r, _)| r)
             .collect();
@@ -2106,26 +2106,26 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::OptOut("no --output flag".into()),
+                AuditStatus::OptOut("no --output flag".into()),
             ),
             make_raw(
                 "p2-schema-print",
-                CheckStatus::Fail("no schema surface".into()),
+                AuditStatus::Fail("no schema surface".into()),
             ),
         ];
-        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
-            Box::new(FakeCheck {
+        let catalog: Vec<Box<dyn crate::audit::Audit>> = vec![
+            Box::new(FakeAudit {
                 id: "p2-json-output",
                 covers: &["p2-must-output-flag"],
             }),
-            Box::new(FakeCheck {
+            Box::new(FakeAudit {
                 id: "p2-schema-print",
                 covers: &["p2-must-schema-print"],
             }),
         ];
 
         // Text path: exactly the projection main::run feeds the renderer.
-        let per_row: Vec<CheckResult> = build_row_results(&raw, &catalog)
+        let per_row: Vec<AuditResult> = build_row_results(&raw, &catalog)
             .into_iter()
             .map(|(r, _)| r)
             .collect();
@@ -2172,19 +2172,19 @@ mod tests {
         // excluded from D entirely. A run of 1 Pass + 1 OptOut +
         // 1 NotApplicable scores (1 + 0) / (1 + 1) = 50%, not 100%.
         let results = vec![
-            make_raw("c1", CheckStatus::Pass),
-            make_raw("c2", CheckStatus::OptOut("deliberate".into())),
-            make_raw("c3", CheckStatus::NotApplicable("conditional unmet".into())),
+            make_raw("c1", AuditStatus::Pass),
+            make_raw("c2", AuditStatus::OptOut("deliberate".into())),
+            make_raw("c3", AuditStatus::NotApplicable("conditional unmet".into())),
         ];
         assert_eq!(score_pct(&results), 50);
 
         // Adding one Fail: D = {pass, fail, opt_out}, numerator 1 → 33%.
         // n_a remains outside D.
         let mixed = vec![
-            make_raw("c1", CheckStatus::Pass),
-            make_raw("c2", CheckStatus::Fail("violates".into())),
-            make_raw("c3", CheckStatus::OptOut("deliberate".into())),
-            make_raw("c4", CheckStatus::NotApplicable("conditional unmet".into())),
+            make_raw("c1", AuditStatus::Pass),
+            make_raw("c2", AuditStatus::Fail("violates".into())),
+            make_raw("c3", AuditStatus::OptOut("deliberate".into())),
+            make_raw("c4", AuditStatus::NotApplicable("conditional unmet".into())),
         ];
         assert_eq!(score_pct(&mixed), 33);
     }
@@ -2194,8 +2194,8 @@ mod tests {
         // Per scoring.md, warn contributes 0.5 to the numerator and 1 to
         // the denominator. 1 Pass + 1 Warn → (1 + 0.5) / 2 = 75%.
         let results = vec![
-            make_raw("c1", CheckStatus::Pass),
-            make_raw("c2", CheckStatus::Warn("partial".into())),
+            make_raw("c1", AuditStatus::Pass),
+            make_raw("c2", AuditStatus::Warn("partial".into())),
         ];
         assert_eq!(score_pct(&results), 75);
     }
@@ -2207,20 +2207,20 @@ mod tests {
         // Fail must not move the score. Behavioral set here is a single
         // Pass → 100%, despite two non-behavioral failures present.
         let results = vec![
-            make_raw_on("b1", CheckStatus::Pass, CheckLayer::Behavioral),
-            make_raw_on("s1", CheckStatus::Fail("source".into()), CheckLayer::Source),
+            make_raw_on("b1", AuditStatus::Pass, AuditLayer::Behavioral),
+            make_raw_on("s1", AuditStatus::Fail("source".into()), AuditLayer::Source),
             make_raw_on(
                 "p1",
-                CheckStatus::Fail("project".into()),
-                CheckLayer::Project,
+                AuditStatus::Fail("project".into()),
+                AuditLayer::Project,
             ),
         ];
         assert_eq!(score_pct(&results), 100);
 
         // And with no behavioral rows at all, D is empty → 0%.
         let non_behavioral = vec![
-            make_raw_on("s1", CheckStatus::Pass, CheckLayer::Source),
-            make_raw_on("p1", CheckStatus::Pass, CheckLayer::Project),
+            make_raw_on("s1", AuditStatus::Pass, AuditLayer::Source),
+            make_raw_on("p1", AuditStatus::Pass, AuditLayer::Project),
         ];
         assert_eq!(score_pct(&non_behavioral), 0);
     }
@@ -2233,23 +2233,23 @@ mod tests {
         // round(100 × 23.5 / 28) = 84 → Strong band.
         let mut results = Vec::new();
         for i in 0..20 {
-            results.push(make_raw(&format!("pass-{i}"), CheckStatus::Pass));
+            results.push(make_raw(&format!("pass-{i}"), AuditStatus::Pass));
         }
         for i in 0..7 {
             results.push(make_raw(
                 &format!("warn-{i}"),
-                CheckStatus::Warn("partial".into()),
+                AuditStatus::Warn("partial".into()),
             ));
         }
-        results.push(make_raw("opt", CheckStatus::OptOut("declined".into())));
+        results.push(make_raw("opt", AuditStatus::OptOut("declined".into())));
         results.push(make_raw(
             "na",
-            CheckStatus::NotApplicable("antecedent unmet".into()),
+            AuditStatus::NotApplicable("antecedent unmet".into()),
         ));
         for i in 0..14 {
             results.push(make_raw(
                 &format!("skip-{i}"),
-                CheckStatus::Skip("unmeasured".into()),
+                AuditStatus::Skip("unmeasured".into()),
             ));
         }
         assert_eq!(score_pct(&results), 84);
@@ -2260,13 +2260,13 @@ mod tests {
         // build_summary surfaces opt_out and n_a alongside the historical
         // five counters; total covers all seven.
         let results = vec![
-            make_raw("a", CheckStatus::Pass),
-            make_raw("b", CheckStatus::Warn("w".into())),
-            make_raw("c", CheckStatus::Fail("f".into())),
-            make_raw("d", CheckStatus::OptOut("o".into())),
-            make_raw("e", CheckStatus::NotApplicable("n".into())),
-            make_raw("f", CheckStatus::Skip("s".into())),
-            make_raw("g", CheckStatus::Error("e".into())),
+            make_raw("a", AuditStatus::Pass),
+            make_raw("b", AuditStatus::Warn("w".into())),
+            make_raw("c", AuditStatus::Fail("f".into())),
+            make_raw("d", AuditStatus::OptOut("o".into())),
+            make_raw("e", AuditStatus::NotApplicable("n".into())),
+            make_raw("f", AuditStatus::Skip("s".into())),
+            make_raw("g", AuditStatus::Error("e".into())),
         ];
         let s = build_summary(&results);
         assert_eq!(s.total, 7);
@@ -2280,37 +2280,37 @@ mod tests {
     }
 
     #[test]
-    fn check_result_view_carries_tier_and_check_id() {
-        // Per-row CheckResultView built via from_row exposes the requirement
+    fn audit_result_view_carries_tier_and_audit_id() {
+        // Per-row AuditResultView built via from_row exposes the requirement
         // tier (looked up from the registry) and the originating probe.
-        let r = make_raw("p3-must-version", CheckStatus::Pass);
-        let view = CheckResultView::from_row(&r, "p3-version");
+        let r = make_raw("p3-must-version", AuditStatus::Pass);
+        let view = AuditResultView::from_row(&r, "p3-version");
         assert_eq!(view.id, "p3-must-version");
-        assert_eq!(view.check_id, "p3-version");
+        assert_eq!(view.audit_id, "p3-version");
         assert_eq!(view.tier.as_deref(), Some("must"));
     }
 
     #[test]
-    fn check_result_view_tier_is_null_for_unknown_row_id() {
+    fn audit_result_view_tier_is_null_for_unknown_row_id() {
         // Test fixtures with synthetic ids that don't exist in the registry
         // surface as JSON null for tier — visible signal of inconsistency.
-        let r = make_raw("not-a-real-row-id", CheckStatus::Pass);
-        let view = CheckResultView::from_row(&r, "some-check");
+        let r = make_raw("not-a-real-row-id", AuditStatus::Pass);
+        let view = AuditResultView::from_row(&r, "some-audit");
         assert!(view.tier.is_none(), "got: {:?}", view.tier);
     }
 
     #[test]
     fn opt_out_status_serializes_as_opt_out_in_json() {
-        let r = make_raw("c1", CheckStatus::OptOut("test reason".into()));
-        let view = CheckResultView::from_result(&r);
+        let r = make_raw("c1", AuditStatus::OptOut("test reason".into()));
+        let view = AuditResultView::from_result(&r);
         assert_eq!(view.status, "opt_out");
         assert_eq!(view.evidence.as_deref(), Some("test reason"));
     }
 
     #[test]
     fn n_a_status_serializes_as_n_a_in_json() {
-        let r = make_raw("c1", CheckStatus::NotApplicable("antecedent unmet".into()));
-        let view = CheckResultView::from_result(&r);
+        let r = make_raw("c1", AuditStatus::NotApplicable("antecedent unmet".into()));
+        let view = AuditResultView::from_result(&r);
         assert_eq!(view.status, "n_a");
         assert_eq!(view.evidence.as_deref(), Some("antecedent unmet"));
     }
@@ -2330,12 +2330,12 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::OptOut("no --output flag".into()),
+                AuditStatus::OptOut("no --output flag".into()),
             ),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
@@ -2367,14 +2367,14 @@ mod tests {
         // a raw result. The row keeps its own status — propagation can't
         // override what it can't read. This is the exact path tools using
         // `--source` or `--principle <N>` exercise in production.
-        let raw = vec![make_raw("p2-schema-print", CheckStatus::Pass)];
+        let raw = vec![make_raw("p2-schema-print", AuditStatus::Pass)];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
         assert!(
-            matches!(rows[0].0.status, CheckStatus::Pass),
+            matches!(rows[0].0.status, AuditStatus::Pass),
             "no antecedent in raw → row untouched, got: {:?}",
             rows[0].0.status,
         );
@@ -2392,17 +2392,17 @@ mod tests {
         let raw = vec![
             make_raw(
                 "p2-json-output",
-                CheckStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
+                AuditStatus::Skip(format!("{SUPPRESSION_EVIDENCE_PREFIX}human-tui")),
             ),
-            make_raw("p2-schema-print", CheckStatus::Pass),
+            make_raw("p2-schema-print", AuditStatus::Pass),
         ];
         let mut rows = vec![(
-            make_raw("p2-must-schema-print", CheckStatus::Pass),
+            make_raw("p2-must-schema-print", AuditStatus::Pass),
             "p2-schema-print".to_string(),
         )];
         propagate_antecedents(&mut rows, &raw);
         match &rows[0].0.status {
-            CheckStatus::Skip(reason) => {
+            AuditStatus::Skip(reason) => {
                 assert!(
                     reason.contains("p2-json-output"),
                     "propagated Skip must cite the antecedent, got: {reason}",
@@ -2420,11 +2420,11 @@ mod tests {
     fn rt_score_pct_only_n_a_returns_zero_without_panic() {
         // Pathological: every result is NotApplicable. Denominator is zero;
         // score must surface as 0 with no division-by-zero or NaN.
-        let results: Vec<CheckResult> = (0..100)
+        let results: Vec<AuditResult> = (0..100)
             .map(|i| {
                 make_raw(
                     &format!("row-{i}"),
-                    CheckStatus::NotApplicable("conditional unmet".into()),
+                    AuditStatus::NotApplicable("conditional unmet".into()),
                 )
             })
             .collect();
@@ -2436,11 +2436,11 @@ mod tests {
         // opt_out is in the denominator set D but contributes 0 credit, so
         // an all-opt_out run is 0 / N = 0% — not a div-by-zero (D is
         // non-empty here, unlike the all-n_a case above).
-        let results: Vec<CheckResult> = (0..50)
+        let results: Vec<AuditResult> = (0..50)
             .map(|i| {
                 make_raw(
                     &format!("row-{i}"),
-                    CheckStatus::OptOut("deliberate".into()),
+                    AuditStatus::OptOut("deliberate".into()),
                 )
             })
             .collect();
@@ -2451,15 +2451,15 @@ mod tests {
     fn rt_score_pct_one_pass_amid_999_n_a_returns_100() {
         // n_a must not dilute. One genuine pass against a thousand
         // inapplicable rows is still 100%.
-        let mut results: Vec<CheckResult> = (0..999)
+        let mut results: Vec<AuditResult> = (0..999)
             .map(|i| {
                 make_raw(
                     &format!("row-{i}"),
-                    CheckStatus::NotApplicable("conditional unmet".into()),
+                    AuditStatus::NotApplicable("conditional unmet".into()),
                 )
             })
             .collect();
-        results.push(make_raw("row-last", CheckStatus::Pass));
+        results.push(make_raw("row-last", AuditStatus::Pass));
         assert_eq!(score_pct(&results), 100);
     }
 
@@ -2467,15 +2467,15 @@ mod tests {
     fn rt_score_pct_skip_and_error_still_excluded() {
         // Carry the legacy contract forward: Skip and Error contribute to
         // neither side. A run of (1 Pass + 100 Skip + 100 Error) is 100%.
-        let mut results = vec![make_raw("good", CheckStatus::Pass)];
+        let mut results = vec![make_raw("good", AuditStatus::Pass)];
         for i in 0..100 {
             results.push(make_raw(
                 &format!("s-{i}"),
-                CheckStatus::Skip("limit".into()),
+                AuditStatus::Skip("limit".into()),
             ));
             results.push(make_raw(
                 &format!("e-{i}"),
-                CheckStatus::Error("boom".into()),
+                AuditStatus::Error("boom".into()),
             ));
         }
         assert_eq!(score_pct(&results), 100);
@@ -2487,8 +2487,8 @@ mod tests {
         // backslashes, newlines, tabs. serde_json must escape them. The
         // roundtrip parse must recover the exact byte sequence.
         let hostile: &str = "line1\nline2\t\"quoted\"\\backslash\u{0007}bell";
-        let r = make_raw("c1", CheckStatus::Warn(hostile.to_string()));
-        let view = CheckResultView::from_result(&r);
+        let r = make_raw("c1", AuditStatus::Warn(hostile.to_string()));
+        let view = AuditResultView::from_result(&r);
         let json = serde_json::to_string(&view).expect("view serializes");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("re-parses");
         assert_eq!(
@@ -2504,8 +2504,8 @@ mod tests {
         // in display contexts. They must roundtrip through JSON unchanged;
         // any sanitization belongs at the render layer (site), not here.
         let hostile = "left\u{202e}right\u{200b}invisible";
-        let r = make_raw("c1", CheckStatus::OptOut(hostile.to_string()));
-        let view = CheckResultView::from_result(&r);
+        let r = make_raw("c1", AuditStatus::OptOut(hostile.to_string()));
+        let view = AuditResultView::from_result(&r);
         let json = serde_json::to_string(&view).expect("view serializes");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("re-parses");
         assert_eq!(parsed["evidence"].as_str(), Some(hostile));
@@ -2517,18 +2517,18 @@ mod tests {
         // Invariant: total == pass + warn + fail + opt_out + n_a + skip + error.
         // A new variant added without updating build_summary would break this.
         let statuses = vec![
-            CheckStatus::Pass,
-            CheckStatus::Pass,
-            CheckStatus::Warn("w".into()),
-            CheckStatus::Fail("f".into()),
-            CheckStatus::OptOut("o".into()),
-            CheckStatus::OptOut("o".into()),
-            CheckStatus::OptOut("o".into()),
-            CheckStatus::NotApplicable("n".into()),
-            CheckStatus::Skip("s".into()),
-            CheckStatus::Error("e".into()),
+            AuditStatus::Pass,
+            AuditStatus::Pass,
+            AuditStatus::Warn("w".into()),
+            AuditStatus::Fail("f".into()),
+            AuditStatus::OptOut("o".into()),
+            AuditStatus::OptOut("o".into()),
+            AuditStatus::OptOut("o".into()),
+            AuditStatus::NotApplicable("n".into()),
+            AuditStatus::Skip("s".into()),
+            AuditStatus::Error("e".into()),
         ];
-        let results: Vec<CheckResult> = statuses
+        let results: Vec<AuditResult> = statuses
             .into_iter()
             .enumerate()
             .map(|(i, s)| make_raw(&format!("c{i}"), s))
@@ -2548,27 +2548,27 @@ mod tests {
         // summary counts both. n_a stays outside the denominator set D;
         // opt_out stays inside it with 0 credit.
         let raw = vec![
-            make_raw("p2-json-output", CheckStatus::OptOut("no flag".into())),
-            make_raw("p2-schema-print", CheckStatus::Pass),
-            make_raw("p1-non-interactive", CheckStatus::Pass),
+            make_raw("p2-json-output", AuditStatus::OptOut("no flag".into())),
+            make_raw("p2-schema-print", AuditStatus::Pass),
+            make_raw("p1-non-interactive", AuditStatus::Pass),
         ];
-        let catalog: Vec<Box<dyn crate::check::Check>> = vec![
-            Box::new(FakeCheck {
+        let catalog: Vec<Box<dyn crate::audit::Audit>> = vec![
+            Box::new(FakeAudit {
                 id: "p2-json-output",
                 covers: &["p2-must-output-flag"],
             }),
-            Box::new(FakeCheck {
+            Box::new(FakeAudit {
                 id: "p2-schema-print",
                 covers: &["p2-must-schema-print"],
             }),
-            Box::new(FakeCheck {
+            Box::new(FakeAudit {
                 id: "p1-non-interactive",
                 covers: &["p1-must-no-interactive"],
             }),
         ];
         let mut rows = fan_out_per_row(&raw, &catalog);
         propagate_antecedents(&mut rows, &raw);
-        let per_row: Vec<CheckResult> = rows.into_iter().map(|(r, _)| r).collect();
+        let per_row: Vec<AuditResult> = rows.into_iter().map(|(r, _)| r).collect();
 
         let s = build_summary(&per_row);
         assert_eq!(s.opt_out, 1, "p2-must-output-flag → opt_out: got {s:?}");

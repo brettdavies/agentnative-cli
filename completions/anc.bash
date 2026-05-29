@@ -126,7 +126,7 @@ _anc() {
             fi
             case "${prev}" in
                 --command)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -c "${cur}"))
                     return 0
                     ;;
                 --principle)

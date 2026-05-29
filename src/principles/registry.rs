@@ -1,6 +1,6 @@
 //! Flat `&'static [Requirement]` registry covering every MUST, SHOULD, and
 //! MAY across P1–P7. The registry is the single source of truth linking
-//! spec requirements to the checks that verify them via `Check::covers()`.
+//! spec requirements to the audits that verify them via `Audit::covers()`.
 //!
 //! IDs follow the pattern `p{N}-{level}-{key}`. They are stable and must
 //! not change once published — scorecards and the coverage matrix pin
@@ -35,7 +35,7 @@ impl Level {
 ///
 /// `Conditional` carries an optional prose `condition` (legacy `{ if: "<prose>"
 /// }` shape) and an optional machine-readable `antecedent` (new `{ kind:
-/// conditional, antecedent: { check_id: ... } }` shape). The antecedent's check
+/// conditional, antecedent: { audit_id: ... } }` shape). The antecedent's audit
 /// status drives the propagation table documented in
 /// `docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md`
 /// Decision 2a: when the antecedent resolves to `opt_out` / `n_a`, this
@@ -55,11 +55,11 @@ pub enum Applicability {
 }
 
 /// Machine-readable antecedent for a conditional requirement. The
-/// `check_id` names the verifier whose status decides whether the consequent
+/// `audit_id` names the verifier whose status decides whether the consequent
 /// row applies (see `Applicability` for the propagation rules).
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub struct Antecedent {
-    pub check_id: &'static str,
+    pub audit_id: &'static str,
 }
 
 /// Categories under which a tool may be exempt from specific requirements.
@@ -151,7 +151,7 @@ const fn _all_categories_covers_every_variant(c: ExceptionCategory) -> bool {
     }
 }
 
-/// Prefix of the structured evidence string emitted for any check suppressed
+/// Prefix of the structured evidence string emitted for any audit suppressed
 /// by `--audit-profile`. The full evidence takes the shape
 /// `"suppressed by audit_profile: <kebab-case-category>"`. This is the single
 /// source of truth — `main.rs` (producer), `scorecard::audience` (consumer
@@ -163,23 +163,23 @@ const fn _all_categories_covers_every_variant(c: ExceptionCategory) -> bool {
 /// edit here as a consumer-contract change.
 pub const SUPPRESSION_EVIDENCE_PREFIX: &str = "suppressed by audit_profile: ";
 
-/// Which check IDs each exception category suppresses. When a category
-/// applies, the listed checks emit `CheckStatus::Skip` with structured
+/// Which audit IDs each exception category suppresses. When a category
+/// applies, the listed audits emit `AuditStatus::Skip` with structured
 /// evidence (`"suppressed by audit_profile: <category>"`) instead of
 /// running — they appear in `results[]` so readers see what was excluded.
 ///
-/// Entries map to *check* IDs, not requirement IDs, because the runtime
-/// suppression point has `check.id()` in hand. The conceptual exemption is
+/// Entries map to *audit* IDs, not requirement IDs, because the runtime
+/// suppression point has `audit.id()` in hand. The conceptual exemption is
 /// a requirement — e.g., TUI apps are exempt from
 /// `p1-must-no-interactive` — but because each requirement may be covered
-/// by multiple checks across layers, the table enumerates every covering
-/// check explicitly so the suppression behavior is deterministic.
+/// by multiple audits across layers, the table enumerates every covering
+/// audit explicitly so the suppression behavior is deterministic.
 ///
 /// **Every `ExceptionCategory` variant appears here**, even with an empty
 /// slice. A missing category would silently no-op at the call site and
-/// degrade to running every check — the drift test below catches the gap.
+/// degrade to running every audit — the drift test below catches the gap.
 ///
-/// Every listed check ID is validated against the behavioral/source/project
+/// Every listed audit ID is validated against the behavioral/source/project
 /// catalog at test time; a typo or rename breaks the build.
 ///
 /// # Trust boundary
@@ -200,8 +200,8 @@ pub const SUPPRESSION_EVIDENCE_PREFIX: &str = "suppressed by audit_profile: ";
 ///
 /// # Drift test scope
 ///
-/// The `suppression_table_check_ids_exist_in_catalog` test below verifies
-/// that every listed check ID resolves to a real catalog entry — typos
+/// The `suppression_table_audit_ids_exist_in_catalog` test below verifies
+/// that every listed audit ID resolves to a real catalog entry — typos
 /// surface at build time. It does *not* assert that each ID is
 /// *semantically appropriate* for its category (e.g., a typo that
 /// accidentally moves `p2-json-output` into `HumanTui` would still pass
@@ -213,7 +213,7 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
         ExceptionCategory::HumanTui,
         &[
             // p1-must-no-interactive — TUI apps intercept the TTY by design;
-            // their whole contract is interactive. All three covering checks
+            // their whole contract is interactive. All three covering audits
             // suppress together for consistency.
             "p1-non-interactive",
             "p1-flag-existence",
@@ -223,11 +223,11 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
             "p1-tty-detection-source",
             // p6-must-sigpipe — TUIs routinely install their own signal
             // handlers to redraw or exit cleanly; the default-disposition
-            // check doesn't match the category's execution model.
+            // audit doesn't match the category's execution model.
             "p6-sigpipe",
             // p6-must-sigterm — same rationale as p6-sigpipe. TUIs install
             // their own SIGTERM handlers to render exit dialogs and save
-            // state; the default-disposition check doesn't match the
+            // state; the default-disposition audit doesn't match the
             // category's execution model.
             "p6-sigterm",
         ],
@@ -235,11 +235,11 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
     (
         ExceptionCategory::FileTraversal,
         &[
-            // No current check verifies subcommand-examples or
+            // No current audit verifies subcommand-examples or
             // subcommand-operations for tools-without-subcommands. The
-            // `If: CLI uses subcommands` applicability on existing checks
+            // `If: CLI uses subcommands` applicability on existing audits
             // already produces the right Skip outcome for fd/find-style
-            // tools. Kept as a table entry so future checks can be added
+            // tools. Kept as a table entry so future audits can be added
             // without a schema change.
         ],
     ),
@@ -258,7 +258,7 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
         ExceptionCategory::DiagnosticOnly,
         &[
             // p5-must-dry-run — diagnostic tools perform no writes, so the
-            // write-safety MUSTs do not apply. Dry-run is the only P5 check
+            // write-safety MUSTs do not apply. Dry-run is the only P5 audit
             // currently covered; read-write-distinction and force-yes are
             // still uncovered in v0.1.3.
             "p5-dry-run",
@@ -266,19 +266,19 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
     ),
 ];
 
-/// Whether `check_id` should be suppressed under the given `category`.
-/// Returns `false` for unknown check IDs and for categories whose table
+/// Whether `audit_id` should be suppressed under the given `category`.
+/// Returns `false` for unknown audit IDs and for categories whose table
 /// entry is empty. O(n) in the per-category slice — the table is small
-/// and the call site runs once per check per invocation.
-pub fn suppresses(check_id: &str, category: ExceptionCategory) -> bool {
+/// and the call site runs once per audit per invocation.
+pub fn suppresses(audit_id: &str, category: ExceptionCategory) -> bool {
     SUPPRESSION_TABLE
         .iter()
         .find(|(cat, _)| *cat == category)
-        .is_some_and(|(_, ids)| ids.contains(&check_id))
+        .is_some_and(|(_, ids)| ids.contains(&audit_id))
 }
 
 /// A single spec requirement. The flat registry below is iterated by the
-/// matrix generator and cross-referenced against `Check::covers()`.
+/// matrix generator and cross-referenced against `Audit::covers()`.
 #[derive(Debug, Clone, Serialize)]
 pub struct Requirement {
     pub id: &'static str,
@@ -421,18 +421,18 @@ mod tests {
 
     #[test]
     fn suppresses_negative_cases() {
-        // Checks not in the HumanTui list must not be suppressed by it.
+        // Audits not in the HumanTui list must not be suppressed by it.
         assert!(!suppresses("p2-json-output", ExceptionCategory::HumanTui));
         // p6-sigpipe is only suppressed under HumanTui, not the others.
         assert!(!suppresses("p6-sigpipe", ExceptionCategory::PosixUtility));
         assert!(!suppresses("p6-sigpipe", ExceptionCategory::DiagnosticOnly));
-        // Unknown check ID is never suppressed.
+        // Unknown audit ID is never suppressed.
         assert!(!suppresses(
-            "totally-fake-check-id",
+            "totally-fake-audit-id",
             ExceptionCategory::HumanTui
         ));
         assert!(!suppresses(
-            "totally-fake-check-id",
+            "totally-fake-audit-id",
             ExceptionCategory::DiagnosticOnly
         ));
     }
@@ -459,11 +459,11 @@ mod tests {
     }
 
     #[test]
-    fn suppression_table_check_ids_exist_in_catalog() {
-        use crate::check::Check;
-        use crate::checks::all_checks_catalog;
+    fn suppression_table_audit_ids_exist_in_catalog() {
+        use crate::audit::Audit;
+        use crate::audits::all_audits_catalog;
 
-        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
+        let catalog: Vec<Box<dyn Audit>> = all_audits_catalog();
         let catalog_ids: Vec<&str> = catalog.iter().map(|c| c.id()).collect();
 
         for (cat, ids) in SUPPRESSION_TABLE {
@@ -471,7 +471,7 @@ mod tests {
                 assert!(
                     catalog_ids.contains(id),
                     "SUPPRESSION_TABLE entry for {cat:?} references unknown \
-                     check ID `{id}` — either the check was renamed/removed \
+                     audit ID `{id}` — either the audit was renamed/removed \
                      or the table has a typo. Fix the table, not the \
                      catalog.",
                 );
@@ -481,7 +481,7 @@ mod tests {
 
     // ──────────────────────────────────────────────────────────────────
     // U2 (schema 0.6): conditional applicability red-team guards.
-    // Each conditional row in the registry names an antecedent `check_id`
+    // Each conditional row in the registry names an antecedent `audit_id`
     // that drives propagation. A typo or rename in the antecedent would
     // silently mute propagation in production — the consequent row would
     // forever look up `None` and pass through with its own probe status.
@@ -489,11 +489,11 @@ mod tests {
     // ──────────────────────────────────────────────────────────────────
 
     #[test]
-    fn every_conditional_antecedent_resolves_to_a_real_check() {
-        use crate::check::Check;
-        use crate::checks::all_checks_catalog;
+    fn every_conditional_antecedent_resolves_to_a_real_audit() {
+        use crate::audit::Audit;
+        use crate::audits::all_audits_catalog;
 
-        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
+        let catalog: Vec<Box<dyn Audit>> = all_audits_catalog();
         let catalog_ids: Vec<&str> = catalog.iter().map(|c| c.id()).collect();
 
         let mut dangling: Vec<(&str, &str)> = Vec::new();
@@ -502,15 +502,15 @@ mod tests {
                 antecedent: Some(ante),
                 ..
             } = req.applicability
-                && !catalog_ids.contains(&ante.check_id)
+                && !catalog_ids.contains(&ante.audit_id)
             {
-                dangling.push((req.id, ante.check_id));
+                dangling.push((req.id, ante.audit_id));
             }
         }
         assert!(
             dangling.is_empty(),
-            "conditional requirements with dangling antecedent check_ids:\n{}\n\
-             Fix the spec's `antecedent.check_id` or add the missing check to the catalog.",
+            "conditional requirements with dangling antecedent audit_ids:\n{}\n\
+             Fix the spec's `antecedent.audit_id` or add the missing audit to the catalog.",
             dangling
                 .iter()
                 .map(|(req, ante)| format!(
@@ -523,19 +523,19 @@ mod tests {
 
     #[test]
     fn no_conditional_row_names_itself_as_antecedent() {
-        // Edge case: a conditional row's covering check is the same as its
+        // Edge case: a conditional row's covering audit is the same as its
         // antecedent. The propagation table would then read the row's own
         // probe status and could collapse the row to n_a based on itself —
         // a logic loop that's never the right model. The spec should never
         // produce this shape; this test catches it if it does.
-        use crate::check::Check;
-        use crate::checks::all_checks_catalog;
+        use crate::audit::Audit;
+        use crate::audits::all_audits_catalog;
 
-        let catalog: Vec<Box<dyn Check>> = all_checks_catalog();
-        let mut covers_by_check: std::collections::HashMap<&'static str, &'static [&'static str]> =
+        let catalog: Vec<Box<dyn Audit>> = all_audits_catalog();
+        let mut covers_by_audit: std::collections::HashMap<&'static str, &'static [&'static str]> =
             std::collections::HashMap::new();
         for c in &catalog {
-            covers_by_check.insert(Box::leak(c.id().to_string().into_boxed_str()), c.covers());
+            covers_by_audit.insert(Box::leak(c.id().to_string().into_boxed_str()), c.covers());
         }
 
         for req in REQUIREMENTS {
@@ -546,14 +546,14 @@ mod tests {
             else {
                 continue;
             };
-            if let Some(covers) = covers_by_check.get(ante.check_id) {
+            if let Some(covers) = covers_by_audit.get(ante.audit_id) {
                 assert!(
                     !covers.contains(&req.id),
                     "conditional row `{}` declares antecedent `{}`, but that \
-                     check already covers `{}` directly — the row would gate \
+                     audit already covers `{}` directly — the row would gate \
                      its own status against itself.",
                     req.id,
-                    ante.check_id,
+                    ante.audit_id,
                     req.id,
                 );
             }

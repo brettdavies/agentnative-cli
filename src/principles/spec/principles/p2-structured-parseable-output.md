@@ -1,7 +1,7 @@
 ---
 id: p2
 title: Structured, Parseable Output
-last-revised: 2026-05-21
+last-revised: 2026-05-29
 status: active
 requirements:
   - id: p2-must-output-flag
@@ -25,7 +25,7 @@ requirements:
     applicability:
       kind: conditional
       antecedent:
-        check_id: p2-json-output
+        audit_id: p2-json-output
     summary: "CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier."
   - id: p2-should-consistent-envelope
     level: should
@@ -36,7 +36,7 @@ requirements:
     applicability:
       kind: conditional
       antecedent:
-        check_id: p2-json-output
+        audit_id: p2-json-output
     summary: "Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool."
   - id: p2-should-json-aliases
     level: should
@@ -132,8 +132,8 @@ catastrophically later.
 - `process::exit()` in library code, bypassing structured error propagation.
 - Human-formatted tables as the only output mode with no JSON alternative.
 
-Measured by check IDs `p2-output-json`, `p2-output-format`, `p2-stderr-diagnostics`. Run `agentnative check --principle
-2 .` against the CLI under test to see each.
+Measured by audit IDs `p2-output-json`, `p2-output-format`, `p2-stderr-diagnostics`. Run `anc audit --principle 2 .`
+against the CLI under test to see each.
 
 ## Pressure test notes
 

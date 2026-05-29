@@ -25,7 +25,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
             cand -V 'Print version'
@@ -37,13 +37,13 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;audit'= {
-            cand --command 'Resolve a command from PATH and run behavioral checks against it'
-            cand --principle 'Filter checks by principle number (1-8)'
+            cand --command 'Resolve a command from PATH and run behavioral audits against it'
+            cand --principle 'Filter audits by principle number (1-8)'
             cand --output 'Output format'
-            cand --audit-profile 'Exemption category for the target. Suppresses checks that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed checks emit `Skip` with structured evidence so readers see what was excluded'
+            cand --audit-profile 'Exemption category for the target. Suppresses audits that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed audits emit `Skip` with structured evidence so readers see what was excluded'
             cand --color 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)'
-            cand --binary 'Run only behavioral checks (skip source analysis)'
-            cand --source 'Run only source checks (skip behavioral)'
+            cand --binary 'Run only behavioral audits (skip source analysis)'
+            cand --source 'Run only source audits (skip behavioral)'
             cand --include-tests 'Include test code in source analysis'
             cand -q 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
             cand --quiet 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
@@ -51,7 +51,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
@@ -63,7 +63,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help'
             cand --help 'Print help'
         }
@@ -75,10 +75,10 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help'
             cand --help 'Print help'
-            cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
+            cand coverage-matrix 'Render the spec coverage matrix (registry → audits → artifact)'
             cand schema 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -93,7 +93,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help'
             cand --help 'Print help'
         }
@@ -105,12 +105,12 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
         &'anc;emit;help'= {
-            cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
+            cand coverage-matrix 'Render the spec coverage matrix (registry → audits → artifact)'
             cand schema 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
@@ -128,7 +128,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
             cand install 'Install the skill bundle into a host''s canonical skills directory'
@@ -146,7 +146,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
@@ -161,7 +161,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
             cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
             cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
-            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
             cand -h 'Print help'
             cand --help 'Print help'
         }
@@ -188,7 +188,7 @@ set edit:completion:arg-completer[anc] = {|@words|
         &'anc;help;completions'= {
         }
         &'anc;help;emit'= {
-            cand coverage-matrix 'Render the spec coverage matrix (registry → checks → artifact)'
+            cand coverage-matrix 'Render the spec coverage matrix (registry → audits → artifact)'
             cand schema 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
         }
         &'anc;help;emit;coverage-matrix'= {

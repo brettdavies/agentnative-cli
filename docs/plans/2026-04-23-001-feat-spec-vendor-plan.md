@@ -24,7 +24,7 @@ replacing the hand-maintained `&'static [Requirement]` slice currently in `src/p
 - `build.rs` at the crate root — parses vendored frontmatter, emits `OUT_DIR/generated_requirements.rs` consumed via
   `include!()` from `src/principles/registry.rs`. Fails the build loudly on parse errors, duplicate IDs, or schema
   drift.
-- Drift-check tests — every check's `covers()` ID exists in the generated `REQUIREMENTS` set; every MUST/SHOULD/MAY in
+- Drift-check tests — every audit's `covers()` ID exists in the generated `REQUIREMENTS` set; every MUST/SHOULD/MAY in
   the vendored spec is addressable; vendored frontmatter schema matches what the Rust parser expects.
 - Scorecard emits a `spec_version` field (from vendored `VERSION`) so consumers of `anc audit --output json` can pin
   against the exact spec build the CLI was compiled against.
@@ -46,7 +46,7 @@ coordinated hand-edit on this side.
 
 The `sot_contract.md` doctrine (spec-repo session memory) settled the design: **IDs are the contract, versions are
 decoupled per repo.** This crate vendors the spec at a pinned SHA/tag, parses the frontmatter at build time, and fails
-loud on any mismatch between the vendored set and the checks that reference it. The v0.2.0 tag (commit `83bf0fd`) is the
+loud on any mismatch between the vendored set and the audits that reference it. The v0.2.0 tag (commit `83bf0fd`) is the
 first stable target; tag `v0.2.0` is already cut and propagated via `repository_dispatch`.
 
 ## Requirements Trace
@@ -61,9 +61,9 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
 - contains duplicate requirement IDs,
 - uses an unknown `level` (only `must`/`should`/`may` accepted),
 - uses an unknown `applicability` shape (must be `universal` or `{if: "<prose>"}`).
-- R4. A `cargo test` target asserts every ID referenced by any check's `covers()` exists in the generated `REQUIREMENTS`
-  set — catches orphan check IDs that don't map to any real requirement.
-- R5. A `cargo test` target asserts every MUST in the vendored spec is referenced by at least one check OR is explicitly
+- R4. A `cargo test` target asserts every ID referenced by any audit's `covers()` exists in the generated `REQUIREMENTS`
+  set — catches orphan audit IDs that don't map to any real requirement.
+- R5. A `cargo test` target asserts every MUST in the vendored spec is referenced by at least one audit OR is explicitly
   listed as "unverified at current scale" in an allowlist with rationale — catches spec-side additions that this crate
   silently ignores.
 - R6. `anc audit --output json` emits a new `spec_version` field (value from vendored `VERSION`) as an additive v1.2
@@ -76,10 +76,10 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
 
 ## Scope Boundaries
 
-- No new checks — this plan doesn't add behavioral or source analysis coverage. Every existing check keeps its current
+- No new audits — this plan doesn't add behavioral or source analysis coverage. Every existing audit keeps its current
   `covers()` declarations.
 - No change to the scoring algorithm, exit codes, or audit-profile suppression logic. The `SUPPRESSION_TABLE` in
-  `src/principles/registry.rs` stays hand-maintained (it maps check IDs to audit profiles, not requirement IDs to
+  `src/principles/registry.rs` stays hand-maintained (it maps audit IDs to audit profiles, not requirement IDs to
   anything).
 - No CI automation to auto-sync when spec cuts a new release. Manual `sync-spec.sh` matches the site-side model and the
   existing `sync-coverage-matrix.sh` precedent.
@@ -110,7 +110,7 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
 - `src/principles/mod.rs` — re-exports `REQUIREMENTS`, `Requirement`, `Level`, `Applicability`, `ExceptionCategory`.
   These re-exports must continue to work after the refactor.
 - `src/principles/registry.rs` unit tests at the tail — pattern for "table-references-known-IDs" cross-check
-  (`suppression_table_check_ids_exist_in_catalog`). Model the drift tests on this same shape.
+  (`suppression_table_audit_ids_exist_in_catalog`). Model the drift tests on this same shape.
 - `src/principles/matrix.rs` — reads `REQUIREMENTS` to generate `coverage/matrix.json`. Must continue to work; the
   generated `REQUIREMENTS` must be a drop-in replacement.
 - `agentnative:principles/p1-non-interactive-by-default.md` — canonical frontmatter shape:
@@ -183,7 +183,7 @@ Feature-detect new fields rather than version-gate. -
   vendored file; if missing, emit `null` in the scorecard (matches existing `audience_reason` pattern for unresolvable
   fields). Build succeeds without `VERSION` but emits a warning — errors only on malformed `principles/` content.
 - **Drift-check tests live alongside the generated data.** New test file `tests/requirements_drift.rs` uses
-  `agentnative::principles::REQUIREMENTS` and `agentnative::checks::all_checks_catalog()`. Failing these tests is a
+  `agentnative::principles::REQUIREMENTS` and `agentnative::audits::all_audits_catalog()`. Failing these tests is a
   legitimate release-blocking signal; they run in the same `cargo test` invocation the pre-push hook already executes.
 
 ## Open Questions
@@ -268,7 +268,7 @@ $OUT_DIR/generated_requirements.rs         (not committed; regen on source chang
 src/principles/registry.rs                 (tiny; just the include + struct defs)
     │
     ▼
-pub static REQUIREMENTS: &[Requirement]    (consumed by checks, matrix, scorecard)
+pub static REQUIREMENTS: &[Requirement]    (consumed by audits, matrix, scorecard)
 ```
 
 **Generated file shape (sketch, not implementation):**
@@ -483,7 +483,7 @@ feature.
 
 - The hand-maintained `REQUIREMENTS = &[ ... ]` block (lines 251-573) is replaced with a single `include!()`.
 - The `include!()` file must produce `pub static REQUIREMENTS: &[Requirement] = &[...];` directly at module scope.
-- Verify that `src/principles/matrix.rs` and every consumer of `REQUIREMENTS` (`src/checks/`, `src/scorecard/`) still
+- Verify that `src/principles/matrix.rs` and every consumer of `REQUIREMENTS` (`src/audits/`, `src/scorecard/`) still
   compiles without changes — the generated slice's type and element shape are identical.
 - Run the full existing test suite (`cargo test`) after the cutover; any failure indicates a subtle mismatch (likely
   ordering, which U5 will further lock down).
@@ -515,7 +515,7 @@ feature.
 
 - [ ] U5. **Drift-check tests**
 
-**Goal:** Lock in the invariants R4 and R5 so any future change to checks or spec surfaces the mismatch immediately.
+**Goal:** Lock in the invariants R4 and R5 so any future change to audits or spec surfaces the mismatch immediately.
 
 **Requirements:** R4, R5
 
@@ -527,20 +527,20 @@ feature.
 
 **Approach:**
 
-- Test 1 (R4): every `Check::covers()` ID exists in `REQUIREMENTS`. Iterate `all_checks_catalog()`, collect every
+- Test 1 (R4): every `Audit::covers()` ID exists in `REQUIREMENTS`. Iterate `all_audits_catalog()`, collect every
   covered ID, `HashSet::difference` against `REQUIREMENTS` IDs. Non-empty diff = failure citing the orphan IDs.
-- Test 2 (R5): every MUST in `REQUIREMENTS` is covered by at least one check OR is listed in an explicit allowlist.
+- Test 2 (R5): every MUST in `REQUIREMENTS` is covered by at least one audit OR is listed in an explicit allowlist.
 - Allowlist lives in the test file as `const UNVERIFIED_MUSTS: &[&str] = &[...]` with a `why:` comment per entry.
   Allowlist entries are the "MUST covered by the spec but intentionally not automated at current scale" cases (see
   [`agentnative:docs/decisions/p1-behavioral-must.md`](https://github.com/brettdavies/agentnative/blob/main/docs/decisions/p1-behavioral-must.md)
   for the precedent — TTY-driving-agent scenarios are in P1 but not PTY-probed).
-- Every MUST not in the allowlist must be covered by at least one check.
-- If a new MUST lands in the spec and no check references it AND it's not in the allowlist, this test fails loudly on
+- Every MUST not in the allowlist must be covered by at least one audit.
+- If a new MUST lands in the spec and no audit references it AND it's not in the allowlist, this test fails loudly on
   next `cargo test`.
 - Test 3 (schema sanity): `REQUIREMENTS` length > 0, every entry has non-empty `summary`, `principle` is in `1..=7`, no
-  duplicate IDs (redundant with build.rs check but cheap insurance).
+  duplicate IDs (redundant with build.rs audit but cheap insurance).
 - Follow the "loud failure message cites the diagnostic next step" voice of the existing
-  `suppression_table_check_ids_exist_in_catalog` test in `src/principles/registry.rs`.
+  `suppression_table_audit_ids_exist_in_catalog` test in `src/principles/registry.rs`.
 
 **Patterns to follow:**
 
@@ -549,11 +549,11 @@ feature.
 
 **Test scenarios:**
 
-- Happy path (Test 1): every current check's covered IDs resolve — `cargo test` green.
+- Happy path (Test 1): every current audit's covered IDs resolve — `cargo test` green.
 - Happy path (Test 2): every MUST is either covered or allowlisted — `cargo test` green.
 - Induced failure (Test 1): add a fake `covers()` call with ID `"nonexistent-id"` temporarily → test fails with
   actionable message. Revert.
-- Induced failure (Test 2): remove a check's coverage for a real MUST without adding the MUST to the allowlist → test
+- Induced failure (Test 2): remove an audit's coverage for a real MUST without adding the MUST to the allowlist → test
   fails. Revert.
 - Induced failure (Test 3): hand-edit a generated `Requirement` to have empty `summary` via a deliberate build.rs bug
   (skip validation for this test only) → test fails.
@@ -639,7 +639,7 @@ feature.
 
 - **Interaction graph:**
 - `build.rs` (NEW) → vendored `src/principles/spec/` (NEW) → `$OUT_DIR/generated_requirements.rs` (NEW) →
-  `src/principles/registry.rs` (MODIFIED) → every existing consumer (`src/checks/`, `src/principles/matrix.rs`,
+  `src/principles/registry.rs` (MODIFIED) → every existing consumer (`src/audits/`, `src/principles/matrix.rs`,
   `src/scorecard/`).
 - No change to the binary's runtime behavior in U1-U5 — the plan intentionally preserves byte-identical scorecard output
   until U6's additive field.
@@ -669,7 +669,7 @@ feature.
 | Risk                                                                                  | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                |
 | ------------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `serde_yaml` is deprecated; `cargo-deny` flags it                                     | Med        | Low    | Pin tight version; if flagged, evaluate `saphyr`/`yaml-rust2` in U3. Parser is isolated to `build.rs`.                                                                                                                                                                    |
-| Build-time YAML parser diverges from spec-repo JS validator                           | Med        | Med    | U3 test-first covers every error shape; manual parity check against `agentnative:scripts/validate-principles.mjs` rules. Drift surfaces as a real spec file failing to parse on this side.                                                                                |
+| Build-time YAML parser diverges from spec-repo JS validator                           | Med        | Med    | U3 test-first covers every error shape; manual parity audit against `agentnative:scripts/validate-principles.mjs` rules. Drift surfaces as a real spec file failing to parse on this side.                                                                                |
 | Generated sort order differs from hand-maintained order → `coverage-matrix.json` diff | Low        | Low    | U4 integration test verifies byte-for-byte scorecard identity on a golden target. Sort key is explicit and tested.                                                                                                                                                        |
 | Vendored spec licensing concern (CC BY 4.0 in MIT/Apache crate)                       | Low        | Low    | Compatible per CC BY 4.0 — attribution only. `src/principles/spec/README.md` carries the attribution; spec frontmatter already in each file. Precedent: site repo vendors identically.                                                                                    |
 | Spec adds a `level` or `applicability` shape not in this crate's enums                | Low        | Med    | Build fails loudly; a coordinated CLI-side enum addition + resync is the remediation. Better than silent tolerance.                                                                                                                                                       |

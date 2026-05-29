@@ -37,7 +37,7 @@ body:
 
         1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to check for duplicates.
         2. **AI disclosure is required.** Fill the field above honestly.
-        3. **Checker features only.** For spec changes, file on [brettdavies/agentnative](https://github.com/brettdavies/agentnative).
+        3. **Auditor features only.** For spec changes, file on [brettdavies/agentnative](https://github.com/brettdavies/agentnative).
         4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.
         </details>
     validations:

@@ -42,7 +42,7 @@ sync (PR A); independent release cadence, no governance window.
   1: `--exclude PATTERN` flag). When that ships, both site and CLI revert their divergence blocks together.
 - **Narrow-scope limit, stated explicitly.** With only U1+U2+U3 shipping, prose-check covers markdown only: `README.md`,
   `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, `PRODUCT.md` (formerly `.impeccable.md` — see migration note below).
-  The high-leverage prose — clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, check `label()` returns
+  The high-leverage prose — clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, audit `label()` returns
   — is **NOT** covered until U6 ships. U6 is the unit that makes the CLI itself speak brand voice; U1+U2+U3 only ensures
   contributor- and consumer-facing docs do.
 - **Filename migration: `.impeccable.md` → `PRODUCT.md` (2026-05-12).** Post-U3, invoking the `impeccable` skill in this
@@ -111,7 +111,7 @@ because there's no sync mechanism.
   second-person imperative" from the spec pack — but that *is* the CLI register).
 - **Out: Vale-on-Rust full design.** This PR ships markdown linting + clap-string extraction. A complete Rust prose
   pipeline (every error message, every log statement) is a follow-up after the markdown layer settles.
-- **Out: Touching v0.4.0 spec sync files.** PR A handles `src/principles/spec/`, registry, checks. This PR keeps its
+- **Out: Touching v0.4.0 spec sync files.** PR A handles `src/principles/spec/`, registry, audits. This PR keeps its
   diff to prose tooling.
 - **Out: New skill bundle prose rules.** P8 is brand-new; bundle-prose-specific lint rules belong in a future iteration
   once shipped bundles accumulate enough convention to lint against.
@@ -310,7 +310,7 @@ contract on next sync).
 - Adapt `prose-check.sh` path globs by editing the file's "files to lint" section. The CLI surfaces: `README.md`,
   `AGENTS.md`, `RELEASES.md`, `CHANGELOG.md`, `.impeccable.md` (will exist post-U3), `docs/**/*.md`. Spec-side globs
   (`principles/*.md`) are removed.
-- **Critical: the adaptation must be tracked separately from the vendored content.** The byte-equivalence check in U1
+- **Critical: the adaptation must be tracked separately from the vendored content.** The byte-equivalence audit in U1
   runs against the upstream `prose-check.sh`. To keep both mechanisms (vendor + adapt) coexisting, the recommended shape
   is:
 - `scripts/prose-check.sh` — vendored verbatim from upstream. `--check` mode validates byte-equality against upstream.
@@ -337,7 +337,7 @@ contract on next sync).
 - *Failure path*: A markdown file with deliberate slop (e.g., `It's not a feature, it's a way of life`) → script exits
   non-zero and names the offending line.
 - *Integration*: Re-run `--check` after the wrapper edits → upstream `prose-check.sh` byte-equal, wrapper script not
-  under check (correct — wrapper is CLI-owned).
+  under audit (correct — wrapper is CLI-owned).
 
 **Verification:**
 
@@ -594,8 +594,8 @@ that uses the already-vendored `ast-grep-core` directly.
 
 **Test scenarios:**
 
-- *Happy path (extraction)*: Fixture Rust file with `#[arg(help = "Run the check.")]` → extracted line contains `"Run
-  the check."`.
+- *Happy path (extraction)*: Fixture Rust file with `#[arg(help = "Run the audit.")]` → extracted line contains `"Run
+  the audit."`.
 - *Happy path (extraction)*: Fixture with `eprintln!("permission denied: {}", path)` → extracted line contains
   `"permission denied: {}"`.
 - *Happy path (extraction)*: Fixture with `panic!("internal invariant violated")` → extracted.
@@ -604,7 +604,7 @@ that uses the already-vendored `ast-grep-core` directly.
 - *False-positive (skip)*: Fixture with `const VERSION: &str = "0.4.0";` → NOT extracted.
 - *False-positive (skip)*: Fixture with `let separator = "|";` → NOT extracted (sub-5-char filter).
 - *Happy path (pipeline)*: Fixture file produces transient markdown; `prose-check.sh` runs on it; offending strings fail
-  the check.
+  the audit.
 - *Failure path*: Fixture with `panic!("Oh no something went wrong!!!")` (multi-bang em-dash density violation) →
   prose-check fails.
 - *Edge case*: Empty source file → no extraction; pipeline exits 0.

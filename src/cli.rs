@@ -10,7 +10,7 @@ use crate::skill_install::SkillHost;
 #[command(
     long_about = "The agent-native CLI linter — audits a CLI tool against the agent-readiness spec.
 
-Runs three layers of checks against a target: behavioral (spawn the binary and inspect output), source (ast-grep over Rust/Python files), and project (manifest, completions, bundle presence). The result is a scorecard you can read interactively (text mode) or pipe into another tool (`--output json`).
+Runs three layers of audits against a target: behavioral (spawn the binary and inspect output), source (ast-grep over Rust/Python files), and project (manifest, completions, bundle presence). The result is a scorecard you can read interactively (text mode) or pipe into another tool (`--output json`).
 
 Default output format is text; color and progress affordances auto-detect the TTY and disappear when stdout is piped or redirected (NO_COLOR-compatible). Use `--verbose` / `-v` to escalate diagnostic detail when debugging unexpected results.
 
@@ -77,7 +77,7 @@ pub struct Cli {
     pub color: ColorChoice,
 
     /// Strip section headers, evidence lines, summary line, and badge hint
-    /// — emit only `id<TAB>status` per check. Pipe-safe for grep, awk, and
+    /// — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and
     /// downstream tooling that wants the raw verdict stream without prose.
     /// Ignored in `--output json` mode.
     #[arg(long, global = true)]
@@ -111,7 +111,7 @@ pub enum Commands {
   anc audit . --output json                    # JSON envelope for agents
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
   anc audit --command ripgrep                  # PATH-resolved binary
-  anc audit ./target/release/anc --binary      # behavioral checks only
+  anc audit ./target/release/anc --binary      # behavioral audits only
 
 Defaults: path = `.`, output = text, no principle filter.")]
     Audit {
@@ -119,7 +119,7 @@ Defaults: path = `.`, output = text, no principle filter.")]
         #[arg(default_value = ".")]
         path: std::path::PathBuf,
 
-        /// Resolve a command from PATH and run behavioral checks against it
+        /// Resolve a command from PATH and run behavioral audits against it
         #[arg(
             long,
             value_name = "NAME",
@@ -129,15 +129,15 @@ Defaults: path = `.`, output = text, no principle filter.")]
         )]
         command: Option<String>,
 
-        /// Run only behavioral checks (skip source analysis)
+        /// Run only behavioral audits (skip source analysis)
         #[arg(long)]
         binary: bool,
 
-        /// Run only source checks (skip behavioral)
+        /// Run only source audits (skip behavioral)
         #[arg(long)]
         source: bool,
 
-        /// Filter checks by principle number (1-8)
+        /// Filter audits by principle number (1-8)
         #[arg(long)]
         principle: Option<u8>,
 
@@ -149,10 +149,10 @@ Defaults: path = `.`, output = text, no principle filter.")]
         #[arg(long)]
         include_tests: bool,
 
-        /// Exemption category for the target. Suppresses checks that do not
+        /// Exemption category for the target. Suppresses audits that do not
         /// apply to this class of tool — e.g., TUI apps legitimately
         /// intercept the TTY, so `--audit-profile human-tui` skips the
-        /// interactive-prompt MUSTs. Suppressed checks emit `Skip` with
+        /// interactive-prompt MUSTs. Suppressed audits emit `Skip` with
         /// structured evidence so readers see what was excluded.
         #[arg(long, value_name = "CATEGORY")]
         audit_profile: Option<AuditProfile>,
@@ -238,7 +238,7 @@ pub enum SkillCmd {
 
 #[derive(Subcommand)]
 pub enum EmitKind {
-    /// Render the spec coverage matrix (registry → checks → artifact).
+    /// Render the spec coverage matrix (registry → audits → artifact).
     CoverageMatrix {
         /// Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`.
         #[arg(long, value_name = "PATH", default_value = "docs/coverage-matrix.md")]
@@ -283,7 +283,7 @@ pub enum AuditProfile {
     /// interactive-prompt MUSTs and SIGPIPE — their contract is the TTY.
     HumanTui,
     /// File-traversal utilities (fd, find). Reserved for subcommand-structure
-    /// relaxations as those checks land.
+    /// relaxations as those audits land.
     FileTraversal,
     /// POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs
     /// satisfied vacuously via stdin-primary input.

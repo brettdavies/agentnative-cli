@@ -19,13 +19,13 @@ fn fixture_path(name: &str) -> String {
 }
 
 /// Assert every documented v0.5 key path resolves on the parsed JSON, plus
-/// the v0.6 additions (per-row emission, `tier` + `check_id` on each
+/// the v0.7 additions (per-row emission, `tier` + `audit_id` on each
 /// result, `opt_out` / `n_a` summary counters). The segmented walk gives a
 /// precise failure message when a field is missing.
 fn assert_v05_shape(parsed: &Value) {
     assert_eq!(
-        parsed["schema_version"], "0.6",
-        "schema_version must be 0.6 (per-row emission + 7-status taxonomy)",
+        parsed["schema_version"], "0.7",
+        "schema_version must be 0.7 (per-row emission + 7-status taxonomy)",
     );
 
     for path in [
@@ -56,7 +56,7 @@ fn assert_v05_shape(parsed: &Value) {
         "badge.scorecard_url",
         "badge.badge_url",
         "badge.convention_url",
-        // 0.6 additions — 7-status summary counters.
+        // 0.7 additions — 7-status summary counters.
         "summary.opt_out",
         "summary.n_a",
     ] {
@@ -68,17 +68,17 @@ fn assert_v05_shape(parsed: &Value) {
         }
     }
 
-    // 0.6: every result row carries `tier` and `check_id`. The shape is
+    // 0.7: every result row carries `tier` and `audit_id`. The shape is
     // assertable as soon as `results[]` is non-empty.
     if let Some(results) = parsed["results"].as_array() {
         for (i, row) in results.iter().enumerate() {
             assert!(
                 row.get("tier").is_some(),
-                "results[{i}] missing `tier` (schema 0.6): {row}",
+                "results[{i}] missing `tier` (schema 0.7): {row}",
             );
             assert!(
-                row.get("check_id").is_some(),
-                "results[{i}] missing `check_id` (schema 0.6): {row}",
+                row.get("audit_id").is_some(),
+                "results[{i}] missing `audit_id` (schema 0.7): {row}",
             );
         }
     }
@@ -181,7 +181,7 @@ fn schema_v05_run_invocation_captures_user_intent_pre_injection() {
     // must see `anc <path>` in the scorecard, NOT `anc audit <path>`.
     let path = fixture_path("perfect-rust");
     let output = cmd()
-        .args([&path, "--output", "json"]) // no explicit `check`
+        .args([&path, "--output", "json"]) // no explicit `audit`
         .output()
         .expect("anc spawn");
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
@@ -191,7 +191,7 @@ fn schema_v05_run_invocation_captures_user_intent_pre_injection() {
         .as_str()
         .expect("run.invocation is a string");
     assert!(
-        !invocation.contains(" check "),
+        !invocation.contains(" audit "),
         "run.invocation must reflect user intent (pre-injection), got: {invocation}",
     );
 }
@@ -262,7 +262,7 @@ fn schema_v05_badge_block_reflects_live_tool_slug() {
     // place would produce an embed URL that doesn't match the live
     // scorecard page. This pins the slug↔URL relationship without
     // depending on the actual score (a fixture's pass-rate may shift as
-    // checks evolve, so we only assert URL shape, not eligibility).
+    // audits evolve, so we only assert URL shape, not eligibility).
     let path = fixture_path("perfect-rust");
     let output = cmd()
         .args(["audit", &path, "--output", "json"])
@@ -327,7 +327,7 @@ fn schema_v05_badge_eligibility_flag_matches_score() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Schema 0.6 red team: the committed scorecard.schema.json is the consumer
+// Schema 0.7 red team: the committed scorecard.schema.json is the consumer
 // contract for the site renderer and third-party leaderboards. A drift
 // between the hand-written schema and the serde-derived live JSON would
 // silently break those consumers. The tests below pin the shape contract
@@ -353,26 +353,26 @@ fn rt_schema_id_pins_to_published_schema_version() {
     let schema = schema_doc();
     let id = schema["$id"].as_str().expect("$id is a string");
     assert!(
-        id.contains("scorecard-v0.6"),
-        "schema $id must pin to the current SCHEMA_VERSION (0.6), got: {id}",
+        id.contains("scorecard-v0.7"),
+        "schema $id must pin to the current SCHEMA_VERSION (0.7), got: {id}",
     );
 }
 
 #[test]
 fn rt_schema_status_enum_lists_all_seven_taxonomy_values() {
-    // The 7-status taxonomy is the load-bearing contract of schema 0.6. A
-    // drift here (missing `opt_out`, missing `n_a`, stray pre-0.6 value
+    // The 7-status taxonomy is the load-bearing contract of schema 0.7. A
+    // drift here (missing `opt_out`, missing `n_a`, stray pre-0.7 value
     // dropped, etc.) would either silently mute new statuses on the
     // consumer side or fail validation against legitimate scorecards.
     let schema = schema_doc();
-    let enums = schema["$defs"]["CheckResultView"]["properties"]["status"]["enum"]
+    let enums = schema["$defs"]["AuditResultView"]["properties"]["status"]["enum"]
         .as_array()
         .expect("status.enum is an array");
     let values: Vec<&str> = enums.iter().filter_map(|v| v.as_str()).collect();
     for expected in ["pass", "warn", "fail", "opt_out", "n_a", "skip", "error"] {
         assert!(
             values.contains(&expected),
-            "status.enum missing `{expected}` — schema 0.6 contract violated. got: {values:?}",
+            "status.enum missing `{expected}` — schema 0.7 contract violated. got: {values:?}",
         );
     }
     assert_eq!(
@@ -402,16 +402,16 @@ fn rt_schema_summary_required_includes_opt_out_and_n_a() {
 }
 
 #[test]
-fn rt_schema_check_result_view_includes_tier_and_check_id() {
-    // Schema 0.6 added `tier` and `check_id` to every results[] entry.
+fn rt_schema_audit_result_view_includes_tier_and_audit_id() {
+    // Schema 0.7 added `tier` and `audit_id` to every results[] entry.
     // The drift guard pins both presence and the tier enum's three values
     // (plus null for unknown row ids).
     let schema = schema_doc();
-    let props = &schema["$defs"]["CheckResultView"]["properties"];
-    assert!(props["tier"].is_object(), "CheckResultView.tier missing");
+    let props = &schema["$defs"]["AuditResultView"]["properties"];
+    assert!(props["tier"].is_object(), "AuditResultView.tier missing");
     assert!(
-        props["check_id"].is_object(),
-        "CheckResultView.check_id missing",
+        props["audit_id"].is_object(),
+        "AuditResultView.audit_id missing",
     );
     let tier_enum = props["tier"]["enum"]
         .as_array()
@@ -453,9 +453,9 @@ fn rt_schema_example_block_passes_its_own_required_keys() {
 
     // Walk into results[0] and assert its required keys are present too.
     let result_example = &example["results"][0];
-    let result_required = schema["$defs"]["CheckResultView"]["required"]
+    let result_required = schema["$defs"]["AuditResultView"]["required"]
         .as_array()
-        .expect("CheckResultView.required is array");
+        .expect("AuditResultView.required is array");
     for key_val in result_required {
         let key = key_val.as_str().expect("required entry is string");
         assert!(
@@ -508,10 +508,10 @@ fn rt_live_scorecard_top_level_keys_match_schema_required() {
 }
 
 #[test]
-fn rt_live_results_rows_satisfy_check_result_view_required_keys() {
+fn rt_live_results_rows_satisfy_audit_result_view_required_keys() {
     // Per-row contract: every row in results[] carries the keys declared
-    // required by CheckResultView. Catches a probe that hand-builds a
-    // CheckResult skipping a field, or a schema that lists a key the
+    // required by AuditResultView. Catches a probe that hand-builds a
+    // AuditResult skipping a field, or a schema that lists a key the
     // serializer dropped.
     let path = fixture_path("perfect-rust");
     let output = cmd()
@@ -522,9 +522,9 @@ fn rt_live_results_rows_satisfy_check_result_view_required_keys() {
     let live: Value = serde_json::from_str(&stdout).expect("live JSON parses");
 
     let schema = schema_doc();
-    let required: Vec<String> = schema["$defs"]["CheckResultView"]["required"]
+    let required: Vec<String> = schema["$defs"]["AuditResultView"]["required"]
         .as_array()
-        .expect("CheckResultView.required is array")
+        .expect("AuditResultView.required is array")
         .iter()
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect();

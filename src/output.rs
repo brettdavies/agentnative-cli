@@ -1,6 +1,6 @@
 //! Single stdout hand-off point for the binary.
 //!
-//! Centralizing this lets the `p7-naked-println` source check exempt one
+//! Centralizing this lets the `p7-naked-println` source audit exempt one
 //! module by path convention (filename contains "output") instead of treating
 //! every `println!`/`print!` site across the orchestration layer as a
 //! naked-println violation. Callers route final user-facing output through

@@ -90,7 +90,7 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 - `$schema: "https://json-schema.org/draft/2020-12/schema"` (current published draft).
 - `$id: "https://anc.dev/scorecard-v{X.Y}.schema.json"` — the versioned URL the site archives at.
 - R10. **`title`** at the schema root reads `"agentnative scorecard"` and `description` summarizes "JSON Schema for `anc
-  check --output json` scorecards, schema version X.Y. Generated from Rust types in `src/scorecard/mod.rs`. See
+  audit --output json` scorecards, schema version X.Y. Generated from Rust types in `src/scorecard/mod.rs`. See
   https://anc.dev/scorecard-schema for the published archive of past versions."
 
 ---
@@ -131,7 +131,7 @@ The repo already ships one machine-readable artifact via the same workflow this 
 - **`anc emit coverage-matrix [--check]`** emits `docs/coverage-matrix.md` (human) + `coverage/matrix.json`
   (machine, `schema_version: "1.0"`).
 - Both files are committed; `--check` exits non-zero on drift.
-- Integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors `--check` so CI
+- Integration test `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` mirrors `--check` so CI
   catches drift from either side.
 - Project CLAUDE.md § "Coverage Matrix Artifact Lifecycle" documents the contract.
 
@@ -165,7 +165,7 @@ Relevant features:
 `src/scorecard/mod.rs` defines:
 
 - `Scorecard` (top-level)
-- `CheckResultView` (one per result row)
+- `AuditResultView` (one per result row)
 - `Summary`
 - `CoverageSummary`, `LevelCounts`
 - `ToolInfo`
@@ -339,7 +339,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 - Modify: `src/scorecard/mod.rs` — add `JsonSchema` to every `#[derive(Serialize)]` line (or to a separate
     `#[cfg_attr(feature = "schemars", derive(JsonSchema))]` if we want it gated; default is unconditional, since
     schemars is build-only and the derive macro just generates impl code at compile time).
-- Modify: `src/types.rs` (or wherever `CheckGroup`, `CheckLayer`, `Confidence`, `CheckStatus` live) — add `JsonSchema`
+- Modify: `src/types.rs` (or wherever `AuditGroup`, `AuditLayer`, `Confidence`, `AuditStatus` live) — add `JsonSchema`
     to those enums. Verify `#[serde(rename_all = "snake_case")]` is mirrored by `#[schemars(rename_all = "snake_case")]`
     if schemars doesn't propagate it.
 - Modify: `src/scorecard/audience.rs` (or wherever the audience enum is defined) — same treatment.
@@ -407,7 +407,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Test scenarios:**
 
 - **Happy path:** `cargo build --release` succeeds; the generated JSON file exists in `$OUT_DIR`; binary embeds via
-    `include_str!`; a quick `cargo run --release -- check . --output json` still works (regression smoke for accidental
+    `include_str!`; a quick `cargo run --release -- audit . --output json` still works (regression smoke for accidental
     compile-time breakage).
 - **Edge case:** schema generation panics during `build.rs` (e.g. a struct field schemars can't handle). Mitigation:
     fail the build with a clear message naming the struct + field; do not silently emit a stub.
@@ -416,7 +416,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - `head $(find target -name 'scorecard.schema.json' | head -1)` shows valid JSON starting with `"$schema"` and `"$id"`
     keys.
-- `EMBEDDED_SCHEMA.starts_with("{")` returns true at runtime (informal check; real test in U6).
+- `EMBEDDED_SCHEMA.starts_with("{")` returns true at runtime (informal audit; real test in U6).
 
 ---
 
@@ -627,7 +627,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 | `schemars` 1.x defaults to a different draft than 2020-12 at the time of implementation                                                                                             | U2 explicitly verifies the default and either pins to a 2020-12-emitting version or accepts the default with a Risks-table entry on consumer-validator compat.                                                                                                                         |
 | Build-time schemars version conflicts with another build-dep                                                                                                                        | Cargo's resolver handles this; pre-launch dep graph is small (`serde`, `serde_yaml` build-deps today). Low likelihood.                                                                                                                                                                 |
 | The `$id` URL anchors at `anc.dev` but the site repo never wires up the corresponding archive endpoint                                                                              | U9 files the cross-repo plan that owns this. Until the site lands the archive, the `$id` URL 404s — a visible failure rather than a silent one. Document this as a transient state in the U9 plan.                                                                                     |
-| Doc comments diverge from CLAUDE.md's "Scorecard v0.5 Fields" prose section                                                                                                         | Once the schema ships with rich descriptions, CLAUDE.md's prose becomes redundant for the *content* and is rewritten in U8 to point at the schema as authoritative. CLAUDE.md retains operator workflow notes (regeneration cadence, drift-check semantics) that aren't in the schema. |
+| Doc comments diverge from CLAUDE.md's "Scorecard v0.5 Fields" prose section                                                                                                         | Once the schema ships with rich descriptions, CLAUDE.md's prose becomes redundant for the *content* and is rewritten in U8 to point at the schema as authoritative. CLAUDE.md retains operator workflow notes (regeneration cadence, drift-audit semantics) that aren't in the schema. |
 | Drift test is flaky (e.g., due to JSON pretty-print whitespace differences across Rust versions)                                                                                    | Pin `serde_json` `to_string_pretty` indentation explicitly (default is 2 spaces; spell it out). Sort schema keys deterministically — schemars usually does, verify at U6.                                                                                                              |
 | Round-trip test runtime cost exceeds CI budget                                                                                                                                      | Q5 — measure post-implementation, refactor to one binary spawn if needed.                                                                                                                                                                                                              |
 
@@ -649,7 +649,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 ## Sources & References
 
 - **Coverage matrix artifact lifecycle** (the precedent this plan extends): `CLAUDE.md` § "Coverage Matrix Artifact
-  Lifecycle"; `tests/integration.rs::test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts`.
+  Lifecycle"; `tests/integration.rs::test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts`.
 - **Scorecard v0.5 fields reference**: `CLAUDE.md` § "Scorecard v0.5 Fields".
 - **Scorecard struct definitions**: `src/scorecard/mod.rs`; `src/scorecard/audience.rs`; `src/types.rs` (per-result
   enums).

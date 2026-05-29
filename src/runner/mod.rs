@@ -203,7 +203,7 @@ impl BinaryRunner {
         let timeout_thread = std::thread::spawn(move || {
             let (lock, cvar) = &*done_for_timeout;
             let guard = lock.lock().expect("mutex poisoned");
-            // Check done flag first — if the child already exited before we
+            // Audit done flag first — if the child already exited before we
             // started, the condvar notification was already sent and would be lost.
             if *guard {
                 return;

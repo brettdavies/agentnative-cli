@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn format_invocation_pre_injection_user_intent_preserved() {
-        // Plan R4 intent check: a user who typed `anc .` MUST see `anc .` in
+        // Plan R4 intent audit: a user who typed `anc .` MUST see `anc .` in
         // the scorecard, not `anc audit .` (which would be a fact about anc's
         // internals, not the user's command).
         let out = format_invocation(&args(&["anc", "."]));

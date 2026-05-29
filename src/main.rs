@@ -1,7 +1,7 @@
 mod argv;
+mod audit;
+mod audits;
 mod build_info;
-mod check;
-mod checks;
 mod cli;
 mod color;
 mod error;
@@ -23,11 +23,11 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use argv::{format_invocation, inject_default_subcommand};
+use audit::Audit;
+use audits::behavioral::all_behavioral_audits;
+use audits::project::all_project_audits;
+use audits::source::all_source_audits;
 use build_info::ANC_VERSION;
-use check::Check;
-use checks::behavioral::all_behavioral_checks;
-use checks::project::all_project_checks;
-use checks::source::all_source_checks;
 use cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
 use error::AppError;
 use principles::matrix;
@@ -38,7 +38,7 @@ use scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
-use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
+use types::{AuditGroup, AuditResult, AuditStatus, Confidence};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
 
@@ -180,7 +180,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         output
     };
 
-    // --command resolves a binary from PATH and runs behavioral checks against
+    // --command resolves a binary from PATH and runs behavioral audits against
     // it. conflicts_with = "path" ensures only one of the two is provided.
     let command_name = command.clone();
     let resolved_path = match command {
@@ -191,57 +191,57 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let mut project = Project::discover(&resolved_path)?;
     project.include_tests = include_tests;
 
-    // Collect applicable checks based on flags and auto-detection
-    let mut all_checks: Vec<Box<dyn Check>> = Vec::new();
+    // Collect applicable audits based on flags and auto-detection
+    let mut all_audits: Vec<Box<dyn Audit>> = Vec::new();
 
     let has_binary = project.runner.is_some();
     let has_language = project.language.is_some();
 
     if !source_only {
         if has_binary {
-            all_checks.extend(all_behavioral_checks());
+            all_audits.extend(all_behavioral_audits());
         } else if binary_only {
             eprintln!("warning: --binary specified but no binary found");
         } else if has_language {
-            eprintln!("warning: no binary found, running source checks only");
+            eprintln!("warning: no binary found, running source audits only");
         }
     }
 
     if !binary_only {
         if let Some(lang) = project.language {
-            all_checks.extend(all_source_checks(lang));
+            all_audits.extend(all_source_audits(lang));
         } else if source_only {
             eprintln!("warning: --source specified but no language detected");
         }
     }
 
-    // Project checks — always collected when path is a directory and not binary-only
+    // Project audits — always collected when path is a directory and not binary-only
     if !binary_only && project.path.is_dir() {
-        all_checks.extend(all_project_checks());
+        all_audits.extend(all_project_audits());
     }
 
     // Translate the CLI-facing AuditProfile into the registry's
     // ExceptionCategory. Kept local so the registry stays CLI-agnostic.
     let exception_category: Option<ExceptionCategory> = audit_profile.map(Into::into);
 
-    // Run checks. When an audit_profile is set, checks whose IDs appear in
+    // Run audits. When an audit_profile is set, audits whose IDs appear in
     // the suppression table short-circuit to Skip with structured evidence
     // — they still appear in `results[]` so the scorecard shows what was
     // excluded and why.
-    let mut results: Vec<CheckResult> = Vec::new();
-    for check in &all_checks {
-        if !check.applicable(&project) {
+    let mut results: Vec<AuditResult> = Vec::new();
+    for audit in &all_audits {
+        if !audit.applicable(&project) {
             continue;
         }
         if let Some(cat) = exception_category
-            && suppresses(check.id(), cat)
+            && suppresses(audit.id(), cat)
         {
-            results.push(CheckResult {
-                id: check.id().to_string(),
-                label: check.label().to_string(),
-                group: check.group(),
-                layer: check.layer(),
-                status: CheckStatus::Skip(format!(
+            results.push(AuditResult {
+                id: audit.id().to_string(),
+                label: audit.label().to_string(),
+                group: audit.group(),
+                layer: audit.layer(),
+                status: AuditStatus::Skip(format!(
                     "{SUPPRESSION_EVIDENCE_PREFIX}{}",
                     cat.as_kebab_case()
                 )),
@@ -249,14 +249,14 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             });
             continue;
         }
-        let result = match check.run(&project) {
+        let result = match audit.run(&project) {
             Ok(r) => r,
-            Err(e) => CheckResult {
-                id: check.id().to_string(),
-                label: check.label().to_string(),
-                group: check.group(),
-                layer: check.layer(),
-                status: CheckStatus::Error(e.to_string()),
+            Err(e) => AuditResult {
+                id: audit.id().to_string(),
+                label: audit.label().to_string(),
+                group: audit.group(),
+                layer: audit.layer(),
+                status: AuditStatus::Error(e.to_string()),
                 confidence: Confidence::High,
             },
         };
@@ -268,9 +268,9 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         results.retain(|r| matches_principle(&r.group, p));
     }
 
-    // Compute audience from the 4 signal checks. Read-only over results;
-    // Returns None when any signal check is missing from the vector — the
-    // suppression loop above is the usual reason signal checks drop out
+    // Compute audience from the 4 signal audits. Read-only over results;
+    // Returns None when any signal audit is missing from the vector — the
+    // suppression loop above is the usual reason signal audits drop out
     // (e.g., human-tui suppresses `p1-non-interactive`).
     let audience_label = audience::classify(&results);
     let audit_profile_label = exception_category.map(|c| c.as_kebab_case().to_string());
@@ -281,14 +281,14 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // projected set, so every surface agrees on the row set, counts, score,
     // and status. JSON re-derives the identical set inside `format_json`
     // from the raw results plus catalog; `audience` above stays on the raw
-    // probe results because signal classification keys on probe check ids.
-    let per_row: Vec<CheckResult> = build_row_results(&results, &all_checks)
+    // probe results because signal classification keys on probe audit ids.
+    let per_row: Vec<AuditResult> = build_row_results(&results, &all_audits)
         .into_iter()
-        .map(|(row, _check_id)| row)
+        .map(|(row, _audit_id)| row)
         .collect();
 
-    // Format output. `format_json` needs the check catalog so it can map
-    // result IDs back to the requirements each check covers, plus the
+    // Format output. `format_json` needs the audit catalog so it can map
+    // result IDs back to the requirements each audit covers, plus the
     // run-level metadata (`tool`, `anc`, `run`, `target`). For text mode
     // we still need the tool slug so the badge hint can render the
     // canonical embed URL — derive it cheaply (no version probe) and
@@ -327,7 +327,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             };
             format_json(
                 &results,
-                &all_checks,
+                &all_audits,
                 audience_label,
                 audit_profile_label,
                 metadata,
@@ -350,7 +350,7 @@ Examples:
   anc audit . --output json                    # JSON envelope (agent-friendly)
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
   anc audit --command ripgrep                  # PATH-resolved binary
-  anc audit ./target/release/anc --binary      # behavioral checks only
+  anc audit ./target/release/anc --binary      # behavioral audits only
   anc emit coverage-matrix                     # emit the spec coverage matrix
   anc emit schema                              # print the scorecard JSON Schema
   anc skill install claude_code                # install the bundle to a host
@@ -579,7 +579,7 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
 
 /// Best-effort `<binary> --version` / `<binary> -V` probe. Reuses the runner's
 /// timeout + 1MB cap primitives via a fresh `BinaryRunner` with a tighter
-/// 2-second timeout (the version probe is one-shot, not a check).
+/// 2-second timeout (the version probe is one-shot, not a audit).
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,
@@ -731,15 +731,15 @@ fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
             json_out,
             check,
         } => {
-            let catalog = checks::all_checks_catalog();
+            let catalog = audits::all_audits_catalog();
 
             // Dangling `covers()` references are a registry bug — surface
             // them before writing artifacts so CI catches the regression
             // at `render --check` time too.
             let dangling = matrix::dangling_cover_ids(&catalog);
             if !dangling.is_empty() {
-                for (check_id, req_id) in &dangling {
-                    eprintln!("error: check `{check_id}` covers unknown requirement `{req_id}`");
+                for (audit_id, req_id) in &dangling {
+                    eprintln!("error: audit `{audit_id}` covers unknown requirement `{req_id}`");
                 }
                 return Err(AppError::ProjectDetection(anyhow::anyhow!(
                     "registry drift: {} dangling requirement reference(s)",
@@ -821,21 +821,21 @@ fn normalize_trailing_newline(s: &str) -> &str {
     s.trim_end_matches('\n')
 }
 
-fn matches_principle(group: &CheckGroup, principle: u8) -> bool {
-    // CodeQuality and ProjectStructure checks are cross-cutting — always include them.
+fn matches_principle(group: &AuditGroup, principle: u8) -> bool {
+    // CodeQuality and ProjectStructure audits are cross-cutting — always include them.
     matches!(
         group,
-        CheckGroup::CodeQuality | CheckGroup::ProjectStructure
+        AuditGroup::CodeQuality | AuditGroup::ProjectStructure
     ) || matches!(
         (group, principle),
-        (CheckGroup::P1, 1)
-            | (CheckGroup::P2, 2)
-            | (CheckGroup::P3, 3)
-            | (CheckGroup::P4, 4)
-            | (CheckGroup::P5, 5)
-            | (CheckGroup::P6, 6)
-            | (CheckGroup::P7, 7)
-            | (CheckGroup::P8, 8)
+        (AuditGroup::P1, 1)
+            | (AuditGroup::P2, 2)
+            | (AuditGroup::P3, 3)
+            | (AuditGroup::P4, 4)
+            | (AuditGroup::P5, 5)
+            | (AuditGroup::P6, 6)
+            | (AuditGroup::P7, 7)
+            | (AuditGroup::P8, 8)
     )
 }
 

@@ -430,7 +430,7 @@ OPTIONS:
         //
         // This test locks the current rejection behavior. Widening
         // Pattern 2 to accept bracketed ENV-section tokens (e.g., by
-        // relaxing the `in_placeholder_bracket` check inside an ENV
+        // relaxing the `in_placeholder_bracket` audit inside an ENV
         // section window) must update this test deliberately — and
         // remove the recall-gap note from `extract_env_tokens`'s
         // doc comment. The regression surface is: "Pattern 2 started

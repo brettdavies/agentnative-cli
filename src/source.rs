@@ -5,7 +5,7 @@ use ast_grep_language::{Python, Rust};
 use crate::project::Language;
 use crate::types::SourceLocation;
 
-/// Check whether a Rust source string contains at least one match for the given pattern.
+/// Audit whether a Rust source string contains at least one match for the given pattern.
 pub fn has_pattern(source: &str, pattern_str: &str) -> bool {
     has_pattern_with(source, pattern_str, Rust)
 }
@@ -15,7 +15,7 @@ pub fn find_pattern_matches(source: &str, pattern_str: &str) -> Vec<SourceLocati
     find_pattern_matches_with(source, pattern_str, Rust)
 }
 
-/// Check whether `source` contains at least one match for `pattern_str` in `lang`.
+/// Audit whether `source` contains at least one match for `pattern_str` in `lang`.
 pub fn has_pattern_in(source: &str, pattern_str: &str, lang: Language) -> bool {
     match lang {
         Language::Rust => has_pattern_with(source, pattern_str, Rust),
@@ -27,7 +27,7 @@ pub fn has_pattern_in(source: &str, pattern_str: &str, lang: Language) -> bool {
 /// Find all matches for `pattern_str` in `source`, parsed as `lang`.
 ///
 /// Currently used by tests; kept as a symmetric counterpart to `has_pattern_in`
-/// for future Python checks that need evidence locations rather than a boolean.
+/// for future Python audits that need evidence locations rather than a boolean.
 #[allow(dead_code)]
 pub fn find_pattern_matches_in(
     source: &str,
@@ -41,9 +41,9 @@ pub fn find_pattern_matches_in(
     }
 }
 
-/// Check whether `source` contains a string literal matching `needle` in `lang`.
+/// Audit whether `source` contains a string literal matching `needle` in `lang`.
 ///
-/// For Rust, checks `"needle"`. For Python, checks both `"needle"` and `'needle'`
+/// For Rust, audits `"needle"`. For Python, audits both `"needle"` and `'needle'`
 /// (checking both quote forms for Rust is harmless — Rust has no single-quote strings
 /// beyond char literals, so the single-quote pattern simply won't match).
 pub fn has_string_literal_in(source: &str, needle: &str, lang: Language) -> bool {

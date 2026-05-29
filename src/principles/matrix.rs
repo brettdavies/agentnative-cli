@@ -1,5 +1,5 @@
 //! Coverage matrix generator. Cross-references the requirement registry
-//! against the checks discovered at runtime (behavioral + source + project).
+//! against the audits discovered at runtime (behavioral + source + project).
 //!
 //! Output artifacts:
 //! - `docs/coverage-matrix.md` — human-readable table grouped by principle.
@@ -7,24 +7,24 @@
 //!   `/coverage` page.
 //!
 //! The CLI surfaces this as `anc emit coverage-matrix` with `--check`
-//! to fail CI when committed artifacts drift from the registry + checks.
+//! to fail CI when committed artifacts drift from the registry + audits.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use serde::Serialize;
 
-use crate::check::Check;
+use crate::audit::Audit;
 use crate::principles::registry::{
     ALL_EXCEPTION_CATEGORIES, Applicability, Level, REQUIREMENTS, SUPPRESSION_TABLE,
 };
-use crate::types::CheckLayer;
+use crate::types::AuditLayer;
 
-/// A check that covers a given requirement.
+/// A audit that covers a given requirement.
 #[derive(Debug, Clone, Serialize)]
 pub struct Verifier {
-    pub check_id: String,
-    pub layer: CheckLayer,
+    pub audit_id: String,
+    pub layer: AuditLayer,
 }
 
 /// One row of the coverage matrix.
@@ -40,7 +40,7 @@ pub struct MatrixRow {
 
 /// Programmatic listing of every `--audit-profile` value and what it
 /// suppresses. Consumed by the site's regen script and by agents that
-/// want to enumerate suppressible checks without scraping `--help`.
+/// want to enumerate suppressible audits without scraping `--help`.
 #[derive(Debug, Serialize)]
 pub struct AuditProfileEntry {
     /// Kebab-case flag value (e.g., `"human-tui"`) — exactly what a
@@ -48,7 +48,7 @@ pub struct AuditProfileEntry {
     pub name: &'static str,
     /// One-line human description of the category.
     pub description: &'static str,
-    /// Check IDs that emit `Skip` with the audit_profile suppression
+    /// Audit IDs that emit `Skip` with the audit_profile suppression
     /// prefix when this profile is active. Empty slice = reserved
     /// category with no current suppressions.
     pub suppresses: Vec<&'static str>,
@@ -88,19 +88,19 @@ pub struct LevelSummary {
     pub covered: usize,
 }
 
-const SCHEMA_VERSION: &str = "1.0";
+const SCHEMA_VERSION: &str = "2.0";
 const GENERATED_BY: &str = "anc emit coverage-matrix";
 
-/// Build the matrix from the requirement registry + a slice of checks.
-/// Ownership stays with the caller; this reads `check.covers()` references.
-pub fn build(checks: &[Box<dyn Check>]) -> Matrix {
+/// Build the matrix from the requirement registry + a slice of audits.
+/// Ownership stays with the caller; this reads `audit.covers()` references.
+pub fn build(audits: &[Box<dyn Audit>]) -> Matrix {
     // Inverse map: requirement ID -> Vec<Verifier>.
     let mut coverage: BTreeMap<&'static str, Vec<Verifier>> = BTreeMap::new();
-    for check in checks {
-        for req_id in check.covers() {
+    for audit in audits {
+        for req_id in audit.covers() {
             coverage.entry(req_id).or_default().push(Verifier {
-                check_id: check.id().to_string(),
-                layer: check.layer(),
+                audit_id: audit.id().to_string(),
+                layer: audit.layer(),
             });
         }
     }
@@ -207,7 +207,7 @@ pub fn render_markdown(matrix: &Matrix) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "This table maps every MUST, SHOULD, and MAY in the agent-native CLI spec to the `anc` checks that verify it."
+        "This table maps every MUST, SHOULD, and MAY in the agent-native CLI spec to the `anc` audits that verify it."
     );
     let _ = writeln!(
         out,
@@ -272,10 +272,10 @@ pub fn render_markdown(matrix: &Matrix) -> String {
                     antecedent,
                 } => match (condition, antecedent) {
                     (Some(cond), Some(ante)) => {
-                        format!("If: {cond} (antecedent: `{}`)", ante.check_id)
+                        format!("If: {cond} (antecedent: `{}`)", ante.audit_id)
                     }
                     (Some(cond), None) => format!("If: {cond}"),
-                    (None, Some(ante)) => format!("If: `{}` is present", ante.check_id),
+                    (None, Some(ante)) => format!("If: `{}` is present", ante.audit_id),
                     (None, None) => "Conditional".to_string(),
                 },
             };
@@ -284,7 +284,7 @@ pub fn render_markdown(matrix: &Matrix) -> String {
             } else {
                 row.verifiers
                     .iter()
-                    .map(|v| format!("`{}` ({})", v.check_id, layer_label(v.layer)))
+                    .map(|v| format!("`{}` ({})", v.audit_id, layer_label(v.layer)))
                     .collect::<Vec<_>>()
                     .join("<br>")
             };
@@ -304,11 +304,11 @@ pub fn render_markdown(matrix: &Matrix) -> String {
     out
 }
 
-fn layer_label(layer: CheckLayer) -> &'static str {
+fn layer_label(layer: AuditLayer) -> &'static str {
     match layer {
-        CheckLayer::Behavioral => "behavioral",
-        CheckLayer::Source => "source",
-        CheckLayer::Project => "project",
+        AuditLayer::Behavioral => "behavioral",
+        AuditLayer::Source => "source",
+        AuditLayer::Project => "project",
     }
 }
 
@@ -335,14 +335,14 @@ pub fn render_json(matrix: &Matrix) -> String {
     serde_json::to_string_pretty(matrix).unwrap_or_else(|e| format!("{{\"error\":\"{e}\"}}"))
 }
 
-/// Unreferenced requirement IDs discovered in `Check::covers()`. Used by
+/// Unreferenced requirement IDs discovered in `Audit::covers()`. Used by
 /// the registry validator to catch dangling references at test time.
-pub fn dangling_cover_ids(checks: &[Box<dyn Check>]) -> Vec<(String, String)> {
+pub fn dangling_cover_ids(audits: &[Box<dyn Audit>]) -> Vec<(String, String)> {
     let mut dangling = Vec::new();
-    for check in checks {
-        for req_id in check.covers() {
+    for audit in audits {
+        for req_id in audit.covers() {
             if crate::principles::registry::find(req_id).is_none() {
-                dangling.push((check.id().to_string(), (*req_id).to_string()));
+                dangling.push((audit.id().to_string(), (*req_id).to_string()));
             }
         }
     }
@@ -352,38 +352,38 @@ pub fn dangling_cover_ids(checks: &[Box<dyn Check>]) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::check::Check;
+    use crate::audit::Audit;
     use crate::project::Project;
-    use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus, Confidence};
+    use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-    struct FakeCheck {
+    struct FakeAudit {
         id: &'static str,
         covers: &'static [&'static str],
     }
 
-    impl Check for FakeCheck {
+    impl Audit for FakeAudit {
         fn id(&self) -> &str {
             self.id
         }
         fn label(&self) -> &'static str {
             "fake"
         }
-        fn group(&self) -> CheckGroup {
-            CheckGroup::P1
+        fn group(&self) -> AuditGroup {
+            AuditGroup::P1
         }
-        fn layer(&self) -> CheckLayer {
-            CheckLayer::Behavioral
+        fn layer(&self) -> AuditLayer {
+            AuditLayer::Behavioral
         }
         fn applicable(&self, _project: &Project) -> bool {
             true
         }
-        fn run(&self, _project: &Project) -> anyhow::Result<CheckResult> {
-            Ok(CheckResult {
+        fn run(&self, _project: &Project) -> anyhow::Result<AuditResult> {
+            Ok(AuditResult {
                 id: self.id.to_string(),
                 label: self.id.to_string(),
-                group: CheckGroup::P1,
-                layer: CheckLayer::Behavioral,
-                status: CheckStatus::Pass,
+                group: AuditGroup::P1,
+                layer: AuditLayer::Behavioral,
+                status: AuditStatus::Pass,
                 confidence: Confidence::High,
             })
         }
@@ -393,9 +393,9 @@ mod tests {
     }
 
     #[test]
-    fn build_marks_uncovered_rows_when_no_checks() {
-        let checks: Vec<Box<dyn Check>> = vec![];
-        let matrix = build(&checks);
+    fn build_marks_uncovered_rows_when_no_audits() {
+        let audits: Vec<Box<dyn Audit>> = vec![];
+        let matrix = build(&audits);
         assert_eq!(matrix.rows.len(), REQUIREMENTS.len());
         assert!(matrix.rows.iter().all(|r| r.verifiers.is_empty()));
         assert_eq!(matrix.summary.covered, 0);
@@ -403,25 +403,25 @@ mod tests {
     }
 
     #[test]
-    fn build_links_check_to_requirement() {
-        let checks: Vec<Box<dyn Check>> = vec![Box::new(FakeCheck {
-            id: "fake-check",
+    fn build_links_audit_to_requirement() {
+        let audits: Vec<Box<dyn Audit>> = vec![Box::new(FakeAudit {
+            id: "fake-audit",
             covers: &["p1-must-no-interactive"],
         })];
-        let matrix = build(&checks);
+        let matrix = build(&audits);
         let row = matrix
             .rows
             .iter()
             .find(|r| r.id == "p1-must-no-interactive")
             .expect("requirement row");
         assert_eq!(row.verifiers.len(), 1);
-        assert_eq!(row.verifiers[0].check_id, "fake-check");
+        assert_eq!(row.verifiers[0].audit_id, "fake-audit");
     }
 
     #[test]
     fn render_markdown_contains_summary_and_uncovered_marker() {
-        let checks: Vec<Box<dyn Check>> = vec![];
-        let matrix = build(&checks);
+        let audits: Vec<Box<dyn Audit>> = vec![];
+        let matrix = build(&audits);
         let md = render_markdown(&matrix);
         assert!(md.contains("# Coverage Matrix"));
         assert!(md.contains("## Summary"));
@@ -431,8 +431,8 @@ mod tests {
 
     #[test]
     fn render_json_is_valid_json() {
-        let checks: Vec<Box<dyn Check>> = vec![];
-        let matrix = build(&checks);
+        let audits: Vec<Box<dyn Audit>> = vec![];
+        let matrix = build(&audits);
         let json = render_json(&matrix);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["schema_version"], SCHEMA_VERSION);
@@ -441,102 +441,102 @@ mod tests {
 
     #[test]
     fn dangling_cover_ids_detects_typo() {
-        let checks: Vec<Box<dyn Check>> = vec![Box::new(FakeCheck {
-            id: "typo-check",
+        let audits: Vec<Box<dyn Audit>> = vec![Box::new(FakeAudit {
+            id: "typo-audit",
             covers: &["p1-must-no-interactivx"], // typo on purpose
         })];
-        let dangling = dangling_cover_ids(&checks);
+        let dangling = dangling_cover_ids(&audits);
         assert_eq!(dangling.len(), 1);
-        assert_eq!(dangling[0].0, "typo-check");
+        assert_eq!(dangling[0].0, "typo-audit");
     }
 
     #[test]
     fn dangling_cover_ids_empty_for_valid_refs() {
-        let checks: Vec<Box<dyn Check>> = vec![Box::new(FakeCheck {
-            id: "valid-check",
+        let audits: Vec<Box<dyn Audit>> = vec![Box::new(FakeAudit {
+            id: "valid-audit",
             covers: &["p1-must-no-interactive", "p1-should-tty-detection"],
         })];
-        assert!(dangling_cover_ids(&checks).is_empty());
+        assert!(dangling_cover_ids(&audits).is_empty());
     }
 
-    /// MUSTs that the spec carries but no behavioral / source / project check
+    /// MUSTs that the spec carries but no behavioral / source / project audit
     /// auto-verifies at current scale. Each entry is `(requirement_id, why)`;
     /// the rationale MUST cite the decision record or scope note that
     /// justifies non-coverage.
     ///
     /// Adding to this list is a deliberate act — the test below fails loudly
     /// when a MUST loses its cover (or a new MUST lands in the spec) so a
-    /// human has to opt into "we know this isn't auto-checked, here's why."
+    /// human has to opt into "we know this isn't auto-audited, here's why."
     const UNVERIFIED_MUSTS: &[(&str, &str)] = &[
         // Pre-existing coverage gaps surfaced by R5 against vendored spec
-        // v0.2.0. Each MUST is real and important; the absence of a check
+        // v0.2.0. Each MUST is real and important; the absence of a audit
         // reflects scope-of-work, not a stance that the requirement should
         // not be enforced. Track follow-up work in the project roadmap.
         (
             "p2-must-exit-codes",
-            "vocabulary check (0, 1, 2, 77, 78 codes appear in mapping) — \
+            "vocabulary audit (0, 1, 2, 77, 78 codes appear in mapping) — \
              distinct from `p4-must-exit-code-mapping` which the existing \
-             `exit_codes.rs` check covers (mapping shape, not specific values).",
+             `exit_codes.rs` audit covers (mapping shape, not specific values).",
         ),
         (
             "p2-must-json-errors",
-            "behavioral check requires inducing an error path with `--output \
+            "behavioral audit requires inducing an error path with `--output \
              json` and parsing the JSON envelope — no current behavioral \
-             check probes error paths.",
+             audit probes error paths.",
         ),
         (
             "p3-must-subcommand-examples",
-            "behavioral check would walk `<subcommand> --help` for an \
+            "behavioral audit would walk `<subcommand> --help` for an \
              `Examples:` section — distinct from `p3-must-top-level-examples` \
              which `p3_examples.rs` covers; per-subcommand traversal is \
              out of scope for v0.1.x.",
         ),
         (
             "p4-must-actionable-errors",
-            "judgment-quality check — requires inducing error paths and \
+            "judgment-quality audit — requires inducing error paths and \
              evaluating message structure (what failed, why, hint). Not \
-             reducible to a static-analysis or shape check at current scale.",
+             reducible to a static-analysis or shape audit at current scale.",
         ),
         (
             "p5-must-force-yes",
-            "no source check yet detects clap `--force` / `--yes` flag \
+            "no source audit yet detects clap `--force` / `--yes` flag \
              declarations; would mirror `p5-must-dry-run`'s pattern. \
              follow-up work.",
         ),
         (
             "p5-must-read-write-distinction",
-            "judgment-quality check — distinguishing read-only from \
+            "judgment-quality audit — distinguishing read-only from \
              mutating subcommands requires per-subcommand semantic \
              understanding beyond ast-grep's reach. Not auto-verified.",
         ),
     ];
 
-    /// R4 — every `Check::covers()` id in the live catalog resolves in the
+    /// R4 — every `Audit::covers()` id in the live catalog resolves in the
     /// generated `REQUIREMENTS` slice. A typo (or a renamed-then-forgotten
     /// id) fails this test rather than silently producing a coverage gap.
     #[test]
     fn live_catalog_has_no_dangling_cover_ids() {
-        use crate::checks::all_checks_catalog;
+        use crate::audits::all_audits_catalog;
 
-        let checks = all_checks_catalog();
-        let dangling = dangling_cover_ids(&checks);
+        let audits = all_audits_catalog();
+        let dangling = dangling_cover_ids(&audits);
         assert!(
             dangling.is_empty(),
-            "checks declare `covers()` ids that are not in REQUIREMENTS: \
-             {dangling:?}\nfix `Check::covers()` to reference an id from \
+            "audits declare `covers()` ids that are not in REQUIREMENTS: \
+             {dangling:?}\nfix `Audit::covers()` to reference an id from \
              `src/principles/spec/principles/`."
         );
     }
 
     /// R5 — every MUST in the vendored spec is covered by at least one
-    /// check, OR is explicitly listed in `UNVERIFIED_MUSTS` with rationale.
+    /// audit, OR is explicitly listed in `UNVERIFIED_MUSTS` with rationale.
     #[test]
     fn every_must_is_covered_or_explicitly_unverified() {
-        use crate::checks::all_checks_catalog;
+        use crate::audits::all_audits_catalog;
         use std::collections::HashSet;
 
-        let checks = all_checks_catalog();
-        let covered: HashSet<&'static str> = checks
+        let audits = all_audits_catalog();
+        let covered: HashSet<&'static str> = audits
             .iter()
             .flat_map(|c| c.covers().iter().copied())
             .collect();
@@ -552,9 +552,9 @@ mod tests {
 
         assert!(
             gaps.is_empty(),
-            "MUSTs without a covering check and not on UNVERIFIED_MUSTS: \
+            "MUSTs without a covering audit and not on UNVERIFIED_MUSTS: \
              {gaps:?}\noptions:\n\
-             1. wire a check via `Check::covers()` to evidence the MUST, OR\n\
+             1. wire a audit via `Audit::covers()` to evidence the MUST, OR\n\
              2. add an entry to UNVERIFIED_MUSTS with a rationale citing the \
                 decision record (see docs/decisions/)."
         );
@@ -618,8 +618,8 @@ mod tests {
         // Build a minimal matrix and verify the rendered JSON has a
         // top-level `audit_profiles` array that downstream consumers can
         // key against without re-running suppression logic.
-        let checks: Vec<Box<dyn Check>> = vec![];
-        let matrix = build(&checks);
+        let audits: Vec<Box<dyn Audit>> = vec![];
+        let matrix = build(&audits);
         let json = render_json(&matrix);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         let arr = parsed["audit_profiles"]

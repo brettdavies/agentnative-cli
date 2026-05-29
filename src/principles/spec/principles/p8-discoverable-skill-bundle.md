@@ -9,7 +9,7 @@ requirements:
     applicability:
       kind: conditional
       antecedent:
-        check_id: p8-bundle-exists
+        audit_id: p8-bundle-exists
     summary: "When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes."
   - id: p8-should-bundle-exists
     level: should
@@ -20,14 +20,14 @@ requirements:
     applicability:
       kind: conditional
       antecedent:
-        check_id: p8-bundle-exists
+        audit_id: p8-bundle-exists
     summary: "An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all."
   - id: p8-may-bundle-update
     level: may
     applicability:
       kind: conditional
       antecedent:
-        check_id: p8-bundle-exists
+        audit_id: p8-bundle-exists
     summary: "An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version."
 ---
 

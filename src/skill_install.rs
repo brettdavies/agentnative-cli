@@ -19,7 +19,7 @@
 //!         |
 //!         no
 //!         v
-//!   check_destination()       -- conflict --> emit_result(error, reason) -> exit 1
+//!   audit_destination()       -- conflict --> emit_result(error, reason) -> exit 1
 //!    (canonicalize + R9)
 //!         |
 //!         v
@@ -129,7 +129,7 @@ pub const GIT_HARDEN_ENV_SET: &[(&str, &str)] = &[
     ("GIT_TERMINAL_PROMPT", "0"),
 ];
 
-/// Snapshot of what `check_destination` found at the resolved path. Drives
+/// Snapshot of what `audit_destination` found at the resolved path. Drives
 /// the JSON envelope's `destination_status` field. The success path returns
 /// only `Absent`/`EmptyDir`; conflict cases (`NonEmptyDir`, `File`) are
 /// inferred from the corresponding `AppError` variant in the caller.
@@ -184,17 +184,17 @@ pub fn expand_tilde_with(template: &str, home: Option<&str>) -> Result<PathBuf, 
     Ok(p)
 }
 
-/// R9 destination conflict check. Canonicalizes the path so a symlinked
-/// skills directory resolves to its real target before the check runs (F4).
+/// R9 destination conflict audit. Canonicalizes the path so a symlinked
+/// skills directory resolves to its real target before the audit runs (F4).
 /// Returns `Absent`/`EmptyDir` on success; `DestIsFile` for a regular file,
 /// `DestNotEmpty` for a populated directory, `DestReadFailed` for any I/O
 /// error along the way.
 ///
-/// TOCTOU between this check and the subsequent `git clone` exec is
+/// TOCTOU between this audit and the subsequent `git clone` exec is
 /// acknowledged residual single-user-machine risk — `git clone` itself
 /// errors on a non-empty target, so the worst case is a less-actionable
 /// error message, not a security failure.
-pub fn check_destination(path: &Path) -> Result<DestinationStatus, AppError> {
+pub fn audit_destination(path: &Path) -> Result<DestinationStatus, AppError> {
     match path.try_exists() {
         Ok(false) => return Ok(DestinationStatus::Absent),
         Ok(true) => {}
@@ -251,7 +251,7 @@ pub fn check_destination(path: &Path) -> Result<DestinationStatus, AppError> {
 ///
 /// `--depth 1` is included to match the canonical install command shipped
 /// in `skill.json`. Verified during planning that `agentnative-skill`'s
-/// `bin/check-update` curls the upstream `VERSION` file and does NOT
+/// `bin/audit-update` curls the upstream `VERSION` file and does NOT
 /// require local tag history, so shallow cloning is safe.
 pub fn build_clone_command(url: &str, dest: &Path) -> Command {
     let mut cmd = Command::new("git");
@@ -356,9 +356,9 @@ pub fn compute_install_envelope(
     let command = format_clone_command(url, &dest);
     let dest_str = dest.display().to_string();
 
-    // Step 2: destination check. Conflict variants surface as envelope
+    // Step 2: destination audit. Conflict variants surface as envelope
     // errors; DestReadFailed propagates (internal I/O failure).
-    let dest_status = match check_destination(&dest) {
+    let dest_status = match audit_destination(&dest) {
         Ok(s) => s,
         Err(AppError::DestIsFile { .. }) => {
             return Ok(InstallEnvelope {
@@ -796,53 +796,53 @@ mod tests {
         assert_eq!(got_without_home, PathBuf::from("/abs/path"));
     }
 
-    /// Test 5 — `check_destination` on a nonexistent path returns
+    /// Test 5 — `audit_destination` on a nonexistent path returns
     /// `Absent`. A fresh tempdir's child is a deterministic nonexistent
     /// path.
     #[test]
-    fn check_destination_absent_for_nonexistent_path() {
+    fn audit_destination_absent_for_nonexistent_path() {
         let tmp = tempfile::tempdir().expect("tempdir creation");
         let target = tmp.path().join("does-not-exist");
-        let status = check_destination(&target).expect("absent path should be Ok(Absent)");
+        let status = audit_destination(&target).expect("absent path should be Ok(Absent)");
         assert_eq!(status, DestinationStatus::Absent);
     }
 
-    /// Test 6 — `check_destination` on an empty directory returns
+    /// Test 6 — `audit_destination` on an empty directory returns
     /// `EmptyDir`.
     #[test]
-    fn check_destination_empty_dir() {
+    fn audit_destination_empty_dir() {
         let tmp = tempfile::tempdir().expect("tempdir creation");
-        let status = check_destination(tmp.path()).expect("empty tempdir should be Ok(EmptyDir)");
+        let status = audit_destination(tmp.path()).expect("empty tempdir should be Ok(EmptyDir)");
         assert_eq!(status, DestinationStatus::EmptyDir);
     }
 
-    /// Test 7 — `check_destination` on a non-empty directory returns
+    /// Test 7 — `audit_destination` on a non-empty directory returns
     /// `DestNotEmpty`.
     #[test]
-    fn check_destination_non_empty_dir_errors() {
+    fn audit_destination_non_empty_dir_errors() {
         let tmp = tempfile::tempdir().expect("tempdir creation");
         std::fs::write(tmp.path().join("placeholder"), b"x").expect("write placeholder");
-        let err = check_destination(tmp.path()).expect_err("populated dir should be DestNotEmpty");
+        let err = audit_destination(tmp.path()).expect_err("populated dir should be DestNotEmpty");
         assert!(matches!(err, AppError::DestNotEmpty { .. }));
     }
 
-    /// Test 8 — `check_destination` on a regular file returns `DestIsFile`.
+    /// Test 8 — `audit_destination` on a regular file returns `DestIsFile`.
     #[test]
-    fn check_destination_regular_file_errors() {
+    fn audit_destination_regular_file_errors() {
         let tmp = tempfile::tempdir().expect("tempdir creation");
         let target = tmp.path().join("a-file");
         std::fs::write(&target, b"contents").expect("write file");
-        let err = check_destination(&target).expect_err("file should be DestIsFile");
+        let err = audit_destination(&target).expect_err("file should be DestIsFile");
         assert!(matches!(err, AppError::DestIsFile { .. }));
     }
 
     /// Test 9 — Symlink follow via `fs::canonicalize`: a symlink pointing at
     /// a non-empty directory returns `DestNotEmpty`, not the symlink's own
     /// status. Defends F4 — a symlinked skills dir resolves to the target
-    /// before the conflict check runs.
+    /// before the conflict audit runs.
     #[cfg(unix)]
     #[test]
-    fn check_destination_follows_symlink_to_non_empty_dir() {
+    fn audit_destination_follows_symlink_to_non_empty_dir() {
         let tmp = tempfile::tempdir().expect("tempdir creation");
         let real_dir = tmp.path().join("real");
         std::fs::create_dir(&real_dir).expect("mkdir real");
@@ -851,7 +851,7 @@ mod tests {
         let link = tmp.path().join("link");
         std::os::unix::fs::symlink(&real_dir, &link).expect("symlink real -> link");
 
-        let err = check_destination(&link).expect_err("symlinked non-empty dir is DestNotEmpty");
+        let err = audit_destination(&link).expect_err("symlinked non-empty dir is DestNotEmpty");
         assert!(matches!(err, AppError::DestNotEmpty { .. }));
     }
 

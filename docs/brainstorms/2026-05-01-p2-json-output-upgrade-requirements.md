@@ -8,7 +8,7 @@ topic: p2-json-output-upgrade
 ## Summary
 
 Upgrade `p2-json-output` (behavioral) by adding a bad-arg-VALUE probe as a third evidence path inside the existing
-check; tighten `p2-structured-output` (Rust source) from "enum exists" to a tiered Strong / Medium / Weak detection that
+audit; tighten `p2-structured-output` (Rust source) from "enum exists" to a tiered Strong / Medium / Weak detection that
 uses reachability and flow analysis; ship a new Python source sibling (`structured_output.rs` for Python) that mirrors
 the Rust shape via argparse / click detection. Verdicts shift on already-scored tools land deliberately, anchored by a
 fixture matrix; the audience classifier is allowed to re-derive labels naturally.
@@ -17,7 +17,7 @@ fixture matrix; the audience classifier is allowed to re-derive labels naturally
 
 ## Problem Frame
 
-`src/checks/behavioral/json_output.rs` currently emits warn for every JSON-supporting CLI when its safe-suffix probes
+`src/audits/behavioral/json_output.rs` currently emits warn for every JSON-supporting CLI when its safe-suffix probes
 (`--help` / `--version`) cannot validate JSON — the dominant case, because terminal flags short-circuit before
 `--output` is honored in most CLIs. This single warn caps `anc`'s own dogfood score at ~97% (project) / ~89% (binary)
 and caps every JSON-supporting CLI on the leaderboard at warn on this dimension. The badge `score_pct` formula (`pass /
@@ -25,34 +25,34 @@ and caps every JSON-supporting CLI on the leaderboard at warn on this dimension.
 
 Two structural facts shape the remedy:
 
-- A third safe-probe shape already exists in the codebase (`src/checks/behavioral/bad_args.rs`'s bad-arg trigger).
+- A third safe-probe shape already exists in the codebase (`src/audits/behavioral/bad_args.rs`'s bad-arg trigger).
   Combining it with a deliberately- invalid value for a known flag (`<bin> --output __invalid_format_value__`) elicits
   the parser's *declared value enumeration* in stderr — clap, cobra, argparse, and click all echo the form `must be one
   of [text, json, yaml]` on this class of error. The parser rejects the value before any subcommand handler runs, so the
   probe is universally side-effect-safe.
-- A source-layer Rust check (`p2-structured-output`) already exists and covers the same requirement
+- A source-layer Rust audit (`p2-structured-output`) already exists and covers the same requirement
   (`p2-must-output-flag`). Today it returns Pass when an `enum OutputFormat` or `enum Format` is detected — but says
   nothing about whether the enum is wired to a serializer. Source layer can do strictly more than behavioral via
   reachability and flow analysis; today it does less.
 
-Python has no equivalent source-layer check at all (`src/checks/source/python/` covers `no_color`, `bare_except`,
+Python has no equivalent source-layer audit at all (`src/audits/source/python/` covers `no_color`, `bare_except`,
 `sys_exit`).
 
 ---
 
 ## Requirements
 
-**Behavioral check upgrade (`p2-json-output`)**
+**Behavioral audit upgrade (`p2-json-output`)**
 
 - R1. Add a bad-arg-VALUE probe to `validate_json_output()` as a third evidence path, alongside the existing `--help`
   and `--version` safe-suffix probes. The probe injects a deliberately-invalid value for the detected `--output` /
   `--format` flag and parses stderr for the declared value enumeration.
-- R2. The behavioral check's verdict semantics shift in-place (same check ID `p2-json-output`, same `covers()`
+- R2. The behavioral audit's verdict semantics shift in-place (same audit ID `p2-json-output`, same `covers()`
   declaration). When the value-enum echo confirms `json` is a declared accepted value, the verdict becomes Pass at
   `Confidence::Medium` (consistent with `p1-env-hints` v0.1.3 widening precedent — widening detection does NOT raise
   confidence).
 - R3. When the bad-arg-VALUE probe cannot fire (no flag detected, parser rejects with a format the regex doesn't
-  recognize, or the binary errors before parse), the check falls back to the existing safe-suffix probes and emits the
+  recognize, or the binary errors before parse), the audit falls back to the existing safe-suffix probes and emits the
   existing Warn evidence message. No regression on currently-passing tools.
 
 **Rust source tightening (`p2-structured-output`)**
@@ -64,18 +64,18 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
   / Warn when only the enum exists with no serde_json call site.
 - R5. Tools that previously passed at `Confidence::High` purely on enum existence shift to a tier consistent with their
   actual reachability. The shift is anchored by the fixture matrix (R12) and documented in the PR description.
-- R6. The check ID stays `p2-structured-output`; `covers()` stays `&["p2-must-output-flag"]`. No new requirement IDs
+- R6. The audit ID stays `p2-structured-output`; `covers()` stays `&["p2-must-output-flag"]`. No new requirement IDs
   added to `src/principles/registry.rs`.
 
-**Python source sibling (new check)**
+**Python source sibling (new audit)**
 
-- R7. Add a Python source-layer check that mirrors the Rust shape, applicable when `Project::language` is Python.
+- R7. Add a Python source-layer audit that mirrors the Rust shape, applicable when `Project::language` is Python.
   Detects argparse `add_argument(..., choices=[..., 'json', ...])` / click `Choice([..., 'json', ...])` declarations + a
   `json.dumps` / `json.dump` call site reachable from the dispatch on that argument's value.
 - R8. Detection produces the same tiered Strong / Medium / Weak verdict shape as Rust (R4), with the same Confidence
   levels and the same Warn message when only the choice declaration exists without a `json.dumps` call site.
-- R9. The Python check declares `covers() = &["p2-must-output-flag"]` and registers in `src/checks/source/mod.rs` (or
-  wherever the Python check catalog lives). The `dangling_cover_ids` test
+- R9. The Python audit declares `covers() = &["p2-must-output-flag"]` and registers in `src/audits/source/mod.rs` (or
+  wherever the Python audit catalog lives). The `dangling_cover_ids` test
   (`src/principles/matrix.rs::live_catalog_has_no_dangling_cover_ids`) passes after the addition.
 
 **Cross-cutting**
@@ -94,7 +94,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
   enum is wired to `serde_json::to_string_pretty` via the scorecard module).
 - R14. Coverage matrix artifacts (`docs/coverage-matrix.md`, `coverage/matrix.json`) are regenerated via `anc emit
   coverage-matrix` as part of the same PR. The integration test
-  `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
+  `test_generate_coverage_matrix_drift_audit_passes_on_committed_artifacts` passes.
 
 ---
 
@@ -119,7 +119,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
   call site anywhere in the crate, when `p2-structured-output` runs, then the verdict is Warn with evidence naming the
   detection gap.
 - AE6. **Covers R7, R8.** Given a Python project with `parser.add_argument('--output', choices=['text', 'json'])` and a
-  dispatch `if args.output == 'json': print(json.dumps(result))`, when the new Python source check runs, then the
+  dispatch `if args.output == 'json': print(json.dumps(result))`, when the new Python source audit runs, then the
   verdict is Pass at `Confidence::High`.
 
 ---
@@ -152,21 +152,21 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
 - No spec MUST rewriting (ideation E, adversarial-rejected: doctrine says downgrade prose to preference, not level of
   MUST).
 - No Skip-with-evidence verdict change (ideation G). Audience-let-it-shift covers the ground.
-- No change to `audience::SIGNAL_CHECK_IDS`. Classifier re-derives labels naturally.
+- No change to `audience::SIGNAL_AUDIT_IDS`. Classifier re-derives labels naturally.
 - No CommandFactory build-time shim (ideation F6.9). Cross-compilation cost too high.
 - No `jc` external-wrapper fallback (ideation F2.7 / F6.11). Subject-tangential.
 - No coupling with active output-envelope plan (`docs/plans/2026-04-30-001`). Bad-arg probe primitive may be shared at
   implementation time but the two plans don't cross-depend at the requirements level.
-- No third source language (Go, Bun, etc.) at this iteration. Rust + Python are the source-check launch languages per
+- No third source language (Go, Bun, etc.) at this iteration. Rust + Python are the source-audit launch languages per
   `Cargo.toml` feature flags.
 
 ---
 
 ## Key Decisions
 
-- A's verdict lands in-place on the existing `p2-json-output` check (third evidence path), not as a new check ID.
-  Rationale: A detects the same property the existing check claims to detect — flag honors JSON output — just via a
-  different probe shape. `p1-env-hints` v0.1.3 is direct precedent for this widening pattern; SRP-per-check doctrine is
+- A's verdict lands in-place on the existing `p2-json-output` audit (third evidence path), not as a new audit ID.
+  Rationale: A detects the same property the existing audit claims to detect — flag honors JSON output — just via a
+  different probe shape. `p1-env-hints` v0.1.3 is direct precedent for this widening pattern; SRP-per-audit doctrine is
   about properties not probe shapes.
 - Source-layer detection becomes asymmetrically more nuanced than behavioral via reachability and flow analysis. Source
   can attest things behavioral cannot (declaration wired to a serializer, not just declared) — and per `widening
@@ -185,7 +185,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
 ## Dependencies / Assumptions
 
 - The covers()-OR coverage logic in `src/principles/matrix.rs::build` is the shipped design (verified during
-  brainstorm); no registry change required for multiple checks covering one requirement.
+  brainstorm); no registry change required for multiple audits covering one requirement.
 - `BinaryRunner::run(args, env)` already exposes the primitive needed for the bad-arg- VALUE probe. No runner change
   required.
 - ast-grep's Rust language support (via the `tree-sitter-rust` feature flag) and Python language support are already
@@ -206,7 +206,7 @@ Python has no equivalent source-layer check at all (`src/checks/source/python/` 
 
 - `Affects R12` · `Needs research` — Exact list of currently-warn-capped tools to anchor the fixture matrix. Resolve by
   querying the latest leaderboard data and grouping by parser family (clap, cobra, argparse, click, custom).
-- `Affects R4` · `Technical` — Concrete ast-grep patterns for the Strong-tier reachability check in Rust. The
+- `Affects R4` · `Technical` — Concrete ast-grep patterns for the Strong-tier reachability audit in Rust. The
   match-arm-to-call-site traversal is the load-bearing detection step; expect iteration during implementation.
 - `Affects R7` · `Technical` — Concrete ast-grep patterns for argparse `choices=` detection in Python, and click's
   `Choice([...])` shape. argparse exposes `choices` as a list literal; click wraps it in a `Choice` constructor. Both

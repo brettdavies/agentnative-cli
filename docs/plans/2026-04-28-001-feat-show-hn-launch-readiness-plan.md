@@ -70,8 +70,8 @@ Gates **not** owned by this repo: 1, 2, 3, 6, 8, 9, 10, 11, 12. Listed in Cross-
 
 - This plan is the deliverable for this session. **Do not execute the gates** — execution begins in the next session per
   the handoff's Step 6.
-- This plan does not subsume `2026-04-17-001-feat-multi-language-source-checks-plan.md` (Go/Ruby/TypeScript starter
-  checks). That plan stays `active` and ships post-launch — multi-language source coverage is **invisible to Show HN
+- This plan does not subsume `2026-04-17-001-feat-multi-language-source-audits-plan.md` (Go/Ruby/TypeScript starter
+  audits). That plan stays `active` and ships post-launch — multi-language source coverage is **invisible to Show HN
   readers** at launch (the post does not name-drop language coverage as a hook).
 - This plan does not include TODO 016 (lib + bin split for internal test access —
   `.context/compound-engineering/todos/016-pending-p1-lib-bin-split-for-internal-test-access.md`). Rationale in **Open
@@ -83,7 +83,7 @@ Gates **not** owned by this repo: 1, 2, 3, 6, 8, 9, 10, 11, 12. Listed in Cross-
 ### Deferred to Follow-Up Work
 
 - TODO 016 (lib + bin split): post-launch cleanup, unblocks future drift tests. Not Show HN-visible.
-- Multi-language source checks (Go/Ruby/TypeScript): per its own plan, post-launch.
+- Multi-language source audits (Go/Ruby/TypeScript): per its own plan, post-launch.
 - Status-string normalization across `docs/plans/*.md`: post-launch chore, not credibility-load-bearing.
 
 ---
@@ -146,7 +146,7 @@ keeping the v0.2.0 release coherent with the post-rename repo state and the cent
 
 - `docs/plans/2026-04-23-001-feat-spec-vendor-plan.md` — `status: completed`. Shipped via `#29`. Referenced here as the
   upstream of the only feature in the cherry-pick scope.
-- `docs/plans/2026-04-17-001-feat-multi-language-source-checks-plan.md` — `status: active`. Spike done, units unstarted.
+- `docs/plans/2026-04-17-001-feat-multi-language-source-audits-plan.md` — `status: active`. Spike done, units unstarted.
   **Stays active through launch.** Not in scope here.
 - Cross-repo: spec-side
   [`2026-04-27-001-refactor-three-repo-naming-alignment-plan.md`](https://github.com/brettdavies/agentnative-spec/blob/dev/docs/plans/2026-04-27-001-refactor-three-repo-naming-alignment-plan.md)
@@ -155,7 +155,7 @@ keeping the v0.2.0 release coherent with the post-rename repo state and the cent
 ### Release pipeline (existing infrastructure — already in use)
 
 - `.github/workflows/release.yml` — tag-driven (`v[0-9]+.[0-9]+.[0-9]+`). Calls reusable `rust-release.yml` which runs:
-  check-version → build (5 targets) → crates.io publish → draft GitHub release → homebrew tap dispatch.
+  audit-version → build (5 targets) → crates.io publish → draft GitHub release → homebrew tap dispatch.
 - Pre-push hooks at `scripts/hooks/pre-push` mirror CI exactly (fmt, clippy `-Dwarnings`, test, cargo-deny, Windows
   compat). Activated via `git config core.hooksPath scripts/hooks` after clone.
 - `homebrew-tap/Formula/agentnative.rb` is updated automatically by the release pipeline's homebrew dispatch (per
@@ -297,7 +297,7 @@ in spec `v0.3.0` — wave step 1/7 closed).
 **Dependencies:** **HARD BLOCK — spec `v0.3.0` tag must exist on `agentnative-spec` `main`.** ✅ **Cleared 2026-04-29
 09:26 PT** via spec PR #15 (squash `5cea8bf` on `main`); release URL
 `https://github.com/brettdavies/agentnative/releases/tag/v0.3.0`. Verify via `gh release view --repo
-brettdavies/agentnative v0.3.0` (exit 0) before running U1.5 — preserved as the runtime safety check; expected to pass
+brettdavies/agentnative v0.3.0` (exit 0) before running U1.5 — preserved as the runtime safety audit; expected to pass
 on first invocation.
 
 **Files:**
@@ -323,7 +323,7 @@ on first invocation.
    surprising changed.
 8. Commit `chore(spec): re-vendor to v0.3.0 — active-status principles` direct to `dev` (single commit, mixes the
    `scripts/sync-spec.sh` default bump and the regenerated content).
-9. Push to `origin/dev` (pre-push hook runs full CI check).
+9. Push to `origin/dev` (pre-push hook runs full CI audit).
 
 **Patterns to follow:** `scripts/sync-spec.sh` header comment block already documents the resync workflow. The
 spec-vendor plan (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`) is the authoritative reference for how the
@@ -331,7 +331,7 @@ vendoring contract works. Brett's prior re-vendor cadence: re-run after every ne
 
 **Test scenarios:**
 
-- Happy path: `cargo test` exits 0 with all 405+ tests passing post-re-vendor; `cargo run -- check . --output json | jq
+- Happy path: `cargo test` exits 0 with all 405+ tests passing post-re-vendor; `cargo run -- audit . --output json | jq
   .scorecard.spec_version` reports `"0.3.0"`; coverage matrix matches committed artifact.
 - Edge case: `v0.3.0` adds, removes, or renames a requirement ID. Mitigation: `cargo run -- generate coverage-matrix
   --check` flags drift; regenerate via `cargo run -- generate coverage-matrix` and commit the artifact diff in the same
@@ -344,7 +344,7 @@ vendoring contract works. Brett's prior re-vendor cadence: re-run after every ne
 
 - `head -1 src/principles/spec/VERSION` returns `0.3.0`.
 - `grep -h '^status:' src/principles/spec/principles/p[1-7]-*.md | sort -u` returns exactly `status: active`.
-- `cargo test` green; pre-push hook green; `cargo run -- check .` reports `spec_version: 0.3.0`.
+- `cargo test` green; pre-push hook green; `cargo run -- audit .` reports `spec_version: 0.3.0`.
 
 ---
 
@@ -380,7 +380,7 @@ exact branch-naming and PR-body shape used previously.
 **Test scenarios:**
 
 - Pre-push hook passes on the release branch (fmt, clippy, test, cargo-deny, Windows compat).
-- CI on the release-branch PR shows green: build, test, audit. Watch via `gh pr checks <pr> --watch`.
+- CI on the release-branch PR shows green: build, test, audit. Watch via `gh pr audits <pr> --watch`.
 - Test expectation: no new tests — this is release plumbing.
 
 **Verification:**
@@ -463,11 +463,11 @@ cold device).
 2. `which anc` — confirm binary on `PATH`
 3. `anc --version` — confirm version reports `0.2.0` (matches the published tag)
 4. `anc --help` — confirm help renders without errors
-5. `mkdir -p /tmp/anc-cold && cd /tmp/anc-cold && cargo init --bin && anc .` — confirm a real check run works on a fresh
+5. `mkdir -p /tmp/anc-cold && cd /tmp/anc-cold && cargo init --bin && anc .` — confirm a real audit run works on a fresh
    trivial Rust project
 6. `anc . --output json | jq '.scorecard.spec_version'` — confirm `"0.3.0"` (this is the post-launch receipt that the
    tagged release bundles the U1.5 re-vendor + spec-vendor field)
-7. `anc . --output json | jq -r '.scorecard.results[] | select(.id|startswith("p1-")) | .label'` — sanity-check that the
+7. `anc . --output json | jq -r '.scorecard.results[] | select(.id|startswith("p1-")) | .label'` — sanity-audit that the
    principle labels match the spec `v0.3.0` content (no leftover `draft`-era labels).
 
 - If anything fails, **do not post**. Open an incident issue and diagnose.
@@ -499,7 +499,7 @@ cold device).
 > **Close-out (2026-04-27).** Sweep landed in `be767e4`. Actual scope diverged from the planning text in two
 > instructive ways: (1) the three "Likely modify" handoff docs were **moved** to `.context/handoffs/` (local-only,
 > gitignored) rather than status-flipped in place, and the relocation expanded to all 6 handoff-shaped docs across
-> `docs/plans/` and `docs/plans/spikes/`; (2) the multi-language source-checks plan kept `status: active` (CE plan
+> `docs/plans/` and `docs/plans/spikes/`; (2) the multi-language source-audits plan kept `status: active` (CE plan
 > status enum is binary `active`/`completed` — no `deferred` exists) with a post-launch deferral admonition added at
 > the top of the file. Net public surface: `docs/plans/` dropped from 12 plans to 9 + 2 spike artifacts. No
 > status-string normalization, as planned.
@@ -519,13 +519,13 @@ sees plans that match reality.
 - Likely modify (suspect drift from initial scan):
 - `docs/plans/2026-04-20-v011-handoff-1-agentnative-impl.md` — currently `status: in-progress` but v0.1.1 shipped on
   2026-04-21. Almost certainly stale; flip to `status: completed` (or whichever terminal status matches the file's
-  voice) and check the box state inside.
-- `docs/plans/2026-04-20-v012-handoff-4-behavioral-checks.md` — no status frontmatter at all. Verify: did v0.1.2 ship
-  the behavioral-checks expansion? `git log --grep='v0.1.2'` says yes (`f969f8c`, #24). Add `status: completed`
+  voice) and audit the box state inside.
+- `docs/plans/2026-04-20-v012-handoff-4-behavioral-audits.md` — no status frontmatter at all. Verify: did v0.1.2 ship
+  the behavioral-audits expansion? `git log --grep='v0.1.2'` says yes (`f969f8c`, #24). Add `status: completed`
   frontmatter or convert to a clearly-labeled handoff-archive doc.
 - `docs/plans/2026-04-21-v012-h4-eng-agent-handoff.md` — same shape as above, no status. Same treatment.
 - Possibly leave unchanged:
-- `docs/plans/2026-04-17-001-feat-multi-language-source-checks-plan.md` — `status: active`. Spike done, units unstarted.
+- `docs/plans/2026-04-17-001-feat-multi-language-source-audits-plan.md` — `status: active`. Spike done, units unstarted.
   Either keep `active` or downgrade to `deferred` (acknowledging the post-launch ship-window). Either is defensible —
   pick whichever the spec-side sweep ends up using as canonical so the two repos are coherent.
 - Out of scope (not modified): cosmetic status-string normalization (`completed` vs `complete` vs `done` vs `shipped` vs
@@ -577,7 +577,7 @@ shipped, here's the evidence" summary on top of a stale body.
 - U2 (filesystem rename `~/dev/agentnative` → `~/dev/agentnative-cli`): non-commit, complete.
 - U3 (in-place CLI repo drift fix on a then-uncommitted plan file): healed in place; the host file was committed later
   under the spec-vendor plan.
-- Cross-check: `rg 'brettdavies/agentnative-spec' .` from the repo root returns 0 hits. **Confirmed at plan-write
+- Cross-audit: `rg 'brettdavies/agentnative-spec' .` from the repo root returns 0 hits. **Confirmed at plan-write
   time.**
 - This unit is a status-acknowledgement only. No work remains.
 
@@ -599,7 +599,7 @@ shipped, here's the evidence" summary on top of a stale body.
 - **Integration coverage:** U4's cold-device test is the integration coverage that matters. Nothing else proves the
   install path end-to-end.
 - **Unchanged invariants:** Exit codes (0/1/2 — see AGENTS.md), the bare-`anc`-prints-help fork-bomb guard, and the
-  three-layer check architecture are unchanged. The release does not modify `cli.rs`'s `arg_required_else_help`
+  three-layer audit architecture are unchanged. The release does not modify `cli.rs`'s `arg_required_else_help`
   property; U3 of the dogfooding-safety plan (`docs/plans/2026-04-02-001-fix-fork-bomb-dogfood-safety-plan.md`) protects
   this invariant explicitly.
 
@@ -645,7 +645,7 @@ Run in order. The first three steps are HARD GATES — do not advance past a fai
    per `cliff.toml`); commit as `docs(changelog): v0.2.0`.
 4. ☐ Open PR `release/launch` → `main` titled `release: v0.2.0` (mirror `release: v0.1.3 (#28)`). Body uses
    `.github/pull_request_template.md` cascade per global CLAUDE.md.
-5. ☐ CI green on the release PR (`gh pr checks <pr> --watch`).
+5. ☐ CI green on the release PR (`gh pr audits <pr> --watch`).
 6. ☐ Merge release PR to `main`.
 
 **Phase C — tag + pipeline (U3):**
@@ -697,7 +697,7 @@ re-vendor" per the central tracker's pre-launch-night rules. Phase B/C/D failure
   [`agentnative-spec/docs/plans/2026-04-27-001-refactor-three-repo-naming-alignment-plan.md`](https://github.com/brettdavies/agentnative-spec/blob/dev/docs/plans/2026-04-27-001-refactor-three-repo-naming-alignment-plan.md)
 - **Spec-vendor plan (the feature shipping in this release):** `docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`
 - **Release infrastructure (existing pipeline):** `docs/plans/2026-04-02-002-feat-release-infrastructure-plan.md`
-- **Multi-language source checks (deferred post-launch):**
-  `docs/plans/2026-04-17-001-feat-multi-language-source-checks-plan.md`
+- **Multi-language source audits (deferred post-launch):**
+  `docs/plans/2026-04-17-001-feat-multi-language-source-audits-plan.md`
 - **TODO 016 (deferred — internal lib/bin split):**
   `.context/compound-engineering/todos/016-pending-p1-lib-bin-split-for-internal-test-access.md`

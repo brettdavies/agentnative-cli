@@ -1,7 +1,7 @@
 # Releases rationale
 
 Companion to [`RELEASES.md`](./RELEASES.md). RELEASES.md is the runbook (commands, paths, decision tables). This file
-holds the WHY behind those rules: branching model, PR conventions, release pipeline, CHANGELOG generation, prose-check
+holds the WHY behind those rules: branching model, PR conventions, release pipeline, CHANGELOG generation, prose-audit
 pipeline, spec-vendor pipeline, branch-protection pitfalls.
 
 Read this when:
@@ -31,7 +31,7 @@ on both sides with different content. Always branch from `origin/main` and cherr
 ### CalVer + version branch naming
 
 Branch naming `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
-`release/v0.2.0-python-checks`) makes release branches sortable and unambiguous when multiple cuts are in flight. The
+`release/v0.2.0-python-audits`) makes release branches sortable and unambiguous when multiple cuts are in flight. The
 `v<version>` prefix is required: `scripts/generate-changelog.sh` extracts the version from the branch name. Slug is
 kebab-case, short, descriptive.
 
@@ -42,8 +42,8 @@ kebab-case, short, descriptive.
 Every section of a PR body is user-facing substance only: what is changing for the consumer that was not already there —
 the **net diff**, not the commit history or intermediate state that produced it. Workflow mechanics (cherry-pick,
 regenerate, pre-push gate, CI behavior) is documented in RELEASES.md and `.github/`, NOT in the PR body. Triple-diff
-output ("A: 12 files, B: none, C: clean"), leak-check narration ("`guard-main-docs` runs clean", "no guarded paths
-leaked"), patch-id cherry-check counts, pre-push gate results, CI check status, exclusion rationale, and other
+output ("A: 12 files, B: none, C: clean"), leak-audit narration ("`guard-main-docs` runs clean", "no guarded paths
+leaked"), patch-id cherry-audit counts, pre-push gate results, CI audit status, exclusion rationale, and other
 verification artifacts stay local; anomalies get fixed before push, not audit-trailed in the body.
 
 The PR body is read by humans reviewing what shipped. Workflow mechanics and tool-fix provenance are noise from that
@@ -60,7 +60,7 @@ user-observable effect (config defaults, env vars, default behaviors).
 `Related Issues/Stories` has four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). `Files Modified` has
 four sub-headers (`Modified` / `Created` / `Renamed` / `Deleted`). All four must appear in every PR, even when empty:
 write `- None.` or `n/a` rather than deleting the label. Reason: scanners and humans both rely on a known section shape.
-Conditionally-absent sections force every reader to mentally check "did the author skip this or does it not apply?"
+Conditionally-absent sections force every reader to mentally audit "did the author skip this or does it not apply?"
 
 ### Why no AI attribution
 
@@ -71,7 +71,7 @@ they age poorly as tools shift.
 ### Why no hard line wraps
 
 Author each paragraph and each bullet as one logical line, however long. GitHub soft-wraps for display. Hard wraps
-within prose produce visible mid-sentence breaks in some renderers and interfere with the prose-check pipeline: Vale's
+within prose produce visible mid-sentence breaks in some renderers and interfere with the prose-audit pipeline: Vale's
 line-anchored output reports findings against split lines, LanguageTool's input handling can choke on certain
 control-char interactions. The auto-format hook skips `/tmp/` paths so the body keeps its authored shape, don't undo
 that with manual wrapping during composition. Same rule applies to commit messages composed via heredoc.
@@ -84,17 +84,17 @@ squash commit from being double-counted in any future regeneration.
 
 ### Why internal-tooling commits don't appear in `## Changelog`
 
-`chore(cliff): ...`, `chore(prose-check): ...`, and similar internal tooling commits don't appear in the PR body's `##
+`chore(cliff): ...`, `chore(prose-audit): ...`, and similar internal tooling commits don't appear in the PR body's `##
 Changelog`. They are not user-facing. They belong in commit history and in the Files Modified / Key Details sections of
 the PR body, not in the source-of-truth release notes.
 
 ## Triple-diff verification
 
 The release-PR procedure runs three diffs (A: main→release, B: release→dev for non-doc paths, C: dev→main) plus a
-patch-id cherry check. This is belt-and-suspenders because missed cherry-picks have shipped to `main` on this and
+patch-id cherry audit. This is belt-and-suspenders because missed cherry-picks have shipped to `main` on this and
 sibling repos before, and the file-level diff in B alone doesn't catch the patch-id false-negative class.
 
-### Why patch-id cherry-check output is noisy
+### Why patch-id cherry-audit output is noisy
 
 In a squash-merge workflow, `git cherry HEAD origin/dev` produces many `+` lines that need human triage. They do NOT
 auto-block the release. Expected sources of false positives:
@@ -161,7 +161,7 @@ formula updated with bottles, all atomically advertised.
 
 Once `finalize-release.yml` has flipped the GitHub Release to `published`, `scripts/sync-dev-after-release.sh` backports
 the release-bookkeeping files from `main` to `dev` so future builds from `dev` report the released version (and so `anc
-check`'s embedded badge URL points at the right slug, not stale `0.1.0`).
+audit`'s embedded badge URL points at the right slug, not stale `0.1.0`).
 
 The script surgically updates only `Cargo.toml`'s `[package].version` line (other `Cargo.toml` lines on `dev`,
 post-launch deps, rust-version bumps, are preserved), regenerates `Cargo.lock` via `cargo build --release`, and copies
@@ -194,9 +194,9 @@ manual src edits needed.
 
 ## Prose scrubbing scope
 
-Three release-flow artifacts live outside any automated prose check and need a manual scrub before they ship:
+Three release-flow artifacts live outside any automated prose audit and need a manual scrub before they ship:
 
-- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check has reach
+- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose audit has reach
   there.
 - **`CHANGELOG.md`.** A generated artifact built from upstream PR bodies; it inherits whatever prose those PR bodies
   carry, so scrubbing happens at generation time on the release branch.
@@ -217,19 +217,19 @@ regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regener
 
 ## Branch protection
 
-### Status-check context strings
+### Status-audit context strings
 
-The `required_status_checks[].context` strings in `protect-main.json` MUST match exactly what GitHub publishes for each
-check:
+The `required_status_audits[].context` strings in `protect-main.json` MUST match exactly what GitHub publishes for each
+audit:
 
 - **Inline job** (with `name:` field): published as just `<job-name>` (no workflow-name prefix).
 - **Reusable-workflow caller** (`uses: .../foo.yml@ref`): published as `<caller-job-id> / <reusable-job-id-or-name>`.
 
-Mixing these produces a stuck-but-green PR: all actual checks report green, but the ruleset waits forever on a context
+Mixing these produces a stuck-but-green PR: all actual audits report green, but the ruleset waits forever on a context
 that will never appear. Confirm the real contexts after a first CI run with:
 
 ```bash
-gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_runs[].name'
+gh api repos/brettdavies/agentnative-cli/commits/<sha>/audit-runs --jq '.audit_runs[].name'
 ```
 
 ### Why rulesets live in-repo
@@ -240,6 +240,6 @@ Committing the JSON alongside code means ruleset changes land via the same revie
 ## Related docs
 
 - [`RELEASES.md`](./RELEASES.md) (operational runbook: commands, paths, decision tables)
-- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
+- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new audits)
 - [`README.md`](README.md) (install channels, principles, CLI reference)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)

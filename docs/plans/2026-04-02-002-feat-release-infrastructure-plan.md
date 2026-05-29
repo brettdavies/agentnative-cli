@@ -256,8 +256,8 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 - `origin/chore/untrack-stray-todo`
 - `origin/feat/default-subcommand-and-command-flag`
 - `origin/feat/post-review-fixes-003`
-- `origin/feat/python-checks-and-validation` (merged via PR #15)
-- `origin/refactor/check-status-convention` (merged via PR #17)
+- `origin/feat/python-audits-and-validation` (merged via PR #15)
+- `origin/refactor/audit-status-convention` (merged via PR #17)
 - Use `git push origin --delete <branch>` per branch, or enable GitHub's "automatically delete head branches" repo
   setting to keep this closed automatically.
 
@@ -385,7 +385,7 @@ All 6 units complete. v0.1.0 released successfully through the full pipeline:
 - Release branch cherry-picked 13 commits from dev, excluding guarded docs/plans/ paths
 - Cargo.toml already at 0.1.0, completions already fresh -- no bump or regen needed
 - CHANGELOG.md generated via generate-changelog.sh with PR body expansion
-- PR #18 merged to main, all 9 CI checks passed
+- PR #18 merged to main, all 9 CI audits passed
 - Alpha v0.1.0-alpha.1 published manually to establish crate on crates.io
 - Trusted Publishing configured, then annotated tag pushed
 - release.yml: 5-target build, TP publish, non-draft release, Homebrew dispatch all succeeded

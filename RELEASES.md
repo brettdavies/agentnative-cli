@@ -45,8 +45,8 @@ Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` v
 - **No explainer prose anywhere in the body.** User-facing substance only.
 - **Summary describes the net diff only** — what merged `main` looks like vs the base branch. Not commit history,
   intermediate state, or cherry-pick mechanics.
-- **Zero verification artifacts in the body.** No triple-diff stats, leak-check output ("`guard-main-docs` runs clean"),
-  patch-id cherry-check counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
+- **Zero verification artifacts in the body.** No triple-diff stats, leak-audit output ("`guard-main-docs` runs clean"),
+  patch-id cherry-audit counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
   push, not audit-trailed.
 - **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`): 1-5 bullets each, delete
   empty subsections, each bullet starts with a verb.
@@ -67,7 +67,7 @@ Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`, `docs/r
 isn't `release/*`.
 
 **Branch naming**: `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
-`release/v0.2.0-python-checks`). The `v<version>` prefix is required: `scripts/generate-changelog.sh` extracts the
+`release/v0.2.0-python-audits`). The `v<version>` prefix is required: `scripts/generate-changelog.sh` extracts the
 version from the branch name.
 
 ```bash
@@ -91,7 +91,7 @@ git diff origin/main..HEAD --name-only \
   | grep -E '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)' \
   && echo "LEAKED — reset and redo" || echo "(clean)"
 
-# Patch-id cherry check (noisy in squash-merge workflow; triage per-line).
+# Patch-id cherry audit (noisy in squash-merge workflow; triage per-line).
 git cherry HEAD origin/dev | grep '^+' || echo "(none)"
 
 # 5. Bump version in Cargo.toml and commit.
@@ -142,8 +142,8 @@ Always use annotated tags (`-a -m`). The tag push triggers `.github/workflows/re
 
 | Step            | What                                                                                                                                                                                                                                                                                            |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
-| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
+| `audit-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
+| `audit`         | `cargo deny audit` (license + advisory + ban).                                                                                                                                                                                                                                                  |
 | `build`         | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
 | `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                |
 | `release`       | Create a **non-draft** GitHub Release with `make_latest: false`. Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                     |
@@ -185,7 +185,7 @@ Subsequent releases use the OIDC flow built into `release.yml`: no static token 
 
 ## Prose scrubbing
 
-Three release-flow artifacts live outside any automated prose check and need a manual scrub before they ship:
+Three release-flow artifacts live outside any automated prose audit and need a manual scrub before they ship:
 
 - PR bodies (`gh pr create` / `gh pr edit` send body text directly to GitHub).
 - `CHANGELOG.md` (a generated artifact built from upstream PR bodies).
@@ -204,11 +204,11 @@ gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edi
 # 2. Vale (against the spec's rule packs).
 vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
 
-# 3. LanguageTool grammar check via lt_check (~/dotfiles/config/shell/languagetool.sh).
+# 3. LanguageTool grammar audit via lt_audit (~/dotfiles/config/shell/languagetool.sh).
 #    Skips cleanly if LT is unreachable. Inspect: `lt_rules`, `lt_info`. See
 #    ~/dev/agentnative-spec/CONTRIBUTING.md § Voice enforcement for the
 #    install-vs-required nuance.
-lt_check /tmp/body.md
+lt_audit /tmp/body.md
 
 # 4. unslop (em-dash density and AI-unique structural patterns).
 ~/.claude/skills/unslop/scripts/score.py /tmp/body.md
@@ -230,9 +230,9 @@ drift the next regeneration overwrites.
 
 Two rulesets are committed under `.github/rulesets/` and applied to the repo via the GitHub API:
 
-- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks (`ci /
-  Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`, `guard-docs
-  / check-forbidden-docs`, `guard-provenance / check-provenance`, `guard-release / check-release-branch-name`),
+- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status audits (`ci /
+  Fmt, clippy, test`, `ci / Package audit`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`, `guard-docs
+  / audit-forbidden-docs`, `guard-provenance / audit-provenance`, `guard-release / audit-release-branch-name`),
   creation/deletion blocked, non-fast-forward blocked).
 - `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked). PR-only norm is convention +
   `guard-release-branch` on the main side.
@@ -247,8 +247,8 @@ gh api -X POST repos/brettdavies/agentnative-cli/rulesets --input .github/rulese
 gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/rulesets/protect-main.json
 ```
 
-→ Status-check context strings (inline vs reusable):
-[`RELEASES-RATIONALE.md` § Status-check context strings](./RELEASES-RATIONALE.md#status-check-context-strings).
+→ Status-audit context strings (inline vs reusable):
+[`RELEASES-RATIONALE.md` § Status-audit context strings](./RELEASES-RATIONALE.md#status-audit-context-strings).
 
 ## Required secrets
 
@@ -264,5 +264,5 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 - [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection
   pitfalls)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)
-- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
+- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new audits)
 - [`README.md`](README.md) (install channels, principles, CLI reference)

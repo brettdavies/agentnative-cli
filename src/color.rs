@@ -21,7 +21,7 @@ use crate::cli::ColorChoice;
 
 /// Decide whether to emit ANSI styling for this run.
 ///
-/// `Always` and `Never` short-circuit. `Auto` checks `NO_COLOR` first
+/// `Always` and `Never` short-circuit. `Auto` audits `NO_COLOR` first
 /// (per <https://no-color.org/>: any non-empty value disables color), then
 /// asks the OS whether stdout is a terminal.
 pub fn should_color(choice: ColorChoice) -> bool {

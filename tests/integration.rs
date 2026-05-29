@@ -58,15 +58,15 @@ fn test_emit_coverage_matrix_writes_artifacts() {
 
     let json_content = std::fs::read_to_string(&json).expect("matrix.json written");
     let parsed: serde_json::Value = serde_json::from_str(&json_content).expect("valid JSON");
-    assert_eq!(parsed["schema_version"], "1.0");
+    assert_eq!(parsed["schema_version"], "2.0");
     assert!(parsed["rows"].as_array().expect("rows array").len() >= 40);
 }
 
 #[test]
-fn test_emit_coverage_matrix_drift_check_passes_on_committed_artifacts() {
+fn test_emit_coverage_matrix_drift_audit_passes_on_committed_artifacts() {
     // Running --check against the committed docs/coverage-matrix.md +
     // coverage/matrix.json must pass. If this fails, the registry or a
-    // check's covers() drifted without the artifacts being regenerated.
+    // audit's covers() drifted without the artifacts being regenerated.
     cmd()
         .args(["emit", "coverage-matrix", "--check"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
@@ -100,7 +100,7 @@ fn test_audit_self() {
 
     assert
         .code(predicate::in_iter([0, 1, 2]))
-        .stdout(predicate::str::contains("checks:"));
+        .stdout(predicate::str::contains("audits:"));
 }
 
 #[test]
@@ -249,16 +249,16 @@ fn test_binary_only_fixture() {
     let output = assert.get_output().stdout.clone();
     let stdout = String::from_utf8(output).expect("stdout should be valid UTF-8");
 
-    // Should run behavioral checks (the shell script is an executable)
+    // Should run behavioral audits (the shell script is an executable)
     assert!(
-        stdout.contains("checks:"),
-        "output should contain a checks summary line"
+        stdout.contains("audits:"),
+        "output should contain a audits summary line"
     );
 
-    // Should NOT contain source-layer checks since there is no project directory
+    // Should NOT contain source-layer audits since there is no project directory
     assert!(
         !stdout.contains("source"),
-        "binary-only fixture should not run source checks; got:\n{stdout}"
+        "binary-only fixture should not run source audits; got:\n{stdout}"
     );
 }
 
@@ -277,7 +277,7 @@ fn test_source_only_fixture() {
         .as_array()
         .expect("results should be an array");
 
-    // Should have source and project checks but no behavioral checks
+    // Should have source and project audits but no behavioral audits
     let has_source = results
         .iter()
         .any(|r| r["layer"].as_str() == Some("source"));
@@ -288,14 +288,14 @@ fn test_source_only_fixture() {
         .iter()
         .any(|r| r["layer"].as_str() == Some("behavioral"));
 
-    assert!(has_source, "source-only fixture should have source checks");
+    assert!(has_source, "source-only fixture should have source audits");
     assert!(
         has_project,
-        "source-only fixture should have project checks"
+        "source-only fixture should have project audits"
     );
     assert!(
         !has_behavioral,
-        "source-only fixture should NOT have behavioral checks"
+        "source-only fixture should NOT have behavioral audits"
     );
 }
 
@@ -353,10 +353,10 @@ fn test_perfect_fixture() {
 
 #[test]
 fn test_bare_invocation_prints_help() {
-    // Bare invocation (no subcommand) must print help and exit 0, not run `check .`.
+    // Bare invocation (no subcommand) must print help and exit 0, not run `audit .`.
     // This is enforced by clap's arg_required_else_help and is critical for safe
-    // dogfooding — without it, NonInteractiveCheck's bare probe triggers a full
-    // recursive check suite.
+    // dogfooding — without it, NonInteractiveAudit's bare probe triggers a full
+    // recursive audit suite.
     cmd()
         .assert()
         .code(2)
@@ -369,7 +369,7 @@ fn test_bare_invocation_prints_help() {
 // The injection must NOT fire for bare invocation, --help, or --version.
 
 #[test]
-fn test_default_subcommand_dot_matches_explicit_check() {
+fn test_default_subcommand_dot_matches_explicit_audit() {
     // `anc .` and `anc audit .` must produce the same JSON scorecard.
     let implicit = cmd()
         .args([".", "--output", "json"])
@@ -466,17 +466,17 @@ fn test_explicit_subcommand_still_works() {
         .args(["audit", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
-        .stdout(predicate::str::contains("checks:"));
+        .stdout(predicate::str::contains("audits:"));
 }
 
 // ── --command flag tests ──────────────────────────────────────────
 //
 // `anc --command <name>` resolves a binary from PATH and runs
-// behavioral-only checks against it.
+// behavioral-only audits against it.
 
 #[test]
 fn test_command_flag_resolves_path_and_runs_behavioral_only() {
-    // `anc audit --command ls` — runs behavioral checks against /bin/ls.
+    // `anc audit --command ls` — runs behavioral audits against /bin/ls.
     // ls is on every POSIX system, so this is safe to rely on in CI.
     #[cfg(unix)]
     {
@@ -546,14 +546,14 @@ fn test_text_and_json_agree_on_row_count_and_exit_code() {
 #[test]
 fn test_command_flag_via_default_subcommand() {
     // `anc --command ls` — default-subcommand injection yields
-    // `anc audit --command ls` which runs behavioral checks.
+    // `anc audit --command ls` which runs behavioral audits.
     #[cfg(unix)]
     {
         cmd()
             .args(["--command", "ls"])
             .assert()
             .code(predicate::in_iter([0, 1, 2]))
-            .stdout(predicate::str::contains("checks:"));
+            .stdout(predicate::str::contains("audits:"));
     }
 }
 
@@ -659,7 +659,7 @@ fn test_subcommand_flag_alone_injects_audit() {
             .args(["--command", "ls"])
             .assert()
             .code(predicate::in_iter([0, 1, 2]))
-            .stdout(predicate::str::contains("checks:"));
+            .stdout(predicate::str::contains("audits:"));
     }
 }
 
@@ -687,13 +687,13 @@ fn test_command_flag_value_matching_subcommand_name() {
 
 #[test]
 fn test_double_dash_separator_with_path() {
-    // `anc -- .` should run check against `.` (POSIX convention treats
+    // `anc -- .` should run audit against `.` (POSIX convention treats
     // everything after `--` as positional).
     cmd()
         .args(["--", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
-        .stdout(predicate::str::contains("checks:"));
+        .stdout(predicate::str::contains("audits:"));
 }
 
 #[test]
@@ -723,13 +723,13 @@ fn test_broken_python_fixture() {
         .as_array()
         .expect("results should be an array");
 
-    // Should have source-layer checks
+    // Should have source-layer audits
     let has_source = results
         .iter()
         .any(|r| r["layer"].as_str() == Some("source"));
     assert!(
         has_source,
-        "broken-python fixture should have source checks"
+        "broken-python fixture should have source audits"
     );
 
     // Should have at least one failure
@@ -742,20 +742,20 @@ fn test_broken_python_fixture() {
         "broken-python fixture should have at least one failure, got 0"
     );
 
-    // Specifically check bare-except fires
+    // Specifically audit bare-except fires
     let has_bare_except = results.iter().any(|r| {
         r["id"].as_str() == Some("code-bare-except") && r["status"].as_str() == Some("fail")
     });
     assert!(
         has_bare_except,
-        "broken-python fixture should trigger code-bare-except check"
+        "broken-python fixture should trigger code-bare-except audit"
     );
 }
 
-/// Convention enforcement: check_x() functions must return CheckStatus, not CheckResult.
+/// Convention enforcement: audit_x() functions must return AuditStatus, not AuditResult.
 ///
-/// The Check trait's run() method is the sole constructor of CheckResult. If check_x()
-/// returns CheckResult, the ID/group/layer fields are duplicated as string literals
+/// The Audit trait's run() method is the sole constructor of AuditResult. If audit_x()
+/// returns AuditResult, the ID/group/layer fields are duplicated as string literals
 // ── --audit-profile tests ─────────────────────────────────────────
 
 #[test]
@@ -787,11 +787,11 @@ fn test_audit_profile_echoed_in_json_output() {
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
     assert_eq!(parsed["audit_profile"], "human-tui");
-    assert_eq!(parsed["schema_version"], "0.6");
+    assert_eq!(parsed["schema_version"], "0.7");
 }
 
 #[test]
-fn test_audit_profile_suppresses_listed_checks() {
+fn test_audit_profile_suppresses_listed_audits() {
     let assert = cmd()
         .args([
             "audit",
@@ -806,7 +806,7 @@ fn test_audit_profile_suppresses_listed_checks() {
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
 
-    // Suppressed checks appear in results[] with Skip + structured evidence
+    // Suppressed audits appear in results[] with Skip + structured evidence
     // so readers see what was excluded.
     let results = parsed["results"].as_array().expect("results is array");
     let suppressed: Vec<&serde_json::Value> = results
@@ -820,11 +820,11 @@ fn test_audit_profile_suppresses_listed_checks() {
 
     assert!(
         !suppressed.is_empty(),
-        "expected at least one check suppressed by human-tui profile, got results: {results:?}",
+        "expected at least one audit suppressed by human-tui profile, got results: {results:?}",
     );
     // Every suppressed result must be status=skip, not a fresh verdict.
     for r in &suppressed {
-        assert_eq!(r["status"], "skip", "suppressed check must be status=skip");
+        assert_eq!(r["status"], "skip", "suppressed audit must be status=skip");
     }
 }
 
@@ -842,7 +842,7 @@ fn test_audit_profile_absent_emits_null() {
 #[test]
 fn test_audit_profile_shrinks_audience_denominator() {
     // When --audit-profile human-tui suppresses p1-non-interactive (one
-    // of the 4 audience signal checks), the classifier can't form a 4-way
+    // of the 4 audience signal audits), the classifier can't form a 4-way
     // verdict. Expect audience: null per R2.
     let assert = cmd()
         .args([
@@ -859,7 +859,7 @@ fn test_audit_profile_shrinks_audience_denominator() {
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
     assert!(
         parsed["audience"].is_null(),
-        "audience should be null when a signal check is suppressed (got {:?})",
+        "audience should be null when a signal audit is suppressed (got {:?})",
         parsed["audience"],
     );
 }
@@ -867,7 +867,7 @@ fn test_audit_profile_shrinks_audience_denominator() {
 #[test]
 fn test_audience_non_null_on_self_dogfood() {
     // End-to-end guard for the main.rs → scorecard audience handoff.
-    // A unit test in `src/scorecard` feeds synthetic `CheckResult`s into
+    // A unit test in `src/scorecard` feeds synthetic `AuditResult`s into
     // `classify()`, but only an integration run exercises
     // `run_audit()` → `classify()` → `build_scorecard()` on real data.
     // A regression that passes `None` at the main.rs call site would pass
@@ -901,7 +901,7 @@ fn test_audience_non_null_on_self_dogfood() {
 
 #[test]
 fn test_principle_filter_forces_audience_null() {
-    // `--principle 2` drops every non-P2 check from `all_checks` before
+    // `--principle 2` drops every non-P2 audit from `all_audits` before
     // the run loop. Since the 4 audience signals span P1, P2, P6, P7,
     // three of them disappear — audience must be null with
     // `audience_reason: "insufficient_signal"`.
@@ -914,14 +914,14 @@ fn test_principle_filter_forces_audience_null() {
 
     assert!(
         parsed["audience"].is_null(),
-        "filtering to a single principle drops 3 of 4 signal checks — audience must be null",
+        "filtering to a single principle drops 3 of 4 signal audits — audience must be null",
     );
     assert_eq!(parsed["audience_reason"], "insufficient_signal");
 }
 
 #[test]
 fn test_scorecard_json_has_stable_top_level_keys() {
-    // Snapshot-style contract check: the site renderer and any agent
+    // Snapshot-style contract audit: the site renderer and any agent
     // consumer pin against this exact key set. A regression that
     // accidentally renames or drops a top-level key fails here rather
     // than silently breaking downstream consumption. New keys (always
@@ -929,7 +929,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     // plan revision because they break consumers built against earlier
     // 0.x revisions.
     //
-    // Enforcing "no unexpected keys" too (bidirectional check) means an
+    // Enforcing "no unexpected keys" too (bidirectional audit) means an
     // accidental extra key also fails — which is the correct behavior
     // for a versioned schema contract.
     let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
@@ -977,7 +977,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     );
 
     // Fixed enumerations also pin against the renderer contract.
-    assert_eq!(obj["schema_version"], "0.6");
+    assert_eq!(obj["schema_version"], "0.7");
 }
 
 #[test]
@@ -985,8 +985,8 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
     // Dogfood edge case from the plan: `diagnostic-only` suppresses
     // p5-dry-run on the self-target. Schema 0.6 emits one result per
     // requirement-row, so the suppressed probe surfaces under its row id
-    // `p5-must-dry-run` (covered by the `p5-dry-run` check) with
-    // `check_id: "p5-dry-run"` for provenance.
+    // `p5-must-dry-run` (covered by the `p5-dry-run` audit) with
+    // `audit_id: "p5-dry-run"` for provenance.
     let assert = cmd()
         .args([
             "audit",
@@ -1005,7 +1005,7 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
     let results = parsed["results"].as_array().expect("results is array");
     let p5 = results
         .iter()
-        .find(|r| r["id"] == "p5-must-dry-run" && r["check_id"] == "p5-dry-run")
+        .find(|r| r["id"] == "p5-must-dry-run" && r["audit_id"] == "p5-dry-run")
         .expect("p5-must-dry-run row (from p5-dry-run probe) should appear in results[]");
     assert_eq!(
         p5["status"], "skip",
@@ -1024,26 +1024,26 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
 /// instead of derived from self.id()/self.group()/self.layer(). This test walks the
 /// source to catch regressions. Pure Rust — no external tooling required.
 #[test]
-fn convention_check_x_returns_check_status_not_check_result() {
+fn convention_audit_x_returns_audit_status_not_audit_result() {
     use std::ffi::OsStr;
     use std::fs;
     use std::path::Path;
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/checks/source");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/audits/source");
     assert!(
         root.is_dir(),
-        "source checks dir not found: {}",
+        "source audits dir not found: {}",
         root.display()
     );
 
     let mut violations: Vec<String> = Vec::new();
     visit_dir(&root, &mut |path, contents| {
-        // Match `fn check_<anything>(...) -> CheckResult` allowing any visibility
+        // Match `fn audit_<anything>(...) -> AuditResult` allowing any visibility
         // modifier and either single-line or multi-line signatures.
-        // We search for `fn check_` then look ahead for `-> CheckResult` before the
+        // We search for `fn audit_` then look ahead for `-> AuditResult` before the
         // next `{` (end of signature).
         for (i, line) in contents.lines().enumerate() {
-            if let Some(idx) = line.find("fn check_") {
+            if let Some(idx) = line.find("fn audit_") {
                 // Collect signature text until we hit `{` (end of signature)
                 let mut sig = String::new();
                 let rest = &line[idx..];
@@ -1059,7 +1059,7 @@ fn convention_check_x_returns_check_status_not_check_result() {
                     }
                 }
                 let sig_end = sig.find('{').map(|e| &sig[..e]).unwrap_or(&sig);
-                if sig_end.contains("-> CheckResult") {
+                if sig_end.contains("-> AuditResult") {
                     violations.push(format!("{}:{}: {}", path.display(), i + 1, line.trim()));
                 }
             }
@@ -1068,8 +1068,8 @@ fn convention_check_x_returns_check_status_not_check_result() {
 
     assert!(
         violations.is_empty(),
-        "Found {} check_x() function(s) returning CheckResult instead of CheckStatus. \
-         See CLAUDE.md 'Source Check Convention' — check_x() must return CheckStatus \
+        "Found {} audit_x() function(s) returning AuditResult instead of AuditStatus. \
+         See CLAUDE.md 'Source Audit Convention' — audit_x() must return AuditStatus \
          so run() can use self.id()/self.group()/self.layer() as the sole source of truth.\n\n\
          Violations:\n{}",
         violations.len(),
@@ -1090,40 +1090,40 @@ fn convention_check_x_returns_check_status_not_check_result() {
     }
 }
 
-/// CLAUDE.md "Source Check Convention" says: **no `Check` impl constructs
-/// `CheckResult` outside its own `run()`.** Every check file's
-/// `CheckResult { ... }` struct literal must sit inside a `fn run(`
+/// CLAUDE.md "Source Audit Convention" says: **no `Audit` impl constructs
+/// `AuditResult` outside its own `run()`.** Every audit file's
+/// `AuditResult { ... }` struct literal must sit inside a `fn run(`
 /// function body — not in helpers, module-level code, or anything else.
 ///
 /// The runtime layer (`src/main.rs`) is exempt — it legitimately
-/// constructs `CheckResult` in the error and audit_profile-suppression
-/// branches using `check.id()` / `check.label()` / `check.group()` /
-/// `check.layer()` from the trait, not string literals. Test doubles
+/// constructs `AuditResult` in the error and audit_profile-suppression
+/// branches using `audit.id()` / `audit.label()` / `audit.group()` /
+/// `audit.layer()` from the trait, not string literals. Test doubles
 /// inside `#[cfg(test)]` are also exempt.
 ///
-/// This test walks every `src/checks/**/*.rs` file, strips the
-/// `#[cfg(test)]` section, and flags any `CheckResult {` literal whose
+/// This test walks every `src/audits/**/*.rs` file, strips the
+/// `#[cfg(test)]` section, and flags any `AuditResult {` literal whose
 /// nearest preceding `fn <name>(` declaration is not named `run`. Paired
-/// with `convention_check_x_returns_check_status_not_check_result`
-/// above (which catches helpers returning CheckResult), this enforces
+/// with `convention_audit_x_returns_audit_status_not_audit_result`
+/// above (which catches helpers returning AuditResult), this enforces
 /// the full convention.
 #[test]
-fn convention_check_result_constructed_only_in_run_body() {
+fn convention_audit_result_constructed_only_in_run_body() {
     use std::ffi::OsStr;
     use std::fs;
     use std::path::Path;
 
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/checks");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/audits");
     assert!(
         root.is_dir(),
-        "checks root dir not found: {}",
+        "audits root dir not found: {}",
         root.display()
     );
 
     let mut violations: Vec<String> = Vec::new();
     visit_dir_all(&root, &mut |path, contents| {
         // Strip everything at and below the first `#[cfg(test)]` — test
-        // modules construct CheckResult via FakeCheck / make_result and
+        // modules construct AuditResult via FakeAudit / make_result and
         // are legitimately exempt from the convention.
         let scan = match contents.find("#[cfg(test)]") {
             Some(cut) => &contents[..cut],
@@ -1133,12 +1133,12 @@ fn convention_check_result_constructed_only_in_run_body() {
         let lines: Vec<&str> = scan.lines().collect();
         for (i, line) in lines.iter().enumerate() {
             // Match struct-literal construction, not the return-type
-            // position in a function signature (`-> CheckResult {`).
+            // position in a function signature (`-> AuditResult {`).
             let trimmed = line.trim_start();
             if trimmed.starts_with("//") {
                 continue;
             }
-            let idx = match line.find("CheckResult {") {
+            let idx = match line.find("AuditResult {") {
                 Some(k) => k,
                 None => continue,
             };
@@ -1167,7 +1167,7 @@ fn convention_check_result_constructed_only_in_run_body() {
 
             if enclosing_fn != "run" {
                 violations.push(format!(
-                    "{}:{}: CheckResult constructed inside `fn {enclosing_fn}`, not `fn run`",
+                    "{}:{}: AuditResult constructed inside `fn {enclosing_fn}`, not `fn run`",
                     path.display(),
                     i + 1,
                 ));
@@ -1177,10 +1177,10 @@ fn convention_check_result_constructed_only_in_run_body() {
 
     assert!(
         violations.is_empty(),
-        "Found {} CheckResult construction(s) outside `fn run` in src/checks/. \
-         CLAUDE.md 'Source Check Convention' requires run() to be the sole \
-         CheckResult constructor per Check impl. Move the construction into \
-         run() (helpers should return CheckStatus).\n\n\
+        "Found {} AuditResult construction(s) outside `fn run` in src/audits/. \
+         CLAUDE.md 'Source Audit Convention' requires run() to be the sole \
+         AuditResult constructor per Audit impl. Move the construction into \
+         run() (helpers should return AuditStatus).\n\n\
          Violations:\n{}",
         violations.len(),
         violations.join("\n")

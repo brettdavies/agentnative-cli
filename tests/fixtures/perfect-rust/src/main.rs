@@ -35,9 +35,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run a check
-    Check {
-        /// Path to check
+    /// Run a audit
+    Audit {
+        /// Path to audit
         path: String,
     },
     /// Generate shell completions
@@ -63,8 +63,8 @@ fn main() {
 fn run() -> Result<i32, AppError> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Check { path } => {
-            let result = check_path(&path)?;
+        Commands::Audit { path } => {
+            let result = audit_path(&path)?;
             match cli.output {
                 OutputFormat::Json => {
                     let json = serde_json::to_string_pretty(&result)
@@ -87,7 +87,7 @@ fn run() -> Result<i32, AppError> {
     }
 }
 
-fn check_path(path: &str) -> Result<serde_json::Value, AppError> {
+fn audit_path(path: &str) -> Result<serde_json::Value, AppError> {
     if !std::path::Path::new(path).exists() {
         return Err(AppError::InvalidInput(format!("path not found: {path}")));
     }

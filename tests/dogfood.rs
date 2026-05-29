@@ -5,7 +5,7 @@
 //!
 //! Each test spawns the real binary in project mode against this repo
 //! (CARGO_MANIFEST_DIR), parses the JSON envelope, and asserts no FAIL
-//! status on any `p2-*` (test 25) or `p5-*` (test 24) check. Warnings
+//! status on any `p2-*` (test 25) or `p5-*` (test 24) audit. Warnings
 //! are tolerated; only `fail` breaks the guard.
 
 use assert_cmd::Command;
@@ -15,7 +15,7 @@ fn cmd() -> Command {
     Command::cargo_bin("anc").expect("anc binary should exist")
 }
 
-fn check_repo_json() -> Value {
+fn audit_repo_json() -> Value {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let out = cmd()
         .args(["audit", manifest, "--output", "json"])
@@ -50,11 +50,11 @@ fn collect_failed(parsed: &Value, prefix: &str) -> Vec<String> {
 /// the principle the spec ships against.
 #[test]
 fn dogfood_no_p5_fail_after_skill_subcommand() {
-    let parsed = check_repo_json();
+    let parsed = audit_repo_json();
     let failed = collect_failed(&parsed, "p5-");
     assert!(
         failed.is_empty(),
-        "p5-* checks must not fail on this repo. Failures:\n  {}",
+        "p5-* audits must not fail on this repo. Failures:\n  {}",
         failed.join("\n  "),
     );
 }
@@ -71,10 +71,10 @@ fn dogfood_no_p5_fail_after_skill_subcommand() {
 /// `docs/plans/2026-04-30-002-feat-scorecard-json-schema-plan.md`
 /// (derived schema via `schemars` build-dep, embedded via `include_str!`,
 /// exposed via `anc emit schema`). Remove this allowlist
-/// when that plan's verb lands and satisfies the check.
+/// when that plan's verb lands and satisfies the audit.
 ///
 /// **Temporary allowlist** for `p2-json-errors`: the wire-orphan batch
-/// that added this check probes the bad-invocation surface for the spec's
+/// that added this audit probes the bad-invocation surface for the spec's
 /// `error`/`kind`/`message` JSON envelope under `--output json`. anc
 /// currently passes argv to clap's default `parse()`, which emits
 /// plain-text errors regardless of the active output mode. Honoring
@@ -86,14 +86,14 @@ fn dogfood_no_p5_fail_after_skill_subcommand() {
 fn dogfood_no_p2_fail_after_skill_subcommand() {
     const PENDING_FAILS: &[&str] = &["p2-schema-print", "p2-json-errors"];
 
-    let parsed = check_repo_json();
+    let parsed = audit_repo_json();
     let failed: Vec<String> = collect_failed(&parsed, "p2-")
         .into_iter()
         .filter(|f| !PENDING_FAILS.iter().any(|id| f.contains(id)))
         .collect();
     assert!(
         failed.is_empty(),
-        "p2-* checks must not fail on this repo (excluding documented pending: {PENDING_FAILS:?}). \
+        "p2-* audits must not fail on this repo (excluding documented pending: {PENDING_FAILS:?}). \
          Failures:\n  {}",
         failed.join("\n  "),
     );

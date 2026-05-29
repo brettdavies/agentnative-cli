@@ -40,9 +40,9 @@ pub enum Applicability {
     Universal,
     /// Conditional applicability. Either a prose `condition` (legacy `{ if:
     /// "<prose>" }` shape, machine-opaque) or a machine-readable `antecedent`
-    /// (new `{ kind: conditional, antecedent: { check_id: ... } }` shape), or
+    /// (new `{ kind: conditional, antecedent: { audit_id: ... } }` shape), or
     /// both. The new shape is preferred; the legacy shape remains accepted for
-    /// rows where the verifier catalog has not yet grown a prerequisite check.
+    /// rows where the verifier catalog has not yet grown a prerequisite audit.
     Conditional {
         condition: Option<String>,
         antecedent: Option<Antecedent>,
@@ -51,7 +51,7 @@ pub enum Applicability {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Antecedent {
-    pub check_id: String,
+    pub audit_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +171,7 @@ impl fmt::Display for ParseError {
                 requirement_id,
             } => write!(
                 f,
-                "{file}: requirement `{requirement_id}` declares `kind: conditional` but provides neither `condition:` nor `antecedent.check_id` — at least one must be set"
+                "{file}: requirement `{requirement_id}` declares `kind: conditional` but provides neither `condition:` nor `antecedent.audit_id` — at least one must be set"
             ),
         }
     }
@@ -316,8 +316,8 @@ pub fn emit_rust(reqs: &[ParsedRequirement], spec_version: &str) -> String {
                 };
                 let ante_lit = match antecedent {
                     Some(a) => format!(
-                        "Some(Antecedent {{ check_id: \"{}\" }})",
-                        escape_rust_str(&a.check_id)
+                        "Some(Antecedent {{ audit_id: \"{}\" }})",
+                        escape_rust_str(&a.audit_id)
                     ),
                     None => "None".to_string(),
                 };
@@ -445,7 +445,7 @@ fn parse_applicability(
             return Err(ParseError::UnknownApplicability {
                 file: file.to_string(),
                 requirement_id: req_id.to_string(),
-                hint: "`if:` and `kind:` cannot both be set; choose one (legacy `{ if: \"<prose>\" }` or new `{ kind: conditional, antecedent: { check_id: ... } }`)".into(),
+                hint: "`if:` and `kind:` cannot both be set; choose one (legacy `{ if: \"<prose>\" }` or new `{ kind: conditional, antecedent: { audit_id: ... } }`)".into(),
             });
         }
 
@@ -473,7 +473,7 @@ fn parse_applicability(
             });
         }
 
-        // New `{ kind: conditional, antecedent: { check_id: ... }, condition? }`
+        // New `{ kind: conditional, antecedent: { audit_id: ... }, condition? }`
         // shape. The `kind:` key gates the new branch so legacy maps with
         // unrelated keys still surface as UnknownApplicability.
         if let Some(kind_val) = map.get(&kind_key) {
@@ -502,11 +502,11 @@ fn parse_applicability(
                         .ok_or_else(|| ParseError::UnknownApplicability {
                             file: file.to_string(),
                             requirement_id: req_id.to_string(),
-                            hint: "`antecedent:` must be a mapping like `{ check_id: <id> }`"
+                            hint: "`antecedent:` must be a mapping like `{ audit_id: <id> }`"
                                 .into(),
                         })?;
-                let check_id_key = serde_yaml::Value::String("check_id".into());
-                // v1 schema is strict: only `check_id` is permitted inside
+                let audit_id_key = serde_yaml::Value::String("audit_id".into());
+                // v1 schema is strict: only `audit_id` is permitted inside
                 // `antecedent`. Compound antecedents (`op: any_of | all_of`)
                 // and any other key are explicitly deferred to a future
                 // schema bump per plan Sub-decision 2b. Silently ignoring
@@ -514,30 +514,30 @@ fn parse_applicability(
                 // and behave subtly wrong.
                 for (k, _) in ante_map {
                     let k_str = k.as_str().unwrap_or("<non-string>");
-                    if k_str != "check_id" {
+                    if k_str != "audit_id" {
                         return Err(ParseError::UnknownApplicability {
                             file: file.to_string(),
                             requirement_id: req_id.to_string(),
                             hint: format!(
-                                "`antecedent.{k_str}` is not part of the v1 schema (only `check_id` is permitted; compound antecedents deferred to v2 per plan Sub-decision 2b)"
+                                "`antecedent.{k_str}` is not part of the v1 schema (only `audit_id` is permitted; compound antecedents deferred to v2 per plan Sub-decision 2b)"
                             ),
                         });
                     }
                 }
-                let check_id = ante_map.get(&check_id_key).and_then(|v| v.as_str()).ok_or_else(|| ParseError::UnknownApplicability {
+                let audit_id = ante_map.get(&audit_id_key).and_then(|v| v.as_str()).ok_or_else(|| ParseError::UnknownApplicability {
                     file: file.to_string(),
                     requirement_id: req_id.to_string(),
-                    hint: "`antecedent.check_id` must be a non-empty string (v1 schema supports a single antecedent only)".into(),
+                    hint: "`antecedent.audit_id` must be a non-empty string (v1 schema supports a single antecedent only)".into(),
                 })?;
-                if check_id.trim().is_empty() {
+                if audit_id.trim().is_empty() {
                     return Err(ParseError::UnknownApplicability {
                         file: file.to_string(),
                         requirement_id: req_id.to_string(),
-                        hint: "`antecedent.check_id` must be a non-empty string (whitespace-only is rejected)".into(),
+                        hint: "`antecedent.audit_id` must be a non-empty string (whitespace-only is rejected)".into(),
                     });
                 }
                 Some(Antecedent {
-                    check_id: check_id.to_string(),
+                    audit_id: audit_id.to_string(),
                 })
             } else {
                 None
@@ -574,14 +574,14 @@ fn parse_applicability(
         return Err(ParseError::UnknownApplicability {
             file: file.to_string(),
             requirement_id: req_id.to_string(),
-            hint: "expected `{ if: \"<prose>\" }` or `{ kind: conditional, antecedent: { check_id: <id> } }`".into(),
+            hint: "expected `{ if: \"<prose>\" }` or `{ kind: conditional, antecedent: { audit_id: <id> } }`".into(),
         });
     }
 
     Err(ParseError::UnknownApplicability {
         file: file.to_string(),
         requirement_id: req_id.to_string(),
-        hint: "must be `universal`, `{ if: \"<prose>\" }`, or `{ kind: conditional, antecedent: { check_id: <id> } }`".into(),
+        hint: "must be `universal`, `{ if: \"<prose>\" }`, or `{ kind: conditional, antecedent: { audit_id: <id> } }`".into(),
     })
 }
 

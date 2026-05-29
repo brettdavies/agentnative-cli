@@ -14,7 +14,7 @@ The linter channel sits in a three-tier waterfall. Each tier owns a different co
    failed, why, what to do next), 80-column help-text discipline, neutral diagnostics, stdout/stderr separation. The
    narrative companion to the executable Vale rule pack at [`styles/brand/`](styles/brand/) plus the CLI-local
    vocabulary at [`styles/config/vocabularies/cli/`](styles/config/vocabularies/cli/).
-3. **Implementation — `src/`.** The Rust source for `anc`. Behavioral checks executed against compiled binaries; the
+3. **Implementation — `src/`.** The Rust source for `anc`. Behavioral audits executed against compiled binaries; the
    principle registry codegen'd from `src/principles/spec/` (vendored from `agentnative-spec` via
    [`scripts/sync-spec.sh`](scripts/sync-spec.sh)).
 
@@ -80,7 +80,7 @@ These extend the universal bans in [`BRAND.md`](BRAND.md):
 - **Mixing structured output and diagnostic prose on the same stream.** `anc audit --output json` writes JSON to stdout;
   diagnostics go to stderr. Mixing them strands consumers who pipe stdout into `jq` and get a parse error from a banner.
   The prose shape (verb + artifact) is the same on either stream; the stream choice is the load-bearing part.
-- **Color codes in the prose itself.** Vale and prose-check operate on content, not formatting. ANSI escapes belong in
+- **Color codes in the prose itself.** Vale and prose-audit operate on content, not formatting. ANSI escapes belong in
   the rendering layer, never in the source `&str` literal. The literal `"\x1b[31merror\x1b[0m"` is content rot; a
   separate `colorize(level, "error")` is the right shape.
 - **Marketing voice in CLI surface.** "blazing-fast", "elegant", "powerful", "delightful" — banned. Describe what `anc`
@@ -107,7 +107,7 @@ cross-channel content lives in [`BRAND.md`](BRAND.md).
 
 Coverage today: markdown surfaces only (`README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, this file). The
 high-leverage surface — clap `about=` / `help=` / `long_about=` literals, `eprintln!` / `anyhow::bail!` messages, panic
-strings, check `label()` returns — is not yet linted. The deferred U6 unit of
+strings, audit `label()` returns — is not yet linted. The deferred U6 unit of
 [`docs/plans/2026-05-07-002-feat-prose-tooling-import-plan.md`](docs/plans/2026-05-07-002-feat-prose-tooling-import-plan.md)
 introduces ast-grep-based extraction of those literals into a transient markdown file and runs them through this same
 rule set. When U6 ships, the linter channel's voice rules apply to everything `anc` says, not just everything it

@@ -305,11 +305,11 @@ fn emit_rust_produces_well_formed_source() {
             id: "p1-must-baz".into(),
             principle: 1,
             level: Level::Must,
-            summary: "Conditional with check_id antecedent.".into(),
+            summary: "Conditional with audit_id antecedent.".into(),
             applicability: Applicability::Conditional {
                 condition: None,
                 antecedent: Some(Antecedent {
-                    check_id: "p1-prereq".into(),
+                    audit_id: "p1-prereq".into(),
                 }),
             },
         },
@@ -322,7 +322,7 @@ fn emit_rust_produces_well_formed_source() {
     assert!(src.contains("Level::Must"));
     assert!(src.contains("Applicability::Universal"));
     assert!(src.contains(r#"condition: Some("auth flow")"#));
-    assert!(src.contains(r#"check_id: "p1-prereq""#));
+    assert!(src.contains(r#"audit_id: "p1-prereq""#));
     assert!(
         src.contains(r#"Quotes \"inside\" and \\ backslash."#),
         "summary must escape quotes and backslashes for Rust string literal"
@@ -334,7 +334,7 @@ fn emit_rust_produces_well_formed_source() {
 fn parses_new_conditional_antecedent_shape() {
     let src = r#"---
 id: p2
-title: Conditional check_id shape
+title: Conditional audit_id shape
 last-revised: 2026-01-01
 status: draft
 requirements:
@@ -343,7 +343,7 @@ requirements:
     applicability:
       kind: conditional
       antecedent:
-        check_id: p2-json-output
+        audit_id: p2-json-output
     summary: If --output json is supported, the schema must be discoverable.
 ---
 "#;
@@ -354,7 +354,7 @@ requirements:
         Applicability::Conditional {
             condition: None,
             antecedent: Some(Antecedent {
-                check_id: "p2-json-output".to_string(),
+                audit_id: "p2-json-output".to_string(),
             }),
         }
     );
@@ -373,7 +373,7 @@ requirements:
     applicability:
       kind: optional
       antecedent:
-        check_id: p2-something
+        audit_id: p2-something
     summary: Bad kind.
 ---
 "#;
@@ -407,7 +407,7 @@ requirements:
 }
 
 #[test]
-fn rejects_antecedent_missing_check_id() {
+fn rejects_antecedent_missing_audit_id() {
     let src = r#"---
 id: p2
 title: Bad antecedent
@@ -420,14 +420,14 @@ requirements:
       kind: conditional
       antecedent:
         kind: bundle-present
-    summary: antecedent without check_id.
+    summary: antecedent without audit_id.
 ---
 "#;
     let err = parse_principle_file("p2-bad.md", src).unwrap_err();
     let msg = format!("{err}");
     assert!(
-        msg.contains("check_id"),
-        "should hint check_id is required: {msg}"
+        msg.contains("audit_id"),
+        "should hint audit_id is required: {msg}"
     );
 }
 
@@ -506,7 +506,7 @@ fn rt_assert_error_mentions(content: &str, expected_substrings: &[&str]) {
 }
 
 #[test]
-fn rt_rejects_whitespace_only_check_id() {
+fn rt_rejects_whitespace_only_audit_id() {
     // Subtle footgun — `is_empty` catches "" but not "   ". The parser must
     // trim before deciding "non-empty".
     let yaml = format!(
@@ -516,10 +516,10 @@ fn rt_rejects_whitespace_only_check_id() {
          \x20\x20\x20\x20applicability:\n\
          \x20\x20\x20\x20\x20\x20kind: conditional\n\
          \x20\x20\x20\x20\x20\x20antecedent:\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20check_id: '   '\n\
-         \x20\x20\x20\x20summary: bad check_id\n"
+         \x20\x20\x20\x20\x20\x20\x20\x20audit_id: '   '\n\
+         \x20\x20\x20\x20summary: bad audit_id\n"
     );
-    rt_assert_error_mentions(&yaml, &["p2-must-x", "check_id", "non-empty"]);
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "audit_id", "non-empty"]);
 }
 
 #[test]
@@ -549,8 +549,8 @@ fn rt_rejects_antecedent_as_list() {
          \x20\x20\x20\x20applicability:\n\
          \x20\x20\x20\x20\x20\x20kind: conditional\n\
          \x20\x20\x20\x20\x20\x20antecedent:\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20- check_id: p2-json-output\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20- check_id: p2-yaml-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20- audit_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20- audit_id: p2-yaml-output\n\
          \x20\x20\x20\x20summary: antecedent-as-list\n"
     );
     rt_assert_error_mentions(&yaml, &["p2-must-x", "antecedent", "mapping"]);
@@ -568,7 +568,7 @@ fn rt_rejects_kind_with_wrong_case() {
          \x20\x20\x20\x20applicability:\n\
          \x20\x20\x20\x20\x20\x20kind: Conditional\n\
          \x20\x20\x20\x20\x20\x20antecedent:\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20check_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20audit_id: p2-json-output\n\
          \x20\x20\x20\x20summary: capitalized kind\n"
     );
     rt_assert_error_mentions(&yaml, &["p2-must-x", "Conditional"]);
@@ -588,7 +588,7 @@ fn rt_rejects_mixed_legacy_if_and_new_kind() {
          \x20\x20\x20\x20\x20\x20if: CLI emits structured output\n\
          \x20\x20\x20\x20\x20\x20kind: conditional\n\
          \x20\x20\x20\x20\x20\x20antecedent:\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20check_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20audit_id: p2-json-output\n\
          \x20\x20\x20\x20summary: mixed legacy+new shape\n"
     );
     rt_assert_error_mentions(&yaml, &["p2-must-x", "if:", "kind:"]);
@@ -596,7 +596,7 @@ fn rt_rejects_mixed_legacy_if_and_new_kind() {
 
 #[test]
 fn rt_rejects_antecedent_with_compound_op_key() {
-    // The v1 schema is strict about `antecedent` contents: only `check_id`
+    // The v1 schema is strict about `antecedent` contents: only `audit_id`
     // is permitted. A v2-style `op: any_of` accidentally added to a v1 row
     // must error so v2 syntax doesn't ship under v1 semantics.
     let yaml = format!(
@@ -606,7 +606,7 @@ fn rt_rejects_antecedent_with_compound_op_key() {
          \x20\x20\x20\x20applicability:\n\
          \x20\x20\x20\x20\x20\x20kind: conditional\n\
          \x20\x20\x20\x20\x20\x20antecedent:\n\
-         \x20\x20\x20\x20\x20\x20\x20\x20check_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20audit_id: p2-json-output\n\
          \x20\x20\x20\x20\x20\x20\x20\x20op: any_of\n\
          \x20\x20\x20\x20summary: smuggled v2 syntax\n"
     );
@@ -631,7 +631,7 @@ fn rt_rejects_antecedent_null() {
 
 #[test]
 fn rt_rejects_empty_antecedent_mapping() {
-    // `antecedent: {}` is a mapping with no `check_id`. Surface the missing
+    // `antecedent: {}` is a mapping with no `audit_id`. Surface the missing
     // field by name.
     let yaml = format!(
         "{RT_FIXTURE_HEAD}\
@@ -642,33 +642,33 @@ fn rt_rejects_empty_antecedent_mapping() {
          \x20\x20\x20\x20\x20\x20antecedent: {{}}\n\
          \x20\x20\x20\x20summary: empty antecedent\n"
     );
-    rt_assert_error_mentions(&yaml, &["p2-must-x", "check_id"]);
+    rt_assert_error_mentions(&yaml, &["p2-must-x", "audit_id"]);
 }
 
 #[test]
-fn rt_emit_rust_escapes_quotes_in_antecedent_check_id() {
+fn rt_emit_rust_escapes_quotes_in_antecedent_audit_id() {
     // Defense-in-depth: the parser already rejects whitespace-only
-    // check_ids, but emit_rust should still escape any string content
-    // that ends up in the generated source. A check_id containing a
+    // audit_ids, but emit_rust should still escape any string content
+    // that ends up in the generated source. A audit_id containing a
     // quote (impossible today but cheap to guard against) must not break
     // the generated Rust literal.
     let reqs = vec![ParsedRequirement {
         id: "p2-must-quoted".into(),
         principle: 2,
         level: Level::Must,
-        summary: "row with a hostile check_id".into(),
+        summary: "row with a hostile audit_id".into(),
         applicability: Applicability::Conditional {
             condition: None,
             antecedent: Some(Antecedent {
-                check_id: r#"p2-"injected""#.into(),
+                audit_id: r#"p2-"injected""#.into(),
             }),
         },
     }];
     let src = emit_rust(&reqs, "0.0.0");
-    // The check_id literal must escape the embedded quotes; the generated
+    // The audit_id literal must escape the embedded quotes; the generated
     // line should parse as valid Rust.
     assert!(
-        src.contains(r#"check_id: "p2-\"injected\"""#),
-        "generated source must escape quotes in check_id, got:\n{src}",
+        src.contains(r#"audit_id: "p2-\"injected\"""#),
+        "generated source must escape quotes in audit_id, got:\n{src}",
     );
 }

@@ -2,12 +2,12 @@
 //!
 //! The runner spawns `<binary> --help` exactly once per target. The captured
 //! text is parsed on demand into three views — flags, env hints, subcommands.
-//! Behavioral checks that need to inspect the help surface share the same
+//! Behavioral audits that need to inspect the help surface share the same
 //! `HelpOutput` for a given target so none of them re-spawn the binary.
 //!
 //! Parsers are English-only by convention: we match on clap's output shape
 //! (`Commands:`, `[env: FOO]`, leading-whitespace flag lines). Localized help
-//! is a named exception in `docs/coverage-matrix.md` — checks that consume
+//! is a named exception in `docs/coverage-matrix.md` — audits that consume
 //! these parsers should Skip, not Warn, when the raw text lacks an English
 //! help surface.
 //!
@@ -18,7 +18,7 @@
 //!   within a ±4-line window of a flag definition, plus a dedicated
 //!   `ENVIRONMENT` section scan. Catches tools like `ripgrep`, `gh`, and
 //!   `aider` that document env bindings in free prose rather than clap
-//!   annotations. Three mitigations keep false positives in check:
+//!   annotations. Three mitigations keep false positives in audit:
 //!   uppercase-identifier shape (length ≥ 3), same-paragraph window, and
 //!   a shell-env blacklist (`PATH`, `HOME`, etc.).
 //!
@@ -80,7 +80,7 @@ pub enum EnvHintSource {
 }
 
 /// A bound between a flag surface and an environment variable — surfaces
-/// clap's `[env: FOO]` hints as first-class data so checks don't re-scan.
+/// clap's `[env: FOO]` hints as first-class data so audits don't re-scan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnvHint {
     /// Environment variable name, e.g., `RIPGREP_CONFIG_PATH`.
@@ -97,8 +97,8 @@ pub struct HelpOutput {
     raw: String,
     flags: OnceLock<Vec<Flag>>,
     env_hints: OnceLock<Vec<EnvHint>>,
-    /// Reserved for P3/P6 subcommand-structure checks. Parsed lazily like
-    /// the other views; no current behavioral check consumes it, so the
+    /// Reserved for P3/P6 subcommand-structure audits. Parsed lazily like
+    /// the other views; no current behavioral audit consumes it, so the
     /// compiler would flag it as dead code without this allow.
     #[allow(dead_code)]
     subcommands: OnceLock<Vec<String>>,
@@ -119,7 +119,7 @@ impl HelpOutput {
 
     /// Spawn `<binary> --help` via the shared `BinaryRunner` and capture its
     /// combined stdout+stderr. Returns an empty `HelpOutput` rather than an
-    /// error on timeout/crash — a misbehaving `--help` is a signal the check
+    /// error on timeout/crash — a misbehaving `--help` is a signal the audit
     /// consumers can use, not a hard runner failure.
     pub fn probe(runner: &BinaryRunner) -> Result<Self> {
         let help = runner.run(&["--help"], &[]);
@@ -158,7 +158,7 @@ impl HelpOutput {
     }
 
     /// Subcommand names parsed out of the help surface. Lazy + cached.
-    /// Reserved for P3/P6 checks; no behavioral check consumes this yet.
+    /// Reserved for P3/P6 audits; no behavioral audit consumes this yet.
     #[allow(dead_code)]
     pub fn subcommands(&self) -> &[String] {
         self.subcommands
@@ -379,7 +379,7 @@ Options:
 Usage: anc <COMMAND>
 
 Commands:
-  check        Run checks against a CLI project or binary
+  audit        Run audits against a CLI project or binary
   completions  Generate shell completions
   generate     Regenerate build artifacts
   help         Print this message or the help of the given subcommand
@@ -492,7 +492,7 @@ Usage: xurl-rs URL
     #[test]
     fn parse_subcommands_reads_commands_block() {
         let subs = parse_subcommands(CLAP_HELP);
-        assert!(subs.iter().any(|s| s == "check"));
+        assert!(subs.iter().any(|s| s == "audit"));
         assert!(subs.iter().any(|s| s == "generate"));
         assert!(subs.iter().any(|s| s == "completions"));
     }
@@ -510,7 +510,7 @@ Usage: xurl-rs URL
         let flags = parse_flags(NON_ENGLISH_HELP);
         // The Chinese options block still uses `-H, --header` syntax so we may
         // detect the flags themselves — the non-English text is in the
-        // descriptions, not the flag names. The check is that parsing doesn't
+        // descriptions, not the flag names. The audit is that parsing doesn't
         // panic and returns sane structured data.
         for f in &flags {
             assert!(f.short.is_some() || f.long.is_some());

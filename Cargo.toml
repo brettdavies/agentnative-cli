@@ -2,7 +2,7 @@
 name = "agentnative"
 version = "0.4.0"
 edition = "2024"
-description = "The agent-native CLI linter — check whether your CLI follows agent-readiness principles"
+description = "The agent-native CLI linter — audit whether your CLI follows agent-readiness principles"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/brettdavies/agentnative-cli"
 homepage = "https://anc.dev"
@@ -80,7 +80,7 @@ insta = "1"
 predicates = "3"
 # Used by tests/build_parser.rs to exercise the build_support/parser.rs module.
 serde_yaml = "=0.9.34"
-# Tempdir / tempfile fixtures for skill_install destination-check tests.
+# Tempdir / tempfile fixtures for skill_install destination-audit tests.
 # Already a transitive dev-dep via insta — declared here so it's a direct
 # dependency we control.
 tempfile = "3"

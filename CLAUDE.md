@@ -128,7 +128,7 @@ is missing from the registry — typos surface at test time, not at render time.
 `anc emit coverage-matrix` emits two committed artifacts:
 
 - `docs/coverage-matrix.md` — human-readable table, grouped by principle.
-- `coverage/matrix.json` — machine-readable (`schema_version: "2.0"`), consumed by the `agentnative-site` `/coverage`
+- `coverage/matrix.json` — machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
   page.
 
 Both files are tracked in git, not `.gitignore`d. `anc emit coverage-matrix --check` exits non-zero when the committed

@@ -88,7 +88,7 @@ pub struct LevelSummary {
     pub covered: usize,
 }
 
-const SCHEMA_VERSION: &str = "2.0";
+const SCHEMA_VERSION: &str = "1.0";
 const GENERATED_BY: &str = "anc emit coverage-matrix";
 
 /// Build the matrix from the requirement registry + a slice of audits.

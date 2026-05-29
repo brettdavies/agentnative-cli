@@ -649,7 +649,7 @@ fn rt_rejects_empty_antecedent_mapping() {
 fn rt_emit_rust_escapes_quotes_in_antecedent_audit_id() {
     // Defense-in-depth: the parser already rejects whitespace-only
     // audit_ids, but emit_rust should still escape any string content
-    // that ends up in the generated source. A audit_id containing a
+    // that ends up in the generated source. An audit_id containing a
     // quote (impossible today but cheap to guard against) must not break
     // the generated Rust literal.
     let reqs = vec![ParsedRequirement {

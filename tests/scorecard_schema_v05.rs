@@ -223,7 +223,7 @@ fn schema_v05_run_started_at_parses_as_rfc3339() {
     let started_at = parsed["run"]["started_at"]
         .as_str()
         .expect("started_at is a string");
-    // RFC 3339 shape audit without pulling the `time` parsing feature into
+    // RFC 3339 shape check without pulling the `time` parsing feature into
     // dev-deps just for one test: `YYYY-MM-DDTHH:MM:SS` plus optional
     // fractional seconds, ending in `Z` or a timezone offset.
     assert!(

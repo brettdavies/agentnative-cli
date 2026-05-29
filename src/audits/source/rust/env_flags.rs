@@ -94,7 +94,7 @@ impl Audit for EnvFlagsAudit {
 pub(crate) fn audit_env_flags(source: &str, file: &str) -> AuditStatus {
     let missing = find_agentic_flags_missing_env(source, file);
 
-    // If we found no agentic arg attributes at all, audit if there are *any* arg attributes.
+    // If we found no agentic arg attributes at all, check if there are *any* arg attributes.
     if missing.found_agentic == 0 {
         let has_any_arg = has_arg_attributes(source);
         if !has_any_arg {

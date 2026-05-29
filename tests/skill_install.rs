@@ -243,7 +243,7 @@ fn live_install_on_populated_dest_does_not_spawn() {
     assert_eq!(v["destination_status"], "non-empty-dir");
     assert!(
         v["exit_code"].is_null(),
-        "destination audit failed — never spawned git, exit_code must be null",
+        "destination check failed — never spawned git, exit_code must be null",
     );
     assert!(
         v["would_succeed"].is_null(),

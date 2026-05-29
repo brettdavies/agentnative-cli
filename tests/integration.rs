@@ -252,7 +252,7 @@ fn test_binary_only_fixture() {
     // Should run behavioral audits (the shell script is an executable)
     assert!(
         stdout.contains("audits:"),
-        "output should contain a audits summary line"
+        "output should contain an audits summary line"
     );
 
     // Should NOT contain source-layer audits since there is no project directory
@@ -921,7 +921,7 @@ fn test_principle_filter_forces_audience_null() {
 
 #[test]
 fn test_scorecard_json_has_stable_top_level_keys() {
-    // Snapshot-style contract audit: the site renderer and any agent
+    // Snapshot-style contract check: the site renderer and any agent
     // consumer pin against this exact key set. A regression that
     // accidentally renames or drops a top-level key fails here rather
     // than silently breaking downstream consumption. New keys (always
@@ -929,7 +929,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     // plan revision because they break consumers built against earlier
     // 0.x revisions.
     //
-    // Enforcing "no unexpected keys" too (bidirectional audit) means an
+    // Enforcing "no unexpected keys" too (bidirectional check) means an
     // accidental extra key also fails — which is the correct behavior
     // for a versioned schema contract.
     let assert = cmd().args(["audit", ".", "--output", "json"]).assert();

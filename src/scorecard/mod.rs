@@ -864,8 +864,8 @@ fn build_coverage_summary(
     let covers_by_id: HashMap<&str, &'static [&'static str]> =
         ran_audits.iter().map(|c| (c.id(), c.covers())).collect();
 
-    // Verified = requirements covered by a audit that actually executed.
-    // A audit suppressed by --audit-profile did NOT verify its
+    // Verified = requirements covered by an audit that actually executed.
+    // An audit suppressed by --audit-profile did NOT verify its
     // requirement — it emitted Skip with the `SUPPRESSION_EVIDENCE_PREFIX`
     // sentinel. Counting it toward `verified` would overstate coverage on
     // any --audit-profile run (a misleading public metric for the site
@@ -916,7 +916,7 @@ fn build_coverage_summary(
 /// - `2` — at least one Fail or Error.
 ///
 /// **`--audit-profile` affects the exit code by masking Fails to Skips.**
-/// A audit that would otherwise Fail but is suppressed by the applied
+/// An audit that would otherwise Fail but is suppressed by the applied
 /// profile contributes nothing to `has_fail_or_error` and cannot lift the
 /// code above `0`/`1`. This is intentional per plan R4: the caller is
 /// declaring "this category of audit doesn't apply to this tool", so
@@ -1339,7 +1339,7 @@ mod tests {
     #[test]
     fn exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_audit() {
         // Intentional behavior per plan R4: when --audit-profile suppresses
-        // a audit that would otherwise Fail, the audit emits Skip with the
+        // an audit that would otherwise Fail, the audit emits Skip with the
         // suppression prefix and the overall exit code reflects the
         // masked state. This is a trust-boundary choice — the caller
         // declared the requirement doesn't apply, so failing on it would
@@ -2010,7 +2010,7 @@ mod tests {
     #[test]
     fn propagation_leaves_universal_rows_untouched() {
         // A row with applicability: universal must not be touched by
-        // propagation even if a audit with the same id exists in `raw`.
+        // propagation even if an audit with the same id exists in `raw`.
         let raw = vec![make_raw("p1-non-interactive", AuditStatus::Pass)];
         let mut rows = vec![(
             make_raw("p1-must-no-interactive", AuditStatus::Pass),

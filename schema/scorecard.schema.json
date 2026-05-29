@@ -27,7 +27,7 @@
     },
     "results": {
       "type": "array",
-      "description": "Per-requirement-row outcomes (schema 0.7+). One entry per requirement row covered by a audit that ran in this invocation; a single probe whose `Audit::covers()` lists multiple rows produces multiple entries (each entry's `audit_id` carries the probe's id for provenance).",
+      "description": "Per-requirement-row outcomes (schema 0.7+). One entry per requirement row covered by an audit that ran in this invocation; a single probe whose `Audit::covers()` lists multiple rows produces multiple entries (each entry's `audit_id` carries the probe's id for provenance).",
       "items": { "$ref": "#/$defs/AuditResultView" }
     },
     "summary": { "$ref": "#/$defs/Summary" },

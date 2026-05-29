@@ -230,7 +230,7 @@ drift the next regeneration overwrites.
 
 Two rulesets are committed under `.github/rulesets/` and applied to the repo via the GitHub API:
 
-- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status audits (`ci /
+- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks (`ci /
   Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`, `guard-docs
   / check-forbidden-docs`, `guard-provenance / check-provenance`, `guard-release / check-release-branch-name`),
   creation/deletion blocked, non-fast-forward blocked).

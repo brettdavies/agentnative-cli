@@ -271,7 +271,7 @@ agentnative. Three rules guard the probe:
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project.rs::discover_rust_binaries`): when both
    `target/release/<bin>` and `target/debug/<bin>` exist, the function returns the one with the more recent mtime.
    Avoids the stale-release-binary trap in dev workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios
-   where only one profile is built fall through cleanly to the existence audit. Ties go to debug (cargo's dev-flow
+   where only one profile is built fall through cleanly to the existence check. Ties go to debug (cargo's dev-flow
    default). Test coverage: `test_discover_picks_newer_artifact_by_mtime` + `test_discover_picks_release_when_newer`.
    Backstory: `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`.
 
@@ -291,11 +291,11 @@ manifest is the toolchain's "lockfile"). Bumping the toolchain is a reviewed PR 
 runtime `rustup update` anywhere. Policy: bump only after a new stable has aged ≥7 days (supply-chain quarantine).
 
 **Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
-Windows compatibility audit. Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config
+Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config
 core.hooksPath scripts/hooks`
 
 **Windows compatibility:** Only `libc` belongs in `[target.'cfg(unix)'.dependencies]`. All SIGPIPE/signal code must be
-inside `#[cfg(unix)]` blocks. The pre-push hook audits this statically.
+inside `#[cfg(unix)]` blocks. The pre-push hook checks this statically.
 
-**After pushing:** Audit CI status in the background with `gh run watch --exit-status` (use `run_in_background: true` so
+**After pushing:** Check CI status in the background with `gh run watch --exit-status` (use `run_in_background: true` so
 it doesn't block). Report failures when notified.

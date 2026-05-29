@@ -20,7 +20,7 @@ use crate::principles::registry::{
 };
 use crate::types::AuditLayer;
 
-/// A audit that covers a given requirement.
+/// An audit that covers a given requirement.
 #[derive(Debug, Clone, Serialize)]
 pub struct Verifier {
     pub audit_id: String,
@@ -469,7 +469,7 @@ mod tests {
     /// human has to opt into "we know this isn't auto-audited, here's why."
     const UNVERIFIED_MUSTS: &[(&str, &str)] = &[
         // Pre-existing coverage gaps surfaced by R5 against vendored spec
-        // v0.2.0. Each MUST is real and important; the absence of a audit
+        // v0.2.0. Each MUST is real and important; the absence of an audit
         // reflects scope-of-work, not a stance that the requirement should
         // not be enforced. Track follow-up work in the project roadmap.
         (
@@ -554,7 +554,7 @@ mod tests {
             gaps.is_empty(),
             "MUSTs without a covering audit and not on UNVERIFIED_MUSTS: \
              {gaps:?}\noptions:\n\
-             1. wire a audit via `Audit::covers()` to evidence the MUST, OR\n\
+             1. wire an audit via `Audit::covers()` to evidence the MUST, OR\n\
              2. add an entry to UNVERIFIED_MUSTS with a rationale citing the \
                 decision record (see docs/decisions/)."
         );

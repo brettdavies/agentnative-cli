@@ -658,7 +658,7 @@ that uses the already-vendored `ast-grep-core` directly.
 - `scripts/SYNCS.md` registers the new sync script and documents the byte-equivalence contract loudly so future
   contributors don't hand-edit vendored files.
 - `AGENTS.md` gets a one-line pointer to `.impeccable.md` so agents loading AGENTS.md discover voice rules.
-- New CI workflows show up in the repo's status audits page; document their purpose in a CONTRIBUTING.md note (or
+- New CI workflows show up in the repo's status checks page; document their purpose in a CONTRIBUTING.md note (or
   `.github/workflows/README.md` if one exists).
 - Post-merge, run `scripts/sync-prose-tooling.sh --check` locally on `dev` to confirm stability.
 - The follow-up sequence after this PR ships:

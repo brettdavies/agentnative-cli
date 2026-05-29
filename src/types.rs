@@ -31,7 +31,7 @@ pub enum AuditStatus {
     Error(String),
 }
 
-/// How confident a audit is in its verdict. Direct probes (flag parsers,
+/// How confident an audit is in its verdict. Direct probes (flag parsers,
 /// exit-code observation) report `High`; heuristic text inference reports
 /// `Medium`; soft cross-signal inference reports `Low`. Consumers use this
 /// to weight conflicting signals and surface caveats on the scorecard.

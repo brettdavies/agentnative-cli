@@ -323,7 +323,7 @@ on first invocation.
    surprising changed.
 8. Commit `chore(spec): re-vendor to v0.3.0 — active-status principles` direct to `dev` (single commit, mixes the
    `scripts/sync-spec.sh` default bump and the regenerated content).
-9. Push to `origin/dev` (pre-push hook runs full CI audit).
+9. Push to `origin/dev` (pre-push hook runs full CI check).
 
 **Patterns to follow:** `scripts/sync-spec.sh` header comment block already documents the resync workflow. The
 spec-vendor plan (`docs/plans/2026-04-23-001-feat-spec-vendor-plan.md`) is the authoritative reference for how the
@@ -380,7 +380,7 @@ exact branch-naming and PR-body shape used previously.
 **Test scenarios:**
 
 - Pre-push hook passes on the release branch (fmt, clippy, test, cargo-deny, Windows compat).
-- CI on the release-branch PR shows green: build, test, audit. Watch via `gh pr audits <pr> --watch`.
+- CI on the release-branch PR shows green: build, test, audit. Watch via `gh pr checks <pr> --watch`.
 - Test expectation: no new tests — this is release plumbing.
 
 **Verification:**
@@ -519,8 +519,8 @@ sees plans that match reality.
 - Likely modify (suspect drift from initial scan):
 - `docs/plans/2026-04-20-v011-handoff-1-agentnative-impl.md` — currently `status: in-progress` but v0.1.1 shipped on
   2026-04-21. Almost certainly stale; flip to `status: completed` (or whichever terminal status matches the file's
-  voice) and audit the box state inside.
-- `docs/plans/2026-04-20-v012-handoff-4-behavioral-audits.md` — no status frontmatter at all. Verify: did v0.1.2 ship
+  voice) and check the box state inside.
+- `docs/plans/2026-04-20-v012-handoff-4-behavioral-checks.md` — no status frontmatter at all. Verify: did v0.1.2 ship
   the behavioral-audits expansion? `git log --grep='v0.1.2'` says yes (`f969f8c`, #24). Add `status: completed`
   frontmatter or convert to a clearly-labeled handoff-archive doc.
 - `docs/plans/2026-04-21-v012-h4-eng-agent-handoff.md` — same shape as above, no status. Same treatment.
@@ -645,7 +645,7 @@ Run in order. The first three steps are HARD GATES — do not advance past a fai
    per `cliff.toml`); commit as `docs(changelog): v0.2.0`.
 4. ☐ Open PR `release/launch` → `main` titled `release: v0.2.0` (mirror `release: v0.1.3 (#28)`). Body uses
    `.github/pull_request_template.md` cascade per global CLAUDE.md.
-5. ☐ CI green on the release PR (`gh pr audits <pr> --watch`).
+5. ☐ CI green on the release PR (`gh pr checks <pr> --watch`).
 6. ☐ Merge release PR to `main`.
 
 **Phase C — tag + pipeline (U3):**

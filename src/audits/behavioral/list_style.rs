@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn rejects_non_list_verbs() {
-        // Sanity audit against the verb list — `audit`, `build`, `run` are
+        // Sanity check against the verb list — `audit`, `build`, `run` are
         // common non-list verbs that should fail the gate.
         let help = HelpOutput::from_raw(
             "Usage: tool [COMMAND]\n\nCommands:\n  audit    Run audits.\n  build    Build.\n  run    Run.\n",

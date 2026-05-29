@@ -9,7 +9,7 @@ pub trait Audit {
     /// Human-readable one-line label. Surfaces in scorecard JSON
     /// (`results[].label`) and text output. Every `run()` implementation
     /// must hand this same string to `AuditResult`, and the suppression
-    /// and error branches in `main::run` use it so that a audit
+    /// and error branches in `main::run` use it so that an audit
     /// short-circuited by `--audit-profile` or an internal error
     /// produces the same label the user would see on a successful run —
     /// rather than falling back to the opaque `id`.

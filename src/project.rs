@@ -177,7 +177,7 @@ fn discover_binaries(
         Some(Language::Rust) => discover_rust_binaries(dir, manifest_path),
         Some(Language::Python) => discover_simple_binaries(dir, &["dist", "build"]),
         Some(Language::Go) => {
-            // Audit for binary with same name as directory
+            // Check for binary with same name as directory
             let mut paths = Vec::new();
             if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
                 let bin = dir.join(name);
@@ -199,7 +199,7 @@ fn discover_rust_binaries(dir: &Path, manifest_path: Option<&Path>) -> Vec<PathB
         && let Ok(content) = fs::read_to_string(manifest)
         && let Ok(doc) = content.parse::<toml::Table>()
     {
-        // Audit [[bin]] entries
+        // Check [[bin]] entries
         if let Some(bins) = doc.get("bin").and_then(|b| b.as_array()) {
             for bin in bins {
                 if let Some(name) = bin.get("name").and_then(|n| n.as_str()) {
@@ -224,7 +224,7 @@ fn discover_rust_binaries(dir: &Path, manifest_path: Option<&Path>) -> Vec<PathB
         // Pick the newer of release/debug by mtime so dev workflows
         // (where `cargo run`/`cargo test` only refresh debug) don't probe
         // a stale release binary. CI scenarios — where typically only one
-        // profile is built — fall through cleanly to the existence audit.
+        // profile is built — fall through cleanly to the existence check.
         // Documented at
         // docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md.
         let release = dir.join("target/release").join(name);

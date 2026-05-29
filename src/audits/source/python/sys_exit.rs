@@ -157,7 +157,7 @@ fn is_main_guard<'a>(node: &Node<'a, StrDoc<Python>>) -> bool {
         .and_then(|s| s.strip_suffix(')'))
         .unwrap_or(header)
         .trim();
-    // Split on == and audit both orderings
+    // Split on == and check both orderings
     let Some((lhs, rhs)) = header.split_once("==") else {
         return false;
     };

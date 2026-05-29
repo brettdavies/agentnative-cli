@@ -555,7 +555,7 @@ including a best-effort `tool.version` self-report.
 - Existing build-time generation pattern: `build.rs` + `src/principles/registry.rs` `SPEC_VERSION` precedent
 - Existing site contract: `agentnative-site/registry.yaml` (entries with `version` / `scored_at` / `version_extract`)
 - Site regen pipeline: `agentnative-site/scripts/regen-scorecards.sh`, `agentnative-site/docker/score/score-anc100.sh`,
-  `agentnative-site/docker/score/check-version-extract.sh`
+  `agentnative-site/docker/score/audit-version-extract.sh`
 - Sibling plan (skill subcommand): `docs/plans/2026-04-29-002-feat-skill-subcommand-plan.md`
 
 ---

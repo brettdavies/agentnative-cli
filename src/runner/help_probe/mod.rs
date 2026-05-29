@@ -18,7 +18,7 @@
 //!   within a ±4-line window of a flag definition, plus a dedicated
 //!   `ENVIRONMENT` section scan. Catches tools like `ripgrep`, `gh`, and
 //!   `aider` that document env bindings in free prose rather than clap
-//!   annotations. Three mitigations keep false positives in audit:
+//!   annotations. Three mitigations keep false positives in check:
 //!   uppercase-identifier shape (length ≥ 3), same-paragraph window, and
 //!   a shell-env blacklist (`PATH`, `HOME`, etc.).
 //!
@@ -510,7 +510,7 @@ Usage: xurl-rs URL
         let flags = parse_flags(NON_ENGLISH_HELP);
         // The Chinese options block still uses `-H, --header` syntax so we may
         // detect the flags themselves — the non-English text is in the
-        // descriptions, not the flag names. The audit is that parsing doesn't
+        // descriptions, not the flag names. The check is that parsing doesn't
         // panic and returns sane structured data.
         for f in &flags {
             assert!(f.short.is_some() || f.long.is_some());

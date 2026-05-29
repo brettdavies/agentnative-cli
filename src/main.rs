@@ -579,7 +579,7 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
 
 /// Best-effort `<binary> --version` / `<binary> -V` probe. Reuses the runner's
 /// timeout + 1MB cap primitives via a fresh `BinaryRunner` with a tighter
-/// 2-second timeout (the version probe is one-shot, not a audit).
+/// 2-second timeout (the version probe is one-shot, not an audit).
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,

@@ -45,7 +45,7 @@ agent: the agent hangs, the user sees nothing, and the operation times out silen
 
 **Decision record:** this principle's MUST is worded in terms of observable behavior rather than enumerated APIs.
 [`docs/decisions/p1-behavioral-must.md`](../docs/decisions/p1-behavioral-must.md) records the reasoning and names the
-verification boundary: automated checks verify behavior under non-TTY stdin; TTY-driving-agent scenarios are covered by
+verification boundary: automated audits verify behavior under non-TTY stdin; TTY-driving-agent scenarios are covered by
 the MUST but are not PTY-probed at the current scale.
 
 ## Why Agents Need It
@@ -115,7 +115,7 @@ agent-tool deadlock.
 - OAuth flow that unconditionally opens a browser with no headless escape hatch.
 - A `--password <value>` flag with no stdin or file alternative: every invocation leaks the secret into `ps` output.
 
-Measured by check IDs `p1-non-interactive` (behavioral) and `p1-non-interactive-source` (source). Run `agentnative check
+Measured by audit IDs `p1-non-interactive` (behavioral) and `p1-non-interactive-source` (source). Run `anc audit
 --principle 1 .` against the CLI under test to see both.
 
 ## Pressure test notes

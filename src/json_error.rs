@@ -13,10 +13,10 @@
 //! - help:  `{"kind":"help","data":"<text>"}`
 //! - version: `{"kind":"version","data":{"name":"...","version":"..."}}`
 //!
-//! Only `kind` is shared across all three. Per the consistent-envelope check,
+//! Only `kind` is shared across all three. Per the consistent-envelope audit,
 //! `data` is a recognized payload key so its absence from the error envelope
 //! is not drift. Error envelopes additionally carry `error` and `message`,
-//! which the success envelope lacks — the check only flags keys present in
+//! which the success envelope lacks — the audit only flags keys present in
 //! success but missing from error, so the asymmetric shape is intentional and
 //! Passes.
 
@@ -131,13 +131,13 @@ mod tests {
 
     #[test]
     fn detects_json_global_flag() {
-        assert!(json_mode_in_argv(&osv(&["anc", "--json", "check", "."])));
+        assert!(json_mode_in_argv(&osv(&["anc", "--json", "audit", "."])));
     }
 
     #[test]
     fn detects_output_json_pair() {
         assert!(json_mode_in_argv(&osv(&[
-            "anc", "check", ".", "--output", "json"
+            "anc", "audit", ".", "--output", "json"
         ])));
     }
 
@@ -145,7 +145,7 @@ mod tests {
     fn detects_output_equals_json() {
         assert!(json_mode_in_argv(&osv(&[
             "anc",
-            "check",
+            "audit",
             ".",
             "--output=json",
         ])));
@@ -164,20 +164,20 @@ mod tests {
     #[test]
     fn rejects_output_text() {
         assert!(!json_mode_in_argv(&osv(&[
-            "anc", "check", ".", "--output", "text"
+            "anc", "audit", ".", "--output", "text"
         ])));
     }
 
     #[test]
     fn rejects_no_output_or_json() {
-        assert!(!json_mode_in_argv(&osv(&["anc", "check", "."])));
+        assert!(!json_mode_in_argv(&osv(&["anc", "audit", "."])));
     }
 
     #[test]
     fn rejects_json_substring_in_value() {
         assert!(!json_mode_in_argv(&osv(&[
             "anc",
-            "check",
+            "audit",
             ".",
             "--command",
             "json",

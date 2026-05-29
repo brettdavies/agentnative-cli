@@ -10,7 +10,7 @@ origin: U2 (PR #62 / commit 3839696, scorecard 7-status taxonomy + schema 0.6) s
 
 ## Summary
 
-U2 introduced the requirement-row emission model (schema 0.6): each raw probe `CheckResult` is fanned out into one
+U2 introduced the requirement-row emission model (schema 0.6): each raw probe `AuditResult` is fanned out into one
 result per requirement row it `covers()`, then conditional rows have their status rewritten by antecedent propagation
 (Decision-2a). That pipeline runs **only** inside `build_scorecard()` on the JSON path. The default human view
 (`--output text`) and the text-mode badge are computed from the **raw** probe results, so the terminal shows probe ids
@@ -29,14 +29,14 @@ never reaches them today.
 `anc audit` has two terminal surfaces over one result set:
 
 - **JSON** (`--output json`, consumed by `agentnative-site` and the scorer). `main::run` builds `RunMetadata` and calls
-  `format_json(&results, &all_checks, …)` → `build_scorecard()`, which runs `fan_out_per_row(raw, catalog)` then
+  `format_json(&results, &all_audits, …)` → `build_scorecard()`, which runs `fan_out_per_row(raw, catalog)` then
   `propagate_antecedents(&mut rows, raw)` before constructing the JSON view, `summary`, `score_pct`, and `badge`
   (`src/scorecard/mod.rs:744-786`).
 - **Text** (`--output text`, the default human view). `main::run` calls `compute_badge(&results, …)` and
-  `format_text(&results, quiet, Some(&badge), opts)` — both fed the **raw** `Vec<CheckResult>` with no fan-out and no
+  `format_text(&results, quiet, Some(&badge), opts)` — both fed the **raw** `Vec<AuditResult>` with no fan-out and no
   propagation (`src/main.rs:284-293`).
 
-`format_text` groups by `CheckGroup` and prints each raw check's `.id` and `.label` (`src/scorecard/mod.rs:519-565`).
+`format_text` groups by `AuditGroup` and prints each raw audit's `.id` and `.label` (`src/scorecard/mod.rs:519-565`).
 That `.id` is the probe id (`p2-schema-print`), never the requirement-row id (`p2-must-schema-print`). Because `n_a` is
 produced **only** by `propagate_antecedents` — which the text path never calls — the `NotApplicable` arm in
 `format_text` (lines 549-554) and `format_text_raw` (line 614) is dead on the text path. The arm exists; the data never
@@ -65,7 +65,7 @@ The maintainer wants this fixed before the U2 release; it is not part of U3 (sco
 - Extract the per-row + propagation step (`fan_out_per_row` → `propagate_antecedents`) into one reusable function called
   by both `build_scorecard()` and the text path, so text and JSON share one source of truth.
 - Rewire the text path in `main::run` so `format_text` and `compute_badge` consume the per-row + propagated results
-  (carrying `check_id` provenance for display) rather than the raw probe results.
+  (carrying `audit_id` provenance for display) rather than the raw probe results.
 - Render the requirement-row id + tier + propagation evidence in the terminal (e.g. `[N/A ] p2-must-schema-print (must)
   — antecedent p2-json-output is opt_out`).
 - Decide and document whether `exit_code` moves from raw to per-row results (see Key Technical Decisions — the trickiest
@@ -90,22 +90,22 @@ The maintainer wants this fixed before the U2 release; it is not part of U3 (sco
 `src/scorecard/mod.rs:737-788` — `build_scorecard()`:
 
 ```rust
-let mut row_results = fan_out_per_row(raw_results, ran_checks);   // 744
+let mut row_results = fan_out_per_row(raw_results, ran_audits);   // 744
 propagate_antecedents(&mut row_results, raw_results);             // 745
 …
-let per_row_only: Vec<CheckResult> = row_results.iter().map(|(r, _)| r.clone()).collect();  // 767
+let per_row_only: Vec<AuditResult> = row_results.iter().map(|(r, _)| r.clone()).collect();  // 767
 let badge = compute_badge(&per_row_only, &tool.name);             // 768
 …
 summary: build_summary(&per_row_only),                            // 776
-results: row_results.iter().map(|(r, check_id)| CheckResultView::from_row(r, check_id)).collect(),  // 772-775
+results: row_results.iter().map(|(r, audit_id)| AuditResultView::from_row(r, audit_id)).collect(),  // 772-775
 ```
 
-`row_results: Vec<(CheckResult, String)>` — the `String` is the originating probe `check_id`. The JSON view threads it
-into `CheckResultView::from_row` for provenance, then the pairing is discarded. **No caller outside `build_scorecard`
+`row_results: Vec<(AuditResult, String)>` — the `String` is the originating probe `audit_id`. The JSON view threads it
+into `AuditResultView::from_row` for provenance, then the pairing is discarded. **No caller outside `build_scorecard`
 ever sees `row_results`.**
 
 `fan_out_per_row` (lines 633-653): one entry per `covers()` row, status/label/group/layer/confidence copied from the
-probe, `id` replaced with the row id, `check_id` preserved. Checks with empty `covers()` pass through keyed by their own
+probe, `id` replaced with the row id, `audit_id` preserved. Audits with empty `covers()` pass through keyed by their own
 id.
 
 `propagate_antecedents` (lines 672-704): for each row whose registry entry is `Applicability::Conditional { antecedent:
@@ -128,7 +128,7 @@ OutputFormat::Text => {
 
 `src/main.rs:327` — `Ok(exit_code(&results))` — also raw, shared by both output modes.
 
-`format_text` (`src/scorecard/mod.rs:507-600`) groups by `CheckGroup`, prints `[<PREFIX>] {r.label} ({r.id})`, then a
+`format_text` (`src/scorecard/mod.rs:507-600`) groups by `AuditGroup`, prints `[<PREFIX>] {r.label} ({r.id})`, then a
 summary line, then the badge hint. The status-prefix match (lines 534-562) **already has `OptOut("OPT ")` and
 `NotApplicable("N/A ")` arms** and a quiet-skip for both. The evidence block (lines 566-579) already prints the
 `OptOut`/`NotApplicable` reason. `format_text_raw` (lines 606-621) **already maps `OptOut → "OPT_OUT"` and
@@ -139,7 +139,7 @@ summary line, then the badge hint. The status-prefix match (lines 534-562) **alr
 `src/scorecard/mod.rs` — `format_text_appends_hint_when_badge_eligible` (1638),
 `format_text_omits_hint_when_below_floor` (1653), `format_text_without_badge_arg_is_unchanged` (1667),
 `format_text_raw_emits_id_tab_status_per_line` (1677), `format_text_color_wraps_status_prefix` (1694). These build raw
-`CheckResult`s with synthetic ids (`c1`…`c4`) and call `format_text`/`format_text_raw` directly — they exercise the
+`AuditResult`s with synthetic ids (`c1`…`c4`) and call `format_text`/`format_text_raw` directly — they exercise the
 *formatter*, not the *pipeline*. They keep working unchanged **iff** the formatter signature still accepts a result set;
 if the formatter switches to a per-row+provenance input, these tests update to pass the new shape.
 
@@ -156,9 +156,9 @@ Extract the two-line pipeline into a reusable function so both call sites are on
 /// propagation. The sole producer of the per-row result set consumed by
 /// every output surface (text + JSON) and the exit code.
 pub fn build_row_results(
-    raw: &[CheckResult],
-    catalog: &[Box<dyn Check>],
-) -> Vec<(CheckResult, String)> {
+    raw: &[AuditResult],
+    catalog: &[Box<dyn Audit>],
+) -> Vec<(AuditResult, String)> {
     let mut rows = fan_out_per_row(raw, catalog);
     propagate_antecedents(&mut rows, raw);
     rows
@@ -168,34 +168,34 @@ pub fn build_row_results(
 `build_scorecard` calls it instead of inlining the two lines (no behavior change — pure refactor of two existing
 statements). The text path in `main::run` calls it too, then maps to the shape `format_text`/`compute_badge` need.
 
-For the text renderer, the cleanest input is `&[(CheckResult, String)]` (row + check_id provenance) so the terminal can
+For the text renderer, the cleanest input is `&[(AuditResult, String)]` (row + audit_id provenance) so the terminal can
 optionally surface the probe id and so the row id (`r.id`) is the requirement-row id. `compute_badge` and `exit_code`
-take `&[CheckResult]`; feed them the projected `Vec<CheckResult>` (drop the provenance string, same projection
+take `&[AuditResult]`; feed them the projected `Vec<AuditResult>` (drop the provenance string, same projection
 `build_scorecard` already does at line 767).
 
 ## Key Technical Decisions
 
-1. **One per-row pipeline, two consumers.** Add `build_row_results(raw, catalog) -> Vec<(CheckResult, String)>` in
+1. **One per-row pipeline, two consumers.** Add `build_row_results(raw, catalog) -> Vec<(AuditResult, String)>` in
    `src/scorecard/mod.rs`. `build_scorecard` and the text path both call it. This is the fix's spine: text and JSON can
    no longer disagree on the row set because they derive from the same function. `fan_out_per_row` and
    `propagate_antecedents` stay `pub` (already are) but the canonical entry point becomes `build_row_results`.
 
 2. **The text renderer consumes per-row + provenance.** Change `format_text` (and `format_text_raw`) to take the per-row
-   results so `r.id` is the requirement-row id and the probe `check_id` is available for display. Grouping still keys on
-   `CheckGroup` (each row carries the probe's group). The badge and summary are computed from the projected
-   `Vec<CheckResult>`, identical to `build_scorecard`'s `per_row_only`.
+   results so `r.id` is the requirement-row id and the probe `audit_id` is available for display. Grouping still keys on
+   `AuditGroup` (each row carries the probe's group). The badge and summary are computed from the projected
+   `Vec<AuditResult>`, identical to `build_scorecard`'s `per_row_only`.
 
 3. **Terminal rendering of row id + tier + propagation evidence.** Print the requirement-row id, and for conditional
    rows that propagated to `n_a`, show the antecedent evidence the propagation already wrote into the reason string
    (e.g. `[N/A ] p2-must-schema-print (must) — antecedent p2-json-output is opt_out`). The tier (`must`/`should`/`may`)
-   comes from `registry::find(&r.id)` (the same lookup `CheckResultView::from_row` uses at lines 405-409); render `null`
+   comes from `registry::find(&r.id)` (the same lookup `AuditResultView::from_row` uses at lines 405-409); render `null`
    tier defensively (omit the `(tier)` suffix) so an unregistered row id never panics. The propagation reason is already
    in `r.status`'s `NotApplicable(reason)` payload — the existing evidence block prints it; only the header line needs
    the tier suffix.
 
 4. **exit_code: raw vs per-row — the load-bearing decision.** Today `exit_code(&results)` (`src/main.rs:327`) uses
    **raw** probe results; the JSON `summary` and `score_pct` already reflect **per-row** results. So a tool whose raw
-   probe `Fail`s a check whose requirement row propagates to `n_a` exits `2` in **both** text and JSON today (exit code
+   probe `Fail`s an audit whose requirement row propagates to `n_a` exits `2` in **both** text and JSON today (exit code
    is shared, computed once from raw), yet the per-row truth is "not applicable." Concretely: `bat`'s `p2-schema-print`
    probe raw-Fails → `exit_code(raw)` = 2 → `anc audit --command bat` exits 2 even though the requirement is `n_a`.
 
@@ -209,9 +209,9 @@ take `&[CheckResult]`; feed them the projected `Vec<CheckResult>` (drop the prov
 
    **Tension to document:** this changes observable exit behavior for any tool with a raw-Fail probe under an unmet
    conditional antecedent (today exit 2 → after fix exit 0/1). For `bat` that is the *correct* change (it is exempt, not
-   failing). It does **not** affect the `--audit-profile` suppression path: suppressed checks emit `Skip` with the
+   failing). It does **not** affect the `--audit-profile` suppression path: suppressed audits emit `Skip` with the
    sentinel and never had a row that fan-out would Fail, so the R4 masking test
-   (`exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_check`, lines 1283-1321) still holds — verify it
+   (`exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_audit`, lines 1283-1321) still holds — verify it
    does. The change is "exit code now agrees with the per-row truth the JSON already reports," not a new masking
    surface. The alternative (keep `exit_code` on raw) is rejected: it would leave text/JSON/exit-code as three
    inconsistent views and re-open the exact class of bug this plan closes.
@@ -224,7 +224,7 @@ take `&[CheckResult]`; feed them the projected `Vec<CheckResult>` (drop the prov
 
 **Files:**
 
-- Modify: `src/scorecard/mod.rs` — add `pub fn build_row_results(raw, catalog) -> Vec<(CheckResult, String)>`; change
+- Modify: `src/scorecard/mod.rs` — add `pub fn build_row_results(raw, catalog) -> Vec<(AuditResult, String)>`; change
   `build_scorecard` to call it in place of the inlined `fan_out_per_row` + `propagate_antecedents` (lines 744-745).
 
 **Approach:** Mechanical extraction. `build_scorecard`'s output is byte-identical before/after.
@@ -246,13 +246,13 @@ take `&[CheckResult]`; feed them the projected `Vec<CheckResult>` (drop the prov
 
 **Files:**
 
-- Modify: `src/main.rs` (text arm, lines 284-293) — call `build_row_results(&results, &all_checks)`, project to
-  `Vec<CheckResult>` for `compute_badge`, pass the per-row data to `format_text`.
+- Modify: `src/main.rs` (text arm, lines 284-293) — call `build_row_results(&results, &all_audits)`, project to
+  `Vec<AuditResult>` for `compute_badge`, pass the per-row data to `format_text`.
 - Modify: `src/scorecard/mod.rs` — change `format_text` / `format_text_raw` to accept the per-row result set (with
-  `check_id` provenance available); render the requirement-row id and, for conditional rows, the tier suffix.
+  `audit_id` provenance available); render the requirement-row id and, for conditional rows, the tier suffix.
 
 **Approach:** The text arm mirrors `build_scorecard`'s projection (`row_results.iter().map(|(r,_)| r.clone())`). Decide
-the renderer signature: simplest is `format_text(rows: &[(CheckResult, String)], …)` and project internally for the
+the renderer signature: simplest is `format_text(rows: &[(AuditResult, String)], …)` and project internally for the
 summary/badge. Tier via `registry::find(&r.id)`, defensively `None`-tolerant.
 
 **Test scenarios:**
@@ -278,12 +278,12 @@ summary/badge. Tier via `registry::find(&r.id)`, defensively `None`-tolerant.
   output modes) and pass it to `exit_code`.
 
 **Approach:** Build `row_results` once near where `results` is finalized (after the `--principle` retain), project to
-`Vec<CheckResult>`, use it for `exit_code` in both arms. Avoid recomputing the pipeline twice in the text arm.
+`Vec<AuditResult>`, use it for `exit_code` in both arms. Avoid recomputing the pipeline twice in the text arm.
 
 **Test scenarios:**
 
 - A raw-Fail probe under an unmet conditional antecedent → per-row `n_a` → `exit_code` 0 (not 2). New unit pinning this.
-- The R4 audit-profile masking test (`exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_check`) still
+- The R4 audit-profile masking test (`exit_code_drops_when_audit_profile_suppresses_a_would_have_failed_audit`) still
   passes unchanged.
 - A genuine live `Fail` row still exits 2; a live `Warn` still exits 1.
 
@@ -312,7 +312,7 @@ then diffs the per-row status set and the badge score. This is the `$100 Rule` g
 
 ## System-Wide Impact
 
-- **Interaction graph:** `main::run` → `build_row_results(raw, catalog)` (new) → projected per-row `Vec<CheckResult>` →
+- **Interaction graph:** `main::run` → `build_row_results(raw, catalog)` (new) → projected per-row `Vec<AuditResult>` →
   `format_text` + `compute_badge` + `exit_code` (text arm) and `format_json` → `build_scorecard` → same
   `build_row_results` (JSON arm). One pipeline, two output surfaces, one exit code — all derived from the same per-row
   set.
@@ -329,10 +329,10 @@ then diffs the per-row status set and the badge score. This is the `$100 Rule` g
 
 | Risk                                                                                                                                            | Severity                            | Mitigation                                                                                                                                                                                                                                                          |
 | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **exit-code semantics change** — a tool that raw-Fails a check whose row propagates to `n_a` exits 2 in text today; after the fix it exits 0/1. | Medium (observable behavior change) | This IS the fix: the per-row truth is "not applicable," so exit 2 was wrong. Documented in Key Technical Decisions §4; pinned by a new unit test and the parity regression test. The `--audit-profile` R4 masking path is independent and its test must still pass. |
+| **exit-code semantics change** — a tool that raw-Fails an audit whose row propagates to `n_a` exits 2 in text today; after the fix it exits 0/1. | Medium (observable behavior change) | This IS the fix: the per-row truth is "not applicable," so exit 2 was wrong. Documented in Key Technical Decisions §4; pinned by a new unit test and the parity regression test. The `--audit-profile` R4 masking path is independent and its test must still pass. |
 | Renderer signature change ripples into existing `format_text_*` unit tests.                                                                     | Low                                 | Tests updated in Unit 4; they exercise the formatter, and the formatter still accepts a result set (now per-row + provenance).                                                                                                                                      |
 | Double-computing the pipeline (text arm + exit_code) wastes work or, worse, computes two different sets.                                        | Low                                 | Compute `build_row_results` **once** per run, share the projection across `format_text`/`compute_badge`/`exit_code`.                                                                                                                                                |
-| A requirement-row id missing from the registry yields `None` tier and could panic on a `(tier)` render.                                         | Low                                 | Defensive: omit the `(tier)` suffix when `registry::find` returns `None` (same tolerance `CheckResultView::from_row` already has).                                                                                                                                  |
+| A requirement-row id missing from the registry yields `None` tier and could panic on a `(tier)` render.                                         | Low                                 | Defensive: omit the `(tier)` suffix when `registry::find` returns `None` (same tolerance `AuditResultView::from_row` already has).                                                                                                                                  |
 | Quiet/raw/color modes regress under the new statuses.                                                                                           | Low                                 | Existing `OptOut`/`NotApplicable` arms already handle quiet-skip and raw tokens; Unit 2 test scenarios cover all three.                                                                                                                                             |
 
 ## Verification
@@ -349,7 +349,7 @@ then diffs the per-row status set and the badge score. This is the `$100 Rule` g
 ## Sources & References
 
 - U2 pipeline: `src/scorecard/mod.rs` — `fan_out_per_row` (633), `propagate_antecedents` (672), `build_scorecard` (737),
-  `compute_badge` (166), `score_pct` (208), `exit_code` (870), `CheckResultView::from_row` (376).
+  `compute_badge` (166), `score_pct` (208), `exit_code` (870), `AuditResultView::from_row` (376).
 - Text path: `src/main.rs:284-293` (text arm), `src/main.rs:327` (`exit_code`), `format_text` / `format_text_raw`
   (`src/scorecard/mod.rs:507`, `606`).
 - Propagation table / antecedent registry: `src/principles/registry.rs` (`Applicability::Conditional`, antecedent

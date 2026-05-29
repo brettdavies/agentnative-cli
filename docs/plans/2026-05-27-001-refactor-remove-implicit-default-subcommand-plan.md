@@ -252,7 +252,7 @@ text and JSON modes; update the `run.invocation` scorecard test to an explicit i
   Keep all `format_invocation_*` tests. Drop the now-unused `inject_default_subcommand` and `names` imports/helpers from
   the test module; keep `format_invocation` and `args`.
 - Modify: `tests/integration.rs` — delete the "Default subcommand tests" block (lines 366-470:
-  `test_default_subcommand_dot_matches_explicit_check`, `test_default_subcommand_preserves_global_flag_before_path`,
+  `test_default_subcommand_dot_matches_explicit_audit`, `test_default_subcommand_preserves_global_flag_before_path`,
   `test_default_subcommand_preserves_global_long_flag_before_path`,
   `test_default_subcommand_passes_trailing_flags_through`, `test_default_subcommand_rejects_nonexistent_path`,
   `test_default_subcommand_does_not_fire_for_bare_flags`, `test_default_subcommand_does_not_fire_for_version`). Keep
@@ -266,7 +266,7 @@ text and JSON modes; update the `run.invocation` scorecard test to an explicit i
 - Modify: `tests/scorecard_schema_v05.rs` — update `schema_v05_run_invocation_captures_user_intent_pre_injection` (lines
   178-197): change args to the explicit `["audit", &path, "--output", "json"]` and rename to
   `schema_v05_run_invocation_reflects_user_argv`. Keep the assertion that `run.invocation` contains the path and matches
-  what was typed; the `" check "` negative-assertion can be dropped or repointed to assert the invocation equals the
+  what was typed; the `" audit "` negative-assertion can be dropped or repointed to assert the invocation equals the
   explicit command.
 
 **Approach:**
@@ -356,7 +356,7 @@ automatically" prose; refresh doc comments and the JSON-schema description that 
   but a regeneration is harmless if the release flow runs it anyway.
 - **Blast radius (advertised surface):** the table in Context & Research, fully covered by U3.
 - **Unchanged invariants:** `arg_required_else_help` on `Cli`; the `None`-arm help+exit-2 for `anc -q`; the `--command`
-  flag and its `conflicts_with` constraints; behavioral-check fork-bomb safety (probes only spawn `--help`/`--version`).
+  flag and its `conflicts_with` constraints; behavioral-audit fork-bomb safety (probes only spawn `--help`/`--version`).
 
 ---
 

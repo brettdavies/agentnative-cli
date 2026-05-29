@@ -535,7 +535,7 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 - **Integration coverage:** U1's tests exercise the end-to-end path against a tempdir destination. No mock servers, no
   network.
 - **Unchanged invariants:** `arg_required_else_help` stays on; the fork-bomb guard is not affected (`skill install` does
-  not spawn `anc` recursively); `Check`, `Completions`, and `Generate` arms are untouched.
+  not spawn `anc` recursively); `Audit`, `Completions`, and `Generate` arms are untouched.
 - **Dependency footprint:** zero new transitive deps. Drops the original plan's ~30 (rustls, ring, webpki-roots,
   serde_json-for-skill, ureq, and friends). `cargo deny` allowlist is unchanged.
 
@@ -772,7 +772,7 @@ follow-ups were named when this plan landed, tracked here for visibility:
 
 1. **Spec follow-up plan — done.** [`docs/plans/2026-04-30-001-feat-spec-output-envelope-shoulds-plan.md`] proposes four
    new SHOULDs to `agentnative-spec` (P2 `output-applies-to-every-subcommand`, P2 `json-envelope-on-error`, P2
-   `output-envelope-schema-uniform`, P4 `json-error-includes-typed-reason`) plus matching behavioral checks in this
+   `output-envelope-schema-uniform`, P4 `json-error-includes-typed-reason`) plus matching behavioral audits in this
    repo's registry. Plan written 2026-04-30; not yet implemented.
 2. **Solutions doc — done.** Refreshed in place at
    `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` (committed in solutions-docs on
@@ -963,5 +963,5 @@ The `--dry-run` / `--output {text,json}` / "JSON envelope on success and error" 
 implementation lands, write `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-<date>.md` via
 `/ce-compound` capturing the as-shipped envelope schema. A separate follow-up plan proposes new SHOULDs to
 `agentnative-spec` (P2: `output-applies-to-every-subcommand`, `json-envelope-on-error`,
-`output-envelope-schema-uniform`; P4: `json-error-includes-typed-reason`) and adds matching source checks to the
+`output-envelope-schema-uniform`; P4: `json-error-includes-typed-reason`) and adds matching source audits to the
 registry.

@@ -161,7 +161,7 @@ formula updated with bottles, all atomically advertised.
 
 Once `finalize-release.yml` has flipped the GitHub Release to `published`, `scripts/sync-dev-after-release.sh` backports
 the release-bookkeeping files from `main` to `dev` so future builds from `dev` report the released version (and so `anc
-check`'s embedded badge URL points at the right slug, not stale `0.1.0`).
+audit`'s embedded badge URL points at the right slug, not stale `0.1.0`).
 
 The script surgically updates only `Cargo.toml`'s `[package].version` line (other `Cargo.toml` lines on `dev`,
 post-launch deps, rust-version bumps, are preserved), regenerates `Cargo.lock` via `cargo build --release`, and copies
@@ -240,6 +240,6 @@ Committing the JSON alongside code means ruleset changes land via the same revie
 ## Related docs
 
 - [`RELEASES.md`](./RELEASES.md) (operational runbook: commands, paths, decision tables)
-- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
+- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new audits)
 - [`README.md`](README.md) (install channels, principles, CLI reference)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)

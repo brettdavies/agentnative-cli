@@ -26,14 +26,14 @@ and what actually shipped.
 
 ## Overview
 
-Two CLI contract additions from the design doc: (1) `anc .` should work as shorthand for `anc audit .`, making `check`
+Two CLI contract additions from the design doc: (1) `anc .` should work as shorthand for `anc audit .`, making `audit`
 the implicit default subcommand; (2) `--command <name>` resolves a binary from PATH via `which` for behavioral-only
 checking. Both improve ergonomics for the primary use case.
 
 ## Problem Frame
 
 Today, `anc .` fails because `.` is not a recognized subcommand. Users must always type `anc audit .`. The design doc
-(line 126) explicitly shows `anc .` as a supported invocation. Similarly, there's no way to check a binary already on
+(line 126) explicitly shows `anc .` as a supported invocation. Similarly, there's no way to audit a binary already on
 PATH without manually resolving its location — the design doc (line 209) specifies `--command <name>` for this.
 
 ## Requirements Trace
@@ -41,14 +41,14 @@ PATH without manually resolving its location — the design doc (line 209) speci
 - R1. `anc .` must behave identically to `anc audit .`
 - R2. `anc` with no arguments must still print help and exit with code 2 (handled by clap's
   `arg_required_else_help=true` — non-negotiable fork bomb safety constraint)
-- R3. `--command <name>` resolves binary from PATH and runs behavioral checks only
+- R3. `--command <name>` resolves binary from PATH and runs behavioral audits only
 - R4. `--command` and `path` are mutually exclusive
 - R5. All existing CLI behavior (exit codes, flags, output formats) unchanged
 
 ## Scope Boundaries
 
-- No changes to check logic, scoring, or output format
-- `--command` is behavioral-only (no source or project checks)
+- No changes to audit logic, scoring, or output format
+- `--command` is behavioral-only (no source or project audits)
 - No changes to the `completions` subcommand
 
 ## Context & Research
@@ -58,33 +58,33 @@ PATH without manually resolving its location — the design doc (line 209) speci
 - `src/cli.rs` — clap derive definitions, `arg_required_else_help = true` safety constraint
 - `src/main.rs` — CLI routing, `run()` function, `None => unreachable!()` arm
 - `src/project.rs` — `Project::discover()` already handles file paths (sets `language: None`, skips source/project
-  checks automatically)
+  audits automatically)
 - `src/runner.rs` — `BinaryRunner::new()`, takes a binary path
 - `src/error.rs` — `AppError` enum: `ProjectDetection(anyhow::Error)` and `Io(std::io::Error)`
 
 ### Institutional Learnings
 
 - `~/dev/solutions-docs/logic-errors/cli-linter-fork-bomb-recursive-self-invocation-20260401.md` —
-  `arg_required_else_help` is a non-negotiable safety constraint. Bare invocation MUST print help, not run `check .`.
+  `arg_required_else_help` is a non-negotiable safety constraint. Bare invocation MUST print help, not run `audit .`.
 
 ## Key Technical Decisions
 
 - **Flatten approach rejected**: The idiomatic clap pattern for default subcommands is `#[command(flatten)]` — flatten
-  `Check` args into the top-level struct. However, this conflicts with `arg_required_else_help=true`: clap cannot
+  `Audit` args into the top-level struct. However, this conflicts with `arg_required_else_help=true`: clap cannot
   require args globally while also treating the entire flattened variant as optional. Since `arg_required_else_help` is
   a non-negotiable safety constraint (fork bomb prevention, see solutions-docs citation), flatten is not viable.
 - **Chosen approach: external pre-parse with subcommand injection**: Before calling clap, scan argv to determine if the
-  user is invoking a path-based check without the explicit `check` subcommand. If so, inject `check` into the arg list
+  user is invoking a path-based audit without the explicit `audit` subcommand. If so, inject `audit` into the arg list
   and parse with `Cli::parse_from()`. This preserves all existing clap behavior untouched and keeps the safety
   constraint intact.
 - **Pre-parse must scan past leading global flags**: `anc -q .` and `anc --quiet .` are realistic invocations. The
-  pre-parse cannot just check `argv[1]` — it must skip known global flags to find the first non-flag argument, then
-  decide whether to inject `check`. Use clap introspection (`Cli::command().get_subcommands()`) to derive the known
+  pre-parse cannot just audit `argv[1]` — it must skip known global flags to find the first non-flag argument, then
+  decide whether to inject `audit`. Use clap introspection (`Cli::command().get_subcommands()`) to derive the known
   subcommand list at runtime instead of maintaining a fragile static list.
 - **`--command` resolves via `which` on Unix, `where` on Windows**: Shell out to `which`/`where` rather than adding a
   crate dependency. Gate with `#[cfg(unix)]` / `#[cfg(windows)]` per existing project conventions (CLAUDE.md).
 - **`Project::discover()` already handles file paths**: When given an executable file, `discover()` sets `language:
-  None` and the file as `path`. Source checks are skipped (no language), project checks are skipped (not a dir). No new
+  None` and the file as `path`. Source audits are skipped (no language), project audits are skipped (not a dir). No new
   `Project::from_binary()` constructor needed — just pass the resolved path to `discover()`.
 
 ## Open Questions
@@ -96,20 +96,20 @@ PATH without manually resolving its location — the design doc (line 209) speci
 - **Should `anc audit` still work?**: Yes — all existing invocations continue to work. The pre-parse only triggers when
   the first non-flag arg is not a known subcommand.
 - **Does `anc --command rg` work via default subcommand?**: Yes — `--command` is not a known subcommand, so the
-  pre-parse injects `check`, producing `anc audit --command rg`. This is correct by design since `--command` belongs to
-  the `Check` subcommand.
+  pre-parse injects `audit`, producing `anc audit --command rg`. This is correct by design since `--command` belongs to
+  the `Audit` subcommand.
 - **Does `Project::from_binary()` need to be created?**: No. `Project::discover()` already handles executable file paths
-  correctly — sets `language: None` (skipping source checks), and `is_dir()` returns false (skipping project checks).
+  correctly — sets `language: None` (skipping source audits), and `is_dir()` returns false (skipping project audits).
   Just pass the resolved binary path.
 
 ### Deferred to Implementation
 
-- **Typo handling** _(status: as planned)_: `anc chekc .` (typo of `check`) becomes `anc audit chekc .` where `chekc`
+- **Typo handling** _(status: as planned)_: `anc chekc .` (typo of `audit`) becomes `anc audit chekc .` where `chekc`
   becomes the path. Produces "path does not exist: chekc" instead of "unrecognized subcommand 'chekc'." Acceptable for
   v0.1 — the error is still actionable. Note: the `help` subcommand is special-cased in PR #13 because clap's
   auto-generated `help` is not returned by `get_subcommands()` and would otherwise hit this path.
-- **Clap error message context** _(status: as planned)_: When pre-parse injects `check`, clap error messages reference
-  the `check` subcommand context. Users who typed `anc . --bogus` see errors mentioning `check` in the usage line. Minor
+- **Clap error message context** _(status: as planned)_: When pre-parse injects `audit`, clap error messages reference
+  the `audit` subcommand context. Users who typed `anc . --bogus` see errors mentioning `audit` in the usage line. Minor
   UX imperfection, acceptable for v0.1.
 
 ## High-Level Technical Design
@@ -129,7 +129,7 @@ argv = ["anc", "-q", ".", "--output", "json"]
     NO ──┼── YES ──▶ pass to clap as-is
          │
          ▼
-    inject "check" after the binary name: ["anc", "check", "-q", ".", "--output", "json"]
+    inject "audit" after the binary name: ["anc", "audit", "-q", ".", "--output", "json"]
          │
          ▼
     Cli::parse_from(modified_args)
@@ -141,23 +141,23 @@ For `--command`:
 argv = ["anc", "--command", "ripgrep"]
          │
          ▼
-    pre-parse: "--command" is not a known subcommand → inject "check"
+    pre-parse: "--command" is not a known subcommand → inject "audit"
          │
          ▼
-    clap parses: ["anc", "check", "--command", "ripgrep"]
+    clap parses: ["anc", "audit", "--command", "ripgrep"]
          │
          ▼
     resolve via which("ripgrep") → /usr/bin/rg
          │
          ▼
-    Project::discover(resolved_path) — language: None → behavioral checks only
+    Project::discover(resolved_path) — language: None → behavioral audits only
 ```
 
 ## Implementation Units
 
 - [x] **Unit 1: Default subcommand — `anc .` as `anc audit .`**
 
-**Goal:** Make `anc .` work by injecting `check` when the first non-flag arg is not a known
+**Goal:** Make `anc .` work by injecting `audit` when the first non-flag arg is not a known
 subcommand.
 
 **Requirements:** R1, R2, R5
@@ -178,7 +178,7 @@ subcommand.
 - Scan args starting from index 1, skipping known global flags (`-q`, `--quiet`, `-h`, `--help`, `-V`, `--version`). The
   first non-flag arg is the candidate.
 - If the candidate is a known subcommand name → pass to clap unchanged
-- If the candidate is not a known subcommand (looks like a path) → insert `"check"` at position 1 in the args vec
+- If the candidate is not a known subcommand (looks like a path) → insert `"audit"` at position 1 in the args vec
 - Use `Cli::parse_from()` with the (possibly modified) args vec
 - Keep the pre-parse logic minimal and clearly commented to explain the safety constraint
 
@@ -210,28 +210,28 @@ subcommand.
 
 - [x] **Unit 2: `--command <name>` flag for PATH lookup**
 
-**Goal:** Add a `--command` flag to the `Check` subcommand that resolves a binary from PATH and runs behavioral checks.
+**Goal:** Add a `--command` flag to the `Audit` subcommand that resolves a binary from PATH and runs behavioral audits.
 
 **Requirements:** R3, R4, R5
 
 **Dependencies:** Unit 1 (so `anc --command rg` also works via default subcommand — by design, `--command` is not a
-known subcommand, so pre-parse injects `check`)
+known subcommand, so pre-parse injects `audit`)
 
 **Files:**
 
-- Modify: `src/cli.rs` — add `--command` arg to `Check`, with conflicts_with for `path`
+- Modify: `src/cli.rs` — add `--command` arg to `Audit`, with conflicts_with for `path`
 - Modify: `src/main.rs` — handle `--command` by resolving path and calling `Project::discover()`
 - Test: `tests/integration.rs` — add tests for `--command`
 
 **Approach:**
 
-- Add `command: Option<String>` to the `Check` variant in `cli.rs` with `#[arg(long, conflicts_with = "path")]`
+- Add `command: Option<String>` to the `Audit` variant in `cli.rs` with `#[arg(long, conflicts_with = "path")]`
 - In `main.rs`, when `command` is `Some(name)`:
 - Resolve using `which` on Unix (`std::process::Command::new("which").arg(&name)`), `where` on Windows
 - If resolution fails, return `AppError::ProjectDetection` wrapping an anyhow error: "command '{name}' not found on
   PATH"
-- Call `Project::discover(&resolved_path)` — this already sets `language: None` (skipping source checks) and `is_dir()`
-  is false (skipping project checks), so behavioral-only behavior is automatic
+- Call `Project::discover(&resolved_path)` — this already sets `language: None` (skipping source audits) and `is_dir()`
+  is false (skipping project audits), so behavioral-only behavior is automatic
 - Update `--help` text to document the flag
 
 **Patterns to follow:**
@@ -241,9 +241,9 @@ known subcommand, so pre-parse injects `check`)
 
 **Test scenarios:**
 
-- Happy path: `anc audit --command ls` runs behavioral checks against `/bin/ls`, output contains only behavioral check
-  results (no source or project checks)
-- Happy path: `anc --command echo` works via default subcommand (pre-parse injects `check`)
+- Happy path: `anc audit --command ls` runs behavioral audits against `/bin/ls`, output contains only behavioral audit
+  results (no source or project audits)
+- Happy path: `anc --command echo` works via default subcommand (pre-parse injects `audit`)
 - Happy path: `anc audit --command ls --output json` produces valid JSON containing only behavioral-layer results
 - Error path: `anc audit --command nonexistent-binary-xyz` exits with code 2 and error message "command
   'nonexistent-binary-xyz' not found on PATH"
@@ -251,7 +251,7 @@ known subcommand, so pre-parse injects `check`)
 
 **Verification:**
 
-- `--command` resolves a known binary and runs behavioral checks only
+- `--command` resolves a known binary and runs behavioral audits only
 - `--command` with unknown binary produces a clear, actionable error
 - Existing behavior unchanged
 
@@ -261,7 +261,7 @@ known subcommand, so pre-parse injects `check`)
   receives the modified args.
 - **Error propagation:** `which` failure maps to `AppError::ProjectDetection` (exit code 2) with a clear message.
 - **Unchanged invariants:** `arg_required_else_help = true` remains on `Cli`. All existing exit codes, output formats,
-  and check behavior unchanged. The pre-parse is additive only.
+  and audit behavior unchanged. The pre-parse is additive only.
 - **API surface parity:** `--command` flag appears in `--help` and shell completions. Completions need regenerating
   after this change (coordinate with release infrastructure plan).
 
@@ -274,7 +274,7 @@ known subcommand, so pre-parse injects `check`)
 | `which` not available on Windows | Use `where` on Windows via `cfg(target_os)`, consistent with existing `libc` gating |
 | Adding `--command` changes shell completions | Regenerate completions after implementation (coordinate with Plan 002) |
 | Default subcommand breaks fork bomb safety | Bare invocation still hits `arg_required_else_help` before pre-parse |
-| Clap error messages reference injected `check` context | Minor UX imperfection, acceptable for v0.1 |
+| Clap error messages reference injected `audit` context | Minor UX imperfection, acceptable for v0.1 |
 
 ## Sources & References
 
@@ -302,16 +302,16 @@ What the planning sections above don't capture: the design above shipped in PR #
 
 ### Edge cases resolved beyond the original design
 
-1. **Clap's auto `help` subcommand is NOT in `get_subcommands()`** — `anc help` and `anc help check` were misclassified
+1. **Clap's auto `help` subcommand is NOT in `get_subcommands()`** — `anc help` and `anc help audit` were misclassified
    as paths. Fixed by appending `"help"` to the known set.
-2. **Value-taking flags must be paired with their values during scanning** — `anc --command check` mis-routed because
-   `check` (the value) was treated as the explicit subcommand. Fixed by walking clap's `get_arguments()` for both `Cli`
+2. **Value-taking flags must be paired with their values during scanning** — `anc --command audit` mis-routed because
+   `audit` (the value) was treated as the explicit subcommand. Fixed by walking clap's `get_arguments()` for both `Cli`
    and every subcommand to learn which flags consume the next token.
 3. **Subcommand-scoped flags imply default-subcommand intent even with no positional** — `anc --command rg` and `anc
    --output json --source` produced clap errors. Fixed by tracking whether any encountered flag is subcommand-scoped
-   (not in the top-level Cli flag set) and injecting `check` if so when no positional was found.
-4. **POSIX `--` separator** — `anc -- .` was untested and ill-defined. Now injects `check` before the separator so clap
-   routes the remaining tokens to Check.
+   (not in the top-level Cli flag set) and injecting `audit` if so when no positional was found.
+4. **POSIX `--` separator** — `anc -- .` was untested and ill-defined. Now injects `audit` before the separator so clap
+   routes the remaining tokens to Audit.
 5. **`arg_required_else_help` only fires on zero args** — `anc -q` (or `--quiet`) reaches `match cli.command` with
    `command = None` and previously panicked via `unreachable!()`. The `None` arm now renders help to stderr and exits 2.
    This was a pre-existing bug, not introduced by this plan, but surfaced under the new ergonomics.

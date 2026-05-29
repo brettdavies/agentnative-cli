@@ -27,7 +27,7 @@ pub fn has_pattern_in(source: &str, pattern_str: &str, lang: Language) -> bool {
 /// Find all matches for `pattern_str` in `source`, parsed as `lang`.
 ///
 /// Currently used by tests; kept as a symmetric counterpart to `has_pattern_in`
-/// for future Python checks that need evidence locations rather than a boolean.
+/// for future Python audits that need evidence locations rather than a boolean.
 #[allow(dead_code)]
 pub fn find_pattern_matches_in(
     source: &str,

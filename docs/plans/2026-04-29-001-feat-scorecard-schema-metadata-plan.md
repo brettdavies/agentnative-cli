@@ -14,7 +14,7 @@ shipped_in: "PR #34 (commit 8b1f642)"
 
 Bump the scorecard JSON schema from `0.3` to `0.4` (additive) to embed the contextual metadata a consumer needs to
 understand a scorecard in isolation: which tool was scored, at which version, by which `anc` build, on which platform,
-when, and with what invocation. The shape changes from "a list of check results" into "a self-describing scoring run
+when, and with what invocation. The shape changes from "a list of audit results" into "a self-describing scoring run
 record."
 
 The downstream effect is structural: the website's `registry.yaml` currently carries `version` and `scored_at` per tool
@@ -36,12 +36,12 @@ explicit cross-repo coordination notes.
 
 `anc audit --output json` today emits a scorecard at `schema_version: "0.3"` with: `results`, `summary`,
 `coverage_summary`, `audience`, `audience_reason`, `audit_profile`, `spec_version`. That is enough for a
-checks-and-pass-rate view, but a reader of the JSON in isolation cannot answer:
+audits-and-pass-rate view, but a reader of the JSON in isolation cannot answer:
 
 - Which tool did this score? (just `results[].id`s with no target identifier)
 - At which version of that tool? (no version field — the site provides this externally from `registry.yaml`)
 - Which build of `anc` produced it? (the spec version is captured, but not the CLI version or commit)
-- On which platform did the run happen? (no OS/arch — affects which behavioral checks ran and what they observed)
+- On which platform did the run happen? (no OS/arch — affects which behavioral audits ran and what they observed)
 - When was it produced and how long did it take? (no timestamp, no duration)
 - What command produced it? (no invocation — meaningful when reproducing or auditing a result)
 
@@ -93,7 +93,7 @@ The win is two-sided:
 
 ## Scope Boundaries
 
-- No changes to checks, principles, registry, or coverage matrix shape.
+- No changes to audits, principles, registry, or coverage matrix shape.
 - No changes to `--output text` rendering. Text output is for humans; metadata noise hurts it.
 - No changes to `audit_profile` semantics, `audience` classifier, or exit codes.
 - `spec_version` stays at the top level — moving it into `anc.spec_version` would be a *breaking* relocation, which
@@ -321,9 +321,9 @@ user actually typed.
 
 **Test scenarios:**
 
-- Happy path: `["anc", "check", "."]` → `"anc audit ."`.
-- Edge case: arg with spaces — `["anc", "check", "/tmp/with space/repo"]` → `"anc audit '/tmp/with space/repo'"`.
-- Edge case: arg with single quote — `["anc", "check", "ab'cd"]` → `"anc audit 'ab'\\''cd'"`.
+- Happy path: `["anc", "audit", "."]` → `"anc audit ."`.
+- Edge case: arg with spaces — `["anc", "audit", "/tmp/with space/repo"]` → `"anc audit '/tmp/with space/repo'"`.
+- Edge case: arg with single quote — `["anc", "audit", "ab'cd"]` → `"anc audit 'ab'\\''cd'"`.
 - Edge case: invalid UTF-8 in argv (Linux only) — round-trips via lossy conversion without panicking; the field carries
   the lossy form.
 
@@ -368,7 +368,7 @@ user actually typed.
 - Happy path: `run.started_at` parses as RFC 3339 / ISO 8601.
 - Happy path: `run.duration_ms` is a non-negative integer; for a near-empty project under test, it's bounded above
   (e.g., `< 60_000`).
-- Edge case: a run that produces no checks still emits `started_at` and `duration_ms` (don't gate on `results`).
+- Edge case: a run that produces no audits still emits `started_at` and `duration_ms` (don't gate on `results`).
 
 **Verification:**
 
@@ -424,7 +424,7 @@ including a best-effort `tool.version` self-report.
 
 **Patterns to follow:**
 
-- `src/runner/help_probe.rs` — existing pattern for spawning the target with `--help` for behavioral checks. The
+- `src/runner/help_probe.rs` — existing pattern for spawning the target with `--help` for behavioral audits. The
   `--version` probe should mirror its safety conventions (no bare invocation, suffix-only).
 - `src/runner/mod.rs::spawn_and_wait` — the timeout + output-cap primitive to reuse, not duplicate.
 
@@ -504,7 +504,7 @@ including a best-effort `tool.version` self-report.
 ## System-Wide Impact
 
 - **Interaction graph:** The metadata flows from `main.rs` (capture point) → `build_scorecard` (struct assembly) →
-  `format_json` (serialize). No checks, registry, or coverage code is touched.
+  `format_json` (serialize). No audits, registry, or coverage code is touched.
 - **Error propagation:** Best-effort fields (`tool.version`, `anc.commit`) MUST never fail the run. Any error during
   capture is logged at `--quiet=false` and the field becomes `null`. The exit code is computed only from
   `results[].status`; new metadata cannot influence it.
@@ -524,7 +524,7 @@ including a best-effort `tool.version` self-report.
 
 | Risk                                                                                                                          | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tool.version` capture invokes the target binary, which is a recursive-fork-bomb hazard if the target is `anc` itself.        | Two layers: (a) suffix-only invocation (`<bin> --version` / `<bin> -V`), never bare — the existing `arg_required_else_help` guard on `Cli` enforces this; (b) explicit self-spawn check in U5 that compares the resolved target path to `std::env::current_exe()` and skips the probe on match. U5 test scenarios MUST include `anc audit --command anc` asserting no recursion and `tool.version: null` with the self-spawn evidence string. |
+| `tool.version` capture invokes the target binary, which is a recursive-fork-bomb hazard if the target is `anc` itself.        | Two layers: (a) suffix-only invocation (`<bin> --version` / `<bin> -V`), never bare — the existing `arg_required_else_help` guard on `Cli` enforces this; (b) explicit self-spawn audit in U5 that compares the resolved target path to `std::env::current_exe()` and skips the probe on match. U5 test scenarios MUST include `anc audit --command anc` asserting no recursion and `tool.version: null` with the self-spawn evidence string. |
 | New `time` dependency increases compile time and supply-chain surface.                                                        | Single direct dep, audited at U4. Pinned exact-version (pre-1.0 convention), added to `cargo deny` allowlist with rationale. `chrono` rejected (heavier transitive footprint).                                                                                                                                                                                                                                                                |
 | Site consumers parsing the JSON break on the new top-level objects.                                                           | Pre-launch policy: consumers feature-detect. Coordinate with `agentnative-site` repo maintainers — open a tracking issue when this PR lands so the deferred YAML cleanup is visible.                                                                                                                                                                                                                                                          |
 | `run.invocation` accidentally captures a path containing PII or a secret (e.g., `--command /home/me/secret-tool`).            | Best-effort lossy joining only. Document in the changelog that scorecards should be reviewed before publication, same as existing scorecards. No silent redaction (would surprise users debugging their own scorecards).                                                                                                                                                                                                                      |

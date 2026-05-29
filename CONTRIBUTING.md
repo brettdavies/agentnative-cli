@@ -1,7 +1,7 @@
 # Contributing to `agentnative-cli`
 
 `anc` is the reference linter for the [agent-native CLI spec](https://github.com/brettdavies/agentnative). This repo
-holds the Rust source, the scoring engine, the language checkers, and the registry. Principle-level discussion (the
+holds the Rust source, the scoring engine, the language auditors, and the registry. Principle-level discussion (the
 spec's MUST/SHOULD/MAY tiers, new principles, applicability clauses) belongs in the spec repo, not here. For
 visitor-facing cross-repo navigation, see [`anc.dev/contribute`](https://anc.dev/contribute).
 
@@ -13,8 +13,8 @@ because the linter is the implementation surface. Most improvements are concrete
 | Tier            | Shape                                                                                                                                                                                                                                                                     | Intake                                                                                                                                                                                                                                                                                                                        | Effort   |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | **1. Signal**   | False-positive report, scoring bug, feature request, install or platform issue, registry omission                                                                                                                                                                         | [`false-positive`](https://github.com/brettdavies/agentnative-cli/issues/new?template=false-positive.yml) / [`scoring-bug`](https://github.com/brettdavies/agentnative-cli/issues/new?template=scoring-bug.yml) / [`feature-request`](https://github.com/brettdavies/agentnative-cli/issues/new?template=feature-request.yml) | ~5 min   |
-| **2. Proposal** | A new language checker design, a scoring-engine rework, a new audience or audit profile, a registry expansion                                                                                                                                                             | Issue with the design before opening a PR; maintainer agreement is the gate                                                                                                                                                                                                                                                   | ~1-2 hrs |
-| **3. Code**     | Language checker implementations, false-positive fixes, scoring-engine improvements, registry submissions ([`add-tool-to-registry`](https://github.com/brettdavies/agentnative-cli/issues/new?template=add-tool-to-registry.yml) template), platform / install-path fixes | PR against `dev` (per branch discipline)                                                                                                                                                                                                                                                                                      | Variable |
+| **2. Proposal** | A new language auditor design, a scoring-engine rework, a new audience or audit profile, a registry expansion                                                                                                                                                             | Issue with the design before opening a PR; maintainer agreement is the gate                                                                                                                                                                                                                                                   | ~1-2 hrs |
+| **3. Code**     | Language auditor implementations, false-positive fixes, scoring-engine improvements, registry submissions ([`add-tool-to-registry`](https://github.com/brettdavies/agentnative-cli/issues/new?template=add-tool-to-registry.yml) template), platform / install-path fixes | PR against `dev` (per branch discipline)                                                                                                                                                                                                                                                                                      | Variable |
 
 For principle-level discussion (MUST/SHOULD/MAY tier changes, new principles, applicability-clause critiques), file a
 `pressure-test` issue in the
@@ -47,7 +47,7 @@ cargo deny check              # supply-chain audit (licenses, advisories)
 git config core.hooksPath scripts/hooks   # activate pre-push hook (next section)
 ```
 
-The `anc` binary lives at `target/debug/anc` after build; `cargo run -- check .` against any CLI's source tree runs the
+The `anc` binary lives at `target/debug/anc` after build; `cargo run -- audit .` against any CLI's source tree runs the
 full scoring pipeline locally. For the registry source of truth (the list of tools rendered on `anc.dev/scorecards`),
 see [`src/principles/registry.rs`](src/principles/registry.rs).
 
@@ -69,9 +69,9 @@ PRs that pass the hook locally also pass CI. Fix locally before pushing; the hoo
   it as the commit message you want in history.
 - **Body:** follow [`.github/pull_request_template.md`](.github/pull_request_template.md). The `## Changelog` section is
   the source of truth for `CHANGELOG.md` entries. Write for users, not implementers. Never hand-edit `CHANGELOG.md`.
-- **Scope:** keep PRs small and single-purpose where possible. False-positive fixes and new language checkers each
+- **Scope:** keep PRs small and single-purpose where possible. False-positive fixes and new language auditors each
   warrant their own PR.
-- **Tests:** new checkers ship with a unit test and a regression fixture; scoring-engine changes ship with before/after
+- **Tests:** new auditors ship with a unit test and a regression fixture; scoring-engine changes ship with before/after
   scorecards for at least three tools from the registry.
 
 ## Registry submissions

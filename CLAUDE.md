@@ -1,14 +1,14 @@
 # agentnative
 
-The agent-native CLI linter. Checks whether CLI tools follow 7 agent-readiness principles.
+The agent-native CLI linter. Audits whether CLI tools follow 7 agent-readiness principles.
 
 ## Architecture
 
-Two-layer check system:
+Two-layer audit system:
 
-- **Behavioral checks** — run the compiled binary, language-agnostic (any CLI)
-- **Source checks** — ast-grep pattern matching via bundled `ast-grep-core` crate (Rust, Python at launch)
-- **Project checks** — file existence, manifest inspection
+- **Behavioral audits** — run the compiled binary, language-agnostic (any CLI)
+- **Source audits** — ast-grep pattern matching via bundled `ast-grep-core` crate (Rust, Python at launch)
+- **Project audits** — file existence, manifest inspection
 
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`
 
@@ -51,8 +51,8 @@ review, naming rationale, review history) has been copied to `~/.gstack/projects
 Key decisions already made:
 
 - Name: `agentnative` with `anc` alias (see naming rationale)
-- Approach B: bundled ast-grep hybrid (behavioral + source checks)
-- ast-grep-core v0.42.0 validated via spike (3 PoC checks, 18 tests pass)
+- Approach B: bundled ast-grep hybrid (behavioral + source audits)
+- ast-grep-core v0.42.0 validated via spike (3 PoC audits, 18 tests pass)
 - Eng review: CLEARED, 10 issues resolved, 1 critical gap addressed
 - Codex review: 12 findings, 3 actioned
 
@@ -64,36 +64,36 @@ Key decisions already made:
 - Feature flag is `tree-sitter-rust`, not `language-rust`
 - Edition 2024, dual MIT/Apache-2.0 license
 
-## Source Check Convention
+## Source Audit Convention
 
-Most source checks follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use different
-helper shapes but still satisfy the core contract that `run()` is the sole `CheckResult` constructor):
+Most source audits follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use different
+helper shapes but still satisfy the core contract that `run()` is the sole `AuditResult` constructor):
 
-- **Struct** implements `Check` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
-- **`check_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
-  context) and returns `CheckStatus` (not `CheckResult`) — this is the unit-testable core
-- **No `Check` impl constructs `CheckResult` outside its own `run()`.** `run()` is the sole place each check assembles
-  its own result — never hardcode ID/group/layer/label string literals in `check_x()` or anywhere outside `run()`. The
-  runtime layer (`main::run`'s error and `--audit-profile` suppression branches) legitimately constructs `CheckResult`
-  as a *second* site — it's the runner, not a `Check` impl, and it uses `check.id()`, `check.label()`, `check.group()`,
-  `check.layer()` from the trait (never string literals). Test doubles (`FakeCheck` in `src/principles/matrix.rs` and
+- **Struct** implements `Audit` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
+- **`audit_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
+  context) and returns `AuditStatus` (not `AuditResult`) — this is the unit-testable core
+- **No `Audit` impl constructs `AuditResult` outside its own `run()`.** `run()` is the sole place each audit assembles
+  its own result — never hardcode ID/group/layer/label string literals in `audit_x()` or anywhere outside `run()`. The
+  runtime layer (`main::run`'s error and `--audit-profile` suppression branches) legitimately constructs `AuditResult`
+  as a *second* site — it's the runner, not an `Audit` impl, and it uses `audit.id()`, `audit.label()`, `audit.group()`,
+  `audit.layer()` from the trait (never string literals). Test doubles (`FakeAudit` in `src/principles/matrix.rs` and
   `src/scorecard/mod.rs`) similarly sidestep the rule by design.
-- **`label()` returns `&'static str`** and feeds the `label` field in `run()`'s `CheckResult`. Having the label on the
+- **`label()` returns `&'static str`** and feeds the `label` field in `run()`'s `AuditResult`. Having the label on the
   trait also means the suppression and error branches can show the human label instead of falling back to the opaque
-  `id`. See `src/check.rs`.
-- **Tests call `check_x()`** and match on `CheckStatus` directly, not `result.status`
+  `id`. See `src/audit.rs`.
+- **Tests call `audit_x()`** and match on `AuditStatus` directly, not `result.status`
 
-This prevents ID triplication (the same string literal in `id()`, `run()`, and `check_x()`) and ensures the `Check`
-trait is the single source of truth for check metadata.
+This prevents ID triplication (the same string literal in `id()`, `run()`, and `audit_x()`) and ensures the `Audit`
+trait is the single source of truth for audit metadata.
 
 For cross-language pattern helpers, use `source::has_pattern_in()` / `source::find_pattern_matches_in()` /
 `source::has_string_literal_in()` with a `Language` parameter — do not write private per-language helpers in individual
-check files.
+audit files.
 
 ## Principle Registry
 
 `src/principles/registry.rs` is the single source of truth linking spec requirements (MUSTs, SHOULDs, MAYs across P1–P7)
-to the checks that verify them. IDs follow `p{N}-{level}-{key}` and are stable once published — scorecards and the
+to the audits that verify them. IDs follow `p{N}-{level}-{key}` and are stable once published — scorecards and the
 coverage matrix pin against them.
 
 - Add requirements by appending to the `REQUIREMENTS` static slice, grouped by principle then level (MUST → SHOULD →
@@ -103,15 +103,15 @@ coverage matrix pin against them.
   grows.
 - `Applicability::Universal` means every CLI; `Applicability::Conditional(reason)` names the gate in prose so the matrix
   and the site `/coverage` page can render it.
-- `ExceptionCategory` drives `--audit-profile` suppression. The `SUPPRESSION_TABLE` maps each variant to the check IDs
-  it suppresses; drift tests fail the build if a category has no entry or a listed check ID isn't in the catalog. Adding
+- `ExceptionCategory` drives `--audit-profile` suppression. The `SUPPRESSION_TABLE` maps each variant to the audit IDs
+  it suppresses; drift tests fail the build if a category has no entry or a listed audit ID isn't in the catalog. Adding
   a fifth category requires a plan revision — the four v0.1.3 categories (`human-tui`, `file-traversal`,
   `posix-utility`, `diagnostic-only`) are the committed surface.
 
 ## covers() Declaration
 
-Each `Check` declares which requirements it evidences via `fn covers(&self) -> &'static [&'static str]`. The default
-returns `&[]` — checks opt in explicitly. Return a static slice; never allocate. For a check that verifies multiple
+Each `Audit` declares which requirements it evidences via `fn covers(&self) -> &'static [&'static str]`. The default
+returns `&[]` — audits opt in explicitly. Return a static slice; never allocate. For an audit that verifies multiple
 requirements, list them all:
 
 ```rust
@@ -136,7 +136,7 @@ artifacts disagree with the current registry + `covers()` declarations. The inte
 `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
 either source.
 
-Regenerate whenever you add a requirement, change a check's `covers()`, or rename a check ID. The regeneration is a
+Regenerate whenever you add a requirement, change an audit's `covers()`, or rename an audit ID. The regeneration is a
 deliberate commit, not a build-time artifact — the matrix is citable from outside this repo.
 
 ## Scorecard v0.5 Fields
@@ -152,9 +152,9 @@ consumers feature-detect each addition rather than pinning exact shape. Cumulati
 
 Existing field semantics:
 
-- `coverage_summary` — populated every run. Checks suppressed by `--audit-profile` do not count toward `verified`.
-- `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral checks.
-  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal check is missing (including
+- `coverage_summary` — populated every run. Audits suppressed by `--audit-profile` do not count toward `verified`.
+- `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral audits.
+  Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal audit is missing (including
   `--audit-profile` suppression). Read-only over results; never gates totals or exit codes — per CEO review Finding #3,
   label mismatches are fixed via registry, not classifier logic.
 - `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,
@@ -261,11 +261,11 @@ surface lives in `src/skill_install.rs`:
 
 ## Dogfooding Safety
 
-Behavioral checks spawn the target binary as a child process. When dogfooding (`anc audit .`), the target IS
+Behavioral audits spawn the target binary as a child process. When dogfooding (`anc audit .`), the target IS
 agentnative. Three rules guard the probe:
 
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
-   instant help output instead of running `check .`. This is also correct CLI behavior (P1 principle).
+   instant help output instead of running `audit .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project.rs::discover_rust_binaries`): when both
@@ -275,7 +275,7 @@ agentnative. Three rules guard the probe:
    default). Test coverage: `test_discover_picks_newer_artifact_by_mtime` + `test_discover_picks_release_when_newer`.
    Backstory: `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`.
 
-**Rules for new behavioral checks:**
+**Rules for new behavioral audits:**
 
 - NEVER probe subcommands without `--help`/`--version` suffixes
 - NEVER remove `arg_required_else_help` from `Cli` — it prevents recursive self-invocation

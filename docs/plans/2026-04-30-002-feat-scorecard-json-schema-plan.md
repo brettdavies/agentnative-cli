@@ -90,7 +90,7 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 - `$schema: "https://json-schema.org/draft/2020-12/schema"` (current published draft).
 - `$id: "https://anc.dev/scorecard-v{X.Y}.schema.json"` — the versioned URL the site archives at.
 - R10. **`title`** at the schema root reads `"agentnative scorecard"` and `description` summarizes "JSON Schema for `anc
-  check --output json` scorecards, schema version X.Y. Generated from Rust types in `src/scorecard/mod.rs`. See
+  audit --output json` scorecards, schema version X.Y. Generated from Rust types in `src/scorecard/mod.rs`. See
   https://anc.dev/scorecard-schema for the published archive of past versions."
 
 ---
@@ -165,7 +165,7 @@ Relevant features:
 `src/scorecard/mod.rs` defines:
 
 - `Scorecard` (top-level)
-- `CheckResultView` (one per result row)
+- `AuditResultView` (one per result row)
 - `Summary`
 - `CoverageSummary`, `LevelCounts`
 - `ToolInfo`
@@ -339,7 +339,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 - Modify: `src/scorecard/mod.rs` — add `JsonSchema` to every `#[derive(Serialize)]` line (or to a separate
     `#[cfg_attr(feature = "schemars", derive(JsonSchema))]` if we want it gated; default is unconditional, since
     schemars is build-only and the derive macro just generates impl code at compile time).
-- Modify: `src/types.rs` (or wherever `CheckGroup`, `CheckLayer`, `Confidence`, `CheckStatus` live) — add `JsonSchema`
+- Modify: `src/types.rs` (or wherever `AuditGroup`, `AuditLayer`, `Confidence`, `AuditStatus` live) — add `JsonSchema`
     to those enums. Verify `#[serde(rename_all = "snake_case")]` is mirrored by `#[schemars(rename_all = "snake_case")]`
     if schemars doesn't propagate it.
 - Modify: `src/scorecard/audience.rs` (or wherever the audience enum is defined) — same treatment.
@@ -407,7 +407,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Test scenarios:**
 
 - **Happy path:** `cargo build --release` succeeds; the generated JSON file exists in `$OUT_DIR`; binary embeds via
-    `include_str!`; a quick `cargo run --release -- check . --output json` still works (regression smoke for accidental
+    `include_str!`; a quick `cargo run --release -- audit . --output json` still works (regression smoke for accidental
     compile-time breakage).
 - **Edge case:** schema generation panics during `build.rs` (e.g. a struct field schemars can't handle). Mitigation:
     fail the build with a clear message naming the struct + field; do not silently emit a stub.
@@ -416,7 +416,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - `head $(find target -name 'scorecard.schema.json' | head -1)` shows valid JSON starting with `"$schema"` and `"$id"`
     keys.
-- `EMBEDDED_SCHEMA.starts_with("{")` returns true at runtime (informal check; real test in U6).
+- `EMBEDDED_SCHEMA.starts_with("{")` returns true at runtime (informal audit; real test in U6).
 
 ---
 

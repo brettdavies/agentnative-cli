@@ -1,12 +1,12 @@
 name: "False positive / false negative"
 description: "Report an anc audit that produces the wrong result."
-labels: ["checker-bug"]
+labels: ["auditor-bug"]
 body:
   - type: input
-    id: check-id
+    id: audit-id
     attributes:
-      label: Check ID
-      description: "The check ID from `anc audit` output (e.g., `p4-process-exit`)."
+      label: Audit ID
+      description: "The audit ID from `anc audit` output (e.g., `p4-process-exit`)."
       placeholder: "p1-non-interactive"
     validations:
       required: true
@@ -15,8 +15,8 @@ body:
     attributes:
       label: Bug type
       options:
-        - "False positive (check fails but the tool is compliant)"
-        - "False negative (check passes but the tool is non-compliant)"
+        - "False positive (audit fails but the tool is compliant)"
+        - "False negative (audit passes but the tool is non-compliant)"
     validations:
       required: true
   - type: textarea
@@ -26,7 +26,7 @@ body:
       description: "The command you ran, the output, and what the correct result should be."
       placeholder: |
         $ anc audit --command mytool --output json
-        Check p1-non-interactive: FAIL
+        Audit p1-non-interactive: FAIL
         Evidence: "No --no-interactive flag found"
 
         But mytool has --batch which serves the same purpose.
@@ -51,7 +51,7 @@ body:
 
         1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to check for duplicates.
         2. **AI disclosure is required.** Fill the field above honestly.
-        3. **Checker bugs only.** For spec questions or principle edits, file on [brettdavies/agentnative](https://github.com/brettdavies/agentnative). For site bugs, file on [brettdavies/agentnative-site](https://github.com/brettdavies/agentnative-site).
+        3. **Auditor bugs only.** For spec questions or principle edits, file on [brettdavies/agentnative](https://github.com/brettdavies/agentnative). For site bugs, file on [brettdavies/agentnative-site](https://github.com/brettdavies/agentnative-site).
         4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.
         </details>
     validations:

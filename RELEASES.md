@@ -264,5 +264,5 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 - [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection
   pitfalls)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)
-- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
+- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new audits)
 - [`README.md`](README.md) (install channels, principles, CLI reference)

@@ -2,9 +2,11 @@
 # Vendor agentnative-spec into src/principles/spec/.
 #
 # Default behavior: resolves the latest v* tag of agentnative-spec via the
-# GitHub API and pulls VERSION, CHANGELOG.md, and principles/p*-*.md at
-# that tag. The vendored tree is the build-time input for build.rs, which
-# generates the REQUIREMENTS slice consumed by `anc audit`.
+# GitHub API and pulls VERSION, CHANGELOG.md, principles/p*-*.md, and
+# principles/scoring.md at that tag. The vendored tree is the build-time
+# input for build.rs, which generates the REQUIREMENTS slice consumed by
+# `anc audit`; scoring.md is reference-only (the scorecard's formula
+# authority) and is not parsed by build.rs.
 #
 # Override behavior (--ref / SPEC_REF): vendors an explicit branch HEAD,
 # tag, or commit SHA instead of the latest v* tag. Use for cross-repo
@@ -237,7 +239,13 @@ if [[ "$copied" -eq 0 ]]; then
     exit 1
 fi
 
-echo "wrote $copied principle file(s) to $DEST_PRINCIPLES"
+# scoring.md is a named reference doc in principles/ (the scoring-formula
+# authority the scorecard cites), not a numbered principle. Vendor it
+# explicitly so the p*-*.md filter above stays tight; build.rs ignores it
+# (its filter requires a leading `p`).
+fetch_file "principles/scoring.md" "$DEST_PRINCIPLES/scoring.md"
+
+echo "wrote $copied principle file(s) + scoring.md to $DEST_PRINCIPLES"
 echo "wrote VERSION + CHANGELOG.md to $DEST_DIR"
 echo
 echo "next: review \`git diff\` for unexpected changes, then commit."

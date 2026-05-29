@@ -43,7 +43,7 @@ Every section of a PR body is user-facing substance only: what is changing for t
 the **net diff**, not the commit history or intermediate state that produced it. Workflow mechanics (cherry-pick,
 regenerate, pre-push gate, CI behavior) is documented in RELEASES.md and `.github/`, NOT in the PR body. Triple-diff
 output ("A: 12 files, B: none, C: clean"), leak-check narration ("`guard-main-docs` runs clean", "no guarded paths
-leaked"), patch-id cherry-check counts, pre-push gate results, CI audit status, exclusion rationale, and other
+leaked"), patch-id cherry-check counts, pre-push gate results, CI check status, exclusion rationale, and other
 verification artifacts stay local; anomalies get fixed before push, not audit-trailed in the body.
 
 The PR body is read by humans reviewing what shipped. Workflow mechanics and tool-fix provenance are noise from that
@@ -60,7 +60,7 @@ user-observable effect (config defaults, env vars, default behaviors).
 `Related Issues/Stories` has four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). `Files Modified` has
 four sub-headers (`Modified` / `Created` / `Renamed` / `Deleted`). All four must appear in every PR, even when empty:
 write `- None.` or `n/a` rather than deleting the label. Reason: scanners and humans both rely on a known section shape.
-Conditionally-absent sections force every reader to mentally audit "did the author skip this or does it not apply?"
+Conditionally-absent sections force every reader to mentally check "did the author skip this or does it not apply?"
 
 ### Why no AI attribution
 
@@ -91,7 +91,7 @@ the PR body, not in the source-of-truth release notes.
 ## Triple-diff verification
 
 The release-PR procedure runs three diffs (A: main→release, B: release→dev for non-doc paths, C: dev→main) plus a
-patch-id cherry audit. This is belt-and-suspenders because missed cherry-picks have shipped to `main` on this and
+patch-id cherry check. This is belt-and-suspenders because missed cherry-picks have shipped to `main` on this and
 sibling repos before, and the file-level diff in B alone doesn't catch the patch-id false-negative class.
 
 ### Why patch-id cherry-check output is noisy
@@ -194,9 +194,9 @@ manual src edits needed.
 
 ## Prose scrubbing scope
 
-Three release-flow artifacts live outside any automated prose audit and need a manual scrub before they ship:
+Three release-flow artifacts live outside any automated prose check and need a manual scrub before they ship:
 
-- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose audit has reach
+- **PR bodies.** `gh pr create` and `gh pr edit` send body text directly to GitHub; no automated prose check has reach
   there.
 - **`CHANGELOG.md`.** A generated artifact built from upstream PR bodies; it inherits whatever prose those PR bodies
   carry, so scrubbing happens at generation time on the release branch.
@@ -219,17 +219,17 @@ regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regener
 
 ### Status-check context strings
 
-The `required_status_audits[].context` strings in `protect-main.json` MUST match exactly what GitHub publishes for each
-audit:
+The `required_status_checks[].context` strings in `protect-main.json` MUST match exactly what GitHub publishes for each
+check:
 
 - **Inline job** (with `name:` field): published as just `<job-name>` (no workflow-name prefix).
 - **Reusable-workflow caller** (`uses: .../foo.yml@ref`): published as `<caller-job-id> / <reusable-job-id-or-name>`.
 
-Mixing these produces a stuck-but-green PR: all actual audits report green, but the ruleset waits forever on a context
+Mixing these produces a stuck-but-green PR: all actual checks report green, but the ruleset waits forever on a context
 that will never appear. Confirm the real contexts after a first CI run with:
 
 ```bash
-gh api repos/brettdavies/agentnative-cli/commits/<sha>/audit-runs --jq '.audit_runs[].name'
+gh api repos/brettdavies/agentnative-cli/commits/<sha>/check-runs --jq '.check_runs[].name'
 ```
 
 ### Why rulesets live in-repo

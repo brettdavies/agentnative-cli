@@ -151,11 +151,11 @@ prints nothing badge-related. The convention is to surface the embed only when e
 
 agentnative uses three layers to analyze your CLI:
 
-- **Behavioral**: runs the compiled binary, audits `--help`, `--version`, `--output json`, SIGPIPE, NO_COLOR, SIGTERM,
+- **Behavioral**: runs the compiled binary, checks `--help`, `--version`, `--output json`, SIGPIPE, NO_COLOR, SIGTERM,
   exit codes. Language-agnostic. Isolate with `anc . --binary`.
 - **Source**: ast-grep pattern matching on source code. Detects `.unwrap()`, missing error types, naked `println!`,
   closed-set rejection, and more. Supports Rust and Python. Isolate with `anc . --source`.
-- **Project**: inspects files and manifests. Audits for `AGENTS.md` / `SKILL.md` bundle, recommended dependencies,
+- **Project**: inspects files and manifests. Checks for `AGENTS.md` / `SKILL.md` bundle, recommended dependencies,
   dedicated error/output modules, output-schema file at the repo root. Runs alongside the other layers; no isolation
   flag.
 

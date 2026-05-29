@@ -43,7 +43,7 @@ procedure in [`RELEASES.md`](./RELEASES.md).
 git clone https://github.com/brettdavies/agentnative-cli && cd agentnative-cli
 cargo build                   # builds the `anc` binary
 cargo test                    # unit + integration tests
-cargo deny audit              # supply-chain audit (licenses, advisories)
+cargo deny check              # supply-chain audit (licenses, advisories)
 git config core.hooksPath scripts/hooks   # activate pre-push hook (next section)
 ```
 
@@ -54,7 +54,7 @@ see [`src/principles/registry.rs`](src/principles/registry.rs).
 ## Pre-push hook battery
 
 The repo ships a pre-push hook that mirrors CI: `cargo fmt --check`, `cargo clippy -Dwarnings`, `cargo test`,
-`cargo-deny audit`, and a Windows compatibility scan. Activate the hook once after clone:
+`cargo-deny check`, and a Windows compatibility scan. Activate the hook once after clone:
 
 ```bash
 git config core.hooksPath scripts/hooks

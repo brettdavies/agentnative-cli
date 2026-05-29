@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::check::Check;
 use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
-use crate::types::{CheckGroup, CheckResult, CheckStatus};
+use crate::types::{CheckGroup, CheckLayer, CheckResult, CheckStatus};
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
 /// leaderboard pipeline) pin against this to detect shape changes.
@@ -30,14 +30,13 @@ pub const SCHEMA_VERSION: &str = "0.6";
 /// percent. A score that meets or exceeds this floor qualifies a tool to
 /// embed the badge.
 ///
-/// Authority is the site's published badge convention at
-/// <https://anc.dev/badge> (mirrors the `badgeColor` brightline in
-/// `agentnative-site/src/build/badge.mjs`). The spec convention currently
-/// lives on the `agentnative-spec` `feat/badge-claim-convention` branch
-/// and will move into the vendored spec via `sync-spec` once the floor
-/// lands as a published constant. Until then, this constant carries the
-/// site's authoritative value.
-pub const BADGE_ELIGIBILITY_FLOOR_PCT: u32 = 80;
+/// Authority is the spec's scoring contract (`agentnative-spec`
+/// `principles/scoring.md`): the floor is deliberately low so the badge
+/// can spread the standard, with exclusivity carried by the cohort bands
+/// the site renders rather than by a high gate. A tool below the floor
+/// still gets a rendered scorecard and badge SVG; only the README embed
+/// snippet is withheld (the do-not-nag contract).
+pub const BADGE_ELIGIBILITY_FLOOR_PCT: u32 = 70;
 
 /// Canonical base URL the badge convention publishes against. Per the
 /// site convention, the URL is "always-latest" — `<base>/badge/<tool>.svg`
@@ -112,12 +111,11 @@ pub struct Scorecard {
 
 /// Agent-native badge metadata derived from the current run.
 ///
-/// `score_pct` is the rounded integer percent of `pass / (pass + warn +
-/// fail)` — the same denominator the site leaderboard uses. Skips and
-/// errors do not count toward either side of the ratio. When the
-/// denominator is zero (no scoring data — e.g., `--principle 99` filters
-/// every check out) the score is reported as `0` and `eligible` is
-/// `false`.
+/// `score_pct` is the credit-weighted leaderboard score defined in
+/// `agentnative-spec` `principles/scoring.md`, computed by [`score_pct`]
+/// over behavioral-layer rows only. When the denominator set is empty (no
+/// scoring data — e.g., `--principle 99` filters every check out) the
+/// score is reported as `0` and `eligible` is `false`.
 ///
 /// `eligible` is `true` iff `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT`
 /// **and** a tool slug was derivable. Without a slug we cannot construct
@@ -189,45 +187,84 @@ pub fn compute_badge(results: &[CheckResult], tool_name: &str) -> BadgeInfo {
     }
 }
 
-/// Compute the rounded integer percent score using the transitional
-/// leaderboard denominator. Pass/Warn/Fail count in the denominator. Pass
-/// counts in the numerator. Skip, Error, OptOut, and NotApplicable are
-/// excluded from both sides of the ratio.
-///
-/// **Transitional formula choice.** The 7-status taxonomy semantically
-/// treats `opt_out` as in-denominator (deliberate non-adoption is a real
-/// signal), but plan U2 explicitly keeps the U2 formula conservative:
-/// "leave the existing formula but exclude `opt_out` from the denominator
-/// and exclude `n_a` from both — minimal change that respects the new
-/// semantics without committing to a new formula." Whether `opt_out`
-/// re-enters the denominator (and at what weight) is the U3 spec issue,
-/// after the disambiguated input has been rescored.
-///
-/// Returns `0` when no checks contribute — pairs with `BadgeInfo::eligible
-/// == false` so a zero score never qualifies.
-fn score_pct(results: &[CheckResult]) -> u32 {
-    let mut pass = 0u32;
-    let mut denom = 0u32;
-    for r in results {
-        match &r.status {
-            CheckStatus::Pass => {
-                pass += 1;
-                denom += 1;
-            }
-            CheckStatus::Warn(_) | CheckStatus::Fail(_) => {
-                denom += 1;
-            }
-            CheckStatus::Skip(_)
-            | CheckStatus::Error(_)
-            | CheckStatus::OptOut(_)
-            | CheckStatus::NotApplicable(_) => {}
-        }
+/// Per-tier weights for the leaderboard formula, published **flat** per
+/// `agentnative-spec` `principles/scoring.md` (`w(must) = w(should) =
+/// w(may) = 1`): every behavioral check counts the same regardless of its
+/// RFC-2119 tier. The weights are a tunable parameter, not a constant baked
+/// into the formula — a future non-flat re-tune (e.g. weighting MUST
+/// failures more heavily) changes only these constants while the general
+/// `Σ w·credit / Σ w` shape in [`score_pct`] stays put. Held stable for at
+/// least six months from publication per the spec's stability commitment.
+const W_MUST: f64 = 1.0;
+const W_SHOULD: f64 = 1.0;
+const W_MAY: f64 = 1.0;
+
+/// Tier weight for a requirement row, keyed by its registry `level`. Rows
+/// whose id is absent from the registry fall back to the MUST weight — the
+/// most conservative choice under any future non-flat weighting. Under the
+/// published flat weights every arm returns `1.0`, so the fallback is inert
+/// today.
+fn tier_weight(level: Option<Level>) -> f64 {
+    match level {
+        Some(Level::Should) => W_SHOULD,
+        Some(Level::May) => W_MAY,
+        Some(Level::Must) | None => W_MUST,
     }
-    if denom == 0 {
+}
+
+/// Execution credit a status contributes to the numerator, or `None` when
+/// the status falls outside the denominator set `D`. Per
+/// `principles/scoring.md`: `pass` earns full credit, `warn` half, `fail`
+/// and `opt_out` zero — both count against, since `opt_out` is deliberate
+/// non-adoption and a real signal. `n_a` / `skip` / `error` are excluded
+/// from `D` entirely.
+fn status_credit(status: &CheckStatus) -> Option<f64> {
+    match status {
+        CheckStatus::Pass => Some(1.0),
+        CheckStatus::Warn(_) => Some(0.5),
+        CheckStatus::Fail(_) | CheckStatus::OptOut(_) => Some(0.0),
+        CheckStatus::NotApplicable(_) | CheckStatus::Skip(_) | CheckStatus::Error(_) => None,
+    }
+}
+
+/// Compute the rounded integer leaderboard score defined in `agentnative-spec`
+/// `principles/scoring.md`.
+///
+/// The score reflects **shipped-binary behavior only**: solely
+/// behavioral-layer rows enter the formula. Source- and project-layer rows
+/// still emit in the scorecard but never move the score — what a tool's
+/// source looks like does not change how an agent experiences the installed
+/// binary.
+///
+/// Over the denominator set `D` (rows whose status is in
+/// `{pass, warn, fail, opt_out}`):
+///
+/// ```text
+/// score_pct = round(100 × Σ_{i∈D} w(tier_i)·credit(status_i)
+///                        / Σ_{i∈D} w(tier_i))
+/// ```
+///
+/// `n_a` / `skip` / `error` are excluded from `D`. Returns `0` when `D` is
+/// empty — pairs with `BadgeInfo::eligible == false` so a zero score never
+/// qualifies.
+fn score_pct(results: &[CheckResult]) -> u32 {
+    let mut weighted_credit = 0.0_f64;
+    let mut weight_sum = 0.0_f64;
+    for r in results {
+        if r.layer != CheckLayer::Behavioral {
+            continue;
+        }
+        let Some(credit) = status_credit(&r.status) else {
+            continue;
+        };
+        let weight = tier_weight(crate::principles::registry::find(&r.id).map(|req| req.level));
+        weighted_credit += weight * credit;
+        weight_sum += weight;
+    }
+    if weight_sum == 0.0 {
         0
     } else {
-        let ratio = f64::from(pass) / f64::from(denom);
-        (ratio * 100.0).round() as u32
+        ((weighted_credit / weight_sum) * 100.0).round() as u32
     }
 }
 
@@ -1502,7 +1539,7 @@ mod tests {
 
     #[test]
     fn compute_badge_eligible_when_all_pass_and_slug_present() {
-        // Three Pass and zero failures → 100% → above the 80% floor.
+        // Three Pass and zero failures → 100% → above the 70% floor.
         let results = vec![
             make_result("c1", CheckStatus::Pass, CheckGroup::P1),
             make_result("c2", CheckStatus::Pass, CheckGroup::P2),
@@ -1551,17 +1588,22 @@ mod tests {
 
     #[test]
     fn compute_badge_at_floor_is_eligible() {
-        // 4 pass / 5 denom = 80% — exactly at the floor must qualify.
+        // 7 pass / 10 denom = 70% — exactly at the floor must qualify.
         let results = vec![
             make_result("c1", CheckStatus::Pass, CheckGroup::P1),
             make_result("c2", CheckStatus::Pass, CheckGroup::P2),
             make_result("c3", CheckStatus::Pass, CheckGroup::P3),
             make_result("c4", CheckStatus::Pass, CheckGroup::P4),
-            make_result("c5", CheckStatus::Fail("one fail".into()), CheckGroup::P5),
+            make_result("c5", CheckStatus::Pass, CheckGroup::P5),
+            make_result("c6", CheckStatus::Pass, CheckGroup::P6),
+            make_result("c7", CheckStatus::Pass, CheckGroup::P7),
+            make_result("c8", CheckStatus::Fail("one".into()), CheckGroup::P8),
+            make_result("c9", CheckStatus::Fail("two".into()), CheckGroup::P8),
+            make_result("c10", CheckStatus::Fail("three".into()), CheckGroup::P8),
         ];
         let badge = compute_badge(&results, "edge-case");
         assert!(badge.eligible, "score == floor must qualify");
-        assert_eq!(badge.score_pct, 80);
+        assert_eq!(badge.score_pct, 70);
         assert!(badge.embed_markdown.is_some());
     }
 
@@ -1785,6 +1827,15 @@ mod tests {
 
     fn make_raw(id: &str, status: CheckStatus) -> CheckResult {
         make_result(id, status, CheckGroup::P2)
+    }
+
+    /// A raw result on a chosen layer, for tests that exercise the
+    /// behavioral-only scope of `score_pct`.
+    fn make_raw_on(id: &str, status: CheckStatus, layer: CheckLayer) -> CheckResult {
+        CheckResult {
+            layer,
+            ..make_raw(id, status)
+        }
     }
 
     /// Minimal `Check` impl that lets per-row fan-out tests express a
@@ -2115,26 +2166,93 @@ mod tests {
     }
 
     #[test]
-    fn score_pct_excludes_opt_out_and_n_a_from_denominator() {
-        // Transitional formula (U2): pass / (pass + warn + fail). opt_out
-        // and n_a do not count in either side of the ratio. A run of
-        // 1 Pass + 1 OptOut + 1 NotApplicable scores 100% (1/1), not 33%.
+    fn score_pct_counts_opt_out_in_denominator_excludes_n_a() {
+        // Final formula (scoring.md): opt_out is in the denominator set D
+        // with credit 0 (deliberate non-adoption counts against); n_a is
+        // excluded from D entirely. A run of 1 Pass + 1 OptOut +
+        // 1 NotApplicable scores (1 + 0) / (1 + 1) = 50%, not 100%.
         let results = vec![
             make_raw("c1", CheckStatus::Pass),
             make_raw("c2", CheckStatus::OptOut("deliberate".into())),
             make_raw("c3", CheckStatus::NotApplicable("conditional unmet".into())),
         ];
-        assert_eq!(score_pct(&results), 100);
+        assert_eq!(score_pct(&results), 50);
 
-        // Adding one Fail pulls the score down to 50%; opt_out / n_a still
-        // do not contribute to the denominator.
+        // Adding one Fail: D = {pass, fail, opt_out}, numerator 1 → 33%.
+        // n_a remains outside D.
         let mixed = vec![
             make_raw("c1", CheckStatus::Pass),
             make_raw("c2", CheckStatus::Fail("violates".into())),
             make_raw("c3", CheckStatus::OptOut("deliberate".into())),
             make_raw("c4", CheckStatus::NotApplicable("conditional unmet".into())),
         ];
-        assert_eq!(score_pct(&mixed), 50);
+        assert_eq!(score_pct(&mixed), 33);
+    }
+
+    #[test]
+    fn score_pct_warn_earns_half_credit() {
+        // Per scoring.md, warn contributes 0.5 to the numerator and 1 to
+        // the denominator. 1 Pass + 1 Warn → (1 + 0.5) / 2 = 75%.
+        let results = vec![
+            make_raw("c1", CheckStatus::Pass),
+            make_raw("c2", CheckStatus::Warn("partial".into())),
+        ];
+        assert_eq!(score_pct(&results), 75);
+    }
+
+    #[test]
+    fn score_pct_counts_behavioral_rows_only() {
+        // scoring.md scopes the score to shipped-binary behavior: only
+        // behavioral-layer rows enter D. A source-layer and a project-layer
+        // Fail must not move the score. Behavioral set here is a single
+        // Pass → 100%, despite two non-behavioral failures present.
+        let results = vec![
+            make_raw_on("b1", CheckStatus::Pass, CheckLayer::Behavioral),
+            make_raw_on("s1", CheckStatus::Fail("source".into()), CheckLayer::Source),
+            make_raw_on(
+                "p1",
+                CheckStatus::Fail("project".into()),
+                CheckLayer::Project,
+            ),
+        ];
+        assert_eq!(score_pct(&results), 100);
+
+        // And with no behavioral rows at all, D is empty → 0%.
+        let non_behavioral = vec![
+            make_raw_on("s1", CheckStatus::Pass, CheckLayer::Source),
+            make_raw_on("p1", CheckStatus::Pass, CheckLayer::Project),
+        ];
+        assert_eq!(score_pct(&non_behavioral), 0);
+    }
+
+    #[test]
+    fn score_pct_matches_scoring_md_worked_example() {
+        // The worked example in agentnative-spec principles/scoring.md:
+        // 20 pass, 7 warn, 0 fail, 1 opt_out, 1 n_a, 14 skip.
+        // D = 20 + 7 + 0 + 1 = 28 rows; numerator = 20 + 7×0.5 = 23.5;
+        // round(100 × 23.5 / 28) = 84 → Strong band.
+        let mut results = Vec::new();
+        for i in 0..20 {
+            results.push(make_raw(&format!("pass-{i}"), CheckStatus::Pass));
+        }
+        for i in 0..7 {
+            results.push(make_raw(
+                &format!("warn-{i}"),
+                CheckStatus::Warn("partial".into()),
+            ));
+        }
+        results.push(make_raw("opt", CheckStatus::OptOut("declined".into())));
+        results.push(make_raw(
+            "na",
+            CheckStatus::NotApplicable("antecedent unmet".into()),
+        ));
+        for i in 0..14 {
+            results.push(make_raw(
+                &format!("skip-{i}"),
+                CheckStatus::Skip("unmeasured".into()),
+            ));
+        }
+        assert_eq!(score_pct(&results), 84);
     }
 
     #[test]
@@ -2315,7 +2433,9 @@ mod tests {
 
     #[test]
     fn rt_score_pct_only_opt_out_returns_zero_without_panic() {
-        // Mirror of the n_a case: opt_out also excluded from denominator.
+        // opt_out is in the denominator set D but contributes 0 credit, so
+        // an all-opt_out run is 0 / N = 0% — not a div-by-zero (D is
+        // non-empty here, unlike the all-n_a case above).
         let results: Vec<CheckResult> = (0..50)
             .map(|i| {
                 make_raw(
@@ -2425,8 +2545,8 @@ mod tests {
     fn rt_full_pipeline_n_a_excluded_from_summary_n_a_and_score() {
         // End-to-end: a probe emits OptOut for the antecedent. After
         // fan-out + propagation, the consequent row carries n_a. The
-        // summary counts both. The score reflects the non-conditional
-        // pass-rate, untouched by the opt_out / n_a pair.
+        // summary counts both. n_a stays outside the denominator set D;
+        // opt_out stays inside it with 0 credit.
         let raw = vec![
             make_raw("p2-json-output", CheckStatus::OptOut("no flag".into())),
             make_raw("p2-schema-print", CheckStatus::Pass),
@@ -2456,9 +2576,10 @@ mod tests {
             s.n_a, 1,
             "p2-must-schema-print → n_a via propagation: got {s:?}",
         );
-        // Score: 2 passes (p2-must-output-flag is opt_out, p2-must-schema-print
-        // is n_a; only 2 pass rows remain). Denominator = 2 (both passes), so
-        // 100%. The opt_out + n_a do not pull the score down.
-        assert_eq!(score_pct(&per_row), 100);
+        // Rows after propagation: p2-must-output-flag → opt_out,
+        // p2-must-schema-print → n_a, p1-must-no-interactive → pass. D drops
+        // the n_a row and keeps {opt_out, pass}: numerator 1, denominator 2
+        // → 50%. The opt_out pulls the score down; the n_a does not count.
+        assert_eq!(score_pct(&per_row), 50);
     }
 }

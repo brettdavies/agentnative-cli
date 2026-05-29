@@ -136,15 +136,15 @@ P8 — Discoverable Skill Bundles
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-44 checks: 37 pass, 3 warn, 0 fail, 4 skip, 0 error
+69 checks: 59 pass, 0 warn, 0 fail, 0 opt_out, 0 n_a, 10 skip, 0 error
 
-🏆 Score: 93% — your tool qualifies for the agent-native badge.
+🏆 Score: 100% — your tool qualifies for the agent-native badge.
    Embed in your README:
      [![agent-native](https://anc.dev/badge/anc.svg)](https://anc.dev/score/anc)
    Convention: https://anc.dev/badge
 ```
 
-The badge hint appears in `text` output when a tool scores at or above the 80% eligibility floor. Below the floor, `anc`
+The badge hint appears in `text` output when a tool scores at or above the 70% eligibility floor. Below the floor, `anc`
 prints nothing badge-related. The convention is to surface the embed only when earned.
 
 ## Three Check Layers
@@ -164,18 +164,28 @@ release-gate against the compiled artifact). Without either flag, all three laye
 
 ## Scoring
 
-Every check result lands in one of five statuses. The score is a percent computed from how many checks passed out of
-those that actually verified something. Skips and Errors are excluded from both sides of the ratio.
+The public score reflects **shipped-binary behavior only**: only behavioral-layer checks enter the formula. Source- and
+project-layer checks still run and still appear in the scorecard, but they do not move the score — what a tool's source
+looks like does not change how an agent experiences the installed binary.
 
-| Status  | Counts toward `pass` | Counts toward denominator | Meaning                                         |
-| ------- | -------------------- | ------------------------- | ----------------------------------------------- |
-| `pass`  | yes                  | yes                       | Requirement verified.                           |
-| `warn`  | no                   | yes                       | SHOULD- or MAY-tier requirement not satisfied.  |
-| `fail`  | no                   | yes                       | MUST-tier requirement not satisfied.            |
-| `skip`  | no                   | no                        | Check not applicable to this target.            |
-| `error` | no                   | no                        | Check itself raised an exception (probe panic). |
+Every check result lands in one of seven statuses. The score is a credit-weighted ratio over the behavioral rows that
+verified something one way or the other (the *denominator set*):
 
-`score_pct = round(pass / (pass + warn + fail) * 100)`. Badge eligibility floor: 80%.
+| Status    | Credit | In denominator | Meaning                                          |
+| --------- | -----: | -------------- | ------------------------------------------------ |
+| `pass`    |    1.0 | yes            | Behavior present and correct.                    |
+| `warn`    |    0.5 | yes            | Behavior present, partially correct.             |
+| `fail`    |    0.0 | yes            | Behavior expected, absent or broken.             |
+| `opt_out` |    0.0 | yes            | Behavior deliberately declined (counts against). |
+| `n_a`     |      — | no             | Inapplicable: a conditional antecedent is unmet. |
+| `skip`    |      — | no             | Unmeasurable: the probe could not determine.     |
+| `error`   |      — | no             | The probe itself raised an exception.            |
+
+With per-tier weights `w` (currently flat — MUST = SHOULD = MAY = 1), `score_pct = round(100 × Σ w·credit / Σ w)` over
+the denominator set. Badge eligibility floor: **70%**. The floor is deliberately low so the badge spreads the standard;
+exclusivity is carried by four cohort bands the site renders — Exemplary (≥ 85), Strong (80–84), Solid (75–79),
+Qualified (70–74) — not by a high gate. The formula, weights, floor, and bands are defined in the spec's
+`principles/scoring.md` and held stable for at least six months from publication.
 
 ### Tier mapping
 
@@ -188,18 +198,20 @@ on tier:
 | SHOULD | `warn`  | `p2-should-schema-file`  |
 | MAY    | `warn`  | `p8-may-install-all`     |
 
-### v0.4.0 dogfood
+### Dogfood
 
-`anc` runs the same scoring on itself. The v0.4.0 split:
+`anc` runs the same scoring on itself. Because the public score is behavioral-only, a source-only run has no rows to
+score — it reports `0%` and ineligible by design, since there is no shipped-binary behavior to measure:
 
-| Mode                   | Checks | Pass | Warn | Fail | Skip | Error | Score |
-| ---------------------- | -----: | ---: | ---: | ---: | ---: | ----: | ----: |
-| `anc audit . --binary` |     18 |   13 |    3 |    0 |    2 |     0 |   81% |
-| `anc audit . --source` |     26 |   24 |    0 |    0 |    2 |     0 |  100% |
-| `anc audit .` (full)   |     44 |   37 |    3 |    0 |    4 |     0 |   93% |
+| Mode                   | Checks | Pass | Skip | Behavioral rows | Score | Eligible |
+| ---------------------- | -----: | ---: | ---: | --------------: | ----: | -------- |
+| `anc audit . --binary` |     43 |   34 |    9 |              43 |  100% | yes      |
+| `anc audit . --source` |     26 |   25 |    1 |               0 |    0% | no       |
+| `anc audit .` (full)   |     69 |   59 |   10 |              43 |  100% | yes      |
 
-Full-mode warnings: `p2-json-output` (a safe-probe limitation on tools whose `--help` masks `--output`),
-`p8-install-all` and `p8-bundle-update` (both MAY-tier features the binary does not ship yet).
+The score is identical in `--binary` and full mode: source and project checks add scorecard rows but never change the
+number. The nine behavioral skips are probe limitations (`skip`), excluded from the denominator, so they neither help
+nor hurt the score.
 
 ## CLI Reference
 
@@ -365,12 +377,12 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   scorecards committed to repos or posted by agents. `command` carries the user-supplied name for command mode. The
   unused field is always `null`, never missing. Consumer code can access both fields unconditionally. Schema `0.4`
   addition.
-- `badge`: agent-native badge derivation from the live run. `score_pct` is `pass / (pass + warn + fail)` rounded (Skips
-  and Errors excluded from both sides of the ratio). `eligible` is true iff `score_pct >= 80` **and** a tool slug was
-  derivable. `embed_markdown` is `null` below the floor (the convention is "do not nag" until earned). `scorecard_url`
-  and `badge_url` are populated whenever a slug exists, even below the floor, so the site renders an SVG for every
-  scored tool (a regression below the floor shifts color rather than 404s). `convention_url` always points at
-  `https://anc.dev/badge`. Schema `0.5` addition.
+- `badge`: agent-native badge derivation from the live run. `score_pct` is the credit-weighted, behavioral-only
+  leaderboard score (see [Scoring](#scoring)); `n_a` / `skip` / `error` and all non-behavioral rows are excluded from
+  the ratio. `eligible` is true iff `score_pct >= 70` **and** a tool slug was derivable. `embed_markdown` is `null`
+  below the floor (the convention is "do not nag" until earned). `scorecard_url` and `badge_url` are populated whenever
+  a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
+  shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
 
 > Publishing a scorecard? `run.invocation` may carry usernames or absolute paths from the machine that produced the
 > scorecard. `target.path` is intentionally the basename only and is safe to commit. Review `run.invocation` before

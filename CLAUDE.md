@@ -131,8 +131,8 @@ is missing from the registry — typos surface at test time, not at render time.
 - `coverage/matrix.json` — machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
   page.
 
-Both files are tracked in git, not `.gitignore`d. `anc emit coverage-matrix --check` exits non-zero when the
-committed artifacts disagree with the current registry + `covers()` declarations. The integration test
+Both files are tracked in git, not `.gitignore`d. `anc emit coverage-matrix --check` exits non-zero when the committed
+artifacts disagree with the current registry + `covers()` declarations. The integration test
 `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors this behavior so CI catches drift from
 either source.
 
@@ -186,17 +186,20 @@ Existing field semantics:
 `0.5` addition (`BadgeInfo` in `src/scorecard/mod.rs`):
 
 - `badge` — `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Computed by
-  `compute_badge(results, tool_name)` from the leaderboard's pass-rate (`pass / (pass + warn + fail)`) — Skips and
-  Errors are excluded from both sides of the ratio. `eligible` is true iff `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT`
-  (currently `80`) **and** a tool slug was derivable; `embed_markdown` is `Some` only when `eligible` (the do-not-nag
-  contract from the site's badge convention). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
-  below the floor — the site renders an SVG for every scored tool so a regression below the floor shifts color rather
-  than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are anchored at `BADGE_BASE_URL =
-  "https://anc.dev"` so the URL pattern lives in one place. Authority for the floor is the site's published convention
-  (`agentnative-site/content/badge.md`); when the spec convention merges off `feat/badge-claim-convention` it will move
-  into the vendored spec via `sync-spec`. Text mode (`--output text`) appends a post-summary hint via
-  `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so the JSON `embed_markdown` and
-  the printed hint can never disagree.
+  `compute_badge(results, tool_name)` via `score_pct`, the credit-weighted, behavioral-only leaderboard formula from
+  `agentnative-spec` `principles/scoring.md`: over the denominator set `D` (behavioral rows whose status is in `{pass,
+  warn, fail, opt_out}`), `score_pct = round(100 × Σ w(tier)·credit / Σ w(tier))` with `credit(pass)=1.0`,
+  `credit(warn)=0.5`, `credit(fail)=credit(opt_out)=0.0`, and tier weights flat (`W_MUST = W_SHOULD = W_MAY = 1.0`, a
+  tunable parameter). `n_a` / `skip` / `error` and every non-behavioral (source/project) row are excluded from `D`;
+  source-only runs therefore have an empty `D` and score `0`. `eligible` is true iff `score_pct >=
+  BADGE_ELIGIBILITY_FLOOR_PCT` (currently `70`) **and** a tool slug was derivable; `embed_markdown` is `Some` only when
+  `eligible` (the do-not-nag contract from the site's badge convention). `scorecard_url` / `badge_url` are populated
+  whenever a slug exists, even below the floor — the site renders an SVG for every scored tool so a regression below the
+  floor shifts color rather than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are anchored
+  at `BADGE_BASE_URL = "https://anc.dev"` so the URL pattern lives in one place. Authority for the formula, floor, and
+  cohort bands is `principles/scoring.md`; the site renders the band colors. Text mode (`--output text`) appends a
+  post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so the JSON
+  `embed_markdown` and the printed hint can never disagree.
 
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is

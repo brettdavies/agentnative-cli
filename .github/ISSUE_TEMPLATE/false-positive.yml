@@ -49,7 +49,7 @@ body:
         <details>
         <summary>Agent filing instructions</summary>
 
-        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to audit for duplicates.
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<keywords>"` to check for duplicates.
         2. **AI disclosure is required.** Fill the field above honestly.
         3. **Auditor bugs only.** For spec questions or principle edits, file on [brettdavies/agentnative](https://github.com/brettdavies/agentnative). For site bugs, file on [brettdavies/agentnative-site](https://github.com/brettdavies/agentnative-site).
         4. See [CONTRIBUTING.md](https://github.com/brettdavies/agentnative/blob/main/CONTRIBUTING.md) for full guidelines.

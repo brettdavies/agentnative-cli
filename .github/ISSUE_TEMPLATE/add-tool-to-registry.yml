@@ -81,7 +81,7 @@ body:
         <details>
         <summary>Agent filing instructions</summary>
 
-        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<tool-name>"` and audit the
+        1. **Search first.** Run `gh search issues --repo brettdavies/agentnative-cli "<tool-name>"` and check the
            registry source at `src/principles/registry.rs` for an existing entry.
         2. **Verify the install command** actually works on a fresh shell.
         3. **AI disclosure is required.** Fill the field above honestly.

@@ -256,7 +256,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 - `origin/chore/untrack-stray-todo`
 - `origin/feat/default-subcommand-and-command-flag`
 - `origin/feat/post-review-fixes-003`
-- `origin/feat/python-audits-and-validation` (merged via PR #15)
+- `origin/feat/python-checks-and-validation` (merged via PR #15)
 - `origin/refactor/audit-status-convention` (merged via PR #17)
 - Use `git push origin --delete <branch>` per branch, or enable GitHub's "automatically delete head branches" repo
   setting to keep this closed automatically.

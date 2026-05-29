@@ -155,7 +155,7 @@ keeping the v0.2.0 release coherent with the post-rename repo state and the cent
 ### Release pipeline (existing infrastructure — already in use)
 
 - `.github/workflows/release.yml` — tag-driven (`v[0-9]+.[0-9]+.[0-9]+`). Calls reusable `rust-release.yml` which runs:
-  audit-version → build (5 targets) → crates.io publish → draft GitHub release → homebrew tap dispatch.
+  check-version → build (5 targets) → crates.io publish → draft GitHub release → homebrew tap dispatch.
 - Pre-push hooks at `scripts/hooks/pre-push` mirror CI exactly (fmt, clippy `-Dwarnings`, test, cargo-deny, Windows
   compat). Activated via `git config core.hooksPath scripts/hooks` after clone.
 - `homebrew-tap/Formula/agentnative.rb` is updated automatically by the release pipeline's homebrew dispatch (per

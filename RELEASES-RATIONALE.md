@@ -31,7 +31,7 @@ on both sides with different content. Always branch from `origin/main` and cherr
 ### CalVer + version branch naming
 
 Branch naming `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
-`release/v0.2.0-python-audits`) makes release branches sortable and unambiguous when multiple cuts are in flight. The
+`release/v0.2.0-python-checks`) makes release branches sortable and unambiguous when multiple cuts are in flight. The
 `v<version>` prefix is required: `scripts/generate-changelog.sh` extracts the version from the branch name. Slug is
 kebab-case, short, descriptive.
 

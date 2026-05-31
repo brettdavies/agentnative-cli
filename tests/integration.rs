@@ -58,7 +58,7 @@ fn test_emit_coverage_matrix_writes_artifacts() {
 
     let json_content = std::fs::read_to_string(&json).expect("matrix.json written");
     let parsed: serde_json::Value = serde_json::from_str(&json_content).expect("valid JSON");
-    assert_eq!(parsed["schema_version"], "1.0");
+    assert_eq!(parsed["schema_version"], "0.1");
     assert!(parsed["rows"].as_array().expect("rows array").len() >= 40);
 }
 

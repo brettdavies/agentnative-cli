@@ -8,12 +8,13 @@ Read that first.
 
 The linter channel sits in a three-tier waterfall. Each tier owns a different concern; nothing duplicates.
 
-1. **Universal, [`BRAND.md`](BRAND.md).** Shared identity, voice anchor, audiences, universal anti-patterns. Vendored
-   from `agentnative-spec` via [`scripts/sync-prose-tooling.sh`](scripts/sync-prose-tooling.sh).
+1. **Universal, [`BRAND.md`](BRAND.md).** Shared identity, voice anchor, audiences, universal anti-patterns. The
+   authoritative copy lives in `agentnative-spec`; a vendored mirror sits on this repo's `dev` branch.
 2. **Channel delta, this file (`PRODUCT.md`).** Second-person imperative register, the three-part error shape (what
    failed, why, what to do next), 80-column help-text discipline, neutral diagnostics, stdout/stderr separation. The
-   narrative companion to the executable Vale rule pack at [`styles/brand/`](styles/brand/) plus the CLI-local
-   vocabulary at [`styles/config/vocabularies/cli/`](styles/config/vocabularies/cli/).
+   authoritative voice contract for the linter channel; the Vale rule pack maintained in `agentnative-spec` (mirrored to
+   `dev` here) enforces the literal phrases on contributor PRs against `dev`. The pack is dev-only tooling and does not
+   ship to `main`.
 3. **Implementation, `src/`.** The Rust source for `anc`. Behavioral audits executed against compiled binaries; the
    principle registry codegen'd from `src/principles/spec/` (vendored from `agentnative-spec` via
    [`scripts/sync-spec.sh`](scripts/sync-spec.sh)).
@@ -44,9 +45,9 @@ on without re-reading.
 
 ## Register
 
-The narrative below describes the linter channel's voice rules; the executable contract for the literal phrases lives in
-[`styles/brand/README.md`](styles/brand/README.md), generated from the Vale rule pack at `styles/brand/*.yml`, plus the
-CLI-local vocabulary at [`styles/config/vocabularies/cli/`](styles/config/vocabularies/cli/).
+The narrative below is the authoritative voice contract for the linter channel. The Vale rule pack maintained in
+`agentnative-spec` (mirrored to `dev` here) encodes the literal phrases for enforcement on contributor PRs; the pack is
+dev-only tooling and does not ship to `main`.
 
 - **Second-person imperative IS the register.** "Run `anc audit`", "Set `--audit-profile human-tui`", "Pipe the output
   to `jq`". This is the linter channel's defining departure from the spec channel: the spec describes contracts in
@@ -80,9 +81,9 @@ These extend the universal bans in [`BRAND.md`](BRAND.md):
 - **Mixing structured output and diagnostic prose on the same stream.** `anc audit --output json` writes JSON to stdout;
   diagnostics go to stderr. Mixing them strands consumers who pipe stdout into `jq` and get a parse error from a banner.
   The prose shape (verb + artifact) is the same on either stream; the stream choice is the load-bearing part.
-- **Color codes in the prose itself.** Vale and prose-check operate on content, not formatting. ANSI escapes belong in
-  the rendering layer, never in the source `&str` literal. The literal `"\x1b[31merror\x1b[0m"` is content rot; a
-  separate `colorize(level, "error")` is the right shape.
+- **Color codes in the prose itself.** Prose lives in source strings, not in formatting. ANSI escapes belong in the
+  rendering layer, never in the source `&str` literal. The literal `"\x1b[31merror\x1b[0m"` is content rot; a separate
+  `colorize(level, "error")` is the right shape.
 - **Marketing voice in CLI surface.** "blazing-fast", "elegant", "powerful", "delightful". All banned. Describe what
   `anc` does, never how it feels to use. The brand vocab's `MarketingRegister` pack fires on this set; the per-channel
   rule is that the entire CLI surface inherits it, not just the README.

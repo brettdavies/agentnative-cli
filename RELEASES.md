@@ -37,6 +37,18 @@ gh pr create --base dev --title "feat(scope): what changed"
 - **PR body**: follow `.github/pull_request_template.md`. See [§ PR body](#pr-body).
 - **PR body prose scrub**: see [§ Prose scrubbing](#prose-scrubbing).
 
+### Dev-direct exception
+
+Paths that live only on `dev` and never ship to `main` can be committed directly to `dev` without a feature branch or
+PR. The `guard-main-docs` workflow blocks them from `main` PRs regardless. The exception applies to:
+
+- Engineering docs: `docs/brainstorms/`, `docs/ideation/`, `docs/plans/`, `docs/research/`, `docs/reviews/`,
+  `docs/solutions/`, and anything under `.context/`.
+- Prose-check stack: `styles/`, `.vale.ini`, `scripts/prose-check.sh`.
+
+The standard feature → PR → squash-merge flow remains required for everything else, including consumer-facing markdown
+(README, AGENTS, CONTRIBUTING, CHANGELOG, in-repo runbooks).
+
 ## PR body
 
 Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
@@ -221,8 +233,8 @@ Three release-flow artifacts live outside any automated prose check and need a m
 
 The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
 [`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-Until those packs are vendored into this repo (a deferred follow-up expected to extend `scripts/sync-spec.sh`), point
-Vale at the spec checkout via `--config`.
+This repo's `main` branch does not ship a local copy; point Vale at the spec checkout via `--config` (see the example
+below).
 
 ```bash
 # 1. Save the artifact to /tmp/.

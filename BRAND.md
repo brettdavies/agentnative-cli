@@ -84,7 +84,7 @@ Each channel's repo carries its own narrow stack on top of this universal `BRAND
 
 | Channel      | `PRODUCT.md` location                           | Deep tier-3                                            | Vale rule pack | How `BRAND.md` arrives          |
 | ------------ | ----------------------------------------------- | ------------------------------------------------------ | -------------- | ------------------------------- |
-| Spec         | `agentnative-spec/PRODUCT.md`                   | `principles/`, `docs/architecture/`, `docs/decisions/` | `styles/spec/` | (origin — this repo)            |
+| Spec         | `agentnative-spec/PRODUCT.md`                   | `principles/`, `docs/architecture/`, `docs/decisions/` | `styles/spec/` | (origin: this repo)             |
 | Site         | `agentnative-site/PRODUCT.md`                   | `DESIGN.md` (root)                                     | (none yet)     | `scripts/sync-prose-tooling.sh` |
 | CLI (`anc`)  | `agentnative-cli/PRODUCT.md` (when warranted)   | `src/` (Rust source IS the artifact)                   | (planned)      | `scripts/sync-prose-tooling.sh` |
 | Skill bundle | `agentnative-skill/PRODUCT.md` (when warranted) | `bundle/`                                              | (planned)      | `scripts/sync-prose-tooling.sh` |

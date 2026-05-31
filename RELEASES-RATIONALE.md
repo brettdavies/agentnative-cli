@@ -39,8 +39,8 @@ kebab-case, short, descriptive.
 
 ### No explainer prose in the body
 
-Every section of a PR body is user-facing substance only: what is changing for the consumer that was not already there —
-the **net diff**, not the commit history or intermediate state that produced it. Workflow mechanics (cherry-pick,
+Every section of a PR body is user-facing substance only: the **net diff**, what is changing for the consumer that was
+not already there, not the commit history or intermediate state that produced it. Workflow mechanics (cherry-pick,
 regenerate, pre-push gate, CI behavior) is documented in RELEASES.md and `.github/`, NOT in the PR body. Triple-diff
 output ("A: 12 files, B: none, C: clean"), leak-check narration ("`guard-main-docs` runs clean", "no guarded paths
 leaked"), patch-id cherry-check counts, pre-push gate results, CI check status, exclusion rationale, and other
@@ -144,7 +144,7 @@ titles (e.g. `chore` → `feat`) and re-amend the cherry-pick subject before re-
 
 Always use annotated tags (`-a -m`). Bare `git tag <name>` silently fails with `fatal: no tag message?` on machines
 where `tag.gpgsign=true` is set globally (a brettdavies dotfile default). See
-[solutions: git tag fails with tag.gpgsign — use annotated tags](https://github.com/brettdavies/solutions-docs/blob/main/best-practices/git-tag-fails-with-tag-gpgsign-use-annotated-tags-2026-04-13.md).
+[solutions: git tag fails with tag.gpgsign, use annotated tags](https://github.com/brettdavies/solutions-docs/blob/main/best-practices/git-tag-fails-with-tag-gpgsign-use-annotated-tags-2026-04-13.md).
 
 Subsequent releases use the OIDC Trusted Publishing flow built into `release.yml`: no static token in CI. The initial
 publish (`v0.1.0`) requires a regular crates.io API token because Trusted Publishing needs the crate to exist first.

@@ -37,6 +37,18 @@ gh pr create --base dev --title "feat(scope): what changed"
 - **PR body**: follow `.github/pull_request_template.md`. See [§ PR body](#pr-body).
 - **PR body prose scrub**: see [§ Prose scrubbing](#prose-scrubbing).
 
+### Dev-direct exception
+
+Paths that live only on `dev` and never ship to `main` can be committed directly to `dev` without a feature branch or
+PR. The `guard-main-docs` workflow blocks them from `main` PRs regardless. The exception applies to:
+
+- Engineering docs: `docs/brainstorms/`, `docs/ideation/`, `docs/plans/`, `docs/research/`, `docs/reviews/`,
+  `docs/solutions/`, and anything under `.context/`.
+- Prose-check stack: `styles/`, `.vale.ini`, `scripts/prose-check.sh`.
+
+The standard feature → PR → squash-merge flow remains required for everything else, including consumer-facing markdown
+(README, AGENTS, CONTRIBUTING, CHANGELOG, in-repo runbooks).
+
 ## PR body
 
 Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:

@@ -173,8 +173,9 @@ behavior.
 
 User-facing prose follows the **linter channel** rules in [`PRODUCT.md`](PRODUCT.md). Short version: second-person
 imperative, no RFC 2119 keywords in error messages, no marketing voice, errors name "what failed / why / what to do."
-The executable Vale rule pack lives in `agentnative-spec`; this repo's `main` branch does not ship a local copy.
-Operators who want a prose-check pipeline on their own working tree can pull the spec's tooling onto a dev branch.
+`BRAND.md` and `PRODUCT.md` are the authoritative voice contract. The Vale rule pack maintained in `agentnative-spec`
+(mirrored onto this repo's `dev` branch) encodes the literal phrases for enforcement on contributor PRs against `dev`;
+the pack and `scripts/prose-check.sh` are dev-only tooling and do not ship to `main`.
 
 ## Testing
 

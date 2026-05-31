@@ -6,9 +6,9 @@ The agent-native CLI linter. Audits whether CLI tools follow 7 agent-readiness p
 
 Two-layer audit system:
 
-- **Behavioral audits** — run the compiled binary, language-agnostic (any CLI)
-- **Source audits** — ast-grep pattern matching via bundled `ast-grep-core` crate (Rust, Python at launch)
-- **Project audits** — file existence, manifest inspection
+- **Behavioral audits**: run the compiled binary, language-agnostic (any CLI)
+- **Source audits**: ast-grep pattern matching via bundled `ast-grep-core` crate (Rust, Python at launch)
+- **Project audits**: file existence, manifest inspection
 
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`
 
@@ -39,7 +39,7 @@ For the full routing table, see `~/.claude/skills/docs/workflow-routing.md`.
 
 ## Documented Solutions
 
-`docs/solutions/` (symlink to `~/dev/solutions-docs/`) — searchable archive of past solutions and best practices,
+`docs/solutions/` (symlink to `~/dev/solutions-docs/`) is a searchable archive of past solutions and best practices,
 organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search with `qmd query "<topic>"
 --collection solutions`. Relevant when implementing or debugging in documented areas.
 
@@ -58,9 +58,9 @@ Key decisions already made:
 
 ## Conventions
 
-- `ast-grep-core` and `ast-grep-language` pinned to exact version (`=0.42.0`) — pre-1.0 API
+- `ast-grep-core` and `ast-grep-language` pinned to exact version (`=0.42.0`) because the API is pre-1.0
 - `Position` uses `.line()` / `.column(&node)` methods, not tuple access
-- Pre-build `Pattern` objects for `find_all()` — `&str` rebuilds on every node
+- Pre-build `Pattern` objects for `find_all()`; `&str` rebuilds on every node
 - Feature flag is `tree-sitter-rust`, not `language-rust`
 - Edition 2024, dual MIT/Apache-2.0 license
 
@@ -71,13 +71,13 @@ helper shapes but still satisfy the core contract that `run()` is the sole `Audi
 
 - **Struct** implements `Audit` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
 - **`audit_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
-  context) and returns `AuditStatus` (not `AuditResult`) — this is the unit-testable core
+  context) and returns `AuditStatus` (not `AuditResult`). This is the unit-testable core.
 - **No `Audit` impl constructs `AuditResult` outside its own `run()`.** `run()` is the sole place each audit assembles
-  its own result — never hardcode ID/group/layer/label string literals in `audit_x()` or anywhere outside `run()`. The
+  its own result; never hardcode ID/group/layer/label string literals in `audit_x()` or anywhere outside `run()`. The
   runtime layer (`main::run`'s error and `--audit-profile` suppression branches) legitimately constructs `AuditResult`
-  as a *second* site — it's the runner, not an `Audit` impl, and it uses `audit.id()`, `audit.label()`, `audit.group()`,
-  `audit.layer()` from the trait (never string literals). Test doubles (`FakeAudit` in `src/principles/matrix.rs` and
-  `src/scorecard/mod.rs`) similarly sidestep the rule by design.
+  as a *second* site, since it's the runner, not an `Audit` impl, and it uses `audit.id()`, `audit.label()`,
+  `audit.group()`, `audit.layer()` from the trait (never string literals). Test doubles (`FakeAudit` in
+  `src/principles/matrix.rs` and `src/scorecard/mod.rs`) similarly sidestep the rule by design.
 - **`label()` returns `&'static str`** and feeds the `label` field in `run()`'s `AuditResult`. Having the label on the
   trait also means the suppression and error branches can show the human label instead of falling back to the opaque
   `id`. See `src/audit.rs`.
@@ -87,31 +87,31 @@ This prevents ID triplication (the same string literal in `id()`, `run()`, and `
 trait is the single source of truth for audit metadata.
 
 For cross-language pattern helpers, use `source::has_pattern_in()` / `source::find_pattern_matches_in()` /
-`source::has_string_literal_in()` with a `Language` parameter — do not write private per-language helpers in individual
+`source::has_string_literal_in()` with a `Language` parameter; do not write private per-language helpers in individual
 audit files.
 
 ## Principle Registry
 
 `src/principles/registry.rs` is the single source of truth linking spec requirements (MUSTs, SHOULDs, MAYs across P1–P7)
-to the audits that verify them. IDs follow `p{N}-{level}-{key}` and are stable once published — scorecards and the
+to the audits that verify them. IDs follow `p{N}-{level}-{key}` and are stable once published; scorecards and the
 coverage matrix pin against them.
 
 - Add requirements by appending to the `REQUIREMENTS` static slice, grouped by principle then level (MUST → SHOULD →
   MAY).
-- Bumping `registry_size_matches_spec` or `level_counts_match_spec` is a deliberate act — the tests exist to flag
+- Bumping `registry_size_matches_spec` or `level_counts_match_spec` is a deliberate act; the tests exist to flag
   unintentional growth. Update both counter tests plus the summary prose in `docs/coverage-matrix.md` when the registry
   grows.
 - `Applicability::Universal` means every CLI; `Applicability::Conditional(reason)` names the gate in prose so the matrix
   and the site `/coverage` page can render it.
 - `ExceptionCategory` drives `--audit-profile` suppression. The `SUPPRESSION_TABLE` maps each variant to the audit IDs
   it suppresses; drift tests fail the build if a category has no entry or a listed audit ID isn't in the catalog. Adding
-  a fifth category requires a plan revision — the four v0.1.3 categories (`human-tui`, `file-traversal`,
-  `posix-utility`, `diagnostic-only`) are the committed surface.
+  a fifth category requires a plan revision. The four v0.1.3 categories (`human-tui`, `file-traversal`, `posix-utility`,
+  `diagnostic-only`) are the committed surface.
 
 ## covers() Declaration
 
 Each `Audit` declares which requirements it evidences via `fn covers(&self) -> &'static [&'static str]`. The default
-returns `&[]` — audits opt in explicitly. Return a static slice; never allocate. For an audit that verifies multiple
+returns `&[]`; audits opt in explicitly. Return a static slice; never allocate. For an audit that verifies multiple
 requirements, list them all:
 
 ```rust
@@ -121,14 +121,14 @@ fn covers(&self) -> &'static [&'static str] {
 ```
 
 The drift detector (`dangling_cover_ids` in `src/principles/matrix.rs`) fails the build if any ID returned by `covers()`
-is missing from the registry — typos surface at test time, not at render time.
+is missing from the registry, so typos surface at test time, not at render time.
 
 ## Coverage Matrix Artifact Lifecycle
 
 `anc emit coverage-matrix` emits two committed artifacts:
 
-- `docs/coverage-matrix.md` — human-readable table, grouped by principle.
-- `coverage/matrix.json` — machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
+- `docs/coverage-matrix.md`: human-readable table, grouped by principle.
+- `coverage/matrix.json`: machine-readable (`schema_version: "1.0"`), consumed by the `agentnative-site` `/coverage`
   page.
 
 Both files are tracked in git, not `.gitignore`d. `anc emit coverage-matrix --check` exits non-zero when the committed
@@ -137,47 +137,47 @@ artifacts disagree with the current registry + `covers()` declarations. The inte
 either source.
 
 Regenerate whenever you add a requirement, change an audit's `covers()`, or rename an audit ID. The regeneration is a
-deliberate commit, not a build-time artifact — the matrix is citable from outside this repo.
+deliberate commit, not a build-time artifact; the matrix is citable from outside this repo.
 
 ## Scorecard v0.5 Fields
 
-`src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window —
+`src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
-- `0.2` — `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
-- `0.3` — `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).
-- `0.4` — four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
-- `0.5` — `badge` block surfacing agent-native badge eligibility, embed snippet, and badge/scorecard URLs derived from
+- `0.2`: `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
+- `0.3`: `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).
+- `0.4`: four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
+- `0.5`: `badge` block surfacing agent-native badge eligibility, embed snippet, and badge/scorecard URLs derived from
   the live run.
 
 Existing field semantics:
 
-- `coverage_summary` — populated every run. Audits suppressed by `--audit-profile` do not count toward `verified`.
-- `audience` — `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral audits.
+- `coverage_summary`: populated every run. Audits suppressed by `--audit-profile` do not count toward `verified`.
+- `audience`: `Option<String>`, derived by `src/scorecard/audience.rs::classify()` from the 4 signal behavioral audits.
   Emits `"agent-optimized"`, `"mixed"`, `"human-primary"`, or `null` when any signal audit is missing (including
-  `--audit-profile` suppression). Read-only over results; never gates totals or exit codes — per CEO review Finding #3,
+  `--audit-profile` suppression). Read-only over results; never gates totals or exit codes. Per CEO review Finding #3,
   label mismatches are fixed via registry, not classifier logic.
-- `audit_profile` — `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`,
-  `"file-traversal"`, `"posix-utility"`, `"diagnostic-only"`). `null` when no profile is set.
-- `spec_version` — `&'static str` — the vendored spec version this `anc` build was compiled against.
+- `audit_profile`: `Option<String>`, echoes the applied `--audit-profile` flag value (`"human-tui"`, `"file-traversal"`,
+  `"posix-utility"`, `"diagnostic-only"`). `null` when no profile is set.
+- `spec_version`: `&'static str`, the vendored spec version this `anc` build was compiled against.
 
 `0.4` additions (defined as serde-derived sub-structs in `src/scorecard/mod.rs`):
 
-- `tool` — `ToolInfo { name: String, binary: Option<String>, version: Option<String> }`. Built in `main.rs`'s
+- `tool`: `ToolInfo { name: String, binary: Option<String>, version: Option<String> }`. Built in `main.rs`'s
   `build_tool_info`. Project mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`); command/binary mode
   probes `<bin> --version` then `-V` via a fresh `BinaryRunner` with a 2-second timeout. Self-spawn guard compares the
-  resolved binary path against `std::env::current_exe()` — recursion declined → `tool.version: null`.
-- `anc` — `AncInfo { version: &'static str }`. `version` is a build-time constant emitted by `build.rs` into
+  resolved binary path against `std::env::current_exe()`; recursion declined → `tool.version: null`.
+- `anc`: `AncInfo { version: &'static str }`. `version` is a build-time constant emitted by `build.rs` into
   `$OUT_DIR/build_info.rs` (re-exported from `src/build_info.rs`). The `commit` field shipped pre-`0.5` was dropped
-  before the v0.3.0 tag — the version pin is sufficient build identity for scorecard consumers and the
+  before the v0.3.0 tag: the version pin is sufficient build identity for scorecard consumers and the
   `cargo:rerun-if-changed` watches on `.git/` made cached-build SHAs fragile across local commits.
-- `run` — `RunInfo { invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` is captured **before**
+- `run`: `RunInfo { invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` is captured **before**
   `inject_default_subcommand` rewrites argv (so `anc .` records as `"anc ."`, not `"anc audit ."`). `started_at` is RFC
   3339 UTC via the `time` crate (pinned `=0.3.45`). `duration_ms` uses `Instant` for monotonic measurement.
   `platform.{os,arch}` come from `std::env::consts`.
-- `target` — `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
+- `target`: `TargetInfo { kind: String, path: Option<String>, command: Option<String> }`. `kind` is one of `"project"`,
   `"binary"`, `"command"`. `path` is the **basename** of the resolved target (directory name in project mode, file name
-  in binary mode) — never the absolute path, which would leak operator PII (home-dir username, org/employer dir
+  in binary mode), never the absolute path, which would leak operator PII (home-dir username, org/employer dir
   structure) into committed scorecards, README badge URLs, and any agent-posted artifact. `null` for `command` mode.
   Pathological paths where `Path::file_name()` returns `None` (e.g. `/`, `..`) fall back to `null`. The unused field is
   always `null`, never missing. See `src/main.rs::build_target_info` for the leak-vector rationale; the regression guard
@@ -185,7 +185,7 @@ Existing field semantics:
 
 `0.5` addition (`BadgeInfo` in `src/scorecard/mod.rs`):
 
-- `badge` — `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Computed by
+- `badge`: `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Computed by
   `compute_badge(results, tool_name)` via `score_pct`, the credit-weighted, behavioral-only leaderboard formula from
   `agentnative-spec` `principles/scoring.md`: over the denominator set `D` (behavioral rows whose status is in `{pass,
   warn, fail, opt_out}`), `score_pct = round(100 × Σ w(tier)·credit / Σ w(tier))` with `credit(pass)=1.0`,
@@ -194,20 +194,20 @@ Existing field semantics:
   source-only runs therefore have an empty `D` and score `0`. `eligible` is true iff `score_pct >=
   BADGE_ELIGIBILITY_FLOOR_PCT` (currently `70`) **and** a tool slug was derivable; `embed_markdown` is `Some` only when
   `eligible` (the do-not-nag contract from the site's badge convention). `scorecard_url` / `badge_url` are populated
-  whenever a slug exists, even below the floor — the site renders an SVG for every scored tool so a regression below the
-  floor shifts color rather than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are anchored
-  at `BADGE_BASE_URL = "https://anc.dev"` so the URL pattern lives in one place. Authority for the formula, floor, and
-  cohort bands is `principles/scoring.md`; the site renders the band colors. Text mode (`--output text`) appends a
-  post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so the JSON
-  `embed_markdown` and the printed hint can never disagree.
+  whenever a slug exists, even below the floor, because the site renders an SVG for every scored tool so a regression
+  below the floor shifts color rather than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are
+  anchored at `BADGE_BASE_URL = "https://anc.dev"` so the URL pattern lives in one place. Authority for the formula,
+  floor, and cohort bands is `principles/scoring.md`; the site renders the band colors. Text mode (`--output text`)
+  appends a post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so
+  the JSON `embed_markdown` and the printed hint can never disagree.
 
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is
-`audience_reason`, which uses `skip_serializing_if = "Option::is_none"` — its absence carries information (audience has
-a label).
+`audience_reason`, which uses `skip_serializing_if = "Option::is_none"`; its absence carries information (audience has a
+label).
 
-Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields — pre-`0.4` scorecards lack the
-four metadata blocks; pre-`0.5` scorecards lack `badge`. The site's `agentnative-site/registry.yaml` will eventually
+Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields, since pre-`0.4` scorecards lack
+the four metadata blocks; pre-`0.5` scorecards lack `badge`. The site's `agentnative-site/registry.yaml` will eventually
 drop its parallel `version` / `scored_at` fields once consumers read those facts from the scorecard's `tool.version` /
 `run.started_at`. That follow-up lives in the `agentnative-site` repo, not here.
 
@@ -219,7 +219,7 @@ is **build-time-generated** from `src/skill_install/skill.json` (a verbatim copy
 `src/skill_install.rs` `include!`s the generated file; there is no hand-maintained host enum or destination table. To
 add or change a host, edit `skill.json` (or run `bash scripts/sync-skill-fixture.sh` to pull the upstream site contract)
 and `cargo build` regenerates the Rust map. There is no `skill.json` parsing in production, no HTTPS fetch at runtime,
-and no allowlist validator — the host map is compile-time data.
+and no allowlist validator; the host map is compile-time data.
 
 CI catches drift between the committed fixture and the upstream site contract:
 
@@ -234,25 +234,25 @@ was deleted as provably redundant after this refactor.
 The `git clone` invocation runs with named-const hardening that defeats ambient git-config and env subversion. The full
 surface lives in `src/skill_install.rs`:
 
-- `GIT_HARDEN_FLAGS: &[&str]` — five `-c key=value` pairs (`credential.helper=`, `core.askPass=`,
-  `protocol.allow=never`, `protocol.https.allow=always`, `http.followRedirects=false`). Applied via `Command::args`
-  *before* the `clone` subcommand — git's required position for top-level `-c` options.
-- `GIT_HARDEN_ENV_REMOVE: &[&str]` — five env vars stripped via `env_remove` (`GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`,
+- `GIT_HARDEN_FLAGS: &[&str]`: five `-c key=value` pairs (`credential.helper=`, `core.askPass=`, `protocol.allow=never`,
+  `protocol.https.allow=always`, `http.followRedirects=false`). Applied via `Command::args` *before* the `clone`
+  subcommand, which is git's required position for top-level `-c` options.
+- `GIT_HARDEN_ENV_REMOVE: &[&str]`: five env vars stripped via `env_remove` (`GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`,
   `GIT_ASKPASS`, `GIT_EXEC_PATH`).
-- `GIT_HARDEN_ENV_SET: &[(&str, &str)]` — three env vars **set** on the spawned process. The
+- `GIT_HARDEN_ENV_SET: &[(&str, &str)]`: three env vars **set** on the spawned process. The
   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` pair disables every layer of user-controlled git
-  config — the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried `-c
+  config, the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried `-c
   url.<repo>.insteadOf=`, which does the *opposite* of blocking and doubles the clone URL). `GIT_TERMINAL_PROMPT=0`
   blocks credential prompts; git's default-when-unset is to prompt, which is the wrong default for a non-interactive
   subcommand.
 
 **Rules for changes touching skill install:**
 
-- NEVER call `Command::env_clear()` — it strips PATH and breaks git's helper resolution. Use `env_remove` per var.
+- NEVER call `Command::env_clear()`; it strips PATH and breaks git's helper resolution. Use `env_remove` per var.
 - NEVER use `sh -c` or any shell-mediated invocation. Tokens go directly to `git` via `Command::args`.
 - NEVER reintroduce `skill.json` parsing in production code. The fixture is a build-time codegen input, not a runtime
   resource.
-- NEVER hand-edit `SkillHost`, `KNOWN_HOSTS`, `resolve_host`, or `host_envelope_str` in `src/skill_install.rs` — those
+- NEVER hand-edit `SkillHost`, `KNOWN_HOSTS`, `resolve_host`, or `host_envelope_str` in `src/skill_install.rs`. Those
   identifiers come from the generated `$OUT_DIR/generated_hosts.rs` and any apparent definition in source is the
   `include!` macro. To add a host, edit `src/skill_install/skill.json` (or run the sync script) and rebuild.
 - The codegen rejects malformed install commands at build time. Each `install.<host>` value MUST tokenize as exactly
@@ -278,14 +278,14 @@ agentnative. Three rules guard the probe:
 **Rules for new behavioral audits:**
 
 - NEVER probe subcommands without `--help`/`--version` suffixes
-- NEVER remove `arg_required_else_help` from `Cli` — it prevents recursive self-invocation
-- NEVER revert binary discovery to the always-prefer-release shape (rule 3) — that pattern silently masked
+- NEVER remove `arg_required_else_help` from `Cli`; it prevents recursive self-invocation
+- NEVER revert binary discovery to the always-prefer-release shape (rule 3); that pattern silently masked
   `p2-must-schema-print` regressions during the v0.4.0 spec sync
 
 ## CI and Quality
 
 **Toolchain pin:** `rust-toolchain.toml` pins the channel to a specific `X.Y.Z` version with a trailing comment naming
-the rustc commit SHA. Rustup reads this file on every `cargo` invocation — both local and CI snap to identical bits.
+the rustc commit SHA. Rustup reads this file on every `cargo` invocation, so both local and CI snap to identical bits.
 Rustup verifies component SHA256s from the distribution manifest, so the version pin is effectively a SHA pin (the
 manifest is the toolchain's "lockfile"). Bumping the toolchain is a reviewed PR that updates `rust-toolchain.toml`; no
 runtime `rustup update` anywhere. Policy: bump only after a new stable has aged ≥7 days (supply-chain quarantine).

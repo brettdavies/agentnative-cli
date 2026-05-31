@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
-# Source: BRAND.md § Universal anti-patterns — No hedge words.
+# Source: BRAND.md § Universal anti-patterns: No hedge words.
 extends: existence
 message: "Hedge word: '%s'. MUST is the contract; SHOULD is the contract. Hedges undercut both."
 link: https://github.com/brettdavies/agentnative/blob/main/BRAND.md#universal-anti-patterns

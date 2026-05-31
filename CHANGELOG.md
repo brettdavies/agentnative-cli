@@ -2,6 +2,81 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-05-31
+
+### Added
+
+- Add `p2-raw-flag`, `p2-more-formats`, `p3-examples-subcommand`, `p6-color-flag`, `p7-verbose`, `p7-limit`, and `p7-cursor-pagination` behavioral checks. The two list-style checks (`p7-limit`, `p7-cursor-pagination`) vacuously skip when the target CLI has no list-style subcommand; the other five always run and produce Pass / Warn on flag presence in top-level `--help`. by @brettdavies in [#55](https://github.com/brettdavies/agentnative-cli/pull/55)
+- `VersionCheck` now probes the short-alias family (`-V`, `-v`, `-version`) alongside `--version`. Pass when both work, Warn when only `--version` works (MUST satisfied, SHOULD missed), Fail when neither works.
+- `AgentsMdCheck` now declares it covers `p8-should-bundle-exists`. The check already verified a subset of what P8 demands; this exposes the link to the coverage matrix.
+- Add `p1-defaults-in-help` behavioral check. Scans `--help` for `[default: …]` / `(default: …)` / `default:` annotations. SHOULD-tier, universal. by @brettdavies in [#56](https://github.com/brettdavies/agentnative-cli/pull/56)
+- Add `p1-rich-tui` behavioral check. Detects rich-TUI surface area via `--tui` / `--interactive` / `--ui` flags or spinner/progress/tui/ncurses/indicatif mentions in help text. MAY-tier, universal.
+- Add `p3-about-long-about` behavioral check. Probes both `-h` and `--help` directly and Warns when the two outputs are byte-identical (no `long_about` defined). SHOULD-tier, universal.
+- Add `p6-stdin-input` behavioral check. Gated on input-accepting subcommand verbs (process/parse/convert/transform/analyze/validate/format/lint/check); Warns when help text does not mention stdin or `-` as a path placeholder. SHOULD-tier, conditional.
+- Add `p6-consistent-naming` behavioral check. Classifies subcommands against a common-verb list; Warns when verb-first and noun-first patterns mix. SHOULD-tier, conditional on 2+ user-defined subcommands.
+- Add `p7-timeout-behavioral` behavioral check. Gated on long-running subcommand verbs (serve/daemon/watch/tail/monitor/follow/run/start/stream); Warns when no `--timeout` / `--deadline` / `--max-time` flag advertised. SHOULD-tier, conditional. Distinct from the source-layer `p6-must-timeout-network` which gates on network-library usage.
+- 11 behavioral checks closing the remaining behavioral orphan coverage: structured exit codes, JSON error envelopes, consistent envelope shape, actionable error messages, JSON error output, subcommand examples, paired text+JSON examples, subcommand-shaped operations, force/yes on destructive subcommands, read/write surface distinction, and TTY-aware verbosity. by @brettdavies in [#57](https://github.com/brettdavies/agentnative-cli/pull/57)
+- Top-level `--verbose` / `-v` flag (env `AGENTNATIVE_VERBOSE`) for diagnostic escalation, mutually exclusive with `--quiet`. by @brettdavies in [#58](https://github.com/brettdavies/agentnative-cli/pull/58)
+- Top-level `--examples` flag prints a curated invocation block and exits. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the block without parsing full `--help`.
+- Top-level `--color auto|always|never` (env `AGENTNATIVE_COLOR`) wraps text-mode status prefixes in ANSI styling, honoring NO_COLOR and TTY detection.
+- Top-level `--raw` emits one `id<TAB>status` line per check with no headers, summary, or badge hint. Pipe-friendly for `grep`/`awk` workflows.
+- Per-subcommand `Examples:` blocks in `--help` for `audit`, `emit`, `skill`.
+- `anc skill install --all` and `anc skill update [host|--all]` iterate every known host in one invocation. Update guards against operating on non-bundle directories via a `SKILL.md` marker file.
+- `audit` accepted as a community-standard verb in the p6-standard-names check (alongside `npm audit`, `cargo audit`, etc.).
+- `scripts/sync-spec.sh` now accepts `--ref <git-ref>` (or `SPEC_REF` env var) to vendor `agentnative-spec` from an explicit branch, tag, or commit SHA. Default behavior unchanged: resolves the latest `v*` tag. by @brettdavies in [#59](https://github.com/brettdavies/agentnative-cli/pull/59)
+- The resolved short SHA prints every run regardless of ref type, so consumer PRs can record the exact pin in their body.
+- `scripts/hooks/pre-push` now runs `shellcheck --severity=warning` against every tracked `*.sh` plus everything under `scripts/hooks/` (so the hook itself is linted). Uses `git ls-files` so vendored / `.gitignore`d scripts are excluded. Skips with a one-line note if `shellcheck` is not installed, matching the existing `cargo deny` pattern. by @brettdavies in [#60](https://github.com/brettdavies/agentnative-cli/pull/60)
+- New `opt_out` and `n_a` scorecard statuses surface in `anc audit --output json` (`status` field on each row and matching counters in `summary`). `opt_out` marks deliberate non-adoption (tool ships no `--output` flag, no `AGENTS.md` bundle); `n_a` marks a conditional requirement whose antecedent is unmet. Pre-0.6 consumers treat both as unknown and feature-detect. by @brettdavies in [#62](https://github.com/brettdavies/agentnative-cli/pull/62)
+- Each entry in `results[]` now carries a `tier` field (`must` / `should` / `may`, or `null` for rows not in the registry) and a `check_id` field naming the probe that produced the row.
+- `anc emit schema` returns the schema 0.6 contract (`$id: https://anc.dev/scorecard-v0.6.schema.json`) with the new status enum values, summary counters, and per-row fields.
+
+### Changed
+
+- Vendored spec bump: `src/principles/spec/principles/p3-progressive-help-discovery.md` carries the two new `p3-must-version` and `p3-should-version-short` requirements (universal applicability). `REQUIREMENTS.len()` 57 -> 59; MUST count 27 -> 28; SHOULD count 20 -> 21; MAY count unchanged at 10. by @brettdavies in [#55](https://github.com/brettdavies/agentnative-cli/pull/55)
+- Coverage matrix regenerated: `docs/coverage-matrix.md` and `coverage/matrix.json` reflect 59 requirement rows and the new verifier links.
+- Coverage matrix regenerated: `docs/coverage-matrix.md` and `coverage/matrix.json` reflect 6 new verifier links across P1, P3, P6, and P7 requirement rows. by @brettdavies in [#56](https://github.com/brettdavies/agentnative-cli/pull/56)
+- BREAKING: `anc check` renamed to `anc audit`; `anc generate` renamed to `anc emit`; `anc schema` removed and folded under `anc emit schema`. The implicit-default-subcommand injection now writes `audit`. Update scripts and CI invocations. by @brettdavies in [#58](https://github.com/brettdavies/agentnative-cli/pull/58)
+- Top-level `--help` now renders an extended description (`long_about`) with paired text + JSON example invocations; `-h` still shows the concise summary.
+- `STANDARD_VERBS` in p6-standard-names is now alphabetized within and across subgroups for review-friendliness; doc-comment notes the invariant.
+- `src/project.rs` stderr warnings now reference `anc audit src/` instead of `anc check src/` when the file-walk hits depth or count limits.
+- `scripts/sync-spec.sh` transport refactored from `git clone` to `gh api`. Reduces the shallow-vs-full clone distinction, makes ref resolution uniform across tag / branch / SHA, and removes the need for a local clone except as an offline fallback. by @brettdavies in [#59](https://github.com/brettdavies/agentnative-cli/pull/59)
+- `scripts/SYNCS.md` documents the new flag, the `gh api` transport, the local-checkout fallback, and the convention of recording the resolved SHA in any consumer PR body.
+- `anc audit --output json` emits one result entry per requirement-row instead of one per `check_id`. A probe like `p3-version` (covers `p3-must-version` and `p3-should-version-short`) now produces two distinct entries, each tier-stamped, so downstream scoring layers no longer need a coverage-matrix join to attribute a probe's outcome to a specific RFC 2119 level. by @brettdavies in [#62](https://github.com/brettdavies/agentnative-cli/pull/62)
+- Conditional requirement rows whose antecedent collapses to `opt_out` or `n_a` are propagated to `n_a` in `results[]`; rows whose antecedent is `skip` or `error` inherit the indeterminacy. The propagated evidence string names the antecedent check id so the chain is legible from the JSON alone.
+- The badge denominator excludes `opt_out` (transitional) and excludes `n_a` from both sides, matching the plan's posture that no formula is provably fair until the input shape is disambiguated.
+- `anc audit` text mode renders `OPT` and `N/A` status badges alongside the existing five, and the summary line reports all seven counters.
+- `p8-bundle-exists` emits `opt_out` when no top-level `AGENTS.md` or `SKILL.md` is found (a malformed bundle still emits `warn`); `p2-json-output` emits `opt_out` when no `--output` or `--format` flag is detected at top level or in any subcommand.
+- The vendored `agentnative-spec` tree updates to `dev` commit `b4f4d02` (PR brettdavies/agentnative#34). Five rows in `p2` and `p8` migrate to the new `applicability.kind: conditional` / `antecedent.check_id` shape; the remaining 18 legacy `applicability.if: <prose>` rows stay as-is until each prerequisite grows a machine-readable check id.
+- `anc audit` (text mode) now reports the same requirement rows as `--output json`: requirement-row ids (`p2-must-schema-print`) instead of probe ids, with the requirement tier (`must`/`should`/`may`) shown on each row. by @brettdavies in [#63](https://github.com/brettdavies/agentnative-cli/pull/63)
+- The process exit code now reflects the per-row result set in both output modes. A requirement that collapses to `n_a` because its conditional prerequisite is `opt_out` no longer forces a non-zero exit; only a live `Fail`/`Error` exits `2` and a live `Warn` exits `1`.
+- The leaderboard score now reflects shipped-binary behavior only: source- and project-layer checks no longer affect `score_pct` or badge eligibility. by @brettdavies in [#64](https://github.com/brettdavies/agentnative-cli/pull/64)
+- `score_pct` is now credit-weighted: `warn` earns half credit and `opt_out` counts against the score, replacing the prior pass-only ratio.
+- Lower the agent-native badge eligibility floor from 80% to 70%.
+- Rename the `check_id` field to `audit_id` in `anc audit --output json` scorecards and in `coverage/matrix.json`. Scorecard `schema_version` goes 0.6 → 0.7 and its JSON Schema `$id` becomes `scorecard-v0.7`; the coverage matrix keeps `schema_version` 1.0 (unreleased). Consumers pinning `check_id` must read `audit_id`. by @brettdavies in [#65](https://github.com/brettdavies/agentnative-cli/pull/65)
+- CLI help and output now describe the work as "audits" (for example, "Run only behavioral audits") to match the `anc audit` verb.
+- Scorecard `spec_version` now reports `"0.5.0"` (vendored agentnative-spec bumped 0.4.0 → 0.5.0). by @brettdavies in [#66](https://github.com/brettdavies/agentnative-cli/pull/66)
+
+### Fixed
+
+- Error output under `--output json` / `--json` now emits a JSON envelope to stderr with `error`, `kind`, and `message` fields instead of clap's plain-text rendering, so agents pinned to JSON can parse failures with one shape. by @brettdavies in [#58](https://github.com/brettdavies/agentnative-cli/pull/58)
+- `--help --output json` and `--version --output json` emit JSON envelopes so structured-output consumers can probe help and version without a separate text parser.
+- `--examples` is no longer `exclusive = true`, so `anc --examples --output json` now produces the JSON envelope it always claimed to support (was failing with `argument-conflict`).
+- `EXAMPLES_BLOCK` content (printed by `anc --examples`) updated to use current subcommand names (was still showing `anc check`, `anc generate`, `anc schema`).
+- p2-schema-print check now walks one level into top-level subcommand help to discover `schema` exposed as a nested verb (e.g., `anc emit schema`), matching how an agent walks `--help` chains. Benefits every CLI checked by anc, not just anc itself.
+- `scorecard::audience::tests::duplicate_signal_in_results_trips_debug_assert` is gated on `#[cfg(debug_assertions)]` so it runs only where `debug_assert!` actually fires (previously failed silently under `cargo test --release`).
+- Embedded `schema/scorecard.schema.json` description fields updated to reference `anc audit` rather than `anc check`.
+- Removed dead `spec_ref` variable in `scripts/sync-spec.sh` (SC2034). Declared during the `--ref` refactor in #59 but never read; the actual code uses the `SPEC_REF` env var directly. by @brettdavies in [#60](https://github.com/brettdavies/agentnative-cli/pull/60)
+- The spec parser now rejects three malformed inputs that previously fell through silently: `antecedent.check_id` containing only whitespace, an applicability block carrying both legacy `if:` and new `kind:` (the legacy branch only fired for single-key maps, so the prose was being dropped on the floor), and any key inside `antecedent` other than `check_id` (compound antecedents are deferred to v2 of the schema per the plan's Sub-decision 2b). by @brettdavies in [#62](https://github.com/brettdavies/agentnative-cli/pull/62)
+- Text mode now renders `[N/A ]` (with antecedent evidence) for conditional requirements whose prerequisite was opted out, instead of showing a misleading `[FAIL]` on the probe id. Text row count and badge score now match `--output json`. by @brettdavies in [#63](https://github.com/brettdavies/agentnative-cli/pull/63)
+
+### Documentation
+
+- Update `tests/build_parser.rs` and `src/principles/registry.rs` test counters to match the new 59-requirement registry. by @brettdavies in [#55](https://github.com/brettdavies/agentnative-cli/pull/55)
+- `schema/scorecard.schema.json` regenerates against the 0.6 contract: new enum values, new required counters, `tier` and `check_id` on `CheckResultView`, and a refreshed `examples[0]` block. by @brettdavies in [#62](https://github.com/brettdavies/agentnative-cli/pull/62)
+- `coverage/matrix.json` and `docs/coverage-matrix.md` regenerate against the new conditional applicability shape. Conditional rows surface with `applicability.antecedent.check_id` populated; legacy rows continue to emit `applicability.condition: "<prose>"`.
+
+**Full Changelog**: [v0.4.0...v0.5.0](https://github.com/brettdavies/agentnative-cli/compare/v0.4.0...v0.5.0)
+
 ## [0.4.0] - 2026-05-21
 
 ### Added

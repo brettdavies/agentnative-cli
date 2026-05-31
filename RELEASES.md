@@ -221,8 +221,8 @@ Three release-flow artifacts live outside any automated prose check and need a m
 
 The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
 [`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-Until those packs are vendored into this repo (a deferred follow-up expected to extend `scripts/sync-spec.sh`), point
-Vale at the spec checkout via `--config`.
+This repo's `main` branch does not ship a local copy; point Vale at the spec checkout via `--config` (see the example
+below).
 
 ```bash
 # 1. Save the artifact to /tmp/.

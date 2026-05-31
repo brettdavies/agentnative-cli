@@ -4,9 +4,10 @@ Source of truth for the voice and identity of the agentnative standard. Shared a
 the skill bundle, and any future channel. Each channel inherits from this document and adds channel-specific register
 and artifacts in its own `PRODUCT.md`.
 
-> **Source of truth: `agentnative-spec/BRAND.md`.** This file is vendored into each channel repo (`agentnative-site`,
-> `agentnative-cli`, `agentnative-skill`) via `scripts/sync-prose-tooling.sh`. Edits in
-> a consumer repo will be overwritten on the next sync. File issues and PRs against this repo.
+> **Source of truth: `agentnative-spec/BRAND.md`.** This file is a vendored copy maintained in the spec repo; the
+> consumer-side copy is for reference. The synchronization tooling that imports the canonical version is dev-side
+> only in each consumer repo (the linter's `main` branch no longer ships it). File issues and PRs against the spec
+> repo.
 
 ## Brand identity
 
@@ -43,8 +44,7 @@ Two first-class consumers across all channels:
 ## Universal anti-patterns
 
 These bans apply across every channel. The narrative below explains *why* each category is banned; the executable
-contract for *what* is banned lives in [`styles/brand/README.md`](styles/brand/README.md), generated from the Vale rule
-pack at `styles/brand/*.yml`.
+contract for *what* is banned is maintained as a Vale rule pack in `agentnative-spec`.
 
 - **No marketing register.** First-person belief and recommendation framings are out. The standard speaks in the third
   person about contracts, not in the first person about beliefs.
@@ -57,8 +57,8 @@ pack at `styles/brand/*.yml`.
 ## Voice anchors: concrete examples
 
 The ✓ column shows the contract voice. The ✗ column names the category of failure rather than reproducing literal banned
-phrases. Those live in [`styles/brand/README.md`](styles/brand/README.md). The category labels describe the shape of the
-failure each ✓ phrasing replaces.
+phrases. Those live in the spec's Vale rule pack. The category labels describe the shape of the failure each ✓ phrasing
+replaces.
 
 | ✓                                                                                                                         | ✗                                                                                      |
 | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |

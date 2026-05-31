@@ -15,3 +15,5 @@ permissions:
 jobs:
   guard-docs:
     uses: brettdavies/.github/.github/workflows/guard-main-docs.yml@main
+    with:
+      extra_paths: 'styles/,.vale.ini,scripts/prose-check.sh'

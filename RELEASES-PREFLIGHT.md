@@ -84,6 +84,9 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
 - [ ] `rust-toolchain.toml` last bumped ≥7 days ago (supply-chain quarantine). If a bump landed inside the window, hold
   or revert it before tagging.
 - [ ] No unmerged dependency advisories from `cargo deny check advisories`.
+- [ ] Leak check: `git diff origin/main..HEAD --name-only | grep -E
+  '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)'` returns nothing. If cherry-picks
+  pulled in guarded paths via rename detection, resolve per `RELEASES.md` § Cherry-pick conflicts on guarded paths.
 
 ### Post-tag verification
 
@@ -104,4 +107,4 @@ Run immediately after the tag push triggers `release.yml`.
 
 - [`RELEASES.md`](./RELEASES.md): operational runbook this checklist gates.
 - [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md): release-flow rationale.
-- [`CLAUDE.md`](./CLAUDE.md) § Scorecard v0.5 Fields: consumer-facing JSON contract reference.
+- [`CLAUDE.md`](./CLAUDE.md) § Scorecard JSON fields: consumer-facing JSON contract reference.

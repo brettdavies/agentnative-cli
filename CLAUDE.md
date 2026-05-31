@@ -139,7 +139,7 @@ either source.
 Regenerate whenever you add a requirement, change an audit's `covers()`, or rename an audit ID. The regeneration is a
 deliberate commit, not a build-time artifact; the matrix is citable from outside this repo.
 
-## Scorecard v0.5 Fields
+## Scorecard JSON fields
 
 `src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape. Cumulative history:

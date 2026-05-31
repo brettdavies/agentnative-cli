@@ -141,7 +141,7 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   `p6-must-timeout-network` behind `if: CLI makes network calls`." Resolved: prose now reads "Use 77 when the CLI has an
   auth surface and 78 when it has a config surface; 0/1/2 are universal." Frontmatter summary stays universal because
   the *mapping discipline* is universal even if the specific 77/78 codes are conditional. The summary-prose drift is a
-  known launch-week tradeoff; full alignment of the summary text is on the v0.4.0 punch list.
+  known launch-week tradeoff; full alignment of the summary text is on the punch list.
 
 - **[edit]** *Prior art.* "77/78 align with BSD `sysexits.h` (`EX_NOPERM`, `EX_CONFIG`). The alignment is a strength but
   neither P2 nor P4 cites BSD sysexits, leaving an HN commenter to 'discover' it as a gotcha." Resolved: added a
@@ -152,4 +152,4 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   the same error/output formatter as runtime errors, not a library-internal `process::exit()`' is universal; the API
   name is not." Deferred: language-neutralizing the bullet ("Argument parsing returns a structured error rather than
   calling `process::exit()` internally; in Rust+clap, this means `try_parse()` not `parse()`") drifts the frontmatter
-  summary. Bundled with P6's SIGPIPE and `global = true` rewrites for a coordinated v0.4.0 language-neutralization PR.
+  summary. Bundled with P6's SIGPIPE and `global = true` rewrites for a coordinated language-neutralization PR.

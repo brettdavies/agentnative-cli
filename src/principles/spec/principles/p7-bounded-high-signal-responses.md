@@ -117,14 +117,14 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   indefinitely on a hung network call cannot proceed') only motivates the network case. The universal scope is
   unjustified by its own rationale." Deferred: narrowing P7's `applicability` from `universal` to non-network
   long-running operations only (or to `if: CLI has long-running operations`) fires the coupled-release norm (CLI
-  registry parses `applicability`). Bundled with other applicability cleanups for a v0.4.0 PR with explicit registry
+  registry parses `applicability`). Bundled with other applicability cleanups for a future PR with explicit registry
   coordination.
 - **[later]** *MUST-vs-SHOULD.* "The list-clamping MUST fires on every CLI with 'list-style commands' regardless of
   natural cardinality. A tool whose list operation returns a bounded small set by construction (e.g., `anc principles
   list` → exactly 7) gains nothing from a clamp + `\"truncated\": true` contract: the clamp is unreachable and the
   truncation flag is dead schema." Deferred: narrowing the `if:` clause from "CLI has list-style commands" to "CLI has
   list-style commands whose result set is unbounded or user-data-driven" changes the registry-parsed applicability
-  value. Bundled with the P3 / P7 applicability cleanups for v0.4.0.
+  value. Bundled with the P3 / P7 applicability cleanups for a future PR.
 - **[edit]** *Vague agent-native.* "'Every token of CLI output an agent consumes has a cost' plus 'context window'
   framing dates the principle to current LLM-agent assumptions. Non-LLM agents (scripts, schedulers, future
   architectures) still benefit from bounded output, but for throughput/parsing reasons, not tokens." Resolved: "Why

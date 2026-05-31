@@ -107,16 +107,16 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   implicitly gates P3 conformance on a `--output json` mode, which is P2's territory. A CLI without structured output
   cannot satisfy this SHOULD even in spirit, yet `applicability: universal`." Deferred: narrowing `applicability` from
   `universal` to conditional (`if: CLI exposes a structured-output mode`) fires the coupled-release norm (CLI registry
-  parses `applicability`). Bundled with other applicability cleanups for a v0.4.0 PR with explicit registry
+  parses `applicability`). Bundled with other applicability cleanups for a future PR with explicit registry
   coordination.
 - **[later]** *MUST-vs-SHOULD.* "'Top-level command ships 2–3 examples' as a universal MUST is too strong for genuinely
   single-purpose CLIs (e.g., `cat`, `true`, a one-shot wrapper) where one canonical invocation is the entire surface.
   The '2–3' count baked into a MUST will draw HN fire as cargo-culted." Deferred: softening to "at least one example,
   and 2–3 when the tool has multiple primary use cases" is a MUST-content change that drifts the frontmatter summary.
-  Bundled with other MUST-content softenings for a v0.4.0 PR.
+  Bundled with other MUST-content softenings for a future PR.
 - **[later]** *Prior art.* "Principle is clap-flavored throughout (`after_help`, `about`/`long_about`, `///` doc
   comments in Anti-Patterns) without a single sentence acknowledging the non-Rust analog (docopt usage block, `argparse`
   epilog, `cobra` Example field, `gh`/`kubectl` Examples convention). HN will call this 'a clap style guide, not a CLI
   standard.'" Deferred: a cross-framework analog appendix is a meaningful addition. The Definition / Why-Agents-Need-It
-  sections are framework-agnostic; the Evidence section is intentionally clap-keyed. Worth revisiting in v0.4.0 once the
+  sections are framework-agnostic; the Evidence section is intentionally clap-keyed. Worth revisiting once the
   standard's multi-language reach is clearer; site copy could also be a better home than the principle file itself.

@@ -1,7 +1,7 @@
 # Pre-release verification: `agentnative`
 
 Operational pre-flight checklist. Runs **before** step 1 of
-[`RELEASES.md` § Releasing dev to main](./RELEASES.md#releasing-dev-to-main) — gates the cut of the `release/v<version>`
+[`RELEASES.md` § Releasing dev to main](./RELEASES.md#releasing-dev-to-main). Gates the cut of the `release/v<version>`
 branch, not the daily dev integration. Each box is an explicit go/no-go. If any item is unchecked or red, hold the
 release.
 
@@ -48,16 +48,16 @@ Self-dogfood exercises one CLI shape; manual probes cover the rest. Pick fresh t
 
 - [ ] `anc audit <python-CLI>` (e.g. `ruff`, `uv`) runs to completion, scorecard is non-empty.
 - [ ] `anc audit <go-CLI>` (e.g. `gh`) runs to completion, scorecard is non-empty.
-- [ ] `anc audit <posix-shaped-CLI>` (e.g. `jq`) under `--audit-profile posix-utility` — no panic, suppression doesn't
+- [ ] `anc audit <posix-shaped-CLI>` (e.g. `jq`) under `--audit-profile posix-utility`: no panic, suppression doesn't
   crater scoring.
 - [ ] `anc audit <CLI-with-no-version-flag>` produces a real `fail` on `p3-must-version` (regression guard for the
   universal MUST landed in #55).
-- [ ] One run each with `--audit-profile {human-tui, file-traversal, posix-utility, diagnostic-only}` — no panic, JSON
+- [ ] One run each with `--audit-profile {human-tui, file-traversal, posix-utility, diagnostic-only}`: no panic, JSON
   remains schema-valid.
 
 ### Distribution and install paths
 
-The release builds cross-compiled binaries and the homebrew tap dispatches downstream — none of this runs in `cargo
+The release builds cross-compiled binaries and the homebrew tap dispatches downstream. None of this runs in `cargo
 test`.
 
 - [ ] Last green run of `release.yml` (on this branch or a sibling) cross-compiled all seven targets listed in
@@ -72,7 +72,7 @@ test`.
 
 ### Release mechanics sanity
 
-These items duplicate steps in `RELEASES.md` deliberately — easy to skip, expensive to recover from. Confirm explicitly.
+These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensive to recover from. Confirm explicitly.
 
 - [ ] `Cargo.toml` `version` bumped to the new tag value (`check-version` in `release.yml` enforces this; catch early).
 - [ ] `Cargo.lock` regenerated via `cargo update -p agentnative`, committed.
@@ -90,18 +90,18 @@ These items duplicate steps in `RELEASES.md` deliberately — easy to skip, expe
 Run immediately after the tag push triggers `release.yml`.
 
 - [ ] `release.yml` green end-to-end. `gh run watch <id> --exit-status` then verify with `gh run view <id> --json
-  conclusion` — the watcher exit code alone is not authoritative.
+  conclusion`. The watcher exit code alone is not authoritative.
 - [ ] Homebrew-tap `update-formula` dispatch completed, then `finalize-release.yml` ran back here and flipped the GitHub
   Release `make_latest: true`.
 - [ ] `crates.io` shows the new version published. `cargo install agentnative --version <new>` from a clean environment
   resolves and runs.
 - [ ] Click the `badge_url` and `scorecard_url` from a real emitted scorecard against the live site. First-time renders
   for a new spec version can 404 even when the JSON looks correct.
-- [ ] `./scripts/sync-dev-after-release.sh v<version> && git push origin dev` — `Cargo.toml` + `Cargo.lock` +
-  `CHANGELOG.md` backported to `dev` per `RELEASES.md` § After publish.
+- [ ] `./scripts/sync-dev-after-release.sh v<version> && git push origin dev` backports `Cargo.toml`, `Cargo.lock`, and
+  `CHANGELOG.md` to `dev` per `RELEASES.md` § After publish.
 
 ## Related docs
 
-- [`RELEASES.md`](./RELEASES.md) — operational runbook this checklist gates.
-- [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) — release-flow rationale.
-- [`CLAUDE.md`](./CLAUDE.md) § Scorecard v0.5 Fields — consumer-facing JSON contract reference.
+- [`RELEASES.md`](./RELEASES.md): operational runbook this checklist gates.
+- [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md): release-flow rationale.
+- [`CLAUDE.md`](./CLAUDE.md) § Scorecard v0.5 Fields: consumer-facing JSON contract reference.

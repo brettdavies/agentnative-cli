@@ -763,13 +763,13 @@ fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
                     == normalize_trailing_newline(&rendered_json);
                 if !md_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc emit coverage-matrix`",
+                        "error: {} is out of date; run `anc emit coverage-matrix`",
                         out.display()
                     );
                 }
                 if !json_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc emit coverage-matrix`",
+                        "error: {} is out of date; run `anc emit coverage-matrix`",
                         json_out.display()
                     );
                 }

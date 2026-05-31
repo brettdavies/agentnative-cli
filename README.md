@@ -165,7 +165,7 @@ release-gate against the compiled artifact). Without either flag, all three laye
 ## Scoring
 
 The public score reflects **shipped-binary behavior only**: only behavioral-layer audits enter the formula. Source- and
-project-layer audits still run and still appear in the scorecard, but they do not move the score — what a tool's source
+project-layer audits still run and still appear in the scorecard, but they do not move the score: what a tool's source
 looks like does not change how an agent experiences the installed binary.
 
 Every audit result lands in one of seven statuses. The score is a credit-weighted ratio over the behavioral rows that
@@ -177,15 +177,15 @@ verified something one way or the other (the *denominator set*):
 | `warn`    |    0.5 | yes            | Behavior present, partially correct.             |
 | `fail`    |    0.0 | yes            | Behavior expected, absent or broken.             |
 | `opt_out` |    0.0 | yes            | Behavior deliberately declined (counts against). |
-| `n_a`     |      — | no             | Inapplicable: a conditional antecedent is unmet. |
-| `skip`    |      — | no             | Unmeasurable: the probe could not determine.     |
-| `error`   |      — | no             | The probe itself raised an exception.            |
+| `n_a`     |    n/a | no             | Inapplicable: a conditional antecedent is unmet. |
+| `skip`    |    n/a | no             | Unmeasurable: the probe could not determine.     |
+| `error`   |    n/a | no             | The probe itself raised an exception.            |
 
-With per-tier weights `w` (currently flat — MUST = SHOULD = MAY = 1), `score_pct = round(100 × Σ w·credit / Σ w)` over
-the denominator set. Badge eligibility floor: **70%**. The floor is deliberately low so the badge spreads the standard;
-exclusivity is carried by four cohort bands the site renders — Exemplary (≥ 85), Strong (80–84), Solid (75–79),
-Qualified (70–74) — not by a high gate. The formula, weights, floor, and bands are defined in the spec's
-`principles/scoring.md` and held stable for at least six months from publication.
+With per-tier weights `w` (currently flat, with MUST = SHOULD = MAY = 1), `score_pct = round(100 × Σ w·credit / Σ w)`
+over the denominator set. Badge eligibility floor: **70%**. The floor is deliberately low so the badge spreads the
+standard; exclusivity is carried by four cohort bands the site renders: Exemplary (≥ 85), Strong (80–84), Solid (75–79),
+Qualified (70–74). The eligibility floor is not a high gate. The formula, weights, floor, and bands are defined in the
+spec's `principles/scoring.md` and held stable for at least six months from publication.
 
 ### Tier mapping
 
@@ -201,7 +201,7 @@ on tier:
 ### Dogfood
 
 `anc` runs the same scoring on itself. Because the public score is behavioral-only, a source-only run has no rows to
-score — it reports `0%` and ineligible by design, since there is no shipped-binary behavior to measure:
+score. It reports `0%` and ineligible by design, since there is no shipped-binary behavior to measure:
 
 | Mode                   | Audits | Pass | Skip | Behavioral rows | Score | Eligible |
 | ---------------------- | -----: | ---: | ---: | --------------: | ----: | -------- |

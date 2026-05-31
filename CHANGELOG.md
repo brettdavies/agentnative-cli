@@ -105,7 +105,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Add four scorecard metadata blocks (`tool`, `anc`, `run`, `target`) to `--output json` — identifies the scored
+- Add four scorecard metadata blocks (`tool`, `anc`, `run`, `target`) to `--output json`: identifies the scored
   tool/version, the `anc` build that produced the scorecard, the user-typed invocation with timestamp and duration, and
   the resolved target (project / binary / command). by @brettdavies in
   [#34](https://github.com/brettdavies/agentnative-cli/pull/34)
@@ -125,18 +125,18 @@ All notable changes to this project will be documented in this file.
 - `--output json` scorecard now includes a `badge` block (`eligible`, `score_pct`, `embed_markdown`, `scorecard_url`,
   `badge_url`, `convention_url`). `embed_markdown` is `null` below the floor; `scorecard_url` / `badge_url` are
   populated whenever a tool slug exists, since the site renders an SVG for every scored tool.
-- `scripts/sync-dev-after-release.sh` — backports `Cargo.toml` `[package].version`, `Cargo.lock`, and `CHANGELOG.md`
-  from `main` to `dev` after a release tag publishes. Surgical (preserves dev's other Cargo.toml lines), idempotent
-  (re-runs are a no-op when dev is already in sync), and signed via the operator's normal commit signing — satisfies
+- `scripts/sync-dev-after-release.sh`: backports `Cargo.toml` `[package].version`, `Cargo.lock`, and `CHANGELOG.md` from
+  `main` to `dev` after a release tag publishes. Surgical (preserves dev's other Cargo.toml lines), idempotent (re-runs
+  are a no-op when dev is already in sync), and signed via the operator's normal commit signing, which satisfies
   `protect-dev`'s `required_signatures` ruleset without needing a CI bot identity. by @brettdavies in
   [#37](https://github.com/brettdavies/agentnative-cli/pull/37)
 
 ### Changed
 
-- Vendoring now always tracks the latest published spec tag — `SPEC_REF` env override removed. Run `bash
+- Vendoring now always tracks the latest published spec tag; `SPEC_REF` env override removed. Run `bash
   scripts/sync-spec.sh` to refresh; no environment configuration required. by @brettdavies in
   [#33](https://github.com/brettdavies/agentnative-cli/pull/33)
-- Bump scorecard `schema_version` from `"0.3"` to `"0.4"` (additive within the documented `0.x` policy — older consumers
+- Bump scorecard `schema_version` from `"0.3"` to `"0.4"` (additive within the documented `0.x` policy; older consumers
   feature-detect). by @brettdavies in [#34](https://github.com/brettdavies/agentnative-cli/pull/34)
 - Bump `rust-version` from `1.87` to `1.88` (let-chain stabilization).
 - Bumped scorecard `schema_version` from `"0.4"` to `"0.5"`. Pre-`0.5` consumers feature-detect the new `badge` key and
@@ -151,20 +151,20 @@ All notable changes to this project will be documented in this file.
   [#40](https://github.com/brettdavies/agentnative-cli/pull/40)
 - `--output json` scorecard `anc` block no longer includes a `commit` field. `anc.version` (the crate version pin)
   remains as the build identity. Removed because the per-build Git SHA capture made cached builds fragile (stale SHAs
-  across local commits) without solving any consumer-facing problem — `anc.version` already identifies the released
+  across local commits) without solving any consumer-facing problem; `anc.version` already identifies the released
   binary unambiguously, and pre-launch no public consumer of `anc.commit` exists. by @brettdavies in
   [#47](https://github.com/brettdavies/agentnative-cli/pull/47)
 
 ### Fixed
 
 - Eliminated four `.unwrap()` calls on infallible operations across `src/skill_install.rs` and `build.rs`. Replaced with
-  `.expect("…")` naming the upstream contract that guarantees `Some`/`Ok`. No behavior change — these were already
+  `.expect("…")` naming the upstream contract that guarantees `Some`/`Ok`. No behavior change: these were already
   infallible; the `expect` messages document why. by @brettdavies in
   [#38](https://github.com/brettdavies/agentnative-cli/pull/38)
 - `target.path` in `anc check --output json` now emits the basename of the resolved target instead of the canonicalized
   absolute path, eliminating a home-directory / username PII leak that flowed into committed scorecards, badge URLs, and
   agent-posted artifacts. Project mode emits the directory name (e.g. `"agentnative-cli"`); binary mode emits the file
-  name (e.g. `"anc"`); command mode unchanged at `null`. No schema bump — value semantics changed, schema shape did not.
+  name (e.g. `"anc"`); command mode unchanged at `null`. No schema bump: value semantics changed, schema shape did not.
   by @brettdavies in [#39](https://github.com/brettdavies/agentnative-cli/pull/39)
 - Corrected cross-repo URLs in `.github/ISSUE_TEMPLATE/` so contact links and agent-filing instructions point at the
   right repos. Spec repo references switched from `agentnative-cli` to `agentnative`; site repo references switched from
@@ -181,26 +181,26 @@ All notable changes to this project will be documented in this file.
   [#34](https://github.com/brettdavies/agentnative-cli/pull/34)
 - Add `## Install the skill` section to README with one-line examples per host and the manual `git clone` fallback for
   hosts not yet in the binary's map. by @brettdavies in [#35](https://github.com/brettdavies/agentnative-cli/pull/35)
-- `RELEASES.md` § "After publish — sync ``dev`` with the release" documents the backport step, supersedes the prior
+- `RELEASES.md` § "After publish: sync ``dev`` with the release" documents the backport step, supersedes the prior
   "never back-merged" rule for these three specific files, and points operators at the script. by @brettdavies in
   [#37](https://github.com/brettdavies/agentnative-cli/pull/37)
 - Add the `[![agent-native](https://anc.dev/badge/anc.svg)](https://anc.dev/score/anc)` badge plus crates.io and license
   shields at the top of `README.md`. by @brettdavies in [#40](https://github.com/brettdavies/agentnative-cli/pull/40)
 - Trim `.github/ISSUE_TEMPLATE/` to `false-positive`, `feature-request`, `scoring-bug`, plus a new `00-blank.yml` that
   lets a Blank issue option sit first in the chooser ahead of the structured forms. Spec-side templates
-  (`pressure-test`, `grade-a-cli`, `spec-question`) were duplicates of the spec repo's set from before the rename — they
+  (`pressure-test`, `grade-a-cli`, `spec-question`) were duplicates of the spec repo's set from before the rename; they
   belong on `brettdavies/agentnative` only, and `config.yml` already redirects there.
-- Add `scripts/SYNCS.md` — cross-repo sync map covering every spec/skill/coverage/release data flow with mechanism,
+- Add `scripts/SYNCS.md`: cross-repo sync map covering every spec/skill/coverage/release data flow with mechanism,
   payload, trigger, and drift check per edge. Includes a flowchart of inbound/outbound edges, a release-pipeline
   sequence diagram, and a cadence summary table reducing the system to "automatic vs manual" per sync point. by
   @brettdavies in [#41](https://github.com/brettdavies/agentnative-cli/pull/41)
 - `RELEASES.md` § "Releasing dev to main" step 4 replaced with a triple-diff verification block (A: main→release, B:
   release→dev, C: dev→main) plus a `git cherry HEAD origin/dev` patch-id check. The new flow catches both directions of
-  drift before the release tag goes out — guarded paths leaking IN (the original concern) and missed cherry-picks that
+  drift before the release tag goes out: guarded paths leaking IN (the original concern) and missed cherry-picks that
   should have shipped (the new concern). Discovered during v0.3.0 prep when an ad-hoc triple-diff caught 4
   `.github/ISSUE_TEMPLATE/*.yml` files that had drifted on `main` since the v0.1.1 squash. by @brettdavies in
   [#45](https://github.com/brettdavies/agentnative-cli/pull/45)
-- `RELEASES.md` § "Releasing dev to main" step 4 — expanded the `git cherry` patch-id check comment with squash-merge
+- `RELEASES.md` § "Releasing dev to main" step 4: expanded the `git cherry` patch-id check comment with squash-merge
   triage guidance (three expected noise sources, what a real miss looks like, and a two-command triage recipe).
   Discovered during v0.3.0 prep when the check produced 55 noisy `+` lines that all turned out to be expected; the
   original comment didn't explain that this is normal in a squash-merge workflow. by @brettdavies in
@@ -221,8 +221,8 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - `REQUIREMENTS` is now generated at build time from vendored frontmatter; no hand-maintained duplicate. No scoring
-  behavior change — pre/post diff verified byte-identical across all 33 check results, summaries, and coverage totals.
-  by @brettdavies in [#29](https://github.com/brettdavies/agentnative-cli/pull/29)
+  behavior change: pre/post diff verified byte-identical across all 33 check results, summaries, and coverage totals. by
+  @brettdavies in [#29](https://github.com/brettdavies/agentnative-cli/pull/29)
 - Scorecard `schema_version` reset `1.2` → `0.3`. Pre-launch correction; the schema is at `0.x` while `anc` is
   pre-launch and will lock at `1.0` on first public release. No public consumers exist today.
 - All 7 principles flipped from `status: draft` to `status: active` via re-vendor against `agentnative-spec` `v0.3.0`.
@@ -248,10 +248,10 @@ All notable changes to this project will be documented in this file.
   `diagnostic-only`. The applied value echoes as the top-level `audit_profile` field on scorecard JSON, and suppressed
   checks drop out of `coverage_summary.{must,should,may}.verified` so site leaderboards don't overstate per-tool
   coverage under audit profiles.
-- `audience_reason` field on scorecard JSON — populated only when `audience` is `null`, with `"suppressed"` (signal
-  check masked by `--audit-profile`) or `"insufficient_signal"` (signal check never produced) so consumers can see why
-  the classifier withheld a label. by @brettdavies in [#27](https://github.com/brettdavies/agentnative-cli/pull/27)
-- `audit_profiles` array in `coverage/matrix.json` — each entry carries `{name, description, suppresses[]}`, letting
+- `audience_reason` field on scorecard JSON: populated only when `audience` is `null`, with `"suppressed"` (signal check
+  masked by `--audit-profile`) or `"insufficient_signal"` (signal check never produced) so consumers can see why the
+  classifier withheld a label. by @brettdavies in [#27](https://github.com/brettdavies/agentnative-cli/pull/27)
+- `audit_profiles` array in `coverage/matrix.json`: each entry carries `{name, description, suppresses[]}`, letting
   agents and site renderers enumerate the four `--audit-profile` categories and what each one suppresses without
   scraping `--help`.
 
@@ -279,14 +279,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Add `p1-flag-existence` behavioral check — passes when `--help` advertises a non-interactive gate flag
+- Add `p1-flag-existence` behavioral check: passes when `--help` advertises a non-interactive gate flag
   (`--no-interactive`, `--batch`, `--headless`, `-y`, `--yes`, `-p`, `--print`, `--no-input`, `--assume-yes`). Skips
   when the target already satisfies P1 via help-on-bare-invocation or stdin-primary. by @brettdavies in
   [#24](https://github.com/brettdavies/agentnative-cli/pull/24)
-- Add `p1-env-hints` behavioral check — passes when `--help` exposes clap-style `[env: FOO]` bindings for flags. Emits
+- Add `p1-env-hints` behavioral check: passes when `--help` exposes clap-style `[env: FOO]` bindings for flags. Emits
   medium confidence; the heuristic covers the canonical but not the only env-binding format.
-- Add `p6-no-pager-behavioral` behavioral check — passes when `--no-pager` is advertised in `--help`. Skips when no
-  pager signal (`less` / `more` / `$PAGER` / `--pager`) appears. Emits medium confidence.
+- Add `p6-no-pager-behavioral` behavioral check: passes when `--no-pager` is advertised in `--help`. Skips when no pager
+  signal (`less` / `more` / `$PAGER` / `--pager`) appears. Emits medium confidence.
 - Add `confidence` field to every scorecard result (`high` / `medium` / `low`). Additive; v1.1 consumers feature-detect.
 - Add `dual_layer` count to the coverage matrix summary so the headline prose surfaces how many covered requirements
   have verifiers in two layers.
@@ -322,8 +322,8 @@ All notable changes to this project will be documented in this file.
 
 - Renamed `p6-tty-detection` → `p1-tty-detection-source` (verifies the P1 SHOULD for TTY detection, not a P6 concern).
   by @brettdavies in [#21](https://github.com/brettdavies/agentnative-cli/pull/21)
-- Renamed `p6-env-flags` → `p1-env-flags-source` (verifies the P1 MUST that every flag be settable via env var — lives
-  in P1, not P6).
+- Renamed `p6-env-flags` → `p1-env-flags-source` (verifies the P1 MUST that every flag be settable via env var; lives in
+  P1, not P6).
 - Repo URL references swept to `brettdavies/agentnative-cli` (renamed from `brettdavies/agentnative`). `Cargo.toml`
   `homepage` now points at `https://anc.dev`.
 
@@ -357,11 +357,11 @@ All notable changes to this project will be documented in this file.
 - `after_help` text on `Cli` documenting the implicit default subcommand and the bare-invocation contract directly in
   `anc --help` output.
 - Mutual exclusion: `--command` and `--source` now error at parse time instead of silently producing an empty result.
-- Add `code-bare-except` Python source check — detects bare `except:` clauses without exception types by @brettdavies in
+- Add `code-bare-except` Python source check: detects bare `except:` clauses without exception types by @brettdavies in
   [#15](https://github.com/brettdavies/agentnative/pull/15)
-- Add `p4-sys-exit` Python source check — detects `sys.exit()` calls outside `if __name__ == "__main__":` guards and
+- Add `p4-sys-exit` Python source check: detects `sys.exit()` calls outside `if __name__ == "__main__":` guards and
   `__main__.py` files
-- Add `p6-no-color` Python source check — detects NO_COLOR env var handling (Warn, not Fail — behavioral check is the
+- Add `p6-no-color` Python source check: detects NO_COLOR env var handling (Warn, not Fail; the behavioral check is the
   primary gate)
 - Add language-parameterized source helpers `has_pattern_in()`, `find_pattern_matches_in()`, and
   `has_string_literal_in()` supporting Python and Rust
@@ -378,11 +378,11 @@ All notable changes to this project will be documented in this file.
   [#12](https://github.com/brettdavies/agentnative/pull/12)
 - `anc -q` / `anc --quiet` (top-level flag without subcommand) now prints help and exits 2 instead of panicking via
   `unreachable!()` (pre-existing bug). by @brettdavies in [#13](https://github.com/brettdavies/agentnative/pull/13)
-- `anc help` and `anc help check` now work — clap's auto-generated `help` subcommand was missing from our
+- `anc help` and `anc help check` now work. Clap's auto-generated `help` subcommand was missing from our
   known-subcommand set and got misclassified as a path.
 - `anc --command <NAME>` where NAME collides with a subcommand name (e.g. `anc --command check`) now resolves NAME as a
   binary on PATH instead of producing a confusing clap error.
-- `anc --command rg` and `anc --output json --source` (no positional argument) now work — the pre-parser detects
+- `anc --command rg` and `anc --output json --source` (no positional argument) now work. The pre-parser detects
   subcommand-scoped flags and injects `check` accordingly.
 - `anc -- .` (POSIX double-dash separator) now runs check against `.` instead of producing undefined behavior.
 

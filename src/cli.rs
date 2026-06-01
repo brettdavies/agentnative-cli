@@ -8,37 +8,118 @@ use crate::skill_install::SkillHost;
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
 #[command(
-    after_help = "When the first argument is not a subcommand, `check` is inserted automatically:
-  anc .                  ≡  anc check .
-  anc --command ripgrep  ≡  anc check --command ripgrep
+    long_about = "The agent-native CLI linter — audits a CLI tool against the agent-readiness spec.
+
+Runs three layers of audits against a target: behavioral (spawn the binary and inspect output), source (ast-grep over Rust/Python files), and project (manifest, completions, bundle presence). The result is a scorecard you can read interactively (text mode) or pipe into another tool (`--output json`).
+
+Default output format is text; color and progress affordances auto-detect the TTY and disappear when stdout is piped or redirected (NO_COLOR-compatible). Use `--verbose` / `-v` to escalate diagnostic detail when debugging unexpected results.
+
+Input model: targets are passed as positional path arguments or via `--command <name>`. Stdin is not consumed; `-` is reserved and behaves like a literal filename rather than a stdin sentinel."
+)]
+#[command(after_help = "Examples:
+  anc audit .                          # human scorecard for the current project
+  anc audit . --output json            # JSON envelope for agents (--json works too)
+  anc audit --command ripgrep          # audit a PATH-resolved binary by name
+  anc emit coverage-matrix             # emit the spec coverage matrix
+  anc emit schema                      # print the scorecard JSON Schema
+  anc skill install claude_code          # install the bundle into Claude Code
+
+When the first argument is not a subcommand, `audit` is inserted automatically:
+  anc .                  ≡  anc audit .
+  anc --command ripgrep  ≡  anc audit --command ripgrep
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative checks itself."
-)]
+that prevents recursive self-invocation when agentnative audits itself.")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Suppress non-essential output
+    /// Suppress non-essential output. Default: false (warnings and progress
+    /// notes are written to stderr).
     #[arg(long, short = 'q', global = true, env = "AGENTNATIVE_QUIET")]
     pub quiet: bool,
+
+    /// Escalate diagnostic detail. `-v` is shorthand for `--verbose`.
+    /// Mutually exclusive with `--quiet`; the last flag on the command line
+    /// wins when both appear.
+    #[arg(
+        long,
+        short = 'v',
+        global = true,
+        env = "AGENTNATIVE_VERBOSE",
+        conflicts_with = "quiet"
+    )]
+    pub verbose: bool,
+
+    /// Print a curated examples block and exit. Pairs with `--output json`
+    /// (or `--json`) so structured-output consumers can fetch the examples
+    /// without parsing the full `--help` body.
+    #[arg(long, global = true)]
+    pub examples: bool,
 
     /// Emit JSON output. Short alias for `--output json` on subcommands that
     /// support it. Per the agent-native convention (`p2-should-json-aliases`),
     /// the short form works alongside the canonical `--output` enum.
     #[arg(long, global = true)]
     pub json: bool,
+
+    /// Color control for text output. `auto` (default) emits ANSI styling
+    /// when stdout is a terminal and `NO_COLOR` is unset. `always` forces
+    /// styling on; `never` strips it. Honors the `NO_COLOR` environment
+    /// variable in `auto` mode (https://no-color.org/).
+    #[arg(
+        long,
+        global = true,
+        value_name = "WHEN",
+        default_value = "auto",
+        env = "AGENTNATIVE_COLOR"
+    )]
+    pub color: ColorChoice,
+
+    /// Strip section headers, evidence lines, summary line, and badge hint
+    /// — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and
+    /// downstream tooling that wants the raw verdict stream without prose.
+    /// Ignored in `--output json` mode.
+    #[arg(long, global = true)]
+    pub raw: bool,
+}
+
+/// `--color auto|always|never` — choice of when to emit ANSI styling.
+/// Aligns with the cargo / rustc convention. `auto` consults TTY detection
+/// and `NO_COLOR` at output time; the choice itself stays inert until
+/// `format_text` queries `should_color()`.
+#[derive(Clone, Copy, Debug, ValueEnum, Default, PartialEq, Eq)]
+#[value(rename_all = "kebab-case")]
+pub enum ColorChoice {
+    #[default]
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Check a CLI project or binary for agent-readiness
-    Check {
+    /// Audit a CLI project or binary for agent-readiness
+    ///
+    /// Reads the target's project layout (Cargo.toml / pyproject.toml),
+    /// language detection, and binary discovery. Stdin is not consumed.
+    /// Pass the target as a positional argument or via `--command <name>`
+    /// to resolve from PATH. `-` is reserved and behaves like any other
+    /// path argument (no special stdin meaning).
+    #[command(after_help = "Examples:
+  anc audit .                                  # default: project at cwd
+  anc audit . --output json                    # JSON envelope for agents
+  anc audit . --output json --principle 2      # filter to P2 (Structured Output)
+  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit ./target/release/anc --binary      # behavioral audits only
+
+Defaults: path = `.`, output = text, no principle filter.")]
+    Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
         path: std::path::PathBuf,
 
-        /// Resolve a command from PATH and run behavioral checks against it
+        /// Resolve a command from PATH and run behavioral audits against it
         #[arg(
             long,
             value_name = "NAME",
@@ -48,15 +129,15 @@ pub enum Commands {
         )]
         command: Option<String>,
 
-        /// Run only behavioral checks (skip source analysis)
+        /// Run only behavioral audits (skip source analysis)
         #[arg(long)]
         binary: bool,
 
-        /// Run only source checks (skip behavioral)
+        /// Run only source audits (skip behavioral)
         #[arg(long)]
         source: bool,
 
-        /// Filter checks by principle number (1-8)
+        /// Filter audits by principle number (1-8)
         #[arg(long)]
         principle: Option<u8>,
 
@@ -68,10 +149,10 @@ pub enum Commands {
         #[arg(long)]
         include_tests: bool,
 
-        /// Exemption category for the target. Suppresses checks that do not
+        /// Exemption category for the target. Suppresses audits that do not
         /// apply to this class of tool — e.g., TUI apps legitimately
         /// intercept the TTY, so `--audit-profile human-tui` skips the
-        /// interactive-prompt MUSTs. Suppressed checks emit `Skip` with
+        /// interactive-prompt MUSTs. Suppressed audits emit `Skip` with
         /// structured evidence so readers see what was excluded.
         #[arg(long, value_name = "CATEGORY")]
         audit_profile: Option<AuditProfile>,
@@ -81,24 +162,32 @@ pub enum Commands {
         /// Shell to generate for
         shell: Shell,
     },
-    /// Generate build artifacts (coverage matrix, etc.)
-    Generate {
+    /// Render build artifacts (coverage matrix, scorecard schema)
+    #[command(after_help = "Examples:
+  anc emit coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
+  anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
+  anc emit coverage-matrix --out /tmp/cov.md          # custom output path
+  anc emit schema                                     # print the scorecard JSON Schema to stdout
+  anc emit schema | jq '.title'                       # pipe into jq for inspection")]
+    Emit {
         #[command(subcommand)]
-        artifact: GenerateKind,
+        artifact: EmitKind,
     },
     /// Install or manage the agentnative skill bundle
+    ///
+    /// Namespace for bundle operations. `anc skill install <host>` clones
+    /// the agentnative-skill bundle into a host's canonical skills
+    /// directory; `anc skill update <host>` refreshes an existing install.
+    #[command(after_help = "Examples:
+  anc skill install claude_code                # install bundle to Claude Code
+  anc skill install claude_code --dry-run      # print the git command without spawning
+  anc skill install --all                      # install across every known host
+  anc skill update claude_code                 # refresh an existing install
+  anc skill install codex --output json        # JSON envelope for agent consumption")]
     Skill {
         #[command(subcommand)]
         cmd: SkillCmd,
     },
-    /// Print the scorecard JSON Schema to stdout
-    ///
-    /// Emits the JSON Schema (draft 2020-12) that describes the shape of
-    /// `anc check --output json`. Consumers (site renderer, leaderboards,
-    /// agent integrations) validate scorecards against this contract instead
-    /// of inferring the shape from sample output. The schema is the same
-    /// document committed at `schema/scorecard.schema.json` in this repo.
-    Schema,
 }
 
 #[derive(Subcommand)]
@@ -111,8 +200,13 @@ pub enum SkillCmd {
     ///
     ///     git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
     Install {
-        /// Target host (claude_code, codex, cursor, opencode).
-        host: SkillHost,
+        /// Target host (claude_code, codex, cursor, opencode). Required
+        /// unless `--all` is set.
+        host: Option<SkillHost>,
+
+        /// Install into every known host in one invocation.
+        #[arg(long, conflicts_with = "host")]
+        all: bool,
 
         /// Print the resolved git command without spawning. Captures cleanly
         /// via `eval $(anc skill install --dry-run <host>)`.
@@ -123,11 +217,28 @@ pub enum SkillCmd {
         #[arg(long, default_value = "text")]
         output: OutputFormat,
     },
+    /// Refresh an installed skill bundle to the latest upstream revision.
+    Update {
+        /// Target host. Required unless `--all` is set.
+        host: Option<SkillHost>,
+
+        /// Refresh every known host in one invocation.
+        #[arg(long, conflicts_with = "host")]
+        all: bool,
+
+        /// Print the resolved commands without spawning.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output format for the result envelope.
+        #[arg(long, default_value = "text")]
+        output: OutputFormat,
+    },
 }
 
 #[derive(Subcommand)]
-pub enum GenerateKind {
-    /// Render the spec coverage matrix (registry → checks → artifact).
+pub enum EmitKind {
+    /// Render the spec coverage matrix (registry → audits → artifact).
     CoverageMatrix {
         /// Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`.
         #[arg(long, value_name = "PATH", default_value = "docs/coverage-matrix.md")]
@@ -141,10 +252,17 @@ pub enum GenerateKind {
         )]
         json_out: std::path::PathBuf,
 
-        /// Exit non-zero when committed artifacts differ from generated output. CI drift guard.
+        /// Exit non-zero when committed artifacts differ from rendered output. CI drift guard.
         #[arg(long)]
         check: bool,
     },
+    /// Print the scorecard JSON Schema (draft 2020-12) to stdout.
+    ///
+    /// Consumers (site renderer, leaderboards, agent integrations) validate
+    /// scorecards against this contract instead of inferring shape from
+    /// sample output. The schema is the same document committed at
+    /// `schema/scorecard.schema.json` in this repo.
+    Schema,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -165,7 +283,7 @@ pub enum AuditProfile {
     /// interactive-prompt MUSTs and SIGPIPE — their contract is the TTY.
     HumanTui,
     /// File-traversal utilities (fd, find). Reserved for subcommand-structure
-    /// relaxations as those checks land.
+    /// relaxations as those audits land.
     FileTraversal,
     /// POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs
     /// satisfied vacuously via stdin-primary input.

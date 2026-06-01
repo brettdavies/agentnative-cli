@@ -99,6 +99,17 @@ if [[ -z "${GITHUB_TOKEN:-}" ]]; then
   fi
 fi
 
+# Guard against duplicate version sections: if CHANGELOG.md already has a section for
+# this version, refuse rather than prepend a second copy. Re-running with an
+# already-present --tag makes git-cliff emit an empty vX.Y.Z...vX.Y.Z compare range and a
+# spurious duplicate section. To regenerate a section, delete the existing one first.
+RELEASE_VER="${TAG#v}"
+if [[ -f CHANGELOG.md ]] && grep -qE "^## \[${RELEASE_VER//./\\.}\]" CHANGELOG.md; then
+  echo "error: CHANGELOG.md already has a [${RELEASE_VER}] section, refusing to prepend a duplicate." >&2
+  echo "  To regenerate it, remove the existing [${RELEASE_VER}] section first, then re-run." >&2
+  exit 1
+fi
+
 # Step 1: Run git-cliff to prepend entries tagged with the release version
 CLIFF_ARGS=(--unreleased --tag "$TAG")
 if [[ -f CHANGELOG.md ]]; then

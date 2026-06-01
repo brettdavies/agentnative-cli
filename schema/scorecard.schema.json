@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://anc.dev/scorecard-v0.5.schema.json",
+  "$id": "https://anc.dev/scorecard-v0.7.schema.json",
   "title": "agentnative scorecard",
-  "description": "JSON Schema for `anc check --output json` scorecards (schema version 0.5). Hand-written for v0.4.0. A schemars-derived version generated from src/scorecard/mod.rs is planned for a follow-up release; see docs/plans/2026-04-30-002-feat-scorecard-json-schema-plan.md on the `dev` branch.",
+  "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.7). Schema 0.7 introduces the 7-status taxonomy (`opt_out` and `n_a` added to `status`, with matching counters in `summary`), per-row emission (one result per requirement-row instead of per audit_id; `tier` and `audit_id` fields added to each result), and antecedent propagation for conditional requirements. See docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md in the agentnative-site repo for the full taxonomy rationale.",
   "type": "object",
   "required": [
     "schema_version",
@@ -23,18 +23,18 @@
     "schema_version": {
       "type": "string",
       "description": "Scorecard schema version. Pre-launch additive — consumers feature-detect new fields rather than pin to an exact value.",
-      "examples": ["0.5"]
+      "examples": ["0.7"]
     },
     "results": {
       "type": "array",
-      "description": "Per-check outcomes. One entry per check the runner produced.",
-      "items": { "$ref": "#/$defs/CheckResultView" }
+      "description": "Per-requirement-row outcomes (schema 0.7+). One entry per requirement row covered by an audit that ran in this invocation; a single probe whose `Audit::covers()` lists multiple rows produces multiple entries (each entry's `audit_id` carries the probe's id for provenance).",
+      "items": { "$ref": "#/$defs/AuditResultView" }
     },
     "summary": { "$ref": "#/$defs/Summary" },
     "coverage_summary": { "$ref": "#/$defs/CoverageSummary" },
     "audience": {
       "type": ["string", "null"],
-      "description": "Derived audience classification. `null` when the classifier could not produce a label (e.g., signal check suppressed by `--audit-profile`, source-only run). Read-only over results; never gates totals or exit codes.",
+      "description": "Derived audience classification. `null` when the classifier could not produce a label (e.g., signal audit suppressed by `--audit-profile`, source-only run). Read-only over results; never gates totals or exit codes.",
       "enum": ["agent-optimized", "mixed", "human-primary", null]
     },
     "audience_reason": {
@@ -44,7 +44,7 @@
     },
     "audit_profile": {
       "type": ["string", "null"],
-      "description": "The `--audit-profile` value applied to this run, or null when no profile was set. Drives suppression of checks listed in the registry's SUPPRESSION_TABLE for that category.",
+      "description": "The `--audit-profile` value applied to this run, or null when no profile was set. Drives suppression of audits listed in the registry's SUPPRESSION_TABLE for that category.",
       "enum": ["human-tui", "file-traversal", "posix-utility", "diagnostic-only", null]
     },
     "spec_version": {
@@ -59,62 +59,73 @@
     "badge": { "$ref": "#/$defs/BadgeInfo" }
   },
   "$defs": {
-    "CheckResultView": {
+    "AuditResultView": {
       "type": "object",
-      "required": ["id", "label", "group", "layer", "status", "evidence", "confidence"],
+      "required": ["id", "label", "group", "layer", "status", "evidence", "confidence", "tier", "audit_id"],
       "additionalProperties": false,
       "properties": {
         "id": {
           "type": "string",
-          "description": "Stable check identifier (e.g., `p1-non-interactive`). The site's `/score/<tool>` page and external leaderboards pin on these strings."
+          "description": "Requirement-row identifier (schema 0.7+; matches `coverage/matrix.json` row ids, e.g. `p1-must-no-interactive`). The site's `/score/<tool>` page and external leaderboards pin on these strings. Previously (≤0.5) this carried the probe id."
         },
         "label": {
           "type": "string",
-          "description": "Human-readable summary of what the check verifies."
+          "description": "Human-readable summary of what the audit verifies."
         },
         "group": {
           "type": "string",
-          "description": "Principle bucket the check belongs to. Cross-cutting groups (`CodeQuality`, `ProjectStructure`) appear regardless of `--principle` filter.",
+          "description": "Principle bucket the audit belongs to. Cross-cutting groups (`CodeQuality`, `ProjectStructure`) appear regardless of `--principle` filter.",
           "examples": ["P1", "P2", "P8", "CodeQuality", "ProjectStructure"]
         },
         "layer": {
           "type": "string",
-          "description": "Where the check ran. Serialized as snake_case.",
+          "description": "Where the audit ran. Serialized as snake_case.",
           "enum": ["behavioral", "source", "project"]
         },
         "status": {
           "type": "string",
-          "description": "Outcome of the check. Skips and Errors are excluded from badge scoring.",
-          "enum": ["pass", "warn", "fail", "skip", "error"]
+          "description": "Outcome of the audit under the 7-status taxonomy (schema 0.7+). `opt_out` = deliberate non-adoption; `n_a` = conditional antecedent unmet (set by antecedent propagation); `skip` = linter probe limitation. Skips, errors, opt_outs, and n_as are all excluded from the transitional badge denominator.",
+          "enum": ["pass", "warn", "fail", "opt_out", "n_a", "skip", "error"]
         },
         "evidence": {
           "type": ["string", "null"],
-          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path. `null` for clean Pass."
+          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path, the antecedent propagation reason. `null` for clean Pass."
         },
         "confidence": {
           "type": "string",
-          "description": "How directly the check verifies its requirement. `high` for direct probes; `medium` for heuristics. Older consumers feature-detect.",
+          "description": "How directly the audit verifies its requirement. `high` for direct probes; `medium` for heuristics. Older consumers feature-detect.",
           "enum": ["high", "medium"]
+        },
+        "tier": {
+          "type": ["string", "null"],
+          "description": "Requirement-row RFC 2119 level (schema 0.7+). `null` only when the row id is not in the registry — an internal inconsistency that should be loud.",
+          "enum": ["must", "should", "may", null]
+        },
+        "audit_id": {
+          "type": "string",
+          "description": "Probe that produced this row (schema 0.7+). One probe may produce multiple rows when its `Audit::covers()` slice names multiple requirements (e.g. `p3-version` covers both `p3-must-version` and `p3-should-version-short`)."
         }
       }
     },
     "Summary": {
       "type": "object",
-      "description": "Run-level outcome counts.",
-      "required": ["total", "pass", "warn", "fail", "skip", "error"],
+      "description": "Run-level outcome counts. Schema 0.7+ adds `opt_out` and `n_a` counters alongside the historic five.",
+      "required": ["total", "pass", "warn", "fail", "opt_out", "n_a", "skip", "error"],
       "additionalProperties": false,
       "properties": {
         "total": { "type": "integer", "minimum": 0 },
         "pass": { "type": "integer", "minimum": 0 },
         "warn": { "type": "integer", "minimum": 0 },
         "fail": { "type": "integer", "minimum": 0 },
+        "opt_out": { "type": "integer", "minimum": 0 },
+        "n_a": { "type": "integer", "minimum": 0 },
         "skip": { "type": "integer", "minimum": 0 },
         "error": { "type": "integer", "minimum": 0 }
       }
     },
     "LevelCounts": {
       "type": "object",
-      "description": "Per-level verification counts. `verified` counts requirements that had at least one check declare `covers()` against them in this run, regardless of pass/fail.",
+      "description": "Per-level verification counts. `verified` counts requirements that had at least one audit declare `covers()` against them in this run, regardless of pass/fail.",
       "required": ["total", "verified"],
       "additionalProperties": false,
       "properties": {
@@ -124,7 +135,7 @@
     },
     "CoverageSummary": {
       "type": "object",
-      "description": "Three-way coverage rollup over registry requirements: how many `must` / `should` / `may` requirements were verified by this run's checks.",
+      "description": "Three-way coverage rollup over registry requirements: how many `must` / `should` / `may` requirements were verified by this run's audits.",
       "required": ["must", "should", "may"],
       "additionalProperties": false,
       "properties": {
@@ -177,7 +188,7 @@
     },
     "TargetInfo": {
       "type": "object",
-      "description": "What `anc check` was pointed at. `path` is the basename (never an absolute path — protects against home-dir PII leaks). Always-present-null keys keep consumer code simple.",
+      "description": "What `anc audit` was pointed at. `path` is the basename (never an absolute path — protects against home-dir PII leaks). Always-present-null keys keep consumer code simple.",
       "required": ["kind", "path", "command"],
       "additionalProperties": false,
       "properties": {
@@ -203,19 +214,21 @@
   },
   "examples": [
     {
-      "schema_version": "0.5",
+      "schema_version": "0.7",
       "results": [
         {
-          "id": "p1-non-interactive",
+          "id": "p1-must-no-interactive",
           "label": "Non-interactive by default",
           "group": "P1",
           "layer": "behavioral",
           "status": "pass",
           "evidence": null,
-          "confidence": "high"
+          "confidence": "high",
+          "tier": "must",
+          "audit_id": "p1-non-interactive"
         }
       ],
-      "summary": { "total": 1, "pass": 1, "warn": 0, "fail": 0, "skip": 0, "error": 0 },
+      "summary": { "total": 1, "pass": 1, "warn": 0, "fail": 0, "opt_out": 0, "n_a": 0, "skip": 0, "error": 0 },
       "coverage_summary": {
         "must": { "total": 23, "verified": 17 },
         "should": { "total": 14, "verified": 9 },

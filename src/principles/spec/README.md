@@ -5,6 +5,9 @@ canonical specification of agent-native CLI principles. Files here are not edite
 latest upstream `v*` tag and consumed by `build.rs` to generate the `REQUIREMENTS` slice at build time. The currently
 vendored version is recorded in [`VERSION`](./VERSION).
 
+For the full spec landing page — leaderboard, badge convention, and acknowledgements — see [anc.dev](https://anc.dev) or
+the upstream [`README`](https://github.com/brettdavies/agentnative#readme).
+
 ## Resync
 
 Run from the repo root:
@@ -20,11 +23,12 @@ remote. The script extracts files via `git show`, so neither source's working tr
 
 ## Layout
 
-| Path               | Source in `agentnative-spec` | Purpose                                           |
-| ------------------ | ---------------------------- | ------------------------------------------------- |
-| `VERSION`          | `VERSION`                    | Spec version string; surfaced as `SPEC_VERSION`   |
-| `CHANGELOG.md`     | `CHANGELOG.md`               | Spec change history; informational                |
-| `principles/p*.md` | `principles/p*.md`           | Frontmatter parsed by `build.rs` → `REQUIREMENTS` |
+| Path                    | Source in `agentnative-spec` | Purpose                                                              |
+| ----------------------- | ---------------------------- | -------------------------------------------------------------------- |
+| `VERSION`               | `VERSION`                    | Spec version string; surfaced as `SPEC_VERSION`                      |
+| `CHANGELOG.md`          | `CHANGELOG.md`               | Spec change history; informational                                   |
+| `principles/p*.md`      | `principles/p*.md`           | Frontmatter parsed by `build.rs` → `REQUIREMENTS`                    |
+| `principles/scoring.md` | `principles/scoring.md`      | Scoring-formula authority; reference only (not parsed by `build.rs`) |
 
 ## Licensing
 

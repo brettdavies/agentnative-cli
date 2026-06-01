@@ -1,13 +1,15 @@
 ---
 id: p8
 title: Discoverable Through Agent Skill Bundles
-last-revised: 2026-05-06
+last-revised: 2026-05-29
 status: active
 requirements:
   - id: p8-must-bundle-install
     level: must
     applicability:
-      if: CLI ships an agent skill bundle
+      kind: conditional
+      antecedent:
+        audit_id: p8-bundle-exists
     summary: "When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes."
   - id: p8-should-bundle-exists
     level: should
@@ -16,12 +18,16 @@ requirements:
   - id: p8-may-install-all
     level: may
     applicability:
-      if: CLI ships an agent skill bundle
+      kind: conditional
+      antecedent:
+        audit_id: p8-bundle-exists
     summary: "An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all."
   - id: p8-may-bundle-update
     level: may
     applicability:
-      if: CLI ships an agent skill bundle
+      kind: conditional
+      antecedent:
+        audit_id: p8-bundle-exists
     summary: "An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version."
 ---
 
@@ -44,7 +50,7 @@ recognizes the tool's idioms across every subsequent invocation.
 
 **MUST:**
 
-- When a CLI ships a skill bundle, the CLI MUST provide an install path that registers the bundle with installed agent
+- If a CLI ships a skill bundle, then it MUST provide an install path that registers the bundle with installed agent
   runtimes. The canonical form is a `tool skill install [<host>]` subcommand that writes into the runtime's filesystem
   cascade (e.g., `~/.claude/skills/`, `~/.cursor/skills/`). Non-canonical alternatives (`tool init --skill`, `tool
   skills add`, `tool agents add`) are acceptable but SHOULD migrate toward `tool skill install`. A bundle without an
@@ -60,11 +66,11 @@ recognizes the tool's idioms across every subsequent invocation.
 
 **MAY:**
 
-- An `--all` mode MAY auto-detect installed agent runtimes (Claude Code, Cursor, Codex, OpenCode, and others as the
-  ecosystem evolves) and install the bundle across each. A user setting up a new machine with multiple coding agents
-  installs once and gets coverage across every runtime.
-- An `update` (or `upgrade`) subcommand under `tool skill` MAY pull the latest bundle version, so agents stay current
-  with the CLI's evolving surface without a full reinstall.
+- If a CLI ships a skill bundle, then an `--all` mode MAY auto-detect installed agent runtimes (Claude Code, Cursor,
+  Codex, OpenCode, and others as the ecosystem evolves) and install the bundle across each. A user setting up a new
+  machine with multiple coding agents installs once and gets coverage across every runtime.
+- If a CLI ships a skill bundle, then an `update` (or `upgrade`) subcommand under `tool skill` MAY pull the latest
+  bundle version, so agents stay current with the CLI's evolving surface without a full reinstall.
 
 ## Evidence
 

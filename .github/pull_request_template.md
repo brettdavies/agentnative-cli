@@ -1,12 +1,26 @@
 ## Summary
 
-<!-- Provide a brief overview of the changes in this PR. What feature/fix/improvement does this introduce? -->
+<!-- Provide a brief overview of the changes in this PR. What feature/fix/improvement does this introduce?
+
+     SCOPE: Describe the net diff only: what the merged result looks
+     like compared to the base branch. NOT commit history, intermediate
+     state, or how the cherry-picks were assembled.
+
+     EXCLUDE all verification artifacts:
+- Triple-diff output / stats (A, B, C blocks)
+- Leak-check output ("no guarded paths leaked", "guard-main-docs runs clean")
+- Patch-id cherry-check counts
+- Pre-push gate results, CI status, prose-scrub findings
+- Any "I ran X and it returned Y" narration
+
+     Anomalies get fixed before push, not audit-trailed in the body.
+-->
 
 ## Changelog
 
 <!-- CRITICAL: This section is the source of truth for CHANGELOG.md.
      generate-changelog.sh extracts these categorized bullets verbatim
-     into the release changelog. Write carefully — this IS the changelog.
+     into the release changelog. Write carefully. This IS the changelog.
 
      AUDIENCE: Users and operators. Write from their perspective.
 
@@ -16,13 +30,13 @@
      EXCLUDE: internal refactors, test additions, code cleanup, CI changes,
      regenerated files, implementation details (unreachable!() arms, import
      reordering, cargo_bin migration, cfg gates, etc.). Document those in
-     the PR body text or Files Modified section — NOT here.
+     the PR body text or Files Modified section. NOT here.
 
      RULES:
 - 1-5 bullets per PR. Fewer is better. One-line fixes get one bullet.
-- Delete empty ### sections entirely — don't leave blank categories.
+- Delete empty ### sections entirely; don't leave blank categories.
 - Each bullet starts with a verb: Add, Fix, Change, Remove, Deprecate.
-- Don't duplicate the PR title — expand on it or provide context.
+- Don't duplicate the PR title; expand on it or provide context.
 - If the PR has NO user-facing changes (pure refactor, test-only, CI), leave this section empty or omit it. The PR still
   appears in git history; it just won't clutter the changelog. -->
 

@@ -192,8 +192,15 @@ fn unknown_host_rejected_with_clap_exit_2() {
 }
 
 // -------------------------------------------------------------------------
-// Test 18 — clap rejects missing positional host with exit 2.
-// -------------------------------------------------------------------------
+// Test 18 — `anc skill install` with no host AND no `--all` is rejected
+// with exit 2.
+//
+// Before PR3 the host was a required clap positional, so clap itself
+// rejected with a "required argument <HOST>" template. Once `--all` landed
+// the positional became `Option<SkillHost>`, so the rejection now flows
+// through our runtime guard in `run_install_multi`. The exit code (2) and
+// the user-visible "missing target host" surface stayed the same; the
+// rendering does not.
 #[test]
 fn missing_host_rejected_with_clap_exit_2() {
     let out = cmd()
@@ -204,8 +211,8 @@ fn missing_host_rejected_with_clap_exit_2() {
     assert_eq!(out.status.code(), Some(2));
     let stderr = String::from_utf8(out.stderr).expect("utf-8 stderr");
     assert!(
-        stderr.contains("required") && stderr.contains("HOST"),
-        "expected required-arg-<HOST> message; got {stderr:?}",
+        stderr.contains("missing target host") && stderr.contains("--all"),
+        "expected missing-host runtime guard message; got {stderr:?}",
     );
 }
 

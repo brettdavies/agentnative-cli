@@ -116,7 +116,7 @@ impl Project {
     }
 
     /// Lazily probe `<binary> --help` exactly once, returning a shared
-    /// reference that behavioral checks consume. Returns `None` when the
+    /// reference that behavioral audits consume. Returns `None` when the
     /// project has no runner or the help probe fails outright (e.g., binary
     /// missing). `HelpOutput` itself handles partial captures from timeouts
     /// and crashes — those still yield `Some(_)`.
@@ -289,12 +289,12 @@ fn walk_source_files_inner(
 ) -> Result<()> {
     if depth >= MAX_DEPTH {
         eprintln!(
-            "warning: hit {MAX_DEPTH}-level depth limit; narrow the scan with `anc check src/`"
+            "warning: hit {MAX_DEPTH}-level depth limit; narrow the scan with `anc audit src/`"
         );
         return Ok(());
     }
     if *file_count >= MAX_FILES {
-        eprintln!("warning: hit {MAX_FILES}-file limit; narrow the scan with `anc check src/`");
+        eprintln!("warning: hit {MAX_FILES}-file limit; narrow the scan with `anc audit src/`");
         return Ok(());
     }
 

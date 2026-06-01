@@ -1,7 +1,7 @@
 ---
 id: p4
 title: Fail Fast with Actionable Errors
-last-revised: 2026-05-06
+last-revised: 2026-05-07
 status: active
 requirements:
   - id: p4-must-try-parse
@@ -119,12 +119,12 @@ OAuth or asks the user to check their config file. Getting that wrong wastes ent
 - Error messages that state the symptom without the cause or fix ("Error: request failed").
 - Panics (`unwrap()`, `expect()`) on recoverable errors in production code paths.
 
-Measured by check IDs `p4-bad-args`, `p4-process-exit`, `p4-unwrap`, `p4-exit-codes`. Run `agentnative check --principle
-4 .` against the CLI under test to see each.
+Measured by audit IDs `p4-bad-args`, `p4-process-exit`, `p4-unwrap`, `p4-exit-codes`. Run `anc audit --principle 4 .`
+against the CLI under test to see each.
 
 ## Pressure test notes
 
-### 2026-04-27: Show HN launch red-team pass
+### 2026-04-27: Red-team pass
 
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
@@ -141,7 +141,7 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   `p6-must-timeout-network` behind `if: CLI makes network calls`." Resolved: prose now reads "Use 77 when the CLI has an
   auth surface and 78 when it has a config surface; 0/1/2 are universal." Frontmatter summary stays universal because
   the *mapping discipline* is universal even if the specific 77/78 codes are conditional. The summary-prose drift is a
-  known launch-week tradeoff; full alignment of the summary text is on the v0.4.0 punch list.
+  known launch-week tradeoff; full alignment of the summary text is on the punch list.
 
 - **[edit]** *Prior art.* "77/78 align with BSD `sysexits.h` (`EX_NOPERM`, `EX_CONFIG`). The alignment is a strength but
   neither P2 nor P4 cites BSD sysexits, leaving an HN commenter to 'discover' it as a gotcha." Resolved: added a
@@ -152,4 +152,4 @@ recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
   the same error/output formatter as runtime errors, not a library-internal `process::exit()`' is universal; the API
   name is not." Deferred: language-neutralizing the bullet ("Argument parsing returns a structured error rather than
   calling `process::exit()` internally; in Rust+clap, this means `try_parse()` not `parse()`") drifts the frontmatter
-  summary. Bundled with P6's SIGPIPE and `global = true` rewrites for a coordinated v0.4.0 language-neutralization PR.
+  summary. Bundled with P6's SIGPIPE and `global = true` rewrites for a coordinated language-neutralization PR.

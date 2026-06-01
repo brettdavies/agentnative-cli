@@ -52,7 +52,7 @@ fn self_spawn_against_anc_binary_yields_null_version() {
     let anc_path = assert_cmd::cargo::cargo_bin("anc");
     let anc_str = anc_path.to_str().expect("utf-8 binary path");
 
-    let (parsed, output) = run_and_parse(&["check", anc_str, "--output", "json"]);
+    let (parsed, output) = run_and_parse(&["audit", anc_str, "--output", "json"]);
 
     assert_eq!(
         parsed["target"]["kind"], "binary",
@@ -76,7 +76,7 @@ fn hostile_binary_flooding_stdout_does_not_exhaust_memory() {
     // remains a string-or-null.
     let path = fixture_path("hostile-stdout-flood/probe.sh");
     let start = Instant::now();
-    let (parsed, _) = run_and_parse(&["check", &path, "--output", "json"]);
+    let (parsed, _) = run_and_parse(&["audit", &path, "--output", "json"]);
     let elapsed = start.elapsed();
 
     assert!(
@@ -110,7 +110,7 @@ fn hostile_binary_that_hangs_is_killed_at_timeout() {
     // fail loudly.
     let path = fixture_path("hostile-hang/probe.sh");
     let start = Instant::now();
-    let (parsed, _) = run_and_parse(&["check", &path, "--output", "json"]);
+    let (parsed, _) = run_and_parse(&["audit", &path, "--output", "json"]);
     let elapsed = start.elapsed();
 
     assert!(
@@ -132,7 +132,7 @@ fn hostile_binary_nonzero_version_exit_yields_null() {
     // succeeds — a target that refuses to self-report its version is not
     // a scoring error.
     let path = fixture_path("hostile-nonzero-exit/probe.sh");
-    let (parsed, _) = run_and_parse(&["check", &path, "--output", "json"]);
+    let (parsed, _) = run_and_parse(&["audit", &path, "--output", "json"]);
 
     assert!(
         parsed["tool"]["version"].is_null(),
@@ -141,7 +141,7 @@ fn hostile_binary_nonzero_version_exit_yields_null() {
     );
     // The scorecard itself must still emit — version probe failure is not
     // a scoring failure.
-    assert_eq!(parsed["schema_version"], "0.5");
+    assert_eq!(parsed["schema_version"], "0.7");
     assert_eq!(parsed["target"]["kind"], "binary");
 }
 
@@ -154,7 +154,7 @@ fn unknown_command_errors_with_actionable_message() {
     // an empty scorecard — which would silently bless an invalid target.
     let assert = cmd()
         .args([
-            "check",
+            "audit",
             "--command",
             "definitely-not-a-real-cmd-xyzzy-0a8b",
             "--output",
@@ -179,7 +179,7 @@ fn project_mode_without_built_binary_emits_manifest_version_and_null_binary() {
     // A future change that probes a non-existent binary path would emit
     // `tool.version: null` here and fail the assertion.
     let path = fixture_path("perfect-rust");
-    let (parsed, _) = run_and_parse(&["check", &path, "--output", "json"]);
+    let (parsed, _) = run_and_parse(&["audit", &path, "--output", "json"]);
 
     assert_eq!(parsed["target"]["kind"], "project");
     assert!(

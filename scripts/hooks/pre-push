@@ -41,9 +41,27 @@ else
     echo "  - deny (skipped, cargo-deny not installed)"
 fi
 
-# 5. Windows cross-check (fast): verify no unconditional use of unix-only APIs.
+# 5. Shellcheck — lint shell scripts (and the pre-push hook itself). Severity
+# threshold "warning" catches real bugs (unused vars, quoting issues, missing
+# exits) while ignoring info/style noise like SC2016 for intentional jaq
+# filters with single quotes. Skip silently if shellcheck isn't installed —
+# the maintainer machine has it via Homebrew (`brew install shellcheck`).
+if command -v shellcheck &>/dev/null; then
+    mapfile -t shell_files < <({
+        git ls-files '*.sh' 2>/dev/null
+        git ls-files 'scripts/hooks/*' 2>/dev/null
+    } | sort -u)
+    if [ ${#shell_files[@]} -gt 0 ]; then
+        shellcheck --severity=warning "${shell_files[@]}" || fail "shellcheck --severity=warning"
+    fi
+    pass "shellcheck"
+else
+    echo "  - shellcheck (skipped: install via \`brew install shellcheck\` or \`apt install shellcheck\`)"
+fi
+
+# 6. Windows cross-check (fast): verify no unconditional use of unix-only APIs.
 # Catches the libc::SIGPIPE class of issue without invoking a Windows toolchain
-# — runs in milliseconds. Step 6 is the comprehensive backstop.
+# — runs in milliseconds. Step 7 is the comprehensive backstop.
 if rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ | rg -v '#\[cfg(unix)\]' | rg -v '// *#\[cfg' | rg -qv '^$'; then
     violations=$(rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ 2>/dev/null || true)
     if [ -n "$violations" ]; then
@@ -61,7 +79,7 @@ else
     pass "windows compat (libc grep)"
 fi
 
-# 6. Windows cross-clippy: full type-check of the codebase as if compiling for
+# 7. Windows cross-clippy: full type-check of the codebase as if compiling for
 # x86_64-pc-windows-gnu. Catches cfg-gated unused imports, conditional dead
 # code, and any other warning class that only surfaces on Windows. Linux
 # clippy alone misses these because `#[cfg(unix)]` filters out their usage

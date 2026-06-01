@@ -37,12 +37,29 @@ gh pr create --base dev --title "feat(scope): what changed"
 - **PR body**: follow `.github/pull_request_template.md`. See [§ PR body](#pr-body).
 - **PR body prose scrub**: see [§ Prose scrubbing](#prose-scrubbing).
 
+### Dev-direct exception
+
+Paths that live only on `dev` and never ship to `main` can be committed directly to `dev` without a feature branch or
+PR. The `guard-main-docs` workflow blocks them from `main` PRs regardless. The exception applies to:
+
+- Engineering docs: `docs/brainstorms/`, `docs/ideation/`, `docs/plans/`, `docs/research/`, `docs/reviews/`,
+  `docs/solutions/`, and anything under `.context/`.
+- Prose-check stack: `styles/`, `.vale.ini`, `scripts/prose-check.sh`.
+
+The standard feature → PR → squash-merge flow remains required for everything else, including consumer-facing markdown
+(README, AGENTS, CONTRIBUTING, CHANGELOG, in-repo runbooks).
+
 ## PR body
 
 Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
 `## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`, `## Files Modified`, `## Testing`.
 
 - **No explainer prose anywhere in the body.** User-facing substance only.
+- **Summary describes the net diff only**: what merged `main` looks like vs the base branch. Not commit history,
+  intermediate state, or cherry-pick mechanics.
+- **Zero verification artifacts in the body.** No triple-diff stats, leak-check output ("`guard-main-docs` runs clean"),
+  patch-id cherry-check counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
+  push, not audit-trailed.
 - **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`): 1-5 bullets each, delete
   empty subsections, each bullet starts with a verb.
 - **Type of Change**: one checkbox. Prefer `feat`/`fix` over `chore` for any user-observable change.
@@ -122,6 +139,34 @@ the remote on merge. `dev` is untouched.
 [`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification). CHANGELOG
 mechanics: [`RELEASES-RATIONALE.md` § CHANGELOG generation](./RELEASES-RATIONALE.md#changelog-generation).
 
+### Cherry-pick conflicts on guarded paths
+
+Cherry-picks of feature PRs that touched `docs/plans/` / `docs/brainstorms/` / `docs/ideation/` / `docs/reviews/` /
+`docs/solutions/` / `.context/` files will hit modify/delete conflicts on the release branch. Those paths exist on `dev`
+but are blocked from `main` by `guard-main-docs.yml`, so the cherry-pick sees them as "deleted in HEAD, modified in
+`<commit>`". A PR that renames such a file (e.g., a repo-wide noun rename) also produces rename/delete conflicts on the
+same paths.
+
+Resolution (the standard `git rm` is denied by repo policy; use the plumbing form):
+
+```bash
+# 1. Mark every unmerged guarded path as deleted in the index.
+git update-index --remove $(git diff --name-only --diff-filter=U)
+
+# 2. Trash the orphan worktree files left by the rename target side.
+#    `trash` is a zsh alias to `gio trash`; xargs does not expand aliases,
+#    so call `gio trash` directly when piping or batching.
+gio trash docs/plans/<leftover-paths>.md
+
+# 3. Continue the cherry-pick.
+git cherry-pick --continue --no-edit
+```
+
+Repeat per conflicting commit. After all picks land, run `git ls-files docs/plans/ docs/brainstorms/`. If anything
+remains, drop it with the same two-step pattern and commit as `chore(release): drop stray plan spikes from cherry-pick
+rename detection` before step 4's leak check. Rename detection occasionally re-adds a path under the rename target's new
+name; the post-pick `ls-files` check catches that.
+
 ## Tagging and publishing
 
 After the `release/v<version> → main` PR merges, tag and push:
@@ -150,7 +195,7 @@ this repo, which idempotently flips `make_latest: true`.
 → Rationale (`make_latest` flow, musl hard-block, annotated-tag gotcha):
 [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
 
-### After publish — sync `dev` with the release
+### After publish: sync `dev` with the release
 
 Once `finalize-release.yml` has flipped the GitHub Release to `published`, backport the release-bookkeeping files from
 `main` to `dev`:
@@ -188,8 +233,8 @@ Three release-flow artifacts live outside any automated prose check and need a m
 
 The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
 [`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-Until those packs are vendored into this repo (a deferred follow-up expected to extend `scripts/sync-spec.sh`), point
-Vale at the spec checkout via `--config`.
+This repo's `main` branch does not ship a local copy; point Vale at the spec checkout via `--config` (see the example
+below).
 
 ```bash
 # 1. Save the artifact to /tmp/.
@@ -259,5 +304,5 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 - [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection
   pitfalls)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)
-- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new checks)
+- [`AGENTS.md`](AGENTS.md) (running `anc`, project structure, adding new audits)
 - [`README.md`](README.md) (install channels, principles, CLI reference)

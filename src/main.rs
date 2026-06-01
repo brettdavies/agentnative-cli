@@ -1,9 +1,11 @@
 mod argv;
+mod audit;
+mod audits;
 mod build_info;
-mod check;
-mod checks;
 mod cli;
+mod color;
 mod error;
+mod json_error;
 mod output;
 mod principles;
 mod project;
@@ -21,22 +23,22 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use argv::{format_invocation, inject_default_subcommand};
+use audit::Audit;
+use audits::behavioral::all_behavioral_audits;
+use audits::project::all_project_audits;
+use audits::source::all_source_audits;
 use build_info::ANC_VERSION;
-use check::Check;
-use checks::behavioral::all_behavioral_checks;
-use checks::project::all_project_checks;
-use checks::source::all_source_checks;
-use cli::{Cli, Commands, GenerateKind, OutputFormat, SkillCmd};
+use cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
 use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
 use project::Project;
 use runner::{BinaryRunner, RunStatus};
 use scorecard::{
-    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, ToolInfo, audience, compute_badge,
-    exit_code, format_json, format_text,
+    AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
+    build_row_results, compute_badge, exit_code, format_json, format_text,
 };
-use types::{CheckGroup, CheckResult, CheckStatus, Confidence};
+use types::{AuditGroup, AuditResult, AuditStatus, Confidence};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
 
@@ -47,35 +49,72 @@ fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
-    let code = match run() {
+    // Capture raw argv once for the JSON-mode sniff. `run()` re-reads it
+    // for `format_invocation`, but the sniff has to happen before
+    // `try_parse_from` so clap-internal failures route through the JSON
+    // envelope when the user asked for JSON.
+    let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let json_mode = json_error::json_mode_in_argv(&raw_argv);
+
+    let code = match run(raw_argv) {
         Ok(code) => code,
         Err(e) => {
-            eprintln!("error: {e}");
+            if json_mode {
+                let envelope = json_error::render_error("runtime", "app-error", &e.to_string(), 2);
+                eprintln!("{envelope}");
+            } else {
+                eprintln!("error: {e}");
+            }
             2
         }
     };
     std::process::exit(code);
 }
 
-fn run() -> Result<i32, AppError> {
-    // Capture argv *before* `inject_default_subcommand` rewrites bare paths
-    // into `check <path>`, so the scorecard's `run.invocation` reflects what
-    // the user actually typed (R4). The injection rewrite is an internal
-    // detail; recording it would lie about user intent.
-    let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
+fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
+    // Raw argv is captured by `main()` *before* `inject_default_subcommand`
+    // rewrites bare paths into `audit <path>`, so the scorecard's
+    // `run.invocation` reflects what the user actually typed (R4). The
+    // injection rewrite is an internal detail; recording it would lie about
+    // user intent.
 
-    let cli = Cli::parse_from(inject_default_subcommand(raw_argv.iter().cloned()));
+    // JSON-mode sniff runs against raw argv, so clap-internal exits
+    // (--help, --version, parse failures) can route through the JSON
+    // envelope before clap drops back to its default text-rendering path.
+    let json_mode = json_error::json_mode_in_argv(&raw_argv);
+
+    let cli = match Cli::try_parse_from(inject_default_subcommand(raw_argv.iter().cloned())) {
+        Ok(cli) => cli,
+        Err(e) => return Ok(handle_clap_error(e, json_mode)),
+    };
 
     // --quiet is global (visible in top-level --help for agent discoverability)
     let quiet = cli.quiet;
     let json_alias = cli.json;
+    let verbose = cli.verbose;
+
+    // `--examples` is an early-exit affordance for agents that want the
+    // curated invocation block without parsing the full --help body. Works
+    // in both text and JSON modes; pairs with the `after_help` examples
+    // section so the same content is reachable two ways.
+    if cli.examples {
+        emit_examples(json_mode || json_alias);
+        return Ok(0);
+    }
+
+    if verbose && !quiet {
+        eprintln!(
+            "verbose: anc {ANC_VERSION} starting; raw argv has {} tokens",
+            raw_argv.len()
+        );
+    }
 
     // Bare invocation (no args at all) is handled by clap's arg_required_else_help.
     // A flag-only invocation like `anc -q` parses successfully with `command =
     // None` — render help to stderr and exit 2 to mirror clap's contract.
     let (path, command, binary_only, source_only, principle, output, include_tests, audit_profile) =
         match cli.command {
-            Some(Commands::Check {
+            Some(Commands::Audit {
                 path,
                 command,
                 binary,
@@ -99,24 +138,30 @@ fn run() -> Result<i32, AppError> {
                 generate(shell, &mut cmd, "anc", &mut std::io::stdout());
                 return Ok(0);
             }
-            Some(Commands::Generate { artifact }) => {
-                return run_generate(artifact);
+            Some(Commands::Emit { artifact }) => {
+                return run_emit(artifact);
             }
             Some(Commands::Skill { cmd }) => {
                 return run_skill(cmd, json_alias);
             }
-            Some(Commands::Schema) => {
-                output::emit(SCORECARD_SCHEMA_JSON);
-                return Ok(0);
-            }
             None => {
-                let mut cmd = <Cli as clap::CommandFactory>::command();
-                eprintln!("{}", cmd.render_help());
+                if json_mode || json_alias {
+                    let envelope = json_error::render_error(
+                        "usage",
+                        "missing-subcommand",
+                        "no subcommand provided; run with --help for usage",
+                        2,
+                    );
+                    eprintln!("{envelope}");
+                } else {
+                    let mut cmd = <Cli as clap::CommandFactory>::command();
+                    eprintln!("{}", cmd.render_help());
+                }
                 return Ok(2);
             }
         };
 
-    // Run-level timing starts at the top of the Check arm (R4): wall-clock
+    // Run-level timing starts at the top of the Audit arm (R4): wall-clock
     // milliseconds and an RFC 3339 UTC timestamp. We use `OffsetDateTime` for
     // formatting only — duration math goes through `Instant` which is
     // monotonic and unaffected by wall-clock adjustments.
@@ -127,15 +172,15 @@ fn run() -> Result<i32, AppError> {
 
     // The top-level `--json` global flag short-circuits to JSON output
     // regardless of what `--output` was set to. Both flags resolving to the
-    // same subcommand get coalesced here so the rest of run_check sees a
-    // single OutputFormat.
+    // same subcommand get coalesced here so the rest of the audit arm sees
+    // a single OutputFormat.
     let output = if json_alias {
         OutputFormat::Json
     } else {
         output
     };
 
-    // --command resolves a binary from PATH and runs behavioral checks against
+    // --command resolves a binary from PATH and runs behavioral audits against
     // it. conflicts_with = "path" ensures only one of the two is provided.
     let command_name = command.clone();
     let resolved_path = match command {
@@ -146,57 +191,57 @@ fn run() -> Result<i32, AppError> {
     let mut project = Project::discover(&resolved_path)?;
     project.include_tests = include_tests;
 
-    // Collect applicable checks based on flags and auto-detection
-    let mut all_checks: Vec<Box<dyn Check>> = Vec::new();
+    // Collect applicable audits based on flags and auto-detection
+    let mut all_audits: Vec<Box<dyn Audit>> = Vec::new();
 
     let has_binary = project.runner.is_some();
     let has_language = project.language.is_some();
 
     if !source_only {
         if has_binary {
-            all_checks.extend(all_behavioral_checks());
+            all_audits.extend(all_behavioral_audits());
         } else if binary_only {
             eprintln!("warning: --binary specified but no binary found");
         } else if has_language {
-            eprintln!("warning: no binary found, running source checks only");
+            eprintln!("warning: no binary found, running source audits only");
         }
     }
 
     if !binary_only {
         if let Some(lang) = project.language {
-            all_checks.extend(all_source_checks(lang));
+            all_audits.extend(all_source_audits(lang));
         } else if source_only {
             eprintln!("warning: --source specified but no language detected");
         }
     }
 
-    // Project checks — always collected when path is a directory and not binary-only
+    // Project audits — always collected when path is a directory and not binary-only
     if !binary_only && project.path.is_dir() {
-        all_checks.extend(all_project_checks());
+        all_audits.extend(all_project_audits());
     }
 
     // Translate the CLI-facing AuditProfile into the registry's
     // ExceptionCategory. Kept local so the registry stays CLI-agnostic.
     let exception_category: Option<ExceptionCategory> = audit_profile.map(Into::into);
 
-    // Run checks. When an audit_profile is set, checks whose IDs appear in
+    // Run audits. When an audit_profile is set, audits whose IDs appear in
     // the suppression table short-circuit to Skip with structured evidence
     // — they still appear in `results[]` so the scorecard shows what was
     // excluded and why.
-    let mut results: Vec<CheckResult> = Vec::new();
-    for check in &all_checks {
-        if !check.applicable(&project) {
+    let mut results: Vec<AuditResult> = Vec::new();
+    for audit in &all_audits {
+        if !audit.applicable(&project) {
             continue;
         }
         if let Some(cat) = exception_category
-            && suppresses(check.id(), cat)
+            && suppresses(audit.id(), cat)
         {
-            results.push(CheckResult {
-                id: check.id().to_string(),
-                label: check.label().to_string(),
-                group: check.group(),
-                layer: check.layer(),
-                status: CheckStatus::Skip(format!(
+            results.push(AuditResult {
+                id: audit.id().to_string(),
+                label: audit.label().to_string(),
+                group: audit.group(),
+                layer: audit.layer(),
+                status: AuditStatus::Skip(format!(
                     "{SUPPRESSION_EVIDENCE_PREFIX}{}",
                     cat.as_kebab_case()
                 )),
@@ -204,14 +249,14 @@ fn run() -> Result<i32, AppError> {
             });
             continue;
         }
-        let result = match check.run(&project) {
+        let result = match audit.run(&project) {
             Ok(r) => r,
-            Err(e) => CheckResult {
-                id: check.id().to_string(),
-                label: check.label().to_string(),
-                group: check.group(),
-                layer: check.layer(),
-                status: CheckStatus::Error(e.to_string()),
+            Err(e) => AuditResult {
+                id: audit.id().to_string(),
+                label: audit.label().to_string(),
+                group: audit.group(),
+                layer: audit.layer(),
+                status: AuditStatus::Error(e.to_string()),
                 confidence: Confidence::High,
             },
         };
@@ -223,15 +268,27 @@ fn run() -> Result<i32, AppError> {
         results.retain(|r| matches_principle(&r.group, p));
     }
 
-    // Compute audience from the 4 signal checks. Read-only over results;
-    // Returns None when any signal check is missing from the vector — the
-    // suppression loop above is the usual reason signal checks drop out
+    // Compute audience from the 4 signal audits. Read-only over results;
+    // Returns None when any signal audit is missing from the vector — the
+    // suppression loop above is the usual reason signal audits drop out
     // (e.g., human-tui suppresses `p1-non-interactive`).
     let audience_label = audience::classify(&results);
     let audit_profile_label = exception_category.map(|c| c.as_kebab_case().to_string());
 
-    // Format output. `format_json` needs the check catalog so it can map
-    // result IDs back to the requirements each check covers, plus the
+    // Fan the raw probe results out to per-requirement rows and apply
+    // antecedent propagation — the same pipeline `build_scorecard` runs for
+    // JSON. The text renderer, the badge, and the exit code all read this
+    // projected set, so every surface agrees on the row set, counts, score,
+    // and status. JSON re-derives the identical set inside `format_json`
+    // from the raw results plus catalog; `audience` above stays on the raw
+    // probe results because signal classification keys on probe audit ids.
+    let per_row: Vec<AuditResult> = build_row_results(&results, &all_audits)
+        .into_iter()
+        .map(|(row, _audit_id)| row)
+        .collect();
+
+    // Format output. `format_json` needs the audit catalog so it can map
+    // result IDs back to the requirements each audit covers, plus the
     // run-level metadata (`tool`, `anc`, `run`, `target`). For text mode
     // we still need the tool slug so the badge hint can render the
     // canonical embed URL — derive it cheaply (no version probe) and
@@ -239,8 +296,12 @@ fn run() -> Result<i32, AppError> {
     let output_str = match output {
         OutputFormat::Text => {
             let tool_name = derive_tool_name(command_name.as_deref(), &project);
-            let badge = compute_badge(&results, &tool_name);
-            format_text(&results, quiet, Some(&badge))
+            let badge = compute_badge(&per_row, &tool_name);
+            let opts = TextOptions {
+                raw: cli.raw,
+                color: color::should_color(cli.color),
+            };
+            format_text(&per_row, quiet, Some(&badge), opts)
         }
         OutputFormat::Json => {
             let target = build_target_info(command_name.as_deref(), &project);
@@ -266,7 +327,7 @@ fn run() -> Result<i32, AppError> {
             };
             format_json(
                 &results,
-                &all_checks,
+                &all_audits,
                 audience_label,
                 audit_profile_label,
                 metadata,
@@ -275,10 +336,105 @@ fn run() -> Result<i32, AppError> {
     };
     output::emit(&output_str);
 
-    Ok(exit_code(&results))
+    Ok(exit_code(&per_row))
 }
 
-/// Classify what `anc check` was pointed at into structured `target` metadata.
+/// Curated invocation block — same content as the top-level `after_help`
+/// `Examples:` section, exposed via `--examples` so agents can fetch it
+/// without parsing the full --help body. JSON mode wraps the block in the
+/// shared envelope shape so structured consumers see the same payload key
+/// (`data`) they get from `--help --output json`.
+const EXAMPLES_BLOCK: &str = "\
+Examples:
+  anc audit .                                  # default: project at cwd
+  anc audit . --output json                    # JSON envelope (agent-friendly)
+  anc audit . --output json --principle 2      # filter to P2 (Structured Output)
+  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit ./target/release/anc --binary      # behavioral audits only
+  anc emit coverage-matrix                     # emit the spec coverage matrix
+  anc emit schema                              # print the scorecard JSON Schema
+  anc skill install claude_code                # install the bundle to a host
+  anc emit schema | jq '.title'                # inspect the scorecard schema
+";
+
+fn emit_examples(json_mode: bool) {
+    if json_mode {
+        output::emit_line(&json_error::render_help(EXAMPLES_BLOCK));
+    } else {
+        output::emit(EXAMPLES_BLOCK);
+    }
+}
+
+/// Convert a `clap::Error` into an exit code, emitting either clap's default
+/// rendering (text mode) or a JSON envelope (`--output json` / `--json`).
+///
+/// Clap exits the process internally when `--help` / `--version` are passed
+/// to `parse_from`, so the JSON-mode contract can only be honored by routing
+/// through `try_parse_from` and rebuilding the envelope here. Help and
+/// version map to `{"kind":"help"|"version", ...}` envelopes; every other
+/// error variant maps to `{"kind":"usage", "error":<slug>, "message":...}`.
+///
+/// Exit codes mirror clap's defaults: help / version exit `0`, every other
+/// failure exits `2` (matches `p2-must-structured-exit-codes`).
+fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
+    use clap::error::ErrorKind as K;
+    match error.kind() {
+        K::DisplayHelp => {
+            if json_mode {
+                output::emit_line(&json_error::render_help(&error.to_string()));
+            } else {
+                let _ = error.print();
+            }
+            0
+        }
+        K::DisplayVersion => {
+            if json_mode {
+                output::emit_line(&json_error::render_version("anc", ANC_VERSION));
+            } else {
+                let _ = error.print();
+            }
+            0
+        }
+        K::DisplayHelpOnMissingArgumentOrSubcommand => {
+            if json_mode {
+                let envelope = json_error::render_error(
+                    "usage",
+                    "missing-subcommand",
+                    "no subcommand provided; run with --help for usage",
+                    2,
+                );
+                eprintln!("{envelope}");
+            } else {
+                let _ = error.print();
+            }
+            2
+        }
+        kind => {
+            if json_mode {
+                let (envelope_kind, slug) = json_error::classify_clap_error(kind);
+                // `clap::Error::to_string()` includes its rendered template
+                // (Usage / hint lines). For the JSON envelope, distill to
+                // the first non-empty line so consumers see the actionable
+                // summary without the multi-line template noise.
+                let raw = error.to_string();
+                let first_line = raw
+                    .lines()
+                    .find_map(|l| {
+                        let t = l.trim_start_matches("error: ").trim();
+                        (!t.is_empty()).then_some(t)
+                    })
+                    .unwrap_or(&raw);
+                let envelope = json_error::render_error(envelope_kind, slug, first_line, 2);
+                eprintln!("{envelope}");
+            } else {
+                let _ = error.print();
+            }
+            2
+        }
+    }
+}
+
+/// Classify what `anc audit` was pointed at into structured `target` metadata.
 /// Three modes: `command` (PATH-resolved), `binary` (file argument), `project`
 /// (directory argument).
 ///
@@ -423,11 +579,11 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
 
 /// Best-effort `<binary> --version` / `<binary> -V` probe. Reuses the runner's
 /// timeout + 1MB cap primitives via a fresh `BinaryRunner` with a tighter
-/// 2-second timeout (the version probe is one-shot, not a check).
+/// 2-second timeout (the version probe is one-shot, not an audit).
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,
-/// `anc check --command anc` would recursively score `anc` — bounded only by
+/// `anc audit --command anc` would recursively score `anc` — bounded only by
 /// `arg_required_else_help` in `Cli`. Belt-and-suspenders.
 fn probe_tool_version(project: &Project) -> Option<String> {
     let binary = project.binary_paths.first()?;
@@ -540,6 +696,7 @@ fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {
     match cmd {
         SkillCmd::Install {
             host,
+            all,
             dry_run,
             output,
         } => {
@@ -549,27 +706,40 @@ fn run_skill(cmd: SkillCmd, json_alias: bool) -> Result<i32, AppError> {
             } else {
                 output
             };
-            skill_install::run_install(host, dry_run, output)
+            skill_install::run_install_multi(host, all, dry_run, output)
+        }
+        SkillCmd::Update {
+            host,
+            all,
+            dry_run,
+            output,
+        } => {
+            let output = if json_alias {
+                OutputFormat::Json
+            } else {
+                output
+            };
+            skill_install::run_update_multi(host, all, dry_run, output)
         }
     }
 }
 
-fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
+fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
     match artifact {
-        GenerateKind::CoverageMatrix {
+        EmitKind::CoverageMatrix {
             out,
             json_out,
             check,
         } => {
-            let catalog = checks::all_checks_catalog();
+            let catalog = audits::all_audits_catalog();
 
             // Dangling `covers()` references are a registry bug — surface
             // them before writing artifacts so CI catches the regression
-            // at `generate --check` time too.
+            // at `render --check` time too.
             let dangling = matrix::dangling_cover_ids(&catalog);
             if !dangling.is_empty() {
-                for (check_id, req_id) in &dangling {
-                    eprintln!("error: check `{check_id}` covers unknown requirement `{req_id}`");
+                for (audit_id, req_id) in &dangling {
+                    eprintln!("error: audit `{audit_id}` covers unknown requirement `{req_id}`");
                 }
                 return Err(AppError::ProjectDetection(anyhow::anyhow!(
                     "registry drift: {} dangling requirement reference(s)",
@@ -582,9 +752,9 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
             let rendered_json = matrix::render_json(&m);
 
             if check {
-                // Drift mode: compare generated output to committed artifacts.
+                // Drift mode: compare rendered output to committed artifacts.
                 // Fail with actionable evidence so CI points the operator at
-                // `anc generate coverage-matrix` as the fix.
+                // `anc emit coverage-matrix` as the fix.
                 let existing_md = std::fs::read_to_string(&out).unwrap_or_default();
                 let existing_json = std::fs::read_to_string(&json_out).unwrap_or_default();
                 let md_matches = normalize_trailing_newline(&existing_md)
@@ -593,13 +763,13 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
                     == normalize_trailing_newline(&rendered_json);
                 if !md_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc generate coverage-matrix`",
+                        "error: {} is out of date; run `anc emit coverage-matrix`",
                         out.display()
                     );
                 }
                 if !json_matches {
                     eprintln!(
-                        "error: {} is out of date — run `anc generate coverage-matrix`",
+                        "error: {} is out of date; run `anc emit coverage-matrix`",
                         json_out.display()
                     );
                 }
@@ -640,6 +810,10 @@ fn run_generate(artifact: GenerateKind) -> Result<i32, AppError> {
             );
             Ok(0)
         }
+        EmitKind::Schema => {
+            output::emit(SCORECARD_SCHEMA_JSON);
+            Ok(0)
+        }
     }
 }
 
@@ -647,21 +821,21 @@ fn normalize_trailing_newline(s: &str) -> &str {
     s.trim_end_matches('\n')
 }
 
-fn matches_principle(group: &CheckGroup, principle: u8) -> bool {
-    // CodeQuality and ProjectStructure checks are cross-cutting — always include them.
+fn matches_principle(group: &AuditGroup, principle: u8) -> bool {
+    // CodeQuality and ProjectStructure audits are cross-cutting — always include them.
     matches!(
         group,
-        CheckGroup::CodeQuality | CheckGroup::ProjectStructure
+        AuditGroup::CodeQuality | AuditGroup::ProjectStructure
     ) || matches!(
         (group, principle),
-        (CheckGroup::P1, 1)
-            | (CheckGroup::P2, 2)
-            | (CheckGroup::P3, 3)
-            | (CheckGroup::P4, 4)
-            | (CheckGroup::P5, 5)
-            | (CheckGroup::P6, 6)
-            | (CheckGroup::P7, 7)
-            | (CheckGroup::P8, 8)
+        (AuditGroup::P1, 1)
+            | (AuditGroup::P2, 2)
+            | (AuditGroup::P3, 3)
+            | (AuditGroup::P4, 4)
+            | (AuditGroup::P5, 5)
+            | (AuditGroup::P6, 6)
+            | (AuditGroup::P7, 7)
+            | (AuditGroup::P8, 8)
     )
 }
 

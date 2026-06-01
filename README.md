@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/agentnative.svg)](https://crates.io/crates/agentnative)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue.svg)](#license)
 
-The agent-native CLI linter. Checks whether your CLI follows the 8 agent-readiness principles.
+The agent-native CLI linter. Audits whether your CLI follows the 8 agent-readiness principles.
 
 `anc` dogfoods the spec it enforces. The badge above is its own live score.
 
@@ -65,26 +65,26 @@ The host map is hardcoded in this binary; new hosts ship via patch release after
 ## Quick Start
 
 ```bash
-# Check the current project (`check` is the default subcommand)
+# Audit the current project (`audit` is the default subcommand)
 anc .
 
-# Check a specific binary
+# Audit a specific binary
 anc ./target/release/mycli
 
-# Resolve a command on PATH and run behavioral checks against it
+# Resolve a command on PATH and run behavioral audits against it
 anc --command ripgrep
 
-# Run only behavioral checks (skip source analysis)
+# Run only behavioral audits (skip source analysis)
 anc . --binary
 
-# Run only source checks (skip the compiled binary)
+# Run only source audits (skip the compiled binary)
 anc . --source
 
 # JSON output for CI
 anc . --output json
 
 # Print the scorecard JSON Schema (draft 2020-12)
-anc schema
+anc emit schema
 
 # Filter by principle
 anc . --principle 3
@@ -95,7 +95,7 @@ anc . -q
 
 ## The 8 Principles
 
-agentnative checks your CLI against eight agent-readiness principles:
+agentnative audits your CLI against eight agent-readiness principles:
 
 | # | Principle | What It Means |
 | - | --------- | ------------- |
@@ -136,18 +136,18 @@ P8 — Discoverable Skill Bundles
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-44 checks: 37 pass, 3 warn, 0 fail, 4 skip, 0 error
+69 audits: 59 pass, 0 warn, 0 fail, 0 opt_out, 0 n_a, 10 skip, 0 error
 
-🏆 Score: 93% — your tool qualifies for the agent-native badge.
+🏆 Score: 100% — your tool qualifies for the agent-native badge.
    Embed in your README:
      [![agent-native](https://anc.dev/badge/anc.svg)](https://anc.dev/score/anc)
    Convention: https://anc.dev/badge
 ```
 
-The badge hint appears in `text` output when a tool scores at or above the 80% eligibility floor. Below the floor, `anc`
+The badge hint appears in `text` output when a tool scores at or above the 70% eligibility floor. Below the floor, `anc`
 prints nothing badge-related. The convention is to surface the embed only when earned.
 
-## Three Check Layers
+## Three Audit Layers
 
 agentnative uses three layers to analyze your CLI:
 
@@ -164,18 +164,28 @@ release-gate against the compiled artifact). Without either flag, all three laye
 
 ## Scoring
 
-Every check result lands in one of five statuses. The score is a percent computed from how many checks passed out of
-those that actually verified something. Skips and Errors are excluded from both sides of the ratio.
+The public score reflects **shipped-binary behavior only**: only behavioral-layer audits enter the formula. Source- and
+project-layer audits still run and still appear in the scorecard, but they do not move the score: what a tool's source
+looks like does not change how an agent experiences the installed binary.
 
-| Status  | Counts toward `pass` | Counts toward denominator | Meaning                                         |
-| ------- | -------------------- | ------------------------- | ----------------------------------------------- |
-| `pass`  | yes                  | yes                       | Requirement verified.                           |
-| `warn`  | no                   | yes                       | SHOULD- or MAY-tier requirement not satisfied.  |
-| `fail`  | no                   | yes                       | MUST-tier requirement not satisfied.            |
-| `skip`  | no                   | no                        | Check not applicable to this target.            |
-| `error` | no                   | no                        | Check itself raised an exception (probe panic). |
+Every audit result lands in one of seven statuses. The score is a credit-weighted ratio over the behavioral rows that
+verified something one way or the other (the *denominator set*):
 
-`score_pct = round(pass / (pass + warn + fail) * 100)`. Badge eligibility floor: 80%.
+| Status    | Credit | In denominator | Meaning                                          |
+| --------- | -----: | -------------- | ------------------------------------------------ |
+| `pass`    |    1.0 | yes            | Behavior present and correct.                    |
+| `warn`    |    0.5 | yes            | Behavior present, partially correct.             |
+| `fail`    |    0.0 | yes            | Behavior expected, absent or broken.             |
+| `opt_out` |    0.0 | yes            | Behavior deliberately declined (counts against). |
+| `n_a`     |    n/a | no             | Inapplicable: a conditional antecedent is unmet. |
+| `skip`    |    n/a | no             | Unmeasurable: the probe could not determine.     |
+| `error`   |    n/a | no             | The probe itself raised an exception.            |
+
+With per-tier weights `w` (currently flat, with MUST = SHOULD = MAY = 1), `score_pct = round(100 × Σ w·credit / Σ w)`
+over the denominator set. Badge eligibility floor: **70%**. The floor is deliberately low so the badge spreads the
+standard; exclusivity is carried by four cohort bands the site renders: Exemplary (≥ 85), Strong (80–84), Solid (75–79),
+Qualified (70–74). The eligibility floor is not a high gate. The formula, weights, floor, and bands are defined in the
+spec's `principles/scoring.md` and held stable for at least six months from publication.
 
 ### Tier mapping
 
@@ -188,36 +198,38 @@ on tier:
 | SHOULD | `warn`  | `p2-should-schema-file`  |
 | MAY    | `warn`  | `p8-may-install-all`     |
 
-### v0.4.0 dogfood
+### Dogfood
 
-`anc` runs the same scoring on itself. The v0.4.0 split:
+`anc` runs the same scoring on itself. Because the public score is behavioral-only, a source-only run has no rows to
+score. It reports `0%` and ineligible by design, since there is no shipped-binary behavior to measure:
 
-| Mode                   | Checks | Pass | Warn | Fail | Skip | Error | Score |
-| ---------------------- | -----: | ---: | ---: | ---: | ---: | ----: | ----: |
-| `anc check . --binary` |     18 |   13 |    3 |    0 |    2 |     0 |   81% |
-| `anc check . --source` |     26 |   24 |    0 |    0 |    2 |     0 |  100% |
-| `anc check .` (full)   |     44 |   37 |    3 |    0 |    4 |     0 |   93% |
+| Mode                   | Audits | Pass | Skip | Behavioral rows | Score | Eligible |
+| ---------------------- | -----: | ---: | ---: | --------------: | ----: | -------- |
+| `anc audit . --binary` |     43 |   34 |    9 |              43 |  100% | yes      |
+| `anc audit . --source` |     26 |   25 |    1 |               0 |    0% | no       |
+| `anc audit .` (full)   |     69 |   59 |   10 |              43 |  100% | yes      |
 
-Full-mode warnings: `p2-json-output` (a safe-probe limitation on tools whose `--help` masks `--output`),
-`p8-install-all` and `p8-bundle-update` (both MAY-tier features the binary does not ship yet).
+The score is identical in `--binary` and full mode: source and project audits add scorecard rows but never change the
+number. The nine behavioral skips are probe limitations (`skip`), excluded from the denominator, so they neither help
+nor hurt the score.
 
 ## CLI Reference
 
-When the first non-flag argument is not a recognized subcommand, `check` is inserted automatically. `anc .`, `anc -q .`,
-and `anc --command ripgrep` all resolve to `anc check …`. Bare `anc` (no arguments) still prints help and exits 2: a
+When the first non-flag argument is not a recognized subcommand, `audit` is inserted automatically. `anc .`, `anc -q .`,
+and `anc --command ripgrep` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
 deliberate fork-bomb guard for when agentnative dogfoods itself.
 
 ```text
-Usage: anc check [OPTIONS] [PATH]
+Usage: anc audit [OPTIONS] [PATH]
 
 Arguments:
   [PATH]  Path to project directory or binary [default: .]
 
 Options:
-      --command <NAME>           Resolve a command from PATH and run behavioral checks against it
-      --binary                   Run only behavioral checks (skip source analysis)
-      --source                   Run only source checks (skip behavioral)
-      --principle <PRINCIPLE>    Filter checks by principle number (1-8)
+      --command <NAME>           Resolve a command from PATH and run behavioral audits against it
+      --binary                   Run only behavioral audits (skip source analysis)
+      --source                   Run only source audits (skip behavioral)
+      --principle <PRINCIPLE>    Filter audits by principle number (1-8)
       --output <OUTPUT>          Output format [default: text] [possible values: text, json]
   -q, --quiet                    Suppress non-essential output [env: AGENTNATIVE_QUIET=]
       --include-tests            Include test code in source analysis
@@ -226,13 +238,13 @@ Options:
   -h, --help                     Print help
 ```
 
-`--command` and `[PATH]` are mutually exclusive; pick one. `--command` runs behavioral checks only. Source and project
-checks are skipped because there is no source tree to analyze.
+`--command` and `[PATH]` are mutually exclusive; pick one. `--command` runs behavioral audits only. Source and project
+audits are skipped because there is no source tree to analyze.
 
-`--audit-profile` suppresses checks that legitimately do not apply to a class of tool. Profiles: `human-tui` for TUI
+`--audit-profile` suppresses audits that legitimately do not apply to a class of tool. Profiles: `human-tui` for TUI
 apps like `lazygit` whose contract IS the TTY, `posix-utility` for stdin-primary tools like `cat`/`sed`/`awk`,
 `diagnostic-only` for read-only tools like `nvidia-smi`, `file-traversal` reserved for upcoming subcommand-structure
-relaxations on `fd`/`find`-class tools. Suppressed checks emit `Skip` with structured evidence. The full per-category
+relaxations on `fd`/`find`-class tools. Suppressed audits emit `Skip` with structured evidence. The full per-category
 mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should read that file rather than scrape
 `--help`.
 
@@ -240,11 +252,11 @@ mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should 
 
 | Code | Meaning                           |
 | ---- | --------------------------------- |
-| 0    | All checks passed                 |
+| 0    | All audits passed                 |
 | 1    | Warnings present (no failures)    |
 | 2    | Failures, errors, or usage errors |
 
-Exit 2 covers both check failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
+Exit 2 covers both audit failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
 mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
 `anc --help` first to confirm the invocation shape.
 
@@ -272,12 +284,12 @@ Pre-generated scripts are also available in `completions/`.
 ## JSON Output
 
 ```bash
-anc check . --output json
+anc audit . --output json
 ```
 
 Produces a self-describing scoring run record (`schema_version: "0.5"`) with results, summary, coverage against the
 eight principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform,
-and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (also committed at
+and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema` (also committed at
 `schema/scorecard.schema.json`):
 
 ```json
@@ -313,7 +325,7 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (als
   "tool":   { "name": "ripgrep", "binary": "rg", "version": "ripgrep 15.1.0" },
   "anc":    { "version": "0.4.0" },
   "run":    {
-    "invocation": "anc check --command rg --output json",
+    "invocation": "anc audit --command rg --output json",
     "started_at": "2026-04-29T16:00:00Z",
     "duration_ms": 412,
     "platform":   { "os": "linux", "arch": "x86_64" }
@@ -330,21 +342,21 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (als
 }
 ```
 
-- `coverage_summary`: how many MUSTs/SHOULDs/MAYs the checks that ran actually verified, against the spec registry's
-  totals. See `docs/coverage-matrix.md` for the per-requirement breakdown. Checks suppressed by `--audit-profile` do
-  **not** count toward `verified`. Suppression means the requirement was not verified, even when the check shows as Skip
+- `coverage_summary`: how many MUSTs/SHOULDs/MAYs the audits that ran actually verified, against the spec registry's
+  totals. See `docs/coverage-matrix.md` for the per-requirement breakdown. Audits suppressed by `--audit-profile` do
+  **not** count toward `verified`. Suppression means the requirement was not verified, even when the audit shows as Skip
   rather than running.
-- `audience`: derived classification from 4 signal behavioral checks (`p1-non-interactive`, `p2-json-output`,
+- `audience`: derived classification from 4 signal behavioral audits (`p1-non-interactive`, `p2-json-output`,
   `p7-quiet`, `p6-no-color-behavioral`). Emits `agent-optimized` (0-1 Warns), `mixed` (2 Warns), or `human-primary` (3-4
-  Warns). Returns `null` when any signal check failed to run (source-only mode, missing runner, or `--audit-profile`
+  Warns). Returns `null` when any signal audit failed to run (source-only mode, missing runner, or `--audit-profile`
   suppression). Informational only; never gates totals or exit codes. Values serialize as kebab-case to match
   `audit_profile`'s format within the same JSON document.
-- `audience_reason`: present only when `audience` is `null`. Values: `suppressed` (at least one signal check was masked
-  by `--audit-profile`) or `insufficient_signal` (signal check never produced, e.g. source-only run). Additive to schema
+- `audience_reason`: present only when `audience` is `null`. Values: `suppressed` (at least one signal audit was masked
+  by `--audit-profile`) or `insufficient_signal` (signal audit never produced, e.g. source-only run). Additive to schema
   `0.2`; older consumers feature-detect.
 - `audit_profile`: echoes the applied `--audit-profile <category>` flag value (`human-tui`, `file-traversal`,
   `posix-utility`, or `diagnostic-only`). `null` when no profile is set. See `coverage/matrix.json` under
-  `audit_profiles` for the committed per-category mapping of which check IDs each profile suppresses.
+  `audit_profiles` for the committed per-category mapping of which audit IDs each profile suppresses.
 - `tool`: identifies what was scored. `name` is always present and follows a four-tier fallback (command name, binary
   basename, manifest package name, project directory basename) that matches the site registry's slug convention.
   `binary` is the executable basename when one is located; `null` for project-mode runs without a built artifact.
@@ -356,7 +368,7 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (als
   Informational, not a signed provenance signal. Pair with a Sigstore-signed release artifact when provenance is
   required. Schema `0.4` addition.
 - `run`: run-level facts. `invocation` is the user's argv joined with shell-safe quoting, captured **before**
-  default-subcommand injection so it reflects what the user typed (`anc .`, not `anc check .`). `started_at` is RFC 3339
+  default-subcommand injection so it reflects what the user typed (`anc .`, not `anc audit .`). `started_at` is RFC 3339
   UTC. `duration_ms` is wall-clock milliseconds. `platform.os` / `platform.arch` come from `std::env::consts`. Schema
   `0.4` addition.
 - `target`: what `anc` was pointed at. `kind` is `"project"` (directory), `"binary"` (executable file), or `"command"`
@@ -365,12 +377,12 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc schema` (als
   scorecards committed to repos or posted by agents. `command` carries the user-supplied name for command mode. The
   unused field is always `null`, never missing. Consumer code can access both fields unconditionally. Schema `0.4`
   addition.
-- `badge`: agent-native badge derivation from the live run. `score_pct` is `pass / (pass + warn + fail)` rounded (Skips
-  and Errors excluded from both sides of the ratio). `eligible` is true iff `score_pct >= 80` **and** a tool slug was
-  derivable. `embed_markdown` is `null` below the floor (the convention is "do not nag" until earned). `scorecard_url`
-  and `badge_url` are populated whenever a slug exists, even below the floor, so the site renders an SVG for every
-  scored tool (a regression below the floor shifts color rather than 404s). `convention_url` always points at
-  `https://anc.dev/badge`. Schema `0.5` addition.
+- `badge`: agent-native badge derivation from the live run. `score_pct` is the credit-weighted, behavioral-only
+  leaderboard score (see [Scoring](#scoring)); `n_a` / `skip` / `error` and all non-behavioral rows are excluded from
+  the ratio. `eligible` is true iff `score_pct >= 70` **and** a tool slug was derivable. `embed_markdown` is `null`
+  below the floor (the convention is "do not nag" until earned). `scorecard_url` and `badge_url` are populated whenever
+  a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
+  shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
 
 > Publishing a scorecard? `run.invocation` may carry usernames or absolute paths from the machine that produced the
 > scorecard. `target.path` is intentionally the basename only and is safe to commit. Review `run.invocation` before
@@ -383,7 +395,7 @@ Three shapes of contribution, in order of cost:
 1. **Signal** (false-positive report, scoring bug, feature request, registry submission): file an issue with the
    matching template at
    [github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
-2. **Proposal** (new language checker, scoring-engine rework, registry expansion): open a design issue first; the
+2. **Proposal** (new language auditor, scoring-engine rework, registry expansion): open a design issue first; the
    maintainer signs off before code lands.
 3. **Code**: PR against `dev` (per branch discipline).
 
@@ -394,7 +406,7 @@ git clone https://github.com/brettdavies/agentnative-cli
 cd agentnative-cli
 git config core.hooksPath scripts/hooks  # mirror CI locally on every push
 cargo test
-cargo run -- check .
+cargo run -- audit .
 ```
 
 The full tier breakdown, pre-push hook contents, and commit-message conventions live in

@@ -1,10 +1,9 @@
-# Drift gate for tests/fixtures/skill.json against upstream
-# agentnative-site. Companion to the cargo-level test 12
-# (host_map_matches_site_skill_json) which catches drift between the Rust
-# map and this fixture; this workflow catches drift between the fixture
-# and the canonical site contract.
+# Drift gate for src/skill_install/skill.json against the canonical site
+# contract at agentnative-site/src/data/skill/skill.json. build.rs reads
+# the committed fixture and emits the SkillHost enum, KNOWN_HOSTS const,
+# and resolve_host fn into $OUT_DIR/generated_hosts.rs at compile time.
 #
-# Failure means the site has updated src/data/skill.json without a
+# Failure means the site has updated src/data/skill/skill.json without a
 # corresponding fixture refresh. Run `scripts/sync-skill-fixture.sh`
 # locally, review the diff, commit, push.
 

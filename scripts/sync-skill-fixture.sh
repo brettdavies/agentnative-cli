@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sync src/skill_install/skill.json from agentnative-site/src/data/skill.json.
+# Sync src/skill_install/skill.json from agentnative-site/src/data/skill/skill.json.
 #
 # The fixture is also the build-time input for build.rs's host-map codegen
 # (which emits the SkillHost enum, KNOWN_HOSTS const, and resolve_host fn
@@ -23,7 +23,7 @@
 #                          unreachable. Default: $HOME/dev/agentnative-site
 #
 # Resync cadence: rerun whenever agentnative-site changes
-# src/data/skill.json. Pre-release checklist captures this in RELEASES.md.
+# src/data/skill/skill.json. Pre-release checklist captures this in RELEASES.md.
 
 set -euo pipefail
 
@@ -33,7 +33,7 @@ SKILL_SITE_ROOT="${SKILL_SITE_ROOT:-$HOME/dev/agentnative-site}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST_FILE="$REPO_ROOT/src/skill_install/skill.json"
-SOURCE_PATH="src/data/skill.json"
+SOURCE_PATH="src/data/skill/skill.json"
 
 mode="update"
 if [[ ${1:-} == "--check" ]]; then

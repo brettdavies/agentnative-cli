@@ -208,7 +208,7 @@ fn emit_skill_hosts(manifest_dir: &std::path::Path) {
     src.push_str("// and `cargo build` regenerates this file.\n\n");
 
     src.push_str("/// Hosts the binary knows how to install into. Surface names match\n");
-    src.push_str("/// `agentnative-site/src/data/skill.json` keys verbatim via\n");
+    src.push_str("/// `agentnative-site/src/data/skill/skill.json` keys verbatim via\n");
     src.push_str("/// `rename_all = \"snake_case\"`.\n");
     src.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq, ::clap::ValueEnum)]\n");
     src.push_str("#[value(rename_all = \"snake_case\")]\n");

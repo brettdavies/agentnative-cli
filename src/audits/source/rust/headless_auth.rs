@@ -59,19 +59,19 @@ impl Audit for HeadlessAuthAudit {
         let mut has_auth_code = false;
         let mut has_headless_flag = false;
 
+        // Cross-file scan: auth code and the flag often live in different
+        // files in well-structured Rust projects (auth logic in src/auth/,
+        // CLI flags in src/cli/). Check both signals independently across
+        // the whole parsed set, then combine at the project level.
         for (_path, parsed_file) in parsed.iter() {
-            match &audit_headless_auth(&parsed_file.source) {
-                AuditStatus::Skip(_) => {
-                    // No auth code in this file
-                }
-                AuditStatus::Pass => {
-                    has_auth_code = true;
-                    has_headless_flag = true;
-                }
-                AuditStatus::Warn(_) => {
-                    has_auth_code = true;
-                }
-                _ => {}
+            if !has_auth_code && has_auth_functions(&parsed_file.source) {
+                has_auth_code = true;
+            }
+            if !has_headless_flag && has_headless_flag_definition(&parsed_file.source) {
+                has_headless_flag = true;
+            }
+            if has_auth_code && has_headless_flag {
+                break;
             }
         }
 
@@ -98,10 +98,13 @@ impl Audit for HeadlessAuthAudit {
     }
 }
 
-/// Audit a single source string for auth code and headless flags.
-///
-/// Searches function definitions via ast-grep to find auth-related identifiers.
-/// This avoids false positives from comments, string literals, and constant arrays.
+/// Audit a single source string for auth code and headless flags. Kept as a
+/// single-file convenience for callers (and existing unit tests) that want
+/// to assert on one source string in isolation. The project-level audit at
+/// [`HeadlessAuthAudit::run`] uses the two split helpers directly so it can
+/// detect the flag in a different file from the auth code — a common shape
+/// in well-structured Rust projects.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn audit_headless_auth(source: &str) -> AuditStatus {
     let has_auth = has_auth_functions(source);
 
@@ -109,13 +112,7 @@ pub(crate) fn audit_headless_auth(source: &str) -> AuditStatus {
         return AuditStatus::Skip("no auth code found".to_string());
     }
 
-    // Audit for --no-browser or --headless flag in clap arg definitions
-    let has_flag = has_pattern(source, r#"#[arg($$$ARGS)]"#)
-        && (source.contains("no-browser")
-            || source.contains("no_browser")
-            || source.contains("headless"));
-
-    if has_flag {
+    if has_headless_flag_definition(source) {
         AuditStatus::Pass
     } else {
         AuditStatus::Warn(
@@ -126,26 +123,61 @@ pub(crate) fn audit_headless_auth(source: &str) -> AuditStatus {
     }
 }
 
+/// Detect a `#[arg(...)]` clap definition for `--no-browser` / `--headless`.
+/// Used by the project-level audit to scan every file independently of
+/// whether that file also carries auth functions.
+fn has_headless_flag_definition(source: &str) -> bool {
+    has_pattern(source, r#"#[arg($$$ARGS)]"#)
+        && (source.contains("no-browser")
+            || source.contains("no_browser")
+            || source.contains("headless"))
+}
+
 /// Search for function definitions whose names contain auth-related keywords.
 ///
-/// Uses ast-grep to find `fn $NAME(...)` patterns, then audits if the function
-/// name contains any auth keyword. This avoids matching keywords in comments,
-/// strings, or constant arrays.
+/// Uses ast-grep with a pattern set covering every common visibility + async
+/// combination in Rust function definitions. The set is required because
+/// ast-grep's tree-sitter pattern compiler treats `fn $NAME(...)` as a
+/// literal prefix that does NOT match `pub fn $NAME(...)` — a Rust library
+/// exposing `pub fn` auth APIs would otherwise be invisible to the audit,
+/// leaving consumers stuck at "no auth code found" Skip even though
+/// headless-auth support is needed.
+///
+/// Restricting to definitions (not just any identifier mention) avoids
+/// false positives from comments, string literals, and constant arrays.
 fn has_auth_functions(source: &str) -> bool {
     use ast_grep_core::Pattern;
     use ast_grep_core::tree_sitter::LanguageExt;
     use ast_grep_language::Rust;
 
-    let pattern = match Pattern::try_new("fn $NAME($$$ARGS) $$$BODY", Rust) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
+    // Each entry is (pattern_source, prefix_byte_offset). The offset is
+    // where the function name starts in the matched text — skip past the
+    // leading `pub fn `, `async fn `, etc. so the slice up to the first
+    // `(` is the bare identifier.
+    let pattern_set: &[(&str, usize)] = &[
+        ("fn $NAME($$$ARGS) $$$BODY", 3),
+        ("pub fn $NAME($$$ARGS) $$$BODY", 7),
+        ("pub(crate) fn $NAME($$$ARGS) $$$BODY", 14),
+        ("pub(super) fn $NAME($$$ARGS) $$$BODY", 14),
+        ("async fn $NAME($$$ARGS) $$$BODY", 9),
+        ("pub async fn $NAME($$$ARGS) $$$BODY", 13),
+        ("pub(crate) async fn $NAME($$$ARGS) $$$BODY", 20),
+    ];
 
     let root = Rust.ast_grep(source);
-    for m in root.root().find_all(&pattern) {
-        let text = m.text();
-        if let Some(name_end) = text.find('(') {
-            let fn_name = text[3..name_end].trim(); // skip "fn "
+    for (pattern_src, skip) in pattern_set {
+        let Ok(pattern) = Pattern::try_new(pattern_src, Rust) else {
+            continue;
+        };
+        for m in root.root().find_all(&pattern) {
+            let text = m.text();
+            if text.len() <= *skip {
+                continue;
+            }
+            let Some(name_end) = text[*skip..].find('(') else {
+                continue;
+            };
+            let fn_name = text[*skip..(*skip + name_end)].trim();
             let lower_name = fn_name.to_lowercase();
             if AUTH_IDENT_KEYWORDS.iter().any(|kw| lower_name.contains(kw)) {
                 return true;
@@ -265,5 +297,57 @@ fn parse_token(s: &str) -> Token {
         std::fs::create_dir_all(&dir).expect("create test dir");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(!audit.applicable(&project));
+    }
+}
+
+#[cfg(test)]
+mod pub_fn_tests {
+    use super::*;
+
+    #[test]
+    fn pass_when_pub_fn_oauth_and_flag() {
+        let source = r#"
+use clap::Parser;
+pub fn run_oauth2_flow() {}
+#[derive(Parser)]
+struct Cli {
+    #[arg(long = "no-browser")]
+    no_browser: bool,
+}
+"#;
+        assert_eq!(audit_headless_auth(source), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn warn_when_pub_fn_oauth_no_flag() {
+        let source = r#"
+pub fn get_oauth2_scopes() -> Vec<&'static str> { vec![] }
+pub fn refresh_oauth2_token() {}
+"#;
+        let status = audit_headless_auth(source);
+        assert!(matches!(status, AuditStatus::Warn(_)), "got {status:?}");
+    }
+
+    #[test]
+    fn pass_when_async_fn_authenticate_and_flag() {
+        let source = r#"
+use clap::Parser;
+pub async fn authenticate() {}
+#[derive(Parser)]
+struct Cli {
+    #[arg(long)]
+    headless: bool,
+}
+"#;
+        assert_eq!(audit_headless_auth(source), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn warn_when_pub_crate_fn_auth_url_no_flag() {
+        let source = r#"
+pub(crate) fn build_auth_url() {}
+"#;
+        let status = audit_headless_auth(source);
+        assert!(matches!(status, AuditStatus::Warn(_)), "got {status:?}");
     }
 }

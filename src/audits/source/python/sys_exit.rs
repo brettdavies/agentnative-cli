@@ -65,6 +65,7 @@ impl Audit for SysExitAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

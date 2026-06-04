@@ -73,6 +73,7 @@ impl Audit for EnumerateValidSetPythonAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

@@ -52,6 +52,7 @@ impl Audit for CursorPaginationAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

@@ -69,6 +69,7 @@ impl Audit for ActionableErrorsAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

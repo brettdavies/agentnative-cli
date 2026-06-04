@@ -24,8 +24,8 @@ fn fixture_path(name: &str) -> String {
 /// precise failure message when a field is missing.
 fn assert_v05_shape(parsed: &Value) {
     assert_eq!(
-        parsed["schema_version"], "0.7",
-        "schema_version must be 0.7 (per-row emission + 7-status taxonomy)",
+        parsed["schema_version"], "0.8",
+        "schema_version must be 0.8 (per-row emission + 7-status taxonomy + domain_verbs transparency)",
     );
 
     for path in [
@@ -353,8 +353,8 @@ fn rt_schema_id_pins_to_published_schema_version() {
     let schema = schema_doc();
     let id = schema["$id"].as_str().expect("$id is a string");
     assert!(
-        id.contains("scorecard-v0.7"),
-        "schema $id must pin to the current SCHEMA_VERSION (0.7), got: {id}",
+        id.contains("scorecard-v0.8"),
+        "schema $id must pin to the current SCHEMA_VERSION (0.8), got: {id}",
     );
 }
 

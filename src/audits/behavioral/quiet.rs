@@ -53,6 +53,7 @@ impl Audit for QuietAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

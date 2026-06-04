@@ -50,6 +50,7 @@ impl Audit for AgentsMdAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

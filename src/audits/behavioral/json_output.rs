@@ -60,6 +60,7 @@ impl Audit for JsonOutputAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

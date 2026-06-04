@@ -48,6 +48,7 @@ impl Audit for ColorFlagAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

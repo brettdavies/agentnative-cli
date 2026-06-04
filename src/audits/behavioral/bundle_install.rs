@@ -54,6 +54,7 @@ impl Audit for BundleInstallAudit {
                 layer: self.layer(),
                 status: AuditStatus::Pass,
                 confidence: Confidence::High,
+                mitigation: None,
             });
         }
 
@@ -69,6 +70,7 @@ impl Audit for BundleInstallAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

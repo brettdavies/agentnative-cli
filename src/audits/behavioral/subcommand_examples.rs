@@ -74,6 +74,7 @@ impl Audit for SubcommandExamplesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

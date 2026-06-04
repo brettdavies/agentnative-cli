@@ -107,6 +107,7 @@ impl Audit for NonInteractiveAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

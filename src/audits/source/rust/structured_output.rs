@@ -79,6 +79,7 @@ impl Audit for StructuredOutputAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

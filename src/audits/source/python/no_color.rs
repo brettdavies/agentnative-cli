@@ -73,6 +73,7 @@ impl Audit for NoColorPythonAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

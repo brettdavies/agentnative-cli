@@ -50,6 +50,7 @@ impl Audit for ErrorModuleAudit {
                     layer: self.layer(),
                     status: AuditStatus::Pass,
                     confidence: Confidence::High,
+                    mitigation: None,
                 });
             }
         }
@@ -70,6 +71,7 @@ impl Audit for ErrorModuleAudit {
                                 layer: self.layer(),
                                 status: AuditStatus::Pass,
                                 confidence: Confidence::High,
+                                mitigation: None,
                             });
                         }
                     }
@@ -86,6 +88,7 @@ impl Audit for ErrorModuleAudit {
                 "No dedicated error module found (expected src/error.rs or src/errors.rs)".into(),
             ),
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

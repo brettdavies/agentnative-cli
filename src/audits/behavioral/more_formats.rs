@@ -54,6 +54,7 @@ impl Audit for MoreFormatsAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

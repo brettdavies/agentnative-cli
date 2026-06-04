@@ -98,6 +98,7 @@ impl Audit for SigtermPythonAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

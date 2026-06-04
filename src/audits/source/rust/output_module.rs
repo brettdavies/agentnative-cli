@@ -59,6 +59,7 @@ impl Audit for OutputModuleAudit {
                     layer: self.layer(),
                     status: AuditStatus::Pass,
                     confidence: Confidence::High,
+                    mitigation: None,
                 });
             }
         }
@@ -74,6 +75,7 @@ impl Audit for OutputModuleAudit {
                     .into(),
             ),
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

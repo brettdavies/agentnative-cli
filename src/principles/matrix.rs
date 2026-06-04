@@ -385,6 +385,7 @@ mod tests {
                 layer: AuditLayer::Behavioral,
                 status: AuditStatus::Pass,
                 confidence: Confidence::High,
+                mitigation: None,
             })
         }
         fn covers(&self) -> &'static [&'static str] {

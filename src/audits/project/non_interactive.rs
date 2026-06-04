@@ -71,6 +71,7 @@ impl Audit for NonInteractiveSourceAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

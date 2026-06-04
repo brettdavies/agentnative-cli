@@ -31,22 +31,22 @@ fn unique_tempdir(label: &str) -> PathBuf {
     dir
 }
 
-/// Shell fixture exposing three subcommands (`post`, `like`, `mentions`).
-/// `post` + `like` are built-in standard verbs after the social-platform
-/// expansion (2/3 = 0.67, below the 0.70 pass threshold); `mentions` is
-/// X-specific and must come from `.anc.toml [p6] domain_verbs` to push
-/// the ratio across the bar (3/3 = 1.0). `help` is intentionally omitted
-/// from the help block — clap always emits it, but including it would
-/// add a fourth standard verb and let the fixture pass without exercising
-/// the loader at all.
+/// Shell fixture exposing three subcommands (`archive`, `follow`, `mentions`).
+/// `archive` and `follow` are cross-domain built-in standard verbs that
+/// survived the platform-verb trim (2/3 = 0.67, below the 0.70 pass
+/// threshold); `mentions` is X-specific and must come from `.anc.toml
+/// [p6] domain_verbs` to push the ratio across the bar (3/3 = 1.0). `help`
+/// is intentionally omitted from the help block — clap always emits it,
+/// but including it would add a fourth standard verb and let the fixture
+/// pass without exercising the loader at all.
 const FIXTURE_SCRIPT: &str = r#"#!/bin/sh
 case "$1" in
   --help) cat <<'EOF'
 Usage: x [OPTIONS] <COMMAND>
 
 Commands:
-  post       Publish a post
-  like       Like a post
+  archive    Archive a post
+  follow     Follow a user
   mentions   List mentions
 
 Options:

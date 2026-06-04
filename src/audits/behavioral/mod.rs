@@ -35,7 +35,7 @@ mod rich_tui;
 mod schema_print;
 mod secret_non_leaky_path;
 mod sigpipe;
-mod standard_names;
+pub(crate) mod standard_names;
 mod stdin_input;
 mod structured_exit_codes;
 mod subcommand_examples;

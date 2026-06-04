@@ -261,6 +261,7 @@ impl Audit for JsonErrorsAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

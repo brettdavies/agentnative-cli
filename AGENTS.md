@@ -236,3 +236,10 @@ folder:
 
 When an extract names concrete linter-rule candidates, walk its **"Linter rule coverage audit"** or equivalent section
 against existing audits in `src/audits/` before opening a new audit.
+
+## Documented Solutions
+
+`docs/solutions/` (symlink to `~/dev/solutions-docs/`) is a searchable archive of documented solutions to past problems
+(bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`,
+`problem_type`). Search with `qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in
+documented areas.

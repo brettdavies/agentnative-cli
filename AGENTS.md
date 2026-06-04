@@ -184,6 +184,22 @@ cargo test                    # unit + integration tests
 cargo test -- --ignored       # fixture tests (slower)
 ```
 
+### Test fixtures
+
+Rust crates under `tests/fixtures/*/` (e.g. `broken-rust/`, `perfect-rust/`, `source-only/`, `cfg-test-edge-cases/`) are
+standalone fake projects the audits run against. They are intentionally **not** workspace members — making them members
+would cause `cargo build` from the root to compile every fixture and would apply workspace-level lints, dependencies,
+and profile overrides to them, changing what the audits see and defeating the purpose of the fixture.
+
+Because there is no workspace, Cargo's `field.workspace = true` inheritance is unavailable. The edition on every fixture
+`Cargo.toml` must be set explicitly and **must match the main crate's edition** (see the top-level `Cargo.toml`,
+currently `edition = "2024"`). When the main crate bumps its edition (e.g. Rust 2027), bump every fixture in lockstep in
+the same PR — a fixture lagging behind main is a silent skew that can mask audit regressions on edition-specific syntax.
+
+The audits themselves parse fixture sources via tree-sitter and do not invoke `cargo build`, so the edition has no
+effect on current audit behavior. The lockstep rule exists for the future case where an audit reads edition-specific
+constructs, and for the general "the project tests against the edition the project ships with" principle.
+
 ## Spec source (principles)
 
 The canonical specification of the 7 agent-readiness principles lives in

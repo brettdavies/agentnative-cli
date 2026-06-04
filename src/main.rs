@@ -247,6 +247,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                     cat.as_kebab_case()
                 )),
                 confidence: Confidence::High,
+                mitigation: None,
             });
             continue;
         }
@@ -259,6 +260,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 layer: audit.layer(),
                 status: AuditStatus::Error(e.to_string()),
                 confidence: Confidence::High,
+                mitigation: None,
             },
         };
         results.push(result);

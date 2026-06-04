@@ -69,6 +69,7 @@ impl Audit for ErrorTypesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

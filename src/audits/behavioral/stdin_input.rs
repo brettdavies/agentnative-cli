@@ -76,6 +76,7 @@ impl Audit for StdinInputAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

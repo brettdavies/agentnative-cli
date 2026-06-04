@@ -74,6 +74,7 @@ impl Audit for ForceYesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

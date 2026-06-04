@@ -55,6 +55,7 @@ impl Audit for BadArgsAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

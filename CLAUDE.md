@@ -142,7 +142,7 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 
 ## Scorecard JSON fields
 
-`src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window;
+`src/scorecard/mod.rs` emits `schema_version: "0.8"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
 - `0.2`: `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
@@ -150,6 +150,12 @@ consumers feature-detect each addition rather than pinning exact shape. Cumulati
 - `0.4`: four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
 - `0.5`: `badge` block surfacing agent-native badge eligibility, embed snippet, and badge/scorecard URLs derived from
   the live run.
+- `0.6`: 7-status taxonomy (`opt_out` and `n_a` added to `status`), matching counters in `summary`, `tier` on each
+  result, one result per requirement row instead of per-`audit_id`, antecedent propagation for conditional rows.
+- `0.7`: reserved bump for the role-based JSON-error-envelope validator reframe (PR #79). Shape unchanged from `0.6`.
+- `0.8`: optional `using_domain_verbs: bool` and `domain_match_count: usize` on each result row, populated when
+  `p6-standard-names` Passes via per-CLI `.anc.toml [p6] domain_verbs` recognition; Pass evidence string is populated
+  with the built-in vs domain ratio. Fields are absent (not `null`) from rows that did not consult `domain_verbs`.
 
 Existing field semantics:
 
@@ -202,10 +208,29 @@ Existing field semantics:
   appends a post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so
   the JSON `embed_markdown` and the printed hint can never disagree.
 
+`0.8` addition (`MitigationInfo` carrier on `AuditResult`):
+
+- `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples, builtin_match_count, subcommand_total
+  }` is attached to an `AuditResult` when the audit's verdict was assisted by a documented per-CLI opt-in. Today's only
+  producer is `src/audits/behavioral/standard_names.rs`: when `p6-standard-names` Passes because one or more subcommands
+  were recognized via `.anc.toml [p6] domain_verbs` (rather than the built-in `STANDARD_VERBS` list), the audit fills
+  `MitigationInfo` with the bifurcated match counts and the first `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb
+  names in encounter order.
+- `AuditResultView` surfaces two top-level fields derived from the carrier: `using_domain_verbs: Option<bool>` and
+  `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from rows
+  that did not consult `domain_verbs`. The Pass row's `evidence` field is populated (rather than `null`) via
+  `format_pass_evidence(&mitigation)`; rows without mitigation keep the historical `evidence: null` on Pass.
+- The carrier shape is deliberately not audit-specific. Future audits that admit per-CLI mitigation (suppression profile
+  assistance, conditional-applicability config) can populate `MitigationInfo` with the same fields rather than growing
+  parallel typed carriers. The semantic contract is "this verdict depended on a self-declared opt-in; here is what
+  assisted."
+
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is
 `audience_reason`, which uses `skip_serializing_if = "Option::is_none"`; its absence carries information (audience has a
-label).
+label). The `0.8` `using_domain_verbs` / `domain_match_count` fields follow the `audience_reason` pattern (absent when
+not applicable) — *not* the `tool.version` always-present-null pattern — because their absence is itself the signal that
+no mitigation was needed.
 
 Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields, since pre-`0.4` scorecards lack
 the four metadata blocks; pre-`0.5` scorecards lack `badge`. The site's `agentnative-site/registry.yaml` will eventually

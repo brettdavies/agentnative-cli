@@ -82,6 +82,7 @@ impl Audit for ConsistentEnvelopeAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

@@ -68,6 +68,7 @@ impl Audit for UnwrapAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

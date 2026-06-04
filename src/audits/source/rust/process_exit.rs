@@ -64,6 +64,7 @@ impl Audit for ProcessExitAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

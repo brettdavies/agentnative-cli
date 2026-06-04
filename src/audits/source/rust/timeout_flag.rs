@@ -82,6 +82,7 @@ impl Audit for TimeoutFlagAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

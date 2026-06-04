@@ -53,6 +53,7 @@ impl Audit for EnvHintsAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

@@ -59,6 +59,7 @@ impl Audit for BareExceptAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

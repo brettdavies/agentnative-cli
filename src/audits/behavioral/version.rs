@@ -64,6 +64,7 @@ impl Audit for VersionAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

@@ -23,8 +23,14 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus};
 /// rather than a round-trip to the site), `0.6` (7-status taxonomy:
 /// `opt_out` + `n_a` added to `status`; matching counters in `summary`;
 /// `tier` field on each result; one result per requirement-row instead of
-/// per-audit_id; antecedent propagation for conditional rows).
-pub const SCHEMA_VERSION: &str = "0.7";
+/// per-audit_id; antecedent propagation for conditional rows), `0.7`
+/// (unchanged shape over `0.6` per the role-based validators handoff;
+/// reserved bump for the JSON-error envelope reframe), `0.8`
+/// (`using_domain_verbs` and `domain_match_count` optional fields on
+/// each row, populated when `p6-standard-names` Passes via per-CLI
+/// `.anc.toml [p6] domain_verbs` recognition; Pass evidence string
+/// populated with the built-in / domain ratio).
+pub const SCHEMA_VERSION: &str = "0.8";
 
 /// Eligibility floor for the agent-native badge, expressed as an integer
 /// percent. A score that meets or exceeds this floor qualifies a tool to
@@ -392,6 +398,18 @@ pub struct AuditResultView {
     /// (legacy test fixtures that hand-build a `AuditResult` without the
     /// fan-out pipeline).
     pub audit_id: String,
+    /// Transparency for verdicts assisted by a documented opt-in. Today:
+    /// `true` when `p6-standard-names` Passed because at least one
+    /// subcommand was recognized via `.anc.toml [p6] domain_verbs` (not
+    /// via the built-in `STANDARD_VERBS` list). Absent (`None`, elided
+    /// from JSON) for every other row. Schema `0.8` addition.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub using_domain_verbs: Option<bool>,
+    /// Count of subcommands recognized via `domain_verbs` (companion to
+    /// `using_domain_verbs`). Absent for non-mitigated rows. Schema `0.8`
+    /// addition.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain_match_count: Option<usize>,
 }
 
 impl AuditResultView {
@@ -412,13 +430,28 @@ impl AuditResultView {
     /// requirement row id.
     pub fn from_row(r: &AuditResult, audit_id: &str) -> Self {
         let (status, evidence) = match &r.status {
-            AuditStatus::Pass => ("pass".to_string(), None),
+            AuditStatus::Pass => {
+                // When a Pass was assisted by `domain_verbs`, surface the
+                // formatted ratio + matched names in the row's `evidence`
+                // field so text-mode rendering and JSON-mode dispatch see
+                // the same prose. Pass without mitigation keeps the
+                // existing `evidence: null` shape.
+                let pass_evidence = r
+                    .mitigation
+                    .as_ref()
+                    .map(crate::audits::behavioral::standard_names::format_pass_evidence);
+                ("pass".to_string(), pass_evidence)
+            }
             AuditStatus::Warn(e) => ("warn".to_string(), Some(e.clone())),
             AuditStatus::Fail(e) => ("fail".to_string(), Some(e.clone())),
             AuditStatus::OptOut(e) => ("opt_out".to_string(), Some(e.clone())),
             AuditStatus::NotApplicable(e) => ("n_a".to_string(), Some(e.clone())),
             AuditStatus::Skip(e) => ("skip".to_string(), Some(e.clone())),
             AuditStatus::Error(e) => ("error".to_string(), Some(e.clone())),
+        };
+        let (using_domain_verbs, domain_match_count) = match &r.mitigation {
+            Some(m) => (Some(m.using_domain_verbs), Some(m.domain_match_count)),
+            None => (None, None),
         };
         // Serialize AuditGroup / AuditLayer / Confidence via serde_json so
         // the JSON mirrors the canonical enum spelling (snake_case).
@@ -451,6 +484,8 @@ impl AuditResultView {
             confidence,
             tier,
             audit_id: audit_id.to_string(),
+            using_domain_verbs,
+            domain_match_count,
         }
     }
 }
@@ -954,6 +989,7 @@ mod tests {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
         }
     }
 
@@ -994,7 +1030,7 @@ mod tests {
         ];
         let json = format_json(&results, &[], None, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "0.7");
+        assert_eq!(parsed["schema_version"], "0.8");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -1213,7 +1249,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "0.7");
+        assert_eq!(parsed["schema_version"], "0.8");
     }
 
     #[test]
@@ -1489,7 +1525,7 @@ mod tests {
         }
 
         // 0.4 + 0.5 additions — every documented sub-key resolves.
-        assert_eq!(parsed["schema_version"], "0.7");
+        assert_eq!(parsed["schema_version"], "0.8");
         for path in [
             // 0.4
             "tool.name",

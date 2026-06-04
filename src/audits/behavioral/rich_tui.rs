@@ -65,6 +65,7 @@ impl Audit for RichTuiAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

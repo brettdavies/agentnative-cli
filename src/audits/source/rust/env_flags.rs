@@ -84,6 +84,7 @@ impl Audit for EnvFlagsAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
         })
     }
 }

@@ -50,6 +50,7 @@ impl Audit for DefaultsInHelpAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

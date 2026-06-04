@@ -51,6 +51,7 @@ impl Audit for InstallAllAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
         })
     }
 }

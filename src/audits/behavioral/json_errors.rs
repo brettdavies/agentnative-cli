@@ -189,7 +189,9 @@ fn is_type_id_value(value: &Value) -> bool {
     {
         return false;
     }
-    let first = trimmed.chars().next().unwrap();
+    let Some(first) = trimmed.chars().next() else {
+        return false;
+    };
     if !(first.is_ascii_alphabetic() || first == '_') {
         return false;
     }
@@ -309,6 +311,27 @@ mod tests {
             stdout_truncated: false,
             stderr_truncated: false,
         }
+    }
+
+    #[test]
+    fn is_type_id_value_validates_json_shapes() {
+        use serde_json::json;
+        // Non-string values: number, bool, null, array, object — none are identifier-shaped.
+        assert!(!is_type_id_value(&Value::Number(42.into())));
+        assert!(!is_type_id_value(&Value::Bool(true)));
+        assert!(!is_type_id_value(&Value::Null));
+        assert!(!is_type_id_value(&json!([])));
+        assert!(!is_type_id_value(&json!({})));
+        // Valid identifier-shaped strings (kebab-case, SCREAMING_SNAKE, snake_case).
+        assert!(is_type_id_value(&Value::String("auth-required".into())));
+        assert!(is_type_id_value(&Value::String("NOT_FOUND".into())));
+        assert!(is_type_id_value(&Value::String("rate_limit".into())));
+        // Invalid string shapes (whitespace, punctuation, leading digit).
+        assert!(!is_type_id_value(&Value::String("not an id".into())));
+        assert!(!is_type_id_value(&Value::String("ends.with.dot".into())));
+        assert!(!is_type_id_value(&Value::String(
+            "9starts_with_digit".into()
+        )));
     }
 
     #[test]

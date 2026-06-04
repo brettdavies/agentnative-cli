@@ -1,7 +1,7 @@
 ---
 title: "fix: PR #76 follow-up — scorecard transparency for .anc.toml domain_verbs; trim platform verbs"
 type: fix
-status: proposed
+status: completed
 priority: P1
 date: 2026-06-03
 origin: "Adversarial review of merged PR #76 (commit 9263c5c7) surfaced 5 findings; this plan keeps the escape hatch
@@ -86,17 +86,17 @@ The adversarial review surfaced 5 findings against this PR.
 
 - **R5**: Five new tests:
 - `nonsense_domain_verbs_pass_with_transparency_flag` — `.anc.toml` containing `domain_verbs = ["yeet", "bork",
-    "blarg"]` against a CLI whose subcommands match. Asserts Pass, `using_domain_verbs: true`, and the evidence string
-    names all three domain verbs.
+  "blarg"]` against a CLI whose subcommands match. Asserts Pass, `using_domain_verbs: true`, and the evidence string
+  names all three domain verbs.
 - `case_mismatch_domain_verbs_does_not_match` — `.anc.toml` containing `domain_verbs = ["Post"]` against a CLI with
-    subcommand `post`. Asserts no match (consistent with the existing lowercased-subcommand semantics).
+  subcommand `post`. Asserts no match (consistent with the existing lowercased-subcommand semantics).
 - `pass_without_anc_toml_omits_transparency_fields` — absent `.anc.toml`. Asserts `using_domain_verbs` absent from JSON,
-    evidence string is built-ins-only form.
+  evidence string is built-ins-only form.
 - `empty_domain_verbs_omits_transparency_fields` — `.anc.toml` exists, `[p6]` section exists, `domain_verbs = []`.
-    Asserts same as the previous case.
+  Asserts same as the previous case.
 - `social_cli_documented_example_passes` — integration test using the documented example `.anc.toml` from
-    `docs/solutions/`. Asserts the platform-specific verbs route through `domain_verbs` and the row carries the
-    transparency fields.
+  `docs/solutions/`. Asserts the platform-specific verbs route through `domain_verbs` and the row carries the
+  transparency fields.
 
 - **R6**: The documentation file `docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`
   exists and is referenced from the audit's Warn evidence string when the audit fails on a CLI with social-CLI shape (so

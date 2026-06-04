@@ -349,6 +349,78 @@ fn test_perfect_fixture() {
     assert_eq!(error_count, 0, "perfect-rust fixture should have 0 errors");
 }
 
+#[test]
+fn test_cfg_test_edge_cases_fixture_flags_only_production_unwraps() {
+    // End-to-end coverage of the code-unwrap audit's cfg-gate exemption logic
+    // through the full parse -> walk -> AuditResult -> scorecard pipeline.
+    // Unit tests in src/audits/source/rust/unwrap.rs cover the parser in
+    // isolation; this test wires the parser to a real project on disk and
+    // checks that the scorecard reflects the polarity-correct behavior fixed
+    // in PR #80.
+    //
+    // Expected evidence (pinned to the fixture's current layout — see
+    // tests/fixtures/cfg-test-edge-cases/src/lib.rs):
+    //   - line 20: production_path()              (no cfg gate)
+    //   - line 25: production_only_path()         (#[cfg(not(test))])
+    // Exempted (must NOT appear in evidence):
+    //   - line 30: test_only_helper()             (#[cfg(test)])
+    //   - line 37: tests::unit()                  (inside #[cfg(test)] mod)
+    let path = fixture_path("cfg-test-edge-cases");
+
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let code_unwrap = parsed["results"]
+        .as_array()
+        .expect("results should be an array")
+        .iter()
+        .find(|r| r["id"].as_str() == Some("code-unwrap"))
+        .expect("results should include a code-unwrap row");
+
+    assert_eq!(
+        code_unwrap["status"].as_str(),
+        Some("fail"),
+        "code-unwrap must fail on the fixture (two production unwraps): {code_unwrap}",
+    );
+
+    let evidence = code_unwrap["evidence"]
+        .as_str()
+        .expect("code-unwrap fail must carry an evidence string");
+    let lines: Vec<&str> = evidence.lines().collect();
+    assert_eq!(
+        lines.len(),
+        2,
+        "evidence must list exactly two unwraps (production_path + cfg(not(test)) production_only_path), got: {evidence}",
+    );
+
+    let has_production_path = lines
+        .iter()
+        .any(|l| l.contains("/lib.rs:20:") && l.contains("maybe().unwrap()"));
+    let has_production_only_path = lines
+        .iter()
+        .any(|l| l.contains("/lib.rs:25:") && l.contains("maybe().unwrap()"));
+    assert!(
+        has_production_path,
+        "evidence must flag production_path at lib.rs:20: {evidence}",
+    );
+    assert!(
+        has_production_only_path,
+        "evidence must flag the cfg(not(test)) production_only_path at lib.rs:25 (PR #80 regression guard): {evidence}",
+    );
+
+    // The two cfg(test) cases live at lib.rs:30 and lib.rs:37 in the fixture;
+    // neither must appear in evidence.
+    for forbidden in [":30:", ":37:"] {
+        assert!(
+            !evidence.contains(forbidden),
+            "cfg(test)-exempt line {forbidden} leaked into evidence: {evidence}",
+        );
+    }
+}
+
 // ── Bare invocation test ──────────────────────────────────────────
 
 #[test]

@@ -120,11 +120,21 @@ fn walk<'a>(
     for child in node.children() {
         let kind = child.kind();
         if kind.as_ref() == "attribute_item" || kind.as_ref() == "inner_attribute_item" {
-            // An inner attribute (`#![cfg(test)]` at the head of a mod body)
-            // gates the enclosing item — i.e. *every* sibling of the inner
-            // attribute inherits the gate. Conservatively, treat
-            // `inner_attribute_item` as if it gated all following siblings
-            // here, which covers the canonical position at the top of a mod.
+            // Both outer (`#[cfg(test)]`) and inner (`#![cfg(test)]`)
+            // attribute kinds are handled uniformly: when the attribute
+            // resolves to `cfg(test)`, set the one-shot `next_is_cfg_test`
+            // flag so the very next sibling (and only that one) inherits
+            // the gate.
+            //
+            // This is *not* canonical Rust semantics for inner attributes —
+            // a real `#![cfg(test)]` at the head of a mod body gates every
+            // sibling in that mod body — but the asymmetry is intentional
+            // here. Fixing it would require hoisting the gate to the
+            // enclosing `mod_item` or making the flag sticky across
+            // siblings; both are out of scope for this walker. The
+            // resulting behavior (only the next sibling is gated by an
+            // inner attribute) is pinned by
+            // `inner_attribute_one_shot_consumes_on_use_not_fn`.
             if attribute_text_is_cfg_test(child.text().as_ref()) {
                 next_is_cfg_test = true;
             }
@@ -195,7 +205,7 @@ fn attribute_text_is_cfg_test(attr: &str) -> bool {
     let Some(args) = rest.strip_prefix('(').and_then(|s| s.strip_suffix(')')) else {
         return false;
     };
-    cfg_args_contain_test(args)
+    cfg_args_contain_test(args, false)
 }
 
 /// Walk the textual argument list of a `cfg(...)` attribute looking for a bare
@@ -203,7 +213,16 @@ fn attribute_text_is_cfg_test(attr: &str) -> bool {
 /// and only matches full identifiers (so `testing_only` / `test_helper` /
 /// `cfg(unix)` are rejected). Handles arbitrary nesting under `any(...)`,
 /// `all(...)`, and `not(...)`.
-fn cfg_args_contain_test(args: &str) -> bool {
+///
+/// `negated` tracks the polarity inherited from enclosing `not(...)` wrappers:
+/// at even parity (`negated = false`) a bare `test` means the item is test-gated;
+/// at odd parity (`negated = true`) it means the item is *non*-test-gated
+/// (production-only). Only `not(...)` flips polarity on recursion; `any(...)`
+/// and `all(...)` preserve it. This is conservative: returning `true` from any
+/// recursion claims "this attribute resolves to test-gated"; sibling predicates
+/// inside `any(...)` / `all(...)` cannot revoke that claim, so a production
+/// item with `cfg(any(not(test), unix))` correctly returns `false`.
+fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
     let bytes = args.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -237,18 +256,25 @@ fn cfg_args_contain_test(args: &str) -> bool {
                 j += 1;
             }
             let next = bytes.get(j).copied();
-            if ident == "test" {
-                // Bare `test` predicate: must be followed by a separator
-                // (`,`, `)`, or end-of-args), not `=` (would make it a key)
-                // and not `(` (would make it a nested call, e.g. `test(...)`).
-                if next.is_none() || matches!(next, Some(b',') | Some(b')')) {
+            if ident == "test" && (next.is_none() || matches!(next, Some(b',') | Some(b')'))) {
+                // Bare `test` predicate, followed by a separator (`,`, `)`,
+                // or end-of-args). At even parity (`!negated`) the item is
+                // test-gated. At odd parity (under a `not(...)`) the
+                // predicate means production code; keep scanning sibling
+                // predicates in case another one resolves to test-gated.
+                if !negated {
                     return true;
                 }
+                continue;
             } else if (ident == "any" || ident == "all" || ident == "not")
                 && next == Some(b'(')
                 && let Some(inner) = balanced_parens(&args[j..])
             {
-                if cfg_args_contain_test(inner) {
+                let recurse_negated = match ident {
+                    "not" => !negated,
+                    _ => negated, // `any` and `all` preserve polarity.
+                };
+                if cfg_args_contain_test(inner, recurse_negated) {
                     return true;
                 }
                 i = j + inner.len() + 2; // skip past matching ')'
@@ -551,6 +577,182 @@ impl S {
 "#;
         let status = audit_unwrap_with(source, "src/lib.rs", false);
         assert_eq!(status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn cfg_not_test_does_not_exempt_production_unwrap() {
+        // Regression guard for the PR #77 polarity bug: `cfg(not(test))`
+        // gates *production-only* code (compiled when NOT testing) and must
+        // NOT be treated as cfg(test). The unwrap below is production and
+        // must flag.
+        let source = r#"
+#[cfg(not(test))]
+fn production_only() {
+    foo().unwrap();
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
+    }
+
+    #[test]
+    fn cfg_any_not_test_unix_does_not_exempt() {
+        // `any(not(test), unix)` compiles in (production AND any platform)
+        // OR (any compilation AND unix). Either way the item compiles in
+        // production builds — the unwrap is production code.
+        let source = r#"
+#[cfg(any(not(test), unix))]
+fn x() {
+    foo().unwrap();
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
+    }
+
+    #[test]
+    fn cfg_all_not_test_feature_does_not_exempt() {
+        // `all(not(test), feature = "x")` is production-only under feature
+        // `x`. The unwrap is production code.
+        let source = r#"
+#[cfg(all(not(test), feature = "x"))]
+fn x() {
+    foo().unwrap();
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
+    }
+
+    #[test]
+    fn cfg_any_test_or_not_feature_still_exempts() {
+        // Polarity fix must not break the positive case: `any(test, ...)`
+        // still has a bare `test` predicate at even parity. The unwrap is
+        // gated.
+        let source = r#"
+#[cfg(any(test, not(feature = "real")))]
+mod tests {
+    fn t() { foo().unwrap(); }
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        assert_eq!(status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn cfg_attr_test_does_not_exempt() {
+        // `cfg_attr(test, ...)` applies the inner attributes conditionally;
+        // the item itself compiles unconditionally. The walk must NOT treat
+        // `cfg_attr` as a gate. The unwrap is production code.
+        let source = r#"
+#[cfg_attr(test, allow(unused))]
+fn x() {
+    foo().unwrap();
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
+    }
+
+    #[test]
+    fn inner_attribute_one_shot_consumes_on_use_not_fn() {
+        // Pins the intentional one-shot semantics for inner attributes:
+        // `#![cfg(test)]` followed by `use foo;` and then `fn production`
+        // gates only the `use` (which is not item-like) — the `fn` slips
+        // through. This is *not* canonical Rust semantics; the walker is
+        // deliberately one-shot for both outer and inner attributes and
+        // accepts the asymmetry. See the comment block at the top of
+        // `walk` for the rationale.
+        let source = r#"
+#![cfg(test)]
+use foo;
+
+fn production() {
+    foo().unwrap();
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
+    }
+
+    #[test]
+    fn mod_tests_without_gate_does_not_exempt() {
+        // A module *named* `tests` without a `#[cfg(test)]` gate is
+        // production code; the walker uses the gate, not the name. The
+        // unwrap inside must flag.
+        let source = r#"
+mod tests {
+    fn helper() {
+        foo().unwrap();
+    }
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
+    }
+
+    #[test]
+    fn cfg_not_not_test_does_exempt() {
+        // `not(not(test))` is semantically equivalent to `test` (even
+        // parity restored). The polarity tracker must recognize this. The
+        // unwrap inside is test code and must NOT flag.
+        let source = r#"
+#[cfg(not(not(test)))]
+mod tests {
+    fn t() { foo().unwrap(); }
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        assert_eq!(status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn cfg_not_any_test_does_not_exempt() {
+        // `not(any(test))` is semantically equivalent to `not(test)` —
+        // production-only. The unwrap inside is production code.
+        let source = r#"
+#[cfg(not(any(test)))]
+fn x() {
+    foo().unwrap();
+}
+"#;
+        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        if let AuditStatus::Fail(evidence) = &status {
+            assert_eq!(evidence.lines().count(), 1);
+            assert!(evidence.contains("foo().unwrap()"));
+        } else {
+            panic!("expected Fail, got {status:?}");
+        }
     }
 
     #[test]

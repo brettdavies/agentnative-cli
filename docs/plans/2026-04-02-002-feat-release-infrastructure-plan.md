@@ -45,7 +45,7 @@ files and channels, and this plan closes every gap.
 
 - `~/.claude/skills/rust-tool-release/SKILL.md` — canonical release standard
 - `~/.claude/skills/rust-tool-release/scripts/generate-completions.sh` — generates `completions/` directory
-- `~/.claude/skills/rust-tool-release/scripts/generate-changelog.sh` — generates `CHANGELOG.md` from git-cliff + PR body
+- `~/.claude/skills/rust-tool-release/scripts/generate-changelog.py` — generates `CHANGELOG.md` from git-cliff + PR body
   expansion
 - `~/dev/bird/RELEASING.md` — reference RELEASING.md
 - `~/dev/bird/README.md` — reference README with all 5 install channels
@@ -68,7 +68,7 @@ files and channels, and this plan closes every gap.
   this.
 - **Generate completions locally, commit to repo**: Per `rust-tool-release` standard, completions are
   platform-independent text files committed to `completions/`. Not generated in CI.
-- **CHANGELOG via generate-changelog.sh**: Uses git-cliff + PR body `## Changelog` section expansion. This is the
+- **CHANGELOG via generate-changelog.py**: Uses git-cliff + PR body `## Changelog` section expansion. This is the
   standard tooling, not manual editing.
 - **Release branch from main, not dev**: Per the release branch pattern, `guard-main-docs.yml` blocks docs paths. The
   release branch cherry-picks non-docs commits from dev.
@@ -82,7 +82,7 @@ files and channels, and this plan closes every gap.
 
 ### Deferred to Implementation
 
-- **Exact CHANGELOG content**: `generate-changelog.sh` will produce the content from PR bodies. The quality depends on
+- **Exact CHANGELOG content**: `generate-changelog.py` will produce the content from PR bodies. The quality depends on
   how well the PR `## Changelog` sections were written.
 
 ## Implementation Units
@@ -135,8 +135,8 @@ Unblocks the release archive step.
 
 **Dependencies:** None
 
-**Status:** Shipped as `RELEASES.md` (canonical template renamed from `RELEASING.md` — see bird commit
-`da19ad5 docs: rename RELEASING.md to RELEASES.md and align with canonical template`).
+**Status:** Shipped as `RELEASES.md` (canonical template renamed from `RELEASING.md` — see bird commit `da19ad5 docs:
+rename RELEASING.md to RELEASES.md and align with canonical template`).
 
 **Files:**
 
@@ -169,9 +169,9 @@ Unblocks the release archive step.
 
 **Dependencies:** None
 
-**Status:** Shipped with 4 of 5 channels (Homebrew, `cargo install`, `cargo binstall`, pre-built binaries from
-GitHub Releases). "From source" (`git clone && cargo build --release`) is omitted — trivial for Rust users and implicit.
-If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
+**Status:** Shipped with 4 of 5 channels (Homebrew, `cargo install`, `cargo binstall`, pre-built binaries from GitHub
+Releases). "From source" (`git clone && cargo build --release`) is omitted — trivial for Rust users and implicit. If
+strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 **Files:**
 
@@ -271,7 +271,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 - [x] **Unit 6: Generate CHANGELOG.md for v0.1.0 (on release branch)**
 
-**Goal:** Populate CHANGELOG.md with v0.1.0 release notes using `generate-changelog.sh`.
+**Goal:** Populate CHANGELOG.md with v0.1.0 release notes using `generate-changelog.py`.
 
 **Requirements:** R3, R7
 
@@ -286,7 +286,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 - This happens on the release branch during release prep, NOT on dev
 - Create `release/v0.1.0` from `origin/main`
 - Cherry-pick non-docs commits from dev
-- Run `~/.claude/skills/rust-tool-release/scripts/generate-changelog.sh`
+- Run `~/.claude/skills/rust-tool-release/scripts/generate-changelog.py`
 - The script auto-detects version from branch name
 - Commit CHANGELOG.md as part of the release PR to main
 - After PR merges: `git tag v0.1.0 && git push origin main --tags`
@@ -297,7 +297,7 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 **Test scenarios:**
 
-- Happy path: `generate-changelog.sh` produces a CHANGELOG.md with a `## [0.1.0]` section
+- Happy path: `generate-changelog.py` produces a CHANGELOG.md with a `## [0.1.0]` section
 - Happy path: CHANGELOG.md content includes PR links and author attribution
 - Error path: script fails if `cliff.toml` is misconfigured — verify `[remote.github]` section exists
 
@@ -318,12 +318,12 @@ If strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-| --- | --- |
-| `generate-completions.sh` doesn't support the crate/bin name split | Crate ships a single `anc` bin; run the script once against `anc` |
-| `generate-changelog.sh` produces empty output (squash-merge history) | The script uses git-cliff on cherry-picked commits (which are individual conventional commits), not squash-merged ones |
-| Homebrew formula pre-seed conflicts with first real release | Use `v0.0.0` placeholder per documented pattern |
-| `cargo publish` fails on first run (Trusted Publishing not configured) | First publish must be manual with `CARGO_REGISTRY_TOKEN` |
+| Risk                                                                   | Mitigation                                                                                                             |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `generate-completions.sh` doesn't support the crate/bin name split     | Crate ships a single `anc` bin; run the script once against `anc`                                                      |
+| `generate-changelog.py` produces empty output (squash-merge history)   | The script uses git-cliff on cherry-picked commits (which are individual conventional commits), not squash-merged ones |
+| Homebrew formula pre-seed conflicts with first real release            | Use `v0.0.0` placeholder per documented pattern                                                                        |
+| `cargo publish` fails on first run (Trusted Publishing not configured) | First publish must be manual with `CARGO_REGISTRY_TOKEN`                                                               |
 
 ## Sources & References
 
@@ -346,8 +346,8 @@ Plan audited against repo state. Resolved: Units 1, 2, 3. Remaining: Units 4, 5,
 - Unit 5 (stale branch cleanup) — NOT done; 6 stale `origin/*` branches remain (enumerated in Unit 5 body).
 - Unit 6 (CHANGELOG v0.1.0) — NOT done; `CHANGELOG.md` is a 1-line header. No `v0.1.0` tag exists.
 
-Next action: Unit 4 (Homebrew formula pre-seed) is the smallest independent piece. Unit 6 blocks the actual release
-and must happen on a `release/v0.1.0` branch, not on `dev`. Unit 5 is trivial housekeeping.
+Next action: Unit 4 (Homebrew formula pre-seed) is the smallest independent piece. Unit 6 blocks the actual release and
+must happen on a `release/v0.1.0` branch, not on `dev`. Unit 5 is trivial housekeeping.
 
 ### 2026-04-16
 
@@ -384,7 +384,7 @@ All 6 units complete. v0.1.0 released successfully through the full pipeline:
 
 - Release branch cherry-picked 13 commits from dev, excluding guarded docs/plans/ paths
 - Cargo.toml already at 0.1.0, completions already fresh -- no bump or regen needed
-- CHANGELOG.md generated via generate-changelog.sh with PR body expansion
+- CHANGELOG.md generated via generate-changelog.py with PR body expansion
 - PR #18 merged to main, all 9 CI checks passed
 - Alpha v0.1.0-alpha.1 published manually to establish crate on crates.io
 - Trusted Publishing configured, then annotated tag pushed
@@ -392,5 +392,5 @@ All 6 units complete. v0.1.0 released successfully through the full pipeline:
 - homebrew-tap: formula update PR, bottle builds (3 platforms), publish, finalize-release all succeeded
 - make_latest flipped to true. All channels live.
 
-Post-release: two CE todos filed for monorepo discovery (006) and multi-language support (007),
-discovered during RC testing against bird, xr, and markitdown.
+Post-release: two CE todos filed for monorepo discovery (006) and multi-language support (007), discovered during RC
+testing against bird, xr, and markitdown.

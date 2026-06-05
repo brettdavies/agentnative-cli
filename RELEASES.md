@@ -79,7 +79,7 @@ Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`, `docs/r
 isn't `release/*`.
 
 **Branch naming**: `release/v<version>` or `release/v<version>-<slug>` (e.g. `release/v0.1.0`,
-`release/v0.2.0-python-checks`). The `v<version>` prefix is required: `scripts/generate-changelog.sh` extracts the
+`release/v0.2.0-python-checks`). The `v<version>` prefix is required: `scripts/generate-changelog.py` extracts the
 version from the branch name.
 
 ```bash
@@ -121,7 +121,7 @@ git add src/skill_install/skill.json && \
     git commit -m "chore(skill): refresh fixture for v0.2.0" || true
 
 # 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this).
-./scripts/generate-changelog.sh
+./scripts/generate-changelog.py
 
 # 9. Scrub CHANGELOG.md via Vale + LanguageTool + unslop. See § Prose scrubbing.
 #    Fix findings on upstream PR bodies, never by hand-editing CHANGELOG.md. When clean:
@@ -257,7 +257,7 @@ lt_check /tmp/body.md
 
 # 6. Apply the cleaned version.
 gh pr edit <num> --body-file /tmp/body.md     # for PR body edits
-# ./scripts/generate-changelog.sh             # for CHANGELOG.md (re-runs the PR-body fetch from GitHub)
+# ./scripts/generate-changelog.py             # for CHANGELOG.md (re-runs the PR-body fetch from GitHub)
 ```
 
 For a `CHANGELOG.md` finding, fix the upstream PR body and regenerate. Hand-editing `CHANGELOG.md` directly produces

@@ -258,7 +258,7 @@ None applicable — this is repo-internal release choreography.
 **Approach:**
 
 - Resolve Q-CLI1 first (MINOR vs PATCH). Recommendation MINOR (`v0.2.0`).
-- Run `scripts/generate-changelog.sh` if the project uses it for changelog generation, otherwise hand-edit per the
+- Run `scripts/generate-changelog.py` if the project uses it for changelog generation, otherwise hand-edit per the
   existing CHANGELOG voice.
 - The version-string-on-`dev` note: `Cargo.toml` shows `version = "0.1.0"` even though tags `v0.1.1`/`v0.1.2`/`v0.1.3`
   exist. This is consistent with prior release branches doing the bump on the `release/*` branch rather than `dev`.
@@ -641,7 +641,7 @@ Run in order. The first three steps are HARD GATES — do not advance past a fai
 1. ☐ Cut `release/launch` from `dev` HEAD: `git switch -c release/launch dev`.
 2. ☐ On `release/launch`: bump `Cargo.toml` version `0.1.0 → 0.2.0`; `cargo build` regenerates `Cargo.lock`; commit as
    `chore: bump version to 0.2.0` per the established pattern (`a1b3bfd` for v0.1.3).
-3. ☐ Generate CHANGELOG entry for `v0.2.0`: `scripts/generate-changelog.sh` (or `git cliff --tag v0.2.0 --unreleased`
+3. ☐ Generate CHANGELOG entry for `v0.2.0`: `scripts/generate-changelog.py` (or `git cliff --tag v0.2.0 --unreleased`
    per `cliff.toml`); commit as `docs(changelog): v0.2.0`.
 4. ☐ Open PR `release/launch` → `main` titled `release: v0.2.0` (mirror `release: v0.1.3 (#28)`). Body uses
    `.github/pull_request_template.md` cascade per global CLAUDE.md.

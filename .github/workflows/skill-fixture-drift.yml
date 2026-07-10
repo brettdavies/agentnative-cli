@@ -9,17 +9,22 @@
 
 name: skill-fixture-drift
 
+# pull_request only: merges to main/dev are squash merges, so a push run
+# would re-check the identical tree already checked at the PR head.
 on:
   pull_request:
-  push:
-    branches: [main, dev]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   drift-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

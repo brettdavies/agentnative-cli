@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Pre-commit hook: fast checks scoped to staged files only.
+#
+# Defensive: each tool no-ops with a notice when not installed, so it never
+# blocks a commit on a machine that hasn't set up the full toolchain yet.
+# Kept staged-file-scoped (not whole-repo) so it stays fast enough to run on
+# every commit; the whole-repo equivalents live in scripts/hooks/pre-push.
+#
+# Activated per clone via: git config core.hooksPath scripts/hooks
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+pass() { echo -e "  ${GREEN}✓${RESET} $1"; }
+fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
+
+echo -e "${BOLD}Running pre-commit checks...${RESET}"
+
+mapfile -t staged_files < <(git diff --cached --name-only --diff-filter=ACM)
+
+staged_rs=()
+staged_md=()
+staged_sh=()
+for f in "${staged_files[@]}"; do
+    case "$f" in
+        *.rs) staged_rs+=("$f") ;;
+        *.md) staged_md+=("$f") ;;
+        *.sh) staged_sh+=("$f") ;;
+    esac
+done
+if printf '%s\n' "${staged_files[@]}" | grep -qx 'scripts/hooks/pre-commit\|scripts/hooks/pre-push'; then
+    staged_sh+=("scripts/hooks/pre-commit" "scripts/hooks/pre-push")
+fi
+
+# 1. Rust formatting — staged .rs files only
+if [ ${#staged_rs[@]} -gt 0 ]; then
+    if command -v cargo >/dev/null 2>&1; then
+        cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check (run \`cargo fmt\` and re-stage)"
+        pass "fmt (${#staged_rs[@]} file(s))"
+    else
+        echo "  - fmt (skipped: cargo not installed)"
+    fi
+else
+    echo "  - fmt (skipped: no staged .rs files)"
+fi
+
+# 2. Markdown lint — staged .md files only
+if [ ${#staged_md[@]} -gt 0 ]; then
+    if command -v markdownlint-cli2 >/dev/null 2>&1; then
+        markdownlint-cli2 "${staged_md[@]}" || fail "markdownlint-cli2"
+        pass "markdownlint (${#staged_md[@]} file(s))"
+    else
+        echo "  - markdownlint (skipped: install via \`brew install markdownlint-cli2\`)"
+    fi
+else
+    echo "  - markdownlint (skipped: no staged .md files)"
+fi
+
+# 3. Shellcheck — staged .sh files (and the hooks themselves if touched)
+if [ ${#staged_sh[@]} -gt 0 ]; then
+    if command -v shellcheck >/dev/null 2>&1; then
+        mapfile -t staged_sh_uniq < <(printf '%s\n' "${staged_sh[@]}" | sort -u)
+        shellcheck --severity=warning "${staged_sh_uniq[@]}" || fail "shellcheck --severity=warning"
+        pass "shellcheck (${#staged_sh_uniq[@]} file(s))"
+    else
+        echo "  - shellcheck (skipped: install via \`brew install shellcheck\`)"
+    fi
+else
+    echo "  - shellcheck (skipped: no staged .sh files)"
+fi
+
+echo -e "${BOLD}${GREEN}Pre-commit checks passed.${RESET}"

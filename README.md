@@ -404,7 +404,7 @@ Local setup:
 ```bash
 git clone https://github.com/brettdavies/agentnative-cli
 cd agentnative-cli
-git config core.hooksPath scripts/hooks  # mirror CI locally on every push
+git config core.hooksPath scripts/hooks  # fast checks on commit, full CI mirror on push
 cargo test
 cargo run -- audit .
 ```

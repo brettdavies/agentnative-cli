@@ -1,0 +1,19 @@
+# Source repo dependabot-preflight wrapper: calls the centralized reusable workflow.
+#
+# Enumerates pending dependency updates (cargo outdated, github-actions tag
+# drift) before a release branch is cut, so they merge on dev or get rejected
+# instead of arriving as Dependabot PRs the moment the release commit lands.
+# Manual trigger only: Actions -> "Dependabot Preflight" -> "Run workflow",
+# as the first step of RELEASES-PREFLIGHT.md.
+name: Dependabot Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  preflight:
+    uses: brettdavies/.github/.github/workflows/dependabot-preflight.yml@4981e4f8f9b08eac465635a6d547ae078a059bd5 # main as of 2026-09-07

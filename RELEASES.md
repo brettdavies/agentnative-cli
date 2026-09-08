@@ -1,10 +1,12 @@
 # Releasing `agentnative`
 
-Operational runbook. Rationale lives in [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md).
+Operational runbook. Rationale lives in [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md). Pre-cut go/no-go checklist
+lives in [`RELEASES-PREFLIGHT.md`](./RELEASES-PREFLIGHT.md); post-tag verification lives in
+[`RELEASES-POSTFLIGHT.md`](./RELEASES-POSTFLIGHT.md).
 
 ```text
 feature branch → PR to dev (squash merge)
-              → cherry-pick to release/* branch
+              → overlay dev's tree onto a release/* branch cut from main
               → PR to main (squash merge)
               → tag push triggers crates.io publish + GitHub Release + Homebrew dispatch
 ```
@@ -74,6 +76,9 @@ Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` v
 
 ## Releasing dev to main
 
+Before cutting a release branch, walk [`RELEASES-PREFLIGHT.md`](./RELEASES-PREFLIGHT.md) end-to-end. Any unchecked item
+holds the release.
+
 Engineering docs (`docs/plans/`, `docs/solutions/`, `docs/brainstorms/`, `docs/reviews/`) live on `dev` only.
 `guard-main-docs.yml` blocks them from reaching `main`, and `guard-release-branch.yml` rejects any PR to main whose head
 isn't `release/*`.
@@ -82,11 +87,91 @@ isn't `release/*`.
 `release/v0.2.0-python-checks`). The `v<version>` prefix is required: `scripts/generate-changelog.py` extracts the
 version from the branch name.
 
+`main` and `dev` share only an ancient merge-base: every release squash-merges into `main`, so the two branches diverge
+in history even as their content converges. Reconciling that with a merge, or a branch cut from `dev`, produces a pile
+of rename/delete and lockfile conflicts that are artifacts of the lineage, not of the content shipping. The release
+branch is therefore built as a **clean descendant of `main`** with `dev`'s tree overlaid on top, asserting the desired
+end-state directly:
+
 ```bash
+# 0. Nothing on main that dev never received (security PRs, hotfixes, config). Exits 1 while drift exists.
+scripts/release/drift.sh
+
 # 1. Branch from main, NOT dev.
 git fetch origin
-git checkout -b release/v0.2.0 origin/main
+git checkout -B release/v0.2.0 origin/main
 
+# 2. Overlay dev's entire tracked tree onto the main base. `checkout -- .` writes dev's
+#    paths but does not delete files that exist on main and are absent on dev, so remove
+#    those next (the 'D' rows are main-only files dev deleted).
+git checkout origin/dev -- .
+git diff --name-status origin/main origin/dev | grep '^D'
+trash <each main-only file listed above>
+
+# 3. Strip the paths guard-main-docs forbids on main. The set resolves from the workflow;
+#    never restate it inline, because every hand-kept copy drifted from what CI enforces.
+GUARDED="$(scripts/release/guarded-paths.sh)"
+git ls-files | grep -E "$GUARDED" | xargs -r trash
+git add -A                                                      # stages adds, mods, AND deletions
+
+# 4. Bump the version in Cargo.toml and refresh Cargo.lock.
+sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
+cargo update -p agentnative
+
+# 5. Regenerate completions (catches any subcommand/flag changes missed during dev).
+./scripts/generate-completions.sh
+
+# 6. Refresh the skill.json fixture from upstream and review the diff.
+bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
+
+# 7. Generate CHANGELOG.md from the PRs merged into dev since the previous release. The
+#    overlay commit carries no per-PR history, so the section is built from dev's PRs, not
+#    from this branch's commits. Then scrub it via Vale + LanguageTool + unslop (see
+#    § Prose scrubbing); fix findings on upstream PR bodies and regenerate, never by hand.
+scripts/generate-changelog.py --from-dev-prs
+git add -A
+
+# 8. Verify before committing.
+#    A: staged tree equals dev's minus the version files, the regenerated artifacts, and
+#       the stripped guarded paths. Anything else printed here is a mistake.
+git diff --cached --name-only origin/dev | grep -Ev "$GUARDED" \
+  | grep -Ev '^(Cargo\.toml|Cargo\.lock|CHANGELOG\.md|completions/|src/skill_install/skill\.json$)' \
+  && echo "unexpected delta above; investigate" || echo "(clean: only intended deltas)"
+#    B: no guarded path in the release tree.
+git diff --cached --name-only origin/main | grep -E "$GUARDED" \
+  && echo "LEAKED a guarded path: reset and redo" || echo "(no guarded paths)"
+#    D: what this release ADDS to main. The leak check screens against the registered
+#       set, so it is blind to a category nobody registered yet. Every docs/ entry and
+#       every added markdown file needs a reason to ship, or it needs registering in the
+#       workflow's extra_paths and removing from the branch.
+git diff --cached --diff-filter=A --name-only origin/main | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
+
+# 9. Commit the overlay as one commit sitting directly on top of main, then run the
+#    preflight gates against it (build the release binary first: cargo build --release).
+git commit
+scripts/release/preflight.sh all
+
+# 10. Push and open the PR. Scrub body in /tmp/ first.
+git push -u origin release/v0.2.0
+gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0" --body-file /tmp/body.md
+```
+
+The result is a single commit whose diff against `main` is the release, with `main` as an ancestor, so the PR merges
+with zero conflicts. When it merges, the deploy / publish workflow picks up the push to `main`. Auto-delete removes
+`release/v0.2.0` from the remote on merge. `dev` is untouched.
+
+→ Rationale (why overlay, not merge; why cut from `main`):
+[`RELEASES-RATIONALE.md` § Branching model](./RELEASES-RATIONALE.md#branching-model). CHANGELOG mechanics:
+[`RELEASES-RATIONALE.md` § CHANGELOG generation](./RELEASES-RATIONALE.md#changelog-generation).
+
+### Exception: cherry-pick
+
+The overlay is the release construction for every repo on this flow. Cherry-picking the dev squash-commits onto the
+`origin/main` base is the exception, kept for a repo that has a stated reason it cannot overlay (record it under
+[Project specifics](#project-specifics)); the per-PR changelog is not such a reason, since `--from-dev-prs` builds it
+from `dev` either way. When cherry-picking, run the triple-diff verification:
+
+```bash
 # 2. List the dev commits not yet on main.
 git log --oneline dev --not origin/main
 
@@ -94,50 +179,30 @@ git log --oneline dev --not origin/main
 git cherry-pick <sha1> <sha2> ...
 
 # 4. Triple-diff verification.
+GUARDED="$(scripts/release/guarded-paths.sh)"
+
 git diff origin/main..HEAD --stat                                              # A: ship surface
-git diff HEAD..origin/dev --name-only | grep -v '^docs/' || echo "(none)"      # B: no missed picks
+git diff HEAD..origin/dev --name-only | grep -Ev "$GUARDED" || echo "(none)"   # B: no missed picks
 git diff origin/dev..origin/main --stat | tail -5                              # C: phantom-commits sanity
 
 # Re-confirm no guarded paths leaked.
 git diff origin/main..HEAD --name-only \
-  | grep -E '^(docs/plans|docs/brainstorms|docs/ideation|docs/reviews|docs/solutions|\.context)' \
-  && echo "LEAKED — reset and redo" || echo "(clean)"
+  | grep -E "$GUARDED" \
+  && echo "LEAKED: reset and redo" || echo "(clean)"
+
+# D: what this release ADDS to main (see step 8 above for why).
+git diff origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
 
 # Patch-id cherry check (noisy in squash-merge workflow; triage per-line).
 git cherry HEAD origin/dev | grep '^+' || echo "(none)"
-
-# 5. Bump version in Cargo.toml and commit.
-sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
-cargo update -p agentnative   # refresh Cargo.lock
-git add Cargo.toml Cargo.lock && git commit -m "chore: bump version to 0.2.0"
-
-# 6. Regenerate completions (catches any subcommand/flag changes missed during dev).
-./scripts/generate-completions.sh
-git add completions/ && git commit -m "chore: regenerate shell completions" || true
-
-# 7. Refresh the skill.json fixture from upstream and review the diff.
-bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
-git add src/skill_install/skill.json && \
-    git commit -m "chore(skill): refresh fixture for v0.2.0" || true
-
-# 8. Generate CHANGELOG.md (auto-detects version from branch name; CI enforces this).
-./scripts/generate-changelog.py
-
-# 9. Scrub CHANGELOG.md via Vale + LanguageTool + unslop. See § Prose scrubbing.
-#    Fix findings on upstream PR bodies, never by hand-editing CHANGELOG.md. When clean:
-git add CHANGELOG.md && git commit -m "docs: update CHANGELOG.md for v0.2.0"
-
-# 10. Push and open the PR. Scrub body in /tmp/ first.
-git push -u origin release/v0.2.0
-gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0" --body-file /tmp/body.md
 ```
 
-When the PR merges, the deploy / publish workflow picks up the push to `main`. Auto-delete removes `release/v0.2.0` from
-the remote on merge. `dev` is untouched.
+Cherry-picks of PRs that touched guarded paths hit modify/delete or rename/delete conflicts, since those paths live on
+`dev` but are blocked from `main`; resolve them per the next section. Steps 4 to 10 of the overlay recipe then apply
+unchanged.
 
-→ Rationale + triple-diff false-positive triage:
-[`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification). CHANGELOG
-mechanics: [`RELEASES-RATIONALE.md` § CHANGELOG generation](./RELEASES-RATIONALE.md#changelog-generation).
+→ Triple-diff false-positive triage:
+[`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification).
 
 ### Cherry-pick conflicts on guarded paths
 
@@ -164,7 +229,7 @@ git cherry-pick --continue --no-edit
 
 Repeat per conflicting commit. After all picks land, run `git ls-files docs/plans/ docs/brainstorms/`. If anything
 remains, drop it with the same two-step pattern and commit as `chore(release): drop stray plan spikes from cherry-pick
-rename detection` before step 4's leak check. Rename detection occasionally re-adds a path under the rename target's new
+rename detection` before the leak check. Rename detection occasionally re-adds a path under the rename target's new
 name; the post-pick `ls-files` check catches that.
 
 ## Tagging and publishing
@@ -197,31 +262,32 @@ this repo, which idempotently flips `make_latest: true`.
 
 ### After publish: sync `dev` with the release
 
-Once `finalize-release.yml` has flipped the GitHub Release to `published`, backport the release-bookkeeping files from
-`main` to `dev`:
+Once `finalize-release.yml` has flipped the GitHub Release to `published`, bring the release bookkeeping (`Cargo.toml`
+version, `Cargo.lock`, `CHANGELOG.md`) back to `dev` so the integration branch starts from the released baseline and
+`anc audit`'s embedded badge URL points at the released slug:
 
 ```bash
-./scripts/sync-dev-after-release.sh v0.2.0
-git push origin dev
+scripts/sync-dev-after-release.sh v0.2.0
 ```
 
-The backport is idempotent: re-running on a `dev` already in sync exits 0 with no commit.
+The script opens a PR against `dev`; merge it once CI is green. The postflight backport gate looks for that merged PR.
+Never merge `main` into `dev` or push to `dev` directly: the squash-merged histories share no recent ancestry, so the
+merge conflicts on every file both sides touched, and a direct push bypasses `dev`'s required checks.
+
+The backport is idempotent: re-running on a `dev` already in sync exits 0 without creating a branch or PR.
 
 → Rationale: [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
 
-### First-time publish (one-time)
+## Rollback
 
-The initial crate publish requires a regular crates.io API token (Trusted Publishing needs the crate to exist first).
-Steps for `v0.1.0`:
+A bad release is rolled back at the registry and formula surfaces first, then repaired in git. Rollback re-points what
+users get; it does not revert history. After rolling back, land a `fix/*` or `revert` through the normal `dev` to
+`release/*` to `main` flow so `main` matches what is live. Knowing the last-good identifier before the release goes out
+is a [`RELEASES-POSTFLIGHT.md`](./RELEASES-POSTFLIGHT.md) gate.
 
-1. Verify your email on crates.io (`https://crates.io/settings/profile`).
-2. `cargo publish` locally with `CARGO_REGISTRY_TOKEN` set.
-3. Configure Trusted Publishing on crates.io: `https://crates.io/settings/tokens/trusted-publishing` → add
-   `brettdavies/agentnative-cli`, workflow `release.yml`.
-4. Enable "Enforce Trusted Publishing" to block token-based publishes.
-5. Remove the `CARGO_REGISTRY_TOKEN` repository secret.
+The commands live under [Project specifics § Rollback commands](#rollback-commands).
 
-Subsequent releases use the OIDC flow built into `release.yml`: no static token in CI.
+→ Rationale: [`RELEASES-RATIONALE.md` § Rollback](./RELEASES-RATIONALE.md#rollback).
 
 ## Prose scrubbing
 
@@ -290,7 +356,12 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 → Status-check context strings (inline vs reusable):
 [`RELEASES-RATIONALE.md` § Status-check context strings](./RELEASES-RATIONALE.md#status-check-context-strings).
 
-## Required secrets
+## Project specifics
+
+Operational ship-channel details for `agentnative`: secrets, channels, targets, bootstrap, rollback. Not rationale, not
+pre-cut checks.
+
+### Required secrets
 
 | Secret                 | Purpose                                                                                                           | Lifecycle                                      |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -299,8 +370,63 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 
 `GITHUB_TOKEN` is automatic; CI (`ci.yml`) only needs `contents: read` and uses no extra secrets.
 
+### Distribution channels
+
+| Channel        | Identifier                              | Populated by                                            |
+| -------------- | --------------------------------------- | ------------------------------------------------------- |
+| crates.io      | `agentnative` (installs `anc`)          | `release.yml` `publish-crate` (OIDC Trusted Publishing) |
+| Homebrew       | `brettdavies/tap/agentnative`           | `brettdavies/homebrew-tap` `update-formula` dispatch    |
+| GitHub Release | `v<version>` assets + `sha256sum.txt`   | `release.yml` `release`, then `finalize-release.yml`    |
+| cargo-binstall | resolves from the GitHub Release assets | `[package.metadata.binstall]` in `Cargo.toml`           |
+
+### Cross-compile target matrix
+
+Seven targets, listed in the `build` row of [§ Tagging and publishing](#tagging-and-publishing). The two musl rows are
+hard-blocking (`linux_musl_required: true`) and the x86_64-musl binary is exec-verified inside `alpine:latest`
+(`linux_musl_verify_alpine: true`).
+
+### First-time publish (one-time)
+
+The initial crate publish requires a regular crates.io API token (Trusted Publishing needs the crate to exist first).
+Steps for `v0.1.0`:
+
+1. Verify your email on crates.io (`https://crates.io/settings/profile`).
+2. `cargo publish` locally with `CARGO_REGISTRY_TOKEN` set.
+3. Configure Trusted Publishing on crates.io: `https://crates.io/settings/tokens/trusted-publishing` → add
+   `brettdavies/agentnative-cli`, workflow `release.yml`.
+4. Enable "Enforce Trusted Publishing" to block token-based publishes.
+5. Remove the `CARGO_REGISTRY_TOKEN` repository secret.
+
+Subsequent releases use the OIDC flow built into `release.yml`: no static token in CI.
+
+### Rollback commands
+
+Record the previous tag before pushing the new one; every command below needs it.
+
+```bash
+PREV=v0.1.0      # last-good tag
+BAD=v0.2.0       # the release being rolled back
+
+# crates.io: yank the bad version. Existing lockfiles keep resolving it; new resolutions
+# (cargo install, cargo binstall, which follows the crates.io index) skip it.
+cargo yank --version "${BAD#v}" agentnative
+
+# GitHub Release: re-point /releases/latest at the last-good tag.
+gh release edit "$PREV" --latest
+gh release edit "$BAD" --prerelease
+
+# Homebrew: revert the formula bump on the tap so `brew install` resolves the last-good bottle.
+gh api repos/brettdavies/homebrew-tap/commits --jq '.[0:5][] | .sha[0:7] + " " + .commit.message'
+# then revert the `agentnative: add <version> bottle.` and formula-bump commits via a PR to the tap's main.
+```
+
+Un-yank with `cargo yank --undo --version <version> agentnative` if the yank was wrong. A yanked crate version cannot be
+re-published; the fix ships as the next patch version through the normal flow.
+
 ## Related docs
 
+- [`RELEASES-PREFLIGHT.md`](./RELEASES-PREFLIGHT.md) (pre-cut go/no-go checklist gating release-branch creation)
+- [`RELEASES-POSTFLIGHT.md`](./RELEASES-POSTFLIGHT.md) (post-tag verification of the publish pipeline)
 - [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md) (release flow rationale, CHANGELOG pipeline, branch-protection
   pitfalls)
 - [`.github/pull_request_template.md`](.github/pull_request_template.md) (PR body structure with changelog sections)

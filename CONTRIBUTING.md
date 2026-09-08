@@ -28,7 +28,7 @@ reviewed when scope and time permit. A solo maintainer cannot promise merge wind
 
 ```text
 feat/* → PR to dev (squash merge)
-       → cherry-pick non-docs commits to release/<YYYY-MM-DD>-<slug>
+       → overlay dev's tree onto release/v<X.Y.Z>, cut from main, minus the guarded paths
        → PR release/* to main (squash merge)
        → tag v<X.Y.Z> + GitHub Release + crates.io + Homebrew tap
 ```

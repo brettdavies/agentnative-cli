@@ -7,6 +7,12 @@
 #
 # pull_request only: merges to main/dev are squash merges, so a push run
 # would re-verify the identical tree already checked at the PR head.
+#
+# No concurrency block here: the reusable declares its own
+# `${{ github.workflow }}-${{ github.ref }}` group, which evaluates in this
+# caller's context. Declaring the same group here makes the caller and the
+# called workflow contend for one group, and GitHub cancels the run as a
+# deadlock before any job starts.
 name: CI
 
 on:
@@ -15,10 +21,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   ci:

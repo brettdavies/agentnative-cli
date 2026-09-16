@@ -109,6 +109,10 @@ fn find_raw_exit_codes(source: &str, file: &str) -> Vec<SourceLocation> {
             if let Some(start) = text.rfind('(')
                 && let Some(end) = text.rfind(')')
             {
+                #[expect(
+                    clippy::string_slice,
+                    reason = "start and end come from rfind on the ASCII parens"
+                )]
                 let arg = text[start + 1..end].trim();
                 // A raw integer literal is all digits (possibly with a leading minus)
                 let is_raw_literal = !arg.is_empty()

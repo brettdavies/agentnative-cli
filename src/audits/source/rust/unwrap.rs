@@ -250,6 +250,10 @@ fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
             while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
                 i += 1;
             }
+            #[expect(
+                clippy::string_slice,
+                reason = "start and i are positions from the ASCII byte scan above"
+            )]
             let ident = &args[start..i];
             // After the identifier, skip whitespace to see what follows.
             let mut j = i;
@@ -257,6 +261,11 @@ fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
                 j += 1;
             }
             let next = bytes.get(j).copied();
+            #[expect(
+                clippy::string_slice,
+                reason = "j is a position from the ASCII whitespace scan above"
+            )]
+            let after_ident = &args[j..];
             if ident == "test" && (next.is_none() || matches!(next, Some(b',') | Some(b')'))) {
                 // Bare `test` predicate, followed by a separator (`,`, `)`,
                 // or end-of-args). At even parity (`!negated`) the item is
@@ -269,7 +278,7 @@ fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
                 continue;
             } else if (ident == "any" || ident == "all" || ident == "not")
                 && next == Some(b'(')
-                && let Some(inner) = balanced_parens(&args[j..])
+                && let Some(inner) = balanced_parens(after_ident)
             {
                 let recurse_negated = match ident {
                     "not" => !negated,
@@ -323,6 +332,10 @@ fn balanced_parens(s: &str) -> Option<&str> {
         } else if b == b')' {
             depth -= 1;
             if depth == 0 {
+                #[expect(
+                    clippy::string_slice,
+                    reason = "byte 0 is the ASCII '(' checked on entry and i sits on an ASCII ')'"
+                )]
                 return Some(&s[1..i]);
             }
         }

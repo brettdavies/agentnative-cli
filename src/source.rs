@@ -1,3 +1,7 @@
+// Matched source text is arbitrary UTF-8, so no byte offset in this module is
+// a known char boundary; previews are bounded by character count.
+#![deny(clippy::string_slice)]
+
 use ast_grep_core::Pattern;
 use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::{Python, Rust};

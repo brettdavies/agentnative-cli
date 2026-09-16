@@ -12,6 +12,9 @@ fn fixture_path(name: &str) -> String {
     format!("{manifest_dir}/tests/fixtures/{name}")
 }
 
+/// Exit code of a Rust process that died from an uncaught panic.
+const RUST_PANIC_EXIT_CODE: i32 = 101;
+
 // ── Basic CLI tests ────────────────────────────────────────────────
 
 #[test]
@@ -296,6 +299,37 @@ fn test_source_only_fixture() {
     assert!(
         !has_behavioral,
         "source-only fixture should NOT have behavioral audits"
+    );
+}
+
+#[test]
+fn test_hostile_utf8_evidence_fixture_audits_to_a_scorecard() {
+    let path = fixture_path("hostile-utf8-evidence");
+
+    let assert = cmd()
+        .args(["audit", &path, "--source", "--output", "json"])
+        .assert()
+        .code(predicate::ne(RUST_PANIC_EXIT_CODE));
+
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let clamping = parsed["results"]
+        .as_array()
+        .expect("results should be an array")
+        .iter()
+        .find(|r| r["audit_id"] == "p7-output-clamping")
+        .expect("output-clamping row should be present");
+
+    assert_eq!(clamping["status"], "warn", "row: {clamping}");
+    let evidence = clamping["evidence"]
+        .as_str()
+        .expect("warn row carries evidence");
+    assert!(
+        evidence.contains("..."),
+        "multi-byte matched text is previewed, not aborted on: {evidence}"
     );
 }
 

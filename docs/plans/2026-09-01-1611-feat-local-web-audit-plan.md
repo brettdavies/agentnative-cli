@@ -496,11 +496,12 @@ flowchart TB
   (KTD3): pin a committed site SHA now, and in phase 2 (U12) add a scheduled weekly workflow that diffs site `dev` HEAD
   against the pin and opens a bump PR — staleness becomes calendar-visible, Dependabot-shaped, instead of contingent on
   unrelated CLI activity.
-- **aws-lc-sys build toolchain.** cmake is required on every target and NASM on Windows. The release matrix builds three
-  Linux rows inside `cross` containers that lack cmake, and the shared reusable workflows install neither tool.
-  Mitigation (U1): a `Cross.toml` pre-build step installs cmake in the `cross` rows, U1 asserts the tools on each runner
-  image the shared `rust-ci.yml` and `rust-release.yml` use, and an opt-in provisioning input on those workflows in
-  `brettdavies/.github` covers any image that lacks one; the matrix is proven green before U3 starts.
+- **aws-lc-sys build toolchain.** cmake is required on every target and NASM on x86-64 Windows. Checked against GitHub's
+  runner-image inventory: cmake is preinstalled on every hosted image this project uses, NASM on none of them. Two
+  surfaces compile the C library on Windows, CI's `check-windows` job and the release matrix's `x86_64-pc-windows-msvc`
+  row, and three release rows build inside `cross` containers that do not inherit the host's cmake. Mitigation (U1): one
+  opt-in NASM input on the two shared workflows in `brettdavies/.github`, and a `Cross.toml` `pre-build` in this repo
+  for the container rows; the matrix is proven green before U3 starts.
 - **New handler kinds outpacing the port.** A well-formed registry entry with an unported handler or eval rule must not
   hold vendoring hostage to an MCP-sized porting effort. Mitigation (KTD3): the unsupported binding compiles and reports
   skip with a named reason, the run's score is flagged non-comparable, and the bump PR's description lists any unported
@@ -538,7 +539,8 @@ flowchart TB
 | U9   | 2     | Version signal                    | site | worker route + build step                                                                                                 | —              |
 | U12  | 2     | Staleness note and bump workflow  | cli  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/web-audit-bump.yml`                                           | U7, U9         |
 
-U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in toolchain provisioning input).
+U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: an opt-in NASM input for the two Windows jobs;
+cmake needs no provisioning, since every hosted runner image already carries it).
 
 ### U1. Networking foundation and size gate
 
@@ -548,7 +550,7 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
 - **Dependencies:** None.
 - **Files:** `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/mod.rs`, `src/web_audit/transport.rs`,
   `src/web_audit/fetch/{mod,redirect,body,proxy}.rs`, `tests/web_audit_transport.rs`, `tests/fixtures/tls/` (self-signed
-  cert and key), and in `brettdavies/.github`: `rust-ci.yml`, `rust-release.yml` (opt-in toolchain input).
+  cert and key), and in `brettdavies/.github`: `rust-ci.yml`, `rust-release.yml` (opt-in NASM input, Windows jobs only).
 - **Approach:**
   1. Add ureq (rustls/aws-lc-rs/webpki-roots feature selection per KTD1, redirects disabled at the agent, exact-pin any
      pre-1.0 crate per repo convention), gzip + brotli features, `rustls` as a direct dependency at ureq's resolved
@@ -564,11 +566,16 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
   4. Measure `target/release/anc` before/after with the full dependency set; run `cargo deny check`; add
      `CDLA-Permissive-2.0` (webpki-roots) to the `deny.toml` allow list as a recorded licensing decision and validate
      the aws-lc-rs tree's licensing the same way.
-  5. Prove the build matrix: a `Cross.toml` pre-build step installs cmake in the three `cross` rows of the release
-     matrix; assert cmake (and NASM on the Windows runner) on each runner image the shared `rust-ci.yml` and
-     `rust-release.yml` use, and add an opt-in provisioning input to those workflows in `brettdavies/.github` only where
-     an image lacks a tool; the pre-push hook's step-7 comment lists mingw-w64, nasm, and cmake. The matrix is green
-     before U3 starts.
+  5. Prove the build matrix. Measured against GitHub's runner-image inventory, cmake already ships on `ubuntu-22.04`,
+     both Windows images and `macos-14`, so no cmake provisioning is needed on any hosted runner. NASM ships on neither
+     Windows image and `aws-lc-sys` requires it for x86-64 Windows, so two jobs need it: `rust-ci.yml`'s `check-windows`
+     (its `cargo check` still executes build scripts, so the C library is built) and `rust-release.yml`'s
+     `x86_64-pc-windows-msvc` row. Add one opt-in boolean input to both reusable workflows in `brettdavies/.github`,
+     with a Windows-gated step that installs NASM through `choco` and puts it on `PATH` before the cargo step; `choco`
+     rather than a third-party action so a shared workflow gains no new pinned dependency. The three `cross` rows build
+     in containers that do not inherit the host's cmake, and that is fixed by a `Cross.toml` `pre-build` in this repo,
+     needing no change to the shared workflows. The pre-push hook's step-7 comment lists mingw-w64 and nasm. The matrix
+     is green before U3 starts.
 - **Execution note:** Measurement first — record the release-binary delta in the PR body before porting anything onto
   the stack; ~5MB delta is the Goal Capsule stop condition.
 - **Patterns to follow:** `docs/solutions/architecture-patterns/xurl-subprocess-transport-layer.md` (Transport seam);
@@ -591,9 +598,9 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
   - Integration: HTTPS GET against a real public endpoint verifies bundled roots work with no system cert store
     (ignored-by-default network test, run in CI).
 - **Verification:** `cargo deny check` green with the recorded allow-list addition; the CI Windows check and every
-  release-matrix row green with the aws-lc-sys toolchain in place (native Windows and macOS runners, `cross` rows via
-  `Cross.toml`); pre-push hook step 7 green locally with the listed tools; measured size delta recorded and within the
-  ~5MB ceiling.
+  release-matrix row green with the aws-lc-sys toolchain in place (NASM on the two Windows jobs, `cross` rows via
+  `Cross.toml`, cmake already on every hosted image); pre-push hook step 7 green locally with the listed tools; measured
+  size delta recorded and within the ~5MB ceiling.
 
 ### U2. Vendoring pipeline
 
@@ -1076,7 +1083,8 @@ Existing code that partially solves a sub-problem, and whether the plan reuses i
 - `serde_yaml` (pinned build-dependency, deprecated upstream): reused by U2's codegen; re-evaluate if cargo-deny flags
   it.
 - Shared reusable workflows `rust-ci.yml` (native `windows-latest` check) and `rust-release.yml` (seven targets, three
-  via `cross`) in `brettdavies/.github`: extended with an opt-in toolchain input in U1, not duplicated.
+  via `cross`) in `brettdavies/.github`: extended with an opt-in NASM input in U1, not duplicated. Their runner images
+  already carry cmake, so only NASM and the `cross` containers need anything.
 - `src/scorecard/mod.rs` (2,621 lines, typed against `AuditResult`): shares no structure with `WebScorecard`. Not reused
   (KTD6), correctly.
 - Site-side, mirrored rather than rebuilt: `ssrf.ts` and `tests/web-audit-ssrf.test.ts` (locality classifier and its
@@ -1216,11 +1224,12 @@ merge. U7 and U12 both touch `render.rs` and `src/cli.rs`; U12 waits for U7 by d
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex;
 checkbox as you ship.
 
-- [ ] **T1 (P1, human: ~1 day / CC: ~30 min)** — U1 toolchain — Provision cmake and NASM for aws-lc-sys across CI and
-  the release matrix.
-  - Surfaced by: Architecture review — Issue 2 (D4, option 2A).
-  - Files: `Cross.toml`, `brettdavies/.github` `rust-ci.yml` and `rust-release.yml` (opt-in input),
-    `scripts/hooks/pre-push` (step-7 comment), this repo's workflow callers.
+- [ ] **T1 (P1, human: ~1 day / CC: ~30 min)** — U1 toolchain — Provision NASM on the two Windows jobs and cmake in the
+  `cross` containers.
+  - Surfaced by: Architecture review — Issue 2 (D4, option 2A), narrowed against GitHub's runner-image inventory: cmake
+    is preinstalled on every hosted image, NASM on neither Windows image.
+  - Files: `Cross.toml` (container cmake, this repo), `brettdavies/.github` `rust-ci.yml` and `rust-release.yml` (opt-in
+    NASM input), `scripts/hooks/pre-push` (step-7 comment), this repo's workflow callers.
   - Verify: every release-matrix row and the CI Windows check green with ureq in the tree.
 - [ ] **T2 (P1, human: ~1 day / CC: ~30 min)** — `locality.rs` — Port `ssrf.ts` classification verbatim with its test
   table.

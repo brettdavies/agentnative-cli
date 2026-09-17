@@ -1,6 +1,7 @@
 use crate::audit::Audit;
+use crate::audits::behavioral::subcommand_help::should_skip;
 use crate::project::Project;
-use crate::runner::{BinaryRunner, RunStatus};
+use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 pub struct JsonOutputAudit;
@@ -47,7 +48,7 @@ impl Audit for JsonOutputAudit {
                 } else {
                     // Flag not in top-level help. Probe subcommands, since most CLIs
                     // (gh, kubectl, cargo) put --output on subcommands, not top-level.
-                    probe_subcommands(runner, &output)
+                    probe_subcommands(runner, project.help_output())
                 }
             }
             _ => AuditStatus::Skip("could not run --help to detect output flags".into()),
@@ -65,12 +66,13 @@ impl Audit for JsonOutputAudit {
     }
 }
 
-/// Parse subcommand names from --help output and audit each for --output/--format.
+/// Probe each top-level subcommand from the shared help parse for --output/--format.
 ///
 /// Most CLI frameworks (clap, cobra, argparse) list subcommands under a "Commands:"
-/// or "Subcommands:" section. We parse those names and probe each one.
-fn probe_subcommands(runner: &BinaryRunner, help_output: &str) -> AuditStatus {
-    let subcommands = parse_subcommand_names(help_output);
+/// or "Subcommands:" section, and hand-written help under `... commands:`; the
+/// shared parser reads all of them.
+fn probe_subcommands(runner: &BinaryRunner, help: Option<&HelpOutput>) -> AuditStatus {
+    let subcommands = subcommands_to_probe(help);
     if subcommands.is_empty() {
         return AuditStatus::OptOut(
             "no --output/--format flag detected — tool does not ship structured output. \
@@ -103,47 +105,17 @@ fn probe_subcommands(runner: &BinaryRunner, help_output: &str) -> AuditStatus {
     )
 }
 
-/// Extract subcommand names from CLI --help output.
-///
-/// Looks for a "Commands:" or "Subcommands:" section and parses the first word
-/// of each indented line. Stops at the next section header or blank line gap.
-fn parse_subcommand_names(help_output: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut in_commands_section = false;
-
-    for line in help_output.lines() {
-        let trimmed = line.trim();
-
-        // Detect the start of a commands section
-        if trimmed.eq_ignore_ascii_case("commands:")
-            || trimmed.eq_ignore_ascii_case("subcommands:")
-            || trimmed.starts_with("Commands:")
-            || trimmed.starts_with("Subcommands:")
-        {
-            in_commands_section = true;
-            continue;
-        }
-
-        if in_commands_section {
-            // End of section: non-indented non-empty line (next section header)
-            if !trimmed.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
-                break;
-            }
-            // Skip empty lines within the section
-            if trimmed.is_empty() {
-                continue;
-            }
-            // Extract the first word as the subcommand name
-            if let Some(name) = trimmed.split_whitespace().next() {
-                // Skip "help" subcommand (meta, not a real command)
-                if name != "help" {
-                    names.push(name.to_string());
-                }
-            }
-        }
-    }
-
-    names
+/// Top-level subcommand names worth probing for an output flag: the shared
+/// parser's names minus the built-ins (`help`, shell completions) that the
+/// subcommand-help helper skips. `help` in particular echoes top-level help,
+/// so probing it could move this row on a tool that has no output flag.
+fn subcommands_to_probe(help: Option<&HelpOutput>) -> Vec<&str> {
+    help.map(HelpOutput::subcommands)
+        .unwrap_or_default()
+        .iter()
+        .map(String::as_str)
+        .filter(|name| !should_skip(name))
+        .collect()
 }
 
 /// Try safe subcommands with the detected flag to validate actual JSON output.
@@ -376,23 +348,81 @@ esac
     }
 
     #[test]
-    fn parse_subcommand_names_clap_format() {
-        let help = "Usage: mycli [COMMAND]\n\nCommands:\n  audit   Run audits\n  list    List items\n  help    Print help\n\nOptions:\n  -h, --help  Print help\n";
-        let names = parse_subcommand_names(help);
-        assert_eq!(names, vec!["audit", "list"]);
+    fn json_output_probes_hand_written_command_block() {
+        // herdr-shaped help: a `Common commands:` block whose entries all lead
+        // with the tool name. The `count` subcommand carries the output flag.
+        let script = r#"
+case "$*" in
+  *count*--output*json*|*count*--output=json*)
+    echo '{"count":3}';;
+  *count*--help*)
+    echo "Usage: test count [--output FORMAT]";;
+  *--help*)
+    echo "Usage: test [options]
+
+Common commands:
+  test            Launch interactively
+  test count      Count things
+  test list       List things";;
+  *)
+    echo "hello";;
+esac
+"#;
+        let project = test_project_with_sh_script(script);
+        let result = JsonOutputAudit.run(&project).expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass, "got {:?}", result.status);
     }
 
     #[test]
-    fn parse_subcommand_names_empty() {
-        let help = "Usage: mycli [OPTIONS]\n\nOptions:\n  -h, --help  Print help\n";
-        let names = parse_subcommand_names(help);
-        assert!(names.is_empty());
+    fn json_output_does_not_probe_the_help_subcommand() {
+        // `help --help` advertises --output and would validate as JSON, but
+        // `help` is a built-in the audit never probes, so the tool opts out.
+        let script = r#"
+case "$*" in
+  *help*--output*json*|*help*--output=json*)
+    echo '{"help":true}';;
+  help*--help*)
+    echo "Usage: test help [--output FORMAT]";;
+  *--help*)
+    echo "Usage: test [COMMAND]
+
+Commands:
+  audit   Run audits
+  help    Print help";;
+  *)
+    echo "hello";;
+esac
+"#;
+        let project = test_project_with_sh_script(script);
+        let result = JsonOutputAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::OptOut(_)),
+            "expected OptOut, got {:?}",
+            result.status
+        );
     }
 
     #[test]
-    fn parse_subcommand_names_subcommands_header() {
-        let help = "Subcommands:\n  run     Execute\n  build   Compile\n";
-        let names = parse_subcommand_names(help);
-        assert_eq!(names, vec!["run", "build"]);
+    fn subcommands_to_probe_clap_format_drops_help() {
+        let help = HelpOutput::from_raw(
+            "Usage: mycli [COMMAND]\n\nCommands:\n  audit   Run audits\n  list    List items\n  help    Print help\n\nOptions:\n  -h, --help  Print help\n",
+        );
+        assert_eq!(subcommands_to_probe(Some(&help)), ["audit", "list"]);
+    }
+
+    #[test]
+    fn subcommands_to_probe_empty_without_block_or_probe() {
+        let help =
+            HelpOutput::from_raw("Usage: mycli [OPTIONS]\n\nOptions:\n  -h, --help  Print help\n");
+        assert!(subcommands_to_probe(Some(&help)).is_empty());
+        assert!(subcommands_to_probe(None).is_empty());
+    }
+
+    #[test]
+    fn subcommands_to_probe_hand_written_block() {
+        let help = HelpOutput::from_raw(
+            "Usage: tool [options]\n\nCommon commands:\n  tool          Launch\n  tool run      Execute\n  tool build    Compile\n  tool completion zsh  Shell completions\n",
+        );
+        assert_eq!(subcommands_to_probe(Some(&help)), ["run", "build"]);
     }
 }

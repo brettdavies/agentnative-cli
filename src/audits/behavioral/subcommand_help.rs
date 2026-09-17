@@ -54,7 +54,8 @@ pub(crate) fn probe_subcommands(
     out
 }
 
-fn should_skip(name: &str) -> bool {
+/// Whether `name` is a built-in the subcommand probes leave alone.
+pub(crate) fn should_skip(name: &str) -> bool {
     SKIP_SUBCOMMANDS
         .iter()
         .any(|s| name.eq_ignore_ascii_case(s))

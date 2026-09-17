@@ -7,6 +7,10 @@
 //!    single source of truth for the `SkillHost` enum, `KNOWN_HOSTS` const,
 //!    and `resolve_host` fn. Updates to the JSON regenerate the Rust map
 //!    on next build — no manual sync.
+//! 3. Vendored web-audit registry (`src/web_audit/vendored/`) →
+//!    `$OUT_DIR/generated_web_registry.rs`. Driven by
+//!    `build_support/web_registry.rs`, which mirrors the site's normalizer
+//!    and compiles every registry pattern with the `regex` crate.
 //!
 //! Errors here are *intentionally loud* — every parse failure cites the
 //! file, requirement / host id, and field. The build is the right time to
@@ -16,8 +20,14 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+#[path = "build_support/js_regex.rs"]
+mod js_regex;
 #[path = "build_support/parser.rs"]
 mod parser;
+#[path = "build_support/ts_consts.rs"]
+mod ts_consts;
+#[path = "build_support/web_registry.rs"]
+mod web_registry;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -29,6 +39,7 @@ fn main() {
 
     emit_build_info(&manifest_dir);
     emit_skill_hosts(&manifest_dir);
+    emit_web_registry(&manifest_dir);
 
     let spec_version = match fs::read_to_string(spec_dir.join("VERSION")) {
         Ok(s) => s.trim().to_string(),
@@ -256,6 +267,53 @@ fn emit_skill_hosts(manifest_dir: &std::path::Path) {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let out_path = out_dir.join("generated_hosts.rs");
+    fs::write(&out_path, src)
+        .unwrap_or_else(|e| panic!("cannot write {}: {e}", out_path.display()));
+}
+
+/// Emit `$OUT_DIR/generated_web_registry.rs` from `src/web_audit/vendored/`.
+///
+/// The vendored set is the site's registry, remediation catalog, and the
+/// three TypeScript modules the probe User-Agent strings resolve from, plus
+/// `SITE_SHA` naming the site commit they were taken from. Every validation
+/// failure names the offending check id; see `build_support/web_registry.rs`.
+fn emit_web_registry(manifest_dir: &std::path::Path) {
+    let dir = manifest_dir.join("src/web_audit/vendored");
+    println!("cargo:rerun-if-changed=build_support/web_registry.rs");
+    println!("cargo:rerun-if-changed=build_support/js_regex.rs");
+    println!("cargo:rerun-if-changed=build_support/ts_consts.rs");
+    let read = |name: &str| -> String {
+        let path = dir.join(name);
+        println!("cargo:rerun-if-changed=src/web_audit/vendored/{name}");
+        fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "read {}: {e}\n  run `scripts/sync-web-audit.sh` to vendor the web-audit inputs",
+                path.display()
+            )
+        })
+    };
+    let site_sha = read("SITE_SHA").trim().to_string();
+    if site_sha.len() != 40 || !site_sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        panic!(
+            "src/web_audit/vendored/SITE_SHA must hold a full 40-hex commit SHA (got {site_sha:?})"
+        );
+    }
+    let consts = ts_consts::resolve_site_constants(
+        &read("user-agents.ts"),
+        &read("site-url.ts"),
+        &read("audit-routes.ts"),
+    )
+    .unwrap_or_else(|e| panic!("\n  web-audit vendored constants: {e}\n"));
+    let registry =
+        web_registry::normalize_registry(&read("registry.yaml"), &consts.probe_ua_tokens)
+            .unwrap_or_else(|e| panic!("\n  {e}\n"));
+    let ids: Vec<&str> = registry.checks.iter().map(|c| c.id.as_str()).collect();
+    let remediation = web_registry::normalize_remediation(&read("remediation.yaml"), &ids)
+        .unwrap_or_else(|e| panic!("\n  {e}\n"));
+    let src = web_registry::emit_rust(&registry, &remediation, &consts, &site_sha);
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    let out_path = out_dir.join("generated_web_registry.rs");
     fs::write(&out_path, src)
         .unwrap_or_else(|e| panic!("cannot write {}: {e}", out_path.display()));
 }

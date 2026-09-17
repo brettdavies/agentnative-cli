@@ -17,6 +17,7 @@ dependencies = [
  "insta",
  "libc",
  "predicates",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",

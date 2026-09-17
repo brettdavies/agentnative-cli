@@ -233,7 +233,7 @@ pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
                         break;
                     }
                 }
-                let _ = conn.send_close_notify();
+                conn.send_close_notify();
                 let _ = conn.complete_io(&mut stream);
             });
         }

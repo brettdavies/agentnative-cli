@@ -130,15 +130,16 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<Response, S
             via_proxy,
         };
         let response = chain.transport.send(&request).map_err(|e| e.to_string())?;
-        if chain.follow_redirects && is_redirect(response.status) {
-            if let Some(location) = response.headers.get("location") {
-                let next = validate_hop(location, &current, target.class, hop + 1, chain.resolver)?;
-                if hop == chain.max_redirects {
-                    return Err(limit_exceeded(chain.max_redirects));
-                }
-                current = next.url;
-                continue;
+        if chain.follow_redirects
+            && is_redirect(response.status)
+            && let Some(location) = response.headers.get("location")
+        {
+            let next = validate_hop(location, &current, target.class, hop + 1, chain.resolver)?;
+            if hop == chain.max_redirects {
+                return Err(limit_exceeded(chain.max_redirects));
             }
+            current = next.url;
+            continue;
         }
         return Ok(response);
     }

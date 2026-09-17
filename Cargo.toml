@@ -68,6 +68,32 @@ libc = "0.2"
 # `OffsetDateTime::now_utc`.
 time = { version = "=0.3.47", default-features = false, features = ["std", "formatting"] }
 
+# Web-audit networking stack: blocking ureq over rustls with the aws-lc-rs
+# crypto provider and the bundled Mozilla roots (webpki-roots), so a run needs
+# no system trust store. Redirects stay off at the agent; the fetch layer
+# follows them itself so every hop is locality-classified before connecting.
+ureq = { version = "=3.4.2", default-features = false, features = [
+    "rustls-no-provider",
+    "rustls-webpki-roots",
+    "gzip",
+    "brotli",
+] }
+# Direct dependency at the exact version ureq resolves: the fetch layer
+# matches rustls's certificate-error variants inside ureq's error to tell a
+# bundled-root rejection from other TLS failures, and ureq does not treat
+# the wrapped error as API.
+rustls = { version = "=0.23.45", default-features = false, features = [
+    "aws-lc-rs",
+    "std",
+    "tls12",
+    "logging",
+] }
+# WHATWG URL parsing, so evidence URLs and redirect targets resolve exactly
+# as the site engine's `new URL()` does.
+url = "2"
+# Linear-time regex engine for the registry's assertion patterns.
+regex = "1"
+
 [build-dependencies]
 # Vendored spec frontmatter parser (build.rs → $OUT_DIR/generated_requirements.rs).
 # serde_yaml is deprecated upstream but still functional; pinned tightly.
@@ -92,6 +118,9 @@ regex = "1"
 # Already a transitive dev-dep via insta — declared here so it's a direct
 # dependency we control.
 tempfile = "3"
+# Gzip fixtures for the bounded-body tests (a compressed body that inflates
+# past the cap must stop at the cap).
+flate2 = "1"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.tar.gz"

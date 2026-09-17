@@ -85,7 +85,7 @@ impl fmt::Display for ClassifyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClassifyError::EmptyHost => f.write_str("empty hostname"),
-            ClassifyError::UnparseableIpv6(host) => write!(f, "unparseable ipv6 literal {host}"),
+            ClassifyError::UnparseableIpv6(_) => f.write_str("unparseable ipv6 literal"),
             ClassifyError::Unresolvable { host, detail } => {
                 write!(f, "{host} did not resolve: {detail}")
             }
@@ -317,6 +317,80 @@ pub fn classify_literal(raw_host: &str) -> Result<Option<Locality>, ClassifyErro
     Ok(None)
 }
 
+/// The ranges anc.dev refuses by shape, with the site's spelling of each.
+const SITE_BLOCKED_IPV4_RANGES: [(Ipv4Addr, u32); 7] = [
+    (Ipv4Addr::new(0, 0, 0, 0), 8),
+    (Ipv4Addr::new(10, 0, 0, 0), 8),
+    (Ipv4Addr::new(100, 64, 0, 0), 10),
+    (Ipv4Addr::new(127, 0, 0, 0), 8),
+    (Ipv4Addr::new(169, 254, 0, 0), 16),
+    (Ipv4Addr::new(172, 16, 0, 0), 12),
+    (Ipv4Addr::new(192, 168, 0, 0), 16),
+];
+
+fn site_blocked_ipv4_reason(ip: Ipv4Addr) -> Option<String> {
+    let value = u32::from(ip);
+    SITE_BLOCKED_IPV4_RANGES
+        .iter()
+        .find(|(base, bits)| {
+            let mask = if *bits == 0 {
+                0
+            } else {
+                u32::MAX << (32 - bits)
+            };
+            value & mask == u32::from(*base)
+        })
+        .map(|(base, bits)| format!("ipv4 {ip} is in blocked range {base}/{bits}"))
+}
+
+fn site_blocked_ipv6_reason(ip: Ipv6Addr) -> Option<String> {
+    if ip.is_unspecified() {
+        return Some("ipv6 unspecified address (::)".to_string());
+    }
+    if ip.is_loopback() {
+        return Some("ipv6 loopback (::1)".to_string());
+    }
+    let seg = ip.segments();
+    if seg[0] & 0xfe00 == 0xfc00 {
+        return Some("ipv6 unique-local (fc00::/7)".to_string());
+    }
+    if seg[0] & 0xffc0 == 0xfe80 {
+        return Some("ipv6 link-local (fe80::/10)".to_string());
+    }
+    embedded_ipv4(ip)
+        .and_then(site_blocked_ipv4_reason)
+        .map(|reason| format!("ipv4-in-ipv6: {reason}"))
+}
+
+/// The reason anc.dev gives for refusing a host by its shape alone, when
+/// it has one, so a refusal the site would also make carries the site's
+/// wording. Names are never resolved here.
+pub fn site_block_reason(raw_host: &str) -> Option<String> {
+    let host = raw_host.trim().to_ascii_lowercase();
+    let host = host.strip_suffix('.').unwrap_or(&host);
+    if host.is_empty() {
+        return Some("empty hostname".to_string());
+    }
+    if host == "localhost" || host.ends_with(".localhost") {
+        return Some("localhost is not a public host".to_string());
+    }
+    if host == "metadata.google.internal" || host.ends_with(".internal") {
+        return Some("internal metadata hostnames are blocked".to_string());
+    }
+    if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        return match parse_ipv6_literal(inner) {
+            Some(v6) => site_blocked_ipv6_reason(v6),
+            None => Some("unparseable ipv6 literal".to_string()),
+        };
+    }
+    if host.contains(':')
+        && let Some(v6) = parse_ipv6_literal(host)
+    {
+        return site_blocked_ipv6_reason(v6);
+    }
+    parse_ipv4_literal(host).and_then(site_blocked_ipv4_reason)
+}
+
 /// Classify a host: by shape when the form decides it, otherwise by the
 /// class of every address the resolver returns, most restrictive first.
 pub fn classify_host(host: &str, resolver: &dyn Resolver) -> Result<Locality, ClassifyError> {
@@ -494,6 +568,54 @@ mod tests {
             classify_host("[not-an-address]", &PanicResolver).unwrap_err(),
             ClassifyError::UnparseableIpv6(_)
         ));
+    }
+
+    #[test]
+    fn site_block_reasons_carry_the_site_wording_by_shape_alone() {
+        let reason = |host: &str| site_block_reason(host);
+        assert_eq!(
+            reason("169.254.169.254").as_deref(),
+            Some("ipv4 169.254.169.254 is in blocked range 169.254.0.0/16")
+        );
+        assert_eq!(
+            reason("0x7f.0.0.1").as_deref(),
+            Some("ipv4 127.0.0.1 is in blocked range 127.0.0.0/8")
+        );
+        assert_eq!(
+            reason("100.100.1.1").as_deref(),
+            Some("ipv4 100.100.1.1 is in blocked range 100.64.0.0/10")
+        );
+        assert_eq!(
+            reason("[::]").as_deref(),
+            Some("ipv6 unspecified address (::)")
+        );
+        assert_eq!(reason("[::1]").as_deref(), Some("ipv6 loopback (::1)"));
+        assert_eq!(
+            reason("[fd00:ec2::254]").as_deref(),
+            Some("ipv6 unique-local (fc00::/7)")
+        );
+        assert_eq!(
+            reason("[fe80::1%eth0]").as_deref(),
+            Some("ipv6 link-local (fe80::/10)")
+        );
+        assert_eq!(
+            reason("[::ffff:10.1.2.3]").as_deref(),
+            Some("ipv4-in-ipv6: ipv4 10.1.2.3 is in blocked range 10.0.0.0/8")
+        );
+        assert_eq!(
+            reason("LOCALHOST.").as_deref(),
+            Some("localhost is not a public host")
+        );
+        assert_eq!(
+            reason("db.internal").as_deref(),
+            Some("internal metadata hostnames are blocked")
+        );
+        assert_eq!(reason("[bad").as_deref(), None);
+        assert_eq!(reason("[bad]").as_deref(), Some("unparseable ipv6 literal"));
+        assert_eq!(reason("").as_deref(), Some("empty hostname"));
+        assert_eq!(reason("example.com"), None);
+        assert_eq!(reason("93.184.216.34"), None);
+        assert_eq!(reason("intranet"), None);
     }
 
     #[test]

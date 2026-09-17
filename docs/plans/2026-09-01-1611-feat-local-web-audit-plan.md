@@ -23,7 +23,10 @@ execution: code
 - **Product authority:** This plan owns the CLI feature and the site-side companion units (U8, U9) — no separate plan
   exists in the site repo. `agentnative-site` remains canonical for check definitions, engine semantics, and the "Web
   audit" / "check" / "probe" vocabulary (`agentnative-site:CONCEPTS.md`).
-- **Stop conditions:** Stop and surface to the user if U1's measured binary delta exceeds ~3MB (the size bet behind KD2
+- **Phases:** Phase 1 ships the complete engine and CLI surface: U1–U8, U10, U11, all eleven handler kinds, the
+  conformance corpus and suite, and the skill coverage diff. Phase 2 ships the anc.dev staleness signal and the offline
+  vocabulary: U9 and U12 (R6, R14, KTD9, the scheduled registry-bump workflow).
+- **Stop conditions:** Stop and surface to the user if U1's measured binary delta exceeds ~5MB (the size bet behind KD2
   fails), or if corpus generation in U8 reveals the TS engine is nondeterministic for fixed inputs (the parity mechanism
   fails).
 
@@ -109,9 +112,10 @@ flowchart TB
   a stated reason, never a silent drop.
 - R5. For the same target and registry version, local verdicts and scores match the site engine's, enforced in CI by the
   vendored conformance fixtures.
-- R6. When the vendored registry is older than the live anc.dev registry, the report carries an upgrade note — inline in
-  text mode, on stderr in JSON mode so the verbatim shape holds; when that version signal is skipped or unreachable, the
-  note is omitted and the run is otherwise unaffected.
+- R6 (phase 2). When the vendored registry is older than the live anc.dev registry, the report carries an upgrade note —
+  inline in text mode, on stderr in JSON mode so the verbatim shape holds; when that version signal is skipped or
+  unreachable, the note is omitted and the run is otherwise unaffected. In phase 1 the report names the vendored
+  registry version and the pinned site SHA, and a run makes no anc.dev connection.
 - R12. Checks that query external DNS resolvers do not fire for local or private targets (IPv4 and IPv6 alike); gated
   checks report n_a with a stated reason, and `--external-dns` forces them on.
 - R13. A run against an unresponsive or tarpitting target completes within the engine's per-audit deadline, reporting
@@ -123,17 +127,18 @@ flowchart TB
   scores included.
 - R8. Text output follows anc's existing text conventions; exit codes adopt the site web-audit runner's convention (pass
   = 0, any failing status = 1, n_a = 3), so CI gates agree with the site's own runner.
-- R14. Agents can discover the check vocabulary and the web-scorecard JSON shape offline, via `anc emit` variants for
-  both.
+- R14 (phase 2). Agents can discover the check vocabulary and the web-scorecard JSON shape offline, via `anc emit`
+  variants for both.
 
 **Vendoring**
 
 - R9. Check definitions vendor verbatim from the site repo at CLI build time via the established sync-script + drift-CI
   - build-codegen pattern; conformance fixtures are authored in the site repo (U8) and vendor the same way; nothing is
-  fetched at runtime.
+    fetched at runtime.
 - R10. The probe engine is never published as a depend-able package (npm, crates.io, JSR); site-repo changes stay
-  limited to the vendoring hooks this plan defines (fixture generator, corpus-completeness gate, version signal) — no
-  engine restructuring.
+  limited to the vendoring hooks this plan defines (fixture generator, corpus-completeness gate, version signal) and the
+  one registry content change U8 carries, the Vary-header pattern expressed without lookaround — no engine
+  restructuring.
 
 **Ecosystem consumer**
 
@@ -182,15 +187,15 @@ flowchart TB
   within the per-audit deadline with unprobed checks reported per R4 and a failing exit code per R8.
 - AE8. **Covers R2.** Given `anc report.json` where no such file exists and no binary of that name is on PATH, when
   invoked, then the run fails fast and offline through today's audit error path — no DNS lookup, no connection attempt.
-- AE9. **Covers R6.** Given a stale vendored registry and `--output json`, when a public target is audited, then stdout
-  carries only the verbatim scorecard JSON and the upgrade note appears on stderr.
+- AE9 (phase 2). **Covers R6.** Given a stale vendored registry and `--output json`, when a public target is audited,
+  then stdout carries only the verbatim scorecard JSON and the upgrade note appears on stderr.
 
 ### Success Criteria
 
 - The vendored conformance suite passing against both engines is the evidence behind the parity claim; a divergence is a
   red build, not a support ticket.
-- Binary growth stays within the ceiling U1 measures and records (target: low single-digit MB over today's 3.4MB release
-  binary; ~3MB delta is the stop-condition threshold).
+- Binary growth stays within the ceiling U1 measures and records: ~5MB delta over today's 3.4MB release binary is the
+  stop-condition threshold, and the plain aws-lc-rs build ships (no size-optimized crypto configuration).
 - The incident test: a dev audits an internal-only site end to end — install anc, run one command, read the report —
   with nothing exposed publicly at any step; the target hostname reaches no third-party resolver or proxy.
 
@@ -204,6 +209,8 @@ flowchart TB
 - Rewiring the agent-web-audit skill to shell out to `anc web` (its own change, in its own repo; R11 only guarantees it
   can).
 - Runtime registry refresh between anc releases.
+- Phase 2 of this plan: the anc.dev version signal and staleness note (R6, KTD9, U9), `anc emit web-checks` and `anc
+  emit web-schema` (R14), and the scheduled registry-bump workflow (U12).
 
 **Outside this product's identity**
 
@@ -230,8 +237,8 @@ here, with no separate site plan).
 - The site's `dev` branch is the vendoring source: `guard-main-docs.yml` blocks `scripts/scoring/` from `main`, and the
   existing `sync-skill-fixture.sh` already defaults to `dev` for the same forever-branch reason. The sync pins a
   committed SHA on that branch (KTD3); GitHub permits fetch-by-SHA, which the mechanism relies on.
-- ureq/rustls/webpki-roots/aws-lc-rs/fancy-regex license clearance through `deny.toml` is unvalidated territory (zero
-  network crates exist today); U1 proves it before anything builds on the stack — including adding `CDLA-Permissive-2.0`
+- ureq/rustls/webpki-roots/aws-lc-rs/regex license clearance through `deny.toml` is unvalidated territory (zero network
+  crates exist today); U1 proves it before anything builds on the stack — including adding `CDLA-Permissive-2.0`
   (webpki-roots' Mozilla-CA-bundle license) to the allow list as a recorded decision.
 - Internal targets are reachable unauthenticated from the machine running `anc`.
 
@@ -276,8 +283,9 @@ here, with no separate site plan).
 - External: ureq 3.x (no HTTP/2 — acceptable; body exposes `std::io::Read` for SSE; proxy support requires explicit
   `Proxy::try_from_env()` wiring; redirects disabled at the agent per KTD1), rustls `aws-lc-rs` backend (rustls's
   default; requires a C toolchain — and CMake or nasm on some targets — which U1 must prove out on the
-  `x86_64-pc-windows-gnu` cross-compile check), webpki-roots (bundled Mozilla CA set, CDLA-Permissive-2.0), fancy-regex
-  (backtracking engine for the registry's lookahead patterns).
+  `x86_64-pc-windows-gnu` cross-compile check and the native `windows-latest` CI job), webpki-roots (bundled Mozilla CA
+  set, CDLA-Permissive-2.0), regex (linear-time engine; the registry carries no lookaround once U8 rewrites the
+  Vary-header pattern).
 
 ---
 
@@ -288,10 +296,12 @@ here, with no separate site plan).
 - KTD1. **Networking stack: ureq 3.x (blocking) + rustls with the `aws-lc-rs` backend + webpki-roots, behind a
   single-hop `Transport` trait.** (session-settled: user-directed — chosen over reqwest/tokio: a sibling repo already
   removed reqwest over a 303-crate transitive tree, and probes are one-shot calls that don't need an event loop;
-  attohttpc rejected for having no rustls option; the `ring` backend rejected for maintenance-mode status and to align
-  the crypto stack with `xurl-rs`, accepting the aws-lc-rs C-toolchain requirement into the build and the Windows
-  cross-compile check.) The trust store stays webpki-roots — bundled roots are the parity requirement (R3, AE5),
-  separable from the provider choice. Contract details:
+  attohttpc rejected for having no rustls option; the `ring` backend rejected because it is security-only maintained by
+  the rustls team since 2025-02 (RUSTSEC-2025-0007, withdrawn once that arrangement was in place) and rustls recommends
+  aws-lc-rs, accepting the aws-lc-sys C-toolchain requirement (cmake on every target, NASM on Windows) into CI, the
+  release matrix, and the local Windows cross-compile check. The measured aws-lc-rs cost is ~4MB, so U1's size ceiling
+  is ~5MB and the plain build ships.) The trust store stays webpki-roots — bundled roots are the parity requirement (R3,
+  AE5), separable from the provider choice. Contract details:
   - The Transport is **single-hop**: the ureq agent has redirects disabled; a `src/web_audit/fetch.rs` layer above it
     ports `guardedFetch` — the manual redirect loop, the 4-hop cap, per-call follow/no-follow, header lowercasing, and
     the never-throws error-result shape — so the mock seam matches the site's `fetchImpl` boundary by construction.
@@ -303,35 +313,52 @@ here, with no separate site plan).
     and `NO_PROXY`.
   - Body caps mirror the site's three regimes: `Some(0)` skips the body, `Some(AUDIT_PROBE_MAX_BODY_BYTES)` (64 KiB, a
     named constant matching the site's) **truncates and continues** with a truncation flag — never an error — and `None`
-    reads fully (the canonical root fetch's regime) under a generous absolute ceiling documented as a knowing OOM-safety
-    divergence. Bounds apply to decompressed bytes.
-  - Registry `*_regex` patterns compile with `fancy-regex` (the registry contains lookahead the standard `regex` crate
-    rejects) under the site's documented flag set (`i`, plus `m` for body patterns).
+    reads fully (the canonical root fetch's regime) up to `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB of decompressed bytes,
+    past which the read truncates and continues with the flag set and an evidence note on the root-derived checks. The
+    site reads the root fully within Workers memory; the local ceiling is a knowing OOM-safety divergence for pages over
+    16 MiB. Bounds apply to decompressed bytes, so a compression bomb stops at the ceiling.
+  - Registry `*_regex` patterns compile with the `regex` crate, linear-time by construction, under flags chosen to match
+    JavaScript's `i` and `im` semantics where the crate can (ASCII classes for `\d` and `\w`, explicit line-terminator
+    classes where `.` is used). Lookaround and backreferences fail the build naming the check id; the one such pattern
+    in the registry today, the Vary-header check, is rewritten without lookaround in U8. Residual JS-vs-Rust semantic
+    differences are measured by the U8 regex-parity fixture through the U5 test, and any the flags cannot close are
+    named here.
   - gzip decoding on by default, brotli feature enabled for fetch parity. TLS failures carry evidence distinguishing
-    "chain rejected by bundled roots" from other TLS errors, so a stale-root false negative is self-diagnosable. Governs
-    R3.
-- KTD2. **Concurrency and deadlines port as a thread pool, not async.** A pool of 6 worker threads mirrors the engine's
-  `DEFAULT_CONCURRENCY`; one shared deadline instant mirrors the 25s per-audit budget; a dead root fetch drops per-check
-  timeouts to the degraded 2s mode; `AbortController` semantics map to a connect-timeout + total-deadline pair. Governs
-  R13.
+    "chain rejected by bundled roots" from other TLS errors, so a stale-root false negative is self-diagnosable: the
+    fetch layer matches `ureq::Error::Rustls(rustls::Error::InvalidCertificate(CertificateError::UnknownIssuer))`, which
+    needs `rustls` as a direct dependency at the exact version ureq resolves (ureq does not treat the wrapped error as
+    API), and the U1 self-signed-server test pins that coupling. Governs R3.
+- KTD2. **Concurrency and deadlines port as a thread pool, not async, and the deadline is enforced at request issue
+  time.** A pool of 6 worker threads mirrors the engine's `DEFAULT_CONCURRENCY`; one shared deadline instant mirrors the
+  25s per-audit budget; a dead root fetch drops per-check timeouts to the degraded 2s mode. Blocking I/O cannot be
+  cancelled from outside, so `AbortController` semantics map to: every request is issued with ureq's `timeout_global` =
+  min(per-check timeout, remaining budget); the collector waits on a channel with `recv_timeout` until the deadline and
+  then assembles the scorecard, resolving unreturned checks as skip; stalled workers are abandoned, never joined, and
+  exit with the process. A trickling-body tarpit and a never-responds tarpit are both tested against the wall clock.
+  Governs R13.
 - KTD3. **Vendor the full normalization input set pinned to a committed site SHA; `build.rs` mirrors the site build
   script, with two failure classes.** The sync set is `registry.yaml` **plus** `src/shared/user-agents.ts` and
   `src/shared/site-url.ts` — the engine consumes the *normalized* registry, so the UA token map and the normalizer's
   rules are vendored data, not Rust constants. The codegen (via the existing `serde_yaml` dependency) mirrors
   `agentnative-site:src/build/13-web-audit-registry.mjs`: it derives `keyword` from `tier` (rejecting a hand-authored
   one), expands `{ua:...}` tokens against the vendored map (failing the build, naming the check id, on an unknown token
-  or a literal User-Agent value), compiles every registry regex pattern at build time (an unportable pattern fails the
-  build naming the check id), and emits the required top-level blocks (`version`, `mcp_discovery`, `categories`,
-  `category_order`) as compiled tables. Structurally malformed entries fail the build loudly; a well-formed entry naming
-  a handler kind **or eval rule** the Rust engine has not ported compiles to an unsupported binding that reports skip at
-  runtime ("handler `<kind>` not yet ported to the local engine", per R4) — and any run containing such a skip flags its
-  headline score as non-comparable (see U7), so degradation never masquerades as parity. The sync pins
-  `WEB_AUDIT_SITE_SHA` rather than floating HEAD; a scheduled bump workflow keeps the pin moving deliberately. Governs
-  R9.
+  or a literal User-Agent value), compiles every registry regex pattern at build time with the `regex` crate
+  (lookaround, backreferences, or any pattern the crate rejects fails the build naming the check id), and emits the
+  required top-level blocks (`version`, `mcp_discovery`, `categories`, `category_order`) as compiled tables.
+  Structurally malformed entries fail the build loudly; a well-formed entry naming a handler kind **or eval rule** the
+  Rust engine has not ported compiles to an unsupported binding that reports skip at runtime ("handler `<kind>` not yet
+  ported to the local engine", per R4) — and any run containing such a skip flags its headline score as non-comparable
+  (see U7), so degradation never masquerades as parity. The sync pins `WEB_AUDIT_SITE_SHA` rather than floating HEAD; in
+  phase 1 the pin moves by a deliberate re-run of the sync script, and the phase 2 scheduled bump workflow (U12) makes
+  staleness calendar-visible. Governs R9.
 - KTD4. **Parity pins to the wire JSON.** Rust serde mirrors of `WebScorecard` and its rows reject out-of-contract
   values (unknown statuses, unknown fields fail deserialization loudly), so a canonical-side addition breaks the build
-  instead of being silently misread. The golden corpus (U8) asserts byte-comparable scorecard JSON for fixed inputs;
-  corpus exchanges are recorded at the single-hop `fetchImpl` boundary KTD1's Transport reproduces. Governs R5, R7.
+  instead of being silently misread. Every numeric field is an integer type: the site emits only half-up rounded
+  integers (`score_pct`, `score.relative`, `score.global`, summary counts, coverage levels), and `JSON.stringify` prints
+  an integral number as `85` where serde_json prints an `f64` as `85.0`, so an `f64` mirror can never byte-match; a
+  future decimal field fails golden deserialization loudly. The golden corpus (U8) asserts byte-comparable scorecard
+  JSON for fixed inputs; corpus exchanges are recorded at the single-hop `fetchImpl` boundary KTD1's Transport
+  reproduces. Governs R5, R7.
 - KTD5. **Exit codes adopt the site runner's `STATUS_EXIT` convention.** (session-settled: user-approved — chosen over
   `anc audit`'s exit scheme: CI-gate parity with the site's own runner.) The mapping is new anc-side glue pinned by its
   own unit tests. A sniffed bare target moves that invocation from the usage-error exit space (2) to this result space —
@@ -349,20 +376,25 @@ here, with no separate site plan).
   CDN-tarpit incident; the CLI sends the same UA family so servers classify both probes alike. `AUDIT_USER_AGENT` and
   the probe UA tokens are vendored from the site's shared module (KTD3), never restated as Rust constants. Residual
   risk: egress class differs (workstation vs Cloudflare), an accepted best-effort parity gap under KD2.
-- KTD9. **Staleness compares vendored `spec_version` + registry version against the U9 site signal, for public targets
-  only.** No version endpoint exists today; `spec_version` is only embedded in scorecard payloads. U9 defines the served
-  signal; the CLI fetches it only during `anc web` runs against targets the locality classifier labels public — a local
-  or private target's run makes no anc.dev connection at all — with a bounded timeout, silently skipping on any failure
-  (per KD5 and R6). The remaining public-target fetch is disclosed in `anc web --help`. The new version literals get
-  rows in the ecosystem version-model table (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
-- KTD10. **Locality classification covers IPv4 and IPv6 and gates the whole request chain.** IP-literal targets classify
-  directly; shape-classifiable hostnames (single-label, `.internal`) are gated **before any resolution occurs**;
-  remaining hostnames classify by system-resolved address class — via the machine's own configured resolver, never a
-  third-party one. Local classes: IPv4 loopback/RFC1918/link-local, IPv6 loopback (`::1`), ULA (`fc00::/7`), and
-  link-local (`fe80::/10`) — an IPv6-only internal host must gate exactly like an IPv4 one or KD8's privacy property
-  fails. The gate wraps the dns-doh handler and the KTD9 version fetch; `--external-dns` bypasses the DNS gate. Redirect
-  hops are classified per KTD1: metadata ranges and class-crossing hops are refused and recorded as `blocked:` evidence
-  — never a silent public egress from a run the user believes is local. Cites R12 (KD8's governed requirement).
+- KTD9 (phase 2). **Staleness compares vendored `spec_version` + registry version against the U9 site signal, for public
+  targets only.** No version endpoint exists today; `spec_version` is only embedded in scorecard payloads. U9 defines
+  the served signal; the CLI fetches it only during `anc web` runs against targets the locality classifier labels public
+  — a local or private target's run makes no anc.dev connection at all — with a bounded timeout, silently skipping on
+  any failure (per KD5 and R6). The remaining public-target fetch is disclosed in `anc web --help`. The new version
+  literals get rows in the ecosystem version-model table
+  (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
+- KTD10. **Locality classification mirrors the site's `ssrf.ts` and gates the whole request chain.** `locality.rs` ports
+  the site's classifier verbatim: IPv4 literals in every inet_aton form (dotted, short-dotted, decimal, octal, hex),
+  IPv6 literals bracketed or bare with zone ids stripped, IPv4-mapped (`::ffff:a.b.c.d`) and IPv4-compatible forms
+  classified by their embedded IPv4 address, `[::]` and `0.0.0.0`, `localhost` and `.localhost`, and
+  `metadata.google.internal` and `.internal` — all decided **before any resolution occurs**; remaining hostnames
+  classify by system-resolved address class via the machine's own configured resolver, never a third-party one. Local
+  classes: IPv4 loopback/RFC1918/link-local, IPv6 loopback (`::1`), ULA (`fc00::/7`), and link-local (`fe80::/10`) — an
+  IPv6-only internal host must gate exactly like an IPv4 one or KD8's privacy property fails. The U4 scenario table is
+  the site's `web-audit-ssrf.test.ts` table, one case per form. The gate wraps the dns-doh handler and the KTD9 version
+  fetch; `--external-dns` bypasses the DNS gate. Redirect hops are classified per KTD1: metadata ranges and
+  class-crossing hops are refused and recorded as `blocked:` evidence — never a silent public egress from a run the user
+  believes is local. Cites R12 (KD8's governed requirement).
 - KTD11. **`anc web` mirrors the site runner's `--site-type` and `--check` surface.** `site_type` is caller-supplied on
   the site (never auto-detected; null applies every check per `antecedents/site-type.ts`), so `--site-type content|api`
   is an optional flag with the same semantics, and `--check <id>` gates a single check with the per-status exit codes
@@ -381,7 +413,24 @@ flowchart TB
   D --> E["antecedent context built from wave-1 results"]
   E --> F["wave 2: gated checks (site-type filter, antecedent resolution)"]
   F --> G["scorecard assembly (KTD4 types) + two-score computation"]
-  G --> H["render: text | verbatim JSON; staleness note (KTD9); exit code (KTD5)"]
+  G --> H["render: text | verbatim JSON; exit code (KTD5); staleness note in phase 2 (KTD9)"]
+```
+
+Deadline and pool (KTD2), one run:
+
+```text
+main thread                                   worker pool (6 threads)
+-----------                                   -----------------------
+deadline = now + 25s
+root fetch ------------------------------->   timeout_global = min(per-check, deadline - now)
+  | dead root: per-check = 2s
+  |- wave 1: send checks ----------------->   each request issued with timeout_global = min(per-check, deadline - now)
+  |    recv_timeout(deadline - now)  <-----   (status, evidence) per check
+  |    past deadline: unreturned = skip("deadline")
+  |- antecedent context
+  |- wave 2: same loop
+  \- assemble scorecard, render, exit code
+       stalled workers are never joined; they exit with the process
 ```
 
 Vendoring and parity pipeline (build and CI time):
@@ -393,7 +442,7 @@ flowchart TB
   V1 --> B1["build.rs: mirror site normalizer (keyword, UA tokens, regex compile); unknown handler/eval -> unsupported binding"]
   V2 --> T1["cargo test: golden scorecard parity, scoring parity"]
   D1["web-audit-drift.yml: sync --check on PR"] -.->|cmp against pinned SHA| V1
-  D2["scheduled bump workflow: site dev HEAD vs pinned SHA -> bump PR"] -.-> S1
+  D2["phase 2: scheduled bump workflow, site dev HEAD vs pinned SHA -> bump PR"] -.-> S1
 ```
 
 ### System-Wide Impact
@@ -402,9 +451,9 @@ flowchart TB
   token; after KTD7, a grammar-passing token drives a network-touching run in the `STATUS_EXIT` code space (0/1/3)
   instead. U7 documents the split in `--help` and the release notes recommend explicit `anc audit` in scripts; U10
   regression-tests a corpus of previously-valid bare invocations to prove they still route to audit.
-- **Emit symmetry.** `anc emit schema` self-describes the CLI scorecard; the web family gets the same treatment — `anc
-  emit web-checks` (vocabulary) and `anc emit web-schema` (scorecard shape) — so agents can validate either output
-  family offline (R14).
+- **Emit symmetry (phase 2).** `anc emit schema` self-describes the CLI scorecard; the web family gets the same
+  treatment in U12 — `anc emit web-checks` (vocabulary) and `anc emit web-schema` (scorecard shape) — so agents can
+  validate either output family offline (R14).
 - **Two scorecard schemas, one binary.** CLI scorecard 0.8 and web scorecard 0.4 version independently and are not
   comparable; U7's docs state which command emits which, mirroring the existing "Scorecard JSON fields" documentation
   convention.
@@ -420,9 +469,14 @@ flowchart TB
 
 - **Registry volatility vs drift CI.** The site registry is a 973-line surface that changes at feature cadence; PR-only
   drift checking (the `skill-fixture-drift.yml` model) goes silently stale when the CLI repo is quiet. Mitigation
-  (KTD3): pin a committed site SHA and add a scheduled weekly workflow that diffs site `dev` HEAD against the pin and
-  opens a bump PR — staleness becomes calendar-visible, Dependabot-shaped, instead of contingent on unrelated CLI
-  activity.
+  (KTD3): pin a committed site SHA now, and in phase 2 (U12) add a scheduled weekly workflow that diffs site `dev` HEAD
+  against the pin and opens a bump PR — staleness becomes calendar-visible, Dependabot-shaped, instead of contingent on
+  unrelated CLI activity.
+- **aws-lc-sys build toolchain.** cmake is required on every target and NASM on Windows. The release matrix builds three
+  Linux rows inside `cross` containers that lack cmake, and the shared reusable workflows install neither tool.
+  Mitigation (U1): a `Cross.toml` pre-build step installs cmake in the `cross` rows, U1 asserts the tools on each runner
+  image the shared `rust-ci.yml` and `rust-release.yml` use, and an opt-in provisioning input on those workflows in
+  `brettdavies/.github` covers any image that lacks one; the matrix is proven green before U3 starts.
 - **New handler kinds outpacing the port.** A well-formed registry entry with an unported handler or eval rule must not
   hold vendoring hostage to an MCP-sized porting effort. Mitigation (KTD3): the unsupported binding compiles and reports
   skip with a named reason, the run's score is flagged non-comparable, and the bump PR's description lists any unported
@@ -444,19 +498,22 @@ flowchart TB
 
 ## Implementation Units
 
-| U-ID | Title                             | Repo | Key files                                                                         | Depends on     |
-| ---- | --------------------------------- | ---- | --------------------------------------------------------------------------------- | -------------- |
-| U1   | Networking foundation + size gate | cli  | `Cargo.toml`, `deny.toml`, `src/web_audit/transport.rs`, `src/web_audit/fetch.rs` | —              |
-| U2   | Vendoring pipeline                | cli  | `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`  | —              |
-| U3   | Scorecard types + scoring         | cli  | `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`                            | U2             |
-| U4   | Engine orchestration              | cli  | `src/web_audit/engine.rs`                                                         | U1, U3         |
-| U5   | Eleven stateless handlers         | cli  | `src/web_audit/handlers/*.rs`                                                     | U4             |
-| U6   | MCP handler                       | cli  | `src/web_audit/handlers/mcp.rs`                                                   | U4             |
-| U7   | CLI surface                       | cli  | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`             | U4, U9         |
-| U8   | Conformance corpus generator      | site | `scripts/web-audit/gen-fixtures.ts`                                               | —              |
-| U9   | Version signal                    | site | worker route + build step                                                         | —              |
-| U10  | Conformance suite + dogfood       | cli  | `tests/web_audit_conformance.rs`, `tests/integration.rs`                          | U5, U6, U7, U8 |
-| U11  | Skill coverage diff               | cli  | `docs/web-audit-skill-coverage.md`                                                | U7             |
+| U-ID | Phase | Title                                        | Repo | Key files                                                                                                                 | Depends on     |
+| ---- | ----- | -------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| U1   | 1     | Networking foundation + size gate            | cli  | `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/transport.rs`, `src/web_audit/fetch/`, `tests/fixtures/tls/`      | —              |
+| U2   | 1     | Vendoring pipeline                           | cli  | `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`, `tests/fixtures/web-audit-conformance/` | —              |
+| U3   | 1     | Scorecard types + scoring                    | cli  | `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`, `schema/web-scorecard.schema.json`                                | U2             |
+| U4   | 1     | Engine orchestration                         | cli  | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3         |
+| U5   | 1     | Eleven stateless handlers                    | cli  | `src/web_audit/handlers/*.rs`                                                                                             | U4             |
+| U6   | 1     | MCP handler                                  | cli  | `src/web_audit/handlers/mcp/`                                                                                             | U4             |
+| U7   | 1     | CLI surface                                  | cli  | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`                                                     | U4             |
+| U8   | 1     | Conformance corpus generator                 | site | `scripts/web-audit/gen-fixtures.ts`, `src/data/web-audit/registry.yaml` (Vary pattern)                                    | —              |
+| U10  | 1     | Conformance suite + dogfood                  | cli  | `tests/web_audit_conformance.rs`, `tests/integration.rs`                                                                  | U5, U6, U7, U8 |
+| U11  | 1     | Skill coverage diff                          | cli  | `docs/web-audit-skill-coverage.md`                                                                                        | U7             |
+| U9   | 2     | Version signal                               | site | worker route + build step                                                                                                 | —              |
+| U12  | 2     | Staleness note, emit variants, bump workflow | cli  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/web-audit-bump.yml`                                           | U7, U9         |
+
+U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in toolchain provisioning input).
 
 ### U1. Networking foundation and size gate
 
@@ -464,23 +521,31 @@ flowchart TB
   layer, and prove the size and license bets before anything builds on them.
 - **Requirements:** R3. Implements KTD1 (session-settled; cites R3).
 - **Dependencies:** None.
-- **Files:** `Cargo.toml`, `deny.toml`, `src/web_audit/mod.rs`, `src/web_audit/transport.rs`, `src/web_audit/fetch.rs`,
-  `tests/web_audit_transport.rs`.
+- **Files:** `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/mod.rs`, `src/web_audit/transport.rs`,
+  `src/web_audit/fetch/{mod,redirect,body,proxy}.rs`, `tests/web_audit_transport.rs`, `tests/fixtures/tls/` (self-signed
+  cert and key), and in `brettdavies/.github`: `rust-ci.yml`, `rust-release.yml` (opt-in toolchain input).
 - **Approach:**
   1. Add ureq (rustls/aws-lc-rs/webpki-roots feature selection per KTD1, redirects disabled at the agent, exact-pin any
-     pre-1.0 crate per repo convention), gzip + brotli features, and `fancy-regex` (first used in U5; added here so the
-     size and license gates measure the full v1 dependency set).
+     pre-1.0 crate per repo convention), gzip + brotli features, `rustls` as a direct dependency at ureq's resolved
+     version (for the TLS evidence match), and `regex` (first used in U5; added here so the size and license gates
+     measure the full v1 dependency set).
   2. Define the single-hop `Transport` trait (request in, response head + capped body out) with a ureq-backed impl and a
      test mock; UA constant sourced from the vendored user-agents module per KTD8.
-  3. Build `fetch.rs` per KTD1: redirect loop with 4-hop cap and per-call follow flag, per-hop locality/metadata gating
-     (KTD10), per-request proxy selection with local-target bypass and `NO_PROXY`, three-regime body caps (skip / 64 KiB
-     truncate-and-continue / bounded full read) on decompressed bytes, never-throws error results, TLS evidence
-     distinguishing bundled-root rejection.
+  3. Build the `fetch/` modules per KTD1, one responsibility each: `redirect.rs` (4-hop loop, per-call follow flag,
+     per-hop locality/metadata gating via KTD10), `proxy.rs` (per-request selection with local-target bypass and
+     `NO_PROXY`), `body.rs` (three-regime caps: skip / 64 KiB truncate-and-continue / 16 MiB root ceiling, on
+     decompressed bytes, with the truncation flag), and never-throws error results with TLS evidence distinguishing
+     bundled-root rejection.
   4. Measure `target/release/anc` before/after with the full dependency set; run `cargo deny check`; add
      `CDLA-Permissive-2.0` (webpki-roots) to the `deny.toml` allow list as a recorded licensing decision and validate
      the aws-lc-rs tree's licensing the same way.
+  5. Prove the build matrix: a `Cross.toml` pre-build step installs cmake in the three `cross` rows of the release
+     matrix; assert cmake (and NASM on the Windows runner) on each runner image the shared `rust-ci.yml` and
+     `rust-release.yml` use, and add an opt-in provisioning input to those workflows in `brettdavies/.github` only where
+     an image lacks a tool; the pre-push hook's step-7 comment lists mingw-w64, nasm, and cmake. The matrix is green
+     before U3 starts.
 - **Execution note:** Measurement first — record the release-binary delta in the PR body before porting anything onto
-  the stack; ~3MB delta is the Goal Capsule stop condition.
+  the stack; ~5MB delta is the Goal Capsule stop condition.
 - **Patterns to follow:** `docs/solutions/architecture-patterns/xurl-subprocess-transport-layer.md` (Transport seam);
   `docs/solutions/best-practices/rust-bounded-http-reads-with-take-2026-04-20.md`.
 - **Test scenarios:**
@@ -492,13 +557,18 @@ flowchart TB
     `NO_PROXY` entries are honored.
   - Edge: a public target that 302s to `169.254.169.254` (and to an IPv6 metadata address) gets the hop refused with
     `blocked:` evidence, not followed. Same for a local target redirecting to a public host.
-  - Error: connect timeout and total deadline each surface as distinct, matchable errors; a bundled-root chain rejection
-    surfaces as its own evidence class.
+  - Error: connect timeout and total deadline each surface as distinct, matchable errors.
+  - Error: an in-test rustls server presenting the checked-in self-signed certificate (`tests/fixtures/tls/`, expiry far
+    out, regeneration command documented) yields the bundled-root rejection evidence class, not a generic TLS error; the
+    test pins the ureq-to-rustls error coupling. Covers AE5.
+  - Edge: a body over the 16 MiB root ceiling, and a gzip body that inflates past it, truncate with the flag set and no
+    allocation beyond the cap.
   - Integration: HTTPS GET against a real public endpoint verifies bundled roots work with no system cert store
     (ignored-by-default network test, run in CI).
-- **Verification:** `cargo deny check` green with the recorded allow-list addition; Windows cross-compile clippy green
-  (pre-push hook step 7) with the aws-lc-rs toolchain requirement proven out; measured size delta recorded and within
-  budget.
+- **Verification:** `cargo deny check` green with the recorded allow-list addition; the CI Windows check and every
+  release-matrix row green with the aws-lc-sys toolchain in place (native Windows and macOS runners, `cross` rows via
+  `Cross.toml`); pre-push hook step 7 green locally with the listed tools; measured size delta recorded and within the
+  ~5MB ceiling.
 
 ### U2. Vendoring pipeline
 
@@ -506,10 +576,10 @@ flowchart TB
   scheduled bump lane, and `build.rs` turns it into compiled check tables.
 - **Requirements:** R9. Implements KTD3 (cites R9).
 - **Dependencies:** None (fixture sync activates once U8 publishes the corpus).
-- **Files:** `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`,
-  `.github/workflows/web-audit-bump.yml`, `build.rs`, `src/web_audit/registry.yaml` (vendored copy),
-  `src/web_audit/user-agents.ts` (vendored copy), `src/web_audit/fixtures/` (vendored corpus),
-  `tests/build_registry.rs`.
+- **Files:** `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`,
+  `src/web_audit/registry.yaml`, `src/web_audit/user-agents.ts`, `src/web_audit/site-url.ts` (vendored build inputs),
+  `tests/fixtures/web-audit-conformance/` (vendored corpus, score-parity fixture, regex-parity fixture),
+  `tests/build_registry.rs`. The scheduled `web-audit-bump.yml` is U12 (phase 2).
 - **Approach:**
   1. Fetch by pinned SHA, not branch: `git init` into a temp dir, `git remote add origin <url>`, `git fetch --depth 1
      origin "$WEB_AUDIT_SITE_SHA"`, extract byte-exact via `git show FETCH_HEAD:<path>`; an unresolvable pin fails hard
@@ -519,17 +589,19 @@ flowchart TB
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
      pinning the hardening surface.
-  3. Sync set: `src/data/web-audit/registry.yaml`, `src/shared/user-agents.ts`, `src/shared/site-url.ts`,
-     `tests/fixtures/web-audit-score-parity.json`, and the U8 corpus directory. Keep the set explicit — do not widen the
-     drift guard to files that shouldn't vendor.
+  3. Sync set, split by consumer: build inputs (`src/data/web-audit/registry.yaml`, `src/shared/user-agents.ts`,
+     `src/shared/site-url.ts`) vendor under `src/web_audit/` because `build.rs` needs them in the crates.io package;
+     test inputs (`tests/fixtures/web-audit-score-parity.json`, the U8 corpus directory, and the U8 `regex-parity.json`)
+     vendor under `tests/fixtures/web-audit-conformance/`, which `Cargo.toml` already excludes from the package. The
+     drift check covers both roots. Keep the set explicit — do not widen the drift guard to files that shouldn't vendor.
   4. `build.rs` gains `emit_web_registry` mirroring the site normalizer per KTD3: keyword derivation (reject
      hand-authored), `{ua:...}` expansion against the vendored map (fail on unknown token or literal UA, naming the
-     check id), registry regex compilation with `fancy-regex` (fail on an unportable pattern, naming the check id),
-     top-level block emission, KTD3's two failure classes across both `handler` and `eval` values, sorted stable output,
-     codegen to `$OUT_DIR/generated_web_registry.rs`, `cargo:rerun-if-changed` on every vendored input.
-  5. Drift workflow mirrors `skill-fixture-drift.yml` (PR trigger, cmp against the pinned SHA); the scheduled bump
-     workflow (weekly) diffs site `dev` HEAD against the pin and opens a bump PR listing registry changes and any
-     unported handler or eval kinds.
+     check id), registry regex compilation with the `regex` crate under JS-matching flags (fail on lookaround,
+     backreferences, or any rejected pattern, naming the check id), top-level block emission, KTD3's two failure classes
+     across both `handler` and `eval` values, sorted stable output, codegen to `$OUT_DIR/generated_web_registry.rs`,
+     `cargo:rerun-if-changed` on every vendored input.
+  5. Drift workflow mirrors `skill-fixture-drift.yml` (PR trigger, cmp against the pinned SHA across both vendored
+     roots).
 - **Patterns to follow:** `scripts/sync-skill-fixture.sh`; `build.rs::emit_skill_hosts`; `src/skill_install.rs` (git
   hardening); `docs/solutions/architecture-patterns/cross-repo-artifact-sync-commit-over-fetch-20260420.md`;
   `docs/solutions/architecture-patterns/evict-test-only-files-from-a-drift-guarded-vendored-surface.md`.
@@ -539,8 +611,8 @@ flowchart TB
     vendored literal.
   - Edge: a well-formed entry with an unknown handler kind or unknown eval rule builds successfully and binds to the
     unsupported placeholder; a hand-authored `keyword` fails the build.
-  - Error: a registry entry with a missing tier, malformed `with` block, unknown UA token, literal User-Agent string, or
-    lookahead pattern fancy-regex itself rejects fails the build with a message naming the entry id.
+  - Error: a registry entry with a missing tier, malformed `with` block, unknown UA token, literal User-Agent string,
+    lookaround, or backreference fails the build with a message naming the entry id.
   - Integration: `scripts/sync-web-audit.sh --check` exits 0 against the pinned SHA; the hardening test asserts the
     exact env/flag surface on the git invocation.
 - **Verification:** Build fails on each structural-mutation class; unknown-handler and unknown-eval entries build and
@@ -556,7 +628,7 @@ flowchart TB
   `tests/web_audit_score_parity.rs`.
 - **Approach:**
   1. Serde types for `WebScorecard`, result rows, category rollups, coverage summary, and the 7-state status — strict:
-     unknown fields and unknown status strings fail deserialization (KTD4).
+     unknown fields and unknown status strings fail deserialization, and every numeric field is an integer type (KTD4).
   2. Scoring mirrors `score.ts` / `score_model.py`: tier weights 5/3/1, `broken_factor` 0.75, `noncompliant_credit`
      0.25, SHOULD-absent half-weight in the relative denominator, half-up rounding (never banker's).
   3. Serialization field order and null-vs-absent semantics match the site's JSON byte-comparably for fixture inputs.
@@ -575,6 +647,8 @@ flowchart TB
   - Edge: a value exactly at .5 rounds up (half-up, catching any banker's-rounding regression).
   - Error: a scorecard JSON with an unknown status string fails to deserialize with an error naming the value.
   - Integration: a serialized scorecard validates against `schema/web-scorecard.schema.json` (round-trip drift test).
+  - Integration: a serialized scorecard contains no `.0` and byte-matches a JS-emitted golden from the corpus (the
+    integral-number rule in KTD4).
 - **Verification:** Parity test green; a deliberately perturbed weight fails the fixture test (proves the fixture
   actually binds).
 
@@ -584,27 +658,37 @@ flowchart TB
   everything except the handlers themselves.
 - **Requirements:** R1, R4, R13, R12. Implements KTD2 (cites R13) and KTD10 (cites R12).
 - **Dependencies:** U1, U3.
-- **Files:** `src/web_audit/engine.rs`, `src/web_audit/locality.rs`, `tests/web_audit_engine.rs`.
+- **Files:** `src/web_audit/engine/{mod,waves,antecedents,pool}.rs`, `src/web_audit/locality.rs`,
+  `tests/web_audit_engine.rs`.
 - **Approach:**
   1. Port `engine.ts`'s sequence: canonical root fetch (doubles as reachability probe), MCP endpoint discovery,
      unreachable short-circuit, wave 1 over the antecedent-source check set, antecedent context, wave 2 with site-type
      filter and antecedent resolution, the optional-absent re-tag (an absent MAY check finalizes as n_a with the
      `optional-absent` reason, matching the site), and scorecard assembly.
-  2. Thread pool of 6 with a shared deadline instant (25s default); dead root fetch flips per-check timeouts to the
-     degraded 2s mode; past-deadline checks resolve as skip (KTD2).
-  3. `locality.rs` classifies targets per KTD10 — shape-classifiable names before any resolution, IPv4 and IPv6 local
-     classes, system-resolver-only lookups; the engine withholds external-DNS checks and the KTD9 version fetch for
-     local/private targets (`--external-dns` overrides the DNS gate) and supplies the per-hop classification `fetch.rs`
-     enforces.
+  2. Thread pool of 6 with a shared deadline instant (25s default) in `pool.rs`: each request is issued with
+     `timeout_global` = min(per-check timeout, remaining budget), the collector uses `recv_timeout` to the deadline and
+     abandons stalled workers, past-deadline checks resolve as skip; dead root fetch flips per-check timeouts to the
+     degraded 2s mode (KTD2).
+  3. `locality.rs` classifies targets per KTD10 as a verbatim port of the site's `ssrf.ts`: inet_aton IPv4 forms,
+     IPv4-mapped and compatible IPv6, zone ids, `[::]`, `localhost`/`.localhost`, `.internal`, all before any
+     resolution, then system-resolver-only lookups; the engine withholds external-DNS checks (and, in phase 2, the KTD9
+     version fetch) for local/private targets (`--external-dns` overrides the DNS gate) and supplies the per-hop
+     classification the `fetch/` modules enforce.
 - **Test scenarios:**
   - Happy path: mock transport with a healthy target runs both waves and produces a full 65-row scorecard.
   - Edge: an unmet antecedent yields n_a with `antecedent-unmet` reason on every downstream check (Covers AE2's shape);
     an absent MAY check re-tags to n_a with `optional-absent`.
-  - Edge: loopback (v4 and `::1`), RFC1918, IPv6 ULA `fc00::/7`, link-local (v4 and `fe80::/10`), single-label hostname,
-    and `.internal` targets each classify local — the shape-classifiable ones without any resolution call; a public FQDN
-    and a public IPv6 address classify public. Covers AE6.
+  - Edge: the site's `web-audit-ssrf.test.ts` table, one case per form: loopback (v4 and `::1`), RFC1918, IPv6 ULA
+    `fc00::/7`, link-local (v4 and `fe80::/10`), `[::]`, decimal/octal/hex/short-dotted IPv4 literals (`0x7f.0.0.1`,
+    `0x0a.1.2.3`, `2130706433`, `127.1`), IPv4-mapped IPv6 (`[::ffff:127.0.0.1]`), zone ids (`fe80::1%eth0`),
+    single-label hostname, `localhost`/`.localhost`, `metadata.google.internal`, and `.internal` each classify local —
+    the literal and shape-classifiable ones without any resolution call; a public FQDN and a public IPv6 address
+    classify public. Covers AE6.
   - Error: a transport that stalls forever on wave 1 still completes within the deadline with skip-labeled remaining
     checks. Covers AE7.
+  - Error: a transport that trickles one byte per second on wave 1 (slow-loris body) still completes within the deadline
+    with skip-labeled remaining checks; requests issued near the deadline carry the shortened `timeout_global`. Covers
+    AE7.
   - Integration: unreachable target (connection refused on root fetch) produces the unreachable report, not a panic.
 - **Verification:** Engine tests green; a wall-clock assertion proves the tarpit case exits inside the deadline plus
   grace.
@@ -619,7 +703,7 @@ flowchart TB
 - **Approach:**
   1. Shared handler signature mirroring the TS contract: check definition + context in, probe outcome (status, evidence,
      n_a reason) out; `{host}`/`{mcp_endpoint}` token substitution as in `handlers/shared.ts`; assertion regexes via the
-     compiled `fancy-regex` patterns from U2's codegen.
+     compiled `regex` patterns from U2's codegen.
   2. dns-doh queries the Cloudflare/Google JSON APIs over the fetch layer; the engine's locality gate (U4) decides
      whether it runs at all. Resolver transport failure reports error/skip with a stated reason; only a
      resolver-confirmed absence is a failing verdict (System-Wide Impact's false-negative guard).
@@ -632,8 +716,12 @@ flowchart TB
   (`agentnative-site:tests/web-audit-handlers.test.ts`) enumerate the cases to mirror.
 - **Test scenarios:**
   - Happy path per handler: the canonical passing response from the corpus yields pass with matching evidence.
-  - Edge: expected-status mismatch, body-regex miss (including the lookahead pattern), and empty-body cases each yield
-    the same status the TS engine yields for that fixture.
+  - Edge: expected-status mismatch, body-regex miss, and empty-body cases each yield the same status the TS engine
+    yields for that fixture.
+  - Integration: every pattern in the vendored `regex-parity.json` produces the same boolean the site's `RegExp`
+    produced for every probe string (ASCII and Unicode digits and letters, case-fold pairs, `\r\n` and Unicode
+    line-separator bodies, empty string, trailing newline); a residual divergence is named in KTD1, never silently
+    skipped.
   - Edge: redirect chains and gzip/brotli-encoded bodies produce identical verdicts to the site engine; a truncated
     over-cap body evaluates as the site evaluates it.
   - Edge: dns-doh with an unreachable resolver reports error with a transport reason, not a failing verdict; with a
@@ -650,31 +738,34 @@ flowchart TB
   legacy/modern lane detection, and the post-wave initialized notification.
 - **Requirements:** R4, R5.
 - **Dependencies:** U4.
-- **Files:** `src/web_audit/handlers/mcp.rs`, `tests/web_audit_mcp.rs`.
+- **Files:** `src/web_audit/handlers/mcp/{mod,jsonrpc,sse,session,checks}.rs`, `tests/web_audit_mcp.rs`.
 - **Approach:**
   1. Isolated from U5 deliberately: at 815 source lines and multi-request state, this handler is the concentrated parity
-     risk under KD2's best-effort floor.
-  2. SSE-framed responses read incrementally off the Transport's capped body reader (buffer to `data:` lines, parse on
-     blank-line event boundary, match JSON-RPC ids) — hand-rolled, since no blocking MCP client exists upstream; the
-     accumulator reads through the bounded reader so an unterminated stream cannot grow it past the cap.
+     risk under KD2's best-effort floor. One responsibility per file: `jsonrpc.rs` (frames and ids), `sse.rs` (event
+     splitting over buffered text), `session.rs` (session-ID and lane state), `checks.rs` (per-check evaluation).
+  2. Responses are read as the site reads them (`mcp.ts:639`, `ssrf.ts:342-371`): through the capped body reader to the
+     64 KiB cap, the server closing, or the per-check timeout, and only then parsed — `sse.rs` splits the buffered text
+     into events and `jsonrpc.rs` matches ids, both pure functions tested without a transport. There is no early return
+     on id match: a server that keeps its stream open times out here exactly as it does on anc.dev.
   3. Session-ID and lane state live in the engine context the way `mcpSessionId`/`mcpLanes` do in `HandlerContext`.
 - **Test scenarios:**
   - Happy path: a mock MCP server speaking modern streamable-HTTP passes initialize and tools-list checks.
   - Edge: legacy-lane server detected and labeled as the TS engine labels it; SSE-framed and plain-JSON responses both
     parse.
   - Edge: JSON-RPC error codes map to the same check statuses as the site engine for the corpus cases.
+  - Edge: a server that answers initialize and keeps the SSE stream open resolves to the site's timeout status, not an
+    early pass (corpus scenario from U8).
   - Error: a server that answers initialize but hangs on tools-list degrades within the check timeout to the
     site-matching status.
 - **Verification:** MCP corpus slice green; the U10 conformance suite passes with U6 included.
 
 ### U7. CLI surface
 
-- **Goal:** `anc web <target>` with bare-target sugar, text and JSON rendering, exit codes, staleness note,
-  `--external-dns`, `--site-type`, `--check`, and the emit variants.
-- **Requirements:** R1, R2, R6, R7, R8, R14. Implements KTD5 (session-settled; cites R8), KTD7 (cites R2), KTD9 (cites
-  R6), KTD11 (cites R1, R8).
+- **Goal:** `anc web <target>` with bare-target sugar, text and JSON rendering, exit codes, `--external-dns`,
+  `--site-type`, and `--check`. The staleness note and the emit variants are U12 (phase 2).
+- **Requirements:** R1, R2, R7, R8. Implements KTD5 (session-settled; cites R8), KTD7 (cites R2), KTD11 (cites R1, R8).
 - **Dependencies:** U4 (rendering/exit paths exercise engine output; handler completeness not required to land the
-  surface); U9 (the staleness-note logic and its tests consume U9's documented response shape).
+  surface).
 - **Files:** `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`, `tests/integration.rs`.
 - **Approach:**
   1. `Commands::Web` as a flat top-level variant (the `Audit` shape, not the nested `Skill` shape), routed to a
@@ -683,16 +774,13 @@ flowchart TB
   2. URL-ish pre-dispatch sniff per KTD7's grammar; path/binary existence wins; scheme-less targets default https,
      localhost and IP-literal locals default http; grammar misses fall through to today's behavior unchanged.
   3. Text renderer follows `anc` text conventions through `output::emit`/`color::should_color`; JSON mode prints the U3
-     scorecard verbatim on stdout with the staleness note on stderr (per R6/AE9); exit codes per KTD5; staleness note
-     rendered only in web reports (KD5), fetched only for public targets (KTD9).
+     scorecard verbatim on stdout; exit codes per KTD5; the report header names the vendored registry version and the
+     pinned site SHA so a reader can compare against anc.dev by hand until U12 automates it.
   4. When any unported-handler or unported-eval skip is present, flag the headline score as non-comparable — inline in
      text mode, on stderr in JSON mode — naming the unported kinds and skipped check ids (KTD3's degradation-honesty
      rule).
-  5. `anc emit web-checks` serializes the compiled registry tables; `anc emit web-schema` prints
-     `schema/web-scorecard.schema.json` (R14, System-Wide Impact's emit symmetry).
-  6. `--help` documents the two exit-code spaces, the two scorecard schema families, the public-target version fetch,
-     and the `--external-dns` egress (in AE6's words); release notes carry the bare-invocation migration note
-     (System-Wide Impact).
+  5. `--help` documents the two exit-code spaces, the two scorecard schema families, and the `--external-dns` egress (in
+     AE6's words); release notes carry the bare-invocation migration note (System-Wide Impact).
 - **Patterns to follow:** `src/cli.rs` `Audit` variant; the seven gotchas in
   `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`;
   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`.
@@ -706,14 +794,13 @@ flowchart TB
     `--` separator and value-flag tokens still behave per the existing argv tests.
   - Edge: `--check <id>` runs the single check with per-status exit codes (pass 0, fail 1, n_a 3); `--site-type api`
     filters as the site's `siteTypeApplies` does; omitted site-type runs everything.
-  - Edge: staleness note renders when vendored version < signal version — stderr in JSON mode (Covers AE9), inline in
-    text; absent when equal, when the target is local (no fetch attempted), or when the signal fetch fails. Covers AE3.
+  - Integration: a run against a local target makes no connection to anc.dev (transport panics on any non-target host).
+    Covers AE3.
   - Edge: a run with an unported-handler skip carries the non-comparable-score flag naming the kind.
   - Error: unresolvable bare token gets the existing audit error path plus a "did you mean anc web" hint; exit codes
     match the STATUS_EXIT table for pass/fail/n_a scorecards.
   - Integration: `--help` and `--version` make zero network calls (assert via a transport that panics on use).
-- **Verification:** Integration tests green; `anc emit web-checks` output round-trips through the U3 types; `anc emit
-  web-schema` output validates a real scorecard.
+- **Verification:** Integration tests green; text and JSON renderers exercised against a full mock-target scorecard.
 
 ### U8. Conformance corpus generator (site repo)
 
@@ -722,27 +809,35 @@ flowchart TB
 - **Requirements:** R5, R9, R10.
 - **Dependencies:** None (informs U5/U6; corpus format agreed with U3's types).
 - **Files (agentnative-site):** `scripts/web-audit/gen-fixtures.ts`, `tests/fixtures/web-audit-conformance/` (committed
-  corpus, `dev` branch), CI gate workflow.
+  corpus and `regex-parity.json`, `dev` branch), `src/data/web-audit/registry.yaml` (the Vary-header pattern), CI gate
+  workflow.
 - **Approach:**
   1. A Bun script that feeds the engine a stubbed `fetchImpl` (the same seam the site's handler tests already use — the
      single-hop boundary KTD1's Transport reproduces) from declarative exchange files, then writes the resulting
      scorecard JSON per scenario.
   2. Scenario set: per-handler pass/fail/absent cases mirroring `tests/web-audit-handlers.test.ts`, plus whole-run
-     scenarios (healthy target, unreachable, antecedent-unmet chains, MCP legacy and modern lanes).
+     scenarios (healthy target, unreachable, antecedent-unmet chains, MCP legacy and modern lanes, an MCP server that
+     answers initialize and keeps its SSE stream open).
   3. Deterministic output (sorted keys, fixed timestamps) so `cmp`-based drift checks work; regeneration is a committed,
      reviewed change.
   4. Site-side CI gate: a PR touching `registry.yaml` fails unless every check id has at least one corpus scenario
      (Risks & Mitigations' corpus-lag guard).
+  5. Emit `regex-parity.json`: every registry pattern crossed with a fixed probe-string table, with the boolean the
+     site's own `RegExp` evaluation returns for each pair (the ground truth for U5's regex-parity test).
+  6. Rewrite the Vary-header `header_regex` (`(?=.*accept(?!-))(?=.*user-agent)`) without lookaround, semantics
+     preserved, with a site test asserting the old and new patterns agree on a header-value table; after this the
+     registry carries no lookaround, so the CLI compiles every pattern with the `regex` crate.
 - **Test scenarios:**
   - Happy path: running the generator twice yields byte-identical output (determinism — the Goal Capsule stop condition
     check).
   - Edge: a registry-touching change without a matching corpus scenario fails the completeness gate.
+  - Edge: the rewritten Vary pattern matches exactly the header values the lookaround form matched.
   - Integration: the site's existing test suite passes with the generator's stub inputs (the corpus reflects real engine
     behavior, not a parallel mock).
 - **Verification:** Corpus committed on `dev`; `bun test` green; completeness gate red on a coverage gap; regeneration
   diff is empty when the engine is unchanged.
 
-### U9. Version signal (site repo)
+### U9. Version signal (site repo, phase 2)
 
 - **Goal:** A cheap, publicly served signal carrying `spec_version` and the registry version, for the CLI staleness
   note.
@@ -775,7 +870,7 @@ flowchart TB
   3. Dogfood: `anc audit .` still passes with the new verb present (envelope pattern, safe probing,
      `arg_required_else_help` untouched); a corpus of previously-valid bare invocations (`anc .`, `anc <path>`, `anc
      <flags>`) still routes to audit (System-Wide Impact's behavior-delta guard).
-  4. Size gate: CI asserts the release binary stays under the ceiling U1 recorded.
+  4. Size gate: CI asserts the release binary stays under the ceiling U1 recorded (~5MB over the pre-U1 binary).
 - **Test scenarios:**
   - Happy path: full corpus green. Covers AE4.
   - Edge: a deliberately mutated golden file fails (the suite binds); a corpus scenario the Rust engine cannot yet
@@ -803,29 +898,294 @@ flowchart TB
 - **Verification:** Every one of the skill's 32 check ids appears exactly once in the table; the constructibility
   walkthrough cites only fields present in the U3 types.
 
+### U12. Staleness note, emit variants, bump workflow (phase 2)
+
+- **Goal:** The report tells a dev when the vendored registry is behind anc.dev, agents can read the check vocabulary
+  and scorecard shape offline, and the registry pin moves on a calendar.
+- **Requirements:** R6, R14. Implements KTD9 (cites R6) and KTD3's scheduled-bump lane.
+- **Dependencies:** U7, U9.
+- **Files:** `src/web_audit/render.rs`, `src/cli.rs`, `src/main.rs`, `.github/workflows/web-audit-bump.yml`,
+  `tests/integration.rs`.
+- **Approach:**
+  1. Staleness note per KTD9: fetched only for targets the locality classifier labels public, bounded timeout, silent
+     skip on any failure; inline in text mode, on stderr in JSON mode (AE9); `--help` discloses the public-target
+     version fetch.
+  2. `anc emit web-checks` serializes the compiled registry tables; `anc emit web-schema` prints
+     `schema/web-scorecard.schema.json` (R14, System-Wide Impact's emit symmetry).
+  3. Scheduled weekly `web-audit-bump.yml` diffs site `dev` HEAD against `WEB_AUDIT_SITE_SHA` and opens a bump PR
+     listing registry changes and any unported handler or eval kinds.
+  4. Add the new version literals to the ecosystem version-model table
+     (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
+- **Test scenarios:**
+  - Edge: staleness note renders when vendored version < signal version — stderr in JSON mode (Covers AE9), inline in
+    text; absent when equal, when the target is local (no fetch attempted), or when the signal fetch fails.
+  - Integration: `anc emit web-checks` output round-trips through the U3 types; `anc emit web-schema` output validates a
+    real scorecard.
+  - Integration: `--help` and `--version` still make zero network calls.
+- **Verification:** Integration tests green; the bump workflow opens a PR against a deliberately stale pin in a dry run.
+
 ---
 
 ## Verification Contract
 
-| Gate             | Command                                                                     | Proves                                                             |
-| ---------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Format/lint      | `cargo fmt --check`, `cargo clippy -- -Dwarnings`                           | Repo conventions (pre-push hook parity)                            |
-| Tests            | `cargo test`                                                                | Units U1–U7, U10, U11 scenarios                                    |
-| Supply chain     | `cargo deny check`                                                          | KTD1's license clearance incl. the CDLA allow-list addition (U1)   |
-| Windows          | pre-push hook step 7 (`cargo clippy --target x86_64-pc-windows-gnu`)        | New networking code and the aws-lc-rs toolchain are cross-platform |
-| Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)             | R9's sync mechanism against the pinned SHA                         |
-| Vendor freshness | scheduled `web-audit-bump.yml` opens bump PRs                               | KTD3's pin moves deliberately, staleness is calendar-visible       |
-| Conformance      | `cargo test --test web_audit_conformance`                                   | R5 parity against the U8 corpus                                    |
-| Size             | CI release-binary size assertion vs the U1 ceiling                          | R3 / KD2's size bet                                                |
-| Dogfood          | `anc audit .` green + bare-invocation regression corpus                     | New verb regresses neither anc's audit nor existing routing        |
-| Site side        | `bun test`, `bun run build`, corpus-completeness gate in `agentnative-site` | U8 corpus validity and coverage, U9 endpoint                       |
+| Gate             | Command                                                                             | Proves                                                              |
+| ---------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Format/lint      | `cargo fmt --check`, `cargo clippy -- -Dwarnings`                                   | Repo conventions (pre-push hook parity)                             |
+| Tests            | `cargo test`                                                                        | Units U1–U7, U10, U11 scenarios                                     |
+| Supply chain     | `cargo deny check`                                                                  | KTD1's license clearance incl. the CDLA allow-list addition (U1)    |
+| Windows          | CI `check-windows` (native runner) + pre-push hook step 7 (`x86_64-pc-windows-gnu`) | New networking code and the aws-lc-sys toolchain are cross-platform |
+| Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)                     | R9's sync mechanism against the pinned SHA, both vendored roots     |
+| Vendor freshness | phase 2: scheduled `web-audit-bump.yml` opens bump PRs                              | KTD3's pin moves deliberately, staleness is calendar-visible        |
+| Conformance      | `cargo test --test web_audit_conformance`                                           | R5 parity against the U8 corpus, including the regex-parity fixture |
+| Size             | CI release-binary size assertion vs the U1 ceiling (~5MB delta)                     | R3 / KD2's size bet                                                 |
+| Dogfood          | `anc audit .` green + bare-invocation regression corpus                             | New verb regresses neither anc's audit nor existing routing         |
+| Site side        | `bun test`, `bun run build`, corpus-completeness gate in `agentnative-site`         | U8 corpus validity and coverage, U9 endpoint                        |
 
 ## Definition of Done
 
-- All eleven units landed; every gate in the Verification Contract green in CI, both repos.
+- Phase 1: U1–U8, U10, U11 landed; every phase-1 gate in the Verification Contract green in CI, both repos. Phase 2: U9
+  and U12 landed with the vendor-freshness gate green.
 - AE1–AE9 each enforced by a named test (the `Covers` links in unit test scenarios).
 - The U1 size ceiling is recorded and CI-enforced; the release binary is under it.
 - `docs/web-audit-skill-coverage.md` exists with all 32 skill checks dispositioned (R11).
-- The ecosystem version-model doc carries the new version literals (KTD9), and the release checklist carries the
-  webpki-roots and registry-pin bump disciplines (Risks & Mitigations).
+- The release checklist carries the webpki-roots and registry-pin bump disciplines (Risks & Mitigations); in phase 2 the
+  ecosystem version-model doc carries the new version literals (KTD9).
 - No dead-end or experimental code from abandoned approaches remains in the diff.
+
+## NOT in scope
+
+Considered during engineering review and explicitly deferred or rejected, one line each:
+
+- Phase 2 (U9, U12): the anc.dev staleness note (R6, KTD9), `anc emit web-checks` / `web-schema` (R14), and the
+  scheduled registry-bump workflow. Deferred so the first ship depends on one repo and one engine.
+- The `ring` crypto provider: security-only maintained by the rustls team since 2025-02; disqualified by policy.
+- The size-optimized aws-lc-rs build (`AWS_LC_SYS_SMALL=1` / `opt-level=z`): not used; the size ceiling moved to ~5MB
+  and the plain build ships.
+- `fancy-regex` and a backtrack limit: not needed once U8 rewrites the registry's one lookaround pattern; the build
+  rejects lookaround and backreferences instead.
+- An async runtime for true request cancellation: rejected by KTD1; the deadline is enforced at request issue time.
+- A native-Windows CI runner change: CI's `check-windows` already runs on `windows-latest`; only the toolchain input is
+  needed.
+- A JS-compatible custom number serializer: not needed; every scorecard number is integral and typed as an integer.
+- Authenticated targets, a trust-store flag for private CAs, rewiring the agent-web-audit skill, and runtime registry
+  refresh: deferred in Scope Boundaries above.
+
+## What already exists
+
+Existing code that partially solves a sub-problem, and whether the plan reuses it:
+
+- `scripts/sync-skill-fixture.sh`, `.github/workflows/skill-fixture-drift.yml`, `build.rs::emit_skill_hosts`: the
+  pinned-vendor, drift-CI, build-codegen pattern. Reused; U2 extends it with a second vendored root.
+- `src/skill_install.rs` (`GIT_HARDEN_FLAGS`, `GIT_HARDEN_ENV_*`): the git hardening surface. Reused in shell form by
+  U2's sync script.
+- `src/argv.rs` (`inject_default_subcommand`) and the seven argv pre-parse gotchas doc: U7's URL sniff sits beside the
+  injector. Reused; U10's bare-invocation corpus guards it.
+- `src/output.rs`, `src/color.rs`: the render leaves. Reused.
+- `schema/scorecard.schema.json` and `anc emit schema`: the self-describing-schema convention. Reused for
+  `web-scorecard.schema.json` (U3); the emit command is U12.
+- `serde_yaml` (pinned build-dependency, deprecated upstream): reused by U2's codegen; re-evaluate if cargo-deny flags
+  it.
+- Shared reusable workflows `rust-ci.yml` (native `windows-latest` check) and `rust-release.yml` (seven targets, three
+  via `cross`) in `brettdavies/.github`: extended with an opt-in toolchain input in U1, not duplicated.
+- `src/scorecard/mod.rs` (2,621 lines, typed against `AuditResult`): shares no structure with `WebScorecard`. Not reused
+  (KTD6), correctly.
+- Site-side, mirrored rather than rebuilt: `ssrf.ts` and `tests/web-audit-ssrf.test.ts` (locality classifier and its
+  table, U4), `score.ts` and `tests/fixtures/web-audit-score-parity.json` (U3), `assert.ts` regex flags (U2/U5),
+  `engine.ts` constants (U4), `handlers/*` and their tests (U5/U6), `scripts/web-audit/audit.ts` `STATUS_EXIT` (U7).
+- No HTTP client exists in the CLI today (zero network crates), so U1 is greenfield by necessity.
+
+## Test coverage map
+
+Planned code paths and user flows against the tests the plan now names. Every path has a planned test; gaps found in
+review are closed by the decisions cited.
+
+```text
+CODE PATHS (planned)                                          USER FLOWS
+[+] src/web_audit/fetch/                                      [+] Local pre-flight (F1)
+  |- redirect.rs  [***] 2-hop chain, 4-hop cap, metadata       |- [***] anc web localhost:8787 -> report, exit code
+  |               refusal, class-crossing refusal (U1)         |- [***] no route to anc.dev, no note, no error (AE3)
+  |- body.rs      [***] skip / 64 KiB truncate / 16 MiB root   |- [***] private-CA target, honest TLS label (AE5)
+  |               ceiling + gzip bomb (U1, D13)                |- [***] intranet host, no DoH, --external-dns fires (AE6)
+  |- proxy.rs     [***] HTTPS_PROXY public, loopback direct,   |- [***] tarpit completes inside deadline (AE7, D3)
+  |               NO_PROXY (U1)                                |- [***] anc report.json fails fast offline (AE8)
+  \- TLS evidence [***] self-signed server -> bundled-root     [+] Pre-flight to official (F2)
+                  class, pins ureq->rustls (U1, D11)           |- [***] corpus byte-parity, both engines (AE4, U10)
+[+] src/web_audit/locality.rs                                  [+] Skill as consumer (F3)
+  \- classify()   [***] site ssrf test table verbatim (D8)     |- [**]  coverage doc constructibility walkthrough (U11)
+[+] src/web_audit/engine/                                      [+] Error states
+  |- pool.rs      [***] never-responds + slow-trickle tarpit,   |- [***] unreachable root -> unreachable report, exit 1
+  |               timeout_global from remaining budget (D3)    |- [***] unported handler -> skip + non-comparable flag
+  |- waves.rs     [***] antecedent-unmet, optional-absent      |- [***] DoH resolver unreachable -> error, not absent
+  \- antecedents  [***] site-type filter, --check single id    |- [***] bad bare token -> audit error + did-you-mean
+[+] src/web_audit/scorecard.rs / score.rs                      [+] Boundary states
+  |- serde mirror [***] unknown field/status rejected,          |- [***] all-n_a input, lone broken MUST, .5 rounds up
+  |               integer types, no ".0" golden (D7)           |- [***] body over cap truncates, evaluated not errored
+  \- score        [***] parity fixture, perturbed weight fails [+] Regression (IRON RULE, already in plan)
+[+] src/web_audit/handlers/*.rs                                |- [***] bare-invocation corpus still routes to audit (U10)
+  |- 10 kinds+eval [***] corpus slices, JS-vs-Rust regex        |- [***] anc audit . unchanged with the new verb (U10)
+  |               parity fixture (D10)
+  \- mcp/         [***] modern/legacy lanes, error codes,
+                  open-stream server -> timeout status (D5)
+[+] src/cli.rs, src/argv.rs, src/main.rs, render.rs
+  |- sniff        [***] AE1, AE8, localhost:8787 vs ./path, -- and value flags
+  |- render       [***] JSON verbatim, text every row, exit-code table
+  \- --help       [***] zero network calls (transport panics on use)
+[+] build.rs::emit_web_registry
+  \- codegen      [***] counters 65/6/11/2, hand-authored keyword, unknown UA token, literal UA, lookaround,
+                  backreference each fail naming the id; unknown handler/eval binds to unsupported placeholder
+[+] site: gen-fixtures.ts (U8)
+  \- generator    [***] determinism (run twice byte-identical), completeness gate, Vary rewrite equivalence
+
+COVERAGE: 40/40 planned paths have a named test (100%)  |  Code paths: 28/28  |  User flows: 12/12
+QUALITY: ***:39  **:1  *:0  |  GAPS: 0 after review (7 closed by D3, D5, D7, D8, D10, D11, D13)
+```
+
+Legend: `***` behavior + edge + error, `**` happy path, `*` smoke. No E2E beyond the corpus suite is warranted: the
+product is a CLI whose only integration surface is the target it probes, which the mock transport and the in-test
+servers cover. No LLM evals apply.
+
+Files that should carry inline ASCII diagrams in code comments: `engine/pool.rs` (the deadline-and-pool diagram above),
+`fetch/redirect.rs` (hop loop with the two refusal exits), `handlers/mcp/session.rs` (lane detection state machine),
+`locality.rs` (classification order: literal forms, shape rules, resolver).
+
+## Failure modes
+
+One realistic production failure per new codepath, with whether a test covers it, whether handling exists, and what the
+user sees. No critical gaps remain (a critical gap is no test, no handling, and silent).
+
+| Codepath            | Failure                                                | Test | Handling | User sees                                            |
+| ------------------- | ------------------------------------------------------ | ---- | -------- | ---------------------------------------------------- |
+| `fetch/redirect.rs` | Target 302s to `169.254.169.254` or crosses locality   | yes  | refuse   | `blocked:` evidence on the affected check            |
+| `fetch/body.rs`     | gzip bomb inflating past 16 MiB                        | yes  | truncate | truncation note on root-derived checks               |
+| `fetch/proxy.rs`    | `HTTPS_PROXY` set, proxy down, public target           | yes  | error    | error status with transport reason                   |
+| TLS evidence        | private CA / self-signed target                        | yes  | classify | "chain rejected by bundled roots" (AE5)              |
+| `locality.rs`       | IPv4-mapped IPv6 intranet literal                      | yes  | local    | DNS checks n_a "needs public DNS", no egress         |
+| `engine/pool.rs`    | tarpit or slow-loris on wave 1                         | yes  | deadline | partial report inside 25s, skip("deadline") rows     |
+| `engine/waves.rs`   | root fetch dead                                        | yes  | degrade  | unreachable report, exit 1                           |
+| `handlers/dns-doh`  | corporate egress blocks the DoH resolver               | yes  | error    | error with transport reason, never a false "absent"  |
+| `handlers/mcp/`     | server answers initialize, never closes the SSE stream | yes  | timeout  | the same timeout status anc.dev records              |
+| `handlers/*` regex  | body with `\r\n` endings or non-ASCII digits           | yes  | parity   | same verdict as anc.dev (regex-parity fixture)       |
+| `scorecard.rs`      | site adds a field or a decimal score                   | yes  | loud     | golden deserialization fails in CI, not at runtime   |
+| `build.rs` codegen  | site adds a handler kind before the port               | yes  | skip     | "handler not yet ported" + non-comparable score flag |
+| `argv.rs` sniff     | dot-bearing filename typo (`anc report.json`)          | yes  | offline  | today's audit error plus a did-you-mean hint (AE8)   |
+| Sync script         | pinned SHA unreachable                                 | yes  | fail     | script exits naming the SHA; nothing vendored        |
+| Release matrix      | `cross` row lacks cmake                                | yes  | CI       | red release build before any engine code (U1 step 5) |
+
+## Worktree parallelization strategy
+
+| Step | Modules touched                                                                                                           | Depends on     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| U1   | `src/web_audit/{transport,fetch}/`, `Cargo.toml`, `deny.toml`, `Cross.toml`, `tests/fixtures/tls/`, shared workflows      | —              |
+| U2   | `scripts/`, `.github/workflows/`, `build.rs`, `src/web_audit/` (vendored inputs), `tests/fixtures/web-audit-conformance/` | —              |
+| U3   | `src/web_audit/{scorecard,score}.rs`, `schema/`                                                                           | U2             |
+| U4   | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3         |
+| U5   | `src/web_audit/handlers/` (stateless files)                                                                               | U4             |
+| U6   | `src/web_audit/handlers/mcp/`                                                                                             | U4             |
+| U7   | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`                                                     | U4             |
+| U8   | site: `scripts/web-audit/`, `tests/fixtures/`, `src/data/web-audit/`                                                      | —              |
+| U10  | `tests/`                                                                                                                  | U5, U6, U7, U8 |
+| U11  | `docs/`                                                                                                                   | U7             |
+| U9   | site: worker route, build step (phase 2)                                                                                  | —              |
+| U12  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/` (phase 2)                                                   | U7, U9         |
+
+Lanes:
+
+- Lane A: U1 → U4 → U5 (sequential, shared `src/web_audit/`).
+- Lane B: U2 → U3 (sequential, shared vendored inputs and `build.rs`).
+- Lane C: U8 (independent, site repo).
+- Lane D: U6 (after U4; parallel to U5, separate `handlers/mcp/` directory).
+- Lane E: U7 (after U4; parallel to U5 and U6, touches `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `render.rs`).
+- Lane F: U10 then U11 (after A, B, C, D, E).
+- Phase 2: U9 (site) then U12.
+
+Execution order: launch A (U1, with the shared-workflow PR first), B (U2), and C (U8) in parallel worktrees. Merge U1
+and U2, then U3 (B) and U4 (A). Then U5, U6, U7 in parallel. Then U10, then U11.
+
+Conflict flags: U1 and U2 both touch `Cargo.toml` (runtime vs build dependencies) and `src/web_audit/mod.rs`; land U1
+first and rebase U2. U5 and U6 both register in `src/web_audit/handlers/mod.rs`; separate files otherwise, so a one-line
+merge. U7 and U12 both touch `render.rs` and `src/cli.rs`; U12 waits for U7 by dependency.
+
+## Implementation Tasks
+
+Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex;
+checkbox as you ship.
+
+- [ ] **T1 (P1, human: ~1 day / CC: ~30 min)** — U1 toolchain — Provision cmake and NASM for aws-lc-sys across CI and
+  the release matrix.
+  - Surfaced by: Architecture review — Issue 2 (D4, option 2A).
+  - Files: `Cross.toml`, `brettdavies/.github` `rust-ci.yml` and `rust-release.yml` (opt-in input),
+    `scripts/hooks/pre-push` (step-7 comment), this repo's workflow callers.
+  - Verify: every release-matrix row and the CI Windows check green with ureq in the tree.
+- [ ] **T2 (P1, human: ~1 day / CC: ~30 min)** — `locality.rs` — Port `ssrf.ts` classification verbatim with its test
+  table.
+  - Surfaced by: Code Quality review — Issue 6 (D8, option 6A).
+  - Files: `src/web_audit/locality.rs`, `tests/web_audit_engine.rs`.
+  - Verify: one passing case per form in the site's `web-audit-ssrf.test.ts` table.
+- [ ] **T3 (P1, human: ~2 h / CC: ~10 min)** — U1 size gate — Set the ceiling at ~5MB delta and ship the plain aws-lc-rs
+  build.
+  - Surfaced by: Step 0 search check (D2, option B).
+  - Files: U1 PR body (measured delta), U10 CI size assertion.
+  - Verify: recorded delta under ~5MB; CI size gate green.
+- [ ] **T4 (P2, human: ~1 day / CC: ~30 min)** — `engine/pool.rs` — Enforce the deadline at request issue time.
+  - Surfaced by: Architecture review — Issue 1 (D3, option 1A).
+  - Files: `src/web_audit/engine/pool.rs`, `tests/web_audit_engine.rs`.
+  - Verify: never-responds and slow-trickle tarpit tests complete inside deadline plus grace.
+- [ ] **T5 (P2, human: ~2 h / CC: ~20 min)** — `handlers/mcp/` — Read MCP responses through the capped reader, then
+  parse; add the open-stream corpus scenario.
+  - Surfaced by: Architecture review — Issue 3 (D5, option 3A).
+  - Files: `src/web_audit/handlers/mcp/{sse,jsonrpc,checks}.rs`, site `scripts/web-audit/gen-fixtures.ts`.
+  - Verify: open-stream scenario resolves to the site's timeout status.
+- [ ] **T6 (P2, human: ~1 h / CC: ~10 min)** — U2 vendoring — Split vendored inputs: build inputs under `src/`, test
+  inputs under `tests/fixtures/web-audit-conformance/`.
+  - Surfaced by: Code Quality review — Issue 4 (D6, option 4A).
+  - Files: `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `tests/web_audit_conformance.rs`.
+  - Verify: `cargo package --list` excludes the corpus; drift check covers both roots.
+- [ ] **T7 (P2, human: ~1 h / CC: ~10 min)** — U3 mirror — Integer types for every scorecard number plus the no-`.0`
+  byte-parity test.
+  - Surfaced by: Code Quality review — Issue 5 (D7, option 5A).
+  - Files: `src/web_audit/scorecard.rs`, `tests/web_audit_score_parity.rs`.
+  - Verify: serialized scorecard byte-matches a JS-emitted golden.
+- [ ] **T8 (P2, human: ~1 day / CC: ~40 min)** — Regex parity — Generate `regex-parity.json` site-side, choose
+  JS-matching Rust flags in the codegen, assert equality in U5.
+  - Surfaced by: Test review — Gap G1 (D10, option A).
+  - Files: site `scripts/web-audit/gen-fixtures.ts`, `build.rs`, `tests/web_audit_handlers.rs`.
+  - Verify: every pattern × probe pair agrees; residual divergences named in KTD1.
+- [ ] **T9 (P2, human: ~3 h / CC: ~30 min)** — TLS evidence — Self-signed fixture, in-test rustls server, direct
+  `rustls` dependency at ureq's version.
+  - Surfaced by: Test review — Gap G10 (D11, option A).
+  - Files: `tests/fixtures/tls/`, `tests/web_audit_transport.rs`, `Cargo.toml`.
+  - Verify: bundled-root rejection evidence class asserted offline in every CI job.
+- [ ] **T10 (P2, human: ~3 h / CC: ~20 min)** — Regex engine — Rewrite the Vary-header pattern site-side, compile with
+  the `regex` crate only, reject lookaround at build time.
+  - Surfaced by: TODO step (D14, option C), superseding Performance Issue 8 (D12).
+  - Files: site `src/data/web-audit/registry.yaml`, `build.rs`, `Cargo.toml`.
+  - Verify: site test proves old and new patterns agree; a lookaround pattern fails the build naming its id.
+- [ ] **T11 (P3, human: ~2 h / CC: ~15 min)** — `fetch/body.rs` — `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB with truncation
+  flag, evidence note, over-ceiling and gzip-bomb tests.
+  - Surfaced by: Performance review — Issue 9 (D13, option 9A).
+  - Files: `src/web_audit/fetch/body.rs`, `tests/web_audit_transport.rs`.
+  - Verify: truncation flag set, no allocation beyond the cap.
+- [ ] **T12 (P3, human: ~2 h / CC: ~10 min)** — Module layout — `fetch/`, `engine/`, `handlers/mcp/` as directories with
+  one responsibility per file.
+  - Surfaced by: Code Quality review — Issue 7 (D9, option 7A).
+  - Files: `src/web_audit/fetch/`, `src/web_audit/engine/`, `src/web_audit/handlers/mcp/`.
+  - Verify: pure parsers (`sse`, `jsonrpc`, `locality`) have unit tests with no transport.
+
+*No new tasks from the phase split itself: D1 is reflected in the unit table, U7, U12, and the Scope Boundaries.*
+
+## GSTACK REVIEW REPORT
+
+| Review         | Trigger                      | Why                             | Runs | Status                                        | Findings                                 |
+| -------------- | ---------------------------- | ------------------------------- | ---- | --------------------------------------------- | ---------------------------------------- |
+| CEO Review     | `/plan-ceo-review`           | Scope & strategy                | 0    | —                                             | —                                        |
+| Outside Review | codex via `/plan-eng-review` | Independent 2nd opinion         | 2    | disabled (2026-09-17); prior native run stale | none this run (`codex_reviews=disabled`) |
+| Eng Review     | `/plan-eng-review`           | Architecture & tests (required) | 3    | CLEAR (PLAN) 2026-09-17, mode SCOPE_REDUCED   | 11 issues, 0 critical gaps, 14 decisions |
+| Design Review  | `/plan-design-review`        | UI/UX gaps                      | 0    | —                                             | —                                        |
+| DX Review      | `/plan-devex-review`         | Developer experience gaps       | 0    | —                                             | —                                        |
+
+- **OUTSIDE COVERAGE:** provider codex, phase plan-review, status disabled by `codex_reviews=disabled`; no outside
+  findings and no native fallback dispatched (a disabled review is a terminal opt-out). The 2026-04-30 record is a
+  native Claude subagent run, older than the 7-day window.
+- **VERDICT:** ENG CLEARED — ready to implement. CEO review not run (optional for a feature this size; see Next Steps).
+
+NO UNRESOLVED DECISIONS

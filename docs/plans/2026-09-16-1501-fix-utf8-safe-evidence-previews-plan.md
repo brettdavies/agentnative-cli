@@ -2,6 +2,7 @@
 title: UTF-8 Safe Evidence Previews - Plan
 type: fix
 date: 2026-09-16
+status: completed
 topic: utf8-safe-evidence-previews
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
@@ -20,8 +21,9 @@ execution: code
   offset in the audit file (KTD1, KTD2).
 - **Authority hierarchy:** Requirements (R-IDs) win on behavior. Key Technical Decisions (KTD-IDs) win on mechanism
   within their cited R constraints. Units carry only local deltas.
-- **Execution profile:** U1 is the fix and ships alone; it closes the crash and needs nothing from U2. U2 adds the
-  recurrence guard and is a separate PR. Both are `fix/…` branches cut from `dev`.
+- **Execution profile:** U1 is the fix and ships alone as PR #92, a `fix/…` branch cut from `dev`; it closes the crash
+  and needs nothing from U2. U2 adds the recurrence guard as PR #93, a `fix/…` branch stacked on #92's and rebased onto
+  `dev` once #92 merged.
 - **Stop conditions:** Stop and report if the regression test passes against the unfixed code, since that means the
   fixture either short-circuits before reaching the formatter or is aligned so byte 80 lands on a char boundary (KTD4).
   Stop if the scoped lint in U2 reports no finding when the guarded helper is degraded, since that means the guard is

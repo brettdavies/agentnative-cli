@@ -23,9 +23,10 @@ execution: code
 - **Product authority:** This plan owns the CLI feature and the site-side companion units (U8, U9) — no separate plan
   exists in the site repo. `agentnative-site` remains canonical for check definitions, engine semantics, and the "Web
   audit" / "check" / "probe" vocabulary (`agentnative-site:CONCEPTS.md`).
-- **Phases:** Phase 1 ships the complete engine and CLI surface: U1–U8, U10, U11, all eleven handler kinds, the
-  conformance corpus and suite, and the skill coverage diff. Phase 2 ships the anc.dev staleness signal and the offline
-  vocabulary: U9 and U12 (R6, R14, KTD9, the scheduled registry-bump workflow).
+- **Phases:** The phase line follows dependency, not convenience. Phase 1 ships everything that needs no anc.dev
+  endpoint: U1–U8, U10, U11, U13, all eleven handler kinds, the conformance corpus and suite, the fix catalog and its
+  readers, the docs, and the skill coverage diff. Phase 2 ships only what depends on U9's served signal: U9 and U12 (R6,
+  KTD9, the scheduled registry-bump workflow).
 - **Stop conditions:** Stop and surface to the user if U1's measured binary delta exceeds ~5MB (the size bet behind KD2
   fails), or if corpus generation in U8 reveals the TS engine is nondeterministic for fixed inputs (the parity mechanism
   fails).
@@ -127,8 +128,15 @@ flowchart TB
   scores included.
 - R8. Text output follows anc's existing text conventions; exit codes adopt the site web-audit runner's convention (pass
   = 0, any failing status = 1, n_a = 3), so CI gates agree with the site's own runner.
-- R14 (phase 2). Agents can discover the check vocabulary and the web-scorecard JSON shape offline, via `anc emit`
-  variants for both.
+- R15. Every failing row carries actionable guidance at the point of failure: text mode prints the goal, the fix and its
+  doc links under each failing check, and an offline reader serves the same catalog to agents. A run's time to first fix
+  needs no second tool, no browser and no network.
+- R16. A run that cannot produce a scorecard says what happened, why, and what to try next: JSON mode emits the repo's
+  structured error envelope and text mode names the problem, the cause and the next action.
+- R17. The binary has one exit-code contract across every verb, and a run's output names the code it is returning and
+  what earned it.
+- R14. Agents can discover the check vocabulary and the web-scorecard JSON shape offline, via `anc emit` variants for
+  both.
 
 **Vendoring**
 
@@ -359,10 +367,26 @@ here, with no separate site plan).
   future decimal field fails golden deserialization loudly. The golden corpus (U8) asserts byte-comparable scorecard
   JSON for fixed inputs; corpus exchanges are recorded at the single-hop `fetchImpl` boundary KTD1's Transport
   reproduces. Governs R5, R7.
-- KTD5. **Exit codes adopt the site runner's `STATUS_EXIT` convention.** (session-settled: user-approved — chosen over
-  `anc audit`'s exit scheme: CI-gate parity with the site's own runner.) The mapping is new anc-side glue pinned by its
-  own unit tests. A sniffed bare target moves that invocation from the usage-error exit space (2) to this result space —
-  a documented behavior delta (System-Wide Impact). Governs R8.
+- KTD12. **One exit-code table for the binary and the site runner, reached additively.** (DX review D8: KTD5 reopened
+  because adoption on both sides is low enough that one reconciliation now is cheaper than two contracts forever.) The
+  table is `0` clean, `1` warnings only, `2` failures present or a usage error, `3` could not check — an unreachable
+  target, a probe that errored, or every selected check inapplicable. Web statuses become warnings or failures through
+  the tier mapping the README already publishes (MUST miss → fail, SHOULD and MAY miss → warn), which the web registry
+  supports because every check carries a tier. Nothing that exits `0`, `1` or `2` today changes meaning, so the addition
+  is `3`, the case both tables lacked: a site nobody reached stops looking like a site with failures. `agentnative-site`
+  `scripts/web-audit/audit.ts` adopts the same table, replacing its per-status `STATUS_EXIT`. Every run names the code
+  it returns and what earned it, `--help` carries the table, and a test pins it so a later edit cannot quietly merge the
+  cases. Supersedes KTD5. Governs R8, R17.
+- KTD13. **Fix guidance is vendored data, delivered on its own surface.** (DX review D4.) `remediation.yaml` joins the
+  sync set: 48K, exactly one entry per registry check, each with a goal, a markdown fix and doc links, already the
+  site's single source for four consumers. Text mode prints the goal, the fix and its links under each failing row.
+  Agents read the whole catalog offline through `anc emit web-remediation`, mirroring the site's `get_web_remediation`
+  reader. The fix text never enters the scorecard object, so KD6's verbatim shape and U10's byte-parity test are
+  untouched. Governs R15.
+- KTD5. **(Superseded by KTD12.)** Exit codes adopt the site runner's `STATUS_EXIT` convention. (session-settled:
+  user-approved — chosen over `anc audit`'s exit scheme: CI-gate parity with the site's own runner.) The mapping is new
+  anc-side glue pinned by its own unit tests. A sniffed bare target moves that invocation from the usage-error exit
+  space (2) to this result space — a documented behavior delta (System-Wide Impact). Governs R8.
 - KTD6. **New parallel module tree `src/web_audit/`.** The existing `src/scorecard/mod.rs` (2,621 lines, typed against
   `AuditResult`/`AuditStatus`) shares no structure with `WebScorecard`; the web path reuses only `src/output.rs` and
   `src/color.rs` at the leaves.
@@ -498,20 +522,21 @@ flowchart TB
 
 ## Implementation Units
 
-| U-ID | Phase | Title                                        | Repo | Key files                                                                                                                 | Depends on     |
-| ---- | ----- | -------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| U1   | 1     | Networking foundation + size gate            | cli  | `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/transport.rs`, `src/web_audit/fetch/`, `tests/fixtures/tls/`      | —              |
-| U2   | 1     | Vendoring pipeline                           | cli  | `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`, `tests/fixtures/web-audit-conformance/` | —              |
-| U3   | 1     | Scorecard types + scoring                    | cli  | `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`, `schema/web-scorecard.schema.json`                                | U2             |
-| U4   | 1     | Engine orchestration                         | cli  | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3         |
-| U5   | 1     | Eleven stateless handlers                    | cli  | `src/web_audit/handlers/*.rs`                                                                                             | U4             |
-| U6   | 1     | MCP handler                                  | cli  | `src/web_audit/handlers/mcp/`                                                                                             | U4             |
-| U7   | 1     | CLI surface                                  | cli  | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`                                                     | U4             |
-| U8   | 1     | Conformance corpus generator                 | site | `scripts/web-audit/gen-fixtures.ts`, `src/data/web-audit/registry.yaml` (Vary pattern)                                    | —              |
-| U10  | 1     | Conformance suite + dogfood                  | cli  | `tests/web_audit_conformance.rs`, `tests/integration.rs`                                                                  | U5, U6, U7, U8 |
-| U11  | 1     | Skill coverage diff                          | cli  | `docs/web-audit-skill-coverage.md`                                                                                        | U7             |
-| U9   | 2     | Version signal                               | site | worker route + build step                                                                                                 | —              |
-| U12  | 2     | Staleness note, emit variants, bump workflow | cli  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/web-audit-bump.yml`                                           | U7, U9         |
+| U-ID | Phase | Title                             | Repo | Key files                                                                                                                 | Depends on     |
+| ---- | ----- | --------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| U1   | 1     | Networking foundation + size gate | cli  | `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/transport.rs`, `src/web_audit/fetch/`, `tests/fixtures/tls/`      | —              |
+| U2   | 1     | Vendoring pipeline                | cli  | `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`, `tests/fixtures/web-audit-conformance/` | —              |
+| U3   | 1     | Scorecard types + scoring         | cli  | `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`, `schema/web-scorecard.schema.json`                                | U2             |
+| U4   | 1     | Engine orchestration              | cli  | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3         |
+| U5   | 1     | Eleven stateless handlers         | cli  | `src/web_audit/handlers/*.rs`                                                                                             | U4             |
+| U6   | 1     | MCP handler                       | cli  | `src/web_audit/handlers/mcp/`                                                                                             | U4             |
+| U7   | 1     | CLI surface                       | cli  | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`                                                     | U4             |
+| U8   | 1     | Conformance corpus generator      | site | `scripts/web-audit/gen-fixtures.ts`, `src/data/web-audit/registry.yaml` (Vary pattern)                                    | —              |
+| U10  | 1     | Conformance suite + dogfood       | cli  | `tests/web_audit_conformance.rs`, `tests/integration.rs`                                                                  | U5, U6, U7, U8 |
+| U11  | 1     | Skill coverage diff               | cli  | `docs/web-audit-skill-coverage.md`                                                                                        | U7             |
+| U13  | 1     | Docs and discovery                | both | `README.md`, `Cargo.toml`, `src/main.rs`, site refusal message                                                            | U7             |
+| U9   | 2     | Version signal                    | site | worker route + build step                                                                                                 | —              |
+| U12  | 2     | Staleness note and bump workflow  | cli  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/web-audit-bump.yml`                                           | U7, U9         |
 
 U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in toolchain provisioning input).
 
@@ -589,11 +614,12 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
      pinning the hardening surface.
-  3. Sync set, split by consumer: build inputs (`src/data/web-audit/registry.yaml`, `src/shared/user-agents.ts`,
-     `src/shared/site-url.ts`) vendor under `src/web_audit/` because `build.rs` needs them in the crates.io package;
-     test inputs (`tests/fixtures/web-audit-score-parity.json`, the U8 corpus directory, and the U8 `regex-parity.json`)
-     vendor under `tests/fixtures/web-audit-conformance/`, which `Cargo.toml` already excludes from the package. The
-     drift check covers both roots. Keep the set explicit — do not widen the drift guard to files that shouldn't vendor.
+  3. Sync set, split by consumer: build inputs (`src/data/web-audit/registry.yaml`,
+     `src/data/web-audit/remediation.yaml`, `src/shared/user-agents.ts`, `src/shared/site-url.ts`) vendor under
+     `src/web_audit/` because `build.rs` needs them in the crates.io package; test inputs
+     (`tests/fixtures/web-audit-score-parity.json`, the U8 corpus directory, and the U8 `regex-parity.json`) vendor
+     under `tests/fixtures/web-audit-conformance/`, which `Cargo.toml` already excludes from the package. The drift
+     check covers both roots. Keep the set explicit — do not widen the drift guard to files that shouldn't vendor.
   4. `build.rs` gains `emit_web_registry` mirroring the site normalizer per KTD3: keyword derivation (reject
      hand-authored), `{ua:...}` expansion against the vendored map (fail on unknown token or literal UA, naming the
      check id), registry regex compilation with the `regex` crate under JS-matching flags (fail on lookaround,
@@ -762,8 +788,10 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
 ### U7. CLI surface
 
 - **Goal:** `anc web <target>` with bare-target sugar, text and JSON rendering, exit codes, `--external-dns`,
-  `--site-type`, and `--check`. The staleness note and the emit variants are U12 (phase 2).
-- **Requirements:** R1, R2, R7, R8. Implements KTD5 (session-settled; cites R8), KTD7 (cites R2), KTD11 (cites R1, R8).
+  `--site-type`, and `--check`, plus the three offline readers and the fix rendering. The staleness note is U12 (phase
+  2).
+- **Requirements:** R1, R2, R7, R8, R14, R15, R16, R17. Implements KTD7 (cites R2), KTD11 (cites R1, R8), KTD12 (cites
+  R8, R17), KTD13 (cites R15).
 - **Dependencies:** U4 (rendering/exit paths exercise engine output; handler completeness not required to land the
   surface).
 - **Files:** `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`, `tests/integration.rs`.
@@ -772,15 +800,30 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
      `run_web` helper; flags per KTD11 (`--site-type content|api`, `--check <id>`) plus `--external-dns` (KD8) and the
      standard `--output` pair.
   2. URL-ish pre-dispatch sniff per KTD7's grammar; path/binary existence wins; scheme-less targets default https,
-     localhost and IP-literal locals default http; grammar misses fall through to today's behavior unchanged.
+     localhost and IP-literal locals default http; grammar misses fall through to today's behavior unchanged. 3a. Render
+     contract (DX review D6). Progress goes to stderr, emitted only when stdout is a terminal and silenced by `--quiet`,
+     its env binding, `NO_COLOR` or a pipe, so a twenty-five second run never reads as a hang. The report opens with a
+     verdict line, then failing rows each carrying KTD13's goal, fix and doc links, then passing checks as a count that
+     `--verbose` expands. `--quiet`, `AGENTNATIVE_QUIET` and `NO_COLOR` behave exactly as they do on the audit path,
+     which is also what `p7-quiet` and `p6-no-color-behavioral` audit in other tools. JSON mode puts nothing but the
+     scorecard on stdout. 3b. Failure contract (DX review D10). Every path that ends without a scorecard — connection
+     refused, name not resolved, handshake failed, proxy failure, invalid target, every selected check inapplicable —
+     emits the repo's existing envelope (`src/json_error.rs`) in JSON mode with its coarse `kind`, precise `reason`,
+     `message` and `next_step`, and in text mode names the problem, the cause and the next thing to try, such as whether
+     the server is running or whether the scheme defaulted to https on a dot-bearing name. Exit code is KTD12's
+     could-not-check code. One test per path. 3c. Exit codes per KTD12: the closing line names the code and what earned
+     it; `--help` carries the single table.
   3. Text renderer follows `anc` text conventions through `output::emit`/`color::should_color`; JSON mode prints the U3
      scorecard verbatim on stdout; exit codes per KTD5; the report header names the vendored registry version and the
      pinned site SHA so a reader can compare against anc.dev by hand until U12 automates it.
   4. When any unported-handler or unported-eval skip is present, flag the headline score as non-comparable — inline in
      text mode, on stderr in JSON mode — naming the unported kinds and skipped check ids (KTD3's degradation-honesty
-     rule).
-  5. `--help` documents the two exit-code spaces, the two scorecard schema families, and the `--external-dns` egress (in
-     AE6's words); release notes carry the bare-invocation migration note (System-Wide Impact).
+     rule). 4a. Offline readers (DX review D9, phase 1): `anc emit web-remediation` serves KTD13's whole fix catalog,
+     mirroring the site's `get_web_remediation`; `anc emit web-checks` serializes the compiled registry tables so
+     `--check <id>` has a discoverable argument; `anc emit web-schema` prints `schema/web-scorecard.schema.json`. All
+     three are serializers over data compiled in phase 1 and need no network.
+  5. `--help` documents the single exit-code table, the two scorecard schema families, and the `--external-dns` egress
+     (in AE6's words); release notes carry the bare-invocation migration note (System-Wide Impact).
 - **Patterns to follow:** `src/cli.rs` `Audit` variant; the seven gotchas in
   `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`;
   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`.
@@ -898,11 +941,38 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
 - **Verification:** Every one of the skill's 32 check ids appears exactly once in the table; the constructibility
   walkthrough cites only fields present in the U3 types.
 
-### U12. Staleness note, emit variants, bump workflow (phase 2)
+### U13. Docs and discovery (phase 1, both repos)
 
-- **Goal:** The report tells a dev when the vendored registry is behind anc.dev, agents can read the check vocabulary
-  and scorecard shape offline, and the registry pin moves on a calendar.
-- **Requirements:** R6, R14. Implements KTD9 (cites R6) and KTD3's scheduled-bump lane.
+- **Goal:** A developer who needs this finds it, and the published docs are correct the day the verb ships.
+- **Requirements:** R1, R17. Implements DX review D11 and D12.
+- **Dependencies:** U7.
+- **Files:** `README.md`, `Cargo.toml`, `src/main.rs`, and in `agentnative-site`, the guard's refusal message.
+- **Approach:**
+  1. README gains a web section: what `anc web` audits, the single command, the two scorecard schema families and which
+     verb emits which, and the fix-guidance surfaces. The exit-code table is rewritten for KTD12's single table,
+     including the new could-not-check code.
+  2. The anc.dev refusal for a local, private or internal target points at the local command. This is the highest-intent
+     moment in the funnel: the visitor has just proved they want exactly this.
+  3. Bring this crate onto the `xurl-rs` docs standard: `#![deny(missing_docs)]`, the README wired in as the rustdoc
+     landing page through `#![doc = include_str!("../README.md")]`, `#![warn(missing_debug_implementations)]`, a
+     `[package.metadata.docs.rs]` block, and the pre-push gate running `cargo doc --no-deps` under `RUSTDOCFLAGS="-D
+     warnings"`. The `documentation` field currently advertises a docs.rs page the crate cannot populate, because it has
+     no library target; resolve that as part of adopting the standard.
+- **Patterns to follow:** `xurl-rs` `crates/xdk/src/lib.rs` (the `include_str!` landing page and the lint set),
+  `crates/xdk/Cargo.toml` (`[package.metadata.docs.rs]`), and `xurl-rs` `scripts/hooks/pre-push` (the rustdoc gate).
+- **Test scenarios:**
+  - Integration: `cargo doc --no-deps` is clean under `RUSTDOCFLAGS="-D warnings"`, so a broken intra-doc link fails the
+    push.
+  - Integration: the README's exit-code table matches the codes the binary actually returns, asserted against KTD12's
+    pinning test rather than by eye.
+  - Edge: a local target submitted to the site's guard produces a refusal naming the local command.
+- **Verification:** Docs land in the same release as the verb; the Definition of Done blocks shipping without them.
+
+### U12. Staleness note and bump workflow (phase 2)
+
+- **Goal:** The report tells a dev when the vendored registry is behind anc.dev, and the registry pin moves on a
+  calendar.
+- **Requirements:** R6. Implements KTD9 (cites R6) and KTD3's scheduled-bump lane.
 - **Dependencies:** U7, U9.
 - **Files:** `src/web_audit/render.rs`, `src/cli.rs`, `src/main.rs`, `.github/workflows/web-audit-bump.yml`,
   `tests/integration.rs`.
@@ -910,17 +980,13 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
   1. Staleness note per KTD9: fetched only for targets the locality classifier labels public, bounded timeout, silent
      skip on any failure; inline in text mode, on stderr in JSON mode (AE9); `--help` discloses the public-target
      version fetch.
-  2. `anc emit web-checks` serializes the compiled registry tables; `anc emit web-schema` prints
-     `schema/web-scorecard.schema.json` (R14, System-Wide Impact's emit symmetry).
-  3. Scheduled weekly `web-audit-bump.yml` diffs site `dev` HEAD against `WEB_AUDIT_SITE_SHA` and opens a bump PR
+  2. Scheduled weekly `web-audit-bump.yml` diffs site `dev` HEAD against `WEB_AUDIT_SITE_SHA` and opens a bump PR
      listing registry changes and any unported handler or eval kinds.
-  4. Add the new version literals to the ecosystem version-model table
+  3. Add the new version literals to the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
 - **Test scenarios:**
   - Edge: staleness note renders when vendored version < signal version — stderr in JSON mode (Covers AE9), inline in
     text; absent when equal, when the target is local (no fetch attempted), or when the signal fetch fails.
-  - Integration: `anc emit web-checks` output round-trips through the U3 types; `anc emit web-schema` output validates a
-    real scorecard.
   - Integration: `--help` and `--version` still make zero network calls.
 - **Verification:** Integration tests green; the bump workflow opens a PR against a deliberately stale pin in a dry run.
 
@@ -928,24 +994,39 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
 
 ## Verification Contract
 
-| Gate             | Command                                                                             | Proves                                                              |
-| ---------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Format/lint      | `cargo fmt --check`, `cargo clippy -- -Dwarnings`                                   | Repo conventions (pre-push hook parity)                             |
-| Tests            | `cargo test`                                                                        | Units U1–U7, U10, U11 scenarios                                     |
-| Supply chain     | `cargo deny check`                                                                  | KTD1's license clearance incl. the CDLA allow-list addition (U1)    |
-| Windows          | CI `check-windows` (native runner) + pre-push hook step 7 (`x86_64-pc-windows-gnu`) | New networking code and the aws-lc-sys toolchain are cross-platform |
-| Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)                     | R9's sync mechanism against the pinned SHA, both vendored roots     |
-| Vendor freshness | phase 2: scheduled `web-audit-bump.yml` opens bump PRs                              | KTD3's pin moves deliberately, staleness is calendar-visible        |
-| Conformance      | `cargo test --test web_audit_conformance`                                           | R5 parity against the U8 corpus, including the regex-parity fixture |
-| Size             | CI release-binary size assertion vs the U1 ceiling (~5MB delta)                     | R3 / KD2's size bet                                                 |
-| Dogfood          | `anc audit .` green + bare-invocation regression corpus                             | New verb regresses neither anc's audit nor existing routing         |
-| Site side        | `bun test`, `bun run build`, corpus-completeness gate in `agentnative-site`         | U8 corpus validity and coverage, U9 endpoint                        |
+| Gate             | Command                                                                                 | Proves                                                              |
+| ---------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Format/lint      | `cargo fmt --check`, `cargo clippy -- -Dwarnings`                                       | Repo conventions (pre-push hook parity)                             |
+| Tests            | `cargo test`                                                                            | Units U1–U7, U10, U11 scenarios                                     |
+| Supply chain     | `cargo deny check`                                                                      | KTD1's license clearance incl. the CDLA allow-list addition (U1)    |
+| Windows          | CI `check-windows` (native runner) + pre-push hook step 7 (`x86_64-pc-windows-gnu`)     | New networking code and the aws-lc-sys toolchain are cross-platform |
+| Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)                         | R9's sync mechanism against the pinned SHA, both vendored roots     |
+| Vendor freshness | phase 2: scheduled `web-audit-bump.yml` opens bump PRs                                  | KTD3's pin moves deliberately, staleness is calendar-visible        |
+| Conformance      | `cargo test --test web_audit_conformance`                                               | R5 parity against the U8 corpus, including the regex-parity fixture |
+| Size             | CI release-binary size assertion vs the U1 ceiling (~5MB delta)                         | R3 / KD2's size bet                                                 |
+| Dogfood          | `anc audit .` green + bare-invocation regression corpus                                 | New verb regresses neither anc's audit nor existing routing         |
+| Exit codes       | `cargo test --test integration exit_code`                                               | KTD12's single table across both verbs, including could-not-check   |
+| First fix        | `cargo test --test web_audit_render`                                                    | Every failing row carries goal, fix and links (R15)                 |
+| Failure paths    | `cargo test --test web_audit_failures`                                                  | Each scorecard-less path emits the envelope and a next action (R16) |
+| Rustdoc          | `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`                                        | The `xurl-rs` docs standard holds; no broken intra-doc links (U13)  |
+| TTHW             | CI smoke: install the release artifact, audit a local fixture server, assert wall clock | The under-2-minute first-run promise (DX review D3)                 |
+| Site side        | `bun test`, `bun run build`, corpus-completeness gate in `agentnative-site`             | U8 corpus validity and coverage, U9 endpoint                        |
 
 ## Definition of Done
 
-- Phase 1: U1–U8, U10, U11 landed; every phase-1 gate in the Verification Contract green in CI, both repos. Phase 2: U9
-  and U12 landed with the vendor-freshness gate green.
+- Phase 1: U1–U8, U10, U11, U13 landed; every phase-1 gate in the Verification Contract green in CI, both repos. Phase
+  2: U9 and U12 landed with the vendor-freshness gate green.
 - AE1–AE9 each enforced by a named test (the `Covers` links in unit test scenarios).
+- **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, the site's
+  refusal points a local target at the local command, and this crate meets the `xurl-rs` docs standard: every public
+  item documented under `#![deny(missing_docs)]`, the README wired in as the rustdoc landing page, the docs.rs metadata
+  block present, and `cargo doc --no-deps` clean under `RUSTDOCFLAGS="-D warnings"`. The feature does not land without
+  them (U13).
+- Every failing row carries its goal, fix and doc links in text mode, and `anc emit web-remediation` serves the same
+  catalog offline (R15).
+- Every path that ends without a scorecard emits the structured envelope in JSON mode and a problem-cause-next-action
+  message in text mode (R16).
+- One exit-code table across both verbs and the site runner, named in each run's output and pinned by a test (R17).
 - The U1 size ceiling is recorded and CI-enforced; the release binary is under it.
 - `docs/web-audit-skill-coverage.md` exists with all 32 skill checks dispositioned (R11).
 - The release checklist carries the webpki-roots and registry-pin bump disciplines (Risks & Mitigations); in phase 2 the
@@ -956,8 +1037,17 @@ U1 also touches `brettdavies/.github` (`rust-ci.yml`, `rust-release.yml`: opt-in
 
 Considered during engineering review and explicitly deferred or rejected, one line each:
 
-- Phase 2 (U9, U12): the anc.dev staleness note (R6, KTD9), `anc emit web-checks` / `web-schema` (R14), and the
-  scheduled registry-bump workflow. Deferred so the first ship depends on one repo and one engine.
+- Phase 2 (U9, U12): the anc.dev staleness note (R6, KTD9) and the scheduled registry-bump workflow. Deferred because
+  both need the site endpoint that does not exist yet. The emit readers moved to phase 1 (DX review D9): they are
+  serializers over compiled data and need no network.
+- Inline fix text on the JSON scorecard rows: rejected in favour of a separate reader, so KD6's verbatim shape and U10's
+  byte-parity test survive (DX review D4).
+- Collapsing the warning-versus-failure distinction into the site runner's per-status table, and moving usage errors off
+  exit 2: both rejected while reconciling the exit tables (DX review D8).
+- An interactive playground or hosted sandbox as the magical moment: the product is a single binary a developer already
+  has, so the terminal is the delivery vehicle.
+- CI-specific affordances beyond the exit table, such as a threshold flag, a report-path flag or a `CI` env sniff: the
+  reviewed persona runs this by hand before deploying, and a pipeline can already gate on the exit code.
 - The `ring` crypto provider: security-only maintained by the rustls team since 2025-02; disqualified by policy.
 - The size-optimized aws-lc-rs build (`AWS_LC_SYS_SMALL=1` / `opt-level=z`): not used; the size ceiling moved to ~5MB
   and the plain build ships.
@@ -993,6 +1083,22 @@ Existing code that partially solves a sub-problem, and whether the plan reuses i
   table, U4), `score.ts` and `tests/fixtures/web-audit-score-parity.json` (U3), `assert.ts` regex flags (U2/U5),
   `engine.ts` constants (U4), `handlers/*` and their tests (U5/U6), `scripts/web-audit/audit.ts` `STATUS_EXIT` (U7).
 - No HTTP client exists in the CLI today (zero network crates), so U1 is greenfield by necessity.
+
+Developer-facing surfaces the DX review found already built, which U7 and U13 reuse rather than invent:
+
+- `src/json_error.rs`: the structured error envelope, with its shape settled September 2026 (`error` true, a coarse
+  `kind`, the precise `reason` beneath it, `message`, `next_step`). R16 reuses it verbatim.
+- `src/color.rs` and `src/output.rs`: terminal detection and the `NO_COLOR` contract that D6's render rules inherit.
+- `--quiet` and its `AGENTNATIVE_QUIET` binding on the audit path: the behavior the web verb matches.
+- The README's tier mapping table (MUST miss → fail, SHOULD and MAY miss → warn): the mapping KTD12 uses to turn web
+  statuses into one exit table, and it is already published.
+- `anc emit schema` and `schema/scorecard.schema.json`: the reader convention the three web readers copy.
+- `agentnative-site` `src/data/web-audit/remediation.yaml`: 48K, one entry per check, already the single source for the
+  site's result pages, its fix pages, its MCP reader and its skill pages. KTD13 makes the CLI the fifth consumer rather
+  than authoring new text.
+- `agentnative-site` `src/worker/mcp/tools/web-remediation.ts` (`get_web_remediation`): the reader shape `anc emit
+  web-remediation` mirrors.
+- `xurl-rs` `crates/xdk/src/lib.rs` and its pre-push rustdoc gate: the docs standard U13 adopts rather than defines.
 
 ## Test coverage map
 
@@ -1173,19 +1279,194 @@ checkbox as you ship.
 
 *No new tasks from the phase split itself: D1 is reflected in the unit table, U7, U12, and the Scope Boundaries.*
 
+### From the DX review
+
+- [ ] **T13 (P1, human: ~2 days / CC: ~45 min)** — U2, U7 — Vendor the fix catalog and deliver it on both surfaces.
+  - Surfaced by: DX review D4 — the site's `remediation.yaml` is 1:1 with the registry and the plan vendored only the
+    registry, so a local run named every failure and no fix.
+  - Files: `scripts/sync-web-audit.sh`, `build.rs`, `src/web_audit/render.rs`, `src/cli.rs`.
+  - Verify: a failing row prints goal, fix and links; `anc emit web-remediation` round-trips all 65 entries offline; the
+    scorecard object is unchanged byte for byte.
+- [ ] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
+  - Surfaced by: DX review D8 — the same binary returned 1 for "warnings, proceed" and for "checks failed".
+  - Files: `src/main.rs`, `src/cli.rs`, `README.md`, `agentnative-site` `scripts/web-audit/audit.ts`.
+  - Verify: the pinning test covers 0, 1, 2 and 3 on both verbs; the site runner returns the same codes.
+- [ ] **T15 (P1, human: ~1 day / CC: ~30 min)** — U7 render — Pin the run-output contract.
+  - Surfaced by: DX review D6 — a 25-second run showed nothing, and 12 failures landed among 53 passes.
+  - Files: `src/web_audit/render.rs`, `tests/integration.rs`.
+  - Verify: progress appears on a terminal and vanishes when piped or quieted; the report leads with the verdict and the
+    failing rows; `NO_COLOR` and the quiet env binding behave as on the audit path.
+- [ ] **T16 (P1, human: ~1 day / CC: ~30 min)** — U7 failures — Structured envelope and a next action on every dead end.
+  - Surfaced by: DX review D10 — only one failure path was specified.
+  - Files: `src/web_audit/render.rs`, `src/json_error.rs`, `tests/web_audit_failures.rs`.
+  - Verify: one test per path asserts the envelope fields and a text message naming problem, cause and next action.
+- [ ] **T17 (P1, human: ~1 day / CC: ~30 min)** — U13 docs — Ship docs with the feature, on the `xurl-rs` standard.
+  - Surfaced by: DX review D11 and D12 — no unit listed `README.md`, and the crate advertises a docs.rs page it cannot
+    populate.
+  - Files: `README.md`, `Cargo.toml`, `src/main.rs`, `agentnative-site` refusal message.
+  - Verify: `cargo doc --no-deps` clean under `RUSTDOCFLAGS="-D warnings"`; the README exit table matches T14's test.
+- [ ] **T18 (P2, human: ~4 h / CC: ~20 min)** — U7 readers — Move the emit family into phase 1.
+  - Surfaced by: DX review D9 — `--check <id>` shipped in phase 1 with no way to discover the 65 ids.
+  - Files: `src/cli.rs`, `src/main.rs`, `tests/integration.rs`.
+  - Verify: `anc emit web-checks` lists every id and round-trips; `anc emit web-schema` validates a real scorecard.
+- [ ] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate.
+  - Surfaced by: DX review D3 — the under-2-minute promise was unmeasured.
+  - Files: `.github/workflows/ci.yml`, `tests/`.
+  - Verify: the job installs the release artifact, audits a local fixture server and asserts the wall clock.
+
+## Developer Experience
+
+From `/plan-devex-review`, 2026-09-17, mode DX POLISH. Product type: CLI tool with a machine contract.
+
+### Developer persona
+
+Co-primary, both chosen deliberately:
+
+```text
+Who:       (A) A developer auditing their own localhost or internal site before it ships
+           (C) An AI coding agent running `anc web` on that developer's behalf
+Context:   The site is unreachable from anc.dev by design, so the public auditor refuses it.
+           The local run is the only run they get.
+Tolerance: A: minutes, and one command.  C: one invocation, then it acts on fields.
+Expects:   A: to be told what is broken and what to change.
+           C: every fact it needs inside the payload, with a schema to validate it.
+```
+
+The agent as co-primary is what forces KTD13's reader: an agent cannot read a rendered web page, so any guidance that
+exists only on anc.dev does not exist for it.
+
+### Developer empathy narrative
+
+The developer, before this plan's fixes: *"Our staging site is behind the VPN. I paste the URL into anc.dev and it
+refuses; localhost and internal hosts are not auditable. Someone says the CLI can do it locally. The README says 'the
+agent-native CLI linter, audits whether your CLI follows the 8 agent-readiness principles'. That is not what I want, I
+have a website, and the quick start shows auditing a project, a binary and a command on my path. I scroll twice more
+looking for the word web and find nothing. I install anyway and guess at `anc web staging.internal:8080`. It works.
+Sixty-five rows scroll past. Twelve are red. The first says `llms-txt-absent` with an evidence string under it. I want
+to know what to do about it. On anc.dev each failing row has a Fix line and a copy-paste prompt, but this site has no
+anc.dev page, which is the whole reason I am here. I end up searching the spec repo in a browser tab, which is the
+context switch I installed this tool to avoid."*
+
+The agent, same run: *"I get a scorecard: ids, labels, categories, statuses, evidence, scores. I can say twelve checks
+failed and name them. I cannot say what to change, because no fix text is in the payload, and I have no schema to
+validate against. The registry's hint field is compiled into the binary and I have no way to reach it."*
+
+Both were confirmed accurate before scoring. R15, R16 and U13 exist to end them.
+
+### Competitive benchmark
+
+| Tool                        | TTHW         | Prerequisites       | Notable DX choice                                                    |
+| --------------------------- | ------------ | ------------------- | -------------------------------------------------------------------- |
+| MDN HTTP Observatory        | ~1 min       | Node                | One npx command, JSON out, no install                                |
+| Lighthouse CLI              | 2–5 min      | Node LTS and Chrome | 30–60 s per audit, throttling on by default                          |
+| site-audit-cli              | ~1 min       | Node                | Exit 0 met, 1 budget missed, 2 could not run                         |
+| seo-audit-skill             | ~1 min       | Node                | A specific fix suggestion per rule; unmeasurable reported, not faked |
+| **`anc web`** (post-review) | **~1–2 min** | **none**            | Single static binary, bundled TLS roots, and the fix in the terminal |
+
+Two facts shape the plan. The install story already leads the category, because every peer needs Node or Chrome and this
+needs neither, so D3 makes it a stated promise with a smoke test rather than an accident of the build. And the closest
+functional peer ships a fix per rule, which is what KTD13 matches and then beats by working offline.
+
+### Magical moment
+
+`anc web localhost:8787` against a site nothing else can reach, and every failure arrives with its fix, in the same
+screen, with no network and no second tool. Delivery vehicle: the terminal itself, since the developer already has the
+binary. Implementation is KTD13 plus D6's report ordering: verdict first, failing rows with their fixes next, passing
+checks as a count. The agent gets the same catalog through `anc emit web-remediation`.
+
+### Developer journey
+
+| Stage       | Developer does                                | Friction found                                   | Status            |
+| ----------- | --------------------------------------------- | ------------------------------------------------ | ----------------- |
+| Discover    | Hits the anc.dev refusal, or reads the README | Neither mentions the verb                        | Fixed (U13)       |
+| Install     | One command, no runtime                       | None; leads the category                         | Already good      |
+| Hello world | `anc web <target>`                            | Up to 25 s of silence reads as a hang            | Fixed (D6)        |
+| Real usage  | Reads 65 rows                                 | 12 failures buried among 53 passes, no fix text  | Fixed (D6, KTD13) |
+| Debug       | Hits a wrong port or an unreachable host      | Only one failure path specified                  | Fixed (R16)       |
+| Automate    | Gates a script on the exit code               | Exit 1 meant two opposite things in one binary   | Fixed (KTD12)     |
+| Upgrade     | Takes a new release                           | Registry pin and version now named in the report | Already handled   |
+
+### First-time confusion report
+
+Traced against the README and the plan as written, before the fixes. Every item is now addressed.
+
+```text
+T+0:00  Reads the README. It describes a CLI linter. Nothing about sites.        -> U13
+T+0:30  Installs anyway. Guesses `anc web`. It exists.                           -> U13 documents it
+T+1:00  Terminal silent. Wonders whether it hung. Considers control-C.           -> D6 progress
+T+1:30  65 rows land at once. Scrolls up hunting for red.                        -> D6 ordering
+T+2:00  Finds `llms-txt-absent`. No fix text anywhere.                           -> KTD13
+T+3:00  Opens a browser tab to search the spec. The context switch the tool      -> KTD13 + U13
+        was installed to avoid.
+```
+
+### DX scorecard
+
+```text
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD                            |
++====================================================================+
+| Dimension            | Before | After  | Prior  |
+|----------------------|--------|--------|--------|
+| Getting Started      |  7/10  |  9/10  |   —    |
+| API/CLI/SDK          |  6/10  |  9/10  |   —    |
+| Error Messages       |  5/10  |  9/10  |   —    |
+| Documentation        |  3/10  |  9/10  |   —    |
+| Upgrade Path         |  7/10  |  8/10  |   —    |
+| Dev Environment      |  7/10  |  8/10  |   —    |
+| Community            |  8/10  |  8/10  |   —    |
+| DX Measurement       |  6/10  |  8/10  |   —    |
++--------------------------------------------------------------------+
+| TTHW                 | ~1-2 min, now promised and smoke-tested      |
+| Competitive Rank     | Champion (install); Champion (time to fix)   |
+| Magical Moment       | designed, via the terminal itself            |
+| Product Type         | CLI tool with a machine contract            |
+| Mode                 | POLISH                                      |
+| Overall DX           |  6/10  |  8.5/10 |   —   |
++====================================================================+
+| DX PRINCIPLE COVERAGE                                              |
+| Zero Friction                | covered (no runtime, one command)    |
+| Learn by Doing               | covered (fix text at the failure)    |
+| Fight Uncertainty            | covered (R16 + progress + verdict)   |
+| Opinionated + Escape Hatches | covered (defaults, --check, --verbose)|
+| Code in Context              | covered (real fixes, not hello world)|
+| Magical Moments              | covered (offline fix in the terminal)|
++====================================================================+
+```
+
+Documentation was the lowest score in the review at 3/10: no unit listed `README.md` and the Definition of Done had no
+docs item, on a plan that also changes the README's published exit-code table.
+
+### DX implementation checklist
+
+```text
+[x] Time to hello world under 2 minutes, promised and smoke-tested   (D3, T19)
+[x] Installation is one command with no prerequisites                (already true)
+[x] First run produces meaningful output, and says it is working     (D6, T15)
+[x] Magical moment delivered via the terminal                        (KTD13, T13)
+[x] Every failure path has problem + cause + fix + envelope          (R16, T16)
+[x] CLI naming guessable; one exit table across verbs                (KTD12, T14)
+[x] Every flag's argument is discoverable offline                    (D9, T18)
+[x] Docs ship with the feature, on the xurl-rs standard              (U13, T17)
+[x] Examples show real use, not hello world                          (README web section)
+[x] Works in CI without special configuration                        (exit table + JSON)
+[x] Changelog exists and is generated                                (already true)
+[ ] Editor integration / language server                             (n/a for this product)
+```
+
 ## GSTACK REVIEW REPORT
 
-| Review         | Trigger                      | Why                             | Runs | Status                                        | Findings                                 |
-| -------------- | ---------------------------- | ------------------------------- | ---- | --------------------------------------------- | ---------------------------------------- |
-| CEO Review     | `/plan-ceo-review`           | Scope & strategy                | 0    | —                                             | —                                        |
-| Outside Review | codex via `/plan-eng-review` | Independent 2nd opinion         | 2    | disabled (2026-09-17); prior native run stale | none this run (`codex_reviews=disabled`) |
-| Eng Review     | `/plan-eng-review`           | Architecture & tests (required) | 3    | CLEAR (PLAN) 2026-09-17, mode SCOPE_REDUCED   | 11 issues, 0 critical gaps, 14 decisions |
-| Design Review  | `/plan-design-review`        | UI/UX gaps                      | 0    | —                                             | —                                        |
-| DX Review      | `/plan-devex-review`         | Developer experience gaps       | 0    | —                                             | —                                        |
+| Review         | Trigger                    | Why                             | Runs | Status                                        | Findings                                     |
+| -------------- | -------------------------- | ------------------------------- | ---- | --------------------------------------------- | -------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`         | Scope & strategy                | 0    | —                                             | —                                            |
+| Outside Review | codex via the plan reviews | Independent 2nd opinion         | 3    | disabled (2026-09-17); prior native run stale | none this run (`codex_reviews=disabled`)     |
+| Eng Review     | `/plan-eng-review`         | Architecture & tests (required) | 3    | CLEAR (PLAN) 2026-09-17, mode SCOPE_REDUCED   | 11 issues, 0 critical gaps, 14 decisions     |
+| Design Review  | `/plan-design-review`      | UI/UX gaps                      | 0    | —                                             | —                                            |
+| DX Review      | `/plan-devex-review`       | Developer experience gaps       | 1    | CLEAR 2026-09-17, mode POLISH                 | score 6/10 → 8.5/10, TTHW ~1–2 min, 5 issues |
 
-- **OUTSIDE COVERAGE:** provider codex, phase plan-review, status disabled by `codex_reviews=disabled`; no outside
-  findings and no native fallback dispatched (a disabled review is a terminal opt-out). The 2026-04-30 record is a
-  native Claude subagent run, older than the 7-day window.
-- **VERDICT:** ENG CLEARED — ready to implement. CEO review not run (optional for a feature this size; see Next Steps).
+- **OUTSIDE COVERAGE:** provider codex, phase plan-review, status disabled by `codex_reviews=disabled`, recorded for
+  both the engineering and DX runs; no outside findings and no native fallback dispatched, since a disabled review is a
+  terminal opt-out. The 2026-04-30 record is a native Claude subagent run, older than the 7-day window.
+- **VERDICT:** ENG + DX CLEARED — ready to implement. CEO review not run (optional for a feature this size).
 
 NO UNRESOLVED DECISIONS

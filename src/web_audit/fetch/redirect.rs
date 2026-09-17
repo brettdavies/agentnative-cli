@@ -83,15 +83,20 @@ fn validate_url(
         .host_str()
         .ok_or_else(|| "blocked: empty hostname".to_string())?;
     let class = classify_host(host, resolver).map_err(|e| format!("blocked: {e}"))?;
+    // A refusal the site would also make carries the site's wording, so
+    // the evidence line matches anc.dev's for the same hop.
     if class == Locality::Metadata {
-        return Err(format!("blocked: {host} is a cloud metadata endpoint"));
+        let reason = crate::web_audit::locality::site_block_reason(host)
+            .unwrap_or_else(|| format!("{host} is a cloud metadata endpoint"));
+        return Err(format!("blocked: {reason}"));
     }
     if let Some(expected) = expected
         && class != expected
     {
-        return Err(format!(
-            "blocked: redirect leaves the {expected} target for a {class} host {host}"
-        ));
+        let reason = crate::web_audit::locality::site_block_reason(host).unwrap_or_else(|| {
+            format!("redirect leaves the {expected} target for a {class} host {host}")
+        });
+        return Err(format!("blocked: {reason}"));
     }
     Ok(Validated { url, class })
 }
@@ -172,6 +177,14 @@ mod tests {
         }
     }
 
+    struct LocalResolver;
+
+    impl Resolver for LocalResolver {
+        fn resolve(&self, _: &str) -> Result<Vec<IpAddr>, String> {
+            Ok(vec!["10.0.0.5".parse().unwrap()])
+        }
+    }
+
     #[test]
     fn target_validation_names_each_refusal() {
         let err = validate_target("not a url", &PanicResolver).unwrap_err();
@@ -179,7 +192,12 @@ mod tests {
         let err = validate_target("ftp://example.com/", &PanicResolver).unwrap_err();
         assert_eq!(err, "blocked: scheme ftp: is not http(s)");
         let err = validate_target("http://169.254.169.254/", &PanicResolver).unwrap_err();
-        assert_eq!(err, "blocked: 169.254.169.254 is a cloud metadata endpoint");
+        assert_eq!(
+            err,
+            "blocked: ipv4 169.254.169.254 is in blocked range 169.254.0.0/16"
+        );
+        let err = validate_target("http://metadata.google.internal/", &PanicResolver).unwrap_err();
+        assert_eq!(err, "blocked: internal metadata hostnames are blocked");
         let ok = validate_target("http://localhost:8787/x", &PanicResolver).unwrap();
         assert_eq!(ok.class, Locality::Local);
         let ok = validate_target("https://example.com/", &PublicResolver).unwrap();
@@ -209,7 +227,31 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err,
-            "blocked: redirect leaves the public target for a local host 10.0.0.5 (redirect hop 1)"
+            "blocked: ipv4 10.0.0.5 is in blocked range 10.0.0.0/8 (redirect hop 1)"
+        );
+        let err = validate_hop(
+            "http://intranet.corp/",
+            &current,
+            Locality::Public,
+            1,
+            &LocalResolver,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            "blocked: redirect leaves the public target for a local host intranet.corp (redirect hop 1)"
+        );
+        let err = validate_hop(
+            "https://example.com/",
+            &Url::parse("http://localhost:8787/a").unwrap(),
+            Locality::Local,
+            1,
+            &PublicResolver,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            "blocked: redirect leaves the local target for a public host example.com (redirect hop 1)"
         );
         let err =
             validate_hop("http://[bad", &current, Locality::Public, 1, &PanicResolver).unwrap_err();

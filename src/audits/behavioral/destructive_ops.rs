@@ -8,8 +8,9 @@
 use crate::runner::HelpOutput;
 
 /// Subcommand names that imply destructive intent — irreversible writes
-/// targeted at the agent-managed resource. Case-insensitive substring on
-/// the subcommand name (so `delete-key` and `force-delete` both match).
+/// targeted at the agent-managed resource. Matched case-insensitively at
+/// the start of the name or of a `-`/`_` segment, so `delete-key`,
+/// `force-delete` and `dropdb` match while `format` and `confirm` do not.
 const DESTRUCTIVE_VERBS: &[&str] = &[
     "delete", "remove", "rm", "destroy", "purge", "wipe", "reset", "drop", "clean", "force-",
 ];
@@ -35,7 +36,16 @@ pub(crate) fn destructive_subcommands(help: &HelpOutput) -> Vec<&String> {
 
 pub(crate) fn is_destructive(name: &str) -> bool {
     let lower = name.to_lowercase();
-    DESTRUCTIVE_VERBS.iter().any(|v| lower.contains(v))
+    segment_starts(&lower).any(|segment| DESTRUCTIVE_VERBS.iter().any(|v| segment.starts_with(v)))
+}
+
+/// Every suffix of `name` that begins at the name's start or immediately
+/// after a `-` or `_` delimiter: `reset-keys` yields `reset-keys` and `keys`.
+fn segment_starts(name: &str) -> impl Iterator<Item = &str> {
+    std::iter::once(name).chain(
+        name.match_indices(['-', '_'])
+            .map(|(i, delimiter)| &name[i + delimiter.len()..]),
+    )
 }
 
 pub(crate) fn is_read_verb(name: &str) -> bool {
@@ -77,17 +87,46 @@ mod tests {
     }
 
     #[test]
-    fn substring_match_for_compound_names() {
-        // `delete-all` should match — substring is correct here because
-        // the destructive intent of `delete` carries over.
-        assert!(is_destructive("delete-all"));
-        assert!(is_destructive("dropdb"));
+    fn segment_prefix_keeps_compound_names_destructive() {
+        for name in &[
+            "delete-all",
+            "dropdb",
+            "rmdir",
+            "cleanup",
+            "purgeall",
+            "reset-keys",
+            "force-push",
+            "remove_all",
+        ] {
+            assert!(is_destructive(name), "{name} should be destructive");
+        }
+    }
+
+    #[test]
+    fn verb_after_a_delimiter_is_destructive() {
+        for name in &[
+            "queue-purge",
+            "config-reset",
+            "session_wipe",
+            "db-drop",
+            "cache_clean",
+        ] {
+            assert!(is_destructive(name), "{name} should be destructive");
+        }
+        assert!(!is_destructive("config-firmware"));
     }
 
     #[test]
     fn does_not_flag_safe_verbs() {
         for verb in &["list", "get", "show", "create", "add", "init", "build"] {
             assert!(!is_destructive(verb), "{verb} should not be destructive");
+        }
+    }
+
+    #[test]
+    fn verb_inside_a_word_is_not_destructive() {
+        for name in &["format", "transform", "perform", "confirm", "firmware"] {
+            assert!(!is_destructive(name), "{name} should not be destructive");
         }
     }
 

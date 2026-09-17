@@ -10,6 +10,7 @@
 
 pub mod engine;
 pub mod fetch;
+pub mod handlers;
 pub mod headers;
 pub mod locality;
 pub mod mock;

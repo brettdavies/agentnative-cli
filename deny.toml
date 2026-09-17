@@ -97,6 +97,10 @@ allow = [
     "ISC",
     "Unicode-3.0",
     "Unicode-DFS-2016",
+    # webpki-roots: Mozilla's CA bundle ships under CDLA-Permissive-2.0.
+    "CDLA-Permissive-2.0",
+    # aws-lc-sys: the AWS-LC C library carries the OpenSSL license alongside ISC.
+    "OpenSSL",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -175,6 +179,9 @@ allow = [
 allow-workspace = false
 # List of crates to deny
 deny = [
+    # The rustls crypto provider is aws-lc-rs; ring is security-only maintained
+    # and must not re-enter the graph through any transitive feature.
+    { crate = "ring", reason = "rustls crypto provider is aws-lc-rs, never ring" },
     #"ansi_term@0.11.0",
     #{ crate = "ansi_term@0.11.0", reason = "you can specify a reason it is banned" },
     # Wrapper crates can optionally be specified to allow the crate when it

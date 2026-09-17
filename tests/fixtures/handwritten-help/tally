@@ -1,0 +1,46 @@
+#!/bin/sh
+# Hand-written help in the herdr shape: a `Usage:` line naming the tool, two
+# `... commands:` blocks, and every entry led by the tool's own name.
+case "$1" in
+  --help|-h)
+    cat <<'EOF'
+tally — count things from the terminal
+
+Usage: tally [options]
+       tally count <path>
+       tally report <subcommand> ...
+
+Common commands:
+  tally                          Launch the interactive counter
+  tally count <path>             Count entries under a path
+  tally list                     List saved tallies
+  tally show <name>              Show one saved tally
+  tally format <style>           Reformat a saved tally
+  tally report <subcommand>      Manage generated reports
+  tally config reset-keys        Restore the default keybindings
+
+Advanced commands:
+  tally server                   Run as a headless server
+
+Options:
+  --version, -V       Print version and exit
+  --help, -h          Show this help
+EOF
+    exit 0 ;;
+  --version|-V) echo "tally 0.1.0"; exit 0 ;;
+  count|list|show|format|report|config|server)
+    sub="$1"; shift
+    case "$*" in
+      *--output\ json*|*--output=json*) echo "{\"command\":\"$sub\"}"; exit 0 ;;
+      *--help*|*-h*)
+        echo "Usage: tally $sub [options]"
+        echo
+        echo "Options:"
+        echo "  --output <FORMAT>  Output format (text, json)"
+        echo "  -h, --help         Show this help"
+        exit 0 ;;
+      *) echo "tally $sub: not implemented" >&2; exit 2 ;;
+    esac ;;
+  -*) echo "error: unknown flag '$1'" >&2; exit 2 ;;
+  *) echo "tally tool"; exit 0 ;;
+esac

@@ -208,9 +208,10 @@ impl Audit for StandardNamesAudit {
     }
 }
 
-/// Core unit for tests. Returns Skip when no subcommands are present (the
-/// "if CLI uses subcommands" applicability is vacuously satisfied), Pass when
-/// at least the threshold fraction matches the allow-list, Warn otherwise.
+/// Core unit for tests. Returns Skip when no subcommand names were parsed
+/// from `--help` (the "if CLI uses subcommands" applicability is vacuously
+/// satisfied), Pass when at least the threshold fraction matches the
+/// allow-list, Warn otherwise.
 ///
 /// `domain_verbs` extends the built-in [`STANDARD_VERBS`] list with per-CLI
 /// platform vocabulary (typically loaded from `.anc.toml`). Recognition is
@@ -232,7 +233,7 @@ pub(crate) fn audit_standard_names(
 
     if subs.is_empty() {
         return StandardNamesResult {
-            status: AuditStatus::Skip("no subcommands parsed from --help".into()),
+            status: AuditStatus::Skip(help.missing_subcommands_reason().into()),
             mitigation: None,
         };
     }

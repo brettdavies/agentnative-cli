@@ -14,7 +14,7 @@
 //! - Contains the literal `Examples:` / `EXAMPLES` section header.
 //!
 //! Fail when any non-skipped subcommand misses an example. Vacuous Skip
-//! when the binary has no subcommands.
+//! when no subcommand names were parsed from the top-level `--help`.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::subcommand_help::probe_subcommands;
@@ -52,10 +52,10 @@ impl Audit for SubcommandExamplesAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
-            Some(top_help) if top_help.subcommands().is_empty() => AuditStatus::Skip(
-                "binary has no subcommands; MUST applies conditionally to CLIs that use them."
-                    .into(),
-            ),
+            Some(top_help) if top_help.subcommands().is_empty() => AuditStatus::Skip(format!(
+                "{}; the MUST applies conditionally to CLIs that use subcommands.",
+                top_help.missing_subcommands_reason()
+            )),
             Some(top_help) => {
                 let runner = project.runner_ref();
                 let subhelp = probe_subcommands(runner, top_help);

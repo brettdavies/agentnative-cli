@@ -40,3 +40,5 @@ pub mod skill_install;
 pub mod source;
 #[doc(hidden)]
 pub mod types;
+
+pub mod web_audit;

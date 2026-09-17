@@ -1,0 +1,4 @@
+[package]
+name = "hostile-utf8-evidence"
+version = "0.1.0"
+edition = "2024"

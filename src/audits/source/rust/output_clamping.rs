@@ -8,7 +8,7 @@
 
 use crate::audit::Audit;
 use crate::project::{Language, Project};
-use crate::source::{find_pattern_matches, has_pattern};
+use crate::source::{evidence_preview, find_pattern_matches, has_pattern};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Patterns that suggest list/collection output.
@@ -126,7 +126,7 @@ pub(crate) fn audit_output_clamping(source: &str, file: &str) -> AuditStatus {
             .iter()
             .take(5) // Limit evidence to avoid noise
             .map(|m| {
-                let text_preview = truncate_text(&m.text, 80);
+                let text_preview = evidence_preview(&m.text, 80);
                 format!(
                     "{}:{}:{} — list pattern without clamping: {}",
                     m.file, m.line, m.column, text_preview
@@ -135,20 +135,6 @@ pub(crate) fn audit_output_clamping(source: &str, file: &str) -> AuditStatus {
             .collect::<Vec<_>>()
             .join("\n");
         AuditStatus::Warn(evidence)
-    }
-}
-
-/// Truncate text to a maximum length, appending "..." if truncated.
-fn truncate_text(text: &str, max_len: usize) -> String {
-    // Collapse to single line first
-    let single_line: String = text
-        .chars()
-        .map(|c| if c == '\n' { ' ' } else { c })
-        .collect();
-    if single_line.len() <= max_len {
-        single_line
-    } else {
-        format!("{}...", &single_line[..max_len])
     }
 }
 
@@ -219,6 +205,99 @@ fn print_all(items: Vec<String>) {
 "#;
         let status = audit_output_clamping(source, "src/printer.rs");
         assert!(matches!(status, AuditStatus::Warn(_)));
+    }
+
+    #[test]
+    fn warn_preview_of_long_ascii_text_is_eighty_chars_plus_ellipsis() {
+        let source = r#"
+fn list_items(items: &[Item]) -> Vec<String> {
+    items.iter().map(|item| format!("{} was renamed to {}", item.old_name, item.new_name)).collect::<Vec<String>>()
+}
+"#;
+        let status = audit_output_clamping(source, "src/list.rs");
+        let AuditStatus::Warn(evidence) = status else {
+            panic!("expected Warn, got {status:?}");
+        };
+        let preview = evidence
+            .split("list pattern without clamping: ")
+            .nth(1)
+            .expect("preview follows the label");
+        assert_eq!(preview.len(), 83, "80 chars plus one ellipsis: {preview}");
+        assert!(preview.starts_with("items.iter().map(|item| format!("));
+        assert_eq!(preview.matches("...").count(), 1);
+    }
+
+    #[test]
+    fn warn_preview_of_short_ascii_text_has_no_ellipsis() {
+        let source = r#"
+fn list_items(items: &[Item]) -> Vec<String> {
+    items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()
+}
+"#;
+        let status = audit_output_clamping(source, "src/list.rs");
+        let AuditStatus::Warn(evidence) = status else {
+            panic!("expected Warn, got {status:?}");
+        };
+        assert!(
+            evidence.ends_with("items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()"),
+            "short matched text is shown whole: {evidence}"
+        );
+        assert!(!evidence.contains("..."));
+    }
+
+    #[test]
+    fn warn_when_braille_glyphs_straddle_the_preview_budget() {
+        let source = r#"
+fn spin(frames_seen: &mut Vec<&str>) {
+    for frame in ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"].iter() {
+        frames_seen.push(frame);
+    }
+}
+"#;
+        let status = audit_output_clamping(source, "src/spinner.rs");
+        let AuditStatus::Warn(evidence) = status else {
+            panic!("expected Warn, got {status:?}");
+        };
+        assert!(
+            evidence.contains("..."),
+            "matched text exceeds the budget: {evidence}"
+        );
+    }
+
+    #[test]
+    fn warn_when_cjk_glyphs_straddle_the_preview_budget() {
+        let source = r#"
+fn describe(names: &[String]) -> Vec<String> {
+    names.iter().map(|name| format!("名前は{name}です。よろしくお願いします")).collect::<Vec<String>>()
+}
+"#;
+        let status = audit_output_clamping(source, "src/describe.rs");
+        let AuditStatus::Warn(evidence) = status else {
+            panic!("expected Warn, got {status:?}");
+        };
+        assert!(
+            evidence.contains("..."),
+            "matched text exceeds the budget: {evidence}"
+        );
+    }
+
+    #[test]
+    fn warn_when_emoji_straddle_the_preview_budget() {
+        let source = r#"
+fn celebrate(winners: &[String]) {
+    for winner in winners.iter() {
+        eprintln!("congratulations {winner} 🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆");
+    }
+}
+"#;
+        let status = audit_output_clamping(source, "src/celebrate.rs");
+        let AuditStatus::Warn(evidence) = status else {
+            panic!("expected Warn, got {status:?}");
+        };
+        assert!(
+            evidence.contains("..."),
+            "matched text exceeds the budget: {evidence}"
+        );
     }
 
     #[test]

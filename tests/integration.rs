@@ -297,6 +297,17 @@ fn test_handwritten_help_fixture_reports_real_subcommands() {
         "tool name or description word leaked into names: {evidence}"
     );
     assert_ne!(row("p6-standard-names")["status"], "skip");
+    let prefix = row("p3-unprefixed-command-list");
+    assert_eq!(prefix["status"], "warn", "{prefix}");
+    let prefix_evidence = prefix["evidence"].as_str().expect("warn evidence");
+    assert!(
+        prefix_evidence.contains("`tally count <path>`") && !prefix_evidence.contains("`tally `"),
+        "prefix evidence should name prefixed entries and not the bare invocation: {prefix_evidence}"
+    );
+    assert!(
+        prefix_evidence.contains("and 2 more"),
+        "seven offenders, five quoted: {prefix_evidence}"
+    );
     assert_eq!(
         row("p5-force-yes")["status"],
         "skip",

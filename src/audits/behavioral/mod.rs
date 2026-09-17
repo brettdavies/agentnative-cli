@@ -42,6 +42,7 @@ mod subcommand_examples;
 mod subcommand_help;
 mod subcommand_operations;
 mod timeout_behavioral;
+mod unprefixed_command_list;
 mod verbose_flag;
 mod version;
 
@@ -87,6 +88,7 @@ pub fn all_behavioral_audits() -> Vec<Box<dyn Audit>> {
         Box::new(consistent_envelope::ConsistentEnvelopeAudit),
         Box::new(subcommand_examples::SubcommandExamplesAudit),
         Box::new(paired_examples::PairedExamplesAudit),
+        Box::new(unprefixed_command_list::UnprefixedCommandListAudit),
         Box::new(subcommand_operations::SubcommandOperationsAudit),
         Box::new(force_yes::ForceYesAudit),
         Box::new(read_write_distinction::ReadWriteDistinctionAudit),

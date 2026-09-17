@@ -3,30 +3,15 @@
 //! perturbed weight breaks it, every corpus golden round-trips byte for
 //! byte through the strict mirror, and the committed JSON Schema describes
 //! exactly what the mirror serializes.
-//!
-//! The modules are pulled in by path under a `web_audit` shim so their
-//! `crate::web_audit::*` references resolve without a library target.
-
-#[allow(dead_code)]
-#[path = "../src/web_audit"]
-mod web_audit {
-    #[path = "registry.rs"]
-    pub mod registry;
-    #[path = "score.rs"]
-    pub mod score;
-    #[path = "scorecard.rs"]
-    pub mod scorecard;
-}
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use agentnative::web_audit::registry::{CHECKS, WebCheckKeyword};
+use agentnative::web_audit::score::{self, ScoreConfig, ScoreWeights};
+use agentnative::web_audit::scorecard::{NaReason, ScorecardStatus, WebScorecard, to_wire_json};
 use serde_json::Value;
-
-use web_audit::registry::{CHECKS, WebCheckKeyword};
-use web_audit::score::{self, ScoreConfig, ScoreWeights};
-use web_audit::scorecard::{NaReason, ScorecardStatus, WebScorecard, to_wire_json};
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

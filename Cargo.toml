@@ -49,9 +49,11 @@ anstream = "1"
 # Manifest parsing
 toml = "0.8"
 
-# Serialization
+# Serialization. `preserve_order` keeps JSON object keys in insertion order:
+# the web scorecard's evidence objects are open maps whose key order is part
+# of the byte-for-byte parity contract with the anc.dev engine.
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 
 # Error handling
 anyhow = "1"

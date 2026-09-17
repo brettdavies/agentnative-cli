@@ -710,9 +710,19 @@ fn pascal(kebab: &str) -> String {
     out
 }
 
+// The plain enums carry serde derives so the scorecard serializes them under
+// their registry spelling; the binding enums carry a payload and never reach
+// the wire.
 fn emit_enum(src: &mut String, doc: &str, name: &str, variants: &[&str], unsupported: bool) {
     src.push_str(&format!("/// {doc}\n"));
-    src.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq)]\n");
+    if unsupported {
+        src.push_str("#[derive(Clone, Copy, Debug, PartialEq, Eq)]\n");
+    } else {
+        src.push_str(
+            "#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n",
+        );
+        src.push_str("#[serde(rename_all = \"kebab-case\")]\n");
+    }
     src.push_str(&format!("pub enum {name} {{\n"));
     for v in variants {
         src.push_str(&format!("    /// `{v}`\n    {},\n", pascal(v)));

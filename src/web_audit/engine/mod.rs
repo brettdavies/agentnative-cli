@@ -17,6 +17,7 @@ pub mod waves;
 pub use handlers::{Dispatch, HandlerFn, HandlerSet};
 pub use types::{
     FetchHandle, HandlerContext, McpLaneEvidence, McpModernLane, ProbeOutcome, ProbeStatus,
+    why_item,
 };
 pub use waves::{
     DEFAULT_CONCURRENCY, DEFAULT_PER_AUDIT_DEADLINE, DEFAULT_PER_CHECK_TIMEOUT,

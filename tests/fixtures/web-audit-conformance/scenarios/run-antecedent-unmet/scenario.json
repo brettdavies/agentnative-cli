@@ -1,0 +1,67 @@
+{
+  "description": "a bare HTML site: no llms.txt, no API surface, no MCP endpoint, so every gated check is `n_a`",
+  "covers": [
+    "llms-txt-format",
+    "llms-txt-links",
+    "llms-txt-when-to-use",
+    "llms-txt-scoped",
+    "llms-full-txt-scoped",
+    "json-schemas",
+    "api-catalog",
+    "json-errors",
+    "rate-limit-headers",
+    "mcp-cors-preflight",
+    "mcp-cors-actual",
+    "well-known-mcp-card",
+    "mcp-card-legacy-aliases",
+    "mcp-usage-doc",
+    "oauth-protected-resource",
+    "robots-ai-rules",
+    "content-signals",
+    "auth-md",
+    "mcp-initialize",
+    "mcp-capabilities",
+    "mcp-tools-list",
+    "mcp-resources-list",
+    "mcp-modern-tools-list",
+    "mcp-server-discover",
+    "mcp-unknown-method",
+    "mcp-malformed-body",
+    "mcp-batch-reject",
+    "mcp-unknown-tool",
+    "mcp-modern-unknown-method",
+    "mcp-modern-clientcaps",
+    "mcp-modern-header-mismatch",
+    "mcp-modern-version-reject",
+    "mcp-modern-resources-miss",
+    "mcp-accept-json",
+    "mcp-accept-unsatisfiable",
+    "mcp-get-fast-fail"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    }
+  ]
+}

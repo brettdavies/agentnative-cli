@@ -1,0 +1,406 @@
+{
+  "description": "the POST carries Allow-Origin but the preflight does not: preflight broken, actual pass",
+  "covers": [
+    "mcp-cors-preflight",
+    "mcp-cors-actual"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp/server-card.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"name\":\"example\",\"version\":\"1.0.0\",\"mcp_endpoint\":\"https://example.com/mcp\",\"documentation\":\"https://example.com/mcp-skill.md\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/.well-known/mcp/server-card.json"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp.json"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/.well-known/mcp/server-card.json"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/mcp.json"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/.well-known/mcp/server-card.json"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/mcp-skill.md"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/markdown; charset=utf-8"
+        },
+        "body": "# MCP usage\n\ncurl -X POST https://example.com/mcp\n"
+      }
+    },
+    {
+      "request": {
+        "method": "OPTIONS",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 204,
+        "headers": {},
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "allow": "POST"
+        },
+        "body": "Method Not Allowed"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2025-03-26"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32022,\"message\":\"nope\",\"data\":{\"supported\":[\"2026-07-28\"]}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "resources/list"
+        },
+        "body_json_method": "tools/list"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "server/discover"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"supportedVersions\":[\"2026-07-28\"],\"capabilities\":{\"tools\":{},\"resources\":{}},\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"example\",\"version\":\"1.0.0\"}}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "tools/list"
+        },
+        "body_contains": "clientCapabilities"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"Search\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"ping\"}]}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "tools/list"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "nonexistent/method"
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "resources/read"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_contains": "not-json{{"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32700,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_contains": "[{"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32600,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "accept": "application/json"
+        },
+        "body_json_method": "tools/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"Search\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"ping\"}]}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "accept": "application/xml"
+        }
+      },
+      "response": {
+        "status": 406,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "body": "Not Acceptable"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_json_method": "initialize"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"serverInfo\":{\"name\":\"example\",\"version\":\"1.0.0\"},\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"tools\":{},\"resources\":{}}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_json_method": "notifications/initialized"
+      },
+      "response": {
+        "status": 202,
+        "headers": {},
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "origin": "https://example.com"
+        },
+        "body_json_method": "tools/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json",
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"Search\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"ping\"}]}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_json_method": "tools/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"Search\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"ping\"}]}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_json_method": "resources/list"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resources\":[{\"uri\":\"anc://registry\",\"name\":\"registry\"}]}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_json_method": "tools/call"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_json_method": "nonexistent/method"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"nope\"}}"
+      }
+    }
+  ]
+}

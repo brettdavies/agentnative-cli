@@ -1,0 +1,15 @@
+{
+  "description": "nothing answers at the network level",
+  "covers": [
+    "robots",
+    "llms-txt"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "error": "TypeError: connection refused"
+  },
+  "allow_unmatched": true,
+  "exchanges": []
+}

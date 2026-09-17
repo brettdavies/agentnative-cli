@@ -1,0 +1,41 @@
+{
+  "description": "the root is JSON, so every HTML-root check and the markdown twin family are `n_a`",
+  "covers": [
+    "webmcp",
+    "accept-markdown",
+    "markdown-vary",
+    "markdown-frontmatter",
+    "root-meta-description",
+    "schema-org-jsonld",
+    "content-without-js",
+    "semantic-html",
+    "noscript-fallback",
+    "root-link-rel"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"service\":\"example\"}"
+      }
+    }
+  ]
+}

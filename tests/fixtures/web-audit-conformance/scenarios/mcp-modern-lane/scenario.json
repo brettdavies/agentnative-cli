@@ -1,0 +1,207 @@
+{
+  "description": "a modern-only server discovered by the header-routed fallback: modern rows pass, legacy rows read the lane as absent",
+  "covers": [
+    "mcp-initialize",
+    "mcp-capabilities",
+    "mcp-tools-list",
+    "mcp-resources-list",
+    "mcp-modern-tools-list",
+    "mcp-server-discover",
+    "mcp-unknown-method",
+    "mcp-malformed-body",
+    "mcp-batch-reject",
+    "mcp-unknown-tool",
+    "mcp-modern-unknown-method",
+    "mcp-modern-clientcaps",
+    "mcp-modern-header-mismatch",
+    "mcp-modern-version-reject",
+    "mcp-modern-resources-miss",
+    "mcp-accept-json",
+    "mcp-accept-unsatisfiable",
+    "mcp-get-fast-fail"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "OPTIONS",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 204,
+        "headers": {},
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "allow": "POST"
+        },
+        "body": "Method Not Allowed"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2025-03-26"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32022,\"message\":\"nope\",\"data\":{\"supported\":[\"2026-07-28\"]}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "resources/list"
+        },
+        "body_json_method": "tools/list"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "server/discover"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"supportedVersions\":[\"2026-07-28\"],\"capabilities\":{\"tools\":{},\"resources\":{}},\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"example\",\"version\":\"1.0.0\"}}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "tools/list"
+        },
+        "body_contains": "clientCapabilities"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"Search\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"ping\"}]}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "tools/list"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "nonexistent/method"
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2026-07-28",
+          "mcp-method": "resources/read"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"nope\"}}"
+      }
+    }
+  ]
+}

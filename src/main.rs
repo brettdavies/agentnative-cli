@@ -1,23 +1,3 @@
-mod anc_toml;
-mod argv;
-mod audit;
-mod audits;
-mod build_info;
-mod cli;
-mod color;
-mod error;
-mod json_error;
-mod output;
-mod principles;
-mod project;
-mod runner;
-mod scorecard;
-mod skill_install;
-mod source;
-mod types;
-#[allow(dead_code)]
-mod web_audit;
-
 use std::time::{Duration, Instant};
 
 use clap::Parser as _;
@@ -25,23 +5,26 @@ use clap_complete::generate;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use argv::{format_invocation, inject_default_subcommand};
-use audit::Audit;
-use audits::behavioral::all_behavioral_audits;
-use audits::project::all_project_audits;
-use audits::source::all_source_audits;
-use build_info::ANC_VERSION;
-use cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
-use error::AppError;
-use principles::matrix;
-use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
-use project::Project;
-use runner::{BinaryRunner, RunStatus};
-use scorecard::{
+use agentnative::argv::{format_invocation, inject_default_subcommand};
+use agentnative::audit::Audit;
+use agentnative::audits::behavioral::all_behavioral_audits;
+use agentnative::audits::project::all_project_audits;
+use agentnative::audits::source::all_source_audits;
+use agentnative::build_info::ANC_VERSION;
+use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
+use agentnative::error::AppError;
+use agentnative::principles::matrix;
+use agentnative::principles::registry::{
+    ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses,
+};
+use agentnative::project::Project;
+use agentnative::runner::{BinaryRunner, RunStatus};
+use agentnative::scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
-use types::{AuditGroup, AuditResult, AuditStatus, Confidence};
+use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
+use agentnative::{audits, color, json_error, output, skill_install};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
 

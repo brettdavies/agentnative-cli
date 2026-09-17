@@ -80,6 +80,14 @@ impl BinaryRunner {
         })
     }
 
+    /// File stem of the binary this runner spawns: `anc` for `target/debug/anc`
+    /// and for `anc.exe`. The stem rather than the file name because the help
+    /// probe compares it against the bare token on a `Usage:` line, which
+    /// never carries an extension.
+    pub fn binary_stem(&self) -> Option<&str> {
+        self.binary.file_stem().and_then(|stem| stem.to_str())
+    }
+
     /// Run the binary with the given args and env overrides.
     ///
     /// Results are cached by (args, env_overrides). `NO_COLOR=1` is always set.

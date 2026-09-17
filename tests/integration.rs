@@ -265,6 +265,46 @@ fn test_binary_only_fixture() {
     );
 }
 
+/// A hand-written `Common commands:` block whose entries all lead with the
+/// tool name is graded on its real subcommands: the example audit names
+/// them, the naming audit evaluates them, and `format` is not mistaken for
+/// a destructive verb.
+#[test]
+#[cfg(unix)]
+fn test_handwritten_help_fixture_reports_real_subcommands() {
+    let path = fixture_path("handwritten-help/tally");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    let row = |id: &str| {
+        results
+            .iter()
+            .find(|r| r["audit_id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"))
+    };
+
+    let examples = row("p3-subcommand-examples");
+    assert_eq!(examples["status"], "fail", "{examples}");
+    let evidence = examples["evidence"].as_str().expect("fail evidence");
+    for name in [
+        "count", "list", "show", "format", "report", "config", "server",
+    ] {
+        assert!(evidence.contains(name), "{name} missing from: {evidence}");
+    }
+    assert!(
+        !evidence.contains("tally") && !evidence.contains("Launch"),
+        "tool name or description word leaked into names: {evidence}"
+    );
+    assert_ne!(row("p6-standard-names")["status"], "skip");
+    assert_eq!(
+        row("p5-force-yes")["status"],
+        "skip",
+        "{}",
+        row("p5-force-yes")
+    );
+}
+
 #[test]
 fn test_source_only_fixture() {
     let path = fixture_path("source-only");

@@ -373,6 +373,22 @@
       ]
     },
     {
+      "id": "p3-should-unprefixed-command-list",
+      "principle": 3,
+      "level": "should",
+      "summary": "Command-list entries name the command directly rather than repeating the binary name as a prefix.",
+      "applicability": {
+        "kind": "conditional",
+        "condition": "CLI uses subcommands"
+      },
+      "verifiers": [
+        {
+          "audit_id": "p3-unprefixed-command-list",
+          "layer": "behavioral"
+        }
+      ]
+    },
+    {
       "id": "p3-may-examples-subcommand",
       "principle": 3,
       "level": "may",
@@ -957,8 +973,8 @@
     }
   ],
   "summary": {
-    "total": 59,
-    "covered": 56,
+    "total": 60,
+    "covered": 57,
     "uncovered": 3,
     "dual_layer": 10,
     "must": {
@@ -966,8 +982,8 @@
       "covered": 28
     },
     "should": {
-      "total": 21,
-      "covered": 18
+      "total": 22,
+      "covered": 19
     },
     "may": {
       "total": 10,

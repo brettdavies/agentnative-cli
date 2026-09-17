@@ -1,6 +1,6 @@
 pub mod help_probe;
 
-pub use help_probe::HelpOutput;
+pub use help_probe::{CommandBlock, HelpOutput};
 
 use std::cell::RefCell;
 use std::collections::HashMap;

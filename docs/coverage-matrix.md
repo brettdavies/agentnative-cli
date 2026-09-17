@@ -7,10 +7,10 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 ## Summary
 
-- **Total**: 59 requirements (56 covered / 3 uncovered)
-- **Dual-layer**: 10 of 56 covered requirements have verifiers in two layers (behavioral + source or project)
+- **Total**: 60 requirements (57 covered / 3 uncovered)
+- **Dual-layer**: 10 of 57 covered requirements have verifiers in two layers (behavioral + source or project)
 - **MUST**: 28 of 28 covered
-- **SHOULD**: 18 of 21 covered
+- **SHOULD**: 19 of 22 covered
 - **MAY**: 10 of 10 covered
 
 ## P1: Non-Interactive by Default
@@ -50,6 +50,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p3-should-version-short` | SHOULD | Universal | `p3-version` (behavioral) | A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes. |
 | `p3-should-paired-examples` | SHOULD | Universal | `p3-paired-examples` (behavioral) | Examples show human and agent invocations side by side (text then `--output json` equivalent). |
 | `p3-should-about-long-about` | SHOULD | Universal | `p3-about-long-about` (behavioral) | Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`. |
+| `p3-should-unprefixed-command-list` | SHOULD | If: CLI uses subcommands | `p3-unprefixed-command-list` (behavioral) | Command-list entries name the command directly rather than repeating the binary name as a prefix. |
 | `p3-may-examples-subcommand` | MAY | Universal | `p3-examples-subcommand` (behavioral) | Dedicated `examples` subcommand or `--examples` flag for curated usage patterns. |
 
 ## P4: Fail Fast, Actionable Errors

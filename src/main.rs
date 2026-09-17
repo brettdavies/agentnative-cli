@@ -15,6 +15,8 @@ mod scorecard;
 mod skill_install;
 mod source;
 mod types;
+#[allow(dead_code)]
+mod web_audit;
 
 use std::time::{Duration, Instant};
 

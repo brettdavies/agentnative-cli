@@ -1,0 +1,39 @@
+# Drift gate for the vendored web-audit inputs against the agentnative-site
+# commit pinned in src/web_audit/vendored/SITE_SHA. build.rs compiles the
+# registry, remediation catalog, and probe User-Agent constants under
+# src/web_audit/vendored/ into $OUT_DIR/generated_web_registry.rs, and the
+# conformance corpus under tests/fixtures/web-audit-conformance/ drives the
+# parity suite.
+#
+# Failure means a vendored copy no longer matches the pinned commit. Run
+# `scripts/sync-web-audit.sh` locally (or `--pin <sha>` to move the pin),
+# review the diff, commit, push.
+
+name: web-audit-drift
+
+# pull_request only: merges to main/dev are squash merges, so a push run
+# would re-check the identical tree already checked at the PR head.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+# The group key leads with a literal token naming the workflow that owns it. A
+# key built only from context (`${{ github.workflow }}`) is one a called
+# reusable also produces, because `github.workflow` resolves to the caller
+# inside a called workflow; both land in one group and the reusable's queue
+# cancels the run that called it.
+concurrency:
+  group: web-audit-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run drift check
+        run: bash scripts/sync-web-audit.sh --check

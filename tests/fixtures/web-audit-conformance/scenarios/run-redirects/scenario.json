@@ -1,0 +1,204 @@
+{
+  "description": "redirect chains: a two-hop public chain is followed, a hop into the metadata range is refused, a cross-origin hop lands on a 404, and a five-hop chain exceeds the cap",
+  "covers": [
+    "llms-txt",
+    "robots",
+    "sitemap",
+    "security-txt"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/llms.txt"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/docs/llms.txt"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/docs/llms.txt"
+      },
+      "response": {
+        "status": 302,
+        "headers": {
+          "location": "https://example.com/docs/llms-v2.txt"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/docs/llms-v2.txt"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "body": "# Example\n\n> An example service with docs, an API and an MCP server.\n\n## Docs\n\n- [Guide](https://example.com/docs/guide.md): how the service works\n- [API reference](https://example.com/docs/api.md): every endpoint\n\n## When to use\n\nCall the MCP server for live data; read the docs for concepts.\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/docs/guide.md"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/markdown; charset=utf-8"
+        },
+        "body": "# Guide\n\nA substantial guide body that runs well past the forty-character floor.\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/docs/api.md"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/markdown; charset=utf-8"
+        },
+        "body": "# Guide\n\nA substantial guide body that runs well past the forty-character floor.\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/robots.txt"
+      },
+      "response": {
+        "status": 302,
+        "headers": {
+          "location": "http://169.254.169.254/robots.txt"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/sitemap.xml"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://cdn.example.net/sitemap.xml"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/security.txt"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/s1"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/s1"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/s2"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/s2"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/s3"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/s3"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/s4"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/s4"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "https://example.com/s5"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/s5"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "body": "Contact: mailto:security@example.com\n"
+      }
+    }
+  ]
+}

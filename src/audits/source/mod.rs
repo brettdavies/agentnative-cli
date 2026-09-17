@@ -1,3 +1,8 @@
+// Every audit under this module reads arbitrary UTF-8 from the audited tree.
+// A byte-indexed slice is sound only when its bounds come from a scan of that
+// same text, and each such site carries an `expect` naming the scan.
+#![deny(clippy::string_slice)]
+
 pub mod python;
 pub mod rust;
 

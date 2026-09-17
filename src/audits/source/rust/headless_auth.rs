@@ -175,9 +175,17 @@ fn has_auth_functions(source: &str) -> bool {
             if text.len() <= *skip {
                 continue;
             }
+            #[expect(
+                clippy::string_slice,
+                reason = "skip is the byte length of the pattern's ASCII literal prefix"
+            )]
             let Some(name_end) = text[*skip..].find('(') else {
                 continue;
             };
+            #[expect(
+                clippy::string_slice,
+                reason = "skip is an ASCII prefix length and name_end comes from find('(')"
+            )]
             let fn_name = text[*skip..(*skip + name_end)].trim();
             let lower_name = fn_name.to_lowercase();
             if AUTH_IDENT_KEYWORDS.iter().any(|kw| lower_name.contains(kw)) {

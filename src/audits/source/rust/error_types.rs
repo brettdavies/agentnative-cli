@@ -96,6 +96,10 @@ pub(crate) fn has_error_enum(source: &str) -> bool {
             let text = m.text();
             // Extract the enum name from the matched text
             if let Some(enum_pos) = text.find("enum ") {
+                #[expect(
+                    clippy::string_slice,
+                    reason = "enum_pos comes from find(\"enum \") and 5 is that ASCII needle's length"
+                )]
                 let after_enum = &text[enum_pos + 5..];
                 if let Some(name) = after_enum.split_whitespace().next()
                     && name.contains("Error")

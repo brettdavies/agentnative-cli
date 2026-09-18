@@ -684,3 +684,43 @@ fn bundled_roots_verify_a_public_https_endpoint() {
     assert_eq!(resp.error, None, "bundled roots must verify a public chain");
     assert!(resp.status.is_some());
 }
+
+/// A connection the pool kept but the server had already closed fails
+/// before the request reaches anything, so it is retried on a fresh one.
+/// A server that closes every connection instead ends in a network error
+/// after a bounded number of attempts, never a loop.
+#[test]
+fn a_connection_closed_before_any_response_is_retried_once_and_bounded() {
+    // Two dead connections, then a real answer: the probe succeeds.
+    let (addr, accepted) = common::spawn_closing(2, "# recovered\n");
+    let transport = UreqTransport::new(UA);
+    let resp = fetch(
+        &transport,
+        &format!("http://{addr}/llms.txt"),
+        &FetchOptions::default(),
+    );
+    assert_eq!(resp.status, Some(200), "{:?}", resp.error);
+    assert_eq!(resp.body, "# recovered\n");
+    assert_eq!(
+        *accepted.lock().unwrap(),
+        3,
+        "the probe walked past both dead connections and stopped"
+    );
+
+    // A server that never answers: the error surfaces, and the attempts
+    // are bounded rather than retried forever.
+    let (addr, accepted) = common::spawn_closing(usize::MAX, "");
+    let resp = fetch(
+        &transport,
+        &format!("http://{addr}/llms.txt"),
+        &FetchOptions::default(),
+    );
+    assert_eq!(resp.status, None);
+    let error = resp.error.expect("a network error");
+    assert!(error.starts_with("NetworkError: "), "{error}");
+    let attempts = *accepted.lock().unwrap();
+    assert!(
+        (1..=3).contains(&attempts),
+        "attempts must be bounded, saw {attempts}"
+    );
+}

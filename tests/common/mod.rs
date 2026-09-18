@@ -203,6 +203,42 @@ pub fn spawn_silent() -> SocketAddr {
     addr
 }
 
+/// Spawn a server that drops its first `closes` connections without
+/// writing a byte, then answers every later one with `body`. A server that
+/// closes an idle keep-alive connection, or one that answers HTTP/1.0 and
+/// closes every connection, looks exactly like this to a client holding a
+/// pooled socket. The returned counter carries how many connections were
+/// accepted in total.
+pub fn spawn_closing(closes: usize, body: &'static str) -> (SocketAddr, Arc<Mutex<usize>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let addr = listener.local_addr().unwrap();
+    let accepted: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let counter = Arc::clone(&accepted);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { break };
+            let seen = {
+                let mut n = counter.lock().unwrap();
+                *n += 1;
+                *n
+            };
+            if seen <= closes {
+                // Close without reading or writing: the client's request
+                // never reaches an HTTP responder.
+                drop(stream);
+                continue;
+            }
+            if read_request(&stream).is_some() {
+                write_response(
+                    stream,
+                    &RawResponse::new(200, &[("content-type", "text/plain")], body.as_bytes()),
+                );
+            }
+        }
+    });
+    (addr, accepted)
+}
+
 /// Spawn a TLS server presenting the given PEM certificate and key. It
 /// completes the handshake when the client accepts the chain and otherwise
 /// returns after the client's alert; it never serves HTTP.

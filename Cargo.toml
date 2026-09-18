@@ -25,6 +25,10 @@ exclude = [
     "tests/",
 ]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [[bin]]
 name = "anc"
 path = "src/main.rs"

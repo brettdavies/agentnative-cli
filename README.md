@@ -4,7 +4,10 @@
 [![Crates.io](https://img.shields.io/crates/v/agentnative.svg)](https://crates.io/crates/agentnative)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue.svg)](#license)
 
-The agent-native CLI linter. Audits whether your CLI follows the 8 agent-readiness principles.
+Audits whether your CLI follows the 8 agent-readiness principles, and whether your website is readable by the agents
+that come looking. `anc audit` scores a command-line tool; `anc web` scores an HTTP(S) target against the same 65-check
+registry [anc.dev](https://anc.dev) runs, from your own machine, so a localhost, private or internal site the hosted
+auditor cannot reach is auditable where it runs.
 
 `anc` dogfoods the spec it enforces. The badge above is its own live score.
 
@@ -91,7 +94,101 @@ anc . --principle 3
 
 # Quiet mode (warnings and failures only)
 anc . -q
+
+# Audit a website from this machine (`web` is inserted for a network target)
+anc localhost:8787
+anc web https://anc.dev
 ```
+
+## Auditing a Website
+
+`anc web <target>` runs the [anc.dev](https://anc.dev) web-audit registry against a site from this machine. The hosted
+auditor refuses a target it cannot reach, which is every localhost port, every private address and every internal
+hostname; this is the same engine, the same 65 checks and the same verdicts, run from where the site is reachable. No
+runtime to install, no browser, and the only host contacted is the target.
+
+```bash
+# A local dev server (a scheme-less local target defaults to http)
+anc web localhost:8787
+
+# A public site (a scheme-less dot-bearing target defaults to https)
+anc web anc.dev
+
+# Score only the checks a given kind of site answers for
+anc web anc.dev --site-type api
+
+# Gate a script on one check; run `anc emit web-checks` for the ids
+anc web anc.dev --check llms-txt
+
+# The scorecard and nothing else on stdout
+anc web anc.dev --output json
+
+# List every passing and inapplicable row too
+anc web anc.dev --verbose
+```
+
+A network target routes to `web` without naming it: `anc localhost:8787` and `anc anc.dev` work like `anc web …`.
+Routing requires an explicit scheme, an explicit port, or a dot-bearing token with no path separator whose last label
+reads as a top-level domain rather than a file extension. **A path that exists always wins**, so `anc ./anc.dev` audits
+the directory and `anc report.json` fails offline in milliseconds without opening a connection.
+
+The report leads with the verdict, then the MUST misses, then the SHOULD and MAY misses. Each miss carries the fix:
+
+```text
+Verdict: WARN: warnings only (6 SHOULD or MAY misses)
+Score: 71 relative · 20 global · 12 of 18 applicable checks passed
+
+Warnings (6 SHOULD or MAY):
+  [WARN] Accept text/markdown content negotiation returns markdown (accept-markdown) (should)
+         http://localhost:8799/ -> 200 (content-type "text/html" !~ /markdown|text/plain/)
+         Goal: Honor Accept text/markdown on content URLs with raw markdown, not HTML chrome
+         Fix:  Honor `Accept: text/markdown` on content URLs and return raw markdown rather than HTML chrome.
+               Agents parse markdown far more reliably than a JS-rendered page. Serve the markdown twin at the
+               same URL via content negotiation, invisibly to crawlers.
+         Docs: RFC 7763 (text/markdown) <https://www.rfc-editor.org/rfc/rfc7763>
+```
+
+Passing and inapplicable rows are a count by default; `--verbose` lists them. `--quiet` drops them entirely.
+
+### Reading the Registry Offline
+
+Three readers serve the compiled data with no network, so an agent has every id and every fix locally:
+
+```bash
+# Every check id, with its label, tier, keyword, site types and hint
+anc emit web-checks
+
+# The web-scorecard JSON Schema (draft 2020-12), for validating `--output json`
+anc emit web-schema
+
+# The whole fix catalog: goal, markdown fix and doc links per check
+anc emit web-remediation
+```
+
+### What `anc web` Sends
+
+Every probe identifies itself with the same `anc-web-audit/…` User-Agent the hosted auditor sends, except the handful of
+checks whose question *is* how a site treats a named client (a bare `curl`, an AI fetcher), which send that client's
+User-Agent because that is what they measure.
+
+The audit contacts the target and nothing else, with one exception a flag controls. The `dns-aid` check queries public
+DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so for a local or private target that
+row reports `n_a` with its reason stated rather than querying. `--external-dns` opts in. Redirects are followed but
+never off the target's own class: a hop from a local target to a public host, or to a cloud metadata address, is refused
+and recorded rather than taken.
+
+### Two Scorecard Families
+
+The two verbs emit different documents, and each `emit` verb serves its own schema:
+
+| Verb        | Scorecard                                | Schema                |
+| ----------- | ---------------------------------------- | --------------------- |
+| `anc audit` | the CLI scorecard (`schema_version` 0.8) | `anc emit schema`     |
+| `anc web`   | the web scorecard (`schema_version` 0.4) | `anc emit web-schema` |
+
+The web scorecard is byte-identical to what anc.dev emits for the same target, which the conformance suite holds to a
+committed corpus of the hosted engine's own output. Its `spec_version` and the registry version the run scored against
+are named in the report header, so a local result can be compared with a hosted one by hand.
 
 ## The 8 Principles
 
@@ -250,15 +347,25 @@ mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should 
 
 ### Exit Codes
 
-| Code | Meaning                           |
-| ---- | --------------------------------- |
-| 0    | All audits passed                 |
-| 1    | Warnings present (no failures)    |
-| 2    | Failures, errors, or usage errors |
+One table for every verb. `anc audit`, `anc web`, and the site's own runner return the same four codes:
 
-Exit 2 covers both audit failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
-mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
-`anc --help` first to confirm the invocation shape.
+| Code | Meaning                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------- |
+| 0    | Clean: every applicable check passed                                                                    |
+| 1    | Warnings only: a SHOULD or MAY check missed                                                             |
+| 2    | Failures present: a MUST check missed, or a usage error                                                 |
+| 3    | Could not check: the target was unreachable, a probe errored or was cut short, or every check was `n_a` |
+
+Every `anc web` run closes by naming the code it returns and what earned it. On the web path, a status becomes a warning
+or a failure through the tier the check carries: a MUST miss fails, a SHOULD or MAY miss warns.
+
+Exit 2 also covers usage errors (bare `anc`, an unknown flag, mutually exclusive flags, an unknown `--check` id). Agents
+distinguishing a usage error from a check failure should parse `stderr`, where a usage error prints `Usage:` in text
+mode and a typed envelope in `--output json` mode, or call `anc --help` first to confirm the invocation shape.
+
+Exit 3 is what separates "nobody reached the site" from "the site has failures", which is the distinction a CI gate
+needs. `anc web <target> --check <id>` returns the same table for one row, so `3` there means the check does not apply
+to that site.
 
 ### Shell Completions
 

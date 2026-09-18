@@ -609,3 +609,46 @@ fn the_verb_runs_under_a_bare_exec() {
     assert_eq!(out.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&out.stdout).starts_with("llms-txt\tpass\t"));
 }
+
+/// The README's exit-code table is the published contract for the codes the
+/// binary returns, so it is asserted against the constants rather than read
+/// by eye. Every code in the table appears with the phrase the renderer's
+/// own table uses, and `--help` carries the same four.
+#[test]
+fn the_readme_exit_table_matches_the_codes_the_binary_returns() {
+    use agentnative::web_audit::render::EXIT_TABLE;
+
+    let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))
+        .expect("the README ships with the crate");
+    let phrases = [
+        (0, "clean"),
+        (1, "warnings only"),
+        (2, "failures present"),
+        (3, "could not check"),
+    ];
+    for (code, phrase) in phrases {
+        // The renderer's table is the source; the README and `--help` quote it.
+        assert!(
+            EXIT_TABLE
+                .lines()
+                .any(|l| l.trim_start().starts_with(&code.to_string()) && l.contains(phrase)),
+            "the renderer's table lost `{code}  {phrase}`:\n{EXIT_TABLE}"
+        );
+        let row = readme
+            .lines()
+            .find(|l| l.starts_with(&format!("| {code}    |")))
+            .unwrap_or_else(|| panic!("the README's exit table has no row for {code}"));
+        assert!(
+            row.to_lowercase().contains(phrase),
+            "the README's row for {code} does not say {phrase:?}: {row}"
+        );
+    }
+    let help = anc().args(["web", "--help"]).assert().code(0);
+    let out = stdout_of(help.get_output()).to_lowercase();
+    for (code, phrase) in phrases {
+        assert!(
+            out.contains(&format!("{code}  {phrase}")),
+            "`anc web --help` lost `{code}  {phrase}`"
+        );
+    }
+}

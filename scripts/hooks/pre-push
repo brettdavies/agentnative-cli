@@ -33,6 +33,15 @@ pass "clippy"
 cargo test --quiet 2>&1 || fail "cargo test"
 pass "test"
 
+# 3b. Doc build — the crate publishes a library whose docs.rs page is the
+# README plus the `web_audit` surface, so a broken intra-doc link, an
+# unclosed code fence or a bare URL is a rendering bug on a published page.
+# RUSTDOCFLAGS=-D warnings makes every doc warning a failure, and
+# `#![deny(missing_docs)]` in src/lib.rs makes an undocumented public item
+# one too.
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet 2>&1 || fail "cargo doc --no-deps (RUSTDOCFLAGS=-D warnings)"
+pass "doc"
+
 # 4. Security audit (licenses + advisories) — skip if cargo-deny not installed
 if cargo deny --version &>/dev/null; then
     cargo deny check 2>&1 || fail "cargo deny check"

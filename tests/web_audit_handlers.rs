@@ -21,14 +21,14 @@ use agentnative::web_audit::fetch::ProbeResponse;
 use agentnative::web_audit::handlers::api_hygiene::derive_api_probe_url;
 use agentnative::web_audit::handlers::assert::compiled;
 use agentnative::web_audit::handlers::cors_preflight::run_cors_preflight;
+use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::handlers::dns_doh::run_dns_doh;
 use agentnative::web_audit::handlers::http::run_http;
 use agentnative::web_audit::handlers::llms_txt_quality::run_llms_txt_quality;
-use agentnative::web_audit::handlers::stateless_handlers;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Locality;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::registry::{HandlerBinding, WebCheck, check_by_id};
+use agentnative::web_audit::registry::{WebCheck, check_by_id};
 use agentnative::web_audit::scorecard::NaReason;
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use common::corpus::{Golden, PublicResolver, corpus_dir, describe, diff_rows, load_cases, replay};
@@ -40,22 +40,9 @@ const MCP: &str = "https://example.com/mcp";
 
 // Corpus replay.
 
-/// Whether a covered row is decided by a handler this suite ports. MCP
-/// rows wait for their handler; every other row is in scope.
-fn ported(id: &str) -> bool {
-    check_by_id(id).is_some_and(|c| c.handler != HandlerBinding::Mcp)
-}
-
-/// Rows whose verdict is downstream of the MCP handler's evidence, so they
-/// cannot match until that handler lands: the auth antecedent reads the
-/// `WWW-Authenticate` challenge the `mcp-initialize` probe records.
-fn waits_for_mcp_handler(scenario: &str, id: &str) -> bool {
-    scenario == "mcp-www-authenticate" && matches!(id, "oauth-protected-resource" | "auth-md")
-}
-
 #[test]
-fn every_corpus_scenario_reproduces_its_ported_subject_rows() {
-    let handlers = Arc::new(stateless_handlers());
+fn every_corpus_scenario_reproduces_its_subject_rows() {
+    let handlers = Arc::new(default_handlers());
     let mut failures: Vec<String> = Vec::new();
     let mut compared = 0usize;
     for case in load_cases() {
@@ -83,13 +70,7 @@ fn every_corpus_scenario_reproduces_its_ported_subject_rows() {
                 ));
             }
             (Golden::Scorecard(golden), RunOutcome::Complete(report)) => {
-                let ids: Vec<String> = case
-                    .scenario
-                    .covers
-                    .iter()
-                    .filter(|id| ported(id) && !waits_for_mcp_handler(&case.name, id))
-                    .cloned()
-                    .collect();
+                let ids: Vec<String> = case.scenario.covers.clone();
                 compared += ids.len();
                 let diffs = diff_rows(&report, golden, &ids);
                 if !diffs.is_empty() {

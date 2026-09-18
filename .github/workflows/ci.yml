@@ -29,3 +29,34 @@ jobs:
       # aws-lc-sys (behind rustls's aws-lc-rs provider) assembles with NASM on
       # x86-64 Windows, and the hosted Windows image does not ship it.
       windows_nasm: true
+
+  # The web audit's TLS stack, HTTP client and regex engine are the one cost
+  # a Rust-native port can silently lose, so the release artifact is measured
+  # rather than assumed. The ceiling lives in the script.
+  size:
+    name: Release binary size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Check size against the ceiling
+        run: scripts/check-binary-size.sh
+
+      # The product promise is a website audit in one or two minutes with no
+      # runtime to install. The install half is a single download the release
+      # workflow publishes; this measures the other half, which is the half
+      # that can regress silently.
+      - name: Install jaq
+        run: cargo install jaq --locked
+
+      - name: First-run smoke check
+        run: scripts/smoke-web-audit.sh

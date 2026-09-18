@@ -1454,3 +1454,80 @@ fn test_bad_invocation_without_json_uses_clap_rendering() {
         "text-mode error must not be JSON, but first line parsed: {first}"
     );
 }
+
+// ── Routing guard for the web verb ────────────────────────────────
+//
+// `anc <token>` chose between `audit` and nothing before the web verb
+// existed; it now chooses between `audit` and `web`. These pin both
+// halves: every form that routed to audit before still does, and only a
+// token that reads as a network target reaches the new verb.
+
+/// Every bare form the argv suite documents still resolves to `audit`.
+/// The observable is the audit path's own offline error for a missing
+/// target, which a web run could never produce.
+#[test]
+fn test_previously_valid_bare_forms_still_route_to_audit() {
+    // A name that would satisfy the web grammar if it were not a path.
+    let audit_forms: &[&[&str]] = &[
+        &["anc-web-audit-missing"],
+        &["anc-web-audit-missing.json"],
+        &["anc-web-audit-missing.toml"],
+        &["./anc-web-audit-missing.dev"],
+        &["../anc-web-audit-missing.dev"],
+        &["/anc-web-audit-missing.dev"],
+        &["-q", "anc-web-audit-missing"],
+        &["--verbose", "anc-web-audit-missing"],
+        &["--", "anc-web-audit-missing"],
+    ];
+    for form in audit_forms {
+        let assert = cmd().args(*form).assert().code(2);
+        let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+        assert!(
+            stderr.contains("path does not exist"),
+            "{form:?} must stay on the audit path, got: {stderr}"
+        );
+    }
+}
+
+/// The dogfood run still completes, and `anc .` still agrees with
+/// `anc audit .` now that a second verb can claim the first argument.
+#[test]
+fn test_dogfood_and_implicit_audit_survive_the_web_verb() {
+    let implicit = cmd()
+        .args([".", "--output", "json"])
+        .output()
+        .expect("implicit run");
+    let explicit = cmd()
+        .args(["audit", ".", "--output", "json"])
+        .output()
+        .expect("explicit run");
+    assert_eq!(implicit.status.code(), explicit.status.code());
+    let implicit_json: serde_json::Value =
+        serde_json::from_slice(&implicit.stdout).expect("implicit JSON");
+    let explicit_json: serde_json::Value =
+        serde_json::from_slice(&explicit.stdout).expect("explicit JSON");
+    assert_eq!(implicit_json["summary"], explicit_json["summary"]);
+    // The audit scorecard, not the web one: the two schema families are
+    // distinguishable by their own keys.
+    assert!(implicit_json.get("results").is_some());
+    assert!(implicit_json.get("coverage_summary").is_some());
+    assert!(
+        implicit_json.get("mcp_discovery").is_none(),
+        "the audit verb must not emit a web scorecard"
+    );
+}
+
+/// Bare `anc` still prints help and exits 2 rather than auditing or
+/// probing anything, which is the fork-bomb guard the dogfood depends on.
+#[test]
+fn test_bare_invocation_still_guards_against_self_spawn() {
+    cmd()
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Usage"));
+    // The help text offers both verbs, so the guard is discoverable.
+    let help = cmd().args(["--help"]).assert().code(0);
+    let stdout = String::from_utf8_lossy(&help.get_output().stdout).into_owned();
+    assert!(stdout.contains("audit"), "{stdout}");
+    assert!(stdout.contains("web"), "{stdout}");
+}

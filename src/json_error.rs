@@ -71,6 +71,42 @@ pub fn render_error(kind: &str, error: &str, message: &str, exit_code: i32) -> S
     .to_string()
 }
 
+/// The action a consumer takes after a failure: a closed-set verb, a
+/// verbatim command safe to run headless, and a docs URL when one exists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NextStep {
+    /// What to do, from a closed set (`retry`, `fix-target`, `list-checks`).
+    pub action: &'static str,
+    /// The exact invocation to try next.
+    pub command: String,
+    /// Where to read more, when a page exists.
+    pub docs: Option<&'static str>,
+}
+
+/// Render a JSON failure envelope with a `next_step`: the error envelope's
+/// keys plus `{action, command, docs}` so an agent can act on a dead end
+/// without parsing the message.
+pub fn render_failure(
+    kind: &str,
+    error: &str,
+    message: &str,
+    exit_code: i32,
+    next_step: &NextStep,
+) -> String {
+    json!({
+        "kind": kind,
+        "error": error,
+        "message": message,
+        "exit_code": exit_code,
+        "next_step": {
+            "action": next_step.action,
+            "command": next_step.command,
+            "docs": next_step.docs,
+        },
+    })
+    .to_string()
+}
+
 /// Render a JSON help envelope wrapping clap's rendered text.
 pub fn render_help(help_text: &str) -> String {
     json!({

@@ -12,6 +12,7 @@ pub mod dns_doh;
 pub mod http;
 pub mod llms_txt_quality;
 pub mod markdown_frontmatter;
+pub mod mcp;
 pub mod scoped_llms;
 pub mod shared;
 pub mod webmcp;
@@ -42,16 +43,25 @@ pub fn stateless_handlers() -> HandlerSet {
     set
 }
 
+/// Every registry handler kind, the full set a run dispatches to.
+pub fn default_handlers() -> HandlerSet {
+    let mut set = stateless_handlers();
+    set.register("mcp", mcp::run_mcp);
+    set
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::web_audit::registry::{EVAL_RULES, HANDLER_KINDS};
 
     #[test]
-    fn every_registry_kind_but_mcp_is_registered() {
-        let set = stateless_handlers();
+    fn the_stateless_set_omits_mcp_and_the_default_set_covers_every_kind() {
+        let stateless = stateless_handlers();
+        let default = default_handlers();
         for kind in HANDLER_KINDS {
-            assert_eq!(set.supports_kind(kind), *kind != "mcp", "{kind}");
+            assert_eq!(stateless.supports_kind(kind), *kind != "mcp", "{kind}");
+            assert!(default.supports_kind(kind), "{kind}");
         }
         assert_eq!(EVAL_RULES, &["legacy-alias-redirects", "scoped-discovery"]);
     }

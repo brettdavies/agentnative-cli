@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Parser as _;
@@ -11,11 +12,11 @@ use agentnative::audits::behavioral::all_behavioral_audits;
 use agentnative::audits::project::all_project_audits;
 use agentnative::audits::source::all_source_audits;
 use agentnative::build_info::ANC_VERSION;
-use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
+use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SiteType, SkillCmd};
 use agentnative::error::AppError;
 use agentnative::principles::matrix;
 use agentnative::principles::registry::{
-    ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses,
+    ExceptionCategory, SPEC_VERSION, SUPPRESSION_EVIDENCE_PREFIX, suppresses,
 };
 use agentnative::project::Project;
 use agentnative::runner::{BinaryRunner, RunStatus};
@@ -24,9 +25,18 @@ use agentnative::scorecard::{
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
 use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
-use agentnative::{audits, color, json_error, output, skill_install};
+use agentnative::web_audit::emit as web_emit;
+use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, run_web_audit};
+use agentnative::web_audit::handlers::default_handlers;
+use agentnative::web_audit::locality::SystemResolver;
+use agentnative::web_audit::registry::{AUDIT_USER_AGENT, check_by_id};
+use agentnative::web_audit::scorecard::to_wire_json;
+use agentnative::web_audit::target as web_target;
+use agentnative::web_audit::{render, transport::UreqTransport};
+use agentnative::{audits, cli, color, json_error, output, skill_install};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
+const WEB_SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/web-scorecard.schema.json");
 
 fn main() {
     // Fix SIGPIPE handling so piping to head/grep works correctly.
@@ -123,6 +133,28 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
                 generate(shell, &mut cmd, "anc", &mut std::io::stdout());
                 return Ok(0);
+            }
+            Some(Commands::Web {
+                target,
+                site_type,
+                check,
+                external_dns,
+                output,
+            }) => {
+                return run_web(WebRun {
+                    target,
+                    site_type,
+                    check,
+                    external_dns,
+                    output: if json_alias {
+                        OutputFormat::Json
+                    } else {
+                        output
+                    },
+                    quiet,
+                    verbose,
+                    color: cli.color,
+                });
             }
             Some(Commands::Emit { artifact }) => {
                 return run_emit(artifact);
@@ -802,7 +834,141 @@ fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
             output::emit(SCORECARD_SCHEMA_JSON);
             Ok(0)
         }
+        EmitKind::WebChecks => {
+            output::emit(&web_emit::render_checks());
+            Ok(0)
+        }
+        EmitKind::WebSchema => {
+            output::emit(WEB_SCORECARD_SCHEMA_JSON);
+            Ok(0)
+        }
+        EmitKind::WebRemediation => {
+            output::emit(&web_emit::render_remediation());
+            Ok(0)
+        }
     }
+}
+
+/// Everything `anc web` was asked for, after the global flags fold in.
+struct WebRun {
+    target: String,
+    site_type: Option<SiteType>,
+    check: Option<String>,
+    external_dns: bool,
+    output: OutputFormat,
+    quiet: bool,
+    verbose: bool,
+    color: cli::ColorChoice,
+}
+
+/// Emit a dead end: the structured envelope on stderr in JSON mode, the
+/// problem plus its cause and next action in text mode. Stdout carries
+/// nothing, so a JSON consumer's parse of stdout never sees half a
+/// scorecard.
+fn emit_web_failure(failure: &render::Failure, json: bool) -> i32 {
+    if json {
+        eprintln!(
+            "{}",
+            json_error::render_failure(
+                "runtime",
+                failure.slug,
+                &failure.message,
+                failure.exit_code,
+                &failure.next_step,
+            )
+        );
+    } else {
+        eprint!("{}", render::format_failure(failure));
+    }
+    failure.exit_code
+}
+
+/// `anc web <target>`: probe the target from this machine and report.
+fn run_web(run: WebRun) -> Result<i32, AppError> {
+    let json = matches!(run.output, OutputFormat::Json);
+
+    // The id is validated against the compiled registry before any
+    // connection, so a typo costs nothing and names the reader that lists
+    // the real ids.
+    if let Some(id) = run.check.as_deref()
+        && check_by_id(id).is_none()
+    {
+        return Ok(emit_web_failure(&render::unknown_check_failure(id), json));
+    }
+
+    let scheme_less = !run.target.contains("://");
+    let normalized = match web_target::normalize_target(&run.target) {
+        Ok(url) => url,
+        Err(reason) => {
+            return Ok(emit_web_failure(
+                &render::invalid_target_failure(&run.target, &reason),
+                json,
+            ));
+        }
+    };
+    let defaulted_https = scheme_less && normalized.starts_with("https://");
+
+    let fetch = FetchHandle::new(
+        Arc::new(UreqTransport::from_env(AUDIT_USER_AGENT)),
+        Arc::new(SystemResolver),
+        AUDIT_USER_AGENT,
+    );
+    let handlers = Arc::new(default_handlers());
+    let mut progress = render::StderrProgress::new();
+    let show_progress = render::progress_enabled(run.quiet) && !json;
+    if show_progress {
+        eprintln!("auditing {normalized}");
+    }
+
+    let mut input = RunInput::new(&normalized, fetch, handlers);
+    input.site_type = run.site_type.map(Into::into);
+    input.spec_version = SPEC_VERSION.to_string();
+    input.external_dns = run.external_dns;
+    if show_progress {
+        input.progress = Some(&mut progress);
+    }
+
+    let report = match run_web_audit(input) {
+        RunOutcome::Unreachable { .. } => {
+            return Ok(emit_web_failure(
+                &render::unreachable_failure(&run.target, &normalized, defaulted_https),
+                json,
+            ));
+        }
+        RunOutcome::Complete(report) => report,
+    };
+
+    // The non-comparable note is a fact about the run, not about the
+    // target, so it rides stderr in JSON mode and keeps stdout to the
+    // scorecard alone.
+    if json && let Some(note) = render::non_comparable_note(&report.unported) {
+        eprintln!("warning: {note}");
+    }
+
+    if let Some(id) = run.check.as_deref() {
+        let Some(row) = report.scorecard.results.iter().find(|r| r.id == id) else {
+            return Ok(emit_web_failure(&render::unknown_check_failure(id), json));
+        };
+        let code = render::exit_code(std::slice::from_ref(row));
+        if json {
+            output::emit(&to_wire_json(&report.scorecard));
+        } else {
+            output::emit(&render::format_check(row));
+        }
+        return Ok(code);
+    }
+
+    if json {
+        output::emit(&to_wire_json(&report.scorecard));
+    } else {
+        let opts = render::RenderOptions {
+            color: color::should_color(run.color),
+            quiet: run.quiet,
+            verbose: run.verbose,
+        };
+        output::emit(&render::format_text(&report, opts));
+    }
+    Ok(render::exit_code(&report.scorecard.results))
 }
 
 fn normalize_trailing_newline(s: &str) -> &str {

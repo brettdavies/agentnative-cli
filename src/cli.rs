@@ -20,13 +20,22 @@ Input model: targets are passed as positional path arguments or via `--command <
   anc audit .                          # human scorecard for the current project
   anc audit . --output json            # JSON envelope for agents (--json works too)
   anc audit --command ripgrep          # audit a PATH-resolved binary by name
+  anc web localhost:8787               # audit a website, from this machine
+  anc web anc.dev --output json        # the web scorecard for agents
   anc emit coverage-matrix             # emit the spec coverage matrix
   anc emit schema                      # print the scorecard JSON Schema
   anc skill install claude_code          # install the bundle into Claude Code
 
-When the first argument is not a subcommand, `audit` is inserted automatically:
+When the first argument is not a subcommand, one is inserted automatically —
+`web` when the argument reads as a network target, `audit` otherwise:
   anc .                  ≡  anc audit .
   anc --command ripgrep  ≡  anc audit --command ripgrep
+  anc anc.dev            ≡  anc web anc.dev
+  anc localhost:8787     ≡  anc web localhost:8787
+A path that exists always wins, so `anc ./anc.dev` audits the directory.
+
+Exit codes:
+  0  clean   1  warnings only   2  failures or usage error   3  could not check
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
 that prevents recursive self-invocation when agentnative audits itself.")]
@@ -157,6 +166,63 @@ Defaults: path = `.`, output = text, no principle filter.")]
         #[arg(long, value_name = "CATEGORY")]
         audit_profile: Option<AuditProfile>,
     },
+    /// Audit a website for agent-readiness
+    ///
+    /// Runs the anc.dev web-audit registry against a target from this
+    /// machine, so a localhost, private or internal site the hosted
+    /// auditor cannot reach is auditable where it runs. Every probe is
+    /// issued from here; the only host contacted is the target (plus the
+    /// public DNS resolvers the `dns-aid` check queries, which are
+    /// withheld for a local target unless `--external-dns` is set).
+    #[command(after_help = "Examples:
+  anc web localhost:8787                       # a local dev server (scheme defaults to http)
+  anc web https://anc.dev                      # a public site
+  anc web staging.internal:8080 --verbose      # list every passing row too
+  anc web anc.dev --output json                # the scorecard on stdout, nothing else
+  anc web anc.dev --check llms-txt             # gate a script on one check
+  anc web anc.dev --site-type api              # score only the checks an API answers for
+  anc emit web-checks                          # every check id, offline
+  anc emit web-remediation                     # the whole fix catalog, offline
+
+When the first argument looks like a network target, `web` is inserted
+automatically:
+  anc anc.dev        ≡  anc web anc.dev
+  anc localhost:8787 ≡  anc web localhost:8787
+A path that exists wins, so `anc ./anc.dev` still audits the directory.
+
+Exit codes (shared with `anc audit`):
+  0  clean: every applicable check passed
+  1  warnings only: a SHOULD or MAY check missed
+  2  failures present: a MUST check missed, or a usage error
+  3  could not check: the target was unreachable, a probe errored or was cut
+     short by the deadline, or every selected check was inapplicable")]
+    Web {
+        /// Target URL or host. A scheme-less target defaults to https,
+        /// except localhost and local IP literals, which default to http.
+        #[arg(value_hint = ValueHint::Url)]
+        target: String,
+
+        /// Score only the checks that apply to this kind of site. Omitted,
+        /// every check applies, matching the hosted auditor's default.
+        #[arg(long, value_name = "KIND")]
+        site_type: Option<SiteType>,
+
+        /// Report one check by id and exit with that row's code. Run
+        /// `anc emit web-checks` for the full list of ids.
+        #[arg(long, value_name = "ID")]
+        check: Option<String>,
+
+        /// Let the DNS-over-HTTPS checks query public resolvers even when
+        /// the target is local or private. Without it those rows report
+        /// `n_a` rather than sending the target's hostname to a third
+        /// party.
+        #[arg(long)]
+        external_dns: bool,
+
+        /// Output format
+        #[arg(long, default_value = "text")]
+        output: OutputFormat,
+    },
     /// Generate shell completions
     Completions {
         /// Shell to generate for
@@ -168,7 +234,10 @@ Defaults: path = `.`, output = text, no principle filter.")]
   anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
   anc emit coverage-matrix --out /tmp/cov.md          # custom output path
   anc emit schema                                     # print the scorecard JSON Schema to stdout
-  anc emit schema | jq '.title'                       # pipe into jq for inspection")]
+  anc emit schema | jq '.title'                       # pipe into jq for inspection
+  anc emit web-checks | jq -r '.checks[].id'          # every `anc web --check` id
+  anc emit web-schema                                 # the web-scorecard JSON Schema
+  anc emit web-remediation                            # the web-audit fix catalog")]
     Emit {
         #[command(subcommand)]
         artifact: EmitKind,
@@ -263,6 +332,45 @@ pub enum EmitKind {
     /// sample output. The schema is the same document committed at
     /// `schema/scorecard.schema.json` in this repo.
     Schema,
+    /// Print the compiled web-audit check registry as JSON.
+    ///
+    /// Every id `anc web --check <id>` accepts, with the label, category,
+    /// tier, keyword, principle, site types and hint the run scores it
+    /// against. Compiled into the binary from the vendored anc.dev
+    /// registry, so it needs no network.
+    WebChecks,
+    /// Print the web-scorecard JSON Schema (draft 2020-12) to stdout.
+    ///
+    /// The contract `anc web --output json` emits, which is the same
+    /// document the hosted auditor's scorecards validate against.
+    WebSchema,
+    /// Print the web-audit fix catalog as JSON.
+    ///
+    /// One entry per check: the goal, the markdown fix and its doc links,
+    /// the same text `anc web` prints under a failing row. Compiled in, so
+    /// an agent can read the whole catalog offline.
+    WebRemediation,
+}
+
+/// `--site-type content|api` — which family of checks applies. Mirrors the
+/// hosted auditor's caller-supplied `site_type`, which is never detected:
+/// omitting it applies every check.
+#[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
+#[value(rename_all = "kebab-case")]
+pub enum SiteType {
+    /// A documentation or content site.
+    Content,
+    /// An API.
+    Api,
+}
+
+impl From<SiteType> for crate::web_audit::scorecard::DeclaredSiteType {
+    fn from(t: SiteType) -> Self {
+        match t {
+            SiteType::Content => crate::web_audit::scorecard::DeclaredSiteType::Content,
+            SiteType::Api => crate::web_audit::scorecard::DeclaredSiteType::Api,
+        }
+    }
 }
 
 #[derive(Clone, ValueEnum)]

@@ -8,6 +8,7 @@
 //! come from [`registry`], compiled at build time from the vendored anc.dev
 //! registry.
 
+pub mod emit;
 pub mod engine;
 pub mod fetch;
 pub mod handlers;
@@ -15,6 +16,8 @@ pub mod headers;
 pub mod locality;
 pub mod mock;
 pub mod registry;
+pub mod render;
 pub mod score;
 pub mod scorecard;
+pub mod target;
 pub mod transport;

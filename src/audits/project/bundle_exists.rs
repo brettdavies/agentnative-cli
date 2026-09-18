@@ -19,6 +19,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 /// match so `Agents.md` and `agents.md` are treated equivalently.
 const BUNDLE_BASENAMES: &[&str] = &["AGENTS.md", "SKILL.md"];
 
+#[derive(Debug)]
 pub struct BundleExistsAudit;
 
 impl Audit for BundleExistsAudit {

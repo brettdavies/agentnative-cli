@@ -15,6 +15,7 @@ use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
 /// Audit trait implementation for raw exit code detection.
+#[derive(Debug)]
 pub struct ExitCodesAudit;
 
 impl Audit for ExitCodesAudit {

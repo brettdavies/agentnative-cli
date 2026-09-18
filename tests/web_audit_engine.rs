@@ -543,13 +543,26 @@ fn the_dns_gate_withholds_external_resolvers_for_a_local_target_unless_overridde
     let local = "http://127.0.0.1:8080/";
     let run = |external_dns: bool| {
         let transport = Arc::new(MockTransport::new(vec![], html(200)));
-        let mut input = RunInput::new(local, handle(transport), stand_in_handlers());
+        let mut input = RunInput::new(
+            local,
+            handle(Arc::clone(&transport) as Arc<_>),
+            stand_in_handlers(),
+        );
         input.per_check_timeout = Duration::from_secs(2);
         input.per_audit_deadline = Duration::from_secs(20);
         input.external_dns = external_dns;
-        complete(run_web_audit(input))
+        (complete(run_web_audit(input)), transport)
     };
-    let withheld = run(false);
+    let (withheld, transport) = run(false);
+    // A local run reaches the target and nothing else: no DNS resolver, no
+    // anc.dev, nothing a person auditing their own network did not ask for.
+    for request in transport.requests() {
+        assert!(
+            request.url.starts_with(local),
+            "a local run contacted {}",
+            request.url
+        );
+    }
     assert_eq!(withheld.target_locality, Some(Locality::Local));
     assert_eq!(withheld.scorecard.target_url, local);
     let dns = row(&withheld, "dns-aid");
@@ -558,8 +571,19 @@ fn the_dns_gate_withholds_external_resolvers_for_a_local_target_unless_overridde
     assert_eq!(dns.evidence, EXTERNAL_DNS_WITHHELD);
     assert_eq!(row(&withheld, "robots").status, ScorecardStatus::Pass);
 
-    let overridden = run(true);
+    let (overridden, transport) = run(true);
     assert_eq!(row(&overridden, "dns-aid").status, ScorecardStatus::Pass);
+    // The opposite, so the assertion above is a fact about the gate rather
+    // than about a handler that never probes: with the flag the row's
+    // handler runs and issues its request. Where that request goes with the
+    // real handler is `web_audit_handlers.rs`'s to pin.
+    assert!(
+        transport
+            .requests()
+            .iter()
+            .any(|r| r.url.ends_with("__probe/dns-aid")),
+        "the override must let the DNS handler run"
+    );
     assert_eq!(
         raw(&overridden, "dns-aid", "external_dns"),
         Some(&json!(true))

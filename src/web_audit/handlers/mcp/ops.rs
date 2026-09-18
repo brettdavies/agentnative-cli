@@ -25,21 +25,38 @@ pub enum Era {
 /// One registry `with.op`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum McpOp {
+    /// The legacy handshake: `initialize` under the pinned protocol version.
     Initialize,
+    /// The legacy `tools/list` read.
     ToolsList,
+    /// The legacy `resources/list` read.
     ResourcesList,
+    /// A legacy method no server implements, judged on its refusal code.
     Error,
+    /// A body that is not JSON at all.
     MalformedBody,
+    /// A batch carrying a modern envelope, which the legacy lane rejects.
     BatchReject,
+    /// A `tools/call` naming a tool outside any real catalog.
     UnknownTool,
+    /// The proven `tools/list` under an Accept of JSON alone.
     AcceptJson,
+    /// The proven `tools/list` under an Accept no transport can satisfy.
     AcceptUnsatisfiable,
+    /// `server/discover`, the one modern-only method, so the row that
+    /// decides whether the modern lane exists at all.
     ServerDiscover,
+    /// The modern, header-routed `tools/list`.
     ModernToolsList,
+    /// A modern method no server implements.
     ModernUnknownMethod,
+    /// A modern request whose `_meta` omits the mandatory client capabilities.
     ModernClientcaps,
+    /// A modern request whose routing header disagrees with its body method.
     ModernHeaderMismatch,
+    /// A modern request claiming a protocol revision the lane must refuse.
     ModernVersionReject,
+    /// A modern `resources/read` for a URI no server holds.
     ModernResourcesMiss,
 }
 

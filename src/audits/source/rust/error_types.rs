@@ -14,6 +14,7 @@ use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Audit trait implementation for structured error type detection.
+#[derive(Debug)]
 pub struct ErrorTypesAudit;
 
 impl Audit for ErrorTypesAudit {

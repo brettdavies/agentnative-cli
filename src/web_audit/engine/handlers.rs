@@ -36,6 +36,7 @@ impl std::fmt::Debug for HandlerSet {
 }
 
 /// What dispatch found for a check.
+#[derive(Debug)]
 pub enum Dispatch {
     /// The handler ran.
     Outcome(ProbeOutcome),

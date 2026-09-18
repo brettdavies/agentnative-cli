@@ -50,6 +50,7 @@ const MAX_OUTPUT_BYTES: usize = 1_048_576;
 type CacheKey = (Vec<String>, Vec<(String, String)>);
 
 /// Executes a binary with timeout, result caching, and partial-read support.
+#[derive(Debug)]
 pub struct BinaryRunner {
     binary: PathBuf,
     timeout: Duration,

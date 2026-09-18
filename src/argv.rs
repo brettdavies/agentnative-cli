@@ -121,12 +121,25 @@ where
         false
     };
 
-    let inject_audit = |args: Vec<OsString>| -> Vec<OsString> {
+    let inject = |args: Vec<OsString>, subcommand: &str| -> Vec<OsString> {
         let mut injected = Vec::with_capacity(args.len() + 1);
         injected.push(args[0].clone());
-        injected.push(OsString::from("audit"));
+        injected.push(OsString::from(subcommand));
         injected.extend(args.into_iter().skip(1));
         injected
+    };
+    let inject_audit = |args: Vec<OsString>| -> Vec<OsString> { inject(args, "audit") };
+    // A positional token that reads as a network target routes to `web`
+    // instead: a strict grammar (explicit scheme, explicit port, or a
+    // TLD-shaped dot-bearing token with no path separator) that an
+    // existing path always wins, so a filename typo stays on the offline
+    // audit path and never opens a connection.
+    let inject_for = |args: Vec<OsString>, token: &str| -> Vec<OsString> {
+        if crate::web_audit::target::routes_to_web(token) {
+            inject(args, "web")
+        } else {
+            inject(args, "audit")
+        }
     };
 
     let mut i = 1;
@@ -170,7 +183,8 @@ where
         return if known.iter().any(|k| k == &*token) {
             args
         } else {
-            inject_audit(args)
+            let token = token.into_owned();
+            inject_for(args, &token)
         };
     }
 

@@ -2,7 +2,7 @@
 //!
 //! Maps to: audit-p6-no-color from the existing 24 bash audits.
 //! Principle: P6 (Composable Structure) — CLIs must respect NO_COLOR.
-//! See https://no-color.org/
+//! See <https://no-color.org/>
 //!
 //! This audit verifies the source references `NO_COLOR` as an env var.
 //! It spans source + behavioral layers; this is the source half.
@@ -17,6 +17,7 @@ use crate::source::{has_pattern, has_string_literal_in};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Audit trait implementation for NO_COLOR detection.
+#[derive(Debug)]
 pub struct NoColorSourceAudit;
 
 impl Audit for NoColorSourceAudit {

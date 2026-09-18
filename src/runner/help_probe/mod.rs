@@ -133,6 +133,7 @@ impl CommandBlock {
 
 /// Shared, lazily-parsed view over `<binary> --help`. Construct via
 /// [`HelpOutput::probe`] in runner code, or [`HelpOutput::from_raw`] in tests.
+#[derive(Debug)]
 pub struct HelpOutput {
     raw: String,
     /// File stem of the binary the probe spawned, `None` for text built

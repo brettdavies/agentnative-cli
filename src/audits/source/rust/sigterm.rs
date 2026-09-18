@@ -48,6 +48,7 @@ const LONG_RUNNING_SIGNALS: &[&str] = &[
     "watch_for_changes",
 ];
 
+#[derive(Debug)]
 pub struct SigtermAudit;
 
 impl Audit for SigtermAudit {

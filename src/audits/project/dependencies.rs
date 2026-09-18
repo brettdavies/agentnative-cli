@@ -21,6 +21,7 @@ const RECOMMENDED_DEPS: &[(&str, &[&str])] = &[
     ("serialization (serde)", &["serde"]),
 ];
 
+#[derive(Debug)]
 pub struct DependenciesAudit;
 
 impl Audit for DependenciesAudit {

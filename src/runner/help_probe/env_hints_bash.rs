@@ -118,7 +118,7 @@ fn strip_clap_env_annotations(raw: &str) -> String {
 
 /// A "flag line" for proximity-window purposes: leading whitespace, then
 /// a dash (clap's canonical shape). Mirrors `parse_flags` but returns a
-/// bool so the caller can keep line indices in a Vec<usize>.
+/// bool so the caller can keep line indices in a `Vec<usize>`.
 fn is_flag_line(line: &str) -> bool {
     if !line.starts_with(' ') {
         return false;

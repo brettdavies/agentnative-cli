@@ -19,6 +19,7 @@ use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
 /// Audit trait implementation for unwrap detection.
+#[derive(Debug)]
 pub struct UnwrapAudit;
 
 impl Audit for UnwrapAudit {

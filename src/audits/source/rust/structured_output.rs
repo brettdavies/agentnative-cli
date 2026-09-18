@@ -12,6 +12,7 @@ use crate::source::has_pattern;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Audit trait implementation for structured output detection.
+#[derive(Debug)]
 pub struct StructuredOutputAudit;
 
 impl Audit for StructuredOutputAudit {

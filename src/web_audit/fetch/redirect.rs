@@ -121,6 +121,18 @@ pub struct ChainRequest<'a> {
     pub max_redirects: usize,
 }
 
+impl std::fmt::Debug for ChainRequest<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChainRequest")
+            .field("method", &self.method)
+            .field("headers", &self.headers)
+            .field("timeout", &self.timeout)
+            .field("follow_redirects", &self.follow_redirects)
+            .field("max_redirects", &self.max_redirects)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Run the chain from a validated target to its final response.
 pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<Response, String> {
     let via_proxy = proxy::routes_via_proxy(target.class);

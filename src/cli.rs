@@ -39,6 +39,7 @@ Exit codes:
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
 that prevents recursive self-invocation when agentnative audits itself.")]
+#[derive(Debug)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -75,7 +76,7 @@ pub struct Cli {
     /// Color control for text output. `auto` (default) emits ANSI styling
     /// when stdout is a terminal and `NO_COLOR` is unset. `always` forces
     /// styling on; `never` strips it. Honors the `NO_COLOR` environment
-    /// variable in `auto` mode (https://no-color.org/).
+    /// variable in `auto` mode (<https://no-color.org/>).
     #[arg(
         long,
         global = true,
@@ -106,7 +107,7 @@ pub enum ColorChoice {
     Never,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Audit a CLI project or binary for agent-readiness
     ///
@@ -259,7 +260,7 @@ Exit codes (shared with `anc audit`):
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum SkillCmd {
     /// Install the skill bundle into a host's canonical skills directory.
     ///
@@ -267,7 +268,9 @@ pub enum SkillCmd {
     /// the manual fallback printed by `--dry-run` for any known host and
     /// substitute the destination path:
     ///
+    /// ```text
     /// git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
+    /// ```
     Install {
         /// Target host (claude_code, codex, cursor, opencode). Required
         /// unless `--all` is set.
@@ -305,7 +308,7 @@ pub enum SkillCmd {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum EmitKind {
     /// Render the spec coverage matrix (registry → audits → artifact).
     CoverageMatrix {
@@ -373,7 +376,7 @@ impl From<SiteType> for crate::web_audit::scorecard::DeclaredSiteType {
     }
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
     Text,
     Json,

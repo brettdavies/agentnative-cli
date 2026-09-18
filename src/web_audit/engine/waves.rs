@@ -74,6 +74,21 @@ pub struct RunInput<'a> {
     pub progress: Option<&'a mut dyn ProgressSink>,
 }
 
+impl std::fmt::Debug for RunInput<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunInput")
+            .field("url", &self.url)
+            .field("site_type", &self.site_type)
+            .field("spec_version", &self.spec_version)
+            .field("concurrency", &self.concurrency)
+            .field("per_check_timeout", &self.per_check_timeout)
+            .field("per_audit_deadline", &self.per_audit_deadline)
+            .field("external_dns", &self.external_dns)
+            .field("handlers", &self.handlers)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<'a> RunInput<'a> {
     /// A run with the site's defaults.
     pub fn new(url: &str, fetch: FetchHandle, handlers: Arc<HandlerSet>) -> Self {

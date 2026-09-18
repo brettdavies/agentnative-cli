@@ -15,6 +15,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 const NETWORK_INDICATORS: &[&str] = &["reqwest", "hyper", "curl", "ureq"];
 
 /// Audit trait implementation for timeout flag detection.
+#[derive(Debug)]
 pub struct TimeoutFlagAudit;
 
 impl Audit for TimeoutFlagAudit {

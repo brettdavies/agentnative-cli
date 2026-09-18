@@ -431,9 +431,23 @@ cargo update -p agentnative
 
 # 3. Refresh the skill.json fixture from upstream and review the diff.
 bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
+
+# 4. Bump the bundled CA set. `anc web` verifies TLS against webpki-roots rather than
+#    the host trust store, so a public site on a root issued after the last release
+#    fails locally while passing on anc.dev — a parity break that reads as a target
+#    defect. The run's evidence distinguishes a bundled-root rejection, but the fix is
+#    a newer release, so the bundle moves every time.
+cargo update -p webpki-roots && git diff Cargo.lock | rg webpki-roots
+
+# 5. Move the vendored web-audit registry pin and review what changed. The pin is a
+#    committed site SHA, so it only moves when someone moves it; a release is the
+#    deliberate moment. The script refuses a registry whose handler or eval kinds this
+#    build cannot run, and `anc web` flags a score as non-comparable when a run hits
+#    one, so read the diff for new kinds before taking the bump.
+bash scripts/sync-web-audit.sh && git diff src/web_audit/vendored/
 ```
 
-A difference from steps 2 or 3 is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
+A difference from steps 2 through 5 is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
 brings it to `dev` after the release. `scripts/release/preflight.sh mechanics` checks the `Cargo.toml` version against
 `anc --version` and the top section of `CHANGELOG.md`.
 

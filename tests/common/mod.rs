@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 
 pub mod corpus;
+pub mod web_cli;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};

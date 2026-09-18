@@ -1531,3 +1531,46 @@ fn test_bare_invocation_still_guards_against_self_spawn() {
     assert!(stdout.contains("audit"), "{stdout}");
     assert!(stdout.contains("web"), "{stdout}");
 }
+
+/// The one exit-code table, across both verbs (KTD12). `anc audit` and
+/// `anc web` return the same four codes for the same kinds of outcome, and
+/// this pins every code the binary can return from a real invocation so a
+/// later edit cannot quietly merge two cases into one.
+#[test]
+fn test_exit_code_table_holds_across_both_verbs() {
+    // 2: a usage error, on either verb.
+    cmd().assert().code(2);
+    cmd()
+        .args(["--this-flag-does-not-exist-anc"])
+        .assert()
+        .code(2);
+    cmd()
+        .args(["web", "127.0.0.1:9", "--check", "no-such-check-id"])
+        .assert()
+        .code(2);
+
+    // 3: could not check. Only the web verb can reach this, because only it
+    // has a target that can fail to answer.
+    cmd().args(["web", "127.0.0.1:9"]).assert().code(3);
+
+    // 0, 1 or 2 from a real audit: the verdict codes. The dogfood run is
+    // whichever its own scorecard earns, and every value is in the table.
+    let audit = cmd().args(["audit", "."]).assert();
+    let code = audit.get_output().status.code().expect("an exit code");
+    assert!(
+        (0..=2).contains(&code),
+        "`anc audit .` returned {code}, which is outside the table"
+    );
+
+    // The table is published in one place and every run names its code.
+    let help = cmd().args(["web", "--help"]).assert().code(0);
+    let text = String::from_utf8_lossy(&help.get_output().stdout).into_owned();
+    for row in [
+        "0  clean",
+        "1  warnings only",
+        "2  failures present",
+        "3  could not check",
+    ] {
+        assert!(text.contains(row), "`anc web --help` lost `{row}`");
+    }
+}

@@ -50,3 +50,13 @@ jobs:
 
       - name: Check size against the ceiling
         run: scripts/check-binary-size.sh
+
+      # The product promise is a website audit in one or two minutes with no
+      # runtime to install. The install half is a single download the release
+      # workflow publishes; this measures the other half, which is the half
+      # that can regress silently.
+      - name: Install jaq
+        run: cargo install jaq --locked
+
+      - name: First-run smoke check
+        run: scripts/smoke-web-audit.sh

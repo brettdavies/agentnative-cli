@@ -16,6 +16,7 @@ use crate::project::{Language, Project};
 use crate::source::has_pattern_in;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
+#[derive(Debug)]
 pub struct EnumerateValidSetAudit;
 
 impl Audit for EnumerateValidSetAudit {

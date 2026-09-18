@@ -60,6 +60,7 @@ fn cache_key(args: &[&str], env_overrides: &[(&str, &str)]) -> CacheKey {
 }
 
 /// Executes a binary with timeout, result caching, and partial-read support.
+#[derive(Debug)]
 pub struct BinaryRunner {
     binary: PathBuf,
     timeout: Duration,

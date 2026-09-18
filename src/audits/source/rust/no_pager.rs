@@ -16,6 +16,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 const PAGER_INDICATORS: &[&str] = &["pager::Pager", "Pager::new", "Pager::with_pager"];
 
 /// Audit trait implementation for no-pager detection.
+#[derive(Debug)]
 pub struct NoPagerAudit;
 
 impl Audit for NoPagerAudit {

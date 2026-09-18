@@ -23,6 +23,7 @@ const MODULE_PATHS: &[&str] = &[
     "errors/__init__.py",
 ];
 
+#[derive(Debug)]
 pub struct ErrorModuleAudit;
 
 impl Audit for ErrorModuleAudit {

@@ -34,6 +34,7 @@ const COLOR_INDICATORS: &[&str] = &[
 const TTY_INDICATORS: &[&str] = &["IsTerminal", "is_terminal", "atty", "is_tty", "isatty"];
 
 /// Audit trait implementation for TTY detection.
+#[derive(Debug)]
 pub struct TtyDetectionAudit;
 
 impl Audit for TtyDetectionAudit {

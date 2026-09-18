@@ -47,6 +47,7 @@ pub enum Resolution {
 }
 
 /// The wave-1 facts every resolver reads.
+#[derive(Debug)]
 pub struct AntecedentContext<'a> {
     /// The declared site type; `None` runs everything.
     pub site_type: Option<DeclaredSiteType>,

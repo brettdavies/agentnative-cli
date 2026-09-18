@@ -162,6 +162,12 @@ impl FetchHandle {
     pub fn classify(&self, host: &str) -> Result<Locality, ClassifyError> {
         classify_host(host, &*self.resolver)
     }
+
+    /// Validate a URL the way the guard validates a target, without
+    /// fetching it: the class it would connect to, or the `blocked:` reason.
+    pub fn validate(&self, url: &str) -> Result<Locality, String> {
+        crate::web_audit::fetch::redirect::validate_target(url, &*self.resolver).map(|v| v.class)
+    }
 }
 
 /// Everything a handler sees for one check.
@@ -193,6 +199,9 @@ pub struct HandlerContext {
     pub deadline: Instant,
     /// Whether checks that query external DNS resolvers may run.
     pub external_dns: bool,
+    /// The target's locality class, when it could be classified; nested
+    /// probes must stay within it.
+    pub target_locality: Option<Locality>,
 }
 
 impl HandlerContext {
@@ -217,6 +226,28 @@ impl HandlerContext {
         FetchOptions {
             timeout: self.timeout_for(check_timeout_seconds),
             ..FetchOptions::default()
+        }
+    }
+
+    /// Validate a URL a handler found in the target's own documents. A
+    /// class-crossing candidate is refused with a `blocked:` reason: a
+    /// local run never egresses to a public host it was not pointed at,
+    /// and a public run never probes the auditor's private network.
+    pub fn validate_nested(&self, url: &str) -> Result<(), String> {
+        let class = self.fetch.validate(url)?;
+        match self.target_locality {
+            Some(target) if class != target => {
+                let host = url::Url::parse(url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_string))
+                    .unwrap_or_default();
+                let reason =
+                    crate::web_audit::locality::site_block_reason(&host).unwrap_or_else(|| {
+                        format!("{host} is a {class} host outside the {target} target")
+                    });
+                Err(format!("blocked: {reason}"))
+            }
+            _ => Ok(()),
         }
     }
 }

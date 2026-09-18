@@ -434,6 +434,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         mcp_lanes: lanes,
         deadline,
         external_dns: input.external_dns,
+        target_locality,
     };
 
     // Wave 1: probe the antecedent-source checks unconditionally.

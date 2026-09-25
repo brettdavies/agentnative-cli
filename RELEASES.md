@@ -263,12 +263,30 @@ this repo, which idempotently flips `make_latest: true`.
 ### After publish: sync `dev` with the release
 
 Once `finalize-release.yml` has flipped the GitHub Release to `published`, bring the release bookkeeping (`Cargo.toml`
-version, `Cargo.lock`, `CHANGELOG.md`) back to `dev` so the integration branch starts from the released baseline and
-`anc audit`'s embedded badge URL points at the released slug:
+version, `Cargo.lock`, `CHANGELOG.md`) and every other release-only edit back to `dev` so the integration branch starts
+from the released baseline and `anc audit`'s embedded badge URL points at the released slug:
 
 ```bash
+scripts/sync-dev-after-release.sh v0.2.0 --dry-run   # preview: creates no branch, leaves the tree clean
 scripts/sync-dev-after-release.sh v0.2.0
 ```
+
+The script writes the released version into `Cargo.toml`, refreshes the workspace entries in `Cargo.lock` from the
+synced manifests with `cargo update --workspace --offline`, and copies `CHANGELOG.md` verbatim from `origin/main`. Every
+other path `main` and `dev` disagree about, guarded paths excepted, is classified against the previous release tag:
+
+- **release-prep**: `dev`'s copy still matches the previous tag, so only the release changed it. Adopted.
+- **contested**: both branches changed it since the previous tag. Listed and left out; `--include-contested` adopts
+  every contested path.
+
+`--only PATH` (repeatable) adopts exactly the discovered paths it names, release-prep or contested, and no other
+discovered path; the version carriers and changelog are synced either way. Resolve anything left out by hand.
+
+The offline lock refresh needs every crate in the local registry cache. When the lock does not resolve, the script
+stops with exit 70 before committing and leaves `dev` as it found it; run `cargo fetch` and re-run. After committing,
+when the sync carried `CHANGELOG.md` and `git-cliff` is installed, the script runs `scripts/generate-changelog.py
+--dry-run` and warns with the generator's own reason if the regenerated changelog would differ (a PR body edited after
+the release, or a difference in line wrapping only). The warning does not block the backport.
 
 The script opens a PR against `dev`; merge it once CI is green. The postflight backport gate looks for that merged PR.
 Never merge `main` into `dev` or push to `dev` directly: the squash-merged histories share no recent ancestry, so the

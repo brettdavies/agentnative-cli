@@ -168,9 +168,11 @@ Breaking changes / Added / Changed / Fixed / Documentation` subsections (with au
 cherry-picked branch it runs `git-cliff` first to prepend a versioned entry from the branch's commits, then expands
 the same way.
 
-If a PR's body carries no changelog content, its title becomes a `Changed` bullet, except for `chore`, `ci`, `build`,
-`style`, and `test` PRs, which stay out unless they carry a `## Changelog` of their own. To fix a wrong CHANGELOG entry,
-fix the input: edit the squash-merged PR body, then re-run the script. Do **not** edit `CHANGELOG.md` directly.
+If a PR's body has no `## Changelog` section at all, its title becomes a `Changed` bullet, except for `chore`, `ci`,
+`build`, `style`, and `test` PRs, which stay out unless they carry a `## Changelog` of their own. A PR whose
+`## Changelog` heading stands over nothing (the template's form for a change that is not user-facing) adds nothing,
+whatever its type. To fix a wrong CHANGELOG entry, fix the input: edit the squash-merged PR body, then re-run the
+script. Do **not** edit `CHANGELOG.md` directly.
 
 CI enforces that `CHANGELOG.md` is modified in every PR to main (`ci / Changelog` required status check) and that it
 contains a versioned section, not `[Unreleased]`. The release workflow extracts the tag's section for the GitHub
@@ -213,9 +215,19 @@ dev work starts from the released baseline.
 The backport is a PR opened by `scripts/sync-dev-after-release.sh`, never a merge of `main` into `dev` and never a
 direct push. The squash-merged branches share no recent history, so a merge conflicts on every file both sides
 touched, and a direct push to `dev` bypasses its required status checks. The script writes the released version into
-`Cargo.toml` and the crate's own `Cargo.lock` entry with in-place line edits (other `Cargo.toml` lines on `dev`, such
-as post-release deps or a `rust-version` bump, are preserved), copies `CHANGELOG.md` verbatim from `origin/main`, and
-opens the PR; the postflight backport gate treats that merged PR as the durable signal that the backport ran.
+`Cargo.toml` with an in-place line edit (other `Cargo.toml` lines on `dev`, such as post-release deps or a
+`rust-version` bump, are preserved), refreshes the workspace entries in `Cargo.lock` from the synced manifests rather
+than copying `main`'s lock (which would revert dependency updates `dev` merged after the release), copies
+`CHANGELOG.md` verbatim from `origin/main`, and opens the PR; the postflight backport gate treats that merged PR as the
+durable signal that the backport ran.
+
+Other release-only edits are discovered rather than listed. A release branch is edited for reasons nobody predicts (a
+doc fix, a reverted payload, a deleted config), each such edit is made against `main`'s base, and a fixed list misses
+it silently; the next release's overlay then restores `dev`'s copy over `main`'s and undoes the edit. Discovery is
+bounded by the previous release tag, the last point the two branches agreed, so it cannot revert `dev`'s unreleased
+work: a path whose `dev` copy still matches that tag is release-prep and adopted, and a path both branches changed is
+contested, reported, and adopted only when the operator names it (`--only PATH`) or takes every contested path
+(`--include-contested`).
 
 The backport is idempotent: re-running on a `dev` already in sync exits 0 without creating a branch or PR.
 

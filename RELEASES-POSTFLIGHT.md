@@ -87,9 +87,13 @@ Run immediately after the tag push triggers `release.yml`.
   `main` flow so `main` reconverges with what is live.
 - [ ] **Backport `main` → `dev`** via a **merged PR to `dev` with the version in its title.**
   `scripts/sync-dev-after-release.sh vX.Y.Z` cuts `chore/sync-dev-after-vX.Y.Z`, writes the released version into
-  `Cargo.toml` and `Cargo.lock`, copies `CHANGELOG.md` from `main`, and opens the PR. Add any other release-only edits
-  (generator config, README polish, `RELEASES.md` meta-edits) to that branch before merging. Keeps the next release's
-  PREFLIGHT `diff-B` step quiet so a real missed change stands out instead of hiding in expected divergence noise.
+  `Cargo.toml`, refreshes the workspace entries in `Cargo.lock` offline, copies `CHANGELOG.md` from `main`, and opens
+  the PR. Other release-only edits (generator config, README polish, `RELEASES.md` meta-edits) are discovered, not added
+  by hand: a path `main` changed since the previous release tag while `dev` left it alone is release-prep and adopted. A
+  path both branches changed since that tag is contested: the script lists it and leaves it out. `--include-contested`
+  adopts every contested path, and `--only PATH` (repeatable) adopts exactly the discovered paths it names. Preview the
+  set with `--dry-run`, which creates no branch and leaves the tree clean. Keeps the next release's PREFLIGHT `diff-B`
+  step quiet so a real missed change stands out instead of hiding in expected divergence noise.
 
   The gate (`scripts/release/postflight.sh backport`) is signal-agnostic about which files moved: it looks for the
   merged PR alone, since "which files" varies release-to-release. The only requirement is the version string in the PR

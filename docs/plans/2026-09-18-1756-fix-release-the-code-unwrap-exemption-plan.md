@@ -33,9 +33,10 @@ So every installed `anc` predates the fix. Audited against `brettdavies/xurl-rs`
 `.unwrap()` hits and all 32 sit after a `#[cfg(test)]` marker: a 100% false-positive rate on the audit's headline Rust
 finding. Built from `dev` and run against the same tree, `code-unwrap` passes.
 
-This already cost a downstream consumer real work. `xurl-rs` carries two open tasks from its adoption-grade plan, one to
-report this as an upstream false positive and one to reconcile a `.anc.toml` that the same audit run made look broken.
-Neither had anything to fix.
+This already cost a downstream consumer real work. `xurl-rs` carried a task in its adoption-grade plan to report this as
+an upstream false positive; there was nothing to report, because `dev` already carries the fix. Its companion task, an
+`.anc.toml` that no audit applies, is a real gap that `docs/plans/2026-10-01-0015-feat-config-follows-the-repo-plan.md`
+owns, and it reaches users only through a release as well: v0.5.0 predates `.anc.toml` support (#76, #83).
 
 The plan that corrected the polarity bug,
 `docs/plans/2026-06-03-004-fix-pr77-code-unwrap-cfg-not-test-polarity-plan.md`, is marked `status: completed` and lists
@@ -57,7 +58,7 @@ checked.
 - The open `anc web` stack (#97, #99, #101-#106). Whether it lands before the cut is U1's one decision, not a scope
   expansion.
 - Re-auditing the other 131 commits on `dev`. They passed CI when they merged.
-- Anything in the consumer repo. Its two open tasks close on their side once a fixed binary exists.
+- Anything in the consumer repo. Its false-positive task is closed; its `.anc.toml` task waits on the config plan.
 
 ## Implementation Units
 

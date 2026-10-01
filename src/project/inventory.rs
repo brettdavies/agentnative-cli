@@ -4,6 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::bins::{self, Candidate};
 use super::{Language, scan, workspace};
 
 /// One package in the audited tree.
@@ -22,6 +23,8 @@ pub struct Inventory {
     /// declaration order, then the rest of the scan in walk order. A
     /// directory holding two manifests is two packages.
     pub packages: Vec<Package>,
+    /// The binaries those packages declare and have built.
+    pub candidates: Vec<Candidate>,
     /// One message per declaration, member, or scan limit to report.
     pub warnings: Vec<String>,
 }
@@ -31,8 +34,8 @@ pub fn inventory(root: &Path, include_tests: bool) -> Inventory {
     let declared = workspace::read(root);
     let scanned = scan::manifests(root, include_tests);
     let mut found = Inventory {
-        packages: Vec::new(),
         warnings: declared.warnings,
+        ..Inventory::default()
     };
     let (own, rest): (Vec<_>, Vec<_>) = scanned
         .manifests
@@ -48,6 +51,7 @@ pub fn inventory(root: &Path, include_tests: bool) -> Inventory {
         add(&mut found, language, manifest);
     }
     found.warnings.extend(scanned.warnings);
+    found.candidates = bins::candidates(root, &found.packages);
     found
 }
 

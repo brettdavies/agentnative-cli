@@ -19,6 +19,8 @@ pub struct Candidate {
     pub language: Language,
     /// Where the built binary is.
     pub path: PathBuf,
+    /// The declaring package's manifest.
+    pub manifest: PathBuf,
 }
 
 /// What the packages under an audit root declare.
@@ -31,10 +33,11 @@ pub struct Bins {
     pub unbuilt: Vec<String>,
 }
 
-/// Every bin the packages under `root` declare.
-pub fn candidates(root: &Path, packages: &[Package]) -> Bins {
+/// Every bin the packages under `root` declare. Each package's `name` and
+/// `bins` are filled in along the way.
+pub fn candidates(root: &Path, packages: &mut [Package]) -> Bins {
     let mut found = Bins::default();
-    for pkg in packages {
+    for pkg in packages.iter_mut() {
         let manifest = fs::read_to_string(&pkg.manifest).unwrap_or_default();
         let declared = match pkg.language {
             Language::Rust => rust(root, pkg, &manifest),
@@ -43,6 +46,7 @@ pub fn candidates(root: &Path, packages: &[Package]) -> Bins {
             Language::Go => go(pkg, &manifest),
         };
         let Some((package, bins)) = declared else {
+            pkg.name = dir_name(&pkg.root);
             continue;
         };
         let package = if package.is_empty() {
@@ -50,6 +54,8 @@ pub fn candidates(root: &Path, packages: &[Package]) -> Bins {
         } else {
             package
         };
+        pkg.name = package.clone();
+        pkg.bins = bins.iter().map(|(name, _)| name.clone()).collect();
         for (name, path) in bins {
             match path {
                 Some(path) => found.candidates.push(Candidate {
@@ -57,6 +63,7 @@ pub fn candidates(root: &Path, packages: &[Package]) -> Bins {
                     package: package.clone(),
                     language: pkg.language,
                     path,
+                    manifest: pkg.manifest.clone(),
                 }),
                 None if !found.unbuilt.contains(&name) => found.unbuilt.push(name),
                 None => {}
@@ -392,7 +399,7 @@ mod tests {
     }
 
     fn found(root: &Path) -> Vec<Candidate> {
-        candidates(root, &inventory(root, false).packages).candidates
+        inventory(root, false).candidates
     }
 
     fn names(root: &Path) -> Vec<String> {

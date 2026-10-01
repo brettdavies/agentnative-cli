@@ -230,10 +230,10 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         };
         match selected {
             Ok(Some(chosen)) => {
-                let binary = chosen.path.clone();
-                project.grade(binary);
+                let chosen = chosen.clone();
+                project.grade(&chosen);
             }
-            Ok(None) => {}
+            Ok(None) => project.anchor_ungraded(),
             Err(why) => {
                 let rerun = argv::rerun_argv(&argv);
                 let choices = select::choices(candidates, &project.path, &rerun);
@@ -279,9 +279,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     }
 
     if !binary_only {
-        if let Some(lang) = project.language {
-            all_audits.extend(all_source_audits(lang));
-        } else if source_only {
+        let languages = project.languages();
+        for lang in &languages {
+            all_audits.extend(all_source_audits(*lang));
+        }
+        if languages.is_empty() && source_only {
             eprintln!("warning: --source specified but no language detected");
         }
     }
@@ -337,6 +339,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         };
         results.push(result);
     }
+    let mut results = audits::source::merge_shared(results);
 
     // Filter by principle number
     if let Some(p) = principle {

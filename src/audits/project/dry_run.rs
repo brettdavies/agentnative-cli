@@ -62,11 +62,18 @@ impl Audit for DryRunAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.path.is_dir() && project.language.is_some()
+        project.path.is_dir()
+            && (project.language.is_some() || project.manifest_skip(None).is_some())
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        if let Some(reason) = project.manifest_skip(None) {
+            return Ok(self.skip(reason));
+        }
+        let Some(language) = project.language else {
+            return Ok(self.skip("no language detected".into()));
+        };
+        let parsed = project.parsed_files(language);
 
         let mut has_write_commands = false;
         let mut has_dry_run = false;
@@ -164,7 +171,7 @@ mod tests {
             manifest_path: Some(dir.join("Cargo.toml")),
             runner: None,
             include_tests: false,
-            parsed_files: OnceLock::from(parsed),
+            parsed_files: OnceLock::from(HashMap::from([(Language::Rust, parsed)])),
             help_output: OnceLock::new(),
             anc_config: Default::default(),
             inventory: Default::default(),

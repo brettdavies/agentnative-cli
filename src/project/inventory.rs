@@ -14,6 +14,10 @@ pub struct Package {
     pub root: PathBuf,
     pub language: Language,
     pub manifest: PathBuf,
+    /// The package's own name, or its directory's when the manifest has none.
+    pub name: String,
+    /// The bins it declares, built or not.
+    pub bins: Vec<String>,
 }
 
 /// Every package under an audit root, and what discovery could not read.
@@ -53,7 +57,7 @@ pub fn inventory(root: &Path, include_tests: bool) -> Inventory {
         add(&mut found, language, manifest);
     }
     found.warnings.extend(scanned.warnings);
-    let bins = bins::candidates(root, &found.packages);
+    let bins = bins::candidates(root, &mut found.packages);
     found.candidates = bins.candidates;
     found.unbuilt = bins.unbuilt;
     found
@@ -71,6 +75,8 @@ fn add(found: &mut Inventory, language: Language, manifest: PathBuf) {
         return;
     }
     found.packages.push(Package {
+        name: String::new(),
+        bins: Vec::new(),
         root,
         language,
         manifest,
@@ -257,6 +263,8 @@ mod tests {
                 root: root.to_path_buf(),
                 language: Language::Rust,
                 manifest: root.join("Cargo.toml"),
+                name: "agentnative".to_string(),
+                bins: vec!["anc".to_string()],
             }],
             "{:?}",
             found.warnings

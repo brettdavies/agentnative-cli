@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -9,6 +10,8 @@ use serde::Serialize;
 
 use crate::anc_toml::ResolvedConfig;
 use crate::runner::{BinaryRunner, HelpOutput};
+
+pub use bins::Candidate;
 
 mod bins;
 mod inventory;
@@ -23,7 +26,7 @@ const MAX_DEPTH: usize = 20;
 /// Maximum number of source files to collect.
 const MAX_FILES: usize = 10_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Language {
     Rust,
@@ -54,6 +57,18 @@ impl Language {
         .into_iter()
         .find(|lang| file_name == lang.manifest_name())
     }
+
+    /// The language a source file with extension `ext` is written in.
+    fn of_source_extension(ext: &OsStr) -> Option<Language> {
+        [
+            ("rs", Language::Rust),
+            ("py", Language::Python),
+            ("go", Language::Go),
+            ("js", Language::Node),
+        ]
+        .into_iter()
+        .find_map(|(known, lang)| (ext == known).then_some(lang))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +83,7 @@ pub struct Project {
     pub manifest_path: Option<PathBuf>,
     pub runner: Option<BinaryRunner>,
     pub include_tests: bool,
-    pub(crate) parsed_files: OnceLock<HashMap<PathBuf, ParsedFile>>,
+    pub(crate) parsed_files: OnceLock<HashMap<Language, HashMap<PathBuf, ParsedFile>>>,
     pub(crate) help_output: OnceLock<Option<HelpOutput>>,
     /// The merged `.anc.toml` chain for this target, resolved once per run.
     pub anc_config: ResolvedConfig,
@@ -154,11 +169,75 @@ impl Project {
         })
     }
 
-    /// Grade `binary`: every behavioral audit probes it.
-    pub fn grade(&mut self, binary: PathBuf) {
-        self.runner = BinaryRunner::new(binary.clone(), Duration::from_secs(5)).ok();
-        self.binary_paths = vec![binary];
+    /// Grade `candidate`: every behavioral audit probes its binary, and its
+    /// package supplies the language and manifest the audits read.
+    pub fn grade(&mut self, candidate: &Candidate) {
+        self.runner = BinaryRunner::new(candidate.path.clone(), Duration::from_secs(5)).ok();
+        self.binary_paths = vec![candidate.path.clone()];
         self.help_output = OnceLock::new();
+        self.language = Some(candidate.language);
+        self.manifest_path = Some(candidate.manifest.clone());
+    }
+
+    /// With nothing graded, anchor manifest reads on the one package that
+    /// declares a binary. With several, no manifest is read and
+    /// [`Project::manifest_skip`] says why; with none, the audit root's own
+    /// package stays.
+    pub fn anchor_ungraded(&mut self) {
+        let declaring: Vec<(Language, PathBuf)> = self
+            .declaring_packages()
+            .map(|pkg| (pkg.language, pkg.manifest.clone()))
+            .collect();
+        match declaring.as_slice() {
+            [] => {}
+            [(language, manifest)] => {
+                self.language = Some(*language);
+                self.manifest_path = Some(manifest.clone());
+            }
+            _ => self.manifest_path = None,
+        }
+    }
+
+    fn declaring_packages(&self) -> impl Iterator<Item = &inventory::Package> {
+        self.inventory
+            .packages
+            .iter()
+            .filter(|pkg| !pkg.bins.is_empty())
+    }
+
+    /// Why a manifest-reading audit skips: nothing is graded and several
+    /// packages declare binaries, at least one of them in `language` when
+    /// the audit reads only that language's manifests.
+    pub fn manifest_skip(&self, language: Option<Language>) -> Option<String> {
+        if self.manifest_path.is_some() || !self.binary_paths.is_empty() {
+            return None;
+        }
+        let declaring: Vec<&inventory::Package> = self.declaring_packages().collect();
+        let relevant = language.is_none_or(|lang| declaring.iter().any(|pkg| pkg.language == lang));
+        if declaring.len() < 2 || !relevant {
+            return None;
+        }
+        let names: Vec<&str> = declaring.iter().map(|pkg| pkg.name.as_str()).collect();
+        Some(format!(
+            "several packages declare binaries ({}) and none is graded, so anc reads no manifest; build one and grade it with --bin to audit its manifest",
+            names.join(", ")
+        ))
+    }
+
+    /// Every language present: the graded package's, then each inventoried
+    /// package's in inventory order.
+    pub fn languages(&self) -> Vec<Language> {
+        let mut found: Vec<Language> = self.language.into_iter().collect();
+        for pkg in &self.inventory.packages {
+            if !found.contains(&pkg.language) {
+                found.push(pkg.language);
+            }
+        }
+        found
+    }
+
+    pub fn has_language(&self, language: Language) -> bool {
+        self.languages().contains(&language)
     }
 
     /// Returns a reference to the runner.
@@ -185,27 +264,53 @@ impl Project {
             .as_ref()
     }
 
-    pub fn parsed_files(&self) -> &HashMap<PathBuf, ParsedFile> {
-        self.parsed_files.get_or_init(|| {
-            let mut cache = HashMap::new();
-            if let Some(lang) = self.language {
-                let ext = match lang {
-                    Language::Rust => "rs",
-                    Language::Python => "py",
-                    Language::Go => "go",
-                    Language::Node => "js",
-                };
-                if let Ok(files) = walk_source_files(&self.path, ext, self.include_tests) {
-                    for file_path in files {
-                        if let Ok(source) = fs::read_to_string(&file_path) {
-                            cache.insert(file_path, ParsedFile { source });
-                        }
-                    }
-                }
-            }
-            cache
-        })
+    /// Every `language` source file under the audit root that the shared
+    /// walker reaches, read once for all languages.
+    pub fn parsed_files(&self, language: Language) -> &HashMap<PathBuf, ParsedFile> {
+        static NONE: LazyLock<HashMap<PathBuf, ParsedFile>> = LazyLock::new(HashMap::new);
+        self.parsed_files
+            .get_or_init(|| read_sources(&self.path, self.include_tests))
+            .get(&language)
+            .unwrap_or(&NONE)
     }
+}
+
+/// Source files under `root` by language, walked with the package scan's
+/// rules: the repository's ignore files, no hidden, build, or dependency
+/// directories, and `tests` only with `include_tests`.
+fn read_sources(
+    root: &Path,
+    include_tests: bool,
+) -> HashMap<Language, HashMap<PathBuf, ParsedFile>> {
+    let mut found: HashMap<Language, HashMap<PathBuf, ParsedFile>> = HashMap::new();
+    if !root.is_dir() {
+        return found;
+    }
+    let mut count = 0usize;
+    for entry in scan::walker(root, include_tests).build().flatten() {
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let Some(language) = entry
+            .path()
+            .extension()
+            .and_then(Language::of_source_extension)
+        else {
+            continue;
+        };
+        if count >= MAX_FILES {
+            eprintln!("warning: hit {MAX_FILES}-file limit; narrow the scan with `anc audit src/`");
+            break;
+        }
+        if let Ok(source) = fs::read_to_string(entry.path()) {
+            count += 1;
+            found
+                .entry(language)
+                .or_default()
+                .insert(entry.into_path(), ParsedFile { source });
+        }
+    }
+    found
 }
 
 fn detect_language(dir: &Path) -> (Option<Language>, Option<PathBuf>) {
@@ -222,61 +327,6 @@ fn detect_language(dir: &Path) -> (Option<Language>, Option<PathBuf>) {
         }
     }
     (None, None)
-}
-
-fn walk_source_files(dir: &Path, ext: &str, include_tests: bool) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    let mut file_count: usize = 0;
-    walk_source_files_inner(dir, ext, include_tests, 0, &mut file_count, &mut files)?;
-    Ok(files)
-}
-
-fn walk_source_files_inner(
-    dir: &Path,
-    ext: &str,
-    include_tests: bool,
-    depth: usize,
-    file_count: &mut usize,
-    files: &mut Vec<PathBuf>,
-) -> Result<()> {
-    if depth >= MAX_DEPTH {
-        eprintln!(
-            "warning: hit {MAX_DEPTH}-level depth limit; narrow the scan with `anc audit src/`"
-        );
-        return Ok(());
-    }
-    if *file_count >= MAX_FILES {
-        eprintln!("warning: hit {MAX_FILES}-file limit; narrow the scan with `anc audit src/`");
-        return Ok(());
-    }
-
-    let entries =
-        fs::read_dir(dir).with_context(|| format!("cannot read directory: {}", dir.display()))?;
-
-    for entry in entries {
-        if *file_count >= MAX_FILES {
-            break;
-        }
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = entry.file_name();
-        let name = file_name.to_string_lossy();
-
-        // Skip hidden dirs, target/ always; tests/ unless --include-tests
-        if path.is_dir() {
-            if name.starts_with('.') || name == "target" {
-                continue;
-            }
-            if name == "tests" && !include_tests {
-                continue;
-            }
-            walk_source_files_inner(&path, ext, include_tests, depth + 1, file_count, files)?;
-        } else if path.extension().is_some_and(|e| e == ext) {
-            files.push(path);
-            *file_count += 1;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(unix)]
@@ -519,6 +569,13 @@ version = "0.1.0"
         assert!(err.contains("not an executable"), "got: {err}");
     }
 
+    fn rust_sources(dir: &Path, include_tests: bool) -> Vec<PathBuf> {
+        read_sources(dir, include_tests)
+            .remove(&Language::Rust)
+            .map(|files| files.into_keys().collect())
+            .unwrap_or_default()
+    }
+
     #[test]
     fn test_walk_excludes_tests_by_default() {
         let dir = temp_dir().join("walk-tests-default");
@@ -529,7 +586,7 @@ version = "0.1.0"
         fs::write(src.join("main.rs"), "fn main() {}").expect("write test file");
         fs::write(tests.join("test_foo.rs"), "fn test() {}").expect("write test file");
 
-        let files = walk_source_files(&dir, "rs", false).expect("walk source files");
+        let files = rust_sources(&dir, false);
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("main.rs"));
     }
@@ -544,7 +601,7 @@ version = "0.1.0"
         fs::write(src.join("main.rs"), "fn main() {}").expect("write test file");
         fs::write(tests.join("test_foo.rs"), "fn test() {}").expect("write test file");
 
-        let files = walk_source_files(&dir, "rs", true).expect("walk source files");
+        let files = rust_sources(&dir, true);
         assert_eq!(files.len(), 2);
     }
 
@@ -558,7 +615,7 @@ version = "0.1.0"
         fs::write(src.join("main.rs"), "fn main() {}").expect("write test file");
         fs::write(target.join("build.rs"), "fn build() {}").expect("write test file");
 
-        let files = walk_source_files(&dir, "rs", true).expect("walk source files");
+        let files = rust_sources(&dir, true);
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("main.rs"));
     }

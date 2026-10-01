@@ -329,7 +329,7 @@ fn candidates_sharing_a_name_are_told_apart_by_path() {
         .output()
         .expect("spawn anc");
     let card = json_of(&picked.stdout);
-    assert_eq!(card["tool"]["version"], "x 2.0.0-py", "{card}");
+    assert_eq!(card["tool"]["version"], "2.0.0", "{card}");
 }
 
 #[test]
@@ -369,6 +369,202 @@ fn no_built_binary_warns_with_the_declared_bins_and_the_ways_forward() {
             .any(|row| row["layer"] == "source"),
         "source audits still run: {card}"
     );
+}
+
+/// The scorecard row that `audit_id` produced, if any.
+fn row<'a>(card: &'a serde_json::Value, audit_id: &str) -> Option<&'a serde_json::Value> {
+    card["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .find(|row| row["audit_id"] == audit_id)
+}
+
+fn audit_json(root: &Path, extra: &[&str]) -> serde_json::Value {
+    let output = cmd()
+        .current_dir(root)
+        .args(["audit", ".", "--output", "json"])
+        .args(extra)
+        .output()
+        .expect("spawn anc");
+    json_of(&output.stdout)
+}
+
+const CLI_DEPENDENCIES: &str = "\n[dependencies]\nanyhow = \"1\"\nclap = \"4\"\nserde = \"1\"\n";
+
+#[test]
+#[cfg(unix)]
+fn a_workspace_root_reads_the_graded_crates_manifest_and_version() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    write(
+        root,
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/*\"]\nresolver = \"3\"\n",
+    );
+    write(
+        root,
+        "crates/cli/Cargo.toml",
+        &format!(
+            "[package]\nname = \"cli\"\nversion = \"4.2.0\"\nedition = \"2024\"\n{CLI_DEPENDENCIES}"
+        ),
+    );
+    write(root, "crates/cli/src/main.rs", "fn main() {}\n");
+    fixture_cli(&root.join("target/release/cli"), "9.9.9");
+
+    let card = audit_json(root, &[]);
+
+    let dependencies = row(&card, "p6-dependencies").expect("p6-dependencies row");
+    assert_eq!(dependencies["status"], "pass", "{dependencies}");
+    assert_eq!(card["tool"]["version"], "4.2.0", "{card}");
+}
+
+#[test]
+#[cfg(unix)]
+fn a_mixed_repo_runs_rust_and_python_source_audits() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    write(
+        root,
+        "cli/Cargo.toml",
+        "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    write(
+        root,
+        "cli/src/main.rs",
+        "fn main() {\n    println!(\"tool\");\n}\n",
+    );
+    write(
+        root,
+        "py/pyproject.toml",
+        "[project]\nname = \"pytool\"\nversion = \"0.1.0\"\n",
+    );
+    write(
+        root,
+        "py/src/pytool/__init__.py",
+        "def main():\n    print('pytool')\n",
+    );
+    fixture_cli(&root.join("cli/target/release/tool"), "0.1.0");
+
+    let card = audit_json(root, &[]);
+
+    assert_eq!(card["tool"]["binary"], "tool", "{card}");
+    assert!(
+        row(&card, "code-unwrap").is_some(),
+        "a Rust-only audit ran: {card}"
+    );
+    assert!(
+        row(&card, "code-bare-except").is_some(),
+        "a Python-only audit ran: {card}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn an_audit_both_languages_run_yields_one_row_per_requirement() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    write(
+        root,
+        "cli/Cargo.toml",
+        "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    write(root, "cli/src/main.rs", "fn main() {}\n");
+    write(
+        root,
+        "py/pyproject.toml",
+        "[project]\nname = \"pytool\"\nversion = \"0.1.0\"\n",
+    );
+    write(root, "py/src/pytool/__init__.py", "def main():\n    pass\n");
+    fixture_cli(&root.join("cli/target/release/tool"), "0.1.0");
+
+    let card = audit_json(root, &[]);
+
+    let ids: Vec<&str> = card["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .filter(|row| row["audit_id"] == "p6-sigterm")
+        .filter_map(|row| row["id"].as_str())
+        .collect();
+    let mut unique = ids.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert!(!ids.is_empty(), "p6-sigterm ran: {card}");
+    assert_eq!(ids.len(), unique.len(), "one row per requirement: {ids:?}");
+}
+
+#[test]
+fn with_nothing_graded_one_declaring_package_supplies_the_manifest() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    write(
+        root,
+        "lib/Cargo.toml",
+        "[package]\nname = \"core\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    write(root, "lib/src/lib.rs", "");
+    write(
+        root,
+        "cli/Cargo.toml",
+        &format!(
+            "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2024\"\n{CLI_DEPENDENCIES}"
+        ),
+    );
+    write(root, "cli/src/main.rs", "fn main() {}\n");
+
+    let card = audit_json(root, &[]);
+
+    let dependencies = row(&card, "p6-dependencies").expect("p6-dependencies row");
+    assert_eq!(dependencies["status"], "pass", "{dependencies}");
+}
+
+#[test]
+fn with_nothing_graded_two_declaring_packages_skip_the_manifest_audits() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    for name in ["alpha", "beta"] {
+        write(
+            root,
+            &format!("{name}/Cargo.toml"),
+            &format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"),
+        );
+        write(root, &format!("{name}/src/main.rs"), "fn main() {}\n");
+    }
+
+    let card = audit_json(root, &[]);
+
+    let dependencies = row(&card, "p6-dependencies").expect("p6-dependencies row");
+    assert_eq!(dependencies["status"], "skip", "{dependencies}");
+    let evidence = dependencies["evidence"].as_str().expect("evidence");
+    assert!(
+        evidence.contains("alpha") && evidence.contains("beta"),
+        "{evidence}"
+    );
+}
+
+#[test]
+fn rust_source_the_repository_ignores_is_not_audited() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    fs::create_dir_all(root.join(".git")).expect("mkdir .git");
+    write(root, ".gitignore", "generated/\n");
+    write(
+        root,
+        "Cargo.toml",
+        "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    write(root, "src/main.rs", "fn main() {}\n");
+    write(
+        root,
+        "generated/bad.rs",
+        "pub fn f(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n",
+    );
+
+    let card = audit_json(root, &[]);
+
+    let unwrap = row(&card, "code-unwrap").expect("code-unwrap row");
+    assert_eq!(unwrap["status"], "pass", "{unwrap}");
 }
 
 #[test]

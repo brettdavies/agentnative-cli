@@ -582,9 +582,10 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
     }
 }
 
-/// Best-effort `<binary> --version` / `<binary> -V` probe. Reuses the runner's
-/// timeout + 1MB cap primitives via a fresh `BinaryRunner` with a tighter
-/// 2-second timeout (the version probe is one-shot, not an audit).
+/// Best-effort `<binary> --version` / `<binary> -V` probe. A flag the version
+/// audit already ran is read from the project runner's cache; any other flag
+/// runs through a fresh `BinaryRunner` with a tighter 2-second timeout (the
+/// version probe is one-shot, not an audit).
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,
@@ -604,7 +605,11 @@ fn probe_tool_version(project: &Project) -> Option<String> {
 
     let runner = BinaryRunner::new(binary.clone(), Duration::from_secs(2)).ok()?;
     for flag in ["--version", "-V"] {
-        let result = runner.run(&[flag], &[]);
+        let result = project
+            .runner
+            .as_ref()
+            .and_then(|r| r.cached(&[flag], &[]))
+            .unwrap_or_else(|| runner.run(&[flag], &[]));
         if matches!(result.status, RunStatus::Ok)
             && result.exit_code == Some(0)
             && let Some(line) = result.stdout.lines().next()

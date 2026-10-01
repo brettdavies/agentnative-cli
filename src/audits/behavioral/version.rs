@@ -43,9 +43,15 @@ impl Audit for VersionAudit {
         let runner = project.runner_ref();
 
         let long = probe_version_flag(runner, "--version");
-        let short_match = SHORT_VERSION_FLAGS
-            .iter()
-            .find(|flag| probe_version_flag(runner, flag).is_ok());
+        // A failed `--version` decides the verdict, so probing aliases after
+        // it only spends more runner timeouts on a CLI that hangs.
+        let short_match = if long.is_ok() {
+            SHORT_VERSION_FLAGS
+                .iter()
+                .find(|flag| probe_version_flag(runner, flag).is_ok())
+        } else {
+            None
+        };
 
         let status = match (&long, short_match) {
             (Ok(()), Some(_)) => AuditStatus::Pass,
@@ -117,6 +123,28 @@ mod tests {
             .run(&project)
             .expect("audit should not panic on crash");
         assert!(matches!(result.status, AuditStatus::Fail(_)));
+    }
+
+    /// A failed `--version` decides the verdict, so the short aliases are
+    /// never probed: against a CLI that hangs on version flags, each extra
+    /// probe costs a full runner timeout.
+    #[test]
+    fn short_aliases_not_probed_after_long_flag_fails() {
+        let log = std::env::temp_dir().join(format!(
+            "agentnative-version-probe-{}-{}.log",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("after epoch")
+                .as_nanos(),
+        ));
+        let script = format!("echo \"$1\" >> '{}'; exit 1", log.display());
+        let project = crate::audits::behavioral::tests::test_project_with_sh_script(&script);
+        let result = VersionAudit.run(&project).expect("audit should run");
+        let probed = std::fs::read_to_string(&log).expect("script logged its probes");
+        let _ = std::fs::remove_file(&log);
+        assert!(matches!(result.status, AuditStatus::Fail(_)));
+        assert_eq!(probed.lines().collect::<Vec<_>>(), vec!["--version"]);
     }
 
     #[test]

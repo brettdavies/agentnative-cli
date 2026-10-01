@@ -95,8 +95,9 @@ directory target find the right binary and the right manifests.
 
 - R4. A candidate is a bin that an inventoried package declares and that exists on disk at its language's build location
   (KTD3).
-- R5. With one candidate, anc grades it. With none, anc runs source and project audits and prints today's no-binary
-  warning.
+- R5. With one candidate, anc grades it. With none, anc runs source and project audits and warns; when packages
+  declare bins that are not built, the warning lists those bin names and the ways forward: build one, audit it by
+  path, or name it with `--command`.
 - R6. With several candidates and no `--bin`, anc exits 2 before running any audit. Text output lists one `anc audit DIR
   --bin NAME` per candidate. JSON output is anc's usage-error envelope with `error: binary-ambiguous` and a `candidates`
   list giving each candidate's bin name, package, relative path, and verbatim command.
@@ -198,8 +199,8 @@ directory target find the right binary and the right manifests.
   follows `PRODUCT.md`'s three-part shape: several binaries were found, anc grades one per run, and here is the command
   for each.
 - KTD5. **`--bin <NAME>`, bound to `AGENTNATIVE_BIN`, follows Cargo's `--bin`.** Help text separates it from the
-  existing `--binary` switch, which limits a run to behavioral audits. When two candidates share a name, the error shows
-  their relative paths, and `--bin` also accepts a candidate's relative path.
+  existing `--binary` switch, which limits a run to behavioral audits, and each flag's help names the other. When two
+  candidates share a name, the error shows their relative paths, and `--bin` also accepts a candidate's relative path.
 - KTD6. **One skip list serves the scan and the source walk, and source caches are per language.** `parsed_files` is
   keyed by language, and `all_source_audits` runs once for each detected language that has audits. The source walk moves
   onto the same `ignore`-based walker as the scan, so source audits stop reading files the repo ignores; that changes
@@ -352,7 +353,8 @@ config plan applies here too.
   - `AGENTNATIVE_BIN=xr`: same as the flag.
   - Two candidates sharing a name in different languages: the error shows relative paths, and `--bin <relative path>`
     grades the one named.
-  - Zero candidates: today's no-binary warning, source and project audits run.
+  - Zero candidates: source and project audits run, and the warning lists the declared but unbuilt bins with the ways
+    forward from R5.
 - **Verification:** each scenario's exit code and output match, and no audit runs in an ambiguous case.
 
 ### U5. Audits per language and per graded package
@@ -388,7 +390,7 @@ config plan applies here too.
 - **Approach:**
   1. Add a README section on how anc finds what to audit: the inventory, KTD3's table, `--bin`, and the ambiguity error.
   2. Add `binary-ambiguous` to `AGENTS.md`'s exit-code table, and the package model to `CLAUDE.md`'s architecture notes.
-  3. Add `anc audit . --bin xr` to the `audit` examples.
+  3. Add `anc audit . --bin xr` to the `audit` examples, and show `--bin` beside `--binary` in the README section.
 - **Test scenarios:** Test expectation: none -- documentation and help text; any `insta` snapshot of `anc audit --help`
   is updated in the same unit.
 - **Verification:** each README example runs as written against a local build.
@@ -585,18 +587,158 @@ _No new tasks from Performance._
 - Parallelization: 1 lane, 0 parallel / 1 sequential
 - Lake Score: N/A (no coverage-scored choices)
 
+---
+
+## Developer experience review
+
+Brett authorized best-judgement decisions while unavailable. Each decision below names the option taken; all are open
+to reversal.
+
+### Developer persona
+
+```text
+TARGET DEVELOPER PERSONA
+========================
+Who:       a maintainer of a workspace or mixed-language repo auditing its CLI, or an AI agent doing it for them
+Context:   `anc audit .` at the repo root, locally or in CI
+Tolerance: one re-run; a score that silently skips audits is worse than an error, because nobody notices it
+Expects:   anc to find the CLI the repo builds, or to say exactly which one to name
+```
+
+Decisions: product type CLI tool; persona as above, the PRODUCT.md audiences narrowed to multi-package repos; mode DX
+POLISH.
+
+### Developer perspective
+
+I maintain xurl-rs, a Cargo workspace, and run `anc audit .` at its root. The scorecard comes back with source and
+project audits only, plus `warning: no binary found, running source audits only` on stderr, though `target/release/xr`
+is right there. `p6-dependencies` warns about missing dependencies that `crates/xurl-cli/Cargo.toml` declares. I do not
+know whether anc wants a path, a flag, or a different directory. In a Node repo, anc grades `node_modules/.bin/tsc`, a
+dependency's tool, and I find out only by reading the scorecard's `tool.name`.
+
+Observed: the warning text and the workspace-root behavior (captured from an anc build of `dev` against xurl-rs).
+Predicted: the Node outcome, from `discover_simple_binaries` listing `node_modules/.bin`.
+
+### Competitive benchmark
+
+| Tool | Start to result | Time and evidence type | DX choice |
+| --- | --- | --- | --- |
+| cargo run | workspace root to running one binary | seconds; documented | errors on several bins and lists `--bin` choices |
+| anc today | workspace root to a full scorecard | never; observed against xurl-rs | silently runs source audits only |
+| anc with this plan | workspace root to a full scorecard | one run, or two with `--bin`; estimated | grades the one built bin or prints a command per bin |
+
+Target chosen: Champion. Cargo's own `could not determine which binary to run` error is the model the plan already
+follows.
+
+### Magical moment
+
+`anc audit .` at a workspace root grades the CLI the repo builds with no flags. When there are several, the error is
+a menu of exact commands, and pasting one gives a full scorecard.
+
+### Developer journey
+
+```text
+STAGE           | DEVELOPER DOES                          | FRICTION POINTS                         | STATUS
+----------------|-----------------------------------------|-----------------------------------------|--------
+1. Discover     | runs anc audit . at the repo root       | none                                    | ok
+2. Install      | unchanged                               | none                                    | ok
+3. Hello World  | gets a scorecard for the built CLI      | silent source-only run (DX-R1)          | fixed
+4. Real Usage   | several bins: pastes an --bin command   | --bin vs --binary look alike (DX-R2)    | fixed
+5. Debug        | nothing built yet                       | warning names no next step (DX-R1)      | fixed
+6. Upgrade      | multi-bin crate now exits 2 in CI       | changelog and README (eng R2)           | ok
+```
+
+### First-time developer confusion report
+
+```text
+Persona: workspace maintainer
+Attempting: score the repo's CLI from the root
+
+T+0:00  anc audit . ; scorecard without behavioral rows.                    [addressed: inventory, KTD3]
+T+0:30  stderr: "no binary found"; which binary did it look for?            [addressed: DX-R1]
+T+1:00  tries anc audit . --binary xr; usage error.                         [addressed: DX-R2]
+```
+
+### DX decision ledger
+
+#### DX-R1: The no-binary warning names no next step
+
+Finding: P2, confidence 9/10, R5 ("prints today's no-binary warning") against this plan's own Risks section, which
+relies on that warning to name the fix; today's text is `warning: no binary found, running source audits only`
+(`src/main.rs`).
+Options: A) When packages declare bins but none is built, the warning lists the declared bin names and the three ways
+forward: build it, audit it by path, or use `--command` (recommended). B) Keep today's text.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: R5 updated, U4 test added.
+
+#### DX-R2: `--bin` and `--binary` side by side
+
+Finding: P3, confidence 7/10, KTD5; `--binary` is an existing switch meaning "behavioral audits only", and `--bin`
+takes a name, so `anc audit . --binary xr` is a likely first guess that clap rejects.
+Options: A) Each flag's help names the other, and the README section shows both (recommended). B) Help text as
+planned.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD5 and U6 updated.
+
+TODOS.md updates: 0 proposed (the repo has no TODOS.md).
+
+### NOT in scope (developer experience)
+
+- Renaming `--binary`; it predates this plan and its users would break.
+- An interactive picker; settled against in planning.
+
+### What already exists (developer experience)
+
+- `cargo run`'s several-bins error: the shape `binary-ambiguous` follows.
+- The `--command` and binary-path targets: the escape hatches the warning and error point to.
+
+### DX scorecard
+
+```text
++====================================================================+
+|              DX PLAN REVIEW: SCORECARD                              |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend  |
+|----------------------|--------|--------|--------|
+| Getting Started      |  8/10  |  3/10  | +5     |
+| API/CLI/SDK          |  7/10  |  6/10  | +1     |
+| Error Messages       |  8/10  |  4/10  | +4     |
+| Documentation        |  7/10  |  3/10  | +4     |
+| Upgrade Path         |  8/10  |  6/10  | +2     |
+| Dev Environment      |  8/10  |  8/10  |  0     |
+| Community            |  6/10  |  6/10  |  0     |
+| DX Measurement       |  4/10  |  4/10  |  0     |
++--------------------------------------------------------------------+
+| TTHW                 | 1 run  | never  | workspace roots         |
+| Competitive Rank     | Champion (estimated)                         |
+| Magical Moment       | designed via zero-flag grading at the root   |
+| Product Type         | CLI tool                                     |
+| Mode                 | POLISH                                       |
+| Overall DX           |  7/10  |  5/10  | +2     |
++====================================================================+
+```
+
+### DX implementation checklist
+
+```text
+[ ] anc audit . at a one-CLI workspace root grades it with no flags
+[ ] binary-ambiguous lists one runnable command per candidate, in text and JSON
+[ ] The no-binary warning names the declared bins and the three ways forward
+[ ] --bin and --binary each name the other in --help
+[ ] The changelog's ### Changed names the multi-binary behavior change
+```
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 | --- | --- | --- | --- | --- | --- |
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via plan-review outside voice | Independent 2nd opinion | 6 | disabled | none (codex_reviews disabled) |
+| Outside Review | codex via plan-review outside voice | Independent 2nd opinion | 7 | disabled | none (codex_reviews disabled) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 5 | ISSUES OPEN (PLAN) | 3 issues, 0 critical gaps; all resolved by R1-R3 |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 2 | issues_open (config plan) | not this plan |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 3 | ISSUES OPEN (PLAN) | score: 5/10 → 7/10, TTHW: never → 1 run; DX-R1 and DX-R2 resolved |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by config (`codex_reviews disabled`); no outside findings.
-- **VERDICT:** no review CLEAR. This pass found and resolved three issues, so it logs `issues_open`; a pass over the
+- **OUTSIDE COVERAGE:** codex, plan-review phase for the engineering and DX reviews, disabled by config
+  (`codex_reviews disabled`); no outside findings.
+- **VERDICT:** no review CLEAR. Both reviews found and resolved their issues, so each logs `issues_open`; a pass over the
   amended plan that finds nothing is what logs clean. eng review required.
 
 NO UNRESOLVED DECISIONS

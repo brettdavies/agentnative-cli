@@ -200,15 +200,19 @@ A Cargo workspace root has a related, separate gap: `anc audit .` there finds no
   decision: R10 says no switch skips the home layer, and pointing this variable at a missing file does exactly that. The
   variable exists for test isolation; its help text describes it as relocating the user-level file.
 - KTD4. **Merge yields one `AncConfig`; a failure carries its file.** The invalid outcome names the failing file by a
-  display path: repo-relative inside the chain's repo, `~/`-prefixed under the home directory, absolute otherwise, so
-  evidence never prints a home-anchored absolute path, the rule `TargetInfo` already follows. List entries combine per
-  R7 with exact-match dedupe and stay verbatim, as `audit_standard_names` already matches them.
+  display path that reveals no directory structure outside the repo: repo-relative inside the chain's repo, the literal
+  `~/.anc.toml` for the home layer, and the holding directory's basename plus `/.anc.toml` for anything else. Evidence
+  lands in committed scorecards, so this follows the basename-only rule `build_target_info` in `src/main.rs` applies to
+  the target path. List entries combine per R7 with exact-match dedupe and stay verbatim, as `audit_standard_names`
+  already matches them.
 - KTD5. **`--repo <PATH>` on `audit`, bound to `AGENTNATIVE_REPO`.** It combines with every target form: a path,
   `--command`, and `--binary`. A missing or non-directory path is a usage error at exit 2, rendered through anc's
   existing usage-error envelope. Help text says the caller fetches the repo and anc reads only `<PATH>/.anc.toml`.
-- KTD6. **The resolved config lives on `Project`, computed once per run.** `src/main.rs` resolves the chain after
-  `Project::discover`, whose canonical path already gives R2's real location, and stores the merged result.
-  `standard_names` reads the stored value instead of calling the loader with `project.path`.
+- KTD6. **The resolved config lives on `Project`, computed once per run.** One entry point in the `anc_toml` module
+  takes `Project::discover`'s canonical path (which already gives R2's real location), the home-layer path, and the
+  `--repo` value, and returns the merged result; `src/main.rs` only calls it and stores the result, so the 928-line
+  file gains no resolution logic. `standard_names` reads the stored value instead of calling the loader with
+  `project.path`.
 - KTD7. **The hint rides on the result row, like the mitigation fields.** `standard_names` already holds the flagged
   verbs, so it attaches the hint to its own result: an optional `config_hint` on `AuditResult`, surfaced on the row view
   and absent rather than null on every other row, in scorecard schema 0.9. Text mode prints one `hint:` line under that
@@ -300,7 +304,8 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   - Covers AE3. A nested file with `domain_verbs = "like"` is invalid, names `crates/cli/.anc.toml`, and yields no
     verbs.
   - A directory named `.anc.toml` in the chain is invalid and named.
-  - A home-layer failure's display path starts with `~/`; a failing file outside home and repo is shown absolute.
+  - A home-layer failure displays as `~/.anc.toml`; a failing file outside home and repo displays as
+    `<directory basename>/.anc.toml`, never an absolute path.
   - All candidates missing: absent, as today.
 - **Verification:** loader tests pass, and none reads a path outside its temp directory.
 
@@ -316,7 +321,8 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   1. Add `--repo` per KTD5, with an `after_help` example for the fetched-repo case.
   2. Derive the start directory from `Project::discover`'s canonical path: its parent for a file, itself for a directory
      (R2).
-  3. Resolve the home-layer path per KTD3 and the chain per U1 and U2, then store the result on `Project` (KTD6).
+  3. Resolve the home-layer path per KTD3, then call the `anc_toml` entry point (KTD6) and store its result on
+     `Project`.
   4. Point `standard_names` at the stored result; it keeps warning on an invalid chain, now naming the file.
   5. Set `AGENTNATIVE_HOME_CONFIG` to a temp path in every test helper that spawns `anc audit`, in each test file
      listed above, so no test reads the real home file (R5 applies the home layer to every audit, including dogfood).
@@ -337,6 +343,8 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   - `--repo` naming a regular file: exit 2, the same envelope.
   - `AGENTNATIVE_REPO` set in place of the flag: same result as the flag.
   - `AGENTNATIVE_HOME_CONFIG` naming a temp file and a target outside any repo: the home file's verbs apply.
+  - A broken `.anc.toml` beside a binary outside any repo, audited with `--output json`: no string in the scorecard
+    contains the temp directory's absolute path (`tests/scorecard_metadata_security.rs`).
   - The three existing tests in the file still pass unchanged.
   - The guard fails when a test file's spawn helper drops the variable, and passes on the finished tree.
 - **Verification:** AE1 holds against the real xurl-rs checkout with a locally built anc.
@@ -416,3 +424,179 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
 - U3: AE1, AE2, and AE4 pass end to end; the integration tests never read the real home file.
 - U4: AE5 passes in both output modes; schema 0.9 is committed and drift-free.
 - U5: the README section exists and its examples run.
+
+---
+
+## Decision ledger
+
+Review target: this plan (`/plan-eng-review`). Brett authorized best-judgement decisions while unavailable; each record
+below names the option taken and why, and every one is open to reversal.
+
+### S0: Scope record (complexity gate)
+
+- Prerequisite offer: no design doc exists; skipped, because this plan's Product Contract carries the design and every
+  Key Decision was settled in the planning session.
+- Complexity: 17 files (10 source, config, and doc files; 7 test files including the new guard) and 2 new types (the
+  chain resolver and the config hint). The gate tripped.
+- Feature cuts proposed: none. Every requirement traces to a session-settled Key Decision.
+- Structure: original arrangement. The smaller arrangement folds resolution into `src/anc_toml.rs`, which is already
+  219 lines; the module split keeps each file under the 200-line review threshold.
+- Result: scope accepted as-is. Pending remedies resolved below: R1, R2, R3.
+
+### R1: Display path for a failing config file
+
+Finding: 1, P1, confidence 9/10, KTD4 against `src/main.rs` `build_target_info`; Architecture (privacy).
+Plan baseline: KTD4 displayed a failing file repo-relative, `~/`-prefixed, or absolute.
+Runtime evidence: `build_target_info`'s doc comment: "Absolute paths from `Project::discover`'s canonicalization would
+leak operator PII (home-dir username, org/employer dir structure) into committed scorecards". Evidence strings are
+scorecard fields, and a `~/dev/<project>/` path leaks the same structure.
+
+| Choice | Current | A | B |
+| --- | --- | --- | --- |
+| Failing-file display path | absolute or `~/...` outside the repo | repo-relative, literal `~/.anc.toml`, or `<dir basename>/.anc.toml` | as written |
+| Scorecard PII test for it | none | added to U3 in `tests/scorecard_metadata_security.rs` | none |
+
+Options: A) Basename-only display path, with the PII test (recommended). B) Keep KTD4 as written.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD4 rewritten, U2's display-path scenario
+updated, U3's PII scenario added.
+
+### R2: Where chain resolution runs
+
+Finding: 2, P3, confidence 8/10, KTD6 against `src/main.rs` (928 lines); Code quality.
+Plan baseline: `src/main.rs` resolved the chain.
+Runtime evidence: `src/main.rs` is 928 lines and already owns target classification, tool identity, and audit
+collection.
+
+| Choice | Current | A | B |
+| --- | --- | --- | --- |
+| Resolution location | `src/main.rs` | one entry point in the `anc_toml` module; `main.rs` calls it | as written |
+
+Options: A) Entry point in `anc_toml` (recommended). B) Keep it in `src/main.rs`.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD6 rewritten, U3 step 3 updated.
+
+### R3: Windows coverage for chain resolution
+
+Finding: 3, P3, confidence 6/10, U1 "decide under home by path prefix after canonicalizing both paths"; Test review.
+Runtime evidence: Windows `canonicalize` returns verbatim `\\?\` paths, and the shared Rust CI only compile-checks
+Windows (`cargo check --all-targets`), so a Windows-only test would compile and never run.
+
+| Choice | Current | A | B |
+| --- | --- | --- | --- |
+| Windows path coverage | none | `cfg(windows)` unit tests, compiled but never executed | recorded as a known gap |
+
+Options: A) Compile-only Windows tests. B) Record the gap under NOT in scope (recommended): a test that never runs
+proves nothing and reads as coverage.
+State: approved. Actual answer: B, best-judgement decision. Accepted scope: NOT in scope entry below.
+
+Approval readiness: PASS (S0, R1 A, R2 A, R3 B; all best-judgement decisions under Brett's authorization).
+
+---
+
+## Engineering review notes
+
+### NOT in scope
+
+- Executed Windows coverage for chain resolution (R3).
+- Aligning `src/skill_install.rs`'s `HOME` read with `std::env::home_dir()` (KTD3).
+- The runner timeout race that failed `hostile_binary_that_hangs_is_killed_at_timeout` during this plan's push; it is
+  fixed separately on `fix/runner-timeout-kill-race`.
+
+### What already exists
+
+- `src/anc_toml.rs`: the loader, extended rather than replaced.
+- `audit_standard_names` and `MitigationInfo`: the hint mirrors the existing per-row mitigation fields.
+- `Project::discover`: its canonical path already gives R2's real binary location.
+- `build_target_info`: the basename rule R1 extends to evidence strings.
+- `tests/standard_names_integration.rs` and `tests/scorecard_metadata_security.rs`: staging and PII test patterns.
+
+### Data flow
+
+```text
+target --> Project::discover (canonical path)
+             |
+             v
+           anc_toml entry point (path, home-layer file, --repo)
+             |-- chain: walk to .git, else to $HOME, else start dir
+             '-- load + merge --> config on Project --> standard_names --> row (+ config_hint)
+```
+
+### Test coverage
+
+```text
+CODE PATHS                                   USER FLOWS
+[+] anc_toml chain resolution                [+] Audit a built binary in its checkout
+  |-- [*** PLANNED] git root walk (U1)          '-- [*** PLANNED] AE1 (U3)
+  |-- [*** PLANNED] worktree root (U1)       [+] Audit a subdirectory
+  |-- [**  PLANNED] home walk (U1)              '-- [*** PLANNED] AE2, AE3 (U2, U3)
+  '-- [GAP]         Windows verbatim paths   [+] Sandbox with --repo
+[+] anc_toml load and merge                     '-- [**  PLANNED] AE4 (U3)
+  |-- [*** PLANNED] merge and dedupe (U2)    [+] No config anywhere
+  '-- [*** PLANNED] failing file named (U2)     '-- [*** PLANNED] AE5 hint (U4)
+[+] --repo flag and env (U3)
+[+] home seam isolation guard (U3)
+COVERAGE: 10/11 paths planned | GAPS: 1 (Windows, recorded under NOT in scope)
+```
+
+### Failure modes
+
+| Path | Realistic failure | Covered by | User sees |
+| --- | --- | --- | --- |
+| Unreadable `~/.anc.toml` | permission denied | U2 invalid-outcome test | warning naming `~/.anc.toml` |
+| `--repo` typo in a CI script | missing directory | U3 exit-2 test | usage error envelope |
+| No home directory | `home_dir()` returns none | U1 no-home test | home layer skipped, by design |
+| Worktree nested in a repo | wrong root chosen | U1 worktree test | nothing; the worktree's root applies |
+
+Critical gaps: 0.
+
+### Worktree parallelization strategy
+
+Sequential implementation, no parallelization opportunity.
+
+---
+
+## Implementation Tasks
+
+- [ ] **T1 (P1, human: ~1h / CC: ~10min)** — anc_toml — Display failing config files without directory structure
+  - Surfaced by: R1 — KTD4 would put absolute and home-anchored paths into committed scorecards
+  - Files: `src/anc_toml/mod.rs`, `tests/scorecard_metadata_security.rs`
+  - Verify: U2's display-path scenario and U3's PII scenario pass
+- [ ] **T2 (P3, human: ~30min / CC: ~5min)** — anc_toml — Resolve the chain behind one `anc_toml` entry point
+  - Surfaced by: R2 — `src/main.rs` is 928 lines
+  - Files: `src/anc_toml/mod.rs`, `src/main.rs`
+  - Verify: `src/main.rs` gains only the call and the stored result
+
+_No new tasks from Performance._
+
+---
+
+## Review completion summary
+
+- Step 0: Scope Challenge — scope accepted as-is
+- Architecture Review: 1 issue found
+- Code Quality Review: 1 issue found
+- Test Review: diagram produced, 2 gaps identified
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed (the repo has no TODOS.md; deferrals are under NOT in scope)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled by config
+- Parallelization: 1 lane, 0 parallel / 1 sequential
+- Lake Score: N/A (no coverage-scored choices)
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+| --- | --- | --- | --- | --- | --- |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Outside Review | codex via `/plan-eng-review` outside voice | Independent 2nd opinion | 4 | disabled | none (codex_reviews disabled) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 4 | ISSUES OPEN (PLAN) | 4 issues, 0 critical gaps; all resolved by R1-R3 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 1 | clean (2026-09-17, another plan) | not this plan |
+
+- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by config (`codex_reviews disabled`); no outside findings.
+- **VERDICT:** no review CLEAR. This pass found and resolved four issues, so it logs `issues_open`; a pass over the
+  amended plan that finds nothing is what logs clean. eng review required.
+
+NO UNRESOLVED DECISIONS

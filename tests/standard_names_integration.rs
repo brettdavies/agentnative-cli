@@ -10,14 +10,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use assert_cmd::Command;
 use serde_json::Value;
 
-/// A user-level config path nothing creates, so no audit reads the
-/// developer's own `~/.anc.toml`.
-const NO_HOME_CONFIG: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/no-home/.anc.toml");
+mod common;
 
 /// Build a Command for the anc binary.
 fn cmd() -> Command {
     let mut cmd = Command::cargo_bin("anc").expect("binary should exist");
-    cmd.env("AGENTNATIVE_HOME_CONFIG", NO_HOME_CONFIG);
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
     cmd
 }
 
@@ -411,4 +409,48 @@ fn home_config_applies_to_a_target_outside_any_repo() {
     );
 
     assert_passes_with_domain_verbs(&row);
+}
+
+#[test]
+fn relocated_home_config_is_named_by_its_variable() {
+    let home = unique_tempdir("relocated-home");
+    fs::write(home.join("anc.toml"), "[p6]\ndomain_verbs = [\"post\"\n")
+        .expect("write broken home config");
+    let bin = unique_tempdir("relocated-home-target").join("x");
+    write_fixture(&bin, FIXTURE_COMMANDS);
+
+    let row = p6_row(
+        cmd()
+            .env("AGENTNATIVE_HOME_CONFIG", home.join("anc.toml"))
+            .args(["audit", path_str(&bin), "--output", "json"]),
+    );
+
+    let evidence = row["evidence"].as_str().expect("evidence");
+    assert!(
+        evidence.starts_with("could not parse .anc.toml at $AGENTNATIVE_HOME_CONFIG:"),
+        "the variable that placed the file names it: {evidence}"
+    );
+    assert!(!evidence.contains("~/.anc.toml"), "evidence: {evidence}");
+}
+
+#[test]
+fn a_relocated_home_config_that_does_not_exist_warns() {
+    let missing = unique_tempdir("missing-home").join("typo.toml");
+    let bin = unique_tempdir("missing-home-target").join("x");
+    write_fixture(&bin, FIXTURE_COMMANDS);
+
+    let output = cmd()
+        .env("AGENTNATIVE_HOME_CONFIG", &missing)
+        .args(["audit", path_str(&bin), "--output", "json"])
+        .output()
+        .expect("spawn anc");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let expected = format!(
+        "warning: AGENTNATIVE_HOME_CONFIG names {}, which does not exist; no user-level .anc.toml applies",
+        missing.display()
+    );
+    assert!(stderr.contains(&expected), "stderr: {stderr}");
+    let scorecard: Value = serde_json::from_slice(&output.stdout).expect("scorecard JSON");
+    assert!(scorecard["results"].is_array(), "the audit still runs");
 }

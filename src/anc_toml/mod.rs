@@ -25,6 +25,7 @@
 //!   naming that file, so audits can surface it in their evidence string;
 //!   no setting from any other file applies.
 
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -80,12 +81,52 @@ impl AncConfigLoad {
     }
 }
 
-/// The user-level file: [`HOME_CONFIG_ENV`] when set, otherwise
+/// How evidence names the user-level file when [`HOME_CONFIG_ENV`] is unset.
+const DEFAULT_HOME_LABEL: &str = "~/.anc.toml";
+
+/// The user-level layer: its file, and the name evidence gives it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HomeLayer {
+    pub path: PathBuf,
+    /// `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG` when the variable placed
+    /// the file. Evidence lands in committed scorecards, so it names the
+    /// variable rather than the path it holds.
+    pub label: String,
+    relocated: bool,
+}
+
+impl HomeLayer {
+    /// The warning for a relocated file that does not exist. An override
+    /// that names nothing is more often a typo than a choice; a missing
+    /// default `~/.anc.toml` is the common case and stays silent.
+    pub fn missing_warning(&self) -> Option<String> {
+        (self.relocated && !self.path.exists()).then(|| {
+            format!(
+                "{HOME_CONFIG_ENV} names {}, which does not exist; no user-level .anc.toml applies",
+                self.path.display()
+            )
+        })
+    }
+}
+
+/// The user-level layer: [`HOME_CONFIG_ENV`] when set, otherwise
 /// `.anc.toml` in the home directory, and `None` without either.
-pub fn home_layer_path() -> Option<PathBuf> {
-    match std::env::var_os(HOME_CONFIG_ENV) {
-        Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
-        _ => std::env::home_dir().map(|home| home.join(ANC_TOML_FILENAME)),
+pub fn home_layer() -> Option<HomeLayer> {
+    home_layer_from(std::env::var_os(HOME_CONFIG_ENV), std::env::home_dir())
+}
+
+fn home_layer_from(var: Option<OsString>, home_dir: Option<PathBuf>) -> Option<HomeLayer> {
+    match var {
+        Some(path) if !path.is_empty() => Some(HomeLayer {
+            path: PathBuf::from(path),
+            label: format!("${HOME_CONFIG_ENV}"),
+            relocated: true,
+        }),
+        _ => home_dir.map(|home| HomeLayer {
+            path: home.join(ANC_TOML_FILENAME),
+            label: DEFAULT_HOME_LABEL.to_string(),
+            relocated: false,
+        }),
     }
 }
 
@@ -94,35 +135,40 @@ pub fn home_layer_path() -> Option<PathBuf> {
 /// directory; `repo` replaces the walk.
 pub fn load_for_target(
     target: &Path,
-    home_file: Option<&Path>,
+    home: Option<&HomeLayer>,
     repo: Option<&Path>,
 ) -> AncConfigLoad {
     let start = match target.parent() {
         Some(dir) if target.is_file() => dir,
         _ => target,
     };
-    load_chain(&chain::resolve(start, home_file, repo))
+    let chain = chain::resolve(start, home.map(|layer| layer.path.as_path()), repo);
+    load_chain(
+        &chain,
+        home.map_or(DEFAULT_HOME_LABEL, |layer| &layer.label),
+    )
 }
 
 /// Load every existing file in `chain` into one config, lowest precedence
 /// first. A nearer file's list entries follow the ones already present, and
 /// an entry that appears twice keeps its first position. Any file that
-/// cannot be read or parsed voids the whole chain.
-fn load_chain(chain: &Chain) -> AncConfigLoad {
+/// cannot be read or parsed voids the whole chain. Evidence names the
+/// user-level file `home_label`.
+fn load_chain(chain: &Chain, home_label: &str) -> AncConfigLoad {
     let mut merged: Option<AncConfig> = None;
     for file in chain.candidates() {
         let raw = match fs::read_to_string(file) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                let shown = display_path(chain, file);
+                let shown = display_path(chain, file, home_label);
                 return AncConfigLoad::Invalid(format!("could not read .anc.toml at {shown}: {e}"));
             }
         };
         let cfg = match toml::from_str::<AncConfig>(&raw) {
             Ok(cfg) => cfg,
             Err(e) => {
-                let shown = display_path(chain, file);
+                let shown = display_path(chain, file, home_label);
                 return AncConfigLoad::Invalid(format!(
                     "could not parse .anc.toml at {shown}: {e}"
                 ));
@@ -143,11 +189,11 @@ fn load_chain(chain: &Chain) -> AncConfigLoad {
 
 /// How evidence names a chain file. Evidence lands in committed scorecards,
 /// so no directory above the repository may show: a repository file is
-/// repo-relative, the user-level file is `~/.anc.toml`, and any other file
+/// repo-relative, the user-level file is `home_label`, and any other file
 /// shows only its directory's name.
-fn display_path(chain: &Chain, file: &Path) -> String {
+fn display_path(chain: &Chain, file: &Path, home_label: &str) -> String {
     if chain.home.as_deref() == Some(file) {
-        return format!("~/{ANC_TOML_FILENAME}");
+        return home_label.to_string();
     }
     if let Some(rel) = chain
         .repo_root
@@ -168,6 +214,50 @@ mod tests {
     use super::*;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn the_variable_places_the_home_layer_and_names_it() {
+        let layer = home_layer_from(Some("/elsewhere/anc.toml".into()), Some("/home/u".into()))
+            .expect("layer");
+        assert_eq!(layer.path, PathBuf::from("/elsewhere/anc.toml"));
+        assert_eq!(layer.label, "$AGENTNATIVE_HOME_CONFIG");
+    }
+
+    #[test]
+    fn without_the_variable_the_home_layer_is_in_the_home_directory() {
+        for var in [None, Some(OsString::new())] {
+            let layer = home_layer_from(var, Some("/home/u".into())).expect("layer");
+            assert_eq!(layer.path, PathBuf::from("/home/u/.anc.toml"));
+            assert_eq!(layer.label, "~/.anc.toml");
+            assert_eq!(
+                layer.missing_warning(),
+                None,
+                "a missing default stays silent"
+            );
+        }
+        assert_eq!(home_layer_from(None, None), None);
+    }
+
+    #[test]
+    fn a_relocated_layer_warns_only_when_its_file_is_missing() {
+        let dir = unique_tmp("relocated");
+        let present = dir.join("anc.toml");
+        fs::write(&present, "").expect("write");
+        let layer = home_layer_from(Some(present.into()), None).expect("layer");
+        assert_eq!(layer.missing_warning(), None);
+
+        let missing = dir.join("typo.toml");
+        let layer = home_layer_from(Some(missing.clone().into()), None).expect("layer");
+        let warning = layer.missing_warning().expect("warning");
+        assert!(
+            warning.starts_with("AGENTNATIVE_HOME_CONFIG names "),
+            "{warning}"
+        );
+        assert!(
+            warning.contains(&missing.display().to_string()),
+            "{warning}"
+        );
+    }
 
     fn unique_tmp(label: &str) -> std::path::PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -216,7 +306,7 @@ mod tests {
         write(&root, "[p6]\ndomain_verbs = [\"post\"]\n");
         write(&cli, "[p6]\ndomain_verbs = [\"like\"]\n");
 
-        let load = load_chain(&chain::resolve(&cli, None, None));
+        let load = load_chain(&chain::resolve(&cli, None, None), DEFAULT_HOME_LABEL);
 
         assert_eq!(verbs(&load), ["post", "like"]);
     }
@@ -234,7 +324,10 @@ mod tests {
         );
         let home_file = home.join(ANC_TOML_FILENAME);
 
-        let load = load_chain(&chain::resolve(&cli, Some(&home_file), None));
+        let load = load_chain(
+            &chain::resolve(&cli, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        );
 
         assert_eq!(verbs(&load), ["repost", "post", "like", "quote"]);
     }
@@ -246,7 +339,7 @@ mod tests {
         write(&root, "# no sections yet\n");
         write(&cli, "[p6]\ndomain_verbs = [\"like\"]\n");
 
-        let load = load_chain(&chain::resolve(&cli, None, None));
+        let load = load_chain(&chain::resolve(&cli, None, None), DEFAULT_HOME_LABEL);
 
         assert_eq!(verbs(&load), ["like"]);
     }
@@ -258,7 +351,10 @@ mod tests {
         write(&root, "[p6]\ndomain_verbs = [\"post\"]\n");
         write(&cli, "[p6]\ndomain_verbs = \"like\"\n");
 
-        let msg = invalid(load_chain(&chain::resolve(&cli, None, None)));
+        let msg = invalid(load_chain(
+            &chain::resolve(&cli, None, None),
+            DEFAULT_HOME_LABEL,
+        ));
 
         assert!(
             msg.starts_with("could not parse .anc.toml at crates/cli/.anc.toml:"),
@@ -273,7 +369,10 @@ mod tests {
         write(&root, "[p6]\ndomain_verbs = [\"post\"]\n");
         fs::create_dir_all(cli.join(ANC_TOML_FILENAME)).expect("create directory named .anc.toml");
 
-        let msg = invalid(load_chain(&chain::resolve(&cli, None, None)));
+        let msg = invalid(load_chain(
+            &chain::resolve(&cli, None, None),
+            DEFAULT_HOME_LABEL,
+        ));
 
         assert!(
             msg.starts_with("could not read .anc.toml at cli/.anc.toml:"),
@@ -288,7 +387,10 @@ mod tests {
         write(&home, "[p6\n");
         let home_file = home.join(ANC_TOML_FILENAME);
 
-        let msg = invalid(load_chain(&chain::resolve(&start, Some(&home_file), None)));
+        let msg = invalid(load_chain(
+            &chain::resolve(&start, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        ));
 
         assert!(
             msg.starts_with("could not parse .anc.toml at ~/.anc.toml:"),
@@ -302,7 +404,10 @@ mod tests {
         let outside = unique_tmp("merge-outside").join("tool");
         write(&outside, "[p6\n");
 
-        let msg = invalid(load_chain(&chain::resolve(&outside, None, None)));
+        let msg = invalid(load_chain(
+            &chain::resolve(&outside, None, None),
+            DEFAULT_HOME_LABEL,
+        ));
 
         assert!(
             msg.starts_with("could not parse .anc.toml at tool/.anc.toml:"),
@@ -319,7 +424,10 @@ mod tests {
         fs::create_dir_all(&cli).expect("create dir");
         let home_file = unique_tmp("merge-missing-home").join(ANC_TOML_FILENAME);
 
-        let load = load_chain(&chain::resolve(&cli, Some(&home_file), None));
+        let load = load_chain(
+            &chain::resolve(&cli, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        );
 
         assert_eq!(load, AncConfigLoad::Absent);
     }

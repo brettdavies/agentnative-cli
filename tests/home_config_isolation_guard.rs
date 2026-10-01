@@ -1,5 +1,5 @@
 //! Every helper that spawns `anc` in a test file that runs `anc audit`
-//! points `AGENTNATIVE_HOME_CONFIG` at a path the tests own. Every audit
+//! points `AGENTNATIVE_HOME_CONFIG` at a file the tests own. Every audit
 //! applies the user-level `~/.anc.toml`, so a spawn without it reads the
 //! developer's own file and passes or fails by machine.
 
@@ -53,8 +53,7 @@ fn every_audit_spawning_helper_sets_the_home_config() {
         unguarded.is_empty(),
         "these helpers spawn `anc` for a test file that runs `anc audit` without setting \
          AGENTNATIVE_HOME_CONFIG, so their audits read the developer's ~/.anc.toml: \
-         {unguarded:?}. Set the variable in the helper to a path the test owns or one nothing \
-         creates."
+         {unguarded:?}. Set the variable in the helper to `common::empty_home_config()`."
     );
 }
 

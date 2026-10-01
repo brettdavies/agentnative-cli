@@ -204,11 +204,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
 
     let mut project = Project::discover(&resolved_path)?;
     project.include_tests = include_tests;
-    project.anc_config = anc_toml::load_for_target(
-        &project.path,
-        anc_toml::home_layer_path().as_deref(),
-        repo.as_deref(),
-    );
+    let home = anc_toml::home_layer();
+    if let Some(warning) = home.as_ref().and_then(anc_toml::HomeLayer::missing_warning) {
+        eprintln!("warning: {warning}");
+    }
+    project.anc_config = anc_toml::load_for_target(&project.path, home.as_ref(), repo.as_deref());
 
     // Collect applicable audits based on flags and auto-detection
     let mut all_audits: Vec<Box<dyn Audit>> = Vec::new();

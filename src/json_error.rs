@@ -62,13 +62,29 @@ pub fn json_mode_in_argv(argv: &[OsString]) -> bool {
 /// added so consumers can branch on it without re-deriving from the host
 /// process's exit status.
 pub fn render_error(kind: &str, error: &str, message: &str, exit_code: i32) -> String {
-    json!({
+    render_error_with(kind, error, message, exit_code, serde_json::Map::new())
+}
+
+/// [`render_error`] plus further top-level fields, for an error whose
+/// recovery needs structured data, such as the `candidates` of
+/// `binary-ambiguous`.
+pub fn render_error_with(
+    kind: &str,
+    error: &str,
+    message: &str,
+    exit_code: i32,
+    extra: serde_json::Map<String, serde_json::Value>,
+) -> String {
+    let mut envelope = json!({
         "kind": kind,
         "error": error,
         "message": message,
         "exit_code": exit_code,
-    })
-    .to_string()
+    });
+    if let Some(fields) = envelope.as_object_mut() {
+        fields.extend(extra);
+    }
+    envelope.to_string()
 }
 
 /// Render a JSON help envelope wrapping clap's rendered text.

@@ -36,6 +36,7 @@ use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
 use project::Project;
+use project::select::{self, Choice, Unselected};
 use runner::{BinaryRunner, RunStatus};
 use scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
@@ -119,6 +120,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         path,
         command,
         binary_only,
+        bin,
         repo,
         source_only,
         principle,
@@ -130,6 +132,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             path,
             command,
             binary,
+            bin,
             repo,
             source,
             principle,
@@ -140,6 +143,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             path,
             command,
             binary,
+            bin,
             repo,
             source,
             principle,
@@ -199,12 +203,33 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let command_name = command.clone();
     let resolved_path = match command {
         Some(name) => resolve_command_on_path(&name)?,
-        None => path,
+        None => path.clone(),
     };
 
     let mut project = Project::discover_with_tests(&resolved_path, include_tests)?;
     for warning in &project.inventory.warnings {
         eprintln!("warning: {warning}");
+    }
+    let json_output = matches!(output, OutputFormat::Json);
+    if project.path.is_dir() {
+        let candidates = &project.inventory.candidates;
+        match select::select(candidates, &project.path, bin.as_deref()) {
+            Ok(Some(chosen)) => {
+                let binary = chosen.path.clone();
+                project.grade(binary);
+            }
+            Ok(None) => {}
+            Err(why) => {
+                let choices = select::choices(candidates, &project.path, path.as_os_str());
+                return Ok(report_unselected(&why, &choices, json_output));
+            }
+        }
+    } else if bin.is_some() {
+        return Ok(usage_error(
+            "bin-needs-directory",
+            "--bin chooses among the binaries a directory builds, and this target is already a binary; drop --bin, or pass the directory",
+            json_output,
+        ));
     }
     let home = anc_toml::home_layer();
     if let Some(warning) = home.as_ref().and_then(anc_toml::HomeLayer::missing_warning) {
@@ -221,6 +246,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     if !source_only {
         if has_binary {
             all_audits.extend(all_behavioral_audits());
+        } else if !project.inventory.unbuilt.is_empty() {
+            eprintln!(
+                "warning: {}",
+                unbuilt_warning(&project.inventory.unbuilt, binary_only)
+            );
         } else if binary_only {
             eprintln!("warning: --binary specified but no binary found");
         } else if has_language {
@@ -688,6 +718,78 @@ fn read_manifest_name(manifest: &std::path::Path) -> Option<String> {
         return Some(v.to_string());
     }
     None
+}
+
+/// Print why a directory audit cannot choose its binary, with the command
+/// that grades each candidate, and return the usage-error exit code.
+fn report_unselected(why: &Unselected, choices: &[Choice], json: bool) -> i32 {
+    let (slug, message) = match why {
+        Unselected::Ambiguous => (
+            "binary-ambiguous",
+            format!(
+                "found {} built binaries here, and anc grades one per run; run one of these",
+                choices.len()
+            ),
+        ),
+        Unselected::Unknown(bin) => (
+            "unknown-bin",
+            format!("--bin {bin} names none of the binaries built here; run one of these"),
+        ),
+    };
+    if json {
+        let mut extra = serde_json::Map::new();
+        extra.insert(
+            "candidates".into(),
+            serde_json::to_value(choices).unwrap_or_default(),
+        );
+        eprintln!(
+            "{}",
+            json_error::render_error_with("usage", slug, &message, 2, extra)
+        );
+    } else {
+        eprintln!("error: {message}\n");
+        let width = choices.iter().map(|c| c.command.len()).max().unwrap_or(0);
+        for choice in choices {
+            eprintln!(
+                "  {:width$}  # {}, {}",
+                choice.command, choice.package, choice.path
+            );
+        }
+        eprintln!("\n{}", audit_usage());
+    }
+    2
+}
+
+/// Print a usage error found after argument parsing and return its exit
+/// code, in the same shapes clap's own usage errors take.
+fn usage_error(slug: &str, message: &str, json: bool) -> i32 {
+    if json {
+        eprintln!("{}", json_error::render_error("usage", slug, message, 2));
+    } else {
+        eprintln!("error: {message}\n\n{}", audit_usage());
+    }
+    2
+}
+
+fn audit_usage() -> String {
+    let mut cli = <Cli as clap::CommandFactory>::command();
+    cli.build();
+    cli.find_subcommand_mut("audit")
+        .map(|audit| audit.render_usage().to_string())
+        .unwrap_or_default()
+}
+
+/// The no-binary warning when packages declare bins that are not built.
+fn unbuilt_warning(names: &[String], binary_only: bool) -> String {
+    let outcome = if binary_only {
+        "nothing to audit with --binary"
+    } else {
+        "running source and project audits only"
+    };
+    format!(
+        "no binary here is built: the packages declare {}. To grade one, build it, audit a built binary by path (`anc audit <path>`), or audit an installed one (`anc audit --command <name>`); {outcome}",
+        names.join(", ")
+    )
 }
 
 /// Resolve a command name to an absolute path by shelling out to `which`

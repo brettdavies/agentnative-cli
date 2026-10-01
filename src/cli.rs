@@ -144,9 +144,21 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
         )]
         command: Option<String>,
 
-        /// Run only behavioral audits (skip source analysis)
+        /// Run only behavioral audits (skip source analysis). To choose
+        /// which binary a directory grades, use --bin
         #[arg(long)]
         binary: bool,
+
+        /// Grade this binary when the directory builds several: a bin name,
+        /// or the path anc prints for it. Unrelated to --binary, which runs
+        /// only behavioral audits
+        #[arg(
+            long,
+            value_name = "NAME",
+            env = "AGENTNATIVE_BIN",
+            conflicts_with = "command"
+        )]
+        bin: Option<String>,
 
         /// Read `.anc.toml` from this directory instead of the target's
         /// repository. For a repo you fetched for a tool installed elsewhere:

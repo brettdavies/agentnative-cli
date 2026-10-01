@@ -81,10 +81,17 @@ fn canonical(path: &Path) -> PathBuf {
 }
 
 /// A file that may not exist yet, canonicalized through its directory.
+///
+/// A bare file name has an empty parent, and every path starts with the
+/// empty path, so it resolves against the working directory instead.
 fn canonical_file(file: &Path) -> PathBuf {
-    match (file.parent(), file.file_name()) {
-        (Some(dir), Some(name)) if !dir.as_os_str().is_empty() => canonical(dir).join(name),
-        _ => file.to_path_buf(),
+    let dir = match file.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    };
+    match file.file_name() {
+        Some(name) => canonical(dir).join(name),
+        None => file.to_path_buf(),
     }
 }
 
@@ -221,6 +228,19 @@ mod tests {
             chain.candidates().collect::<Vec<_>>(),
             files(&[&root, &start])
         );
+    }
+
+    #[test]
+    fn bare_relative_home_file_sits_in_the_working_directory() {
+        let fx = Fixture::new();
+        let start = fx.dir("elsewhere/tool");
+        let cwd = std::env::current_dir().expect("current dir");
+
+        let chain = resolve(&start, Some(Path::new("anc.toml")), None);
+
+        let cwd = fs::canonicalize(cwd).expect("canonical cwd");
+        assert_eq!(chain.home, Some(cwd.join("anc.toml")));
+        assert_eq!(chain.layers, files(&[&start]));
     }
 
     #[test]

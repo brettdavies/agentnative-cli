@@ -93,6 +93,69 @@ anc . --principle 3
 anc . -q
 ```
 
+## Configuration (`.anc.toml`)
+
+`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI. It carries one setting today,
+`[p6] domain_verbs`, which adds verbs to the standard list that `p6-may-standard-names` checks subcommand names against:
+
+```toml
+[p6]
+domain_verbs = ["post", "like", "repost", "timeline"]
+```
+
+### Where `anc` looks
+
+`anc` finds `.anc.toml` from the audit target's location, never from the directory you run it in. The files that apply,
+lowest precedence first:
+
+| Target                                       | Files                                                                            |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| A directory inside a git repository          | `~/.anc.toml`, then each `.anc.toml` from the repository root down to the target |
+| A binary inside a git repository             | The same, starting from the directory that holds the binary's real file          |
+| Any target outside a repository, under `~`   | `~/.anc.toml`, then each `.anc.toml` from `~` down to the target                 |
+| Any target outside a repository, outside `~` | `~/.anc.toml`, then the `.anc.toml` in the target's directory                    |
+| Any target with `--repo <PATH>`              | `~/.anc.toml`, then `<PATH>/.anc.toml`                                           |
+
+A binary counts the same whether you pass its path or `--command` resolves it on `PATH`, and symlinks resolve first,
+so a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding
+a `.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
+
+The files merge: each one's `domain_verbs` adds to the ones above it, and a verb listed twice keeps its first position.
+If any file in the chain cannot be read or parsed, no config applies, and the `p6-may-standard-names` warning names the
+failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`.
+
+### `~/.anc.toml`
+
+The file in your home directory applies under every audit, inside repositories too, as the lowest layer. Keep personal
+vocabulary there. Two machines with different home files can score the same tool differently; CI runners have none.
+`AGENTNATIVE_HOME_CONFIG` relocates the file.
+
+### A repository you fetched: `--repo`
+
+A binary installed by a package manager or into a sandbox does not sit inside its repository. Fetch the repository, or
+just its `.anc.toml`, and point `anc` at the directory; `anc` never fetches anything itself:
+
+```bash
+anc audit --command xr --repo /tmp/xr-src
+AGENTNATIVE_REPO=/tmp/xr-src anc audit --command xr
+```
+
+`--repo` takes an existing directory. Anything else is a usage error (exit 2).
+
+### The hint
+
+When `p6-may-standard-names` warns and no `domain_verbs` applied, `anc` prints the line that clears the warning and the
+file it belongs in:
+
+```text
+  [WARN] Subcommand verbs follow community-standard names (p6-may-standard-names) (may)
+         16/41 subcommand(s) follow standard verb names. Non-standard: post, like, ...
+         hint: add `domain_verbs = ["post", "like", ...]` under `[p6]` in ~/.anc.toml; see https://github.com/brettdavies/agentnative-cli#configuration-anctoml
+```
+
+The file is `.anc.toml` at the repository root for a target inside a repository or under `--repo`, and `~/.anc.toml`
+otherwise. `--output json` carries the same hint as `config_hint` on the row.
+
 ## The 8 Principles
 
 agentnative audits your CLI against eight agent-readiness principles:
@@ -228,6 +291,8 @@ Arguments:
 Options:
       --command <NAME>           Resolve a command from PATH and run behavioral audits against it
       --binary                   Run only behavioral audits (skip source analysis)
+      --repo <PATH>              Read `.anc.toml` from this directory instead of the target's
+                                 repository [env: AGENTNATIVE_REPO=]
       --source                   Run only source audits (skip behavioral)
       --principle <PRINCIPLE>    Filter audits by principle number (1-8)
       --output <OUTPUT>          Output format [default: text] [possible values: text, json]
@@ -383,6 +448,11 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   below the floor (the convention is "do not nag" until earned). `scorecard_url` and `badge_url` are populated whenever
   a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
   shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
+
+- `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `file`
+  is where the setting belongs (`.anc.toml` at the repository root, or `~/.anc.toml` outside any repository; never an
+  absolute path), `domain_verbs` lists the flagged verbs to add under `[p6]`, and `docs` links
+  [Configuration](#configuration-anctoml). Schema `0.9` addition.
 
 > Publishing a scorecard? `run.invocation` may carry usernames or absolute paths from the machine that produced the
 > scorecard. `target.path` is intentionally the basename only and is safe to commit. Review `run.invocation` before

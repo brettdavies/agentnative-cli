@@ -111,14 +111,16 @@ pub fn load_chain(chain: &Chain) -> AncConfigLoad {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
                 let shown = display_path(chain, file);
-                return AncConfigLoad::Invalid(format!("could not read {shown}: {e}"));
+                return AncConfigLoad::Invalid(format!("could not read .anc.toml at {shown}: {e}"));
             }
         };
         let cfg = match toml::from_str::<AncConfig>(&raw) {
             Ok(cfg) => cfg,
             Err(e) => {
                 let shown = display_path(chain, file);
-                return AncConfigLoad::Invalid(format!("could not parse {shown}: {e}"));
+                return AncConfigLoad::Invalid(format!(
+                    "could not parse .anc.toml at {shown}: {e}"
+                ));
             }
         };
         let verbs = &mut merged
@@ -254,7 +256,7 @@ mod tests {
         let msg = invalid(load_chain(&chain::resolve(&cli, None, None)));
 
         assert!(
-            msg.starts_with("could not parse crates/cli/.anc.toml:"),
+            msg.starts_with("could not parse .anc.toml at crates/cli/.anc.toml:"),
             "evidence must name the failing file repo-relative; got: {msg}"
         );
     }
@@ -269,7 +271,7 @@ mod tests {
         let msg = invalid(load_chain(&chain::resolve(&cli, None, None)));
 
         assert!(
-            msg.starts_with("could not read cli/.anc.toml:"),
+            msg.starts_with("could not read .anc.toml at cli/.anc.toml:"),
             "got: {msg}"
         );
     }
@@ -284,7 +286,7 @@ mod tests {
         let msg = invalid(load_chain(&chain::resolve(&start, Some(&home_file), None)));
 
         assert!(
-            msg.starts_with("could not parse ~/.anc.toml:"),
+            msg.starts_with("could not parse .anc.toml at ~/.anc.toml:"),
             "got: {msg}"
         );
         assert!(!msg.contains(&*home.to_string_lossy()), "got: {msg}");
@@ -298,7 +300,7 @@ mod tests {
         let msg = invalid(load_chain(&chain::resolve(&outside, None, None)));
 
         assert!(
-            msg.starts_with("could not parse tool/.anc.toml:"),
+            msg.starts_with("could not parse .anc.toml at tool/.anc.toml:"),
             "got: {msg}"
         );
         let parent = outside.parent().expect("parent");

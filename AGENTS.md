@@ -116,8 +116,10 @@ following scorecard-level fields beyond the base `results` / `summary`:
 - `target`: `{ kind, path, command }`. `kind` is `"project"` / `"binary"` / `"command"`. The unused field is always
   `null`, never missing. Schema `0.4` addition.
 - `badge`: `{ eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Agent-native badge
-  derivation from the live run. `score_pct` is the rounded percent of `pass / (pass + warn + fail)` (Skips and Errors
-  excluded from the ratio). `eligible` is true iff `score_pct >= 80` and a tool slug was derivable. `embed_markdown` is
+  derivation from the live run. `score_pct` is the credit-weighted score defined in `agentnative-spec`
+  `principles/scoring.md`, over behavioral-layer rows only: `round(100 × Σ w·credit / Σ w)`, with credit 1 for `pass`,
+  0.5 for `warn`, and 0 for `fail` and `opt_out`; `n_a`, `skip`, and `error` are excluded. `eligible` is true iff
+  `score_pct >= 70` (`BADGE_ELIGIBILITY_FLOOR_PCT`) and a tool slug was derivable. `embed_markdown` is
   `null` below the floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
   below the floor; `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint
   (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.

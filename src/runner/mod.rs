@@ -219,10 +219,14 @@ impl BinaryRunner {
             let (guard, timeout_result) =
                 cvar.wait_timeout(guard, timeout).expect("mutex poisoned");
             if !*guard && timeout_result.timed_out() {
-                *timed_out_clone.lock().expect("mutex poisoned") = true;
+                // Kill before raising the flag. Once the poll loop sees the
+                // flag it blocks in `wait()` while holding the child lock, so a
+                // kill attempted after the flag could not take the lock and the
+                // child would run to its natural exit.
                 if let Ok(mut c) = child_for_timeout.lock() {
                     let _ = c.kill();
                 }
+                *timed_out_clone.lock().expect("mutex poisoned") = true;
             }
         });
 
@@ -468,6 +472,25 @@ mod tests {
         let result = runner.run(&["-c", "echo $MY_TEST_VAR"], &[("MY_TEST_VAR", "42")]);
         assert_eq!(result.status, RunStatus::Ok);
         assert!(result.stdout.contains("42"));
+    }
+
+    /// The timeout must cut the child off at the deadline every time, not wait
+    /// for it to exit. A run that outlives the deadline by seconds means the
+    /// kill never reached the child.
+    #[test]
+    fn timeout_bounds_every_run_near_the_deadline() {
+        let runner = BinaryRunner::new("/bin/sleep".into(), Duration::from_millis(20))
+            .expect("sleep should exist");
+        for attempt in 0..200 {
+            let start = std::time::Instant::now();
+            let result = runner.spawn_and_wait(&["3"], &[]);
+            let elapsed = start.elapsed();
+            assert_eq!(result.status, RunStatus::Timeout, "attempt {attempt}");
+            assert!(
+                elapsed < Duration::from_secs(1),
+                "attempt {attempt}: a 20 ms timeout took {elapsed:?}, so the child ran to completion"
+            );
+        }
     }
 
     #[test]

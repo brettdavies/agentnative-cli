@@ -174,7 +174,9 @@ directory target find the right binary and the right manifests.
 
 - KTD1. **`Project` gains a package inventory, and its single-valued fields derive from the graded package.** Each
   package records its root directory, language, manifest path, and declared bins. `language`, `manifest_path`, and
-  `binary_paths` keep their meaning for the one graded package, so audits that read them need no change.
+  `binary_paths` keep their meaning for the one graded package, so audits that read them need no change. Discovery
+  returns the inventory and candidates without building a runner; selection (R5 through R7) picks the graded binary,
+  and only then is its runner built, so `--bin` decides which binary every behavioral audit probes.
 - KTD2. **Declarations are read with code already in the binary.** `toml` reads Cargo and uv, `serde_json` reads npm and
   yarn, a line reader handles `go.work`, and `globset` expands member globs. `serde_yaml` is test-only, so
   `pnpm-workspace.yaml` gets a narrow reader for the top-level `packages` sequence in block and flow form, including `!`
@@ -416,7 +418,9 @@ config plan applies here too.
 - Every fixture manifest lives under `tests/fixtures/` and is not a workspace member, per `AGENTS.md`.
 - `README.md`, `AGENTS.md`, and `CLAUDE.md` describe the shipped behavior.
 - Each PR body's changelog names the visible changes: workspace roots graded, legacy Node and Python discovery removed,
-  ignored source excluded, `binary-ambiguous`, and `--bin`.
+  ignored source excluded, `binary-ambiguous`, and `--bin`. Under `### Changed`, it says that a repo or crate that
+  builds several binaries, which anc used to grade on the first one it found, now exits 2 until `--bin` names one, and
+  the README's discovery section says the same.
 - Abandoned approaches and experimental code are removed before each PR is marked ready.
 
 **Per unit**
@@ -427,3 +431,172 @@ config plan applies here too.
 - U4: AE2 and AE3 pass in both output modes.
 - U5: AE1 and AE5 pass, and dogfood verdicts are unchanged.
 - U6: the README section exists and its examples run.
+
+---
+
+## Decision ledger
+
+Review target: this plan (`/plan-eng-review`). Brett authorized best-judgement decisions while unavailable; each record
+below names the option taken and why, and every one is open to reversal.
+
+### S0: Scope record (complexity gate)
+
+- Prerequisite offer: no design doc exists; skipped, because the Product Contract carries the design and every Key
+  Decision was settled in the planning session.
+- Complexity: about 22 files plus fixtures and 3 new modules (`workspace.rs`, `scan.rs`, `bins.rs`). The gate tripped.
+- Feature cuts proposed: none. Each workspace family, the scan, and the selection rule trace to session-settled Key
+  Decisions.
+- Structure: original arrangement. Folding the three modules into one `discovery.rs` would put a 600-line file behind
+  one name and mix parsing, walking, and bin resolution.
+- Result: scope accepted as-is. Pending remedies resolved below: R1, R2, R3.
+
+### R1: When the runner is built
+
+Finding: 1, P2, confidence 8/10, KTD1 against `src/project.rs` `Project::discover`; Architecture.
+Runtime evidence: `Project::discover` builds the runner from `binary_paths[0]` as soon as binaries are found
+(`BinaryRunner::new(binary_paths[0].clone(), ...)`), before anything could apply `--bin`.
+
+| Choice | Current | A | B |
+| --- | --- | --- | --- |
+| Runner construction | inside discovery, first binary | after selection, the graded binary | unspecified |
+
+Options: A) Discovery returns inventory and candidates; the runner is built after selection (recommended). B) Leave it
+to the implementer.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD1 extended.
+
+### R2: Multi-binary crates change behavior on upgrade
+
+Finding: 2, P2, confidence 9/10, R6 against `src/project.rs` `discover_rust_binaries`; Architecture (upgrade).
+Runtime evidence: `discover_rust_binaries` collects every `[[bin]]` name and the runner takes the first that exists, so
+a single crate with two built bins is graded on the first today; under R6 it exits 2. A CI job running `anc audit .` on
+such a crate starts failing after upgrade.
+
+| Choice | Current | A | B |
+| --- | --- | --- | --- |
+| Upgrade notice | DoD lists `binary-ambiguous` | `### Changed` entry plus README note naming `--bin` | as written |
+
+Options: A) Name the behavior change and its fix in the changelog and README (recommended). B) Keep the DoD wording.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: DoD changelog bullet extended. The
+stop-and-ask behavior itself is a session-settled Key Decision and is not reopened.
+
+### R3: Windows paths for bins
+
+Finding: 3, P3, confidence 6/10, KTD3's `.exe` and `Scripts` rules; Test review.
+Runtime evidence: the shared Rust CI only compile-checks Windows, so a Windows-only test would never run.
+Options: A) Compile-only Windows tests. B) Record the gap under NOT in scope (recommended).
+State: approved. Actual answer: B, best-judgement decision. Accepted scope: NOT in scope entry below.
+
+Approval readiness: PASS (S0, R1 A, R2 A, R3 B; all best-judgement decisions under Brett's authorization).
+
+---
+
+## Engineering review notes
+
+### NOT in scope
+
+- Executed Windows coverage for `.exe` names and the venv `Scripts` directory (R3).
+- Sharing one `--version` probe across audits, which would cut the hang fixture's audit from about 14 s to about 4 s.
+
+### What already exists
+
+- `discover_rust_binaries` and `pick_newer_artifact`: the Rust row of KTD3 keeps both.
+- `walk_source_files` and its skip rules: replaced by the shared `ignore` walker (KTD6), with the same depth and file
+  caps.
+- `json_error::render_error`: the `binary-ambiguous` envelope extends it additively.
+- `ignore` and `globset`: already compiled into anc through `ast-grep-language`.
+
+### Data flow
+
+```text
+directory target
+  |-- workspace declarations --> member dirs --.
+  '-- ignore walk (repo .gitignore + skips) ---+--> package inventory
+                                                      |
+                                    declared bins found on disk
+                                                      |
+                     none --> source + project audits | one --> grade it
+                     several --> --bin? yes --> grade it; no --> exit 2 binary-ambiguous
+                                                      |
+                            runner built for the graded binary (R1)
+```
+
+### Test coverage
+
+```text
+CODE PATHS                                   USER FLOWS
+[+] workspace readers (U1)                   [+] Audit a Cargo workspace root
+  '-- [*** PLANNED] 7 fixtures                  '-- [*** PLANNED] AE1 (U3, U5)
+[+] scan and inventory (U2)                  [+] Several binaries built
+  |-- [*** PLANNED] ignore rules                '-- [*** PLANNED] AE2, AE3 (U4)
+  '-- [*** PLANNED] maturin two-package dir  [+] Node CLI with dependency tools
+[+] declared bins (U3)                          '-- [*** PLANNED] AE4 (U3)
+  |-- [*** PLANNED] each language row        [+] Mixed repo, no root workspace
+  '-- [GAP]         Windows names               '-- [*** PLANNED] AE5 (U2, U5)
+[+] selection and --bin (U4)
+[+] per-language audits (U5)
+COVERAGE: 9/10 paths planned | GAPS: 1 (Windows, recorded under NOT in scope)
+```
+
+### Failure modes
+
+| Path | Realistic failure | Covered by | User sees |
+| --- | --- | --- | --- |
+| pnpm file with anchors or nested maps | reader cannot parse | U1 warning test | stderr warning; scan still finds packages |
+| Multi-bin crate in CI after upgrade | exit 2 instead of a score | U4 tests; R2 changelog | `binary-ambiguous` with `--bin` commands |
+| Symlinked dir out of the repo | scan escapes the repo | U2 symlink test | nothing; not followed |
+| Fixture manifests under `tests/` | false packages | U2 test | nothing; skipped |
+
+Critical gaps: 0.
+
+### Worktree parallelization strategy
+
+Sequential implementation, no parallelization opportunity.
+
+---
+
+## Implementation Tasks
+
+- [ ] **T1 (P2, human: ~1h / CC: ~10min)** — project — Build the runner after selection
+  - Surfaced by: R1 — `Project::discover` builds the runner from the first binary
+  - Files: `src/project/mod.rs`, `src/main.rs`
+  - Verify: AE3 grades the `--bin` choice in every behavioral audit
+- [ ] **T2 (P2, human: ~20min / CC: ~3min)** — docs — State the multi-binary behavior change
+  - Surfaced by: R2 — a two-bin crate exits 2 after upgrade
+  - Files: PR body changelog, `README.md`
+  - Verify: the `### Changed` bullet and the README note both name `--bin`
+
+_No new tasks from Performance._
+
+---
+
+## Review completion summary
+
+- Step 0: Scope Challenge — scope accepted as-is
+- Architecture Review: 2 issues found
+- Code Quality Review: 0 issues found
+- Test Review: diagram produced, 1 gap identified
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed (the repo has no TODOS.md)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled by config
+- Parallelization: 1 lane, 0 parallel / 1 sequential
+- Lake Score: N/A (no coverage-scored choices)
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+| --- | --- | --- | --- | --- | --- |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Outside Review | codex via plan-review outside voice | Independent 2nd opinion | 6 | disabled | none (codex_reviews disabled) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 5 | ISSUES OPEN (PLAN) | 3 issues, 0 critical gaps; all resolved by R1-R3 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 2 | issues_open (config plan) | not this plan |
+
+- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by config (`codex_reviews disabled`); no outside findings.
+- **VERDICT:** no review CLEAR. This pass found and resolved three issues, so it logs `issues_open`; a pass over the
+  amended plan that finds nothing is what logs clean. eng review required.
+
+NO UNRESOLVED DECISIONS

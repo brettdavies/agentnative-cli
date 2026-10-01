@@ -22,6 +22,9 @@
 //!   diagnostic so audits can surface it in their evidence string.
 //! - A path that isn't a directory (binary-mode audit targets, or pathological
 //!   paths) returns [`Absent`][AncConfigLoad::Absent].
+//!
+//! [`load_chain`] reads every file of a [`chain::Chain`] and merges them; a
+//! file that fails voids the chain, and the invalid outcome names that file.
 
 use std::fs;
 use std::path::Path;
@@ -30,6 +33,8 @@ use serde::Deserialize;
 
 #[cfg_attr(not(test), expect(dead_code))]
 pub mod chain;
+
+use chain::Chain;
 
 /// Filename probed at the audit target root.
 pub const ANC_TOML_FILENAME: &str = ".anc.toml";
@@ -93,6 +98,64 @@ pub fn load(repo_root: &Path) -> AncConfigLoad {
     }
 }
 
+/// Load every existing file in `chain` into one config, lowest precedence
+/// first. A nearer file's list entries follow the ones already present, and
+/// an entry that appears twice keeps its first position. Any file that
+/// cannot be read or parsed voids the whole chain.
+#[cfg_attr(not(test), expect(dead_code))]
+pub fn load_chain(chain: &Chain) -> AncConfigLoad {
+    let mut merged: Option<AncConfig> = None;
+    for file in chain.candidates() {
+        let raw = match fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                let shown = display_path(chain, file);
+                return AncConfigLoad::Invalid(format!("could not read {shown}: {e}"));
+            }
+        };
+        let cfg = match toml::from_str::<AncConfig>(&raw) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                let shown = display_path(chain, file);
+                return AncConfigLoad::Invalid(format!("could not parse {shown}: {e}"));
+            }
+        };
+        let verbs = &mut merged
+            .get_or_insert_with(AncConfig::default)
+            .p6
+            .domain_verbs;
+        for verb in cfg.p6.domain_verbs {
+            if !verbs.contains(&verb) {
+                verbs.push(verb);
+            }
+        }
+    }
+    merged.map_or(AncConfigLoad::Absent, AncConfigLoad::Loaded)
+}
+
+/// How evidence names a chain file. Evidence lands in committed scorecards,
+/// so no directory above the repository may show: a repository file is
+/// repo-relative, the user-level file is `~/.anc.toml`, and any other file
+/// shows only its directory's name.
+fn display_path(chain: &Chain, file: &Path) -> String {
+    if chain.home.as_deref() == Some(file) {
+        return format!("~/{ANC_TOML_FILENAME}");
+    }
+    if let Some(rel) = chain
+        .repo_root
+        .as_deref()
+        .and_then(|root| file.strip_prefix(root).ok())
+    {
+        let parts: Vec<_> = rel.iter().map(|part| part.to_string_lossy()).collect();
+        return parts.join("/");
+    }
+    match file.parent().and_then(Path::file_name) {
+        Some(dir) => format!("{}/{ANC_TOML_FILENAME}", dir.to_string_lossy()),
+        None => ANC_TOML_FILENAME.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +175,146 @@ mod tests {
         ));
         fs::create_dir_all(&dir).expect("create tempdir");
         dir
+    }
+
+    fn repo(label: &str) -> std::path::PathBuf {
+        let root = unique_tmp(label);
+        fs::create_dir_all(root.join(".git")).expect("create .git");
+        root
+    }
+
+    fn write(dir: &Path, body: &str) {
+        fs::create_dir_all(dir).expect("create dir");
+        fs::write(dir.join(ANC_TOML_FILENAME), body).expect("write .anc.toml");
+    }
+
+    fn verbs(load: &AncConfigLoad) -> Vec<&str> {
+        match load {
+            AncConfigLoad::Loaded(cfg) => cfg.p6.domain_verbs.iter().map(String::as_str).collect(),
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    fn invalid(load: AncConfigLoad) -> String {
+        match load {
+            AncConfigLoad::Invalid(msg) => msg,
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn nested_file_adds_its_verbs_after_the_root() {
+        let root = repo("merge-nested");
+        let cli = root.join("crates/cli");
+        write(&root, "[p6]\ndomain_verbs = [\"post\"]\n");
+        write(&cli, "[p6]\ndomain_verbs = [\"like\"]\n");
+
+        let load = load_chain(&chain::resolve(&cli, None, None));
+
+        assert_eq!(verbs(&load), ["post", "like"]);
+    }
+
+    #[test]
+    fn verb_in_two_files_keeps_its_root_most_position() {
+        let home = unique_tmp("merge-dupe-home");
+        let root = repo("merge-dupe");
+        let cli = root.join("cli");
+        write(&home, "[p6]\ndomain_verbs = [\"repost\"]\n");
+        write(&root, "[p6]\ndomain_verbs = [\"post\", \"like\"]\n");
+        write(
+            &cli,
+            "[p6]\ndomain_verbs = [\"like\", \"repost\", \"quote\"]\n",
+        );
+        let home_file = home.join(ANC_TOML_FILENAME);
+
+        let load = load_chain(&chain::resolve(&cli, Some(&home_file), None));
+
+        assert_eq!(verbs(&load), ["repost", "post", "like", "quote"]);
+    }
+
+    #[test]
+    fn file_without_p6_contributes_nothing() {
+        let root = repo("merge-no-p6");
+        let cli = root.join("cli");
+        write(&root, "# no sections yet\n");
+        write(&cli, "[p6]\ndomain_verbs = [\"like\"]\n");
+
+        let load = load_chain(&chain::resolve(&cli, None, None));
+
+        assert_eq!(verbs(&load), ["like"]);
+    }
+
+    #[test]
+    fn broken_nested_file_voids_the_whole_chain() {
+        let root = repo("merge-broken");
+        let cli = root.join("crates/cli");
+        write(&root, "[p6]\ndomain_verbs = [\"post\"]\n");
+        write(&cli, "[p6]\ndomain_verbs = \"like\"\n");
+
+        let msg = invalid(load_chain(&chain::resolve(&cli, None, None)));
+
+        assert!(
+            msg.starts_with("could not parse crates/cli/.anc.toml:"),
+            "evidence must name the failing file repo-relative; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn directory_named_anc_toml_is_invalid_and_named() {
+        let root = repo("merge-dir");
+        let cli = root.join("cli");
+        write(&root, "[p6]\ndomain_verbs = [\"post\"]\n");
+        fs::create_dir_all(cli.join(ANC_TOML_FILENAME)).expect("create directory named .anc.toml");
+
+        let msg = invalid(load_chain(&chain::resolve(&cli, None, None)));
+
+        assert!(
+            msg.starts_with("could not read cli/.anc.toml:"),
+            "got: {msg}"
+        );
+    }
+
+    #[test]
+    fn failing_home_file_displays_as_tilde() {
+        let home = unique_tmp("merge-home-broken");
+        let start = unique_tmp("merge-home-elsewhere");
+        write(&home, "[p6\n");
+        let home_file = home.join(ANC_TOML_FILENAME);
+
+        let msg = invalid(load_chain(&chain::resolve(&start, Some(&home_file), None)));
+
+        assert!(
+            msg.starts_with("could not parse ~/.anc.toml:"),
+            "got: {msg}"
+        );
+        assert!(!msg.contains(&*home.to_string_lossy()), "got: {msg}");
+    }
+
+    #[test]
+    fn failing_file_outside_home_and_repo_displays_its_directory_basename() {
+        let outside = unique_tmp("merge-outside").join("tool");
+        write(&outside, "[p6\n");
+
+        let msg = invalid(load_chain(&chain::resolve(&outside, None, None)));
+
+        assert!(
+            msg.starts_with("could not parse tool/.anc.toml:"),
+            "got: {msg}"
+        );
+        let parent = outside.parent().expect("parent");
+        assert!(!msg.contains(&*parent.to_string_lossy()), "got: {msg}");
+    }
+
+    #[test]
+    fn chain_with_every_file_missing_is_absent() {
+        let root = repo("merge-missing");
+        let cli = root.join("cli");
+        fs::create_dir_all(&cli).expect("create dir");
+        let home_file = unique_tmp("merge-missing-home").join(ANC_TOML_FILENAME);
+
+        let load = load_chain(&chain::resolve(&cli, Some(&home_file), None));
+
+        assert_eq!(load, AncConfigLoad::Absent);
     }
 
     #[test]

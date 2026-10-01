@@ -205,8 +205,9 @@ directory target find the right binary and the right manifests.
 - KTD7. **The graded package anchors every manifest read and the tool identity.** Project audits reading `manifest_path`
   get the graded package's manifest through KTD1, `error_module` reads the graded package's `src/` instead of the audit
   root's, and the manifest name and version readers in `src/main.rs` read the same manifest.
-- KTD8. **The legacy Node and Python discovery is removed.** Listing every file in `node_modules/.bin`, `dist/`, or
-  `build/` is replaced by KTD3, and the changelog files it under `### Fixed`.
+- KTD8. **The legacy directory-listing discovery is removed.** Listing every file in `node_modules/.bin`, `dist/`, or
+  `build/` is replaced by KTD3, and the changelog files it under `### Fixed`. Go's binary-named-after-its-directory rule
+  survives as one case of KTD3's Go row.
 
 ### High-Level Technical Design
 
@@ -282,12 +283,15 @@ config plan applies here too.
 - **Dependencies:** U1
 - **Files:** `src/project/scan.rs` (new), `src/project/mod.rs`, `tests/fixtures/mixed-no-root/` (new)
 - **Approach:**
-  1. Walk with `ignore` per R3, collecting the four manifest names. Each manifest is its own package, so a directory
-     holding both `Cargo.toml` and `pyproject.toml`, the maturin layout, yields a Rust package and a Python package.
+  1. Walk with `ignore` per R3, collecting the four manifest names. Configure the walker to read the repo's
+     `.gitignore` files and `.git/info/exclude` but not the operator's global excludes file (`core.excludesFile`), so
+     the same repo yields the same packages on every machine. Each manifest is its own package, so a directory holding
+     both `Cargo.toml` and `pyproject.toml`, the maturin layout, yields a Rust package and a Python package.
   2. Merge with U1's members, deduplicating by package root and language.
   3. Store the inventory on `Project` (KTD1), leaving the single-valued fields to U3 and U5.
 - **Test scenarios:**
   - Covers AE5. `cli/Cargo.toml` and `py/pyproject.toml` with no root manifest: two packages, Rust and Python.
+  - A manifest under a directory that only a global excludes file lists: still a package.
   - One directory holding `Cargo.toml` and `pyproject.toml`: two packages at the same root, Rust and Python.
   - A `package.json` inside `node_modules/`: not a package.
   - A manifest in a directory the repo's `.gitignore` lists: not a package.
@@ -302,7 +306,8 @@ config plan applies here too.
 - **Goal:** Turn the inventory into the list of candidate binaries per KTD3, replacing directory-listing discovery.
 - **Requirements:** R4
 - **Dependencies:** U2
-- **Files:** `src/project/bins.rs` (new), `src/project/mod.rs`
+- **Files:** `src/project/bins.rs` (new), `src/project/mod.rs`, `tests/fixtures/bins/` (new: `node-bin-object`,
+  `node-bin-scoped`, `python-scripts`, `go-main`)
 - **Approach:**
   1. Read each package's declared bins per its language's row in KTD3.
   2. Check each declared bin at its build locations and keep the ones that exist.
@@ -331,6 +336,8 @@ config plan applies here too.
   1. Add `--bin` per KTD5.
   2. After inventory, apply R5 through R7 in the order of KTD4, before any audit is collected.
   3. Render `binary-ambiguous` through the existing envelope helper plus the `candidates` array (KTD4).
+  4. Give the new test file's spawn helper the home-config override, which the config plan's isolation guard requires
+     of every file that spawns `anc audit`.
 - **Patterns to follow:** `render_error` and its tests in `src/json_error.rs`; the spawn helpers in
   `tests/integration.rs`.
 - **Test scenarios:**
@@ -351,10 +358,11 @@ config plan applies here too.
 - **Goal:** Source audits run for every language present, and manifest reads follow the graded package.
 - **Requirements:** R8, R9, R10
 - **Dependencies:** U4
-- **Files:** `src/project/mod.rs`, `src/audits/source/mod.rs`, `src/audits/project/error_module.rs`, `src/main.rs`,
-  `tests/discovery_integration.rs`
+- **Files:** `src/project/mod.rs`, `src/audits/source/mod.rs`, `src/audits/source/rust/`, `src/audits/source/python/`,
+  `src/audits/project/dry_run.rs`, `src/audits/project/error_module.rs`, `src/main.rs`, `tests/discovery_integration.rs`
 - **Approach:**
-  1. Key `parsed_files` by language and move the source walk onto the shared walker (KTD6).
+  1. Key `parsed_files` by language and move the source walk onto the shared walker (KTD6). Its 24 call sites in the
+     Rust and Python source audits and `dry_run.rs` each ask for their own language's files.
   2. Collect source audits once per detected language that has them.
   3. Derive `language`, `manifest_path`, and `binary_paths` from the graded package, or from the one bin-declaring
      package when nothing is graded (KTD1, R9).

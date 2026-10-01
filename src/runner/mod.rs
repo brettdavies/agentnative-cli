@@ -49,6 +49,16 @@ const MAX_OUTPUT_BYTES: usize = 1_048_576;
 
 type CacheKey = (Vec<String>, Vec<(String, String)>);
 
+fn cache_key(args: &[&str], env_overrides: &[(&str, &str)]) -> CacheKey {
+    (
+        args.iter().map(|s| (*s).to_owned()).collect(),
+        env_overrides
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect(),
+    )
+}
+
 /// Executes a binary with timeout, result caching, and partial-read support.
 pub struct BinaryRunner {
     binary: PathBuf,
@@ -92,22 +102,25 @@ impl BinaryRunner {
     ///
     /// Results are cached by (args, env_overrides). `NO_COLOR=1` is always set.
     pub fn run(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> RunResult {
-        let cache_key: CacheKey = (
-            args.iter().map(|s| (*s).to_owned()).collect(),
-            env_overrides
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-                .collect(),
-        );
-
-        if let Some(cached) = self.cache.borrow().get(&cache_key) {
-            return cached.clone();
+        if let Some(cached) = self.cached(args, env_overrides) {
+            return cached;
         }
 
         let result = self.spawn_and_wait(args, env_overrides);
 
-        self.cache.borrow_mut().insert(cache_key, result.clone());
+        self.cache
+            .borrow_mut()
+            .insert(cache_key(args, env_overrides), result.clone());
         result
+    }
+
+    /// The result of an earlier [`run`](Self::run) with these args and env
+    /// overrides, without spawning the binary.
+    pub fn cached(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> Option<RunResult> {
+        self.cache
+            .borrow()
+            .get(&cache_key(args, env_overrides))
+            .cloned()
     }
 
     /// Run the binary but read only `read_bytes` from stdout, then drop the
@@ -438,6 +451,19 @@ mod tests {
         assert_eq!(r1.stdout, r2.stdout);
         assert_eq!(r1.exit_code, r2.exit_code);
         assert_eq!(r1.status, r2.status);
+    }
+
+    #[test]
+    fn cached_returns_only_earlier_runs() {
+        let runner = BinaryRunner::new("/bin/echo".into(), Duration::from_secs(5))
+            .expect("echo should exist");
+        assert!(runner.cached(&["hello"], &[]).is_none());
+        let ran = runner.run(&["hello"], &[]);
+        let cached = runner
+            .cached(&["hello"], &[])
+            .expect("run result is cached");
+        assert_eq!(cached.stdout, ran.stdout);
+        assert!(runner.cached(&["hello"], &[("A", "1")]).is_none());
     }
 
     #[test]

@@ -103,19 +103,20 @@ fn hostile_binary_flooding_stdout_does_not_exhaust_memory() {
 #[test]
 #[cfg(unix)]
 fn hostile_binary_that_hangs_is_killed_at_timeout() {
-    // Fixture sleeps 30s on `--version`. probe_tool_version's BinaryRunner
-    // has a 2-second timeout, so a healthy anc returns in ~2-4s (one
-    // timeout per probe attempt: --version then -V). If a regression drops
-    // the timeout, the test will time out at assert_cmd's 20s ceiling and
-    // fail loudly.
+    // Fixture sleeps 30s on `--version` and `-V`. The version audit waits out
+    // one 5 s `--version` timeout and skips the short aliases once it fails;
+    // the scorecard's version probe reuses that cached result and spends one
+    // 2 s timeout on `-V`, so a healthy run takes about 7 s. Probing a flag
+    // twice, or probing aliases after `--version` fails, pushes past 10 s; a
+    // dropped timeout runs into assert_cmd's 20 s ceiling.
     let path = fixture_path("hostile-hang/probe.sh");
     let start = Instant::now();
     let (parsed, _) = run_and_parse(&["audit", &path, "--output", "json"]);
     let elapsed = start.elapsed();
 
     assert!(
-        elapsed < Duration::from_secs(15),
-        "hung version probe must be killed at 2s timeout; total run took {elapsed:?}",
+        elapsed < Duration::from_secs(10),
+        "a hung version flag must be waited out once, not once per audit; total run took {elapsed:?}",
     );
     assert!(
         parsed["tool"]["version"].is_null(),

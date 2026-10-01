@@ -128,7 +128,9 @@ failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`.
 
 The file in your home directory applies under every audit, inside repositories too, as the lowest layer. Keep personal
 vocabulary there. Two machines with different home files can score the same tool differently; CI runners have none.
-`AGENTNATIVE_HOME_CONFIG` relocates the file.
+`AGENTNATIVE_HOME_CONFIG` relocates the file. Evidence and the hint then name it `$AGENTNATIVE_HOME_CONFIG`, never the
+path it holds, and when it names a file that does not exist, `anc` prints a `warning:` line on stderr and applies no
+user-level file.
 
 ### A repository you fetched: `--repo`
 
@@ -145,16 +147,22 @@ AGENTNATIVE_REPO=/tmp/xr-src anc audit --command xr
 ### The hint
 
 When `p6-may-standard-names` warns and no `domain_verbs` applied, `anc` prints the line that clears the warning and the
-file it belongs in:
+two files it can go in, with what each one is for:
 
 ```text
   [WARN] Subcommand verbs follow community-standard names (p6-may-standard-names) (may)
          16/41 subcommand(s) follow standard verb names. Non-standard: post, like, ...
-         hint: add `domain_verbs = ["post", "like", ...]` under `[p6]` in ~/.anc.toml; see https://github.com/brettdavies/agentnative-cli#configuration-anctoml
+         hint: add `domain_verbs = ["post", "like", ...]` under `[p6]` in either file below; see https://github.com/brettdavies/agentnative-cli#configuration-anctoml
+           - .anc.toml at the tool's repository root: travels with the tool; anc reads it from a checkout, or through --repo <checkout> for an installed copy
+           - ~/.anc.toml: your own vocabulary; applies to every tool you audit on this machine
 ```
 
-The file is `.anc.toml` at the repository root for a target inside a repository or under `--repo`, and `~/.anc.toml`
-otherwise. `--output json` carries the same hint as `config_hint` on the row.
+The repository's `.anc.toml` is where a tool's own vocabulary belongs: it travels with the tool, so every audit of the
+repository applies it. For a target inside a repository or under `--repo`, the line names that repository's root. For a
+target outside any repository, such as the installed tool above, it names the tool's own repository root, which `anc`
+reads from a checkout or through `--repo`. `~/.anc.toml` holds your own vocabulary and applies to every tool you audit,
+so a verb added there for one tool passes for all of them. `--output json` carries the same hint as `config_hint` on
+the row.
 
 ## The 8 Principles
 
@@ -449,9 +457,12 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
   shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
 
-- `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `file`
-  is where the setting belongs (`.anc.toml` at the repository root, or `~/.anc.toml` outside any repository; never an
-  absolute path), `domain_verbs` lists the flagged verbs to add under `[p6]`, and `docs` links
+- `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `files`
+  lists where the setting can go, each as `{file, scope}`: `file` is `.anc.toml`, `~/.anc.toml`, or
+  `$AGENTNATIVE_HOME_CONFIG` (never an absolute path), and `scope` is `repository` (the root of the repository this
+  audit found, or the `--repo` directory), `tool-repository` (the root of the tool's own repository, for a target
+  outside any repository; read from a checkout or through `--repo`), or `user` (applies to every audit on the machine).
+  The repository's file comes first. `domain_verbs` lists the flagged verbs to add under `[p6]`, and `docs` links
   [Configuration](#configuration-anctoml). Schema `0.9` addition.
 
 > Publishing a scorecard? `run.invocation` may carry usernames or absolute paths from the machine that produced the

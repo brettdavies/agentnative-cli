@@ -229,17 +229,20 @@ Existing field semantics:
 
 `0.9` addition (`ConfigHint` carrier on `AuditResult`):
 
-- `ConfigHint { file, domain_verbs, docs }` is attached to an `AuditResult` when a warning is one a `.anc.toml` setting
-  would clear and no config supplied it. Today's only producer is `standard_names.rs`: a `p6-standard-names` Warn with
-  no `domain_verbs` applied carries the flagged verbs (lowercase, `--help` order), the file the setting belongs in, and
-  `anc_toml::DOCS_URL`. A Warn that config shaped, a Pass, and the Warn an unreadable chain produces carry none.
-- `file` follows the evidence display rule (`anc_toml::display_path`): `.anc.toml` at the repository root (the git root
-  or `--repo`), `~/.anc.toml` outside any repository, never an absolute path. `Project.anc_config.settings_file` holds
-  it, resolved once per run with the chain. Where anc looks is documented once, in the README's
-  [Configuration](README.md#configuration-anctoml) section.
+- `ConfigHint { files, domain_verbs, docs }` is attached to an `AuditResult` when a warning is one a `.anc.toml`
+  setting would clear and no config supplied it. Today's only producer is `standard_names.rs`: a `p6-standard-names`
+  Warn with no `domain_verbs` applied carries the flagged verbs (lowercase, `--help` order), the files the setting can
+  go in, and `anc_toml::DOCS_URL`. A Warn that config shaped, a Pass, and the Warn an unreadable chain produces carry
+  none.
+- `files` lists `ConfigFile { file, scope }`, the repository's `.anc.toml` first, then the user-level file when one is
+  configured. `scope` is `repository` (the git root or `--repo`), `tool-repository` (a target outside any repository:
+  the tool's own checkout, read through `--repo`), or `user` (every audit on the machine). `file` follows the evidence
+  display rule: `.anc.toml`, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`, never an absolute path.
+  `Project.anc_config.settings_files` holds them, resolved once per run with the chain. Where anc looks is documented
+  once, in the README's [Configuration](README.md#configuration-anctoml) section.
 - `AuditResultView.config_hint` mirrors the carrier with `skip_serializing_if = "Option::is_none"`, the
-  `audience_reason` pattern: absent from every row without a hint. Text mode prints it as one `hint:` line under the
-  row, with the evidence lines.
+  `audience_reason` pattern: absent from every row without a hint. Text mode prints it under the row, with the evidence
+  lines: one `hint:` line, then one line per file saying which audits read it.
 
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is

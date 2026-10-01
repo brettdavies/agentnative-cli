@@ -88,18 +88,21 @@ fi
 #
 # Requirements (one-time setup):
 #   sudo apt install mingw-w64                          # the C linker tree-sitter needs
+#   brew install nasm                                   # the assembler aws-lc-sys needs on x86-64 Windows
 #   rustup target add x86_64-pc-windows-gnu             # the Windows std library
 #
-# If either is missing the step is skipped with a one-line note rather than
+# cmake is required too and is already on the machine for the native build.
+# If any tool is missing the step is skipped with a one-line note rather than
 # failing — but local Windows coverage is then absent, and CI's Windows job
-# becomes the only backstop. Install both to close that gap.
+# becomes the only backstop. Install all three to close that gap.
 if command -v x86_64-w64-mingw32-gcc &>/dev/null \
+    && command -v nasm &>/dev/null \
     && rustup target list --installed 2>/dev/null | grep -q '^x86_64-pc-windows-gnu$'; then
     RUSTFLAGS="-Dwarnings" cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet 2>&1 \
         || fail "cargo clippy --target x86_64-pc-windows-gnu -Dwarnings"
     pass "windows clippy (cross-target)"
 else
-    echo "  - windows clippy (skipped: install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\` to enable)"
+    echo "  - windows clippy (skipped: install \`mingw-w64\`, \`nasm\` + \`rustup target add x86_64-pc-windows-gnu\` to enable)"
 fi
 
 echo -e "${BOLD}${GREEN}All checks passed.${RESET}"

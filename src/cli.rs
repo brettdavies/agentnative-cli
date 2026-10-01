@@ -198,7 +198,7 @@ pub enum SkillCmd {
     /// the manual fallback printed by `--dry-run` for any known host and
     /// substitute the destination path:
     ///
-    ///     git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
+    /// git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
     Install {
         /// Target host (claude_code, codex, cursor, opencode). Required
         /// unless `--all` is set.

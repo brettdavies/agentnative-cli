@@ -1,0 +1,13 @@
+# Build settings for the release rows that compile inside `cross` containers
+# (aarch64-unknown-linux-gnu and the two linux-musl targets).
+#
+# aws-lc-sys, the C library behind rustls's aws-lc-rs crypto provider, builds
+# with CMake. Every hosted GitHub runner image already ships cmake, but the
+# cross container images do not inherit the host's tools, so the containers
+# provision it themselves before cargo runs. NASM is only required on x86-64
+# Windows, which never builds through cross.
+[build]
+pre-build = [
+    "apt-get update",
+    "apt-get install --assume-yes --no-install-recommends cmake",
+]

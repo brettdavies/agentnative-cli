@@ -25,3 +25,7 @@ permissions:
 jobs:
   ci:
     uses: brettdavies/.github/.github/workflows/rust-ci.yml@main
+    with:
+      # aws-lc-sys (behind rustls's aws-lc-rs provider) assembles with NASM on
+      # x86-64 Windows, and the hosted Windows image does not ship it.
+      windows_nasm: true

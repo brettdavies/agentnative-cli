@@ -109,7 +109,9 @@ A Cargo workspace root has a related, separate gap: `anc audit .` there finds no
 **Telling the operator**
 
 - R9. When no `domain_verbs` applied and `p6-may-standard-names` warns, the text output shows a hint with a
-  ready-to-paste `[p6] domain_verbs` line listing the flagged verbs, and the JSON row carries the same hint.
+  ready-to-paste `[p6] domain_verbs` line listing the flagged verbs, the `.anc.toml` anc would read for this target (the
+  repo root's, `~/.anc.toml` outside any repo, or the `--repo` directory's), and a link to the README's `.anc.toml`
+  section. The JSON row carries the same hint, and no warning names an unpublished document.
 - R10. No scorecard field records which files applied, and no switch skips the home layer for a run.
 
 **Flag surface**
@@ -357,7 +359,9 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
 - **Files:** `src/types.rs`, `src/audits/behavioral/standard_names.rs`, `src/scorecard/mod.rs`,
   `schema/scorecard.schema.json`, `tests/scorecard_schema_v05.rs`, `tests/standard_names_integration.rs`
 - **Approach:**
-  1. In `audit_standard_names`, attach the hint per KTD7 when the verdict is a warning and no domain verbs applied.
+  1. In `audit_standard_names`, attach the hint per KTD7 when the verdict is a warning and no domain verbs applied,
+     naming the file the chain would read per R9. Replace the evidence's opt-in sentence and its unpublished
+     `docs/solutions` path (`standard_names.rs`, the doc-path constant) with that hint.
   2. Surface it on the row view, skipped when absent, mirroring `using_domain_verbs` and the mitigation-carrier contract
      in `CLAUDE.md`.
   3. Print the `hint:` line under the row in text mode, following the evidence line's visibility rules.
@@ -369,6 +373,9 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   - A pass: no hint.
   - A warning caused by an invalid chain: no hint, and the evidence names the file.
   - Rows from every other audit never carry the field.
+  - A binary inside a repo: the hint names `.anc.toml` at the repo root; outside any repo: `~/.anc.toml`; with
+    `--repo`: that directory's file.
+  - No warning or evidence string contains `docs/solutions`.
   - The committed schema matches `anc emit schema`, and a 0.9 scorecard carrying the field validates against it.
 - **Verification:** the schema drift test passes, and a JSON scorecard captured from AE5 validates against the committed
   schema.
@@ -381,7 +388,7 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
 - **Files:** `README.md`, `CLAUDE.md`, `src/cli.rs`
 - **Approach:**
   1. Add a README section that states the location rules once, as a table by target kind, followed by merge behavior,
-     the home layer, `--repo`, and the hint.
+     the home layer, `--repo`, and the hint. Give it a stable heading anchor; the hint links to it (R9).
   2. Add the schema 0.9 entry and the hint field to `CLAUDE.md`'s schema history and carrier notes, citing the README
      section for the rules.
   3. Point the `audit` help text at the README section.
@@ -585,18 +592,164 @@ _No new tasks from Performance._
 - Parallelization: 1 lane, 0 parallel / 1 sequential
 - Lake Score: N/A (no coverage-scored choices)
 
+---
+
+## Developer experience review
+
+Brett authorized best-judgement decisions while unavailable. Each decision below names the option taken; all are open
+to reversal.
+
+### Developer persona
+
+```text
+TARGET DEVELOPER PERSONA
+========================
+Who:       a CLI author whose tool speaks a domain vocabulary (post, like, repost), auditing their own build
+Context:   mid-refactor or pre-release, at a terminal or through an AI coding agent running `anc audit --output json`
+Tolerance: one re-run; if the fix is not in the output itself, they move on and the warning stays
+Expects:   the warning to say what to write, where to put it, and where it is documented
+```
+
+Decisions: product type CLI tool (the plan's surface is `anc audit` flags and output); persona as above, the PRODUCT.md
+"humans running anc" audience with AI agents co-primary; mode DX POLISH (an enhancement to an existing surface).
+
+### Developer perspective
+
+I build `xr`, an X client, and run `anc audit target/release/xr`. `p6-may-standard-names` warns: 16 of 41 subcommands
+use standard verbs, and it lists `post`, `like`, `repost`, and the rest. The evidence says per-CLI vocabulary "can opt in
+via .anc.toml [p6] domain_verbs" and points at `docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`.
+That path is not in the published repository, and the README never mentions `.anc.toml`. I guess the format, write a
+`.anc.toml` at my repo root, and re-run: the same warning, because a binary target never reads config. I try
+`anc audit .` from the root and get no behavioral audits at all, because the workspace root has no binary. I stop.
+
+Observed: the warning text and the missing doc path (captured from an anc build of `dev`). Predicted: the guessing.
+
+### Competitive benchmark
+
+| Tool | Start to result | Time and evidence type | DX choice |
+| --- | --- | --- | --- |
+| ruff | add a rule exception in `pyproject.toml` to a clean run | ~2 min, estimated | config found by walking up from each file; docs show the exact table |
+| cargo | set a workspace lint level to a clean build | ~2 min, estimated | `[workspace.lints]` at the root applies to every member |
+| anc today | domain verb warning to a passing check | never for a binary target; ~10 min for a directory, estimated | the opt-in sentence links an unpublished doc |
+| anc with this plan | domain verb warning to a passing check | under 2 min, estimated | the warning prints the line and the file to put it in |
+
+Times are estimates from documented behavior; no web research ran. Target chosen: Champion, under 2 minutes, because
+the fix can be printed in the warning itself.
+
+### Magical moment
+
+The warning row prints, under the evidence, the exact `[p6] domain_verbs = [...]` line listing the flagged verbs, the
+path of the `.anc.toml` anc would read for this target, and a link to the README section. Paste, re-run, and the check
+passes with `using_domain_verbs: true`. Vehicle: the hint R9 already plans, made complete by DX-R2 below.
+
+### Developer journey
+
+```text
+STAGE           | DEVELOPER DOES                          | FRICTION POINTS                     | STATUS
+----------------|-----------------------------------------|-------------------------------------|---------
+1. Discover     | reads the standard-names warning        | links an unpublished doc (DX-R1)    | fixed
+2. Install      | unchanged anc install                   | none                                | ok
+3. Hello World  | pastes the hinted line, re-runs         | hint lacked the file location (R2)  | fixed
+4. Real Usage   | nested files, --repo in CI              | README section (U5)                 | ok
+5. Debug        | a broken or misplaced file              | named file (KTD4); hint names path  | ok
+6. Upgrade      | home layer now applies to every audit   | changelog names it (DoD)            | ok
+```
+
+### First-time developer confusion report
+
+```text
+Persona: CLI author with a domain vocabulary
+Attempting: get anc to recognize the vocabulary
+
+T+0:00  Runs anc audit target/release/xr; sees the warning and the .anc.toml mention.     [addressed: hint]
+T+0:30  Opens the linked docs/solutions path; it does not exist in the repo.               [addressed: DX-R1]
+T+2:00  Writes .anc.toml by guesswork at the repo root; re-runs; nothing changes.          [addressed: Plan A R1, R2]
+T+4:00  Tries anc audit . at the root; no behavioral audits run.                           [addressed: discovery plan]
+```
+
+### DX decision ledger
+
+#### DX-R1: The warning links an unpublished document
+
+Finding: P1, confidence 9/10, `src/audits/behavioral/standard_names.rs:32` holds
+`docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`, and the warn evidence at line 286
+sends users there; `main` has no `docs/solutions` directory.
+Options: A) Point the warning at the README section U5 adds and drop the unpublished path (recommended). B) Keep it.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: R9 and U4 updated; U4 test added.
+
+#### DX-R2: The hint does not say where the file goes
+
+Finding: P2, confidence 8/10, R9 specifies a ready-to-paste line but no location; a user who saves the file in a
+directory the chain never reads gets the same warning again.
+Options: A) The hint names the file anc would read for this target: `<repo root>/.anc.toml` as a repo-relative path,
+`~/.anc.toml` outside any repo, or the `--repo` directory (recommended). B) Line only.
+State: approved. Actual answer: A, best-judgement decision. Accepted scope: R9 and U4 updated.
+
+TODOS.md updates: 0 proposed (the repo has no TODOS.md).
+
+### NOT in scope (developer experience)
+
+- Instrumenting how often the hint leads to a passing re-run; anc collects no telemetry.
+- A `anc config` command that writes the file; the printed line is enough at this scope.
+
+### What already exists (developer experience)
+
+- The warn evidence's opt-in sentence: replaced by the hint, not duplicated.
+- `using_domain_verbs` and `domain_match_count`: the pass-side signal the hint leads to.
+- The README's Quick Start: the new `.anc.toml` section sits after it.
+
+### DX scorecard
+
+```text
++====================================================================+
+|              DX PLAN REVIEW: SCORECARD                              |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend  |
+|----------------------|--------|--------|--------|
+| Getting Started      |  8/10  |  3/10  | +5     |
+| API/CLI/SDK          |  7/10  |  7/10  |  0     |
+| Error Messages       |  8/10  |  4/10  | +4     |
+| Documentation        |  8/10  |  2/10  | +6     |
+| Upgrade Path         |  7/10  |  7/10  |  0     |
+| Dev Environment      |  8/10  |  8/10  |  0     |
+| Community            |  6/10  |  6/10  |  0     |
+| DX Measurement       |  4/10  |  4/10  |  0     |
++--------------------------------------------------------------------+
+| TTHW                 | <2 min | never  | binary targets          |
+| Competitive Rank     | Champion (estimated)                         |
+| Magical Moment       | designed via the warning row's hint          |
+| Product Type         | CLI tool                                     |
+| Mode                 | POLISH                                       |
+| Overall DX           |  7/10  |  5/10  | +2     |
++====================================================================+
+```
+
+Community and measurement stay low: anc has no telemetry and this plan adds none.
+
+### DX implementation checklist
+
+```text
+[ ] The warning row carries the hint: the domain_verbs line, the file path, the README link
+[ ] No warning or evidence string names a docs/solutions path
+[ ] The README section has a stable anchor the hint links to
+[ ] A pasted hint line turns the warning into a pass on re-run (AE5 then AE1)
+[ ] --repo errors say what was wrong and exit 2
+[ ] The changelog names the home-layer behavior change
+```
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 | --- | --- | --- | --- | --- | --- |
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via `/plan-eng-review` outside voice | Independent 2nd opinion | 4 | disabled | none (codex_reviews disabled) |
+| Outside Review | codex via plan-review outside voice | Independent 2nd opinion | 5 | disabled | none (codex_reviews disabled) |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 4 | ISSUES OPEN (PLAN) | 4 issues, 0 critical gaps; all resolved by R1-R3 |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 1 | clean (2026-09-17, another plan) | not this plan |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 2 | ISSUES OPEN (PLAN) | score: 5/10 → 7/10, TTHW: never → <2 min; DX-R1 and DX-R2 resolved |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by config (`codex_reviews disabled`); no outside findings.
-- **VERDICT:** no review CLEAR. This pass found and resolved four issues, so it logs `issues_open`; a pass over the
+- **OUTSIDE COVERAGE:** codex, plan-review phase for the engineering and DX reviews, disabled by config
+  (`codex_reviews disabled`); no outside findings.
+- **VERDICT:** no review CLEAR. Both reviews found and resolved their issues, so each logs `issues_open`; a pass over the
   amended plan that finds nothing is what logs clean. eng review required.
 
 NO UNRESOLVED DECISIONS

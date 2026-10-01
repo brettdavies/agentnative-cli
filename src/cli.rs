@@ -125,6 +125,7 @@ pub enum Commands {
   anc audit --command ripgrep                  # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
   anc audit --command xr --repo ./xr-src       # .anc.toml from a repo you fetched
+  anc audit . --bin xr                         # one of several built binaries
 
 Defaults: path = `.`, output = text, no principle filter.
 

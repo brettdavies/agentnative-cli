@@ -120,15 +120,34 @@
         }
       }
     },
-    "ConfigHint": {
+    "ConfigFile": {
       "type": "object",
-      "description": "A ready-to-add `.anc.toml` setting. Today only `p6-standard-names` attaches one, to a warning when no `[p6] domain_verbs` applied.",
-      "required": ["file", "domain_verbs", "docs"],
+      "description": "A file a `ConfigHint` setting can go in, and which audits read it.",
+      "required": ["file", "scope"],
       "additionalProperties": false,
       "properties": {
         "file": {
           "type": "string",
-          "description": "The file the setting belongs in, named as evidence names files: `.anc.toml` at the repository root (repo-relative), or `~/.anc.toml` outside any repository. Never an absolute path."
+          "description": "The file, named as evidence names files: `.anc.toml` at a repository root, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG` when that variable relocated the user-level file. Never an absolute path."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["repository", "tool-repository", "user"],
+          "description": "`repository`: the root of the repository this audit found, or the `--repo` directory; the setting travels with the tool and anc reads it on every audit of that repository. `tool-repository`: the root of the tool's own repository, which this audit could not find because the target sits outside any repository; anc reads it from a checkout, or through `--repo <checkout>`. `user`: personal vocabulary that applies to every tool audited on this machine. A closed set; a newer schema can add a value."
+        }
+      }
+    },
+    "ConfigHint": {
+      "type": "object",
+      "description": "A ready-to-add `.anc.toml` setting. Today only `p6-standard-names` attaches one, to a warning when no `[p6] domain_verbs` applied.",
+      "required": ["files", "domain_verbs", "docs"],
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ConfigFile" },
+          "description": "Where the setting can go: the repository's `.anc.toml` first, then the user-level file when one is configured."
         },
         "domain_verbs": {
           "type": "array",

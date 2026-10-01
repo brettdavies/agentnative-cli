@@ -31,6 +31,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::types::{ConfigFile, ConfigScope};
+
 mod chain;
 
 use chain::Chain;
@@ -118,11 +120,9 @@ impl HomeLayer {
 pub struct ResolvedConfig {
     /// The merged chain.
     pub load: AncConfigLoad,
-    /// The file a new setting belongs in, named the way evidence names
-    /// files: `.anc.toml` at the repository root (the git root or
-    /// `--repo`), `~/.anc.toml` outside any repository. `None` for a
-    /// `Project` built without resolving its config.
-    pub settings_file: Option<String>,
+    /// The files a new setting can go in, the repository's first. Empty for
+    /// a `Project` built without resolving its config.
+    pub settings_files: Vec<ConfigFile>,
 }
 
 /// The user-level layer: [`HOME_CONFIG_ENV`] when set, otherwise
@@ -162,20 +162,26 @@ pub fn load_for_target(
     let home_label = home.map_or(DEFAULT_HOME_LABEL, |layer| &layer.label);
     ResolvedConfig {
         load: load_chain(&chain, home_label),
-        settings_file: Some(settings_file(&chain, home_label)),
+        settings_files: settings_files(&chain, home_label),
     }
 }
 
-/// The repository root's file, else the user-level file, else the start
-/// directory's: the file anc reads that is shared most widely.
-fn settings_file(chain: &Chain, home_label: &str) -> String {
-    let file = match (&chain.repo_root, &chain.home, chain.layers.last()) {
-        (Some(root), _, _) => root.join(ANC_TOML_FILENAME),
-        (None, Some(home), _) => home.clone(),
-        (None, None, Some(start)) => start.clone(),
-        (None, None, None) => PathBuf::from(ANC_TOML_FILENAME),
+/// Where a new setting can go: `.anc.toml` at a repository root, scoped by
+/// whether this audit found the repository, then the user-level file.
+fn settings_files(chain: &Chain, home_label: &str) -> Vec<ConfigFile> {
+    let repository = ConfigFile {
+        file: ANC_TOML_FILENAME.to_string(),
+        scope: if chain.repo_root.is_some() {
+            ConfigScope::Repository
+        } else {
+            ConfigScope::ToolRepository
+        },
     };
-    display_path(chain, &file, home_label)
+    let user = chain.home.as_ref().map(|_| ConfigFile {
+        file: home_label.to_string(),
+        scope: ConfigScope::User,
+    });
+    std::iter::once(repository).chain(user).collect()
 }
 
 /// Load every existing file in `chain` into one config, lowest precedence
@@ -583,51 +589,87 @@ mod tests {
         home_layer_from(None, file.parent().map(Path::to_path_buf)).expect("layer")
     }
 
-    fn settings_file_for(start: &Path, home: Option<&Path>, repo: Option<&Path>) -> String {
+    fn settings_files_for(
+        start: &Path,
+        home: Option<&Path>,
+        repo: Option<&Path>,
+    ) -> Vec<(String, ConfigScope)> {
         load_for_target(start, home.map(default_layer).as_ref(), repo)
-            .settings_file
-            .expect("resolution names a settings file")
+            .settings_files
+            .into_iter()
+            .map(|file| (file.file, file.scope))
+            .collect()
+    }
+
+    fn named(file: &str, scope: ConfigScope) -> (String, ConfigScope) {
+        (file.to_string(), scope)
     }
 
     #[test]
-    fn settings_belong_at_the_repo_root_for_a_nested_target() {
+    fn settings_go_at_the_repo_root_for_a_nested_target_or_in_the_home_file() {
         let root = repo("settings-repo");
         let cli = root.join("crates/cli");
         fs::create_dir_all(&cli).expect("create dir");
         let home_file = unique_tmp("settings-repo-home").join(ANC_TOML_FILENAME);
 
-        assert_eq!(settings_file_for(&cli, Some(&home_file), None), ".anc.toml");
-    }
-
-    #[test]
-    fn settings_belong_in_the_home_file_outside_any_repo() {
-        let start = unique_tmp("settings-outside");
-        let home_file = unique_tmp("settings-outside-home").join(ANC_TOML_FILENAME);
-
         assert_eq!(
-            settings_file_for(&start, Some(&home_file), None),
-            "~/.anc.toml"
+            settings_files_for(&cli, Some(&home_file), None),
+            [
+                named(".anc.toml", ConfigScope::Repository),
+                named("~/.anc.toml", ConfigScope::User),
+            ]
         );
     }
 
     #[test]
-    fn settings_belong_in_the_repo_flag_directory() {
+    fn settings_outside_any_repo_go_in_the_tools_repo_or_the_home_file() {
+        let start = unique_tmp("settings-outside");
+        let home_file = unique_tmp("settings-outside-home").join(ANC_TOML_FILENAME);
+
+        assert_eq!(
+            settings_files_for(&start, Some(&home_file), None),
+            [
+                named(".anc.toml", ConfigScope::ToolRepository),
+                named("~/.anc.toml", ConfigScope::User),
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_go_in_the_repo_flag_directory_or_the_home_file() {
         let start = unique_tmp("settings-flag-start");
         let fetched = unique_tmp("settings-flag-fetched");
         let home_file = unique_tmp("settings-flag-home").join(ANC_TOML_FILENAME);
 
         assert_eq!(
-            settings_file_for(&start, Some(&home_file), Some(&fetched)),
-            ".anc.toml"
+            settings_files_for(&start, Some(&home_file), Some(&fetched)),
+            [
+                named(".anc.toml", ConfigScope::Repository),
+                named("~/.anc.toml", ConfigScope::User),
+            ]
         );
     }
 
     #[test]
-    fn settings_belong_beside_the_target_with_no_repo_and_no_home() {
+    fn settings_name_no_user_file_without_a_home_layer() {
         let start = unique_tmp("settings-bare").join("tool");
         fs::create_dir_all(&start).expect("create dir");
 
-        assert_eq!(settings_file_for(&start, None, None), "tool/.anc.toml");
+        assert_eq!(
+            settings_files_for(&start, None, None),
+            [named(".anc.toml", ConfigScope::ToolRepository)]
+        );
+    }
+
+    #[test]
+    fn a_relocated_home_layer_is_named_by_its_variable_in_settings() {
+        let start = unique_tmp("settings-relocated");
+        let file = unique_tmp("settings-relocated-home").join("anc.toml");
+        let layer = home_layer_from(Some(file.into()), None).expect("layer");
+
+        let files = load_for_target(&start, Some(&layer), None).settings_files;
+
+        assert_eq!(files[1].file, "$AGENTNATIVE_HOME_CONFIG");
     }
 
     #[test]

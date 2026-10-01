@@ -479,7 +479,14 @@ fn warning_without_config_hints_the_line_that_clears_it() {
 
     assert_eq!(row["status"], "warn", "row: {row}");
     let hint = &row["config_hint"];
-    assert_eq!(hint["file"], "$AGENTNATIVE_HOME_CONFIG", "row: {row}");
+    assert_eq!(
+        hint["files"],
+        serde_json::json!([
+            {"file": ".anc.toml", "scope": "tool-repository"},
+            {"file": "$AGENTNATIVE_HOME_CONFIG", "scope": "user"},
+        ]),
+        "a target outside any repository names the tool's repository file and the user file: {row}"
+    );
     assert_eq!(
         hint["domain_verbs"],
         serde_json::json!(["mentions"]),
@@ -489,7 +496,7 @@ fn warning_without_config_hints_the_line_that_clears_it() {
 }
 
 #[test]
-fn warning_without_config_prints_one_hint_line_in_text_mode() {
+fn warning_without_config_prints_the_hint_and_both_files_in_text_mode() {
     let bin = lone_fixture("hint-text", FIXTURE_COMMANDS);
 
     let output = cmd()
@@ -498,18 +505,36 @@ fn warning_without_config_prints_one_hint_line_in_text_mode() {
         .expect("spawn anc");
 
     let stdout = String::from_utf8(output.stdout).expect("stdout valid UTF-8");
-    let hints: Vec<&str> = stdout
-        .lines()
-        .map(str::trim_start)
-        .filter(|line| line.starts_with("hint:"))
-        .collect();
-    assert_eq!(hints.len(), 1, "stdout: {stdout}");
+    let lines: Vec<&str> = stdout.lines().map(str::trim_start).collect();
+    let at = lines
+        .iter()
+        .position(|line| line.starts_with("hint:"))
+        .unwrap_or_else(|| panic!("no hint line: {stdout}"));
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line.starts_with("hint:"))
+            .count(),
+        1,
+        "stdout: {stdout}"
+    );
+    let hint = lines[at];
     assert!(
-        hints[0].contains(r#"domain_verbs = ["mentions"]"#)
-            && hints[0].contains("$AGENTNATIVE_HOME_CONFIG")
-            && hints[0].contains(README_CONFIG_SECTION),
-        "hint: {}",
-        hints[0]
+        hint.contains(r#"domain_verbs = ["mentions"]"#)
+            && hint.contains("either file below")
+            && hint.contains(README_CONFIG_SECTION),
+        "hint: {hint}"
+    );
+    let repository = lines[at + 1];
+    assert!(
+        repository.starts_with("- .anc.toml at the tool's repository root:")
+            && repository.contains("--repo <checkout>"),
+        "repository line: {repository}"
+    );
+    let user = lines[at + 2];
+    assert!(
+        user.starts_with("- $AGENTNATIVE_HOME_CONFIG:") && user.contains("every tool you audit"),
+        "user line: {user}"
     );
 }
 
@@ -522,7 +547,13 @@ fn binary_in_a_checkout_without_config_hints_the_repo_root_file() {
 
     let row = p6_row(cmd().args(["audit", path_str(&bin), "--output", "json"]));
 
-    assert_eq!(row["config_hint"]["file"], ".anc.toml", "row: {row}");
+    let files = &row["config_hint"]["files"];
+    assert_eq!(
+        files[0],
+        serde_json::json!({"file": ".anc.toml", "scope": "repository"}),
+        "row: {row}"
+    );
+    assert_eq!(files[1]["scope"], "user", "row: {row}");
 }
 
 #[test]
@@ -539,7 +570,11 @@ fn repo_flag_without_config_hints_that_directorys_file() {
         "json",
     ]));
 
-    assert_eq!(row["config_hint"]["file"], ".anc.toml", "row: {row}");
+    assert_eq!(
+        row["config_hint"]["files"][0],
+        serde_json::json!({"file": ".anc.toml", "scope": "repository"}),
+        "row: {row}"
+    );
 }
 
 #[test]

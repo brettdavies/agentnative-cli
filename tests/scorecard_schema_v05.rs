@@ -575,8 +575,19 @@ fn rt_schema_declares_the_config_hint_row_field() {
         .collect();
     assert_eq!(
         required,
-        ["file", "domain_verbs", "docs"],
+        ["files", "domain_verbs", "docs"],
         "ConfigHint: {hint}"
+    );
+    assert_eq!(
+        hint["properties"]["files"]["items"]["$ref"], "#/$defs/ConfigFile",
+        "ConfigHint.files must reference the ConfigFile definition",
+    );
+    let file = &schema["$defs"]["ConfigFile"];
+    assert_eq!(file["additionalProperties"], false, "ConfigFile: {file}");
+    assert_eq!(
+        file["properties"]["scope"]["enum"],
+        serde_json::json!(["repository", "tool-repository", "user"]),
+        "ConfigFile: {file}"
     );
     assert!(
         !schema["$defs"]["AuditResultView"]["required"]
@@ -671,6 +682,15 @@ fn rt_live_hint_row_validates_against_the_schema() {
         assert!(
             hint.get(key).is_some(),
             "hint lacks required `{key}`: {hint}"
+        );
+    }
+    let scopes = &schema["$defs"]["ConfigFile"]["properties"]["scope"]["enum"];
+    for file in hint["files"].as_array().expect("files is an array") {
+        assert!(
+            scopes
+                .as_array()
+                .is_some_and(|scopes| scopes.contains(&file["scope"])),
+            "file scope is outside the schema's enum {scopes}: {hint}"
         );
     }
     assert!(

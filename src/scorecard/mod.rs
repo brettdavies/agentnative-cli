@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::audit::Audit;
 use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
-use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint};
+use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint, ConfigScope};
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
 /// leaderboard pipeline) pin against this to detect shape changes.
@@ -31,7 +31,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint}
 /// `.anc.toml [p6] domain_verbs` recognition; Pass evidence string
 /// populated with the built-in / domain ratio), `0.9` (optional
 /// `config_hint` on a row whose warning a `.anc.toml` setting would clear:
-/// the file, the `domain_verbs` to add, and the README section).
+/// the files it can go in, the `domain_verbs` to add, and the README section).
 pub const SCHEMA_VERSION: &str = "0.9";
 
 /// Eligibility floor for the agent-native badge, expressed as an integer
@@ -652,7 +652,9 @@ pub fn format_text(
                         let _ = writeln!(out, "         {line}");
                     }
                     if let Some(hint) = &r.config_hint {
-                        let _ = writeln!(out, "         {}", hint_line(hint));
+                        for line in hint_lines(hint) {
+                            let _ = writeln!(out, "         {line}");
+                        }
                     }
                 }
                 AuditStatus::Skip(reason)
@@ -685,24 +687,40 @@ pub fn format_text(
     out
 }
 
-/// The text-mode line for a [`ConfigHint`]: the TOML line to add, where it
-/// goes, and where to read more.
-fn hint_line(hint: &ConfigHint) -> String {
+/// The text-mode lines for a [`ConfigHint`]: the TOML line to add and where
+/// to read more, then one line per file it can go in, saying which audits
+/// read that file.
+fn hint_lines(hint: &ConfigHint) -> Vec<String> {
     let verbs: Vec<String> = hint
         .domain_verbs
         .iter()
         .map(|verb| serde_json::Value::from(verb.as_str()).to_string())
         .collect();
-    let place = if hint.file == crate::anc_toml::ANC_TOML_FILENAME {
-        format!("{} at the repository root", hint.file)
+    let which = if hint.files.len() == 1 {
+        "the file below"
     } else {
-        hint.file.clone()
+        "either file below"
     };
-    format!(
-        "hint: add `domain_verbs = [{}]` under `[p6]` in {place}; see {}",
+    let mut lines = vec![format!(
+        "hint: add `domain_verbs = [{}]` under `[p6]` in {which}; see {}",
         verbs.join(", "),
         hint.docs
-    )
+    )];
+    lines.extend(hint.files.iter().map(|file| {
+        let name = &file.file;
+        match file.scope {
+            ConfigScope::Repository => format!(
+                "  - {name} at the repository root: travels with the tool; anc reads it on every audit of this repository"
+            ),
+            ConfigScope::ToolRepository => format!(
+                "  - {name} at the tool's repository root: travels with the tool; anc reads it from a checkout, or through --repo <checkout> for an installed copy"
+            ),
+            ConfigScope::User => format!(
+                "  - {name}: your own vocabulary; applies to every tool you audit on this machine"
+            ),
+        }
+    }));
+    lines
 }
 
 /// `--raw` rendering: one `id<TAB>status` line per result, nothing else.

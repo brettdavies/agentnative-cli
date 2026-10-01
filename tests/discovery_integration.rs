@@ -6,13 +6,11 @@ use std::path::Path;
 
 use assert_cmd::Command;
 
-/// A user-level config path nothing creates, so no audit reads the
-/// developer's own `~/.anc.toml`.
-const NO_HOME_CONFIG: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/no-home/.anc.toml");
+mod common;
 
 fn cmd() -> Command {
     let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
-    cmd.env("AGENTNATIVE_HOME_CONFIG", NO_HOME_CONFIG);
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
     cmd
 }
 

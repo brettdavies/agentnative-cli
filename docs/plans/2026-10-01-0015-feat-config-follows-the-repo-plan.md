@@ -121,7 +121,8 @@ A Cargo workspace root has a related, separate gap: `anc audit .` there finds no
 - AE1. Built binary in its checkout. Covers R1, R2.
   - **Given:** the xurl-rs checkout, whose root `.anc.toml` declares `post`, `like`, and the rest of the X verbs, and a
     built `target/release/xr`.
-  - **When:** `anc audit target/release/xr --principle 6` runs from any directory.
+  - **When:** anc audits the binary by its full path (`anc audit <checkout>/target/release/xr --principle 6`) from any
+    working directory.
   - **Then:** `p6-may-standard-names` passes with `using_domain_verbs: true`.
 - AE2. Nested package file. Covers R1, R7.
   - **Given:** a root `.anc.toml` declaring `post` and `crates/cli/.anc.toml` declaring `like`.
@@ -218,7 +219,7 @@ A Cargo workspace root has a related, separate gap: `anc audit .` there finds no
 ```mermaid
 flowchart TB
   T[audit target] --> R{--repo given?}
-  R -->|yes| CR[chain: home layer, then PATH/.anc.toml]
+  R -->|yes| CR[chain: home layer, then the --repo directory's .anc.toml]
   R -->|no| K{target is a file?}
   K -->|yes| SB[start: directory of the real file]
   K -->|no| SD[start: target directory]
@@ -309,15 +310,18 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
 - **Requirements:** R1, R2, R3, R4, R5, R6, R11
 - **Dependencies:** U2
 - **Files:** `src/cli.rs`, `src/main.rs`, `src/project.rs`, `src/audits/behavioral/standard_names.rs`,
-  `tests/standard_names_integration.rs`
+  `tests/standard_names_integration.rs`, `tests/integration.rs`, `tests/dogfood.rs`,
+  `tests/scorecard_metadata_security.rs`, `tests/scorecard_schema_v05.rs`, `tests/home_config_isolation_guard.rs` (new)
 - **Approach:**
   1. Add `--repo` per KTD5, with an `after_help` example for the fetched-repo case.
   2. Derive the start directory from `Project::discover`'s canonical path: its parent for a file, itself for a directory
      (R2).
   3. Resolve the home-layer path per KTD3 and the chain per U1 and U2, then store the result on `Project` (KTD6).
   4. Point `standard_names` at the stored result; it keeps warning on an invalid chain, now naming the file.
-  5. Have the integration file's `cmd()` helper set `AGENTNATIVE_HOME_CONFIG` to a temp path, so no test reads the real
-     home file.
+  5. Set `AGENTNATIVE_HOME_CONFIG` to a temp path in every test helper that spawns `anc audit`, in each test file
+     listed above, so no test reads the real home file (R5 applies the home layer to every audit, including dogfood).
+  6. Add a guard test that reads each test file and fails, naming the file, when it spawns `anc` with `audit` but never
+     sets `AGENTNATIVE_HOME_CONFIG`.
 - **Execution note:** Start with a failing integration test for AE1's shape: a staged repo with a root `.anc.toml` and
   the fixture binary in a nested `target/release/`, audited by binary path.
 - **Patterns to follow:** `stage_project`, `run_audit_and_extract`, and the shell fixture in
@@ -334,6 +338,7 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   - `AGENTNATIVE_REPO` set in place of the flag: same result as the flag.
   - `AGENTNATIVE_HOME_CONFIG` naming a temp file and a target outside any repo: the home file's verbs apply.
   - The three existing tests in the file still pass unchanged.
+  - The guard fails when a test file's spawn helper drops the variable, and passes on the finished tree.
 - **Verification:** AE1 holds against the real xurl-rs checkout with a locally built anc.
 
 ### U4. The config hint
@@ -386,7 +391,7 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
 | Lint            | `cargo clippy --all-targets -- -D warnings`                | every unit       | clean                                                          |
 | Tests           | `cargo test`                                               | every unit       | green                                                          |
 | Fixture tests   | `cargo test -- --ignored`                                  | U3, U4           | green                                                          |
-| Schema drift    | the scorecard schema test against `anc emit schema`        | U4               | committed schema matches                                       |
+| Schema drift    | `tests/scorecard_schema_v05.rs` against `anc emit schema`  | U4               | committed schema matches                                       |
 | Local CI mirror | `scripts/hooks/pre-push`                                   | before each push | green                                                          |
 | Consumer check  | a local anc build running AE1 against the xurl-rs checkout | U3               | `p6-may-standard-names` passes with `using_domain_verbs: true` |
 

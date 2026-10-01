@@ -1,9 +1,15 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+/// A user-level config path nothing creates, so no audit reads the
+/// developer's own `~/.anc.toml`.
+const NO_HOME_CONFIG: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/no-home/.anc.toml");
+
 /// Helper to build a Command for the anc binary.
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", NO_HOME_CONFIG);
+    cmd
 }
 
 /// Helper to get the path to a fixture relative to the project root.

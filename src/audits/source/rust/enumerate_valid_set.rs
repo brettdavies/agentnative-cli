@@ -229,6 +229,7 @@ fn main() {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: crate::anc_toml::AncConfigLoad::Absent,
         };
         assert!(EnumerateValidSetAudit.applicable(&project));
     }
@@ -248,6 +249,7 @@ fn main() {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: crate::anc_toml::AncConfigLoad::Absent,
         };
         assert!(!EnumerateValidSetAudit.applicable(&project));
     }

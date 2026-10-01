@@ -10,8 +10,14 @@
 use assert_cmd::Command;
 use serde_json::Value;
 
+/// A user-level config path nothing creates, so no audit reads the
+/// developer's own `~/.anc.toml`.
+const NO_HOME_CONFIG: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/no-home/.anc.toml");
+
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("anc binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", NO_HOME_CONFIG);
+    cmd
 }
 
 fn fixture_path(name: &str) -> String {

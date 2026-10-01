@@ -115,54 +115,65 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // Bare invocation (no args at all) is handled by clap's arg_required_else_help.
     // A flag-only invocation like `anc -q` parses successfully with `command =
     // None` — render help to stderr and exit 2 to mirror clap's contract.
-    let (path, command, binary_only, source_only, principle, output, include_tests, audit_profile) =
-        match cli.command {
-            Some(Commands::Audit {
-                path,
-                command,
-                binary,
-                source,
-                principle,
-                output,
-                include_tests,
-                audit_profile,
-            }) => (
-                path,
-                command,
-                binary,
-                source,
-                principle,
-                output,
-                include_tests,
-                audit_profile,
-            ),
-            Some(Commands::Completions { shell }) => {
+    let (
+        path,
+        command,
+        binary_only,
+        repo,
+        source_only,
+        principle,
+        output,
+        include_tests,
+        audit_profile,
+    ) = match cli.command {
+        Some(Commands::Audit {
+            path,
+            command,
+            binary,
+            repo,
+            source,
+            principle,
+            output,
+            include_tests,
+            audit_profile,
+        }) => (
+            path,
+            command,
+            binary,
+            repo,
+            source,
+            principle,
+            output,
+            include_tests,
+            audit_profile,
+        ),
+        Some(Commands::Completions { shell }) => {
+            let mut cmd = <Cli as clap::CommandFactory>::command();
+            generate(shell, &mut cmd, "anc", &mut std::io::stdout());
+            return Ok(0);
+        }
+        Some(Commands::Emit { artifact }) => {
+            return run_emit(artifact);
+        }
+        Some(Commands::Skill { cmd }) => {
+            return run_skill(cmd, json_alias);
+        }
+        None => {
+            if json_mode || json_alias {
+                let envelope = json_error::render_error(
+                    "usage",
+                    "missing-subcommand",
+                    "no subcommand provided; run with --help for usage",
+                    2,
+                );
+                eprintln!("{envelope}");
+            } else {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
-                generate(shell, &mut cmd, "anc", &mut std::io::stdout());
-                return Ok(0);
+                eprintln!("{}", cmd.render_help());
             }
-            Some(Commands::Emit { artifact }) => {
-                return run_emit(artifact);
-            }
-            Some(Commands::Skill { cmd }) => {
-                return run_skill(cmd, json_alias);
-            }
-            None => {
-                if json_mode || json_alias {
-                    let envelope = json_error::render_error(
-                        "usage",
-                        "missing-subcommand",
-                        "no subcommand provided; run with --help for usage",
-                        2,
-                    );
-                    eprintln!("{envelope}");
-                } else {
-                    let mut cmd = <Cli as clap::CommandFactory>::command();
-                    eprintln!("{}", cmd.render_help());
-                }
-                return Ok(2);
-            }
-        };
+            return Ok(2);
+        }
+    };
 
     // Run-level timing starts at the top of the Audit arm (R4): wall-clock
     // milliseconds and an RFC 3339 UTC timestamp. We use `OffsetDateTime` for
@@ -193,6 +204,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
 
     let mut project = Project::discover(&resolved_path)?;
     project.include_tests = include_tests;
+    project.anc_config = anc_toml::load_for_target(
+        &project.path,
+        anc_toml::home_layer_path().as_deref(),
+        repo.as_deref(),
+    );
 
     // Collect applicable audits based on flags and auto-detection
     let mut all_audits: Vec<Box<dyn Audit>> = Vec::new();

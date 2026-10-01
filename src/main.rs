@@ -202,8 +202,10 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         None => path,
     };
 
-    let mut project = Project::discover(&resolved_path)?;
-    project.include_tests = include_tests;
+    let mut project = Project::discover_with_tests(&resolved_path, include_tests)?;
+    for warning in &project.inventory.warnings {
+        eprintln!("warning: {warning}");
+    }
     let home = anc_toml::home_layer();
     if let Some(warning) = home.as_ref().and_then(anc_toml::HomeLayer::missing_warning) {
         eprintln!("warning: {warning}");

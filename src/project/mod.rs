@@ -10,8 +10,11 @@ use serde::Serialize;
 use crate::anc_toml::ResolvedConfig;
 use crate::runner::{BinaryRunner, HelpOutput};
 
-#[cfg_attr(not(test), expect(dead_code))]
+mod inventory;
+mod scan;
 mod workspace;
+
+pub use inventory::Inventory;
 
 /// Maximum directory recursion depth for source file walk.
 const MAX_DEPTH: usize = 20;
@@ -25,6 +28,30 @@ pub enum Language {
     Python,
     Go,
     Node,
+}
+
+impl Language {
+    /// The manifest file that makes a directory a package of this language.
+    pub fn manifest_name(self) -> &'static str {
+        match self {
+            Language::Rust => "Cargo.toml",
+            Language::Python => "pyproject.toml",
+            Language::Go => "go.mod",
+            Language::Node => "package.json",
+        }
+    }
+
+    /// The language whose manifest is named `file_name`.
+    pub fn of_manifest(file_name: &std::ffi::OsStr) -> Option<Language> {
+        [
+            Language::Rust,
+            Language::Python,
+            Language::Go,
+            Language::Node,
+        ]
+        .into_iter()
+        .find(|lang| file_name == lang.manifest_name())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +70,8 @@ pub struct Project {
     pub(crate) help_output: OnceLock<Option<HelpOutput>>,
     /// The merged `.anc.toml` chain for this target, resolved once per run.
     pub anc_config: ResolvedConfig,
+    /// Every package under a directory target; empty for a binary target.
+    pub inventory: Inventory,
 }
 
 impl std::fmt::Debug for Project {
@@ -60,12 +89,20 @@ impl std::fmt::Debug for Project {
             )
             .field("help_probed", &self.help_output.get().is_some())
             .field("anc_config", &self.anc_config)
+            .field("packages", &self.inventory.packages.len())
             .finish()
     }
 }
 
 impl Project {
+    #[cfg(test)]
     pub fn discover(path: &Path) -> Result<Project> {
+        Self::discover_with_tests(path, false)
+    }
+
+    /// Discover `path`; `include_tests` lets the package scan and the source
+    /// walk enter `tests` directories.
+    pub fn discover_with_tests(path: &Path, include_tests: bool) -> Result<Project> {
         let path = path
             .canonicalize()
             .with_context(|| format!("path does not exist: {}", path.display()))?;
@@ -84,14 +121,16 @@ impl Project {
                 binary_paths: vec![path],
                 manifest_path: None,
                 runner,
-                include_tests: false,
+                include_tests,
                 parsed_files: OnceLock::new(),
                 help_output: OnceLock::new(),
                 anc_config: ResolvedConfig::default(),
+                inventory: Inventory::default(),
             });
         }
 
         // Directory path — detect language from manifest
+        let inventory = inventory::inventory(&path, include_tests);
         let (language, manifest_path) = detect_language(&path);
         let binary_paths = discover_binaries(&path, language, manifest_path.as_deref());
 
@@ -107,10 +146,11 @@ impl Project {
             binary_paths,
             manifest_path,
             runner,
-            include_tests: false,
+            include_tests,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
             anc_config: ResolvedConfig::default(),
+            inventory,
         })
     }
 

@@ -167,6 +167,7 @@ mod tests {
             parsed_files: OnceLock::from(parsed),
             help_output: OnceLock::new(),
             anc_config: Default::default(),
+            inventory: Default::default(),
         }
     }
 

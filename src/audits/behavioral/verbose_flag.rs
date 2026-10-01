@@ -49,6 +49,7 @@ impl Audit for VerboseFlagAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

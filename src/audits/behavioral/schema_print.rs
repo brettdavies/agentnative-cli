@@ -77,6 +77,7 @@ impl Audit for SchemaPrintAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

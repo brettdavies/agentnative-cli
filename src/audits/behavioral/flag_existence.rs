@@ -85,6 +85,7 @@ impl Audit for FlagExistenceAudit {
                 ),
                 confidence: Confidence::High,
                 mitigation: None,
+                config_hint: None,
             });
         }
 
@@ -115,6 +116,7 @@ impl Audit for FlagExistenceAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

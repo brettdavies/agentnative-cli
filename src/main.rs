@@ -266,6 +266,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 )),
                 confidence: Confidence::High,
                 mitigation: None,
+                config_hint: None,
             });
             continue;
         }
@@ -279,6 +280,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 status: AuditStatus::Error(e.to_string()),
                 confidence: Confidence::High,
                 mitigation: None,
+                config_hint: None,
             },
         };
         results.push(result);

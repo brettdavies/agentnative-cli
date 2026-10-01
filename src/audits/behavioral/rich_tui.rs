@@ -66,6 +66,7 @@ impl Audit for RichTuiAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

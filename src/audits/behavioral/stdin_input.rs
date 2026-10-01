@@ -77,6 +77,7 @@ impl Audit for StdinInputAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

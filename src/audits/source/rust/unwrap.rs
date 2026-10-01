@@ -69,6 +69,7 @@ impl Audit for UnwrapAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

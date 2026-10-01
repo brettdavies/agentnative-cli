@@ -85,6 +85,7 @@ impl Audit for EnvFlagsAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

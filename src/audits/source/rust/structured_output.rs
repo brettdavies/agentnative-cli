@@ -80,6 +80,7 @@ impl Audit for StructuredOutputAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

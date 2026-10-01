@@ -54,6 +54,7 @@ impl Audit for LimitFlagAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

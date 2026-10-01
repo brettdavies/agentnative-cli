@@ -262,6 +262,7 @@ impl Audit for JsonErrorsAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

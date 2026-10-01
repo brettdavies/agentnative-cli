@@ -80,6 +80,7 @@ impl Audit for EnumerateValidSetAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }
@@ -229,7 +230,7 @@ fn main() {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
-            anc_config: crate::anc_toml::AncConfigLoad::Absent,
+            anc_config: Default::default(),
         };
         assert!(EnumerateValidSetAudit.applicable(&project));
     }
@@ -249,7 +250,7 @@ fn main() {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
-            anc_config: crate::anc_toml::AncConfigLoad::Absent,
+            anc_config: Default::default(),
         };
         assert!(!EnumerateValidSetAudit.applicable(&project));
     }

@@ -133,6 +133,7 @@ impl Audit for ConsistentNamingAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

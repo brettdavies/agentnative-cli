@@ -386,6 +386,7 @@ mod tests {
                 status: AuditStatus::Pass,
                 confidence: Confidence::High,
                 mitigation: None,
+                config_hint: None,
             })
         }
         fn covers(&self) -> &'static [&'static str] {

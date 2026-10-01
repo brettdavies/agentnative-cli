@@ -101,6 +101,26 @@ pub struct AuditResult {
     /// reuse the slot instead of growing parallel fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mitigation: Option<MitigationInfo>,
+    /// The `.anc.toml` setting that would clear this row's warning, attached
+    /// when no config supplied it. `None` for every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_hint: Option<ConfigHint>,
+}
+
+/// A ready-to-add `.anc.toml` setting for a warning config could clear.
+/// Today's only producer is `p6-standard-names`, for a CLI whose flagged
+/// verbs no `[p6] domain_verbs` covered.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ConfigHint {
+    /// The file the setting belongs in, named the way evidence names files:
+    /// `.anc.toml` at the repository root, or `~/.anc.toml` outside any
+    /// repository.
+    pub file: String,
+    /// The `[p6] domain_verbs` entries to add: the flagged verbs, in
+    /// `--help` order.
+    pub domain_verbs: Vec<String>,
+    /// The README section on where anc looks for `.anc.toml`.
+    pub docs: String,
 }
 
 /// Transparency metadata attached to an `AuditResult` when its verdict

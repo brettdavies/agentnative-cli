@@ -49,6 +49,7 @@ impl Audit for RawFlagAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

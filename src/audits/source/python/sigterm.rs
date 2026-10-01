@@ -99,6 +99,7 @@ impl Audit for SigtermPythonAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

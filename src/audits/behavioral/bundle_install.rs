@@ -55,6 +55,7 @@ impl Audit for BundleInstallAudit {
                 status: AuditStatus::Pass,
                 confidence: Confidence::High,
                 mitigation: None,
+                config_hint: None,
             });
         }
 
@@ -71,6 +72,7 @@ impl Audit for BundleInstallAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

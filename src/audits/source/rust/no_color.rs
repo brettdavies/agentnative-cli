@@ -73,6 +73,7 @@ impl Audit for NoColorSourceAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

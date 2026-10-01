@@ -62,6 +62,7 @@ impl Audit for ReadWriteDistinctionAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

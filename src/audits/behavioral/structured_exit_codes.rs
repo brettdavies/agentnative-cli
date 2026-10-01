@@ -55,6 +55,7 @@ impl Audit for StructuredExitCodesAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

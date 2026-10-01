@@ -105,6 +105,7 @@ impl Audit for TtyDetectionAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

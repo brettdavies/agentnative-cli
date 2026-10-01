@@ -58,6 +58,7 @@ impl Audit for NoPagerBehavioralAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

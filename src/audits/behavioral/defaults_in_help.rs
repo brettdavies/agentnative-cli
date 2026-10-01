@@ -51,6 +51,7 @@ impl Audit for DefaultsInHelpAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

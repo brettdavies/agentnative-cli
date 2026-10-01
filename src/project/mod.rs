@@ -10,6 +10,9 @@ use serde::Serialize;
 use crate::anc_toml::ResolvedConfig;
 use crate::runner::{BinaryRunner, HelpOutput};
 
+#[cfg_attr(not(test), expect(dead_code))]
+mod workspace;
+
 /// Maximum directory recursion depth for source file walk.
 const MAX_DEPTH: usize = 20;
 /// Maximum number of source files to collect.

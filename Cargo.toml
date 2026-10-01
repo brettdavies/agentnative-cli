@@ -49,6 +49,12 @@ anstream = "1"
 # Manifest parsing
 toml = "0.8"
 
+# Workspace discovery: member-glob expansion and the gitignore-aware tree
+# scan. Both already compile in through `ast-grep-language`; the
+# requirements match its lockfile versions so the binary gains no code.
+globset = "0.4.18"
+ignore = "0.4.25"
+
 # Serialization. `preserve_order` keeps JSON object keys in insertion order:
 # the web scorecard's evidence objects are open maps whose key order is part
 # of the byte-for-byte parity contract with the anc.dev engine.

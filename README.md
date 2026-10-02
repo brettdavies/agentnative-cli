@@ -241,9 +241,11 @@ anc audit . --bin xr --binary   # both
 
 Behavioral audits probe the graded binary. Source audits run for every language present, Rust and Python today, over
 that language's files under the audit root, with the scan's skip rules; when both languages run an audit for the same
-requirement, the scorecard keeps the more severe result. Manifest-reading project audits, and the scorecard's tool name
-and version, read the graded binary's package. With nothing graded they read the one package that declares a binary;
-when several do, those audits skip and name the packages.
+requirement, the scorecard keeps the more severe result. They also skip example programs: an `examples` directory beside
+a package manifest or at the audit root builds apart from the binary and never ships in it, so it is not read, with or
+without `--include-tests`. A source module named `examples` deeper in a package is still read. Manifest-reading project
+audits, and the scorecard's tool name and version, read the graded binary's package. With nothing graded they read the
+one package that declares a binary; when several do, those audits skip and name the packages.
 
 ## The 8 Principles
 

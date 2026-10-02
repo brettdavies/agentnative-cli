@@ -18,7 +18,8 @@ candidate, or stops with `binary-ambiguous` and one `--bin` command each. `Proje
 `manifest_path`, and `binary_paths` from the graded package, so manifest-reading audits and the tool identity follow it;
 with nothing graded, `Project::anchor_ungraded` picks the one bin-declaring package, and with several,
 `Project::manifest_skip` gives those audits their Skip evidence. Source audits run once per language present
-(`Project::languages`), reading `Project::parsed_files(language)`, and `audits::source::merge_shared` folds an audit id
+(`Project::languages`), reading `Project::parsed_files(language)` from `scan::source_walker`, which also skips an
+`examples` directory beside a manifest or at the root, and `audits::source::merge_shared` folds an audit id
 both languages report into one row. The README's "What a directory audit grades" section is the user-facing contract.
 
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`

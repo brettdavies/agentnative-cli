@@ -128,7 +128,7 @@ pub enum Commands {
 
 Defaults: path = `.`, output = text, no principle filter.
 
-Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`.")]
+Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml")]
     Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
@@ -379,5 +379,19 @@ mod tests {
                 "clap value name and registry kebab-case must match for every variant",
             );
         }
+    }
+
+    #[test]
+    fn audit_help_links_the_config_docs() {
+        let cli = <Cli as clap::CommandFactory>::command();
+        let audit = cli.find_subcommand("audit").expect("audit subcommand");
+        let help = audit
+            .get_after_help()
+            .expect("audit after_help")
+            .to_string();
+        assert!(
+            help.contains(crate::anc_toml::DOCS_URL),
+            "audit help: {help}"
+        );
     }
 }

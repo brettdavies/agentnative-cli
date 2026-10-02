@@ -142,7 +142,7 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 
 ## Scorecard JSON fields
 
-`src/scorecard/mod.rs` emits `schema_version: "0.8"`. The schema evolves additively during the `0.x` pre-launch window;
+`src/scorecard/mod.rs` emits `schema_version: "0.9"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
 - `0.2`: `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
@@ -156,6 +156,8 @@ consumers feature-detect each addition rather than pinning exact shape. Cumulati
 - `0.8`: optional `using_domain_verbs: bool` and `domain_match_count: usize` on each result row, populated when
   `p6-standard-names` Passes via per-CLI `.anc.toml [p6] domain_verbs` recognition; Pass evidence string is populated
   with the built-in vs domain ratio. Fields are absent (not `null`) from rows that did not consult `domain_verbs`.
+- `0.9`: optional `config_hint` on a result row whose warning a `.anc.toml` setting would clear. The `0.9` schema
+  document declares every row field and value the runtime emits, the `0.8` row fields and `low` confidence included.
 
 Existing field semantics:
 
@@ -224,6 +226,23 @@ Existing field semantics:
   assistance, conditional-applicability config) can populate `MitigationInfo` with the same fields rather than growing
   parallel typed carriers. The semantic contract is "this verdict depended on a self-declared opt-in; here is what
   assisted."
+
+`0.9` addition (`ConfigHint` carrier on `AuditResult`):
+
+- `ConfigHint { files, domain_verbs, docs }` is attached to an `AuditResult` when a warning is one a `.anc.toml`
+  setting would clear and no config supplied it. Today's only producer is `standard_names.rs`: a `p6-standard-names`
+  Warn with no `domain_verbs` applied carries the flagged verbs (lowercase, `--help` order), the files the setting can
+  go in, and `anc_toml::DOCS_URL`. A Warn that config shaped, a Pass, and the Warn an unreadable chain produces carry
+  none.
+- `files` lists `ConfigFile { file, scope }`, the repository's `.anc.toml` first, then the user-level file when one is
+  configured. `scope` is `repository` (the git root or `--repo`), `tool-repository` (a target outside any repository:
+  the tool's own checkout, read through `--repo`), or `user` (every audit on the machine). `file` follows the evidence
+  display rule: `.anc.toml`, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`, never an absolute path.
+  `Project.anc_config.settings_files` holds them, resolved once per run with the chain. Where anc looks is documented
+  once, in the README's [Configuration](README.md#configuration-anctoml) section.
+- `AuditResultView.config_hint` mirrors the carrier with `skip_serializing_if = "Option::is_none"`, the
+  `audience_reason` pattern: absent from every row without a hint. Text mode prints it under the row, with the evidence
+  lines: one `hint:` line, then one line per file saying which audits read it.
 
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is

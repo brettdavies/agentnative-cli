@@ -96,11 +96,8 @@ fn write_fixture(path: &Path, commands: &[&str]) {
     }
 }
 
-/// Stage `dir` as a Python project (`pyproject.toml`) whose `dist/`
-/// directory holds the fixture binary. `Project::discover` resolves
-/// directory targets via manifest detection; a Python manifest is the
-/// cheapest way to opt into `discover_simple_binaries`, which picks up
-/// every executable under `dist/` as a runner candidate.
+/// Stage `dir` as a Python project whose `pyproject.toml` declares the
+/// script `x`, built as the fixture binary at `.venv/bin/x`.
 fn stage_project(dir: &std::path::Path) -> PathBuf {
     stage_project_with(dir, FIXTURE_COMMANDS)
 }
@@ -108,10 +105,10 @@ fn stage_project(dir: &std::path::Path) -> PathBuf {
 fn stage_project_with(dir: &Path, commands: &[&str]) -> PathBuf {
     fs::write(
         dir.join("pyproject.toml"),
-        "[project]\nname = \"x\"\nversion = \"0.1.0\"\n",
+        "[project]\nname = \"x\"\nversion = \"0.1.0\"\n\n[project.scripts]\nx = \"x:main\"\n",
     )
     .expect("write pyproject.toml");
-    let bin = dir.join("dist").join("x");
+    let bin = dir.join(".venv").join("bin").join("x");
     write_fixture(&bin, commands);
     bin
 }

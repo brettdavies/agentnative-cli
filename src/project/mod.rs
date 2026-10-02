@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::anc_toml::ResolvedConfig;
 use crate::runner::{BinaryRunner, HelpOutput};
 
+mod bins;
 mod inventory;
 mod scan;
 mod workspace;
@@ -132,7 +133,11 @@ impl Project {
         // Directory path — detect language from manifest
         let inventory = inventory::inventory(&path, include_tests);
         let (language, manifest_path) = detect_language(&path);
-        let binary_paths = discover_binaries(&path, language, manifest_path.as_deref());
+        let binary_paths: Vec<PathBuf> = inventory
+            .candidates
+            .iter()
+            .map(|candidate| candidate.path.clone())
+            .collect();
 
         let runner = if binary_paths.is_empty() {
             None
@@ -215,110 +220,6 @@ fn detect_language(dir: &Path) -> (Option<Language>, Option<PathBuf>) {
         }
     }
     (None, None)
-}
-
-fn discover_binaries(
-    dir: &Path,
-    language: Option<Language>,
-    manifest_path: Option<&Path>,
-) -> Vec<PathBuf> {
-    match language {
-        Some(Language::Rust) => discover_rust_binaries(dir, manifest_path),
-        Some(Language::Python) => discover_simple_binaries(dir, &["dist", "build"]),
-        Some(Language::Go) => {
-            // Check for binary with same name as directory
-            let mut paths = Vec::new();
-            if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
-                let bin = dir.join(name);
-                if bin.exists() {
-                    paths.push(bin);
-                }
-            }
-            paths
-        }
-        Some(Language::Node) => discover_simple_binaries(dir, &["node_modules/.bin"]),
-        None => vec![],
-    }
-}
-
-fn discover_rust_binaries(dir: &Path, manifest_path: Option<&Path>) -> Vec<PathBuf> {
-    let mut bin_names = Vec::new();
-
-    if let Some(manifest) = manifest_path
-        && let Ok(content) = fs::read_to_string(manifest)
-        && let Ok(doc) = content.parse::<toml::Table>()
-    {
-        // Check [[bin]] entries
-        if let Some(bins) = doc.get("bin").and_then(|b| b.as_array()) {
-            for bin in bins {
-                if let Some(name) = bin.get("name").and_then(|n| n.as_str()) {
-                    bin_names.push(name.to_string());
-                }
-            }
-        }
-
-        // Fallback to package name if no [[bin]]
-        if bin_names.is_empty()
-            && let Some(name) = doc
-                .get("package")
-                .and_then(|p| p.get("name"))
-                .and_then(|n| n.as_str())
-        {
-            bin_names.push(name.to_string());
-        }
-    }
-
-    let mut paths = Vec::new();
-    for name in &bin_names {
-        // Pick the newer of release/debug by mtime so dev workflows
-        // (where `cargo run`/`cargo test` only refresh debug) don't probe
-        // a stale release binary. CI scenarios — where typically only one
-        // profile is built — fall through cleanly to the existence check.
-        // Documented at
-        // docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md.
-        let release = dir.join("target/release").join(name);
-        let debug = dir.join("target/debug").join(name);
-        let pick = match (release.exists(), debug.exists()) {
-            (true, true) => Some(pick_newer_artifact(&release, &debug)),
-            (true, false) => Some(release),
-            (false, true) => Some(debug),
-            (false, false) => None,
-        };
-        if let Some(p) = pick {
-            paths.push(p);
-        }
-    }
-    paths
-}
-
-/// Return the path with the newer mtime. Ties and missing-mtime fall back
-/// to `b` (called with the debug path) — matches cargo's dev-flow default
-/// where debug is the canonical fresh artifact.
-fn pick_newer_artifact(a: &Path, b: &Path) -> PathBuf {
-    let a_m = fs::metadata(a).and_then(|m| m.modified()).ok();
-    let b_m = fs::metadata(b).and_then(|m| m.modified()).ok();
-    match (a_m, b_m) {
-        (Some(am), Some(bm)) if am > bm => a.to_path_buf(),
-        _ => b.to_path_buf(),
-    }
-}
-
-fn discover_simple_binaries(dir: &Path, subdirs: &[&str]) -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    for subdir in subdirs {
-        let bin_dir = dir.join(subdir);
-        if bin_dir.is_dir()
-            && let Ok(entries) = fs::read_dir(&bin_dir)
-        {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_file() {
-                    paths.push(p);
-                }
-            }
-        }
-    }
-    paths
 }
 
 fn walk_source_files(dir: &Path, ext: &str, include_tests: bool) -> Result<Vec<PathBuf>> {
@@ -517,6 +418,8 @@ version = "0.1.0"
         )
         .expect("write Cargo.toml");
 
+        fs::create_dir_all(dir.join("src")).expect("mkdir src");
+        fs::write(dir.join("src/main.rs"), "fn main() {}\n").expect("write src/main.rs");
         let release_bin = dir.join("target/release/myapp");
         let debug_bin = dir.join("target/debug/myapp");
         fs::write(&release_bin, "#!/bin/sh\necho stale").expect("write release binary");
@@ -565,6 +468,8 @@ version = "0.1.0"
         )
         .expect("write Cargo.toml");
 
+        fs::create_dir_all(dir.join("src")).expect("mkdir src");
+        fs::write(dir.join("src/main.rs"), "fn main() {}\n").expect("write src/main.rs");
         let release_bin = dir.join("target/release/myapp");
         let debug_bin = dir.join("target/debug/myapp");
         fs::write(&release_bin, "#!/bin/sh\necho fresh").expect("write release binary");

@@ -159,8 +159,10 @@ gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0" --body-
 ```
 
 The result is a single commit whose diff against `main` is the release, with `main` as an ancestor, so the PR merges
-with zero conflicts. When it merges, the deploy / publish workflow picks up the push to `main`. Auto-delete removes
-`release/v0.2.0` from the remote on merge. `dev` is untouched.
+with zero conflicts. The merge publishes nothing: no workflow in this repo triggers on a push to `main`, and every
+artifact comes from the annotated tag (see [§ Tagging and publishing](#tagging-and-publishing)). Merge and tag in one
+sitting, so `main` never documents a version that has no release to install. Auto-delete removes `release/v0.2.0` from
+the remote on merge. `dev` is untouched.
 
 → Rationale (why overlay, not merge; why cut from `main`):
 [`RELEASES-RATIONALE.md` § Branching model](./RELEASES-RATIONALE.md#branching-model). CHANGELOG mechanics:

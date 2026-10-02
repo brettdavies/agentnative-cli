@@ -359,20 +359,20 @@ def dev_release_anchor(base: str, prev_tag: str | None) -> str | None:
 
     The backport commit is the boundary: everything after it on the integration
     branch belongs to this release. Its subject reads `sync dev after <tag>`,
-    or `backport <tag> artifacts` from older backport scripts. Falling back to
-    the tag covers a repo whose previous release was never synced back.
+    or `backport <tag> artifacts` from older backport scripts. Only the subject
+    counts, because a later commit's message can quote it. Falling back to the
+    tag covers a repo whose previous release was never synced back.
     """
     if not prev_tag:
         return None
-    proc = run(
-        [
-            "git", "log", f"origin/{base}", "--format=%H", "--fixed-strings",
-            "--grep", f"sync dev after {prev_tag}",
-            "--grep", f"backport {prev_tag} artifacts",
-        ]
+    backport = re.compile(
+        rf"^chore\(release\): (sync dev after|backport) {re.escape(prev_tag)}\b"
     )
-    for line in proc.stdout.split():
-        return line
+    proc = run(["git", "log", f"origin/{base}", "--format=%H %s"])
+    for line in proc.stdout.splitlines():
+        sha, _, subject = line.partition(" ")
+        if backport.match(subject):
+            return sha
     found = run(["git", "rev-parse", "--verify", "--quiet", prev_tag]).stdout.strip()
     return prev_tag if found else None
 

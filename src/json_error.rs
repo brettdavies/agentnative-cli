@@ -22,6 +22,7 @@
 
 use std::ffi::OsString;
 
+use serde::Serialize;
 use serde_json::json;
 
 /// True iff the raw argv requests JSON output via `--json`, `--output json`,
@@ -57,22 +58,103 @@ pub fn json_mode_in_argv(argv: &[OsString]) -> bool {
     false
 }
 
+/// The README section listing every flag, linked from a `show-help` step.
+pub const CLI_REFERENCE_DOCS: &str = "https://github.com/brettdavies/agentnative-cli#cli-reference";
+
+/// The README section on how a directory audit picks its binary, linked from
+/// the binary-selection errors.
+pub const BIN_SELECTION_DOCS: &str =
+    "https://github.com/brettdavies/agentnative-cli#one-binary-several-or-none";
+
+/// What the caller does next, carried by every error envelope as
+/// `next_step`. A step carries `command`, runnable verbatim by a non-TTY
+/// caller, or `template`, whose angle-bracket placeholder only the caller
+/// can fill; never both.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NextStep {
+    pub action: NextAction,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docs: Option<&'static str>,
+}
+
+/// The closed set of `next_step.action` values. A newer release can add
+/// one, so a consumer treats an unknown action as its default branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NextAction {
+    /// Read the help `command` prints.
+    ShowHelp,
+    /// Rerun with `--bin`: `template` holds the placeholder form, and the
+    /// envelope's `candidates` hold one runnable command per binary.
+    ChooseBin,
+    /// Run `command`, the same invocation corrected.
+    Rerun,
+}
+
+impl NextStep {
+    pub fn show_help(command: String) -> Self {
+        Self {
+            action: NextAction::ShowHelp,
+            command: Some(command),
+            template: None,
+            docs: Some(CLI_REFERENCE_DOCS),
+        }
+    }
+
+    pub fn choose_bin(template: String) -> Self {
+        Self {
+            action: NextAction::ChooseBin,
+            command: None,
+            template: Some(template),
+            docs: Some(BIN_SELECTION_DOCS),
+        }
+    }
+
+    pub fn rerun(command: String) -> Self {
+        Self {
+            action: NextAction::Rerun,
+            command: Some(command),
+            template: None,
+            docs: Some(BIN_SELECTION_DOCS),
+        }
+    }
+}
+
 /// Render a JSON error envelope as a single-line string. Required keys are
 /// `error`, `kind`, and `message` per `p2-must-json-errors`. `exit_code` is
 /// added so consumers can branch on it without re-deriving from the host
-/// process's exit status.
-pub fn render_error(kind: &str, error: &str, message: &str, exit_code: i32) -> String {
-    render_error_with(kind, error, message, exit_code, serde_json::Map::new())
+/// process's exit status, and `next_step` so they can recover without
+/// parsing `message`.
+pub fn render_error(
+    kind: &str,
+    error: &str,
+    message: &str,
+    exit_code: i32,
+    next_step: &NextStep,
+) -> String {
+    render_error_with(
+        kind,
+        error,
+        message,
+        exit_code,
+        next_step,
+        serde_json::Map::new(),
+    )
 }
 
 /// [`render_error`] plus further top-level fields, for an error whose
 /// recovery needs structured data, such as the `candidates` of
-/// `binary-ambiguous`.
+/// `binary-ambiguous`, or that echoes the offending value.
 pub fn render_error_with(
     kind: &str,
     error: &str,
     message: &str,
     exit_code: i32,
+    next_step: &NextStep,
     extra: serde_json::Map<String, serde_json::Value>,
 ) -> String {
     let mut envelope = json!({
@@ -80,11 +162,34 @@ pub fn render_error_with(
         "error": error,
         "message": message,
         "exit_code": exit_code,
+        "next_step": next_step,
     });
     if let Some(fields) = envelope.as_object_mut() {
         fields.extend(extra);
     }
     envelope.to_string()
+}
+
+/// The offending argument and value a clap error names, as envelope fields:
+/// `argument` (the flag or positional) and `value` (the rejected value or
+/// the unrecognized subcommand), each only when clap reports it.
+pub fn clap_offending_fields(error: &clap::Error) -> serde_json::Map<String, serde_json::Value> {
+    use clap::error::{ContextKind, ContextValue};
+    let text = |kind| match error.get(kind) {
+        Some(ContextValue::String(s)) => Some(s.clone()),
+        Some(ContextValue::Strings(v)) => v.first().cloned(),
+        _ => None,
+    };
+    let mut fields = serde_json::Map::new();
+    if let Some(argument) = text(ContextKind::InvalidArg) {
+        fields.insert("argument".into(), argument.into());
+    }
+    if let Some(value) =
+        text(ContextKind::InvalidValue).or_else(|| text(ContextKind::InvalidSubcommand))
+    {
+        fields.insert("value".into(), value.into());
+    }
+    fields
 }
 
 /// Render a JSON help envelope wrapping clap's rendered text.
@@ -210,12 +315,37 @@ mod tests {
 
     #[test]
     fn error_envelope_has_required_keys() {
-        let s = render_error("usage", "unknown-argument", "unknown flag --bad", 2);
+        let s = render_error(
+            "usage",
+            "unknown-argument",
+            "unknown flag --bad",
+            2,
+            &NextStep::show_help("anc audit --help".into()),
+        );
         let obj = parse_obj(&s);
         assert!(obj.contains_key("error"));
         assert!(obj.contains_key("kind"));
         assert!(obj.contains_key("message"));
         assert_eq!(obj["exit_code"], 2);
+        assert_eq!(
+            obj["next_step"],
+            json!({"action": "show-help", "command": "anc audit --help", "docs": CLI_REFERENCE_DOCS})
+        );
+    }
+
+    #[test]
+    fn a_step_carries_a_command_or_a_template_never_both() {
+        let steps = [
+            NextStep::show_help("anc --help".into()),
+            NextStep::choose_bin("anc audit . --bin <name>".into()),
+            NextStep::rerun("anc audit ./x".into()),
+        ];
+        for step in steps {
+            assert!(
+                step.command.is_some() != step.template.is_some(),
+                "{step:?}"
+            );
+        }
     }
 
     #[test]

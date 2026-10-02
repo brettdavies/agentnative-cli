@@ -1,6 +1,6 @@
 //! Choosing the binary a directory audit grades.
 
-use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::path::Path;
 
 use serde::Serialize;
@@ -51,13 +51,15 @@ pub struct Choice {
     pub package: String,
     /// The built binary, relative to the audit root.
     pub path: String,
-    /// `anc audit <dir> --bin <name>`, runnable as printed.
+    /// The caller's invocation with `--bin <name>`, runnable as printed.
     pub command: String,
 }
 
-/// A [`Choice`] for every candidate. `dir` is the target as the operator
-/// typed it. A candidate whose name another shares is named by its path.
-pub fn choices(candidates: &[Candidate], root: &Path, dir: &OsStr) -> Vec<Choice> {
+/// A [`Choice`] for every candidate. `rerun` is the caller's invocation
+/// without `--bin` ([`crate::argv::rerun_argv`]); each command adds its own
+/// `--bin`, so it keeps every other flag the caller passed. A candidate
+/// whose name another shares is named by its path.
+pub fn choices(candidates: &[Candidate], root: &Path, rerun: &[OsString]) -> Vec<Choice> {
     candidates
         .iter()
         .map(|candidate| {
@@ -72,18 +74,13 @@ pub fn choices(candidates: &[Candidate], root: &Path, dir: &OsStr) -> Vec<Choice
             } else {
                 candidate.name.clone()
             };
-            let args = [
-                "anc".as_ref(),
-                "audit".as_ref(),
-                dir,
-                "--bin".as_ref(),
-                bin.as_ref(),
-            ];
+            let mut args = rerun.to_vec();
+            args.extend([OsString::from("--bin"), OsString::from(bin)]);
             Choice {
                 name: candidate.name.clone(),
                 package: candidate.package.clone(),
                 path,
-                command: format_invocation(&args.map(OsStr::to_os_string)),
+                command: format_invocation(&args),
             }
         })
         .collect()

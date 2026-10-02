@@ -95,6 +95,10 @@ fn two_binary_workspace() -> tempfile::TempDir {
     tmp
 }
 
+#[cfg(unix)]
+const BIN_SELECTION_DOCS: &str =
+    "https://github.com/brettdavies/agentnative-cli#one-binary-several-or-none";
+
 fn stderr_of(output: &std::process::Output) -> String {
     String::from_utf8(output.stderr.clone()).expect("stderr valid UTF-8")
 }
@@ -155,12 +159,15 @@ fn two_built_binaries_in_json_mode_name_each_candidate() {
         .expect("xr is a candidate");
     assert_eq!(xr["package"], "xr", "{envelope}");
     assert_eq!(xr["path"], "target/release/xr", "{envelope}");
-    assert_eq!(xr["command"], "anc audit . --bin xr", "{envelope}");
+    assert_eq!(
+        xr["command"], "anc audit . --output json --bin xr",
+        "{envelope}"
+    );
     assert!(
         candidates.iter().any(|c| c["name"] == "xdk-consumer-check"
             && c["package"] == "xdk"
             && c["path"] == "target/debug/xdk-consumer-check"
-            && c["command"] == "anc audit . --bin xdk-consumer-check"),
+            && c["command"] == "anc audit . --output json --bin xdk-consumer-check"),
         "{envelope}"
     );
 }
@@ -262,6 +269,16 @@ fn bin_beside_a_command_or_a_binary_path_is_a_usage_error() {
     let envelope = json_of(stderr_of(&with_path).trim().as_bytes());
     assert_eq!(envelope["kind"], "usage", "{envelope}");
     assert_eq!(envelope["error"], "bin-needs-directory", "{envelope}");
+    assert_eq!(envelope["bin"], "xr", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "rerun",
+            "command": format!("anc audit {} --output json", binary.display()),
+            "docs": BIN_SELECTION_DOCS,
+        }),
+        "{envelope}"
+    );
 }
 
 #[test]
@@ -352,4 +369,123 @@ fn no_built_binary_warns_with_the_declared_bins_and_the_ways_forward() {
             .any(|row| row["layer"] == "source"),
         "source audits still run: {card}"
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn the_ambiguity_envelope_says_what_to_run_next() {
+    let tmp = two_binary_workspace();
+
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args(["audit", ".", "--output", "json"])
+        .output()
+        .expect("spawn anc");
+
+    let envelope = json_of(stderr_of(&output).trim().as_bytes());
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "choose-bin",
+            "template": "anc audit . --output json --bin <name>",
+            "docs": BIN_SELECTION_DOCS,
+        }),
+        "{envelope}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn an_unknown_bin_envelope_echoes_the_name_and_keeps_the_callers_flags() {
+    let tmp = two_binary_workspace();
+
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args([
+            "audit",
+            ".",
+            "--principle",
+            "6",
+            "--bin=nope",
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("spawn anc");
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let envelope = json_of(stderr_of(&output).trim().as_bytes());
+    assert_eq!(envelope["error"], "unknown-bin", "{envelope}");
+    assert_eq!(envelope["bin"], "nope", "{envelope}");
+    assert_eq!(envelope["next_step"]["action"], "choose-bin", "{envelope}");
+    let commands: Vec<&str> = envelope["candidates"]
+        .as_array()
+        .expect("candidates array")
+        .iter()
+        .filter_map(|c| c["command"].as_str())
+        .collect();
+    for expected in [
+        "anc audit . --principle 6 --output json --bin xr",
+        "anc audit . --principle 6 --output json --bin xdk-consumer-check",
+    ] {
+        assert!(commands.contains(&expected), "{expected}: {envelope}");
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn text_mode_commands_keep_the_callers_flags() {
+    let tmp = two_binary_workspace();
+
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args(["audit", ".", "-q", "--principle", "6"])
+        .output()
+        .expect("spawn anc");
+
+    let stderr = stderr_of(&output);
+    assert!(
+        stderr.contains("anc audit . -q --principle 6 --bin xr "),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn source_only_needs_no_bin_where_several_binaries_are_built() {
+    let tmp = two_binary_workspace();
+
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args(["audit", ".", "--source", "--output", "json"])
+        .output()
+        .expect("spawn anc");
+
+    let stderr = stderr_of(&output);
+    assert!(!stderr.contains("binary-ambiguous"), "stderr: {stderr}");
+    let card = json_of(&output.stdout);
+    let rows = card["results"].as_array().expect("results");
+    assert!(!rows.is_empty(), "source audits ran: {card}");
+    assert!(
+        rows.iter().all(|row| row["layer"] != "behavioral"),
+        "no behavioral audits: {card}"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn source_only_still_rejects_a_bin_that_names_nothing() {
+    let tmp = two_binary_workspace();
+
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args([
+            "audit", ".", "--source", "--bin", "nope", "--output", "json",
+        ])
+        .output()
+        .expect("spawn anc");
+
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let envelope = json_of(stderr_of(&output).trim().as_bytes());
+    assert_eq!(envelope["error"], "unknown-bin", "{envelope}");
 }

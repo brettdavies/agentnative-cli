@@ -59,12 +59,19 @@ fn main() {
     // envelope when the user asked for JSON.
     let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
+    let help = argv::help_command(&inject_default_subcommand(raw_argv.iter().cloned()));
 
     let code = match run(raw_argv) {
         Ok(code) => code,
         Err(e) => {
             if json_mode {
-                let envelope = json_error::render_error("runtime", "app-error", &e.to_string(), 2);
+                let envelope = json_error::render_error(
+                    "runtime",
+                    "app-error",
+                    &e.to_string(),
+                    2,
+                    &json_error::NextStep::show_help(help),
+                );
                 eprintln!("{envelope}");
             } else {
                 eprintln!("error: {e}");
@@ -87,9 +94,10 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // envelope before clap drops back to its default text-rendering path.
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
 
-    let cli = match Cli::try_parse_from(inject_default_subcommand(raw_argv.iter().cloned())) {
+    let argv = inject_default_subcommand(raw_argv.iter().cloned());
+    let cli = match Cli::try_parse_from(argv.iter().cloned()) {
         Ok(cli) => cli,
-        Err(e) => return Ok(handle_clap_error(e, json_mode)),
+        Err(e) => return Ok(handle_clap_error(e, json_mode, &argv)),
     };
 
     // --quiet is global (visible in top-level --help for agent discoverability)
@@ -169,6 +177,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                     "missing-subcommand",
                     "no subcommand provided; run with --help for usage",
                     2,
+                    &json_error::NextStep::show_help(String::from("anc --help")),
                 );
                 eprintln!("{envelope}");
             } else {
@@ -213,21 +222,32 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let json_output = matches!(output, OutputFormat::Json);
     if project.path.is_dir() {
         let candidates = &project.inventory.candidates;
-        match select::select(candidates, &project.path, bin.as_deref()) {
+        let selected = match select::select(candidates, &project.path, bin.as_deref()) {
+            // Source audits run no binary, so several of them leave nothing
+            // to choose between; the run proceeds with none graded.
+            Err(Unselected::Ambiguous) if source_only => Ok(None),
+            other => other,
+        };
+        match selected {
             Ok(Some(chosen)) => {
                 let binary = chosen.path.clone();
                 project.grade(binary);
             }
             Ok(None) => {}
             Err(why) => {
-                let choices = select::choices(candidates, &project.path, path.as_os_str());
-                return Ok(report_unselected(&why, &choices, json_output));
+                let rerun = argv::rerun_argv(&argv);
+                let choices = select::choices(candidates, &project.path, &rerun);
+                return Ok(report_unselected(&why, &choices, &rerun, json_output));
             }
         }
-    } else if bin.is_some() {
+    } else if let Some(bin) = &bin {
+        let mut extra = serde_json::Map::new();
+        extra.insert("bin".into(), bin.as_str().into());
         return Ok(usage_error(
             "bin-needs-directory",
             "--bin chooses among the binaries a directory builds, and this target is already a binary; drop --bin, or pass the directory",
+            &json_error::NextStep::rerun(format_invocation(&argv::rerun_argv(&argv))),
+            extra,
             json_output,
         ));
     }
@@ -431,7 +451,7 @@ fn emit_examples(json_mode: bool) {
 ///
 /// Exit codes mirror clap's defaults: help / version exit `0`, every other
 /// failure exits `2` (matches `p2-must-structured-exit-codes`).
-fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
+fn handle_clap_error(error: clap::Error, json_mode: bool, argv: &[std::ffi::OsString]) -> i32 {
     use clap::error::ErrorKind as K;
     match error.kind() {
         K::DisplayHelp => {
@@ -457,6 +477,7 @@ fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
                     "missing-subcommand",
                     "no subcommand provided; run with --help for usage",
                     2,
+                    &json_error::NextStep::show_help(argv::help_command(argv)),
                 );
                 eprintln!("{envelope}");
             } else {
@@ -479,7 +500,14 @@ fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
                         (!t.is_empty()).then_some(t)
                     })
                     .unwrap_or(&raw);
-                let envelope = json_error::render_error(envelope_kind, slug, first_line, 2);
+                let envelope = json_error::render_error_with(
+                    envelope_kind,
+                    slug,
+                    first_line,
+                    2,
+                    &json_error::NextStep::show_help(argv::help_command(argv)),
+                    json_error::clap_offending_fields(&error),
+                );
                 eprintln!("{envelope}");
             } else {
                 let _ = error.print();
@@ -722,7 +750,13 @@ fn read_manifest_name(manifest: &std::path::Path) -> Option<String> {
 
 /// Print why a directory audit cannot choose its binary, with the command
 /// that grades each candidate, and return the usage-error exit code.
-fn report_unselected(why: &Unselected, choices: &[Choice], json: bool) -> i32 {
+fn report_unselected(
+    why: &Unselected,
+    choices: &[Choice],
+    rerun: &[std::ffi::OsString],
+    json: bool,
+) -> i32 {
+    let mut extra = serde_json::Map::new();
     let (slug, message) = match why {
         Unselected::Ambiguous => (
             "binary-ambiguous",
@@ -731,20 +765,30 @@ fn report_unselected(why: &Unselected, choices: &[Choice], json: bool) -> i32 {
                 choices.len()
             ),
         ),
-        Unselected::Unknown(bin) => (
-            "unknown-bin",
-            format!("--bin {bin} names none of the binaries built here; run one of these"),
-        ),
+        Unselected::Unknown(bin) => {
+            extra.insert("bin".into(), bin.as_str().into());
+            (
+                "unknown-bin",
+                format!("--bin {bin} names none of the binaries built here; run one of these"),
+            )
+        }
     };
     if json {
-        let mut extra = serde_json::Map::new();
         extra.insert(
             "candidates".into(),
             serde_json::to_value(choices).unwrap_or_default(),
         );
+        let template = format!("{} --bin <name>", format_invocation(rerun));
         eprintln!(
             "{}",
-            json_error::render_error_with("usage", slug, &message, 2, extra)
+            json_error::render_error_with(
+                "usage",
+                slug,
+                &message,
+                2,
+                &json_error::NextStep::choose_bin(template),
+                extra,
+            )
         );
     } else {
         eprintln!("error: {message}\n");
@@ -762,9 +806,18 @@ fn report_unselected(why: &Unselected, choices: &[Choice], json: bool) -> i32 {
 
 /// Print a usage error found after argument parsing and return its exit
 /// code, in the same shapes clap's own usage errors take.
-fn usage_error(slug: &str, message: &str, json: bool) -> i32 {
+fn usage_error(
+    slug: &str,
+    message: &str,
+    next_step: &json_error::NextStep,
+    extra: serde_json::Map<String, serde_json::Value>,
+    json: bool,
+) -> i32 {
     if json {
-        eprintln!("{}", json_error::render_error("usage", slug, message, 2));
+        eprintln!(
+            "{}",
+            json_error::render_error_with("usage", slug, message, 2, next_step, extra)
+        );
     } else {
         eprintln!("error: {message}\n\n{}", audit_usage());
     }

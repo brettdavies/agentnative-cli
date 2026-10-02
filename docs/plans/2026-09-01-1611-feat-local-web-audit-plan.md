@@ -82,6 +82,10 @@ audience that most needs local auditing is exactly the audience that can't assem
   note-only follow-up: convergence on one probe engine is verified at ship, not hoped for.) Governs R11.
 - KD8. **External-DNS checks auto-gate on target locality, with an override.** (session-settled: user-directed — chosen
   over always-run-with-disclosure: the default must not leak internal hostnames off-network.) Governs R12.
+- KD9. **A local run may present a sign-in credential for the audited MCP endpoint, and scores the full access
+  picture.** (session-settled: user-directed, 2026-10-01 — chosen over deferring authenticated targets: the anc.dev
+  scorecard points rows it could not evaluate behind a sign-in to a local `anc web` run, and the site's access-scoring
+  definition, `agentnative-site` plan KTD25, scores a credentialed local run as the full picture.) Governs R18, R19.
 
 ```mermaid
 flowchart TB
@@ -135,6 +139,13 @@ flowchart TB
   structured error envelope and text mode names the problem, the cause and the next action.
 - R17. The binary has one exit-code contract across every verb, and a run's output names the code it is returning and
   what earned it.
+- R18. A run can present a bearer token for the audited MCP endpoint, read from the `ANC_WEB_TOKEN` environment variable
+  or from stdin with `--token-stdin`, never from an argv value. The token goes only to the endpoint's handshake and
+  session probes: never to followed hosts, metadata documents, sign-in servers, any other check, or the enforcement
+  probe that tests token-less refusal. It never appears in the scorecard, text output, logs, or errors.
+- R19. Every local scorecard records its vantage as the site defines it (`vantage: { network: "local", credentialed }`,
+  `credentialed` true only when a token was presented), and the sign-in server check counts a private-address
+  authorization server as usable when the endpoint itself is private.
 - R14. Agents can discover the check vocabulary and the web-scorecard JSON shape offline, via `anc emit` variants for
   both.
 
@@ -211,8 +222,8 @@ flowchart TB
 
 **Deferred for later**
 
-- Authenticated targets (custom headers, cookies, mTLS) — the v1 target must be reachable unauthenticated from the dev's
-  machine.
+- Authenticated targets beyond a bearer token for the MCP endpoint (R18): custom headers, cookies, and mTLS, and
+  credentials for any other check.
 - A trust-store flag for private-CA HTTPS targets.
 - Rewiring the agent-web-audit skill to shell out to `anc web` (its own change, in its own repo; R11 only guarantees it
   can).
@@ -996,6 +1007,35 @@ cmake needs no provisioning, since every hosted runner image already carries it)
     text; absent when equal, when the target is local (no fetch attempted), or when the signal fetch fails.
   - Integration: `--help` and `--version` still make zero network calls.
 - **Verification:** Integration tests green; the bump workflow opens a PR against a deliberately stale pin in a dry run.
+
+### U14. Credentialed MCP probes and the local vantage
+
+- **Goal:** A dev whose MCP endpoint requires sign-in gets the rows anc.dev reports as not evaluated, by presenting a
+  token, and every local scorecard says where it was run from.
+- **Requirements:** R18, R19, R4, R5, R7. Implements KD9.
+- **Dependencies:** U6, U7, and a vendor bump that carries the site's sign-in checks, `vantage` field, and
+  access-scoring rules (`agentnative-site` plan U3, KTD24, KTD25).
+- **Files:** `src/web_audit/handlers/mcp/session.rs`, `src/web_audit/handlers/protected_resource.rs`,
+  `src/web_audit/scorecard.rs`, `src/cli.rs`, `tests/web_audit_mcp.rs`, `tests/integration.rs`.
+- **Approach:**
+  1. Read the token from `ANC_WEB_TOKEN` or `--token-stdin` (R18); reject an empty value with the structured error
+     contract; never echo it, and redact it from every error and debug path.
+  2. Attach `Authorization: Bearer` only to the audited endpoint's handshake and session requests. The enforcement
+     probe, metadata reads, followed hosts, and every non-MCP check stay token-less, so a credentialed run still scores
+     token-less refusal.
+  3. Write `vantage` from the run: `network` from the locality classifier (KTD10), `credentialed` from R18. A
+     credentialed run's session and handshake rows are evaluated rather than read auth-required, so a correctly
+     protected server can reach 100 global locally while its anc.dev score keeps those rows in the global maximum.
+  4. Port the site's vantage-relative sign-in server rule (R19) and its outcome pricing exactly as the vendored corpus
+     pins it.
+- **Test scenarios:**
+  - Happy path: a mock protected MCP server with a valid token yields evaluated session rows, passing sign-in checks,
+    and `vantage.credentialed` true.
+  - Security: the token never reaches a followed host, a metadata URL, a sign-in server, or the enforcement probe
+    (asserted on the mock's request log), and never appears in JSON, text, or error output.
+  - Edge: without a token the same server reads auth-required rows matching the site corpus; an intranet endpoint naming
+    an intranet sign-in server passes the sign-in server check.
+- **Verification:** the U10 conformance suite stays green; the credentialed and private-endpoint tests pass.
 
 ---
 

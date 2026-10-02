@@ -12,3 +12,6 @@
 /styles/proselint/
 /styles/write-good/
 /styles/.vale-config/
+
+# Symlink to the shared solutions corpus (~/dev/solutions-docs); local to each machine.
+docs/solutions

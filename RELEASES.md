@@ -103,9 +103,11 @@ git checkout -B release/v0.2.0 origin/main
 
 # 2. Overlay dev's entire tracked tree onto the main base. `checkout -- .` writes dev's
 #    paths but does not delete files that exist on main and are absent on dev, so remove
-#    those next (the 'D' rows are main-only files dev deleted).
+#    those next (the 'D' rows are main-only files dev deleted or moved). `--no-renames`
+#    lists a moved file as a deletion; rename detection would show `src/x.rs` becoming
+#    `src/x/mod.rs` as an R row, and the stale `src/x.rs` left behind breaks the build.
 git checkout origin/dev -- .
-git diff --name-status origin/main origin/dev | grep '^D'
+git diff --no-renames --name-status origin/main origin/dev | grep '^D'
 trash <each main-only file listed above>
 
 # 3. Strip the paths guard-main-docs forbids on main. The set resolves from the workflow;
@@ -282,11 +284,11 @@ other path `main` and `dev` disagree about, guarded paths excepted, is classifie
 `--only PATH` (repeatable) adopts exactly the discovered paths it names, release-prep or contested, and no other
 discovered path; the version carriers and changelog are synced either way. Resolve anything left out by hand.
 
-The offline lock refresh needs every crate in the local registry cache. When the lock does not resolve, the script
-stops with exit 70 before committing and leaves `dev` as it found it; run `cargo fetch` and re-run. After committing,
-when the sync carried `CHANGELOG.md` and `git-cliff` is installed, the script runs `scripts/generate-changelog.py
---dry-run` and warns with the generator's own reason if the regenerated changelog would differ (a PR body edited after
-the release, or a difference in line wrapping only). The warning does not block the backport.
+The offline lock refresh needs every crate in the local registry cache. When the lock does not resolve, the script stops
+with exit 70 before committing and leaves `dev` as it found it; run `cargo fetch` and re-run. After committing, when the
+sync carried `CHANGELOG.md` and `git-cliff` is installed, the script runs `scripts/generate-changelog.py --dry-run` and
+warns with the generator's own reason if the regenerated changelog would differ (a PR body edited after the release, or
+a difference in line wrapping only). The warning does not block the backport.
 
 The script opens a PR against `dev`; merge it once CI is green. The postflight backport gate looks for that merged PR.
 Never merge `main` into `dev` or push to `dev` directly: the squash-merged histories share no recent ancestry, so the

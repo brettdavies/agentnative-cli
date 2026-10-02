@@ -9,16 +9,19 @@
 //! Three envelope shapes share a non-payload key set so
 //! `p2-should-consistent-envelope` Passes:
 //!
-//! - error: `{"kind":"usage","error":"<short>","message":"<full>"}`
+//! - error: `{"kind":"usage"|"runtime","error":"<reason>","message":"<full>",
+//!   "exit_code":2,"next_step":{"action":"<action>","command"|"template":"...",
+//!   "docs":"<url>"}}`, plus the offending value (`bin`, `argument`, `value`)
+//!   and the `candidates` of a binary-selection error when they apply
 //! - help:  `{"kind":"help","data":"<text>"}`
 //! - version: `{"kind":"version","data":{"name":"...","version":"..."}}`
 //!
 //! Only `kind` is shared across all three. Per the consistent-envelope audit,
 //! `data` is a recognized payload key so its absence from the error envelope
-//! is not drift. Error envelopes additionally carry `error` and `message`,
-//! which the success envelope lacks — the audit only flags keys present in
-//! success but missing from error, so the asymmetric shape is intentional and
-//! Passes.
+//! is not drift. Error envelopes additionally carry `error`, `message`,
+//! `exit_code`, and `next_step`, which the success envelope lacks — the audit
+//! only flags keys present in success but missing from error, so the
+//! asymmetric shape is intentional and Passes.
 
 use std::ffi::OsString;
 

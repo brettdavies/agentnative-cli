@@ -28,6 +28,9 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+#[cfg_attr(not(test), expect(dead_code))]
+pub mod chain;
+
 /// Filename probed at the audit target root.
 pub const ANC_TOML_FILENAME: &str = ".anc.toml";
 

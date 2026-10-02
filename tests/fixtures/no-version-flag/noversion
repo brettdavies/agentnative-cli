@@ -1,0 +1,18 @@
+#!/bin/sh
+# A CLI that answers --help and rejects --version, so `p3-must-version` has a
+# target it must grade as a failure. The release smoke gate reads that row as
+# its negative control: every other target in the matrix can come back green
+# whether the auditor works or has stopped auditing, and this one cannot.
+case "$1" in
+  --help|-h)
+    cat <<'EOF'
+noversion — a CLI that ships no version flag
+
+Usage: noversion [options]
+
+Options:
+  --help, -h          Show this help
+EOF
+    exit 0 ;;
+  *) echo "noversion: unrecognized option '$1'" >&2; exit 64 ;;
+esac

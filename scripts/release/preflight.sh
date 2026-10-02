@@ -7,7 +7,7 @@
 # Subcommands:
 #   drift         Branch drift: what main carries that dev never received (delegated to drift.sh)
 #   surface       Establish surface: commits + diff vs last tag, breaking markers
-#   smoke         Real-world live API / external dependency smoke (project-authored)
+#   smoke         Real-CLI grading over every documented profile (delegated to smoke.sh)
 #   mechanics     Release mechanics sanity (version, lockfile, advisories, toolchain age, leak check,
 #                 unguarded docs added to main, diff-B vs origin/dev)
 #   all           Run drift, surface, smoke, mechanics (and surface-smoke if present)
@@ -31,10 +31,10 @@
 #   - 1Password CLI service-account env, if smoke gates seed from `secrets-dev`
 #   - ~/.claude/skills/1password/scripts/ for vault reads (via _lib.sh's read_1p)
 #
-# This script is a starter skeleton vendored from ~/.claude/skills/github-repo-setup/.
 # The shared scaffolding (gate helpers, 1Password reads, shred cleanup, dispatch, surface,
-# mechanics) is generic; the smoke gate body is project-specific — replace the placeholder
-# implementation with the project's actual API / auth / output-format checks.
+# mechanics) is vendored from ~/.claude/skills/github-repo-setup/ and stays generic, so a
+# fix belongs upstream in the template as well. The project-specific gate bodies live in
+# their own sibling scripts: drift.sh and smoke.sh.
 
 set -euo pipefail
 
@@ -107,21 +107,23 @@ gate_surface() {
   gate_pass "LAST_TAG = $last_tag  ($commits commits, $files files, $breaking breaking)"
 }
 
-# Gate: smoke ----------------------------------------------------------------
+# Gate: smoke (delegated to smoke.sh) ---------------------------------------
 #
-# PROJECT-SPECIFIC. Replace with the project's live-API / external-dependency
-# checks. Use ensure_smoke_home above to drive against an isolated $HOME so
-# the dev machine's real config is never touched. Use read_1p for credentials.
-#
-# Example shape (each line is one logical gate):
-#
-#   local out
-#   out=$(HOME="$SMOKE_HOME" "$BIN_PATH" whoami --output json 2>&1 | jaq -r '.data.username // ""')
-#   [[ -n "$out" ]] && gate_pass "whoami → $out" || gate_fail "whoami" "no username"
+# anc's external dependency is the third-party CLIs it spawns, not a live API,
+# so the body lives in scripts/release/smoke.sh: it grades real binaries over
+# every documented --audit-profile and holds one fixture that must come back
+# failing. Keeping it out of this file leaves the gate roster readable here.
 
 gate_smoke() {
-  header "Real-world smoke (live API / external dependency)"
-  gate_skip "smoke gates" "project-authored; fill in scripts/release/preflight.sh § gate_smoke"
+  local smoke_script
+  smoke_script="$(dirname "$0")/smoke.sh"
+  if [[ ! -x "$smoke_script" ]]; then
+    header "Real-world smoke"
+    gate_skip "smoke gates" "scripts/release/smoke.sh missing or not executable"
+    return
+  fi
+  header "Real-world smoke (delegated to smoke.sh)"
+  delegate_to_subscript "$smoke_script" --bin "$BIN_PATH"
 }
 
 # Gate: drift (delegated to drift.sh) ----------------------------------------

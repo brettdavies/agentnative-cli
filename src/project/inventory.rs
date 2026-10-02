@@ -25,6 +25,8 @@ pub struct Inventory {
     pub packages: Vec<Package>,
     /// The binaries those packages declare and have built.
     pub candidates: Vec<Candidate>,
+    /// Names of declared bins that are not built.
+    pub unbuilt: Vec<String>,
     /// One message per declaration, member, or scan limit to report.
     pub warnings: Vec<String>,
 }
@@ -51,7 +53,9 @@ pub fn inventory(root: &Path, include_tests: bool) -> Inventory {
         add(&mut found, language, manifest);
     }
     found.warnings.extend(scanned.warnings);
-    found.candidates = bins::candidates(root, &found.packages);
+    let bins = bins::candidates(root, &found.packages);
+    found.candidates = bins.candidates;
+    found.unbuilt = bins.unbuilt;
     found
 }
 

@@ -13,6 +13,7 @@ use crate::runner::{BinaryRunner, HelpOutput};
 mod bins;
 mod inventory;
 mod scan;
+pub mod select;
 mod workspace;
 
 pub use inventory::Inventory;
@@ -139,24 +140,25 @@ impl Project {
             .map(|candidate| candidate.path.clone())
             .collect();
 
-        let runner = if binary_paths.is_empty() {
-            None
-        } else {
-            BinaryRunner::new(binary_paths[0].clone(), Duration::from_secs(5)).ok()
-        };
-
         Ok(Project {
             path,
             language,
             binary_paths,
             manifest_path,
-            runner,
+            runner: None,
             include_tests,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
             anc_config: ResolvedConfig::default(),
             inventory,
         })
+    }
+
+    /// Grade `binary`: every behavioral audit probes it.
+    pub fn grade(&mut self, binary: PathBuf) {
+        self.runner = BinaryRunner::new(binary.clone(), Duration::from_secs(5)).ok();
+        self.binary_paths = vec![binary];
+        self.help_output = OnceLock::new();
     }
 
     /// Returns a reference to the runner.

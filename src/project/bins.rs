@@ -21,10 +21,19 @@ pub struct Candidate {
     pub path: PathBuf,
 }
 
-/// Every candidate under `root`, in package order and, within a package, in
-/// declaration order (Python scripts by name).
-pub fn candidates(root: &Path, packages: &[Package]) -> Vec<Candidate> {
-    let mut found = Vec::new();
+/// What the packages under an audit root declare.
+#[derive(Debug, Default)]
+pub struct Bins {
+    /// Declared bins that are built, in package order and, within a
+    /// package, in declaration order (Python scripts by name).
+    pub candidates: Vec<Candidate>,
+    /// Names of declared bins with no build output, in the same order.
+    pub unbuilt: Vec<String>,
+}
+
+/// Every bin the packages under `root` declare.
+pub fn candidates(root: &Path, packages: &[Package]) -> Bins {
+    let mut found = Bins::default();
     for pkg in packages {
         let manifest = fs::read_to_string(&pkg.manifest).unwrap_or_default();
         let declared = match pkg.language {
@@ -42,13 +51,15 @@ pub fn candidates(root: &Path, packages: &[Package]) -> Vec<Candidate> {
             package
         };
         for (name, path) in bins {
-            if let Some(path) = path {
-                found.push(Candidate {
+            match path {
+                Some(path) => found.candidates.push(Candidate {
                     name,
                     package: package.clone(),
                     language: pkg.language,
                     path,
-                });
+                }),
+                None if !found.unbuilt.contains(&name) => found.unbuilt.push(name),
+                None => {}
             }
         }
     }
@@ -381,7 +392,7 @@ mod tests {
     }
 
     fn found(root: &Path) -> Vec<Candidate> {
-        candidates(root, &inventory(root, false).packages)
+        candidates(root, &inventory(root, false).packages).candidates
     }
 
     fn names(root: &Path) -> Vec<String> {

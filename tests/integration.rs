@@ -1458,3 +1458,73 @@ fn test_bad_invocation_without_json_uses_clap_rendering() {
         "text-mode error must not be JSON, but first line parsed: {first}"
     );
 }
+
+// ── next_step on every JSON error envelope ─────────────────────────
+
+const CLI_REFERENCE_DOCS: &str = "https://github.com/brettdavies/agentnative-cli#cli-reference";
+
+/// The first stderr line of a failing `--output json` invocation, parsed.
+fn error_envelope(args: &[&str]) -> serde_json::Value {
+    let output = cmd().args(args).output().expect("spawn anc");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    let line = stderr.lines().next().expect("envelope on the first line");
+    serde_json::from_str(line).unwrap_or_else(|e| panic!("not JSON ({e}): {line}"))
+}
+
+#[test]
+fn a_parse_error_envelope_points_at_the_subcommands_help() {
+    let envelope = error_envelope(&["audit", "--no-such-flag", "--output", "json"]);
+    assert_eq!(envelope["error"], "unknown-argument", "{envelope}");
+    assert_eq!(envelope["argument"], "--no-such-flag", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "show-help",
+            "command": "anc audit --help",
+            "docs": CLI_REFERENCE_DOCS,
+        }),
+        "{envelope}"
+    );
+}
+
+#[test]
+fn an_invalid_value_envelope_echoes_the_value() {
+    let envelope = error_envelope(&["skill", "install", "nohost", "--output", "json"]);
+    assert_eq!(envelope["error"], "invalid-value", "{envelope}");
+    assert_eq!(envelope["value"], "nohost", "{envelope}");
+    assert_eq!(
+        envelope["next_step"]["command"], "anc skill install --help",
+        "{envelope}"
+    );
+}
+
+#[test]
+fn a_missing_subcommand_envelope_points_at_the_top_level_help() {
+    let envelope = error_envelope(&["--json"]);
+    assert_eq!(envelope["error"], "missing-subcommand", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "show-help",
+            "command": "anc --help",
+            "docs": CLI_REFERENCE_DOCS,
+        }),
+        "{envelope}"
+    );
+}
+
+#[test]
+fn a_runtime_error_envelope_points_at_the_subcommands_help() {
+    let envelope = error_envelope(&["audit", "/nonexistent/anc-target", "--output", "json"]);
+    assert_eq!(envelope["kind"], "runtime", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "show-help",
+            "command": "anc audit --help",
+            "docs": CLI_REFERENCE_DOCS,
+        }),
+        "{envelope}"
+    );
+}

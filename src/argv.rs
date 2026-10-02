@@ -184,6 +184,45 @@ where
     args
 }
 
+/// The invocation to suggest rerunning: `argv` with `anc` for the program
+/// name and every `--bin` dropped, so a suggestion keeps the caller's
+/// other flags and adds its own `--bin`.
+pub fn rerun_argv(argv: &[OsString]) -> Vec<OsString> {
+    let mut out = vec![OsString::from("anc")];
+    let mut args = argv.iter().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--bin" {
+            args.next();
+            continue;
+        }
+        if arg.to_str().is_some_and(|a| a.starts_with("--bin=")) {
+            continue;
+        }
+        out.push(arg.clone());
+    }
+    out
+}
+
+/// `anc <subcommand path> --help` for the deepest subcommand `argv` names,
+/// `argv` being the invocation after [`inject_default_subcommand`].
+pub fn help_command(argv: &[OsString]) -> String {
+    let mut command = <Cli as clap::CommandFactory>::command();
+    let mut path = vec![String::from("anc")];
+    for arg in argv.iter().skip(1) {
+        let Some(sub) = arg
+            .to_str()
+            .and_then(|name| command.find_subcommand(name))
+            .cloned()
+        else {
+            continue;
+        };
+        path.push(sub.get_name().to_string());
+        command = sub;
+    }
+    path.push(String::from("--help"));
+    path.join(" ")
+}
+
 /// Format a captured argv vector as a shell-quoted command string, suitable
 /// for the scorecard's `run.invocation` field. Uses single-quote quoting:
 /// args containing whitespace, single quotes, double quotes, or shell
@@ -252,6 +291,47 @@ fn needs_quoting(s: &str) -> bool {
                     | '!'
             )
     })
+}
+
+#[cfg(test)]
+mod rerun_tests {
+    use super::*;
+
+    fn osv(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn rerun_drops_every_bin_and_names_the_program_anc() {
+        let argv = osv(&[
+            "/opt/bin/anc",
+            "audit",
+            ".",
+            "--bin",
+            "a",
+            "--principle",
+            "6",
+            "--bin=b",
+            "--binary",
+        ]);
+        assert_eq!(
+            rerun_argv(&argv),
+            osv(&["anc", "audit", ".", "--principle", "6", "--binary"])
+        );
+    }
+
+    #[test]
+    fn help_follows_the_subcommand_path() {
+        assert_eq!(
+            help_command(&osv(&["anc", "audit", ".", "--output", "json"])),
+            "anc audit --help"
+        );
+        assert_eq!(
+            help_command(&osv(&["anc", "skill", "install", "nohost"])),
+            "anc skill install --help"
+        );
+        assert_eq!(help_command(&osv(&["anc", "--json"])), "anc --help");
+    }
 }
 
 #[cfg(test)]

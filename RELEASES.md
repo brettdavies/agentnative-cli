@@ -146,7 +146,9 @@ git diff --cached --name-only origin/main | grep -E "$GUARDED" \
 #       set, so it is blind to a category nobody registered yet. Every docs/ entry and
 #       every added markdown file needs a reason to ship, or it needs registering in the
 #       workflow's extra_paths and removing from the branch.
-git diff --cached --diff-filter=A --name-only origin/main | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
+#       `--no-renames` lists a doc moved from one main carries as added; rename detection
+#       would report it as R, and the A filter would drop it.
+git diff --cached --no-renames --diff-filter=A --name-only origin/main | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
 
 # 9. Commit the overlay as one commit sitting directly on top of main, then run the
 #    preflight gates against it (build the release binary first: cargo build --release).
@@ -195,7 +197,9 @@ git diff origin/main..HEAD --name-only \
   && echo "LEAKED: reset and redo" || echo "(clean)"
 
 # D: what this release ADDS to main (see step 8 above for why).
-git diff origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
+# `--no-renames` lists a doc moved from one main carries as added; rename detection
+# would report it as R, and the A filter would drop it.
+git diff --no-renames origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
 
 # Patch-id cherry check (noisy in squash-merge workflow; triage per-line).
 git cherry HEAD origin/dev | grep '^+' || echo "(none)"

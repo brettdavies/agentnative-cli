@@ -186,9 +186,14 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
   ```
 
 - [ ] **Every doc this release adds to `main` is meant to ship.** The leak check is blind to a category nobody
-  registered. `git diff origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED"`
-  lists the unguarded additions; each one needs a reason to ship, or it gets registered in the workflow's
-  `extra_paths` and removed from the branch.
+  registered. The command below lists the unguarded additions; each one needs a reason to ship, or it gets registered
+  in the workflow's `extra_paths` and removed from the branch. `--no-renames` lists a doc moved from one `main` carries
+  as added, where rename detection would report it as a rename and the `A` filter would drop it.
+
+  ```bash
+  git diff --no-renames origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED"
+  ```
+
 - [ ] `CHANGELOG.md` versioned section has no `[Unreleased]` placeholder and matches the bumped version.
 
 ### Post-tag verification

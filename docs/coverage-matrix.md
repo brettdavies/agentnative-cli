@@ -112,4 +112,3 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p8-should-bundle-exists` | SHOULD | Universal | `p6-agents-md` (project)<br>`p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
 | `p8-may-install-all` | MAY | If: `p8-bundle-exists` is present | `p8-install-all` (behavioral) | An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all. |
 | `p8-may-bundle-update` | MAY | If: `p8-bundle-exists` is present | `p8-bundle-update` (behavioral) | An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version. |
-

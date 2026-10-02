@@ -1,0 +1,1043 @@
+# Web-audit check registry — the single in-repo source (STAR) for every
+# check the in-Worker website agent-readiness audit runs.
+#
+# Vendored from the agent-web-audit skill's checks/registry.yaml and
+# extended with the applicability model from the refinements design
+# (docs/plans/2026-07-09-002). The build step
+# (src/build/13-web-audit-registry.mjs) normalizes this file to
+# dist/_internal/web-audit-registry.json and derives each check's
+# `keyword` mechanically from `tier` (required->must, recommended->should,
+# optional->may); hand-authoring a `keyword` here aborts the build.
+#
+# Handlers (implemented in src/worker/audit-web/handlers/):
+#   http           general request + assertions (status / headers / content-type / body regex)
+#   cors-preflight two-probe CORS posture pair (OPTIONS preflight + Origin-bearing POST)
+#   mcp            JSON-RPC over the discovered endpoint (op: initialize | tools-list | error)
+#   dns-doh        DNS-over-HTTPS (JSON API) record lookup
+#   auth-md        agent auth/registration metadata doc probe
+#   webmcp         browser WebMCP tool-exposure scan of the root HTML
+#   scoped-llms    per-section llms.txt probes
+#   markdown-frontmatter  leading YAML fence on the markdown twin
+#   content-without-js    SSR content floor with llms.txt twin softening
+#   llms-txt-quality      format / links / when-to-use ops on retained llms.txt
+#   api-hygiene           JSON error bodies / rate-limit headers from a safe GET
+#
+# Fields:
+#   id          stable slug, also the remediation-doc key
+#   category    visible display category (one of category_order below)
+#   tier        required | recommended | optional   (keyword source)
+#   principle   P1-P8 internal tag (hidden on the web surfaces, kept for revisits)
+#   site_types  declared-type filter: content | api | mcp | all
+#               (mcp entries auto-apply when discovery finds an endpoint,
+#               regardless of the declared type; no declared type runs everything)
+#   antecedent  runtime gate that flips the check to n_a when unmet
+#               (resolution table in src/worker/audit-web/antecedents.ts)
+#   eval        optional non-standard evaluation rule
+#   weight      integer registry weight (scoring uses per-tier config weights;
+#               see src/worker/audit-web/score.ts)
+#   handler     one of the handlers above
+#   with        handler parameters
+#   hint        one-line remediation summary
+
+version: 1
+
+# Endpoint discovery: first candidate that answers `initialize` wins.
+mcp_discovery:
+  well_known:
+    - /.well-known/mcp.json
+    - /.well-known/mcp/server-card.json
+  common_paths:
+    - /mcp
+    - /sse
+    - /message
+  protocol_version: "2025-06-18"
+
+# Visible display categories. category_order is the single source of truth
+# for display order on the result page, markdown twin, leaderboard, and MCP
+# output.
+category_order:
+  - discoverability
+  - content-for-agents
+  - bot-crawl-policy
+  - api
+  - mcp
+  - agent-discovery-auth
+
+categories:
+  discoverability: Discoverability
+  content-for-agents: Content for agents
+  bot-crawl-policy: Bot & crawl policy
+  api: API
+  mcp: MCP
+  agent-discovery-auth: Agent discovery & auth
+
+checks:
+  # ---- API -----------------------------------------------------------------
+  - id: openapi
+    category: api
+    tier: required
+    principle: P2
+    site_types: [api]
+    antecedent: api-surface
+    weight: 2
+    title: An OpenAPI description is published
+    breadcrumb: OpenAPI description
+    handler: http
+    with:
+      path_any: [/openapi.json, /openapi.yaml, /.well-known/openapi.json]
+      retain_body: true
+      expect: { status: [200], body_regex: "openapi|swagger" }
+    hint: Publish an OpenAPI 3.1 description for the REST surface so non-MCP agents can call it.
+
+  - id: json-schemas
+    category: api
+    tier: optional
+    principle: P2
+    site_types: [api]
+    antecedent: schemas-ref
+    weight: 1
+    title: Referenced JSON Schemas resolve as application/schema+json
+    breadcrumb: JSON Schemas
+    handler: http
+    with:
+      path_any: [/api/schema/input.json, /api/schema/output.json, /schema.json]
+      expect: { status: [200], content_type: "json" }
+    hint: Serve input/output JSON Schemas so agents can validate payloads before calling.
+
+  - id: api-catalog
+    category: api
+    tier: optional
+    principle: P8
+    site_types: [api]
+    antecedent: api-surface
+    weight: 2
+    title: /.well-known/api-catalog published (RFC 9727)
+    breadcrumb: API catalog
+    handler: http
+    with:
+      path: /.well-known/api-catalog
+      expect: { status: [200], body_regex: "linkset" }
+    hint: Serve /.well-known/api-catalog as application/linkset+json with a linkset[] of anchor + service-desc entries.
+
+  - id: json-errors
+    category: api
+    tier: recommended
+    principle: P4
+    site_types: [api]
+    antecedent: api-surface
+    weight: 2
+    title: API client errors return JSON, not HTML
+    breadcrumb: JSON errors
+    handler: api-hygiene
+    with: { op: json-errors }
+    hint: Answer unknown or documented 4xx API GETs with a JSON error body, not an HTML page.
+
+  - id: rate-limit-headers
+    category: api
+    tier: recommended
+    principle: P6
+    site_types: [api]
+    antecedent: api-surface
+    weight: 2
+    title: API responses advertise rate-limit headers
+    breadcrumb: Rate-limit headers
+    handler: api-hygiene
+    with: { op: rate-limit }
+    hint: Send RateLimit-* or X-RateLimit-* (or Retry-After) on API responses so agents can back off.
+
+  # ---- MCP -----------------------------------------------------------------
+  - id: mcp-initialize
+    category: mcp
+    tier: required
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 5
+    title: initialize handshake returns serverInfo + protocolVersion
+    breadcrumb: MCP initialize
+    handler: mcp
+    with: { op: initialize }
+    hint: Answer JSON-RPC `initialize` with serverInfo{name,version} and protocolVersion.
+
+  - id: mcp-capabilities
+    category: mcp
+    tier: recommended
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: initialize advertises capabilities (tools / resources / prompts)
+    breadcrumb: MCP capabilities
+    handler: mcp
+    with: { op: initialize, assert: capabilities }
+    hint: Populate `capabilities` in the initialize result so clients gate feature use.
+
+  - id: mcp-tools-list
+    category: mcp
+    tier: required
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 4
+    title: tools/list returns a tools array with input schemas
+    breadcrumb: MCP tools/list
+    handler: mcp
+    with: { op: tools-list }
+    hint: Return `result.tools[]`, each with `name`, `description`, and a JSON `inputSchema`.
+
+  - id: mcp-resources-list
+    category: mcp
+    tier: recommended
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-resources
+    weight: 3
+    title: resources/list returns at least one resource when advertised
+    breadcrumb: MCP resources/list
+    handler: mcp
+    with: { op: resources-list }
+    hint: When initialize advertises capabilities.resources, return a non-empty result.resources array from resources/list.
+
+  - id: mcp-modern-tools-list
+    category: mcp
+    tier: required
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 4
+    title: header-routed tools/list (2026-07-28) returns tools without initialize
+    breadcrumb: MCP tools/list (modern)
+    handler: mcp
+    with: { op: modern-tools-list }
+    hint: Answer a header-routed tools/list (MCP-Protocol-Version 2026-07-28, Mcp-Method, _meta envelope) without requiring initialize.
+
+  - id: mcp-server-discover
+    category: mcp
+    tier: recommended
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 3
+    title: server/discover answers with server identity on the modern lane
+    breadcrumb: MCP server discovery
+    handler: mcp
+    with: { op: server-discover }
+    hint: Answer server/discover with a well-formed discovery result on protocol 2026-07-28.
+
+  - id: mcp-unknown-method
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: unknown JSON-RPC method returns -32601
+    breadcrumb: MCP unknown method
+    handler: mcp
+    with: { op: error, method: nonexistent/method, expect_code: -32601 }
+    hint: Reject unknown methods with JSON-RPC error -32601 (Method not found), not a hang or 500.
+
+  # Per-era error-code conformance probes (single request each). Excluded
+  # by design: -32603, because an internal error cannot be forced from
+  # outside; -32099, because triggering rate limits against third-party
+  # servers is abusive.
+  - id: mcp-malformed-body
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: a non-JSON body draws -32700 (or a typed HTTP 400/415 refusal)
+    breadcrumb: MCP malformed body
+    handler: mcp
+    with: { op: malformed-body }
+    hint: Answer an unparseable POST body with JSON-RPC -32700 (Parse error) or a bare HTTP 400/415, never a 200 with garbage or a hang.
+
+  - id: mcp-batch-reject
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: a batch carrying a modern-envelope request is rejected -32600
+    breadcrumb: MCP batch reject
+    handler: mcp
+    with: { op: batch-reject }
+    hint: Reject a JSON array batch whose element carries the modern _meta envelope with JSON-RPC -32600 (Invalid Request).
+
+  - id: mcp-unknown-tool
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: tools/call with an unknown tool name returns -32602
+    breadcrumb: MCP unknown tool
+    handler: mcp
+    with: { op: unknown-tool }
+    hint: Reject an unknown tool name on tools/call with JSON-RPC -32602 (Invalid params), not a hang or a 200 result.
+
+  - id: mcp-modern-unknown-method
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: an unknown method on the modern lane returns -32601
+    breadcrumb: MCP unknown method (modern)
+    handler: mcp
+    with: { op: modern-unknown-method }
+    hint: Reject an unknown header-routed method (2026-07-28) with JSON-RPC -32601; HTTP 404 delivery conforms when the body carries the envelope.
+
+  - id: mcp-modern-clientcaps
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: _meta missing clientCapabilities is rejected (-32602 or -32600)
+    breadcrumb: MCP clientCapabilities
+    handler: mcp
+    with: { op: modern-clientcaps }
+    hint: Reject a modern request whose _meta omits io.modelcontextprotocol/clientCapabilities with -32602 (or -32600); the key is mandatory on every modern request.
+
+  - id: mcp-modern-header-mismatch
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: an Mcp-Method header disagreeing with the body method draws -32020
+    breadcrumb: MCP header mismatch
+    handler: mcp
+    with: { op: modern-header-mismatch }
+    hint: Validate the SEP-2243 header mirror and reject a request whose Mcp-Method header names a different method than the body with -32020.
+
+  - id: mcp-modern-version-reject
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: an unsupported protocol version is rejected -32022 with data.supported
+    breadcrumb: MCP version reject
+    handler: mcp
+    with: { op: modern-version-reject }
+    hint: Reject an unsupported MCP-Protocol-Version claim with -32022 (UnsupportedProtocolVersion) and list the served revisions in error.data.supported.
+
+  - id: mcp-modern-resources-miss
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-resources
+    weight: 2
+    title: modern resources/read with an unknown URI returns -32602
+    breadcrumb: MCP resources miss
+    handler: mcp
+    with: { op: modern-resources-miss }
+    hint: Answer a modern resources/read whose Mcp-Name mirrors an unknown URI with JSON-RPC -32602 (-32002 tolerated), never a hang or a 200 result.
+
+  # Content-negotiation conformance (single request each). Each varies only
+  # the Accept header of a tools/list the lane has already proven it serves,
+  # so the answer is attributable to the negotiation and to nothing else.
+  - id: mcp-accept-json
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 3
+    title: a JSON-only Accept is answered without SSE framing
+    breadcrumb: MCP Accept JSON
+    handler: mcp
+    with: { op: accept-json }
+    hint: Answer a POST whose Accept names only application/json with a single application/json response, never a text/event-stream body a JSON-only client cannot read.
+
+  - id: mcp-accept-unsatisfiable
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 3
+    title: an unsatisfiable Accept draws a 406 rather than an unasked-for type
+    breadcrumb: MCP Accept unsatisfiable
+    handler: mcp
+    with: { op: accept-unsatisfiable }
+    hint: Refuse a POST whose Accept allows neither application/json nor text/event-stream with HTTP 406 Not Acceptable, never a 200 carrying a type the client did not ask for.
+
+  - id: mcp-get-fast-fail
+    category: mcp
+    tier: recommended
+    principle: P4
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 3
+    title: GET on the MCP endpoint answers fast (not a held-open hang)
+    breadcrumb: MCP GET fast-fail
+    handler: http
+    with:
+      path: "{mcp_endpoint}"
+      method: GET
+      timeout: 8
+      expect: { status_below: 500 }
+    hint: "Answer GET promptly: fast-fail non-POST with 405, or serve a documented surface (a docs page, or a redirect to your server card). A stateless streamable-HTTP GET routed into the transport otherwise holds the SSE stream open until the caller times out."
+
+  - id: mcp-cors-preflight
+    category: mcp
+    tier: recommended
+    principle: P6
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 3
+    title: CORS preflight (OPTIONS) succeeds with Access-Control-Allow-* headers
+    breadcrumb: MCP CORS preflight
+    handler: cors-preflight
+    with:
+      path: "{mcp_endpoint}"
+      origin: https://example.com
+      request_method: POST
+      request_headers: content-type
+      surface: preflight
+    hint: Answer OPTIONS with 204 + Access-Control-Allow-Origin/Methods/Headers so browser-origin agents work.
+
+  - id: mcp-cors-actual
+    category: mcp
+    tier: recommended
+    principle: P6
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 2
+    title: POST response carries Access-Control-Allow-Origin
+    breadcrumb: MCP CORS actual
+    handler: cors-preflight
+    with:
+      path: "{mcp_endpoint}"
+      origin: https://example.com
+      request_method: POST
+      request_headers: content-type
+      surface: actual
+    hint: Echo Access-Control-Allow-Origin on the actual POST, not only the preflight.
+
+  - id: well-known-mcp-card
+    category: mcp
+    tier: recommended
+    principle: P8
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 3
+    title: A .well-known MCP server card is published (SEP-1649)
+    breadcrumb: MCP server card
+    handler: http
+    with:
+      path: /.well-known/mcp/server-card.json
+      expect: { status: [200], content_type: "json", body_regex: "mcp_endpoint|serverInfo|transport|\"name\"" }
+    hint: Publish /.well-known/mcp/server-card.json (SEP-1649).
+
+  - id: mcp-card-legacy-aliases
+    category: mcp
+    tier: optional
+    principle: P8
+    site_types: [mcp]
+    antecedent: mcp-present
+    eval: legacy-alias-redirects
+    weight: 1
+    title: Legacy MCP card paths redirect to the canonical card
+    breadcrumb: MCP card legacy aliases
+    handler: http
+    with:
+      canonical: /.well-known/mcp/server-card.json
+      aliases:
+        - /.well-known/mcp
+        - /.well-known/mcp.json
+        - /mcp.json
+    hint: 301 whichever legacy card paths you serve to /.well-known/mcp/server-card.json rather than answering with a copy.
+
+  - id: mcp-usage-doc
+    category: mcp
+    tier: optional
+    principle: P8
+    site_types: [mcp]
+    antecedent: mcp-present
+    weight: 1
+    title: A human/agent usage doc for the server resolves
+    breadcrumb: MCP usage doc
+    handler: http
+    with:
+      path_any: [/mcp-skill.md, /mcp.md, /.well-known/mcp/usage.md]
+      expect: { status: [200] }
+    hint: Link a short markdown usage doc (curl examples, tool list, auth, rate limits) from the card and llms.txt.
+
+  - id: webmcp
+    category: mcp
+    tier: optional
+    principle: P2
+    site_types: [all]
+    antecedent: html-root
+    weight: 1
+    title: Root HTML exposes WebMCP browser tools
+    breadcrumb: WebMCP
+    handler: webmcp
+    with: {}
+    hint: Expose page tools via WebMCP (script type="application/webmcp+json" or a navigator.modelContext provider) so browser agents can call them.
+
+  # ---- Content for agents --------------------------------------------------
+  - id: llms-txt
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: none
+    weight: 4
+    title: /llms.txt present with a summary and link index
+    breadcrumb: llms.txt
+    handler: http
+    with:
+      path: /llms.txt
+      retain_body: true
+      expect: { status: [200], body_regex: "^#|\\]\\(https?://" }
+    hint: 'Serve /llms.txt (llmstxt.org): H1 title, summary blockquote, categorized link index.'
+
+  - id: llms-txt-format
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: root-llms-txt
+    weight: 1
+    title: llms.txt has H1, summary, and a link index
+    breadcrumb: llms.txt format
+    handler: llms-txt-quality
+    with: { op: format }
+    hint: 'Structure /llms.txt with an H1 title, a blockquote summary, and a markdown link index (llmstxt.org). Presence alone is not enough.'
+
+  - id: llms-txt-links
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: root-llms-txt
+    weight: 1
+    title: llms.txt links resolve
+    breadcrumb: llms.txt links
+    handler: llms-txt-quality
+    with: { op: links, max_candidates: 8 }
+    hint: 'Keep every markdown href in /llms.txt fetchable (2xx/3xx). Dead index links waste an agent round-trip.'
+
+  - id: llms-txt-when-to-use
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: root-llms-txt
+    weight: 1
+    title: llms.txt has a when-to-use or programmatic-access section
+    breadcrumb: llms.txt when-to-use
+    handler: llms-txt-quality
+    with: { op: when-to-use }
+    hint: 'Add a short heading such as "When to use" or "Programmatic access" so an agent knows when the MCP or docs apply.'
+
+  - id: llms-full-txt
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [content]
+    antecedent: docs-site
+    weight: 2
+    title: /llms-full.txt present (single-fetch full corpus)
+    breadcrumb: llms-full.txt
+    handler: http
+    with:
+      path: /llms-full.txt
+      expect: { status: [200] }
+    hint: For docs sites, concatenate every page as markdown at /llms-full.txt for one-fetch ingestion.
+
+  - id: llms-txt-scoped
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [content]
+    antecedent: root-llms-txt
+    eval: scoped-discovery
+    weight: 1
+    title: Per-section llms.txt files resolve under content subdirectories
+    breadcrumb: llms.txt scoped
+    handler: scoped-llms
+    with: { file: llms.txt, max_candidates: 8 }
+    hint: Serve scoped llms.txt files (e.g. /docs/llms.txt) for major content sections linked from the root index.
+
+  - id: llms-full-txt-scoped
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [content]
+    antecedent: root-llms-full-txt
+    eval: scoped-discovery
+    weight: 1
+    title: Per-section llms-full.txt files resolve under content subdirectories
+    breadcrumb: llms-full.txt scoped
+    handler: scoped-llms
+    with: { file: llms-full.txt, max_candidates: 8 }
+    hint: Serve scoped llms-full.txt corpora (e.g. /docs/llms-full.txt) so agents can ingest one section in one fetch.
+
+  - id: accept-markdown
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: html-root
+    weight: 2
+    title: Accept text/markdown content negotiation returns markdown
+    breadcrumb: Accept markdown
+    handler: http
+    with:
+      path: /
+      headers: { Accept: text/markdown }
+      expect: { content_type: "markdown|text/plain" }
+    hint: 'Honor `Accept: text/markdown` on content URLs; return raw markdown, not HTML chrome.'
+
+  - id: markdown-cli-ua
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [all]
+    antecedent: markdown-twin
+    weight: 1
+    title: Bare CLI User-Agent receives the markdown twin
+    breadcrumb: Markdown for a CLI UA
+    handler: http
+    with:
+      path: /
+      headers: { User-Agent: "{ua:cli}", Accept: "*/*" }
+      expect: { content_type: "markdown|text/plain" }
+    hint: 'Serve the markdown twin to shell HTTP clients (curl/wget/library UAs) that state no content-type preference, so scripted fetches get source, not HTML chrome.'
+
+  - id: markdown-agent-ua
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [all]
+    antecedent: markdown-twin
+    weight: 1
+    title: AI user-fetch User-Agent receives the markdown twin
+    breadcrumb: Markdown for an agent UA
+    handler: http
+    with:
+      path: /
+      headers: { User-Agent: "{ua:ai-user-fetcher}", Accept: "*/*" }
+      expect: { content_type: "markdown|text/plain" }
+    hint: 'Serve the markdown twin to AI on-demand user-fetchers (ChatGPT-User, Claude-User, Perplexity-User) that state no content-type preference.'
+
+  - id: agent-ua-reachable
+    category: bot-crawl-policy
+    tier: recommended
+    principle: P7
+    site_types: [all]
+    antecedent: http-root
+    weight: 1
+    title: AI user-fetch User-Agent can reach the homepage
+    breadcrumb: Agent UA reachable
+    handler: http
+    with:
+      path: /
+      headers: { User-Agent: "{ua:ai-user-fetcher}", Accept: "*/*" }
+      expect:
+        status_below: 300
+        body_not_regex: "just a moment|attention required|cf-challenge|enable javascript and cookies|captcha"
+    hint: 'Allow on-demand user-fetchers (ChatGPT-User and peers) to GET / with Accept */* and receive 2xx, not a bot-challenge interstitial. Distinct from serving markdown to that UA.'
+
+  - id: markdown-accept-plain
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [all]
+    antecedent: markdown-twin
+    weight: 1
+    title: Accept text/plain returns the markdown twin
+    breadcrumb: Markdown Accept plain
+    handler: http
+    with:
+      path: /
+      headers: { Accept: "text/plain" }
+      expect: { content_type: "markdown|text/plain" }
+    hint: 'Treat Accept text/plain as a markdown request: return the raw markdown source, not HTML chrome.'
+
+  - id: markdown-vary
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: markdown-twin
+    weight: 1
+    title: Negotiated responses carry Vary Accept, User-Agent
+    breadcrumb: Markdown Vary
+    handler: http
+    with:
+      path: /
+      expect:
+        # Both tokens present, in either order, with `accept` not the prefix of
+        # `accept-encoding` or `accept-language`. Spelled without lookaround
+        # because the CLI compiles every registry pattern with a linear-time
+        # engine that has none; tests/web-audit-vary-pattern.test.ts pins it
+        # to the lookaround form it replaces.
+        header_regex: { name: vary, pattern: "accept(?:user-agent|[^-\\n\\r\\u2028\\u2029].*user-agent)|user-agent.*accept(?:[^-]|$)" }
+    hint: 'Emit Vary: Accept, User-Agent when the markdown twin is negotiated on the same URL, so shared caches never serve one client the wrong variant.'
+
+  - id: markdown-frontmatter
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [all]
+    antecedent: markdown-twin
+    weight: 1
+    title: Markdown twin carries YAML frontmatter
+    breadcrumb: Markdown frontmatter
+    handler: markdown-frontmatter
+    with:
+      path: /
+      headers: { Accept: text/markdown }
+    hint: Prefix each markdown twin with YAML frontmatter (title, description, canonical url) so agents ingest page metadata without parsing the body.
+
+  - id: root-meta-description
+    category: content-for-agents
+    tier: recommended
+    principle: P3
+    site_types: [all]
+    antecedent: html-root
+    weight: 2
+    title: Root HTML has a descriptive <meta name="description">
+    breadcrumb: Root meta description
+    handler: http
+    with:
+      path: /
+      expect: { body_regex: "<meta[^>]+name=[\"']description[\"']" }
+    hint: Add a meta description that states what the service does and names its agent entry points.
+
+  - id: schema-org-jsonld
+    category: content-for-agents
+    tier: optional
+    principle: P2
+    site_types: [all]
+    antecedent: html-root
+    weight: 1
+    title: Root HTML embeds Schema.org JSON-LD
+    breadcrumb: Schema.org JSON-LD
+    handler: http
+    with:
+      path: /
+      expect: { body_regex: "application/ld\\+json" }
+    hint: Embed Schema.org JSON-LD (e.g. TechArticle / WebAPI) in <head> for structured metadata.
+
+  - id: content-without-js
+    category: content-for-agents
+    tier: recommended
+    principle: P2
+    site_types: [all]
+    antecedent: html-root
+    weight: 1
+    title: Root HTML has an H1 and readable text without JavaScript
+    breadcrumb: Content without JS
+    handler: content-without-js
+    with: {}
+    hint: 'Serve an H1 and at least ~200 characters of visible text in the raw root HTML. A thin shell is acceptable only when llms.txt links resolvable same-origin content.'
+
+  - id: semantic-html
+    category: content-for-agents
+    tier: optional
+    principle: P3
+    site_types: [all]
+    antecedent: html-root
+    weight: 1
+    title: Root HTML uses semantic landmarks
+    breadcrumb: Semantic HTML
+    handler: http
+    with:
+      path: /
+      expect: { body_regex: "<(main|article|section|nav)\\b" }
+    hint: Use <main>/<article>/<section>/<nav> landmarks; the HTML path should be parseable too.
+
+  - id: noscript-fallback
+    category: content-for-agents
+    tier: recommended
+    principle: P1
+    site_types: [all]
+    antecedent: html-root
+    weight: 2
+    title: Root HTML has a <noscript> with machine entry points
+    breadcrumb: noscript fallback
+    handler: http
+    with:
+      path: /
+      expect: { body_regex: "<noscript" }
+    hint: Link your machine entry points (llms.txt, an OpenAPI or MCP endpoint, .well-known cards) from a <noscript> block so non-JS agents get an in-body list.
+
+  # ---- Discoverability -----------------------------------------------------
+  - id: robots
+    category: discoverability
+    tier: recommended
+    principle: P7
+    site_types: [all]
+    antecedent: none
+    weight: 2
+    title: /robots.txt present
+    breadcrumb: robots.txt
+    handler: http
+    with:
+      path: /robots.txt
+      expect: { status: [200] }
+    hint: Publish robots.txt; declare content-signal / AI-usage policy explicitly rather than by omission.
+
+  - id: sitemap
+    category: discoverability
+    tier: optional
+    principle: P7
+    site_types: [all]
+    antecedent: none
+    weight: 1
+    title: /sitemap.xml present
+    breadcrumb: Sitemap
+    handler: http
+    with:
+      path: /sitemap.xml
+      retain_body: true
+      expect: { status: [200] }
+    hint: Publish sitemap.xml so crawlers and agents can enumerate content URLs.
+
+  - id: agent-friendly-404
+    category: discoverability
+    tier: recommended
+    principle: P8
+    site_types: [all]
+    antecedent: http-root
+    weight: 1
+    title: Unknown paths return HTTP 404 or 410
+    breadcrumb: Agent-friendly 404
+    handler: http
+    with:
+      path: /anc-web-audit-no-such-page
+      expect: { status: [404, 410] }
+    hint: 'Return a real HTTP 404 or 410 for unknown paths. A 200 SPA shell is a soft-404 and hides recovery from agents.'
+
+  - id: agent-friendly-404-md
+    category: discoverability
+    tier: recommended
+    principle: P8
+    site_types: [all]
+    antecedent: http-root
+    weight: 1
+    title: 404 body is markdown with a recovery link
+    breadcrumb: Agent-friendly 404 markdown
+    handler: http
+    with:
+      path: /anc-web-audit-no-such-page
+      headers: { Accept: text/markdown }
+      expect:
+        status: [404, 410]
+        content_type: "markdown|text/plain"
+        same_origin_recovery_link: true
+    hint: 'On Accept text/markdown, serve a short 404 markdown body that links at least one recovery surface (sitemap, llms.txt, or a docs index). Verify with curl -sS -o /dev/null -w "%{http_code}".'
+
+  - id: link-headers
+    category: discoverability
+    tier: recommended
+    principle: P3
+    site_types: [all]
+    antecedent: http-root
+    weight: 3
+    title: Homepage sends RFC 8288 Link headers pointing at agent resources
+    breadcrumb: Link headers
+    handler: http
+    with:
+      path: /
+      expect:
+        header_regex: { name: link, pattern: "rel=\"?(service-desc|describedby|api-catalog|service-doc)\"?" }
+    hint: Add Link response headers on / with rel=service-desc / describedby / api-catalog pointing at machine surfaces.
+
+  - id: root-link-rel
+    category: discoverability
+    tier: recommended
+    principle: P3
+    site_types: [all]
+    antecedent: html-root
+    weight: 3
+    title: Root HTML links to machine surfaces via <link rel>
+    breadcrumb: Root link rel
+    handler: http
+    with:
+      path: /
+      expect: { body_regex: "rel=[\"'](service-desc|service-doc|alternate)[\"']" }
+    hint: Add <link rel="service-desc" href="/openapi.json">, service-doc, and alternate to llms.txt / mcp card.
+
+  - id: dns-aid
+    category: discoverability
+    tier: optional
+    principle: P8
+    site_types: [all]
+    antecedent: none
+    weight: 1
+    title: DNS for AI Discovery (DNS-AID) records under _agents (IETF draft)
+    breadcrumb: DNS-AID
+    handler: dns-doh
+    with:
+      names: ["_index._agents.{host}", "_a2a._agents.{host}", "_mcp._agents.{host}"]
+      type: SVCB
+    hint: Publish SVCB/HTTPS records under _agents (e.g. _index._agents.<domain>), DNSSEC-signed (draft-mozleywilliams-dnsop-dnsaid).
+
+  # ---- Bot & crawl policy --------------------------------------------------
+  - id: robots-ai-rules
+    category: bot-crawl-policy
+    tier: recommended
+    principle: P7
+    site_types: [all]
+    antecedent: robots-present
+    weight: 2
+    title: robots.txt declares AI-crawler rules (RFC 9309)
+    breadcrumb: robots.txt AI rules
+    handler: http
+    with:
+      path: /robots.txt
+      expect: { status: [200], body_regex: "^\\s*User-agent:\\s*(\\*|GPTBot|OAI-SearchBot|ChatGPT-User|Claude|ClaudeBot|Anthropic|Google-Extended|PerplexityBot|CCBot|Bytespider)" }
+    hint: Add explicit User-agent rules for AI crawlers (GPTBot, ClaudeBot, Google-Extended, ...) or a wildcard policy.
+
+  - id: content-signals
+    category: bot-crawl-policy
+    tier: recommended
+    principle: P7
+    site_types: [all]
+    antecedent: robots-present
+    weight: 2
+    title: robots.txt declares Content-Signal AI-usage preferences
+    breadcrumb: Content signals
+    handler: http
+    with:
+      path: /robots.txt
+      expect: { status: [200], body_regex: "^\\s*Content-Signal:\\s*(ai-train|search|ai-input)" }
+    hint: 'Add Content-Signal directives to robots.txt: ai-train / search / ai-input = yes|no (contentsignals.org).'
+
+  - id: web-bot-auth
+    category: bot-crawl-policy
+    tier: optional
+    principle: P6
+    site_types: [all]
+    antecedent: none
+    weight: 1
+    title: Web Bot Auth signature directory present (informational)
+    breadcrumb: Web Bot Auth
+    handler: http
+    with:
+      path: /.well-known/http-message-signatures-directory
+      expect: { status: [200], body_regex: "keys|jwk" }
+    hint: Informational only. Publish an HTTP Message Signatures JWKS directory only if the site sends authenticated bot traffic.
+
+  - id: security-txt
+    category: bot-crawl-policy
+    tier: optional
+    principle: P4
+    site_types: [all]
+    antecedent: none
+    weight: 1
+    title: /.well-known/security.txt present (RFC 9116)
+    breadcrumb: security.txt
+    handler: http
+    with:
+      path: /.well-known/security.txt
+      expect: { status: [200], body_regex: "Contact:" }
+    hint: Publish /.well-known/security.txt (RFC 9116) with a Contact and Expires field.
+
+  # ---- Agent discovery & auth ----------------------------------------------
+  - id: a2a-agent-card
+    category: agent-discovery-auth
+    tier: optional
+    principle: P8
+    site_types: [all]
+    antecedent: none
+    weight: 2
+    title: A2A Agent Card published for agent-to-agent discovery
+    breadcrumb: A2A agent card
+    handler: http
+    with:
+      path_any: [/.well-known/agent-card.json, /.well-known/agent.json]
+      expect: { status: [200], content_type: "json", body_regex: "\"name\"|supportedInterfaces|skills" }
+    hint: Serve /.well-known/agent-card.json (a2a-protocol.org) with name, version, and supportedInterfaces.
+
+  - id: ai-catalog
+    category: agent-discovery-auth
+    tier: optional
+    principle: P8
+    site_types: [all]
+    antecedent: none
+    weight: 1
+    title: /.well-known/ai-catalog.json published (ARD)
+    breadcrumb: AI catalog
+    handler: http
+    with:
+      path: /.well-known/ai-catalog.json
+      expect: { status: [200], content_type: "json", body_regex: "specVersion|entries" }
+    hint: Serve /.well-known/ai-catalog.json with specVersion and an entries array (Agentic Resource Discovery).
+
+  - id: agent-skills
+    category: agent-discovery-auth
+    tier: optional
+    principle: P8
+    site_types: [all]
+    antecedent: none
+    weight: 2
+    title: Agent-skills discovery index published
+    breadcrumb: Agent skills
+    handler: http
+    with:
+      path_any: [/.well-known/agent-skills/index.json, /.well-known/skills/index.json]
+      expect: { status: [200], content_type: "json", body_regex: "skills" }
+    hint: Publish /.well-known/agent-skills/index.json (Cloudflare agent-skills-discovery RFC) with a skills[] array.
+
+  - id: oauth-discovery
+    category: agent-discovery-auth
+    tier: optional
+    principle: P1
+    site_types: [api, mcp]
+    antecedent: auth-present
+    weight: 1
+    title: OAuth/OIDC discovery metadata published
+    breadcrumb: OAuth discovery
+    handler: http
+    with:
+      path_any: [/.well-known/openid-configuration, /.well-known/oauth-authorization-server]
+      expect: { status: [200], content_type: "json", body_regex: "issuer|authorization_endpoint|token_endpoint" }
+    hint: Publish OAuth/OIDC discovery (RFC 8414 / OIDC Discovery) if agents authenticate; expected absent for open servers.
+
+  - id: oauth-protected-resource
+    category: agent-discovery-auth
+    tier: optional
+    principle: P1
+    site_types: [mcp]
+    antecedent: mcp-auth
+    weight: 1
+    title: OAuth Protected Resource Metadata published (RFC 9728)
+    breadcrumb: OAuth protected resource
+    handler: http
+    with:
+      path: /.well-known/oauth-protected-resource
+      expect: { status: [200], content_type: "json", body_regex: "authorization_servers|resource" }
+    hint: For an authenticated MCP server, publish /.well-known/oauth-protected-resource (RFC 9728); expected absent for open servers.
+
+  - id: auth-md
+    category: agent-discovery-auth
+    tier: optional
+    principle: P1
+    site_types: [api, mcp]
+    antecedent: auth-present
+    weight: 1
+    title: Agent auth/registration metadata doc published
+    breadcrumb: auth.md
+    handler: auth-md
+    with:
+      path_any: [/.well-known/auth.md, /auth.md]
+    hint: Publish an auth.md (agent auth/registration guide) at /.well-known/auth.md describing how agents obtain credentials.

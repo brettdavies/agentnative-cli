@@ -1,7 +1,7 @@
 ---
 id: p3
 title: Progressive Help Discovery
-last-revised: 2026-05-21
+last-revised: 2026-09-17
 status: active
 requirements:
   - id: p3-must-subcommand-examples
@@ -29,6 +29,11 @@ requirements:
     level: should
     applicability: universal
     summary: Short `about` for command-list summaries; `long_about` reserved for detailed descriptions visible with `--help`.
+  - id: p3-should-unprefixed-command-list
+    level: should
+    applicability:
+      if: CLI uses subcommands
+    summary: Command-list entries name the command directly rather than repeating the binary name as a prefix.
   - id: p3-may-examples-subcommand
     level: may
     applicability: universal
@@ -72,6 +77,11 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
   `yarn`, `make`), or `-version` (Go's `flag` package). Any of the three forms is sufficient. Agents probing tool
   versions across many CLIs save token cost when they can pin against a one- or two-character flag; the long-only path
   forces an extra parse step.
+- Entries in the command list SHOULD name the command directly (`status`, `server stop`) rather than repeat the binary
+  name on every line (`tool status`, `tool server stop`). A reader or agent scanning the block takes the command token
+  straight from the left column instead of reconstructing it from a prefix it already knows from the `Usage:` line. The
+  bare invocation line, which documents what the tool does with no arguments, is the one entry that legitimately carries
+  the binary name alone.
 
 **MAY:**
 
@@ -84,6 +94,8 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 - `after_help` attribute on every subcommand variant.
 - Example invocations in `after_help` text that include realistic arguments, not placeholder `<foo>` tokens.
 - Both `about` (short) and `after_help` (examples) present on each subcommand.
+- The command list's left column holds bare command tokens; the binary name appears in the `Usage:` line and in
+  examples, not at the head of each command entry.
 
 ## Anti-Patterns
 
@@ -92,6 +104,8 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 - A single `about` string serving as both summary and usage documentation.
 - Examples buried in a README or man page but absent from `--help` output.
 - `after_help` text that describes the flags in prose instead of demonstrating them in code.
+- A hand-written command list that prefixes every entry with the binary name, so the command token sits second on each
+  line and a scanner has to strip the prefix before it can read the command.
 
 Measured by audit IDs `p3-help`, `p3-after-help`, `p3-version`. Run `anc audit --principle 3 .` against the CLI under
 test to see each.

@@ -92,6 +92,96 @@ pub struct AuditResult {
     /// heuristic audits downgrade. Additive field; consumers feature-detect.
     #[serde(default)]
     pub confidence: Confidence,
+    /// Per-audit transparency carrier: when an audit's Pass depended on a
+    /// per-CLI mitigation (today: `.anc.toml [p6] domain_verbs` for
+    /// `p6-standard-names`), the audit populates this so the scorecard
+    /// distinguishes a self-declared Pass from an unassisted one. `None` for
+    /// every audit that has no mitigation to declare. Carrier-shaped rather
+    /// than audit-specific so future audits with similar transparency needs
+    /// reuse the slot instead of growing parallel fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mitigation: Option<MitigationInfo>,
+    /// The `.anc.toml` setting that would clear this row's warning, attached
+    /// when no config supplied it. `None` for every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_hint: Option<ConfigHint>,
+}
+
+/// A ready-to-add `.anc.toml` setting for a warning config could clear.
+/// Today's only producer is `p6-standard-names`, for a CLI whose flagged
+/// verbs no `[p6] domain_verbs` covered.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ConfigHint {
+    /// Where the setting can go: the repository's file first, then the
+    /// user-level file when one is configured.
+    pub files: Vec<ConfigFile>,
+    /// The `[p6] domain_verbs` entries to add: the flagged verbs, in
+    /// `--help` order.
+    pub domain_verbs: Vec<String>,
+    /// The README section on where anc looks for `.anc.toml`.
+    pub docs: String,
+}
+
+/// A file a [`ConfigHint`] setting can go in.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ConfigFile {
+    /// The file, named the way evidence names files: `.anc.toml` at a
+    /// repository root, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`. Never
+    /// an absolute path.
+    pub file: String,
+    /// Which audits read the file.
+    pub scope: ConfigScope,
+}
+
+/// Which audits read a [`ConfigFile`]. A closed set.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConfigScope {
+    /// The root of the repository this audit found, or the `--repo`
+    /// directory: the setting travels with the tool, and anc reads it on
+    /// every audit of that repository.
+    Repository,
+    /// The root of the tool's own repository, which this audit could not
+    /// find because the target sits outside any repository: anc reads it
+    /// from a checkout, or through `--repo <checkout>`.
+    ToolRepository,
+    /// The user-level file: personal vocabulary that applies to every tool
+    /// audited on this machine.
+    User,
+}
+
+/// Transparency metadata attached to an `AuditResult` when its verdict
+/// depended on a documented opt-in (config-driven recognition, suppression
+/// profile, etc.). Distinct from `evidence`, which is prose; `MitigationInfo`
+/// is the structured signal a downstream consumer (scorecard renderer,
+/// leaderboard) can dispatch on without parsing the evidence string.
+///
+/// Current uses:
+/// - `p6-standard-names`: when one or more subcommands matched the audit
+///   target's `.anc.toml [p6] domain_verbs` list (not the built-in
+///   `STANDARD_VERBS`), the audit fills `domain_match_count` and
+///   `domain_match_examples`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct MitigationInfo {
+    /// True iff the verdict was assisted by the named opt-in. Always present
+    /// when `MitigationInfo` itself is present (the `Some` sentinel of the
+    /// parent `Option` is the same fact, but consumers find the explicit
+    /// flag easier to dispatch on).
+    pub using_domain_verbs: bool,
+    /// Count of subcommands recognized via `domain_verbs` (not via the
+    /// built-in standard-verb list).
+    pub domain_match_count: usize,
+    /// Up to the first 5 domain-verb matches in encounter order, for
+    /// display alongside the evidence string. Truncated set; consumers that
+    /// need every match should re-derive from the CLI's `--help` output.
+    pub domain_match_examples: Vec<String>,
+    /// Count of subcommands recognized via the built-in `STANDARD_VERBS`
+    /// list (not via `domain_verbs`). Combined with `domain_match_count`,
+    /// this lets a consumer compute the recognized fraction without
+    /// re-running the audit probe.
+    pub builtin_match_count: usize,
+    /// Total subcommand count (denominator of the "recognized" fraction).
+    pub subcommand_total: usize,
 }
 
 /// A source location where a violation was found.

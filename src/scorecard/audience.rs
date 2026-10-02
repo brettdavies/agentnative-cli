@@ -148,6 +148,8 @@ mod tests {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         }
     }
 

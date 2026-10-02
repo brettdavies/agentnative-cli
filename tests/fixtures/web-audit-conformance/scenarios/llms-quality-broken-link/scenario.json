@@ -1,0 +1,71 @@
+{
+  "description": "a link that answers 5xx makes the links row broken",
+  "covers": [
+    "llms-txt-links"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/llms.txt"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "body": "# Example\n\n> An example service with docs, an API and an MCP server.\n\n## Docs\n\n- [Guide](https://example.com/docs/guide.md): how the service works\n- [API reference](https://example.com/docs/api.md): every endpoint\n\n## When to use\n\nCall the MCP server for live data; read the docs for concepts.\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/docs/guide.md"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/markdown; charset=utf-8"
+        },
+        "body": "# Guide\n\nA substantial guide body that runs well past the forty-character floor.\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/docs/api.md"
+      },
+      "response": {
+        "status": 500,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<html><body><h1>Internal error</h1></body></html>"
+      }
+    }
+  ]
+}

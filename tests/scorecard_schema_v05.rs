@@ -10,8 +10,12 @@
 use assert_cmd::Command;
 use serde_json::Value;
 
+mod common;
+
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("anc binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    cmd
 }
 
 fn fixture_path(name: &str) -> String {
@@ -24,8 +28,8 @@ fn fixture_path(name: &str) -> String {
 /// precise failure message when a field is missing.
 fn assert_v05_shape(parsed: &Value) {
     assert_eq!(
-        parsed["schema_version"], "0.7",
-        "schema_version must be 0.7 (per-row emission + 7-status taxonomy)",
+        parsed["schema_version"], "0.9",
+        "schema_version must be 0.9 (per-row emission + 7-status taxonomy + domain_verbs transparency + config hint)",
     );
 
     for path in [
@@ -353,8 +357,8 @@ fn rt_schema_id_pins_to_published_schema_version() {
     let schema = schema_doc();
     let id = schema["$id"].as_str().expect("$id is a string");
     assert!(
-        id.contains("scorecard-v0.7"),
-        "schema $id must pin to the current SCHEMA_VERSION (0.7), got: {id}",
+        id.contains("scorecard-v0.9"),
+        "schema $id must pin to the current SCHEMA_VERSION (0.9), got: {id}",
     );
 }
 
@@ -539,4 +543,160 @@ fn rt_live_results_rows_satisfy_audit_result_view_required_keys() {
             );
         }
     }
+}
+
+/// Keys a row may carry: the schema's `AuditResultView.properties`, which
+/// denies anything else (`additionalProperties: false`).
+#[cfg(unix)]
+fn row_property_names(schema: &Value) -> Vec<String> {
+    schema["$defs"]["AuditResultView"]["properties"]
+        .as_object()
+        .expect("AuditResultView.properties is an object")
+        .keys()
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn rt_schema_declares_the_config_hint_row_field() {
+    let schema = schema_doc();
+    let hint = &schema["$defs"]["ConfigHint"];
+    assert_eq!(
+        schema["$defs"]["AuditResultView"]["properties"]["config_hint"]["$ref"],
+        "#/$defs/ConfigHint",
+        "AuditResultView.config_hint must reference the ConfigHint definition",
+    );
+    assert_eq!(hint["additionalProperties"], false, "ConfigHint: {hint}");
+    let required: Vec<&str> = hint["required"]
+        .as_array()
+        .expect("ConfigHint.required is array")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(
+        required,
+        ["files", "domain_verbs", "docs"],
+        "ConfigHint: {hint}"
+    );
+    assert_eq!(
+        hint["properties"]["files"]["items"]["$ref"], "#/$defs/ConfigFile",
+        "ConfigHint.files must reference the ConfigFile definition",
+    );
+    let file = &schema["$defs"]["ConfigFile"];
+    assert_eq!(file["additionalProperties"], false, "ConfigFile: {file}");
+    assert_eq!(
+        file["properties"]["scope"]["enum"],
+        serde_json::json!(["repository", "tool-repository", "user"]),
+        "ConfigFile: {file}"
+    );
+    assert!(
+        !schema["$defs"]["AuditResultView"]["required"]
+            .as_array()
+            .expect("required is array")
+            .iter()
+            .any(|key| key == "config_hint"),
+        "config_hint is absent from rows without a hint, so it cannot be required",
+    );
+}
+
+/// Write a shell CLI whose only subcommand, `mentions`, is not a standard
+/// verb, so `p6-may-standard-names` warns and, with no config, hints.
+#[cfg(unix)]
+fn hinting_fixture(dir: &std::path::Path) -> std::path::PathBuf {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let bin = dir.join("x");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o755)
+        .open(&bin)
+        .and_then(|mut f| {
+            f.write_all(
+                b"#!/bin/sh\ncase \"$1\" in\n  --help) printf 'Usage: x <COMMAND>\\n\\nCommands:\\n  mentions   List mentions\\n'; exit 0 ;;\n  --version) echo 'x 0.1.0'; exit 0 ;;\n  *) echo x; exit 0 ;;\nesac\n",
+            )
+        })
+        .expect("write fixture");
+    bin
+}
+
+#[test]
+#[cfg(unix)]
+fn rt_live_hint_row_validates_against_the_schema() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let bin = hinting_fixture(tmp.path());
+    let output = cmd()
+        .args([
+            "audit",
+            bin.to_str().expect("utf-8 path"),
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("anc spawn");
+    let live: Value = serde_json::from_slice(&output.stdout).expect("live JSON parses");
+
+    let schema = schema_doc();
+    let allowed = row_property_names(&schema);
+    let confidences = schema["$defs"]["AuditResultView"]["properties"]["confidence"]["enum"]
+        .as_array()
+        .expect("confidence.enum is an array");
+    let rows = live["results"].as_array().expect("results is array");
+    for row in rows {
+        for key in row.as_object().expect("row is an object").keys() {
+            assert!(
+                allowed.contains(key),
+                "row key `{key}` is not in AuditResultView.properties: row = {row}",
+            );
+        }
+        assert!(
+            confidences.contains(&row["confidence"]),
+            "row confidence is outside the schema's enum {confidences:?}: row = {row}",
+        );
+    }
+
+    let hint = rows
+        .iter()
+        .find_map(|row| row.get("config_hint"))
+        .expect("the standard-names row carries a config_hint");
+    let hint_def = &schema["$defs"]["ConfigHint"];
+    let hint_keys: Vec<&String> = hint
+        .as_object()
+        .expect("hint is an object")
+        .keys()
+        .collect();
+    let declared: Vec<String> = hint_def["properties"]
+        .as_object()
+        .expect("ConfigHint.properties is an object")
+        .keys()
+        .cloned()
+        .collect();
+    for key in &hint_keys {
+        assert!(
+            declared.contains(key),
+            "hint key `{key}` is undeclared: {hint}"
+        );
+    }
+    for key in hint_def["required"].as_array().expect("required is array") {
+        let key = key.as_str().expect("required entry is a string");
+        assert!(
+            hint.get(key).is_some(),
+            "hint lacks required `{key}`: {hint}"
+        );
+    }
+    let scopes = &schema["$defs"]["ConfigFile"]["properties"]["scope"]["enum"];
+    for file in hint["files"].as_array().expect("files is an array") {
+        assert!(
+            scopes
+                .as_array()
+                .is_some_and(|scopes| scopes.contains(&file["scope"])),
+            "file scope is outside the schema's enum {scopes}: {hint}"
+        );
+    }
+    assert!(
+        hint["domain_verbs"]
+            .as_array()
+            .is_some_and(|verbs| verbs.iter().all(Value::is_string)),
+        "domain_verbs is an array of strings: {hint}",
+    );
 }

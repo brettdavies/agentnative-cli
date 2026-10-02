@@ -49,6 +49,8 @@ impl Audit for BundleUpdateAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

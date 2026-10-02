@@ -57,11 +57,11 @@ impl Audit for SigtermPythonAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Python)
+        project.has_language(Language::Python)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Python);
         let mut has_handler = false;
         let mut has_long_running = false;
 
@@ -98,6 +98,8 @@ impl Audit for SigtermPythonAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

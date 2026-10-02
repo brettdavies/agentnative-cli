@@ -1,3 +1,4 @@
+use clap::builder::FalseyValueParser;
 use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
@@ -35,18 +36,27 @@ pub struct Cli {
     pub command: Option<Commands>,
 
     /// Suppress non-essential output. Default: false (warnings and progress
-    /// notes are written to stderr).
-    #[arg(long, short = 'q', global = true, env = "AGENTNATIVE_QUIET")]
+    /// notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any
+    /// value but `0`, `false`, `no`, `off`, or empty.
+    #[arg(
+        long,
+        short = 'q',
+        global = true,
+        env = "AGENTNATIVE_QUIET",
+        value_parser = FalseyValueParser::new()
+    )]
     pub quiet: bool,
 
     /// Escalate diagnostic detail. `-v` is shorthand for `--verbose`.
     /// Mutually exclusive with `--quiet`; the last flag on the command line
-    /// wins when both appear.
+    /// wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value
+    /// but `0`, `false`, `no`, `off`, or empty.
     #[arg(
         long,
         short = 'v',
         global = true,
         env = "AGENTNATIVE_VERBOSE",
+        value_parser = FalseyValueParser::new(),
         conflicts_with = "quiet"
     )]
     pub verbose: bool,
@@ -97,12 +107,25 @@ pub enum ColorChoice {
     Never,
 }
 
+/// `--repo` accepts only a directory that exists.
+fn existing_dir(value: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::PathBuf::from(value);
+    if path.is_dir() {
+        Ok(path)
+    } else if path.exists() {
+        Err("not a directory; pass the directory that holds the repo's `.anc.toml`".into())
+    } else {
+        Err("no such directory; pass the directory that holds the repo's `.anc.toml`".into())
+    }
+}
+
 #[derive(Subcommand)]
 pub enum Commands {
     /// Audit a CLI project or binary for agent-readiness
     ///
-    /// Reads the target's project layout (Cargo.toml / pyproject.toml),
-    /// language detection, and binary discovery. Stdin is not consumed.
+    /// Reads the target's manifests and workspace declarations (Cargo, npm,
+    /// yarn, pnpm, Go, uv), the languages present, and the built binary to
+    /// grade. Stdin is not consumed.
     /// Pass the target as a positional argument or via `--command <name>`
     /// to resolve from PATH. `-` is reserved and behaves like any other
     /// path argument (no special stdin meaning).
@@ -112,8 +135,12 @@ pub enum Commands {
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
   anc audit --command ripgrep                  # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
+  anc audit --command xr --repo ./xr-src       # .anc.toml from a repo you fetched
+  anc audit . --bin xr                         # one of several built binaries
 
-Defaults: path = `.`, output = text, no principle filter.")]
+Defaults: path = `.`, output = text, no principle filter.
+
+Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml")]
     Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
@@ -129,16 +156,40 @@ Defaults: path = `.`, output = text, no principle filter.")]
         )]
         command: Option<String>,
 
-        /// Run only behavioral audits (skip source analysis)
+        /// Run only behavioral audits (skip source analysis). To choose
+        /// which binary a directory grades, use --bin
         #[arg(long)]
         binary: bool,
+
+        /// Grade this binary when the directory builds several: a bin name,
+        /// or the path anc prints for it. Unrelated to --binary, which runs
+        /// only behavioral audits
+        #[arg(
+            long,
+            value_name = "NAME",
+            env = "AGENTNATIVE_BIN",
+            conflicts_with = "command"
+        )]
+        bin: Option<String>,
+
+        /// Read `.anc.toml` from this directory instead of the target's
+        /// repository. For a repo you fetched for a tool installed elsewhere:
+        /// anc reads `<PATH>/.anc.toml` over `~/.anc.toml` and never fetches.
+        #[arg(
+            long,
+            value_name = "PATH",
+            env = "AGENTNATIVE_REPO",
+            value_hint = ValueHint::DirPath,
+            value_parser = existing_dir,
+        )]
+        repo: Option<std::path::PathBuf>,
 
         /// Run only source audits (skip behavioral)
         #[arg(long)]
         source: bool,
 
         /// Filter audits by principle number (1-8)
-        #[arg(long)]
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=8))]
         principle: Option<u8>,
 
         /// Output format
@@ -352,5 +403,19 @@ mod tests {
                 "clap value name and registry kebab-case must match for every variant",
             );
         }
+    }
+
+    #[test]
+    fn audit_help_links_the_config_docs() {
+        let cli = <Cli as clap::CommandFactory>::command();
+        let audit = cli.find_subcommand("audit").expect("audit subcommand");
+        let help = audit
+            .get_after_help()
+            .expect("audit after_help")
+            .to_string();
+        assert!(
+            help.contains(crate::anc_toml::DOCS_URL),
+            "audit help: {help}"
+        );
     }
 }

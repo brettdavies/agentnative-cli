@@ -301,6 +301,14 @@ pub fn render_markdown(matrix: &Matrix) -> String {
         let _ = writeln!(out);
     }
 
+    // The blank line closing each principle is a separator, so the last one
+    // lands at EOF. markdownlint's MD047 wants a single trailing newline and
+    // the pre-commit pass runs with `fix: true`, which would rewrite this file
+    // in the working tree right after the release commit stages it.
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
+
     out
 }
 
@@ -385,6 +393,8 @@ mod tests {
                 layer: AuditLayer::Behavioral,
                 status: AuditStatus::Pass,
                 confidence: Confidence::High,
+                mitigation: None,
+                config_hint: None,
             })
         }
         fn covers(&self) -> &'static [&'static str] {
@@ -427,6 +437,26 @@ mod tests {
         assert!(md.contains("## Summary"));
         assert!(md.contains("**UNCOVERED**"));
         assert!(md.contains("P1: Non-Interactive by Default"));
+    }
+
+    // The committed `docs/coverage-matrix.md` is staged during a release cut,
+    // and the pre-commit markdownlint pass runs with `fix: true`, so a trailing
+    // blank line here is rewritten out of the working tree right after the
+    // commit that added it. Emitting one newline leaves the hook nothing to fix.
+    #[test]
+    fn render_markdown_ends_with_exactly_one_newline() {
+        let audits: Vec<Box<dyn Audit>> = vec![];
+        let matrix = build(&audits);
+        let md = render_markdown(&matrix);
+        assert!(
+            md.ends_with('\n'),
+            "rendered markdown must end with a newline"
+        );
+        assert!(
+            !md.ends_with("\n\n"),
+            "rendered markdown must not end with a blank line; got {:?} at the tail",
+            &md[md.len().saturating_sub(40)..]
+        );
     }
 
     #[test]

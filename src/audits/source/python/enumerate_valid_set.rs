@@ -34,11 +34,11 @@ impl Audit for EnumerateValidSetPythonAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Python)
+        project.has_language(Language::Python)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Python);
         let mut found_closed_set = false;
         let mut found_framework = false;
 
@@ -73,6 +73,8 @@ impl Audit for EnumerateValidSetPythonAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }
@@ -191,6 +193,8 @@ def main():
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: Default::default(),
+            inventory: Default::default(),
         };
         assert!(EnumerateValidSetPythonAudit.applicable(&project));
     }

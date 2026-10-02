@@ -1,0 +1,7 @@
+[package]
+name = "root-tool"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["crates/helper"]

@@ -44,11 +44,11 @@ impl Audit for EnvFlagsAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
         let mut all_warn_evidence = Vec::new();
         let mut has_clap_attrs = false;
 
@@ -84,6 +84,8 @@ impl Audit for EnvFlagsAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

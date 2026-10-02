@@ -31,6 +31,9 @@ anc . --principle 4
 # Behavioral audits only (no source analysis)
 anc . --binary
 
+# Grade one of several built binaries (a directory that builds several exits 2 without it)
+anc . --bin xr
+
 # Source audits only (no binary execution)
 anc . --source
 
@@ -116,8 +119,10 @@ following scorecard-level fields beyond the base `results` / `summary`:
 - `target`: `{ kind, path, command }`. `kind` is `"project"` / `"binary"` / `"command"`. The unused field is always
   `null`, never missing. Schema `0.4` addition.
 - `badge`: `{ eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Agent-native badge
-  derivation from the live run. `score_pct` is the rounded percent of `pass / (pass + warn + fail)` (Skips and Errors
-  excluded from the ratio). `eligible` is true iff `score_pct >= 80` and a tool slug was derivable. `embed_markdown` is
+  derivation from the live run. `score_pct` is the credit-weighted score defined in `agentnative-spec`
+  `principles/scoring.md`, over behavioral-layer rows only: `round(100 × Σ w·credit / Σ w)`, with credit 1 for `pass`,
+  0.5 for `warn`, and 0 for `fail` and `opt_out`; `n_a`, `skip`, and `error` are excluded. `eligible` is true iff
+  `score_pct >= 70` (`BADGE_ELIGIBILITY_FLOOR_PCT`) and a tool slug was derivable. `embed_markdown` is
   `null` below the floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
   below the floor; `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint
   (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
@@ -137,10 +142,14 @@ Suppressed audits appear in `results[]` as `status: "skip"` with evidence starti
 
 - `0`: all audits passed
 - `1`: warnings present, no failures
-- `2`: failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH)
+- `2`: failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH,
+  a directory that builds several binaries with no `--bin` (`binary-ambiguous`), a `--bin` that names none of them
+  (`unknown-bin`), `--bin` beside a binary target (`bin-needs-directory`))
 
 Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr; usage errors
-include `Usage:` text, and audit failures don't.
+include `Usage:` text, and audit failures don't. Under `--output json`, every error is one envelope on stderr with a
+`next_step` whose `action` is `show-help`, `choose-bin`, or `rerun`; README § "Errors under `--output json`" has the
+contract.
 
 ## Project Structure
 
@@ -149,7 +158,9 @@ include `Usage:` text, and audit failures don't.
 - `src/audits/source/rust/`: ast-grep source analysis audits
 - `src/audits/project/`: file and manifest inspection audits
 - `src/runner.rs`: binary execution with timeout and caching
-- `src/project.rs`: project discovery and source file walking
+- `src/project/`: project discovery: workspace declarations (`workspace/`), the gitignore-aware tree scan (`scan.rs`),
+  the package inventory (`inventory.rs`), declared bins on disk (`bins.rs`), binary selection (`select.rs`), and the
+  per-language source cache (`mod.rs`)
 - `src/scorecard.rs`: output formatting (text and JSON)
 - `src/types.rs`: AuditResult, AuditStatus, AuditGroup, AuditLayer
 - `src/principles/registry.rs`: single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the
@@ -183,6 +194,22 @@ the pack and `scripts/prose-check.sh` are dev-only tooling and do not ship to `m
 cargo test                    # unit + integration tests
 cargo test -- --ignored       # fixture tests (slower)
 ```
+
+### Test fixtures
+
+Rust crates under `tests/fixtures/*/` (e.g. `broken-rust/`, `perfect-rust/`, `source-only/`, `cfg-test-edge-cases/`) are
+standalone fake projects the audits run against. They are intentionally **not** workspace members — making them members
+would cause `cargo build` from the root to compile every fixture and would apply workspace-level lints, dependencies,
+and profile overrides to them, changing what the audits see and defeating the purpose of the fixture.
+
+Because there is no workspace, Cargo's `field.workspace = true` inheritance is unavailable. The edition on every fixture
+`Cargo.toml` must be set explicitly and **must match the main crate's edition** (see the top-level `Cargo.toml`,
+currently `edition = "2024"`). When the main crate bumps its edition (e.g. Rust 2027), bump every fixture in lockstep in
+the same PR — a fixture lagging behind main is a silent skew that can mask audit regressions on edition-specific syntax.
+
+The audits themselves parse fixture sources via tree-sitter and do not invoke `cargo build`, so the edition has no
+effect on current audit behavior. The lockstep rule exists for the future case where an audit reads edition-specific
+constructs, and for the general "the project tests against the edition the project ships with" principle.
 
 ## Spec source (principles)
 
@@ -220,3 +247,10 @@ folder:
 
 When an extract names concrete linter-rule candidates, walk its **"Linter rule coverage audit"** or equivalent section
 against existing audits in `src/audits/` before opening a new audit.
+
+## Documented Solutions
+
+`docs/solutions/` (symlink to `~/dev/solutions-docs/`) is a searchable archive of documented solutions to past problems
+(bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`,
+`problem_type`). Search with `qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in
+documented areas.

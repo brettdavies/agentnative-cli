@@ -1,3 +1,4 @@
+use clap::builder::FalseyValueParser;
 use clap::{Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
@@ -35,18 +36,27 @@ pub struct Cli {
     pub command: Option<Commands>,
 
     /// Suppress non-essential output. Default: false (warnings and progress
-    /// notes are written to stderr).
-    #[arg(long, short = 'q', global = true, env = "AGENTNATIVE_QUIET")]
+    /// notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any
+    /// value but `0`, `false`, `no`, `off`, or empty.
+    #[arg(
+        long,
+        short = 'q',
+        global = true,
+        env = "AGENTNATIVE_QUIET",
+        value_parser = FalseyValueParser::new()
+    )]
     pub quiet: bool,
 
     /// Escalate diagnostic detail. `-v` is shorthand for `--verbose`.
     /// Mutually exclusive with `--quiet`; the last flag on the command line
-    /// wins when both appear.
+    /// wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value
+    /// but `0`, `false`, `no`, `off`, or empty.
     #[arg(
         long,
         short = 'v',
         global = true,
         env = "AGENTNATIVE_VERBOSE",
+        value_parser = FalseyValueParser::new(),
         conflicts_with = "quiet"
     )]
     pub verbose: bool,

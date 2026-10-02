@@ -1562,3 +1562,95 @@ fn a_principle_outside_one_to_eight_is_a_usage_error() {
     assert_eq!(envelope["error"], "value-validation", "{envelope}");
     assert_eq!(envelope["value"], "9", "{envelope}");
 }
+
+/// A Rust crate with one source file, for source-only runs whose output
+/// depends only on the flags.
+fn tiny_crate() -> tempfile::TempDir {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        tmp.path().join("Cargo.toml"),
+        "[package]\nname = \"tiny\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::create_dir_all(tmp.path().join("src")).expect("mkdir src");
+    std::fs::write(tmp.path().join("src/main.rs"), "fn main() {}\n").expect("write main.rs");
+    tmp
+}
+
+fn source_audit(
+    dir: &std::path::Path,
+    env: &[(&str, &str)],
+    args: &[&str],
+) -> std::process::Output {
+    let mut command = cmd();
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    command
+        .args(["audit", dir.to_str().expect("utf-8 path"), "--source"])
+        .args(args)
+        .output()
+        .expect("spawn anc")
+}
+
+#[test]
+fn agentnative_quiet_accepts_one_and_zero() {
+    let tmp = tiny_crate();
+    let quiet = source_audit(tmp.path(), &[], &["-q"]);
+    let loud = source_audit(tmp.path(), &[], &[]);
+    assert_ne!(quiet.stdout, loud.stdout, "-q changes the output");
+
+    let one = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", "1")], &[]);
+    assert!(
+        !String::from_utf8_lossy(&one.stderr).contains("invalid value"),
+        "AGENTNATIVE_QUIET=1 parses: {one:?}"
+    );
+    assert_eq!(one.stdout, quiet.stdout, "AGENTNATIVE_QUIET=1 is -q");
+
+    let zero = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", "0")], &[]);
+    assert!(
+        !String::from_utf8_lossy(&zero.stderr).contains("invalid value"),
+        "AGENTNATIVE_QUIET=0 parses: {zero:?}"
+    );
+    assert_eq!(zero.stdout, loud.stdout, "AGENTNATIVE_QUIET=0 is no -q");
+}
+
+#[test]
+fn agentnative_verbose_accepts_one_and_zero() {
+    let tmp = tiny_crate();
+    let one = source_audit(tmp.path(), &[("AGENTNATIVE_VERBOSE", "1")], &[]);
+    let stderr = String::from_utf8_lossy(&one.stderr);
+    assert!(
+        stderr.contains("verbose: anc"),
+        "AGENTNATIVE_VERBOSE=1 is -v: {stderr}"
+    );
+
+    let zero = source_audit(tmp.path(), &[("AGENTNATIVE_VERBOSE", "0")], &[]);
+    assert!(
+        !String::from_utf8_lossy(&zero.stderr).contains("invalid value"),
+        "AGENTNATIVE_VERBOSE=0 parses: {zero:?}"
+    );
+    let stderr = String::from_utf8_lossy(&zero.stderr);
+    assert!(
+        !stderr.contains("verbose: anc"),
+        "AGENTNATIVE_VERBOSE=0 is no -v: {stderr}"
+    );
+}
+
+#[test]
+fn a_boolean_env_var_is_on_for_any_value_but_a_falsey_one() {
+    let tmp = tiny_crate();
+    let quiet = source_audit(tmp.path(), &[], &["-q"]);
+    let loud = source_audit(tmp.path(), &[], &[]);
+    for on in ["yes", "maybe", "TRUE"] {
+        let output = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", on)], &[]);
+        assert_eq!(output.stdout, quiet.stdout, "AGENTNATIVE_QUIET={on} is -q");
+    }
+    for off in ["", "no", "OFF", "false"] {
+        let output = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", off)], &[]);
+        assert_eq!(
+            output.stdout, loud.stdout,
+            "AGENTNATIVE_QUIET={off:?} is no -q"
+        );
+    }
+}

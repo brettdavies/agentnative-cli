@@ -65,6 +65,7 @@ impl Audit for TimeoutBehavioralAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

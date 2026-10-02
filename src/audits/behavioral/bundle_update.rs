@@ -50,6 +50,7 @@ impl Audit for BundleUpdateAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

@@ -83,6 +83,7 @@ impl Audit for ConsistentEnvelopeAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

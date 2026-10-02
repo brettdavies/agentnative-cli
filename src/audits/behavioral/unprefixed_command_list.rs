@@ -62,6 +62,7 @@ impl Audit for UnprefixedCommandListAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

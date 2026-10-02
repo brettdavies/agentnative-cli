@@ -62,6 +62,7 @@ impl Audit for JsonOutputAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

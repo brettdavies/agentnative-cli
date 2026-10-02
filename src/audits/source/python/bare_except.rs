@@ -60,6 +60,7 @@ impl Audit for BareExceptAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

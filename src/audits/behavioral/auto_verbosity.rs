@@ -80,6 +80,7 @@ impl Audit for AutoVerbosityAudit {
             status,
             confidence: Confidence::Low,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

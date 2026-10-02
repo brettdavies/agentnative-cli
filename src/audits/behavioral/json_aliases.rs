@@ -54,6 +54,7 @@ impl Audit for JsonAliasesAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

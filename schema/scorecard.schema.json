@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://anc.dev/scorecard-v0.8.schema.json",
+  "$id": "https://anc.dev/scorecard-v0.9.schema.json",
   "title": "agentnative scorecard",
   "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.7). Schema 0.7 introduces the 7-status taxonomy (`opt_out` and `n_a` added to `status`, with matching counters in `summary`), per-row emission (one result per requirement-row instead of per audit_id; `tier` and `audit_id` fields added to each result), and antecedent propagation for conditional requirements. See docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md in the agentnative-site repo for the full taxonomy rationale.",
   "type": "object",
@@ -23,7 +23,7 @@
     "schema_version": {
       "type": "string",
       "description": "Scorecard schema version. Pre-launch additive — consumers feature-detect new fields rather than pin to an exact value.",
-      "examples": ["0.8"]
+      "examples": ["0.9"]
     },
     "results": {
       "type": "array",
@@ -93,8 +93,8 @@
         },
         "confidence": {
           "type": "string",
-          "description": "How directly the audit verifies its requirement. `high` for direct probes; `medium` for heuristics. Older consumers feature-detect.",
-          "enum": ["high", "medium"]
+          "description": "How directly the audit verifies its requirement. `high` for direct probes; `medium` for heuristics; `low` for soft signals such as `p6-may-standard-names`. Older consumers feature-detect.",
+          "enum": ["high", "medium", "low"]
         },
         "tier": {
           "type": ["string", "null"],
@@ -104,6 +104,60 @@
         "audit_id": {
           "type": "string",
           "description": "Probe that produced this row (schema 0.7+). One probe may produce multiple rows when its `Audit::covers()` slice names multiple requirements (e.g. `p3-version` covers both `p3-must-version` and `p3-should-version-short`)."
+        },
+        "using_domain_verbs": {
+          "type": "boolean",
+          "description": "Schema 0.8+. `true` when the verdict depended on a per-CLI opt-in: today, `p6-standard-names` passing because `.anc.toml [p6] domain_verbs` recognized at least one subcommand. Absent from every row that consulted no opt-in."
+        },
+        "domain_match_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Schema 0.8+. Subcommands recognized through `domain_verbs` rather than the built-in verb list. Present exactly when `using_domain_verbs` is."
+        },
+        "config_hint": {
+          "$ref": "#/$defs/ConfigHint",
+          "description": "Schema 0.9+. The `.anc.toml` setting that would clear this row's warning, attached when no config supplied it. Absent from every other row."
+        }
+      }
+    },
+    "ConfigFile": {
+      "type": "object",
+      "description": "A file a `ConfigHint` setting can go in, and which audits read it.",
+      "required": ["file", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "The file, named as evidence names files: `.anc.toml` at a repository root, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG` when that variable relocated the user-level file. Never an absolute path."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["repository", "tool-repository", "user"],
+          "description": "`repository`: the root of the repository this audit found, or the `--repo` directory; the setting travels with the tool and anc reads it on every audit of that repository. `tool-repository`: the root of the tool's own repository, which this audit could not find because the target sits outside any repository; anc reads it from a checkout, or through `--repo <checkout>`. `user`: personal vocabulary that applies to every tool audited on this machine. A closed set; a newer schema can add a value."
+        }
+      }
+    },
+    "ConfigHint": {
+      "type": "object",
+      "description": "A ready-to-add `.anc.toml` setting. Today only `p6-standard-names` attaches one, to a warning when no `[p6] domain_verbs` applied.",
+      "required": ["files", "domain_verbs", "docs"],
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ConfigFile" },
+          "description": "Where the setting can go: the repository's `.anc.toml` first, then the user-level file when one is configured."
+        },
+        "domain_verbs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The entries to add under `[p6] domain_verbs`: the flagged verbs, lowercased, in `--help` order."
+        },
+        "docs": {
+          "type": "string",
+          "format": "uri",
+          "description": "The README section on where anc looks for `.anc.toml`."
         }
       }
     },
@@ -214,7 +268,7 @@
   },
   "examples": [
     {
-      "schema_version": "0.8",
+      "schema_version": "0.9",
       "results": [
         {
           "id": "p1-must-no-interactive",

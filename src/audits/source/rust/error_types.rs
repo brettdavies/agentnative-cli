@@ -70,6 +70,7 @@ impl Audit for ErrorTypesAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

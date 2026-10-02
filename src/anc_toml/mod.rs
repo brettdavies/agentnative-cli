@@ -31,6 +31,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::types::{ConfigFile, ConfigScope};
+
 mod chain;
 
 use chain::Chain;
@@ -40,6 +42,9 @@ pub const ANC_TOML_FILENAME: &str = ".anc.toml";
 
 /// Environment variable that relocates the user-level `~/.anc.toml`.
 pub const HOME_CONFIG_ENV: &str = "AGENTNATIVE_HOME_CONFIG";
+
+/// The README section that explains where anc looks for `.anc.toml`.
+pub const DOCS_URL: &str = "https://github.com/brettdavies/agentnative-cli#configuration-anctoml";
 
 /// Root document for `.anc.toml`. New sections land here as the schema grows.
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
@@ -63,8 +68,9 @@ pub struct P6Config {
 /// parsed config; `Invalid` carries a human-readable parse error suitable
 /// for surfacing in audit evidence (audits should generally render as
 /// `Warn`, not silently swallow).
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub enum AncConfigLoad {
+    #[default]
     Absent,
     Loaded(AncConfig),
     Invalid(String),
@@ -109,6 +115,16 @@ impl HomeLayer {
     }
 }
 
+/// What `.anc.toml` gave an audit, and where a new setting for it belongs.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ResolvedConfig {
+    /// The merged chain.
+    pub load: AncConfigLoad,
+    /// The files a new setting can go in, the repository's first. Empty for
+    /// a `Project` built without resolving its config.
+    pub settings_files: Vec<ConfigFile>,
+}
+
 /// The user-level layer: [`HOME_CONFIG_ENV`] when set, otherwise
 /// `.anc.toml` in the home directory, and `None` without either.
 pub fn home_layer() -> Option<HomeLayer> {
@@ -137,16 +153,35 @@ pub fn load_for_target(
     target: &Path,
     home: Option<&HomeLayer>,
     repo: Option<&Path>,
-) -> AncConfigLoad {
+) -> ResolvedConfig {
     let start = match target.parent() {
         Some(dir) if target.is_file() => dir,
         _ => target,
     };
     let chain = chain::resolve(start, home.map(|layer| layer.path.as_path()), repo);
-    load_chain(
-        &chain,
-        home.map_or(DEFAULT_HOME_LABEL, |layer| &layer.label),
-    )
+    let home_label = home.map_or(DEFAULT_HOME_LABEL, |layer| &layer.label);
+    ResolvedConfig {
+        load: load_chain(&chain, home_label),
+        settings_files: settings_files(&chain, home_label),
+    }
+}
+
+/// Where a new setting can go: `.anc.toml` at a repository root, scoped by
+/// whether this audit found the repository, then the user-level file.
+fn settings_files(chain: &Chain, home_label: &str) -> Vec<ConfigFile> {
+    let repository = ConfigFile {
+        file: ANC_TOML_FILENAME.to_string(),
+        scope: if chain.repo_root.is_some() {
+            ConfigScope::Repository
+        } else {
+            ConfigScope::ToolRepository
+        },
+    };
+    let user = chain.home.as_ref().map(|_| ConfigFile {
+        file: home_label.to_string(),
+        scope: ConfigScope::User,
+    });
+    std::iter::once(repository).chain(user).collect()
 }
 
 /// Load every existing file in `chain` into one config, lowest precedence
@@ -435,7 +470,10 @@ mod tests {
     #[test]
     fn absent_when_no_file() {
         let dir = unique_tmp("absent");
-        assert_eq!(load_for_target(&dir, None, None), AncConfigLoad::Absent);
+        assert_eq!(
+            load_for_target(&dir, None, None).load,
+            AncConfigLoad::Absent
+        );
     }
 
     #[test]
@@ -446,7 +484,7 @@ mod tests {
             "[p6]\ndomain_verbs = [\"post\", \"like\"]\n",
         )
         .expect("write .anc.toml");
-        match load_for_target(&dir, None, None) {
+        match load_for_target(&dir, None, None).load {
             AncConfigLoad::Loaded(cfg) => {
                 assert_eq!(cfg.p6.domain_verbs, vec!["post", "like"]);
             }
@@ -459,7 +497,7 @@ mod tests {
         let dir = unique_tmp("empty");
         fs::write(dir.join(ANC_TOML_FILENAME), "[p6]\ndomain_verbs = []\n")
             .expect("write .anc.toml");
-        match load_for_target(&dir, None, None) {
+        match load_for_target(&dir, None, None).load {
             AncConfigLoad::Loaded(cfg) => assert!(cfg.p6.domain_verbs.is_empty()),
             other => panic!("expected Loaded, got {other:?}"),
         }
@@ -469,7 +507,7 @@ mod tests {
     fn loaded_without_p6_section() {
         let dir = unique_tmp("no-p6");
         fs::write(dir.join(ANC_TOML_FILENAME), "# empty config\n").expect("write .anc.toml");
-        match load_for_target(&dir, None, None) {
+        match load_for_target(&dir, None, None).load {
             AncConfigLoad::Loaded(cfg) => assert!(cfg.p6.domain_verbs.is_empty()),
             other => panic!("expected Loaded, got {other:?}"),
         }
@@ -483,7 +521,7 @@ mod tests {
             "[p6]\ndomain_verbs = \"post\"\n",
         )
         .expect("write .anc.toml");
-        match load_for_target(&dir, None, None) {
+        match load_for_target(&dir, None, None).load {
             AncConfigLoad::Invalid(msg) => assert!(
                 msg.starts_with("could not parse .anc.toml at "),
                 "evidence message must start with the documented prefix; got: {msg}"
@@ -500,7 +538,7 @@ mod tests {
             "[p6\ndomain_verbs = [\"post\"]\n",
         )
         .expect("write .anc.toml");
-        match load_for_target(&dir, None, None) {
+        match load_for_target(&dir, None, None).load {
             AncConfigLoad::Invalid(msg) => {
                 assert!(
                     msg.starts_with("could not parse .anc.toml at "),
@@ -518,7 +556,7 @@ mod tests {
         fs::write(&bin, "#!/bin/sh\necho hi\n").expect("write file");
         write(&dir, "[p6]\ndomain_verbs = [\"post\"]\n");
 
-        assert_eq!(verbs(&load_for_target(&bin, None, None)), ["post"]);
+        assert_eq!(verbs(&load_for_target(&bin, None, None).load), ["post"]);
     }
 
     #[test]
@@ -527,7 +565,10 @@ mod tests {
         let bin = dir.join("tool");
         fs::write(&bin, "#!/bin/sh\necho hi\n").expect("write file");
 
-        assert_eq!(load_for_target(&bin, None, None), AncConfigLoad::Absent);
+        assert_eq!(
+            load_for_target(&bin, None, None).load,
+            AncConfigLoad::Absent
+        );
     }
 
     #[test]
@@ -539,9 +580,96 @@ mod tests {
         let fetched = unique_tmp("target-fetched");
         write(&fetched, "[p6]\ndomain_verbs = [\"like\"]\n");
 
-        let load = load_for_target(&bin, None, Some(&fetched));
+        let load = load_for_target(&bin, None, Some(&fetched)).load;
 
         assert_eq!(verbs(&load), ["like"]);
+    }
+
+    fn default_layer(file: &Path) -> HomeLayer {
+        home_layer_from(None, file.parent().map(Path::to_path_buf)).expect("layer")
+    }
+
+    fn settings_files_for(
+        start: &Path,
+        home: Option<&Path>,
+        repo: Option<&Path>,
+    ) -> Vec<(String, ConfigScope)> {
+        load_for_target(start, home.map(default_layer).as_ref(), repo)
+            .settings_files
+            .into_iter()
+            .map(|file| (file.file, file.scope))
+            .collect()
+    }
+
+    fn named(file: &str, scope: ConfigScope) -> (String, ConfigScope) {
+        (file.to_string(), scope)
+    }
+
+    #[test]
+    fn settings_go_at_the_repo_root_for_a_nested_target_or_in_the_home_file() {
+        let root = repo("settings-repo");
+        let cli = root.join("crates/cli");
+        fs::create_dir_all(&cli).expect("create dir");
+        let home_file = unique_tmp("settings-repo-home").join(ANC_TOML_FILENAME);
+
+        assert_eq!(
+            settings_files_for(&cli, Some(&home_file), None),
+            [
+                named(".anc.toml", ConfigScope::Repository),
+                named("~/.anc.toml", ConfigScope::User),
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_outside_any_repo_go_in_the_tools_repo_or_the_home_file() {
+        let start = unique_tmp("settings-outside");
+        let home_file = unique_tmp("settings-outside-home").join(ANC_TOML_FILENAME);
+
+        assert_eq!(
+            settings_files_for(&start, Some(&home_file), None),
+            [
+                named(".anc.toml", ConfigScope::ToolRepository),
+                named("~/.anc.toml", ConfigScope::User),
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_go_in_the_repo_flag_directory_or_the_home_file() {
+        let start = unique_tmp("settings-flag-start");
+        let fetched = unique_tmp("settings-flag-fetched");
+        let home_file = unique_tmp("settings-flag-home").join(ANC_TOML_FILENAME);
+
+        assert_eq!(
+            settings_files_for(&start, Some(&home_file), Some(&fetched)),
+            [
+                named(".anc.toml", ConfigScope::Repository),
+                named("~/.anc.toml", ConfigScope::User),
+            ]
+        );
+    }
+
+    #[test]
+    fn settings_name_no_user_file_without_a_home_layer() {
+        let start = unique_tmp("settings-bare").join("tool");
+        fs::create_dir_all(&start).expect("create dir");
+
+        assert_eq!(
+            settings_files_for(&start, None, None),
+            [named(".anc.toml", ConfigScope::ToolRepository)]
+        );
+    }
+
+    #[test]
+    fn a_relocated_home_layer_is_named_by_its_variable_in_settings() {
+        let start = unique_tmp("settings-relocated");
+        let file = unique_tmp("settings-relocated-home").join("anc.toml");
+        let layer = home_layer_from(Some(file.into()), None).expect("layer");
+
+        let files = load_for_target(&start, Some(&layer), None).settings_files;
+
+        assert_eq!(files[1].file, "$AGENTNATIVE_HOME_CONFIG");
     }
 
     #[test]

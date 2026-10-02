@@ -18,19 +18,14 @@
 
 use std::collections::HashSet;
 
-use crate::anc_toml::AncConfigLoad;
+use crate::anc_toml::{self, AncConfigLoad};
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::HelpOutput;
-use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, MitigationInfo};
-
-/// Documentation pointer appended to the audit's Warn evidence so authors of
-/// CLIs with social-platform or domain-specific vocabulary discover the
-/// `.anc.toml [p6] domain_verbs` opt-in. The pattern doc lives in
-/// `docs/solutions/` (a symlink to a separate repo); the path is committed
-/// to that repo independently of this crate.
-const DOMAIN_VERBS_DOCS_URL: &str =
-    "docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md";
+use crate::types::{
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, ConfigFile, ConfigHint,
+    MitigationInfo,
+};
 
 /// Cap on the number of domain-verb matches listed in the Pass evidence
 /// string. Beyond this, the formatter appends `, ...` so text-mode rendering
@@ -42,11 +37,13 @@ const DOMAIN_MATCH_EXAMPLES_LIMIT: usize = 5;
 /// drives the scorecard row; `mitigation` is populated only when the verdict
 /// was assisted by `.anc.toml [p6] domain_verbs` recognition, giving the
 /// scorecard a structured signal that distinguishes a self-declared Pass
-/// from an unassisted one.
+/// from an unassisted one. `config_hint` carries the `domain_verbs` line
+/// that would clear a Warn no config helped with.
 #[derive(Debug, PartialEq)]
 pub(crate) struct StandardNamesResult {
     pub status: AuditStatus,
     pub mitigation: Option<MitigationInfo>,
+    pub config_hint: Option<ConfigHint>,
 }
 
 /// Community-standard verbs derived from the spec summary text. Includes both
@@ -125,8 +122,8 @@ const STANDARD_VERBS: &[&str] = &[
     // clients, notification systems all use these — kept in built-ins).
     // Platform-specific verbs (post / repost / unrepost / quote / like /
     // unlike / dm) were intentionally removed from this list; they belong
-    // in per-CLI `.anc.toml [p6] domain_verbs` (see
-    // `docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`).
+    // in per-CLI `.anc.toml [p6] domain_verbs` (see the README's `.anc.toml`
+    // section).
     "archive",
     "block",
     "bookmark",
@@ -178,10 +175,11 @@ impl Audit for StandardNamesAudit {
         // as the primary signal (Warn with the loader's evidence) — a
         // malformed config is the actionable finding here; the verb check
         // would only mask it.
-        let result = match &project.anc_config {
+        let result = match &project.anc_config.load {
             AncConfigLoad::Invalid(msg) => StandardNamesResult {
                 status: AuditStatus::Warn(msg.clone()),
                 mitigation: None,
+                config_hint: None,
             },
             other => {
                 let cfg = other.as_config();
@@ -191,8 +189,11 @@ impl Audit for StandardNamesAudit {
                     None => StandardNamesResult {
                         status: AuditStatus::Skip("could not probe --help".into()),
                         mitigation: None,
+                        config_hint: None,
                     },
-                    Some(help) => audit_standard_names(help, domain_verbs),
+                    Some(help) => {
+                        audit_standard_names(help, domain_verbs, &project.anc_config.settings_files)
+                    }
                 }
             }
         };
@@ -205,6 +206,7 @@ impl Audit for StandardNamesAudit {
             status: result.status,
             confidence: Confidence::Low,
             mitigation: result.mitigation,
+            config_hint: result.config_hint,
         })
     }
 }
@@ -224,9 +226,14 @@ impl Audit for StandardNamesAudit {
 /// transparency signal so the scorecard distinguishes a domain-assisted
 /// Pass from an unassisted one. `mitigation` is `None` for built-ins-only
 /// Pass, for Warn, and for Skip.
+///
+/// A Warn with no `domain_verbs` at all carries a `config_hint` naming
+/// `settings_files`, the files a declaration can go in; with none, the
+/// caller has no file to suggest and the Warn carries no hint.
 pub(crate) fn audit_standard_names(
     help: &HelpOutput,
     domain_verbs: &[String],
+    settings_files: &[ConfigFile],
 ) -> StandardNamesResult {
     let standard: HashSet<&str> = STANDARD_VERBS.iter().copied().collect();
     let domain: HashSet<&str> = domain_verbs.iter().map(String::as_str).collect();
@@ -236,6 +243,7 @@ pub(crate) fn audit_standard_names(
         return StandardNamesResult {
             status: AuditStatus::Skip(help.missing_subcommands_reason().into()),
             mitigation: None,
+            config_hint: None,
         };
     }
 
@@ -277,21 +285,29 @@ pub(crate) fn audit_standard_names(
         StandardNamesResult {
             status: AuditStatus::Pass,
             mitigation,
+            config_hint: None,
         }
     } else {
+        let config_hint =
+            (domain_verbs.is_empty() && !settings_files.is_empty()).then(|| ConfigHint {
+                files: settings_files.to_vec(),
+                domain_verbs: non_standard
+                    .iter()
+                    .map(|name| name.to_lowercase())
+                    .collect(),
+                docs: anc_toml::DOCS_URL.to_string(),
+            });
         StandardNamesResult {
             status: AuditStatus::Warn(format!(
                 "{}/{} subcommand(s) follow standard verb names. Non-standard: {}. \
                  MAY-tier — community-standard verbs (get/list/create/update/delete) \
-                 help agents predict subcommand behavior across CLIs. \
-                 Per-CLI vocabulary (social, billing, etc.) can opt in via .anc.toml \
-                 [p6] domain_verbs; see {}.",
+                 help agents predict subcommand behavior across CLIs.",
                 recognized,
                 total,
                 non_standard.join(", "),
-                DOMAIN_VERBS_DOCS_URL,
             )),
             mitigation: None,
+            config_hint,
         }
     }
 }
@@ -422,7 +438,7 @@ Options:
     #[test]
     fn happy_path_standard_verbs() {
         let help = HelpOutput::from_raw(HELP_STANDARD_VERBS);
-        let r = audit_standard_names(&help, &[]);
+        let r = audit_standard_names(&help, &[], &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         assert!(r.mitigation.is_none());
     }
@@ -430,22 +446,84 @@ Options:
     #[test]
     fn warn_non_standard_majority() {
         let help = HelpOutput::from_raw(HELP_NON_STANDARD);
-        match audit_standard_names(&help, &[]).status {
+        match audit_standard_names(&help, &[], &[]).status {
             AuditStatus::Warn(msg) => {
                 assert!(msg.contains("yeet") || msg.contains("bork") || msg.contains("blarg"));
                 assert!(
-                    msg.contains(DOMAIN_VERBS_DOCS_URL),
-                    "warn evidence must point at docs/solutions opt-in: {msg}"
+                    !msg.contains("docs/solutions"),
+                    "warn evidence must not name an unpublished document: {msg}"
                 );
             }
             other => panic!("expected Warn, got {other:?}"),
         }
     }
 
+    fn repo_and_user() -> Vec<ConfigFile> {
+        vec![
+            ConfigFile {
+                file: ".anc.toml".into(),
+                scope: crate::types::ConfigScope::Repository,
+            },
+            ConfigFile {
+                file: "~/.anc.toml".into(),
+                scope: crate::types::ConfigScope::User,
+            },
+        ]
+    }
+
+    #[test]
+    fn warn_without_domain_verbs_hints_the_flagged_verbs() {
+        let help = HelpOutput::from_raw(HELP_NON_STANDARD);
+        let r = audit_standard_names(&help, &[], &repo_and_user());
+        assert!(matches!(r.status, AuditStatus::Warn(_)), "{r:?}");
+        assert_eq!(
+            r.config_hint,
+            Some(ConfigHint {
+                files: repo_and_user(),
+                domain_verbs: vec!["yeet".into(), "bork".into(), "blarg".into()],
+                docs: anc_toml::DOCS_URL.into(),
+            })
+        );
+    }
+
+    #[test]
+    fn hint_lists_verbs_the_way_domain_verbs_must_spell_them() {
+        let help = HelpOutput::from_raw(
+            "Usage: tool <COMMAND>\n\nCommands:\n  Yeet  Remove\n  bork  Repair\n",
+        );
+        let r = audit_standard_names(&help, &[], &repo_and_user());
+        let hint = r.config_hint.expect("warn without config carries a hint");
+        assert_eq!(hint.domain_verbs, ["yeet", "bork"]);
+    }
+
+    #[test]
+    fn warn_with_domain_verbs_that_miss_the_threshold_has_no_hint() {
+        let help = HelpOutput::from_raw(HELP_NON_STANDARD);
+        let domain = vec!["yeet".to_string()];
+        let r = audit_standard_names(&help, &domain, &repo_and_user());
+        assert!(matches!(r.status, AuditStatus::Warn(_)), "{r:?}");
+        assert_eq!(r.config_hint, None);
+    }
+
+    #[test]
+    fn pass_has_no_hint() {
+        let help = HelpOutput::from_raw(HELP_STANDARD_VERBS);
+        let r = audit_standard_names(&help, &[], &repo_and_user());
+        assert_eq!(r.status, AuditStatus::Pass);
+        assert_eq!(r.config_hint, None);
+    }
+
+    #[test]
+    fn warn_with_no_settings_file_has_no_hint() {
+        let help = HelpOutput::from_raw(HELP_NON_STANDARD);
+        let r = audit_standard_names(&help, &[], &[]);
+        assert_eq!(r.config_hint, None);
+    }
+
     #[test]
     fn skip_no_subcommands() {
         let help = HelpOutput::from_raw(HELP_NO_SUBCOMMANDS);
-        match audit_standard_names(&help, &[]).status {
+        match audit_standard_names(&help, &[], &[]).status {
             AuditStatus::Skip(msg) => assert!(msg.contains("subcommand")),
             other => panic!("expected Skip, got {other:?}"),
         }
@@ -457,7 +535,7 @@ Options:
         // additions (archive, bookmark, follow, mute, subscribe and their
         // `un-` partners) stay in the built-in list and Pass unaided.
         let help = HelpOutput::from_raw(HELP_CROSS_DOMAIN_VERBS);
-        let r = audit_standard_names(&help, &[]);
+        let r = audit_standard_names(&help, &[], &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         assert!(
             r.mitigation.is_none(),
@@ -468,7 +546,7 @@ Options:
     #[test]
     fn mentions_unknown_without_domain_verbs() {
         let help = HelpOutput::from_raw(HELP_MIXED_WITH_MENTIONS);
-        match audit_standard_names(&help, &[]).status {
+        match audit_standard_names(&help, &[], &[]).status {
             AuditStatus::Warn(msg) => {
                 assert!(
                     msg.contains("mentions"),
@@ -483,7 +561,7 @@ Options:
     fn mentions_recognized_with_domain_verbs() {
         let help = HelpOutput::from_raw(HELP_MIXED_WITH_MENTIONS);
         let domain = vec!["mentions".to_string()];
-        let r = audit_standard_names(&help, &domain);
+        let r = audit_standard_names(&help, &domain, &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         let m = r
             .mitigation
@@ -498,7 +576,7 @@ Options:
         let help = HelpOutput::from_raw(HELP_MIXED_WITH_MENTIONS);
         // Regression: an empty domain_verbs slice (the loaded-but-empty
         // case) must behave identically to `Absent`.
-        let r = audit_standard_names(&help, &[]);
+        let r = audit_standard_names(&help, &[], &[]);
         assert!(matches!(r.status, AuditStatus::Warn(_)));
         assert!(r.mitigation.is_none());
     }
@@ -512,7 +590,7 @@ Options:
         // domain_verbs assistance (because `archive` was matched by the
         // built-in check first).
         let domain = vec!["archive".to_string()];
-        let r = audit_standard_names(&help, &domain);
+        let r = audit_standard_names(&help, &domain, &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         assert!(
             r.mitigation.is_none(),
@@ -532,7 +610,7 @@ Options:
         // distinguishes a self-declared Pass from an earned one.
         let help = HelpOutput::from_raw(HELP_NONSENSE_VERBS);
         let domain = vec!["yeet".to_string(), "bork".to_string(), "blarg".to_string()];
-        let r = audit_standard_names(&help, &domain);
+        let r = audit_standard_names(&help, &domain, &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         let m = r
             .mitigation
@@ -556,7 +634,7 @@ Options:
         // handling without thinking about the contract.
         let help = HelpOutput::from_raw(HELP_CASE_MISMATCH);
         let domain = vec!["Post".to_string()];
-        let r = audit_standard_names(&help, &domain);
+        let r = audit_standard_names(&help, &domain, &[]);
         // `post` not matched by the case-sensitive domain check; 0/1
         // recognized; the audit Warns.
         assert!(matches!(r.status, AuditStatus::Warn(_)));
@@ -570,7 +648,7 @@ Options:
         // (`skip_serializing_if = "Option::is_none"`) is a downstream
         // consequence.
         let help = HelpOutput::from_raw(HELP_STANDARD_VERBS);
-        let r = audit_standard_names(&help, &[]);
+        let r = audit_standard_names(&help, &[], &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         assert!(r.mitigation.is_none());
     }
@@ -583,7 +661,7 @@ Options:
         // byte-identical to the no-config case.
         let help = HelpOutput::from_raw(HELP_STANDARD_VERBS);
         let domain: Vec<String> = Vec::new();
-        let r = audit_standard_names(&help, &domain);
+        let r = audit_standard_names(&help, &domain, &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         assert!(r.mitigation.is_none());
     }
@@ -605,7 +683,7 @@ Options:
             "dm".to_string(),
             "quote".to_string(),
         ];
-        let r = audit_standard_names(&help, &domain);
+        let r = audit_standard_names(&help, &domain, &[]);
         assert_eq!(r.status, AuditStatus::Pass);
         let m = r
             .mitigation

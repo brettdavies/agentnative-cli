@@ -57,6 +57,7 @@ impl Audit for NoColorBehavioralAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

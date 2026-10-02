@@ -65,6 +65,7 @@ impl Audit for HelpAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

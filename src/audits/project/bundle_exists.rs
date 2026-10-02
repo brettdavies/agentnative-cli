@@ -57,6 +57,7 @@ impl Audit for BundleExistsAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

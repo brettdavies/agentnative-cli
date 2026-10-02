@@ -70,6 +70,7 @@ impl Audit for ActionableErrorsAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

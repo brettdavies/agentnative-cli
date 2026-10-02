@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
-use crate::anc_toml::AncConfigLoad;
+use crate::anc_toml::ResolvedConfig;
 use crate::runner::{BinaryRunner, HelpOutput};
 
 /// Maximum directory recursion depth for source file walk.
@@ -39,7 +39,7 @@ pub struct Project {
     pub(crate) parsed_files: OnceLock<HashMap<PathBuf, ParsedFile>>,
     pub(crate) help_output: OnceLock<Option<HelpOutput>>,
     /// The merged `.anc.toml` chain for this target, resolved once per run.
-    pub anc_config: AncConfigLoad,
+    pub anc_config: ResolvedConfig,
 }
 
 impl std::fmt::Debug for Project {
@@ -84,7 +84,7 @@ impl Project {
                 include_tests: false,
                 parsed_files: OnceLock::new(),
                 help_output: OnceLock::new(),
-                anc_config: AncConfigLoad::Absent,
+                anc_config: ResolvedConfig::default(),
             });
         }
 
@@ -107,7 +107,7 @@ impl Project {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
-            anc_config: AncConfigLoad::Absent,
+            anc_config: ResolvedConfig::default(),
         })
     }
 

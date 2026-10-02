@@ -49,6 +49,7 @@ impl Audit for ExamplesSubcommandAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

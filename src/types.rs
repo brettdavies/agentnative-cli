@@ -101,6 +101,53 @@ pub struct AuditResult {
     /// reuse the slot instead of growing parallel fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mitigation: Option<MitigationInfo>,
+    /// The `.anc.toml` setting that would clear this row's warning, attached
+    /// when no config supplied it. `None` for every other row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_hint: Option<ConfigHint>,
+}
+
+/// A ready-to-add `.anc.toml` setting for a warning config could clear.
+/// Today's only producer is `p6-standard-names`, for a CLI whose flagged
+/// verbs no `[p6] domain_verbs` covered.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ConfigHint {
+    /// Where the setting can go: the repository's file first, then the
+    /// user-level file when one is configured.
+    pub files: Vec<ConfigFile>,
+    /// The `[p6] domain_verbs` entries to add: the flagged verbs, in
+    /// `--help` order.
+    pub domain_verbs: Vec<String>,
+    /// The README section on where anc looks for `.anc.toml`.
+    pub docs: String,
+}
+
+/// A file a [`ConfigHint`] setting can go in.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ConfigFile {
+    /// The file, named the way evidence names files: `.anc.toml` at a
+    /// repository root, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`. Never
+    /// an absolute path.
+    pub file: String,
+    /// Which audits read the file.
+    pub scope: ConfigScope,
+}
+
+/// Which audits read a [`ConfigFile`]. A closed set.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConfigScope {
+    /// The root of the repository this audit found, or the `--repo`
+    /// directory: the setting travels with the tool, and anc reads it on
+    /// every audit of that repository.
+    Repository,
+    /// The root of the tool's own repository, which this audit could not
+    /// find because the target sits outside any repository: anc reads it
+    /// from a checkout, or through `--repo <checkout>`.
+    ToolRepository,
+    /// The user-level file: personal vocabulary that applies to every tool
+    /// audited on this machine.
+    User,
 }
 
 /// Transparency metadata attached to an `AuditResult` when its verdict

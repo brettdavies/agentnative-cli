@@ -108,6 +108,7 @@ impl Audit for DryRunAudit {
             status,
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }
@@ -165,7 +166,7 @@ mod tests {
             include_tests: false,
             parsed_files: OnceLock::from(parsed),
             help_output: OnceLock::new(),
-            anc_config: crate::anc_toml::AncConfigLoad::Absent,
+            anc_config: Default::default(),
         }
     }
 

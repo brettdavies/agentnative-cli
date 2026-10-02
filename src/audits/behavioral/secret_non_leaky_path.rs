@@ -86,6 +86,7 @@ impl Audit for SecretNonLeakyPathAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

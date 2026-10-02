@@ -454,3 +454,187 @@ fn a_relocated_home_config_that_does_not_exist_warns() {
     let scorecard: Value = serde_json::from_slice(&output.stdout).expect("scorecard JSON");
     assert!(scorecard["results"].is_array(), "the audit still runs");
 }
+
+const README_CONFIG_SECTION: &str =
+    "https://github.com/brettdavies/agentnative-cli#configuration-anctoml";
+
+/// Run a prepared `anc audit ... --output json` and return the scorecard.
+fn scorecard(cmd: &mut Command) -> Value {
+    let output = cmd.output().expect("spawn anc");
+    serde_json::from_slice(&output.stdout).expect("scorecard is valid JSON")
+}
+
+/// The fixture binary alone in a directory outside any repository.
+fn lone_fixture(label: &str, commands: &[&str]) -> PathBuf {
+    let bin = unique_tempdir(label).join("x");
+    write_fixture(&bin, commands);
+    bin
+}
+
+#[test]
+fn warning_without_config_hints_the_line_that_clears_it() {
+    let bin = lone_fixture("hint-json", FIXTURE_COMMANDS);
+
+    let row = p6_row(cmd().args(["audit", path_str(&bin), "--output", "json"]));
+
+    assert_eq!(row["status"], "warn", "row: {row}");
+    let hint = &row["config_hint"];
+    assert_eq!(
+        hint["files"],
+        serde_json::json!([
+            {"file": ".anc.toml", "scope": "tool-repository"},
+            {"file": "$AGENTNATIVE_HOME_CONFIG", "scope": "user"},
+        ]),
+        "a target outside any repository names the tool's repository file and the user file: {row}"
+    );
+    assert_eq!(
+        hint["domain_verbs"],
+        serde_json::json!(["mentions"]),
+        "row: {row}"
+    );
+    assert_eq!(hint["docs"], README_CONFIG_SECTION, "row: {row}");
+}
+
+#[test]
+fn warning_without_config_prints_the_hint_and_both_files_in_text_mode() {
+    let bin = lone_fixture("hint-text", FIXTURE_COMMANDS);
+
+    let output = cmd()
+        .args(["audit", path_str(&bin)])
+        .output()
+        .expect("spawn anc");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout valid UTF-8");
+    let lines: Vec<&str> = stdout.lines().map(str::trim_start).collect();
+    let at = lines
+        .iter()
+        .position(|line| line.starts_with("hint:"))
+        .unwrap_or_else(|| panic!("no hint line: {stdout}"));
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|line| line.starts_with("hint:"))
+            .count(),
+        1,
+        "stdout: {stdout}"
+    );
+    let hint = lines[at];
+    assert!(
+        hint.contains(r#"domain_verbs = ["mentions"]"#)
+            && hint.contains("either file below")
+            && hint.contains(README_CONFIG_SECTION),
+        "hint: {hint}"
+    );
+    let repository = lines[at + 1];
+    assert!(
+        repository.starts_with("- .anc.toml at the tool's repository root:")
+            && repository.contains("--repo <checkout>"),
+        "repository line: {repository}"
+    );
+    let user = lines[at + 2];
+    assert!(
+        user.starts_with("- $AGENTNATIVE_HOME_CONFIG:") && user.contains("every tool you audit"),
+        "user line: {user}"
+    );
+}
+
+#[test]
+fn binary_in_a_checkout_without_config_hints_the_repo_root_file() {
+    let root = unique_tempdir("hint-checkout");
+    fs::create_dir_all(root.join(".git")).expect("mkdir .git");
+    let bin = root.join("target").join("release").join("x");
+    write_fixture(&bin, FIXTURE_COMMANDS);
+
+    let row = p6_row(cmd().args(["audit", path_str(&bin), "--output", "json"]));
+
+    let files = &row["config_hint"]["files"];
+    assert_eq!(
+        files[0],
+        serde_json::json!({"file": ".anc.toml", "scope": "repository"}),
+        "row: {row}"
+    );
+    assert_eq!(files[1]["scope"], "user", "row: {row}");
+}
+
+#[test]
+fn repo_flag_without_config_hints_that_directorys_file() {
+    let bin = lone_fixture("hint-repo-bin", FIXTURE_COMMANDS);
+    let fetched = unique_tempdir("hint-repo-fetched");
+
+    let row = p6_row(cmd().args([
+        "audit",
+        path_str(&bin),
+        "--repo",
+        path_str(&fetched),
+        "--output",
+        "json",
+    ]));
+
+    assert_eq!(
+        row["config_hint"]["files"][0],
+        serde_json::json!({"file": ".anc.toml", "scope": "repository"}),
+        "row: {row}"
+    );
+}
+
+#[test]
+fn config_that_still_misses_the_threshold_gets_no_hint() {
+    let bin = lone_fixture("hint-short", &["archive", "mentions", "timeline", "zap"]);
+    fs::write(
+        bin.parent().expect("bin dir").join(".anc.toml"),
+        "[p6]\ndomain_verbs = [\"timeline\"]\n",
+    )
+    .expect("write .anc.toml");
+
+    let row = p6_row(cmd().args(["audit", path_str(&bin), "--output", "json"]));
+
+    assert_eq!(row["status"], "warn", "row: {row}");
+    assert!(row.get("config_hint").is_none(), "row: {row}");
+}
+
+#[test]
+fn passing_row_gets_no_hint() {
+    let bin = stage_checkout("hint-pass", "x");
+
+    let row = p6_row(cmd().args(["audit", path_str(&bin), "--output", "json"]));
+
+    assert_eq!(row["status"], "pass", "row: {row}");
+    assert!(row.get("config_hint").is_none(), "row: {row}");
+}
+
+#[test]
+fn invalid_chain_warns_without_a_hint() {
+    let bin = lone_fixture("hint-invalid", FIXTURE_COMMANDS);
+    let dir = bin.parent().expect("bin dir");
+    fs::write(dir.join(".anc.toml"), "[p6\n").expect("write broken .anc.toml");
+
+    let row = p6_row(cmd().args(["audit", path_str(&bin), "--output", "json"]));
+
+    assert_eq!(row["status"], "warn", "row: {row}");
+    let evidence = row["evidence"].as_str().expect("evidence");
+    let named = format!(
+        "could not parse .anc.toml at {}/.anc.toml",
+        dir.file_name().expect("dir name").to_string_lossy()
+    );
+    assert!(evidence.starts_with(&named), "row: {row}");
+    assert!(row.get("config_hint").is_none(), "row: {row}");
+}
+
+#[test]
+fn only_the_standard_names_row_carries_a_hint_and_none_names_docs_solutions() {
+    let bin = lone_fixture("hint-other-rows", FIXTURE_COMMANDS);
+
+    let card = scorecard(cmd().args(["audit", path_str(&bin), "--output", "json"]));
+
+    let rows = card["results"].as_array().expect("results array");
+    let hinted: Vec<&str> = rows
+        .iter()
+        .filter(|row| row.get("config_hint").is_some())
+        .filter_map(|row| row["id"].as_str())
+        .collect();
+    assert_eq!(hinted, ["p6-may-standard-names"], "scorecard: {card}");
+    assert!(
+        !card.to_string().contains("docs/solutions"),
+        "scorecard: {card}"
+    );
+}

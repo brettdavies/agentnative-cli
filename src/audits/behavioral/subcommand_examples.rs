@@ -75,6 +75,7 @@ impl Audit for SubcommandExamplesAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

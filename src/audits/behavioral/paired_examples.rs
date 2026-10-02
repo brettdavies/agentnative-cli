@@ -70,6 +70,7 @@ impl Audit for PairedExamplesAudit {
             status,
             confidence: Confidence::Medium,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

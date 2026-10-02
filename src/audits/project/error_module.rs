@@ -51,6 +51,7 @@ impl Audit for ErrorModuleAudit {
                     status: AuditStatus::Pass,
                     confidence: Confidence::High,
                     mitigation: None,
+                    config_hint: None,
                 });
             }
         }
@@ -72,6 +73,7 @@ impl Audit for ErrorModuleAudit {
                                 status: AuditStatus::Pass,
                                 confidence: Confidence::High,
                                 mitigation: None,
+                                config_hint: None,
                             });
                         }
                     }
@@ -89,6 +91,7 @@ impl Audit for ErrorModuleAudit {
             ),
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

@@ -60,6 +60,7 @@ impl Audit for OutputModuleAudit {
                     status: AuditStatus::Pass,
                     confidence: Confidence::High,
                     mitigation: None,
+                    config_hint: None,
                 });
             }
         }
@@ -76,6 +77,7 @@ impl Audit for OutputModuleAudit {
             ),
             confidence: Confidence::High,
             mitigation: None,
+            config_hint: None,
         })
     }
 }

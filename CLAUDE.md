@@ -10,6 +10,18 @@ Two-layer audit system:
 - **Source audits**: ast-grep pattern matching via bundled `ast-grep-core` crate (Rust, Python at launch)
 - **Project audits**: file existence, manifest inspection
 
+A directory target is a package inventory, not one manifest. `src/project/` reads the root's workspace declarations
+(Cargo, npm or yarn, `pnpm`, `go.work`, `uv`), scans for manifests with the `ignore` walker (repo `.gitignore` and
+`.git/info/exclude`, never global excludes; hidden, `target`, `node_modules`, `vendor`, `venv`, `dist`, `build`, and
+`tests` skipped), and finds candidates only among the bins packages declare and have built. `select.rs` grades one
+candidate, or stops with `binary-ambiguous` and one `--bin` command each. `Project::grade` sets `language`,
+`manifest_path`, and `binary_paths` from the graded package, so manifest-reading audits and the tool identity follow it;
+with nothing graded, `Project::anchor_ungraded` picks the one bin-declaring package, and with several,
+`Project::manifest_skip` gives those audits their Skip evidence. Source audits run once per language present
+(`Project::languages`), reading `Project::parsed_files(language)` from `scan::source_walker`, which also skips an
+`examples` directory beside a manifest or at the root, and `audits::source::merge_shared` folds an audit id
+both languages report into one row. The README's "What a directory audit grades" section is the user-facing contract.
+
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`
 
 ## Skill Routing
@@ -313,7 +325,7 @@ agentnative. Three rules guard the probe:
    instant help output instead of running `audit .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
-3. **Binary discovery picks the newer of release/debug by mtime** (`src/project.rs::discover_rust_binaries`): when both
+3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
    `target/release/<bin>` and `target/debug/<bin>` exist, the function returns the one with the more recent mtime.
    Avoids the stale-release-binary trap in dev workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios
    where only one profile is built fall through cleanly to the existence check. Ties go to debug (cargo's dev-flow

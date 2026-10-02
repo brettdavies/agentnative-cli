@@ -31,6 +31,9 @@ anc . --principle 4
 # Behavioral audits only (no source analysis)
 anc . --binary
 
+# Grade one of several built binaries (a directory that builds several exits 2 without it)
+anc . --bin xr
+
 # Source audits only (no binary execution)
 anc . --source
 
@@ -139,10 +142,14 @@ Suppressed audits appear in `results[]` as `status: "skip"` with evidence starti
 
 - `0`: all audits passed
 - `1`: warnings present, no failures
-- `2`: failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH)
+- `2`: failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH,
+  a directory that builds several binaries with no `--bin` (`binary-ambiguous`), a `--bin` that names none of them
+  (`unknown-bin`), `--bin` beside a binary target (`bin-needs-directory`))
 
 Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr; usage errors
-include `Usage:` text, and audit failures don't.
+include `Usage:` text, and audit failures don't. Under `--output json`, every error is one envelope on stderr with a
+`next_step` whose `action` is `show-help`, `choose-bin`, or `rerun`; README § "Errors under `--output json`" has the
+contract.
 
 ## Project Structure
 
@@ -151,7 +158,9 @@ include `Usage:` text, and audit failures don't.
 - `src/audits/source/rust/`: ast-grep source analysis audits
 - `src/audits/project/`: file and manifest inspection audits
 - `src/runner.rs`: binary execution with timeout and caching
-- `src/project.rs`: project discovery and source file walking
+- `src/project/`: project discovery: workspace declarations (`workspace/`), the gitignore-aware tree scan (`scan.rs`),
+  the package inventory (`inventory.rs`), declared bins on disk (`bins.rs`), binary selection (`select.rs`), and the
+  per-language source cache (`mod.rs`)
 - `src/scorecard.rs`: output formatting (text and JSON)
 - `src/types.rs`: AuditResult, AuditStatus, AuditGroup, AuditLayer
 - `src/principles/registry.rs`: single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the

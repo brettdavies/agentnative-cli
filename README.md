@@ -77,6 +77,9 @@ anc --command ripgrep
 # Run only behavioral audits (skip source analysis)
 anc . --binary
 
+# Grade one of several binaries the repository builds
+anc . --bin mycli
+
 # Run only source audits (skip the compiled binary)
 anc . --source
 
@@ -163,6 +166,86 @@ target outside any repository, such as the installed tool above, it names the to
 reads from a checkout or through `--repo`. `~/.anc.toml` holds your own vocabulary and applies to every tool you audit,
 so a verb added there for one tool passes for all of them. `--output json` carries the same hint as `config_hint` on
 the row.
+
+## What a directory audit grades
+
+A directory audit inventories every package in the repository, grades one binary that a package declares and has built,
+and anchors the rest of the audit on that binary's package.
+
+### The package inventory
+
+`anc` reads the workspace declarations at the audit root: Cargo `[workspace] members` and `exclude`, npm or yarn
+`workspaces`, the `packages` list of `pnpm-workspace.yaml` with its `!` exclusions, `go.work` `use`, and `uv`
+`[tool.uv.workspace] members` and `exclude`. It then scans the tree for `Cargo.toml`, `pyproject.toml`, `go.mod`, and
+`package.json`, so a repository with no root workspace file, or one mixing languages, is inventoried too.
+
+The scan honors the repository's `.gitignore` files and `.git/info/exclude`, never your global excludes file, so a
+repository inventories the same on every machine. It skips hidden directories, `target`, `node_modules`, `vendor`,
+`venv`, `dist`, `build`, and `tests` unless `--include-tests` is set, and does not follow symlinked directories. A
+directory holding two manifests is two packages; a Cargo manifest without `[package]` is a workspace root, not a
+package. A workspace file `anc` cannot read prints a `warning:` line, and the scan still finds its packages.
+
+### Which binaries count
+
+A candidate is a bin that a package declares and that exists at its language's build location. Nothing counts just for
+sitting in `node_modules/.bin`, `dist/`, or `build/`.
+
+| Language | Declared bins                                                                                                                                                         | Built location                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Rust     | `[[bin]]` names; `src/main.rs` gives the package name; `src/bin/<name>.rs` and `src/bin/<name>/main.rs` give `<name>`; `autobins = false` turns the implicit ones off | `target/release/<name>` or `target/debug/<name>` in the package, then at the audit root; the newer of the two |
+| Node     | a `bin` string gives the package name without its scope; a `bin` object gives its keys                                                                                | the declared file when executable, else `node_modules/.bin/<name>` in the package, then at the audit root     |
+| Python   | `[project.scripts]` keys                                                                                                                                              | `.venv/bin/<name>` in the package, then at the audit root                                                     |
+| Go       | each directory holding `package main` gives its directory name                                                                                                        | `<name>` in that directory, then at the module root                                                           |
+
+On Windows, Rust, Go, and Python names end in `.exe`, and the virtual environment's directory is `Scripts`.
+
+### One binary, several, or none
+
+With one candidate, `anc` grades it. With several, it exits 2 before running any audit and prints the command that
+grades each one:
+
+```text
+error: found 2 built binaries here, and anc grades one per run; run one of these
+
+  anc audit . --bin xr                  # xurl-rs, target/debug/xr
+  anc audit . --bin xdk-consumer-check  # xdk-consumer-check, target/debug/xdk-consumer-check
+
+Usage: anc audit [OPTIONS] [PATH]
+```
+
+That holds for a single crate with several `[[bin]]` targets too: a repository or crate that builds more than one
+binary exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so
+`anc audit . --principle 6` offers `anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage
+envelope with `"error": "binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit
+root), and `command`, and a `next_step` of `choose-bin` whose `template` ends in `--bin <name>`. When two candidates
+share a name, each is offered by its path.
+
+`--source` runs no binary, so it needs no choice: with several candidates and no `--bin`, the source and project audits
+run with nothing graded.
+
+With none, the source and project audits run, and the warning names any bins the packages declare but have not built,
+with the ways forward: build one, audit a built binary by path, or audit an installed one with `--command`.
+
+`--bin <NAME>`, or `AGENTNATIVE_BIN`, picks a candidate by name or by the path `anc` printed for it. It is unrelated to
+`--binary`, which runs only the behavioral audits:
+
+```bash
+anc audit . --bin xr            # grade xr when the repository builds several binaries
+anc audit . --binary            # behavioral audits only, of the one built binary
+anc audit . --bin xr --binary   # both
+```
+
+`--bin` needs a directory target: beside `--command` or a binary path it is a usage error.
+
+### What gets audited
+
+Behavioral audits probe the graded binary. Source audits run for every language present, Rust and Python today, over
+that language's files under the audit root, with the scan's skip rules; when both languages run an audit for the same
+requirement, the scorecard keeps the more severe result. They also skip example programs: an `examples` directory beside
+a package manifest or at the audit root builds apart from the binary and never ships in it, so it is not read, with or
+without `--include-tests`. A source module named `examples` deeper in a package is still read. Manifest-reading project
+audits, and the scorecard's tool name and version, read the graded binary's package. With nothing graded they read the
+one package that declares a binary; when several do, those audits skip and name the packages.
 
 ## The 8 Principles
 
@@ -299,6 +382,8 @@ Arguments:
 Options:
       --command <NAME>           Resolve a command from PATH and run behavioral audits against it
       --binary                   Run only behavioral audits (skip source analysis)
+      --bin <NAME>               Grade this binary when the directory builds several
+                                 [env: AGENTNATIVE_BIN=]
       --repo <PATH>              Read `.anc.toml` from this directory instead of the target's
                                  repository [env: AGENTNATIVE_REPO=]
       --source                   Run only source audits (skip behavioral)
@@ -332,6 +417,22 @@ mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should 
 Exit 2 covers both audit failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
 mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
 `anc --help` first to confirm the invocation shape.
+
+### Errors under `--output json`
+
+Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `error` (a stable kebab-case reason),
+`message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
+is one of a closed set, and a newer release can add to it:
+
+| `action`     | Carries                                                                                      | Raised by                                       |
+| ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `show-help`  | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error` |
+| `choose-bin` | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`               |
+| `rerun`      | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                           |
+
+A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
+README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
+`bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them.
 
 ### Shell Completions
 

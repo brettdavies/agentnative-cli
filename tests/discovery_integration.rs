@@ -685,3 +685,59 @@ fn source_only_still_rejects_a_bin_that_names_nothing() {
     let envelope = json_of(stderr_of(&output).trim().as_bytes());
     assert_eq!(envelope["error"], "unknown-bin", "{envelope}");
 }
+
+/// A crate whose only `.unwrap()` sits in `rel`.
+fn crate_with_unwrap_in(root: &Path, rel: &str) {
+    write(
+        root,
+        "Cargo.toml",
+        "[package]\nname = \"tool\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    write(root, "src/main.rs", "fn main() {}\n");
+    write(
+        root,
+        rel,
+        "pub fn f(x: Option<u8>) -> u8 {\n    x.unwrap()\n}\n",
+    );
+}
+
+#[test]
+fn example_programs_beside_a_manifest_are_not_audited() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    crate_with_unwrap_in(root, "crates/lib/examples/demo.rs");
+    write(
+        root,
+        "crates/lib/Cargo.toml",
+        "[package]\nname = \"lib\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    write(root, "crates/lib/src/lib.rs", "");
+    write(
+        root,
+        "examples/top.rs",
+        "fn main() { Some(1u8).unwrap(); }\n",
+    );
+
+    let card = audit_json(root, &["--include-tests"]);
+
+    let unwrap = row(&card, "code-unwrap").expect("code-unwrap row");
+    assert_eq!(unwrap["status"], "pass", "{unwrap}");
+}
+
+#[test]
+fn a_source_module_named_examples_is_still_audited() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path();
+    crate_with_unwrap_in(root, "src/commands/examples/mod.rs");
+
+    let card = audit_json(root, &[]);
+
+    let unwrap = row(&card, "code-unwrap").expect("code-unwrap row");
+    assert_ne!(unwrap["status"], "pass", "{unwrap}");
+    assert!(
+        unwrap["evidence"]
+            .as_str()
+            .is_some_and(|evidence| evidence.contains("src/commands/examples/mod.rs")),
+        "{unwrap}"
+    );
+}

@@ -36,6 +36,14 @@ pub enum Language {
 }
 
 impl Language {
+    /// Every language anc recognizes.
+    pub const ALL: [Language; 4] = [
+        Language::Rust,
+        Language::Python,
+        Language::Go,
+        Language::Node,
+    ];
+
     /// The manifest file that makes a directory a package of this language.
     pub fn manifest_name(self) -> &'static str {
         match self {
@@ -48,14 +56,9 @@ impl Language {
 
     /// The language whose manifest is named `file_name`.
     pub fn of_manifest(file_name: &std::ffi::OsStr) -> Option<Language> {
-        [
-            Language::Rust,
-            Language::Python,
-            Language::Go,
-            Language::Node,
-        ]
-        .into_iter()
-        .find(|lang| file_name == lang.manifest_name())
+        Language::ALL
+            .into_iter()
+            .find(|lang| file_name == lang.manifest_name())
     }
 
     /// The language a source file with extension `ext` is written in.
@@ -277,7 +280,8 @@ impl Project {
 
 /// Source files under `root` by language, walked with the package scan's
 /// rules: the repository's ignore files, no hidden, build, or dependency
-/// directories, and `tests` only with `include_tests`.
+/// directories, and `tests` only with `include_tests`. Example programs
+/// beside a manifest are skipped too ([`scan::source_walker`]).
 fn read_sources(
     root: &Path,
     include_tests: bool,
@@ -287,7 +291,7 @@ fn read_sources(
         return found;
     }
     let mut count = 0usize;
-    for entry in scan::walker(root, include_tests).build().flatten() {
+    for entry in scan::source_walker(root, include_tests).build().flatten() {
         if !entry.file_type().is_some_and(|kind| kind.is_file()) {
             continue;
         }

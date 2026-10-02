@@ -113,8 +113,9 @@ fn existing_dir(value: &str) -> Result<std::path::PathBuf, String> {
 pub enum Commands {
     /// Audit a CLI project or binary for agent-readiness
     ///
-    /// Reads the target's project layout (Cargo.toml / pyproject.toml),
-    /// language detection, and binary discovery. Stdin is not consumed.
+    /// Reads the target's manifests and workspace declarations (Cargo, npm,
+    /// yarn, pnpm, Go, uv), the languages present, and the built binary to
+    /// grade. Stdin is not consumed.
     /// Pass the target as a positional argument or via `--command <name>`
     /// to resolve from PATH. `-` is reserved and behaves like any other
     /// path argument (no special stdin meaning).

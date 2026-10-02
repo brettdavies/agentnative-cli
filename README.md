@@ -214,9 +214,14 @@ Usage: anc audit [OPTIONS] [PATH]
 ```
 
 That holds for a single crate with several `[[bin]]` targets too: a repository or crate that builds more than one
-binary exits 2 until `--bin` names one. Under `--output json` the error is the usage envelope with
-`"error": "binary-ambiguous"` and a `candidates` array of `name`, `package`, `path` (relative to the audit root), and
-`command`. When two candidates share a name, each is offered by its path.
+binary exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so
+`anc audit . --principle 6` offers `anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage
+envelope with `"error": "binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit
+root), and `command`, and a `next_step` of `choose-bin` whose `template` ends in `--bin <name>`. When two candidates
+share a name, each is offered by its path.
+
+`--source` runs no binary, so it needs no choice: with several candidates and no `--bin`, the source and project audits
+run with nothing graded.
 
 With none, the source and project audits run, and the warning names any bins the packages declare but have not built,
 with the ways forward: build one, audit a built binary by path, or audit an installed one with `--command`.
@@ -410,6 +415,22 @@ mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should 
 Exit 2 covers both audit failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
 mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
 `anc --help` first to confirm the invocation shape.
+
+### Errors under `--output json`
+
+Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `error` (a stable kebab-case reason),
+`message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
+is one of a closed set, and a newer release can add to it:
+
+| `action`     | Carries                                                                                      | Raised by                                       |
+| ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `show-help`  | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error` |
+| `choose-bin` | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`               |
+| `rerun`      | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                           |
+
+A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
+README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
+`bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them.
 
 ### Shell Completions
 

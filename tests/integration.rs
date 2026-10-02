@@ -1528,3 +1528,37 @@ fn a_runtime_error_envelope_points_at_the_subcommands_help() {
         "{envelope}"
     );
 }
+
+// ── argument validation ────────────────────────────────────────────
+
+#[test]
+fn a_principle_outside_one_to_eight_is_a_usage_error() {
+    for bad in ["0", "9"] {
+        let output = cmd()
+            .args(["audit", "--command", "ls", "--principle", bad])
+            .output()
+            .expect("spawn anc");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "--principle {bad}: {output:?}"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "no scorecard for --principle {bad}"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+        assert!(stderr.contains("1..=8"), "names the valid range: {stderr}");
+    }
+    let envelope = error_envelope(&[
+        "audit",
+        "--command",
+        "ls",
+        "--principle",
+        "9",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(envelope["error"], "value-validation", "{envelope}");
+    assert_eq!(envelope["value"], "9", "{envelope}");
+}

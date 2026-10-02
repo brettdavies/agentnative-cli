@@ -179,7 +179,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
         source: bool,
 
         /// Filter audits by principle number (1-8)
-        #[arg(long)]
+        #[arg(long, value_parser = clap::value_parser!(u8).range(1..=8))]
         principle: Option<u8>,
 
         /// Output format

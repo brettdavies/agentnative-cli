@@ -37,7 +37,12 @@ impl Audit for ErrorModuleAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let src_dir = project.path.join("src");
+        let package_root = project
+            .manifest_path
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            .unwrap_or(&project.path);
+        let src_dir = package_root.join("src");
 
         // Audit direct files: src/error.rs, src/errors.rs
         let direct_candidates = ["error.rs", "errors.rs", "error.py", "errors.py"];
@@ -50,6 +55,8 @@ impl Audit for ErrorModuleAudit {
                     layer: self.layer(),
                     status: AuditStatus::Pass,
                     confidence: Confidence::High,
+                    mitigation: None,
+                    config_hint: None,
                 });
             }
         }
@@ -70,6 +77,8 @@ impl Audit for ErrorModuleAudit {
                                 layer: self.layer(),
                                 status: AuditStatus::Pass,
                                 confidence: Confidence::High,
+                                mitigation: None,
+                                config_hint: None,
                             });
                         }
                     }
@@ -86,6 +95,8 @@ impl Audit for ErrorModuleAudit {
                 "No dedicated error module found (expected src/error.rs or src/errors.rs)".into(),
             ),
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

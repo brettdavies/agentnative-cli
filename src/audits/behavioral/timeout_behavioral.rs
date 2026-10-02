@@ -64,6 +64,8 @@ impl Audit for TimeoutBehavioralAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

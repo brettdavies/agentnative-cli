@@ -85,6 +85,8 @@ impl Audit for SecretNonLeakyPathAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

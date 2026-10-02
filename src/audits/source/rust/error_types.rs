@@ -38,11 +38,11 @@ impl Audit for ErrorTypesAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
         let mut found = false;
 
         for (_path, parsed_file) in parsed.iter() {
@@ -69,6 +69,8 @@ impl Audit for ErrorTypesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }
@@ -95,6 +97,10 @@ pub(crate) fn has_error_enum(source: &str) -> bool {
             let text = m.text();
             // Extract the enum name from the matched text
             if let Some(enum_pos) = text.find("enum ") {
+                #[expect(
+                    clippy::string_slice,
+                    reason = "enum_pos comes from find(\"enum \") and 5 is that ASCII needle's length"
+                )]
                 let after_enum = &text[enum_pos + 5..];
                 if let Some(name) = after_enum.split_whitespace().next()
                     && name.contains("Error")

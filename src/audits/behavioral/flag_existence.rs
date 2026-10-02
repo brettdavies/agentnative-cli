@@ -84,6 +84,8 @@ impl Audit for FlagExistenceAudit {
                         .into(),
                 ),
                 confidence: Confidence::High,
+                mitigation: None,
+                config_hint: None,
             });
         }
 
@@ -113,6 +115,8 @@ impl Audit for FlagExistenceAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

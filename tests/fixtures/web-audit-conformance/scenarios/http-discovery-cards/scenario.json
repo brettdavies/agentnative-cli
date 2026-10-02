@@ -1,0 +1,223 @@
+{
+  "description": "the well-known discovery and auth documents answer with the expected JSON shapes",
+  "covers": [
+    "a2a-agent-card",
+    "ai-catalog",
+    "agent-skills",
+    "security-txt",
+    "web-bot-auth",
+    "oauth-discovery",
+    "api-catalog",
+    "sitemap",
+    "llms-full-txt"
+  ],
+  "target": "https://example.com/",
+  "site_type": "content",
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/security.txt"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "body": "Contact: mailto:security@example.com\nExpires: 2030-01-01T00:00:00Z\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/http-message-signatures-directory"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"keys\":[]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/agent-card.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"name\":\"example\",\"version\":\"1.0.0\",\"supportedInterfaces\":[]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/ai-catalog.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"specVersion\":\"1.0\",\"entries\":[]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/agent-skills/index.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"skills\":[]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/openid-configuration"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"issuer\":\"https://example.com\",\"token_endpoint\":\"https://example.com/token\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/oauth-protected-resource"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"resource\":\"https://example.com/mcp\",\"authorization_servers\":[]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/auth.md"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/markdown; charset=utf-8"
+        },
+        "body": "# Auth\n\nRegister at /signup, then send a bearer token.\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/openapi.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"Example API\",\"version\":\"1.0.0\"},\"paths\":{\"/v1/items/{id}\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\"},\"404\":{\"description\":\"missing\"}}}}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/v1/items/anc-web-audit-no-such"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json",
+          "ratelimit-limit": "60"
+        },
+        "body": "{\"error\":\"not_found\",\"message\":\"no such item\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/api/schema/input.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/schema+json"
+        },
+        "body": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/api-catalog"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/linkset+json"
+        },
+        "body": "{\"linkset\":[]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/sitemap.xml"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/xml"
+        },
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url><loc>https://example.com/</loc></url>\n  <url><loc>https://example.com/docs/guide</loc></url>\n  <url><loc>https://example.com/blog/hello</loc></url>\n</urlset>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/llms-full.txt"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8"
+        },
+        "body": "# Example\n\n## Guide\n\nEverything in one fetch.\n"
+      }
+    }
+  ]
+}

@@ -10,6 +10,18 @@ Two-layer audit system:
 - **Source audits**: ast-grep pattern matching via bundled `ast-grep-core` crate (Rust, Python at launch)
 - **Project audits**: file existence, manifest inspection
 
+A directory target is a package inventory, not one manifest. `src/project/` reads the root's workspace declarations
+(Cargo, npm or yarn, `pnpm`, `go.work`, `uv`), scans for manifests with the `ignore` walker (repo `.gitignore` and
+`.git/info/exclude`, never global excludes; hidden, `target`, `node_modules`, `vendor`, `venv`, `dist`, `build`, and
+`tests` skipped), and finds candidates only among the bins packages declare and have built. `select.rs` grades one
+candidate, or stops with `binary-ambiguous` and one `--bin` command each. `Project::grade` sets `language`,
+`manifest_path`, and `binary_paths` from the graded package, so manifest-reading audits and the tool identity follow it;
+with nothing graded, `Project::anchor_ungraded` picks the one bin-declaring package, and with several,
+`Project::manifest_skip` gives those audits their Skip evidence. Source audits run once per language present
+(`Project::languages`), reading `Project::parsed_files(language)` from `scan::source_walker`, which also skips an
+`examples` directory beside a manifest or at the root, and `audits::source::merge_shared` folds an audit id
+both languages report into one row. The README's "What a directory audit grades" section is the user-facing contract.
+
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`
 
 ## Skill Routing
@@ -142,7 +154,7 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 
 ## Scorecard JSON fields
 
-`src/scorecard/mod.rs` emits `schema_version: "0.5"`. The schema evolves additively during the `0.x` pre-launch window;
+`src/scorecard/mod.rs` emits `schema_version: "0.9"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
 
 - `0.2`: `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
@@ -150,6 +162,14 @@ consumers feature-detect each addition rather than pinning exact shape. Cumulati
 - `0.4`: four top-level objects making the scorecard self-describing: `tool`, `anc`, `run`, `target`.
 - `0.5`: `badge` block surfacing agent-native badge eligibility, embed snippet, and badge/scorecard URLs derived from
   the live run.
+- `0.6`: 7-status taxonomy (`opt_out` and `n_a` added to `status`), matching counters in `summary`, `tier` on each
+  result, one result per requirement row instead of per-`audit_id`, antecedent propagation for conditional rows.
+- `0.7`: reserved bump for the role-based JSON-error-envelope validator reframe (PR #79). Shape unchanged from `0.6`.
+- `0.8`: optional `using_domain_verbs: bool` and `domain_match_count: usize` on each result row, populated when
+  `p6-standard-names` Passes via per-CLI `.anc.toml [p6] domain_verbs` recognition; Pass evidence string is populated
+  with the built-in vs domain ratio. Fields are absent (not `null`) from rows that did not consult `domain_verbs`.
+- `0.9`: optional `config_hint` on a result row whose warning a `.anc.toml` setting would clear. The `0.9` schema
+  document declares every row field and value the runtime emits, the `0.8` row fields and `low` confidence included.
 
 Existing field semantics:
 
@@ -202,10 +222,46 @@ Existing field semantics:
   appends a post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so
   the JSON `embed_markdown` and the printed hint can never disagree.
 
+`0.8` addition (`MitigationInfo` carrier on `AuditResult`):
+
+- `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples, builtin_match_count, subcommand_total
+  }` is attached to an `AuditResult` when the audit's verdict was assisted by a documented per-CLI opt-in. Today's only
+  producer is `src/audits/behavioral/standard_names.rs`: when `p6-standard-names` Passes because one or more subcommands
+  were recognized via `.anc.toml [p6] domain_verbs` (rather than the built-in `STANDARD_VERBS` list), the audit fills
+  `MitigationInfo` with the bifurcated match counts and the first `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb
+  names in encounter order.
+- `AuditResultView` surfaces two top-level fields derived from the carrier: `using_domain_verbs: Option<bool>` and
+  `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from rows
+  that did not consult `domain_verbs`. The Pass row's `evidence` field is populated (rather than `null`) via
+  `format_pass_evidence(&mitigation)`; rows without mitigation keep the historical `evidence: null` on Pass.
+- The carrier shape is deliberately not audit-specific. Future audits that admit per-CLI mitigation (suppression profile
+  assistance, conditional-applicability config) can populate `MitigationInfo` with the same fields rather than growing
+  parallel typed carriers. The semantic contract is "this verdict depended on a self-declared opt-in; here is what
+  assisted."
+
+`0.9` addition (`ConfigHint` carrier on `AuditResult`):
+
+- `ConfigHint { files, domain_verbs, docs }` is attached to an `AuditResult` when a warning is one a `.anc.toml`
+  setting would clear and no config supplied it. Today's only producer is `standard_names.rs`: a `p6-standard-names`
+  Warn with no `domain_verbs` applied carries the flagged verbs (lowercase, `--help` order), the files the setting can
+  go in, and `anc_toml::DOCS_URL`. A Warn that config shaped, a Pass, and the Warn an unreadable chain produces carry
+  none.
+- `files` lists `ConfigFile { file, scope }`, the repository's `.anc.toml` first, then the user-level file when one is
+  configured. `scope` is `repository` (the git root or `--repo`), `tool-repository` (a target outside any repository:
+  the tool's own checkout, read through `--repo`), or `user` (every audit on the machine). `file` follows the evidence
+  display rule: `.anc.toml`, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`, never an absolute path.
+  `Project.anc_config.settings_files` holds them, resolved once per run with the chain. Where anc looks is documented
+  once, in the README's [Configuration](README.md#configuration-anctoml) section.
+- `AuditResultView.config_hint` mirrors the carrier with `skip_serializing_if = "Option::is_none"`, the
+  `audience_reason` pattern: absent from every row without a hint. Text mode prints it under the row, with the evidence
+  lines: one `hint:` line, then one line per file saying which audits read it.
+
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is
 `audience_reason`, which uses `skip_serializing_if = "Option::is_none"`; its absence carries information (audience has a
-label).
+label). The `0.8` `using_domain_verbs` / `domain_match_count` fields follow the `audience_reason` pattern (absent when
+not applicable) — *not* the `tool.version` always-present-null pattern — because their absence is itself the signal that
+no mitigation was needed.
 
 Consumers (notably the site's `/score/<tool>` page) must feature-detect the new fields, since pre-`0.4` scorecards lack
 the four metadata blocks; pre-`0.5` scorecards lack `badge`. The site's `agentnative-site/registry.yaml` will eventually
@@ -269,7 +325,7 @@ agentnative. Three rules guard the probe:
    instant help output instead of running `audit .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
-3. **Binary discovery picks the newer of release/debug by mtime** (`src/project.rs::discover_rust_binaries`): when both
+3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
    `target/release/<bin>` and `target/debug/<bin>` exist, the function returns the one with the more recent mtime.
    Avoids the stale-release-binary trap in dev workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios
    where only one profile is built fall through cleanly to the existence check. Ties go to debug (cargo's dev-flow

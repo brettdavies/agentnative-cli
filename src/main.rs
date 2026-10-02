@@ -1,3 +1,4 @@
+mod anc_toml;
 mod argv;
 mod audit;
 mod audits;
@@ -14,6 +15,8 @@ mod scorecard;
 mod skill_install;
 mod source;
 mod types;
+#[allow(dead_code)]
+mod web_audit;
 
 use std::time::{Duration, Instant};
 
@@ -33,6 +36,7 @@ use error::AppError;
 use principles::matrix;
 use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
 use project::Project;
+use project::select::{self, Choice, Unselected};
 use runner::{BinaryRunner, RunStatus};
 use scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
@@ -55,12 +59,19 @@ fn main() {
     // envelope when the user asked for JSON.
     let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
+    let help = argv::help_command(&inject_default_subcommand(raw_argv.iter().cloned()));
 
     let code = match run(raw_argv) {
         Ok(code) => code,
         Err(e) => {
             if json_mode {
-                let envelope = json_error::render_error("runtime", "app-error", &e.to_string(), 2);
+                let envelope = json_error::render_error(
+                    "runtime",
+                    "app-error",
+                    &e.to_string(),
+                    2,
+                    &json_error::NextStep::show_help(help),
+                );
                 eprintln!("{envelope}");
             } else {
                 eprintln!("error: {e}");
@@ -83,9 +94,10 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // envelope before clap drops back to its default text-rendering path.
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
 
-    let cli = match Cli::try_parse_from(inject_default_subcommand(raw_argv.iter().cloned())) {
+    let argv = inject_default_subcommand(raw_argv.iter().cloned());
+    let cli = match Cli::try_parse_from(argv.iter().cloned()) {
         Ok(cli) => cli,
-        Err(e) => return Ok(handle_clap_error(e, json_mode)),
+        Err(e) => return Ok(handle_clap_error(e, json_mode, &argv)),
     };
 
     // --quiet is global (visible in top-level --help for agent discoverability)
@@ -112,54 +124,69 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     // Bare invocation (no args at all) is handled by clap's arg_required_else_help.
     // A flag-only invocation like `anc -q` parses successfully with `command =
     // None` — render help to stderr and exit 2 to mirror clap's contract.
-    let (path, command, binary_only, source_only, principle, output, include_tests, audit_profile) =
-        match cli.command {
-            Some(Commands::Audit {
-                path,
-                command,
-                binary,
-                source,
-                principle,
-                output,
-                include_tests,
-                audit_profile,
-            }) => (
-                path,
-                command,
-                binary,
-                source,
-                principle,
-                output,
-                include_tests,
-                audit_profile,
-            ),
-            Some(Commands::Completions { shell }) => {
+    let (
+        path,
+        command,
+        binary_only,
+        bin,
+        repo,
+        source_only,
+        principle,
+        output,
+        include_tests,
+        audit_profile,
+    ) = match cli.command {
+        Some(Commands::Audit {
+            path,
+            command,
+            binary,
+            bin,
+            repo,
+            source,
+            principle,
+            output,
+            include_tests,
+            audit_profile,
+        }) => (
+            path,
+            command,
+            binary,
+            bin,
+            repo,
+            source,
+            principle,
+            output,
+            include_tests,
+            audit_profile,
+        ),
+        Some(Commands::Completions { shell }) => {
+            let mut cmd = <Cli as clap::CommandFactory>::command();
+            generate(shell, &mut cmd, "anc", &mut std::io::stdout());
+            return Ok(0);
+        }
+        Some(Commands::Emit { artifact }) => {
+            return run_emit(artifact);
+        }
+        Some(Commands::Skill { cmd }) => {
+            return run_skill(cmd, json_alias);
+        }
+        None => {
+            if json_mode || json_alias {
+                let envelope = json_error::render_error(
+                    "usage",
+                    "missing-subcommand",
+                    "no subcommand provided; run with --help for usage",
+                    2,
+                    &json_error::NextStep::show_help(String::from("anc --help")),
+                );
+                eprintln!("{envelope}");
+            } else {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
-                generate(shell, &mut cmd, "anc", &mut std::io::stdout());
-                return Ok(0);
+                eprintln!("{}", cmd.render_help());
             }
-            Some(Commands::Emit { artifact }) => {
-                return run_emit(artifact);
-            }
-            Some(Commands::Skill { cmd }) => {
-                return run_skill(cmd, json_alias);
-            }
-            None => {
-                if json_mode || json_alias {
-                    let envelope = json_error::render_error(
-                        "usage",
-                        "missing-subcommand",
-                        "no subcommand provided; run with --help for usage",
-                        2,
-                    );
-                    eprintln!("{envelope}");
-                } else {
-                    let mut cmd = <Cli as clap::CommandFactory>::command();
-                    eprintln!("{}", cmd.render_help());
-                }
-                return Ok(2);
-            }
-        };
+            return Ok(2);
+        }
+    };
 
     // Run-level timing starts at the top of the Audit arm (R4): wall-clock
     // milliseconds and an RFC 3339 UTC timestamp. We use `OffsetDateTime` for
@@ -185,11 +212,50 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let command_name = command.clone();
     let resolved_path = match command {
         Some(name) => resolve_command_on_path(&name)?,
-        None => path,
+        None => path.clone(),
     };
 
-    let mut project = Project::discover(&resolved_path)?;
-    project.include_tests = include_tests;
+    let mut project = Project::discover_with_tests(&resolved_path, include_tests)?;
+    for warning in &project.inventory.warnings {
+        eprintln!("warning: {warning}");
+    }
+    let json_output = matches!(output, OutputFormat::Json);
+    if project.path.is_dir() {
+        let candidates = &project.inventory.candidates;
+        let selected = match select::select(candidates, &project.path, bin.as_deref()) {
+            // Source audits run no binary, so several of them leave nothing
+            // to choose between; the run proceeds with none graded.
+            Err(Unselected::Ambiguous) if source_only => Ok(None),
+            other => other,
+        };
+        match selected {
+            Ok(Some(chosen)) => {
+                let chosen = chosen.clone();
+                project.grade(&chosen);
+            }
+            Ok(None) => project.anchor_ungraded(),
+            Err(why) => {
+                let rerun = argv::rerun_argv(&argv);
+                let choices = select::choices(candidates, &project.path, &rerun);
+                return Ok(report_unselected(&why, &choices, &rerun, json_output));
+            }
+        }
+    } else if let Some(bin) = &bin {
+        let mut extra = serde_json::Map::new();
+        extra.insert("bin".into(), bin.as_str().into());
+        return Ok(usage_error(
+            "bin-needs-directory",
+            "--bin chooses among the binaries a directory builds, and this target is already a binary; drop --bin, or pass the directory",
+            &json_error::NextStep::rerun(format_invocation(&argv::rerun_argv(&argv))),
+            extra,
+            json_output,
+        ));
+    }
+    let home = anc_toml::home_layer();
+    if let Some(warning) = home.as_ref().and_then(anc_toml::HomeLayer::missing_warning) {
+        eprintln!("warning: {warning}");
+    }
+    project.anc_config = anc_toml::load_for_target(&project.path, home.as_ref(), repo.as_deref());
 
     // Collect applicable audits based on flags and auto-detection
     let mut all_audits: Vec<Box<dyn Audit>> = Vec::new();
@@ -200,6 +266,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     if !source_only {
         if has_binary {
             all_audits.extend(all_behavioral_audits());
+        } else if !project.inventory.unbuilt.is_empty() {
+            eprintln!(
+                "warning: {}",
+                unbuilt_warning(&project.inventory.unbuilt, binary_only)
+            );
         } else if binary_only {
             eprintln!("warning: --binary specified but no binary found");
         } else if has_language {
@@ -208,9 +279,11 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     }
 
     if !binary_only {
-        if let Some(lang) = project.language {
-            all_audits.extend(all_source_audits(lang));
-        } else if source_only {
+        let languages = project.languages();
+        for lang in &languages {
+            all_audits.extend(all_source_audits(*lang));
+        }
+        if languages.is_empty() && source_only {
             eprintln!("warning: --source specified but no language detected");
         }
     }
@@ -246,6 +319,8 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                     cat.as_kebab_case()
                 )),
                 confidence: Confidence::High,
+                mitigation: None,
+                config_hint: None,
             });
             continue;
         }
@@ -258,10 +333,13 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 layer: audit.layer(),
                 status: AuditStatus::Error(e.to_string()),
                 confidence: Confidence::High,
+                mitigation: None,
+                config_hint: None,
             },
         };
         results.push(result);
     }
+    let mut results = audits::source::merge_shared(results);
 
     // Filter by principle number
     if let Some(p) = principle {
@@ -376,7 +454,7 @@ fn emit_examples(json_mode: bool) {
 ///
 /// Exit codes mirror clap's defaults: help / version exit `0`, every other
 /// failure exits `2` (matches `p2-must-structured-exit-codes`).
-fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
+fn handle_clap_error(error: clap::Error, json_mode: bool, argv: &[std::ffi::OsString]) -> i32 {
     use clap::error::ErrorKind as K;
     match error.kind() {
         K::DisplayHelp => {
@@ -402,6 +480,7 @@ fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
                     "missing-subcommand",
                     "no subcommand provided; run with --help for usage",
                     2,
+                    &json_error::NextStep::show_help(argv::help_command(argv)),
                 );
                 eprintln!("{envelope}");
             } else {
@@ -424,7 +503,14 @@ fn handle_clap_error(error: clap::Error, json_mode: bool) -> i32 {
                         (!t.is_empty()).then_some(t)
                     })
                     .unwrap_or(&raw);
-                let envelope = json_error::render_error(envelope_kind, slug, first_line, 2);
+                let envelope = json_error::render_error_with(
+                    envelope_kind,
+                    slug,
+                    first_line,
+                    2,
+                    &json_error::NextStep::show_help(argv::help_command(argv)),
+                    json_error::clap_offending_fields(&error),
+                );
                 eprintln!("{envelope}");
             } else {
                 let _ = error.print();
@@ -577,9 +663,10 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
     }
 }
 
-/// Best-effort `<binary> --version` / `<binary> -V` probe. Reuses the runner's
-/// timeout + 1MB cap primitives via a fresh `BinaryRunner` with a tighter
-/// 2-second timeout (the version probe is one-shot, not an audit).
+/// Best-effort `<binary> --version` / `<binary> -V` probe. A flag the version
+/// audit already ran is read from the project runner's cache; any other flag
+/// runs through a fresh `BinaryRunner` with a tighter 2-second timeout (the
+/// version probe is one-shot, not an audit).
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,
@@ -599,7 +686,11 @@ fn probe_tool_version(project: &Project) -> Option<String> {
 
     let runner = BinaryRunner::new(binary.clone(), Duration::from_secs(2)).ok()?;
     for flag in ["--version", "-V"] {
-        let result = runner.run(&[flag], &[]);
+        let result = project
+            .runner
+            .as_ref()
+            .and_then(|r| r.cached(&[flag], &[]))
+            .unwrap_or_else(|| runner.run(&[flag], &[]));
         if matches!(result.status, RunStatus::Ok)
             && result.exit_code == Some(0)
             && let Some(line) = result.stdout.lines().next()
@@ -658,6 +749,103 @@ fn read_manifest_name(manifest: &std::path::Path) -> Option<String> {
         return Some(v.to_string());
     }
     None
+}
+
+/// Print why a directory audit cannot choose its binary, with the command
+/// that grades each candidate, and return the usage-error exit code.
+fn report_unselected(
+    why: &Unselected,
+    choices: &[Choice],
+    rerun: &[std::ffi::OsString],
+    json: bool,
+) -> i32 {
+    let mut extra = serde_json::Map::new();
+    let (slug, message) = match why {
+        Unselected::Ambiguous => (
+            "binary-ambiguous",
+            format!(
+                "found {} built binaries here, and anc grades one per run; run one of these",
+                choices.len()
+            ),
+        ),
+        Unselected::Unknown(bin) => {
+            extra.insert("bin".into(), bin.as_str().into());
+            (
+                "unknown-bin",
+                format!("--bin {bin} names none of the binaries built here; run one of these"),
+            )
+        }
+    };
+    if json {
+        extra.insert(
+            "candidates".into(),
+            serde_json::to_value(choices).unwrap_or_default(),
+        );
+        let template = format!("{} --bin <name>", format_invocation(rerun));
+        eprintln!(
+            "{}",
+            json_error::render_error_with(
+                "usage",
+                slug,
+                &message,
+                2,
+                &json_error::NextStep::choose_bin(template),
+                extra,
+            )
+        );
+    } else {
+        eprintln!("error: {message}\n");
+        let width = choices.iter().map(|c| c.command.len()).max().unwrap_or(0);
+        for choice in choices {
+            eprintln!(
+                "  {:width$}  # {}, {}",
+                choice.command, choice.package, choice.path
+            );
+        }
+        eprintln!("\n{}", audit_usage());
+    }
+    2
+}
+
+/// Print a usage error found after argument parsing and return its exit
+/// code, in the same shapes clap's own usage errors take.
+fn usage_error(
+    slug: &str,
+    message: &str,
+    next_step: &json_error::NextStep,
+    extra: serde_json::Map<String, serde_json::Value>,
+    json: bool,
+) -> i32 {
+    if json {
+        eprintln!(
+            "{}",
+            json_error::render_error_with("usage", slug, message, 2, next_step, extra)
+        );
+    } else {
+        eprintln!("error: {message}\n\n{}", audit_usage());
+    }
+    2
+}
+
+fn audit_usage() -> String {
+    let mut cli = <Cli as clap::CommandFactory>::command();
+    cli.build();
+    cli.find_subcommand_mut("audit")
+        .map(|audit| audit.render_usage().to_string())
+        .unwrap_or_default()
+}
+
+/// The no-binary warning when packages declare bins that are not built.
+fn unbuilt_warning(names: &[String], binary_only: bool) -> String {
+    let outcome = if binary_only {
+        "nothing to audit with --binary"
+    } else {
+        "running source and project audits only"
+    };
+    format!(
+        "no binary here is built: the packages declare {}. To grade one, build it, audit a built binary by path (`anc audit <path>`), or audit an installed one (`anc audit --command <name>`); {outcome}",
+        names.join(", ")
+    )
 }
 
 /// Resolve a command name to an absolute path by shelling out to `which`

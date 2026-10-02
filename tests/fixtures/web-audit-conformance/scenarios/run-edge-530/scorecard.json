@@ -1,0 +1,3 @@
+{
+  "unreachable": "https://example.com/ did not answer any probe (every response was a Cloudflare edge error, which means the host did not resolve or never replied). The site may be down, its DNS may be misconfigured, or it may block requests from datacenter IP ranges such as the auditor’s."
+}

@@ -1,3 +1,7 @@
+// Matched source text is arbitrary UTF-8, so no byte offset in this module is
+// a known char boundary; previews are bounded by character count.
+#![deny(clippy::string_slice)]
+
 use ast_grep_core::Pattern;
 use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::{Python, Rust};
@@ -55,6 +59,22 @@ pub fn has_string_literal_in(source: &str, needle: &str, lang: Language) -> bool
     // Single-quoted form: meaningful for Python, harmless no-op for Rust
     let sq = format!("'{needle}'");
     has_pattern_in(source, &sq, lang)
+}
+
+/// Collapse `text` to one line and bound it to `max_chars` characters,
+/// appending `...` only when characters were dropped.
+///
+/// The budget counts characters, never bytes: matched source text is
+/// arbitrary UTF-8, and a byte offset can land inside a multi-byte sequence,
+/// where `str` slicing panics.
+pub fn evidence_preview(text: &str, max_chars: usize) -> String {
+    let mut chars = text.chars().map(|c| if c == '\n' { ' ' } else { c });
+    let preview: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{preview}...")
+    } else {
+        preview
+    }
 }
 
 fn has_pattern_with<L>(source: &str, pattern_str: &str, lang: L) -> bool
@@ -157,6 +177,49 @@ fn main() {
     #[test]
     fn test_has_pattern_invalid_pattern() {
         assert!(!has_pattern("fn main() {}", "<<<invalid>>>"));
+    }
+
+    #[test]
+    fn evidence_preview_keeps_short_text_without_ellipsis() {
+        assert_eq!(evidence_preview("short", 80), "short");
+    }
+
+    #[test]
+    fn evidence_preview_at_exact_budget_has_no_ellipsis() {
+        let text = "x".repeat(80);
+        assert_eq!(evidence_preview(&text, 80), text);
+    }
+
+    #[test]
+    fn evidence_preview_collapses_newlines_to_spaces() {
+        assert_eq!(evidence_preview("a\nb\nc", 80), "a b c");
+    }
+
+    #[test]
+    fn evidence_preview_appends_exactly_one_ellipsis_when_truncating() {
+        let text = "x".repeat(81);
+        let preview = evidence_preview(&text, 80);
+        assert_eq!(preview, format!("{}...", "x".repeat(80)));
+        assert_eq!(preview.matches("...").count(), 1);
+    }
+
+    #[test]
+    fn evidence_preview_bounds_by_characters_not_bytes() {
+        let text = "⠋".repeat(100);
+        let preview = evidence_preview(&text, 80);
+        assert_eq!(preview, format!("{}...", "⠋".repeat(80)));
+        assert_eq!(preview.chars().count(), 83);
+    }
+
+    #[test]
+    fn evidence_preview_never_panics_mid_glyph() {
+        for glyph in ["é", "⠋", "名", "🏆"] {
+            let text = format!("for x in {} {{ }}", glyph.repeat(40));
+            for budget in 0..text.len() + 1 {
+                let preview = evidence_preview(&text, budget);
+                assert!(preview.chars().count() <= budget + 3);
+            }
+        }
     }
 
     #[test]

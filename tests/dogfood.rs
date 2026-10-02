@@ -11,8 +11,12 @@
 use assert_cmd::Command;
 use serde_json::Value;
 
+mod common;
+
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("anc binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    cmd
 }
 
 fn audit_repo_json() -> Value {

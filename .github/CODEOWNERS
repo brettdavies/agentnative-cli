@@ -1,0 +1,9 @@
+# Mandatory review on producer-ops paths that determine what ships and how.
+# Other paths (src/, docs/, spec/, tests/) are reviewed via normal PR rules;
+# src/principles/spec/ and src/skill_install/skill.json are vendored and not
+# edited by hand (see scripts/sync-spec.sh and scripts/sync-skill-fixture.sh).
+
+scripts/**              @brettdavies
+.github/workflows/**    @brettdavies
+.github/rulesets/**     @brettdavies
+.github/CODEOWNERS      @brettdavies

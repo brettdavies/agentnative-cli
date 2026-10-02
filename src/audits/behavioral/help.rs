@@ -64,6 +64,8 @@ impl Audit for HelpAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

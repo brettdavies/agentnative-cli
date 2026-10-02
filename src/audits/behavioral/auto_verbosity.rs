@@ -79,6 +79,8 @@ impl Audit for AutoVerbosityAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Low,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

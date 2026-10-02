@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anc.dev/web-scorecard-v0.4.schema.json",
+  "title": "agentnative web scorecard",
+  "description": "JSON Schema for `anc web --output json` scorecards (web schema version 0.4). The shape is the one anc.dev emits for a website audit: six visible categories, a seven-state status per check, and the two-score model (relative over the site's applicable checks, global over the whole registry). Independent of the CLI scorecard schema.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "spec_version",
+    "target_url",
+    "mcp_endpoint",
+    "mcp_discovery",
+    "tool",
+    "audience",
+    "audit_profile",
+    "site_type",
+    "public_listing",
+    "summary",
+    "coverage_summary",
+    "score_pct",
+    "score",
+    "categories",
+    "results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of the web-scorecard envelope. Pre-launch additive; consumers feature-detect new fields rather than pin an exact value.",
+      "examples": ["0.4"]
+    },
+    "spec_version": {
+      "type": "string",
+      "description": "Version of the agentnative spec the run scored against."
+    },
+    "target_url": {
+      "type": "string",
+      "description": "The normalized audited URL: scheme, host, and a trailing slash."
+    },
+    "mcp_endpoint": {
+      "type": ["string", "null"],
+      "description": "The discovered MCP endpoint, or null when none was found."
+    },
+    "mcp_discovery": {
+      "type": "array",
+      "description": "The discovery trail: each well-known card or common-path probe attempted, and what it returned.",
+      "items": { "$ref": "#/$defs/EvidenceItem" }
+    },
+    "tool": { "$ref": "#/$defs/ToolIdentity" },
+    "audience": {
+      "type": "null",
+      "description": "Always null for a web target; the audience classifier is a CLI concept."
+    },
+    "audit_profile": {
+      "type": "null",
+      "description": "Always null for a web target; audit profiles are a CLI concept."
+    },
+    "site_type": {
+      "type": ["string", "null"],
+      "enum": ["content", "api", null],
+      "description": "The declared site type the run scoped to, or null when everything ran."
+    },
+    "public_listing": {
+      "type": "boolean",
+      "description": "The submitter's opt-in to the public board listing. Always false for a local run."
+    },
+    "summary": { "$ref": "#/$defs/StatusTally" },
+    "coverage_summary": { "$ref": "#/$defs/CoverageSummary" },
+    "score_pct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "The headline relative score. Equals score.relative."
+    },
+    "score": { "$ref": "#/$defs/Score" },
+    "categories": {
+      "type": "array",
+      "description": "Per-category passed/counted rollups in display order.",
+      "items": { "$ref": "#/$defs/CategoryRollup" }
+    },
+    "results": {
+      "type": "array",
+      "description": "One row per check, in registry order.",
+      "items": { "$ref": "#/$defs/ResultRow" }
+    }
+  },
+  "$defs": {
+    "EvidenceItem": {
+      "type": "object",
+      "description": "A handler's structured evidence row. Open: keys depend on the probe.",
+      "additionalProperties": true
+    },
+    "ToolIdentity": {
+      "type": "object",
+      "required": ["name", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "The audited host." },
+        "url": { "type": "string", "description": "The normalized audited URL. Matches target_url." }
+      }
+    },
+    "StatusTally": {
+      "type": "object",
+      "description": "Tally of every check by its final status.",
+      "required": ["pass", "noncompliant", "broken", "absent", "n_a", "skip", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "noncompliant": { "type": "integer", "minimum": 0 },
+        "broken": { "type": "integer", "minimum": 0 },
+        "absent": { "type": "integer", "minimum": 0 },
+        "n_a": { "type": "integer", "minimum": 0 },
+        "skip": { "type": "integer", "minimum": 0 },
+        "error": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "CoverageLevel": {
+      "type": "object",
+      "required": ["total", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "Scored rows at this level (n_a, skip and error excluded)." },
+        "verified": { "type": "integer", "minimum": 0, "description": "Passing rows at this level." }
+      }
+    },
+    "CoverageSummary": {
+      "type": "object",
+      "required": ["must", "should", "may"],
+      "additionalProperties": false,
+      "properties": {
+        "must": { "$ref": "#/$defs/CoverageLevel" },
+        "should": { "$ref": "#/$defs/CoverageLevel" },
+        "may": { "$ref": "#/$defs/CoverageLevel" }
+      }
+    },
+    "Score": {
+      "type": "object",
+      "description": "The two-score pair. relative is earned points over this site's applicable maximum; global is earned points over the whole registry's maximum.",
+      "required": ["relative", "global"],
+      "additionalProperties": false,
+      "properties": {
+        "relative": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "global": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "CategoryRollup": {
+      "type": "object",
+      "required": ["id", "name", "passed", "counted"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Category slug." },
+        "name": { "type": "string", "description": "Display name." },
+        "passed": { "type": "integer", "minimum": 0 },
+        "counted": { "type": "integer", "minimum": 0, "description": "Scored rows in the category; a category of only n_a rows reads 0." }
+      }
+    },
+    "ResultRow": {
+      "type": "object",
+      "required": ["id", "label", "category", "group", "layer", "keyword", "tier", "principle", "status", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "The check id from the registry; also the remediation-catalog key." },
+        "label": { "type": "string", "description": "Human-readable check title." },
+        "category": { "type": "string", "description": "The visible category slug, one of categories[].id." },
+        "group": { "type": "string", "description": "Mirrors principle." },
+        "layer": { "type": "string", "enum": ["web"] },
+        "keyword": { "type": "string", "enum": ["must", "should", "may"], "description": "Derived from tier." },
+        "tier": { "type": "string", "enum": ["required", "recommended", "optional"] },
+        "principle": { "type": "string", "pattern": "^P[1-8]$", "description": "Internal principle tag, kept as data." },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "noncompliant", "broken", "absent", "n_a", "skip", "error"],
+          "description": "noncompliant: works but violates a spec detail. broken: present but invalid, priced below absent. absent: not there. n_a, skip and error are excluded from both scores."
+        },
+        "na_reason": {
+          "type": "string",
+          "enum": ["antecedent-unmet", "optional-absent", "posture-consistent"],
+          "description": "Present only on n_a rows that carry a reason."
+        },
+        "unprobed": {
+          "type": "boolean",
+          "const": true,
+          "description": "Present only when true: the row settled from an antecedent the audit observed rather than from its own request."
+        },
+        "evidence": {
+          "type": ["string", "null"],
+          "description": "A compact summary of what the probe observed. Assembled from target-supplied values, so a consumer treats it as untrusted text."
+        }
+      }
+    }
+  }
+}

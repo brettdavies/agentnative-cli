@@ -1,0 +1,19 @@
+{
+  "description": "every probe comes back as a Cloudflare edge error, which is not the target answering",
+  "covers": [
+    "robots",
+    "llms-txt"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 530,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body>Origin DNS error</body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": []
+}

@@ -351,47 +351,53 @@ def previous_tag(current_tag: str) -> str | None:
     return None
 
 
-def release_window_start(owner: str, repo: str, prev_tag: str | None) -> str | None:
-    """ISO timestamp from which PRs merged into the integration branch belong
-    to the release being cut, or None when there is no previous release.
+BOOKKEEPING_RE = re.compile(r"^chore\(release\): (backport|sync dev)")
 
-    The previous release branch was cut from the integration branch before
-    its tag was pushed, so PRs merged in between belong to this release even
-    though they predate the tag. Anchor on the earlier of the previous
-    release PR's creation and the tag; PR numbers the changelog already
-    lists are dropped afterwards, which covers the overlap.
+
+def dev_release_anchor(base: str, prev_tag: str | None) -> str | None:
+    """The commit on BASE that ends the previous release, or None for the start.
+
+    The backport commit is the boundary: everything after it on the integration
+    branch belongs to this release. Its subject reads `sync dev after <tag>`,
+    or `backport <tag> artifacts` from older backport scripts. Falling back to
+    the tag covers a repo whose previous release was never synced back.
     """
     if not prev_tag:
         return None
-    tag_time = run(["git", "log", "-1", "--format=%cI", prev_tag]).stdout.strip()
     proc = run(
         [
-            "gh", "pr", "list", "--repo", f"{owner}/{repo}", "--base", "main",
-            "--state", "merged", "--search", f"head:release/{prev_tag}",
-            "--limit", "1", "--json", "createdAt", "--jq", ".[0].createdAt // empty",
-        ],
-        timeout=30,
+            "git", "log", f"origin/{base}", "--format=%H", "--fixed-strings",
+            "--grep", f"sync dev after {prev_tag}",
+            "--grep", f"backport {prev_tag} artifacts",
+        ]
     )
-    pr_time = proc.stdout.strip() if proc.returncode == 0 else ""
-    candidates = [t for t in (tag_time, pr_time) if t]
-    return min(candidates) if candidates else None
+    for line in proc.stdout.split():
+        return line
+    found = run(["git", "rev-parse", "--verify", "--quiet", prev_tag]).stdout.strip()
+    return prev_tag if found else None
 
 
-def merged_pr_numbers(owner: str, repo: str, base: str, since: str | None) -> list[int]:
-    """PR numbers merged into BASE since SINCE, release bookkeeping excluded."""
-    args = [
-        "gh", "pr", "list", "--repo", f"{owner}/{repo}", "--base", base,
-        "--state", "merged", "--limit", "200", "--json", "number,title",
-    ]
-    if since:
-        args += ["--search", f"merged:>={since}"]
-    proc = run(args, timeout=30)
+def merged_pr_numbers(base: str, prev_tag: str | None) -> list[int]:
+    """PR numbers this release carries, read from the integration branch's history.
+
+    Read from git rather than `gh pr list --base <branch>`, because a stacked PR
+    targets the branch below it rather than the integration branch and that query
+    never returns one. The squash-merge subject carries `(#N)` whatever the PR
+    targeted, so the history is the complete list.
+    """
+    anchor = dev_release_anchor(base, prev_tag)
+    span = f"{anchor}..origin/{base}" if anchor else f"origin/{base}"
+    proc = run(["git", "log", span, "--format=%s"])
     if proc.returncode != 0:
-        fail(f"gh pr list failed: {proc.stderr.strip()}")
-    bookkeeping = re.compile(r"^chore\(release\): (backport|sync dev)")
-    return sorted(
-        pr["number"] for pr in json.loads(proc.stdout) if not bookkeeping.match(pr["title"])
-    )
+        fail(f"git log {span} failed: {proc.stderr.strip()}")
+    numbers: dict[int, None] = {}
+    for subject in proc.stdout.splitlines():
+        if BOOKKEEPING_RE.match(subject):
+            continue
+        found = re.search(r"\(#(\d+)\)", subject)
+        if found:
+            numbers[int(found.group(1))] = None
+    return sorted(numbers)
 
 
 def seed_version_section(changelog: Path, version: str) -> None:
@@ -514,7 +520,6 @@ def from_dev_prs_mode(args, cliff_toml: Path, changelog: Path) -> int:
 
     try:
         prev = previous_tag(tag)
-        since = release_window_start(owner, repo_name, prev)
         seed_version_section(changelog, version)
         content = changelog.read_text()
         this_section = extract_version_section(content, version)
@@ -522,7 +527,7 @@ def from_dev_prs_mode(args, cliff_toml: Path, changelog: Path) -> int:
             pr_numbers_from_section(this_section)
         )
         pr_nums = [
-            n for n in merged_pr_numbers(owner, repo_name, args.dev_branch, since)
+            n for n in merged_pr_numbers(args.dev_branch, prev)
             if n not in already_listed
         ]
         if not pr_nums:

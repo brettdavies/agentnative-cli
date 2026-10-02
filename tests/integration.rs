@@ -1,9 +1,13 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+mod common;
+
 /// Helper to build a Command for the anc binary.
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    cmd
 }
 
 /// Helper to get the path to a fixture relative to the project root.

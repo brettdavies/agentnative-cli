@@ -11,13 +11,14 @@
 //! Two extension points compose the recognized verb set:
 //!
 //! 1. [`STANDARD_VERBS`] — the conservative, cross-CLI built-in list.
-//! 2. The audit target's `.anc.toml` (`[p6] domain_verbs = [...]`) — per-CLI
-//!    platform vocabulary that the built-in list deliberately omits (an X
-//!    CLI's `mentions`, a billing CLI's `charge`, etc.). See [`crate::anc_toml`].
+//! 2. The `.anc.toml` chain resolved for the audit target (`[p6]
+//!    domain_verbs = [...]`) — per-CLI platform vocabulary that the built-in
+//!    list deliberately omits (an X CLI's `mentions`, a billing CLI's
+//!    `charge`, etc.). See [`crate::anc_toml`].
 
 use std::collections::HashSet;
 
-use crate::anc_toml::{self, AncConfigLoad};
+use crate::anc_toml::AncConfigLoad;
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::HelpOutput;
@@ -177,9 +178,9 @@ impl Audit for StandardNamesAudit {
         // as the primary signal (Warn with the loader's evidence) — a
         // malformed config is the actionable finding here; the verb check
         // would only mask it.
-        let result = match anc_toml::load(&project.path) {
+        let result = match &project.anc_config {
             AncConfigLoad::Invalid(msg) => StandardNamesResult {
-                status: AuditStatus::Warn(msg),
+                status: AuditStatus::Warn(msg.clone()),
                 mitigation: None,
             },
             other => {

@@ -119,6 +119,7 @@ pub(crate) mod tests {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: crate::anc_toml::AncConfigLoad::Absent,
         }
     }
 
@@ -179,6 +180,7 @@ pub(crate) mod tests {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: crate::anc_toml::AncConfigLoad::Absent,
         }
     }
 }

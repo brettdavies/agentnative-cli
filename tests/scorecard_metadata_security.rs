@@ -17,8 +17,12 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::time::Instant;
 
+mod common;
+
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("anc binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    cmd
 }
 
 fn fixture_path(name: &str) -> String {
@@ -192,4 +196,57 @@ fn project_mode_without_built_binary_emits_manifest_version_and_null_binary() {
         parsed["tool"]["version"], "0.1.0",
         "manifest version (Cargo.toml [package].version) must populate tool.version when no binary exists",
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn broken_config_beside_a_binary_leaves_no_absolute_path_in_the_scorecard() {
+    // Evidence lands in committed scorecards, so naming the failing
+    // `.anc.toml` must not reveal the directories above it.
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("tool-dir");
+    std::fs::create_dir_all(&dir).expect("mkdir tool-dir");
+    let bin = dir.join("tool");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o755)
+        .open(&bin)
+        .and_then(|mut f| f.write_all(b"#!/bin/sh\necho tool\n"))
+        .expect("write fixture binary");
+    std::fs::write(dir.join(".anc.toml"), "[p6\n").expect("write broken .anc.toml");
+
+    // A relative target keeps the caller's own path out of `run.invocation`,
+    // which echoes argv; every other field is what anc derived.
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args(["audit", "tool-dir/tool", "--output", "json"])
+        .timeout(Duration::from_secs(20))
+        .output()
+        .expect("anc spawn");
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("scorecard is JSON");
+
+    let row = parsed["results"]
+        .as_array()
+        .expect("results array")
+        .iter()
+        .find(|r| r["id"] == "p6-may-standard-names")
+        .expect("p6-may-standard-names row");
+    let evidence = row["evidence"].as_str().unwrap_or_default();
+    assert!(
+        evidence.starts_with("could not parse .anc.toml at tool-dir/.anc.toml:"),
+        "evidence must name the broken file by its directory's name; got: {evidence}"
+    );
+    let scorecard = parsed.to_string();
+    let canonical = tmp.path().canonicalize().expect("canonical tempdir");
+    for root in [tmp.path(), canonical.as_path()] {
+        let root = root.to_str().expect("utf-8 path");
+        assert!(
+            !scorecard.contains(root),
+            "scorecard leaks the absolute path {root}: {scorecard}"
+        );
+    }
 }

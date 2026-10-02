@@ -97,6 +97,18 @@ pub enum ColorChoice {
     Never,
 }
 
+/// `--repo` accepts only a directory that exists.
+fn existing_dir(value: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::PathBuf::from(value);
+    if path.is_dir() {
+        Ok(path)
+    } else if path.exists() {
+        Err("not a directory; pass the directory that holds the repo's `.anc.toml`".into())
+    } else {
+        Err("no such directory; pass the directory that holds the repo's `.anc.toml`".into())
+    }
+}
+
 #[derive(Subcommand)]
 pub enum Commands {
     /// Audit a CLI project or binary for agent-readiness
@@ -112,8 +124,11 @@ pub enum Commands {
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
   anc audit --command ripgrep                  # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
+  anc audit --command xr --repo ./xr-src       # .anc.toml from a repo you fetched
 
-Defaults: path = `.`, output = text, no principle filter.")]
+Defaults: path = `.`, output = text, no principle filter.
+
+Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`.")]
     Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
@@ -132,6 +147,18 @@ Defaults: path = `.`, output = text, no principle filter.")]
         /// Run only behavioral audits (skip source analysis)
         #[arg(long)]
         binary: bool,
+
+        /// Read `.anc.toml` from this directory instead of the target's
+        /// repository. For a repo you fetched for a tool installed elsewhere:
+        /// anc reads `<PATH>/.anc.toml` over `~/.anc.toml` and never fetches.
+        #[arg(
+            long,
+            value_name = "PATH",
+            env = "AGENTNATIVE_REPO",
+            value_hint = ValueHint::DirPath,
+            value_parser = existing_dir,
+        )]
+        repo: Option<std::path::PathBuf>,
 
         /// Run only source audits (skip behavioral)
         #[arg(long)]

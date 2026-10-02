@@ -231,6 +231,7 @@ fn main() {
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
             anc_config: Default::default(),
+            inventory: Default::default(),
         };
         assert!(EnumerateValidSetAudit.applicable(&project));
     }
@@ -251,6 +252,7 @@ fn main() {
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
             anc_config: Default::default(),
+            inventory: Default::default(),
         };
         assert!(!EnumerateValidSetAudit.applicable(&project));
     }

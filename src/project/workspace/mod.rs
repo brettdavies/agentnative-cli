@@ -167,16 +167,6 @@ fn json_strings(items: &[serde_json::Value]) -> Vec<String> {
         .collect()
 }
 
-/// The manifest that makes a directory a package of `lang`.
-fn manifest(lang: Language) -> &'static str {
-    match lang {
-        Language::Rust => "Cargo.toml",
-        Language::Python => "pyproject.toml",
-        Language::Go => "go.mod",
-        Language::Node => "package.json",
-    }
-}
-
 /// Add the member directories `include` names under `root`, minus those
 /// `exclude` names. A glob keeps only the directories holding the family's
 /// manifest; a literal path without one is skipped with a warning.
@@ -188,7 +178,7 @@ fn expand(
     lang: Language,
     out: &mut Declared,
 ) {
-    let manifest = manifest(lang);
+    let manifest = lang.manifest_name();
     let excludes: Vec<Pattern> = exclude
         .iter()
         .filter_map(|p| Pattern::new(p, source, out))

@@ -1,34 +1,34 @@
 # Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
 function __fish_anc_global_optspecs
-	string join \n q/quiet v/verbose examples json color= raw h/help V/version
+    string join \n q/quiet v/verbose examples json color= raw h/help V/version
 end
 
 function __fish_anc_needs_command
-	# Figure out if the current invocation already has a command.
-	set -l cmd (commandline -opc)
-	set -e cmd[1]
-	argparse -s (__fish_anc_global_optspecs) -- $cmd 2>/dev/null
-	or return
-	if set -q argv[1]
-		# Also print the command, so this can be used to figure out what it is.
-		echo $argv[1]
-		return 1
-	end
-	return 0
+    # Figure out if the current invocation already has a command.
+    set -l cmd (commandline -opc)
+    set -e cmd[1]
+    argparse -s (__fish_anc_global_optspecs) -- $cmd 2>/dev/null
+    or return
+    if set -q argv[1]
+        # Also print the command, so this can be used to figure out what it is.
+        echo $argv[1]
+        return 1
+    end
+    return 0
 end
 
 function __fish_anc_using_subcommand
-	set -l cmd (__fish_anc_needs_command)
-	test -z "$cmd"
-	and return 1
-	contains -- $cmd[1] $argv
+    set -l cmd (__fish_anc_needs_command)
+    test -z "$cmd"
+    and return 1
+    contains -- $cmd[1] $argv
 end
 
 complete -c anc -n "__fish_anc_needs_command" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
 always\t''
 never\t''"
-complete -c anc -n "__fish_anc_needs_command" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_needs_command" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_needs_command" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_needs_command" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_needs_command" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_needs_command" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_needs_command" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -40,6 +40,8 @@ complete -c anc -n "__fish_anc_needs_command" -f -a "emit" -d 'Render build arti
 complete -c anc -n "__fish_anc_needs_command" -f -a "skill" -d 'Install or manage the agentnative skill bundle'
 complete -c anc -n "__fish_anc_needs_command" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l command -d 'Resolve a command from PATH and run behavioral audits against it' -r -f -a "(__fish_complete_command)"
+complete -c anc -n "__fish_anc_using_subcommand audit" -l bin -d 'Grade this binary when the directory builds several: a bin name, or the path anc prints for it. Unrelated to --binary, which runs only behavioral audits' -r
+complete -c anc -n "__fish_anc_using_subcommand audit" -l repo -d 'Read `.anc.toml` from this directory instead of the target\'s repository. For a repo you fetched for a tool installed elsewhere: anc reads `<PATH>/.anc.toml` over `~/.anc.toml` and never fetches' -r -f -a "(__fish_complete_directories)"
 complete -c anc -n "__fish_anc_using_subcommand audit" -l principle -d 'Filter audits by principle number (1-8)' -r
 complete -c anc -n "__fish_anc_using_subcommand audit" -l output -d 'Output format' -r -f -a "text\t''
 json\t''"
@@ -50,11 +52,11 @@ diagnostic-only\t'Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 complete -c anc -n "__fish_anc_using_subcommand audit" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
 always\t''
 never\t''"
-complete -c anc -n "__fish_anc_using_subcommand audit" -l binary -d 'Run only behavioral audits (skip source analysis)'
+complete -c anc -n "__fish_anc_using_subcommand audit" -l binary -d 'Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l source -d 'Run only source audits (skip behavioral)'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l include-tests -d 'Include test code in source analysis'
-complete -c anc -n "__fish_anc_using_subcommand audit" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand audit" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand audit" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand audit" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -62,8 +64,8 @@ complete -c anc -n "__fish_anc_using_subcommand audit" -s h -l help -d 'Print he
 complete -c anc -n "__fish_anc_using_subcommand completions" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
 always\t''
 never\t''"
-complete -c anc -n "__fish_anc_using_subcommand completions" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand completions" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand completions" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand completions" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand completions" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand completions" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand completions" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -71,8 +73,8 @@ complete -c anc -n "__fish_anc_using_subcommand completions" -s h -l help -d 'Pr
 complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
 always\t''
 never\t''"
-complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -86,8 +88,8 @@ complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l check -d 'Exit non-zero when committed artifacts differ from rendered output. CI drift guard'
-complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -95,8 +97,8 @@ complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
 always\t''
 never\t''"
-complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -107,8 +109,8 @@ complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
 always\t''
 never\t''"
-complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -123,8 +125,8 @@ always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l all -d 'Install into every known host in one invocation'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l dry-run -d 'Print the resolved git command without spawning. Captures cleanly via `eval $(anc skill install --dry-run <host>)`'
-complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
@@ -136,8 +138,8 @@ always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l all -d 'Refresh every known host in one invocation'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l dry-run -d 'Print the resolved commands without spawning'
-complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr)'
-complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear'
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -s v -l verbose -d 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l examples -d 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'

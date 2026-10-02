@@ -17,82 +17,82 @@ _anc() {
                 cmd="anc"
                 ;;
             anc,audit)
-                cmd="anc__audit"
+                cmd="anc__subcmd__audit"
                 ;;
             anc,completions)
-                cmd="anc__completions"
+                cmd="anc__subcmd__completions"
                 ;;
             anc,emit)
-                cmd="anc__emit"
+                cmd="anc__subcmd__emit"
                 ;;
             anc,help)
-                cmd="anc__help"
+                cmd="anc__subcmd__help"
                 ;;
             anc,skill)
-                cmd="anc__skill"
+                cmd="anc__subcmd__skill"
                 ;;
-            anc__emit,coverage-matrix)
-                cmd="anc__emit__coverage__matrix"
+            anc__subcmd__emit,coverage-matrix)
+                cmd="anc__subcmd__emit__subcmd__coverage__subcmd__matrix"
                 ;;
-            anc__emit,help)
-                cmd="anc__emit__help"
+            anc__subcmd__emit,help)
+                cmd="anc__subcmd__emit__subcmd__help"
                 ;;
-            anc__emit,schema)
-                cmd="anc__emit__schema"
+            anc__subcmd__emit,schema)
+                cmd="anc__subcmd__emit__subcmd__schema"
                 ;;
-            anc__emit__help,coverage-matrix)
-                cmd="anc__emit__help__coverage__matrix"
+            anc__subcmd__emit__subcmd__help,coverage-matrix)
+                cmd="anc__subcmd__emit__subcmd__help__subcmd__coverage__subcmd__matrix"
                 ;;
-            anc__emit__help,help)
-                cmd="anc__emit__help__help"
+            anc__subcmd__emit__subcmd__help,help)
+                cmd="anc__subcmd__emit__subcmd__help__subcmd__help"
                 ;;
-            anc__emit__help,schema)
-                cmd="anc__emit__help__schema"
+            anc__subcmd__emit__subcmd__help,schema)
+                cmd="anc__subcmd__emit__subcmd__help__subcmd__schema"
                 ;;
-            anc__help,audit)
-                cmd="anc__help__audit"
+            anc__subcmd__help,audit)
+                cmd="anc__subcmd__help__subcmd__audit"
                 ;;
-            anc__help,completions)
-                cmd="anc__help__completions"
+            anc__subcmd__help,completions)
+                cmd="anc__subcmd__help__subcmd__completions"
                 ;;
-            anc__help,emit)
-                cmd="anc__help__emit"
+            anc__subcmd__help,emit)
+                cmd="anc__subcmd__help__subcmd__emit"
                 ;;
-            anc__help,help)
-                cmd="anc__help__help"
+            anc__subcmd__help,help)
+                cmd="anc__subcmd__help__subcmd__help"
                 ;;
-            anc__help,skill)
-                cmd="anc__help__skill"
+            anc__subcmd__help,skill)
+                cmd="anc__subcmd__help__subcmd__skill"
                 ;;
-            anc__help__emit,coverage-matrix)
-                cmd="anc__help__emit__coverage__matrix"
+            anc__subcmd__help__subcmd__emit,coverage-matrix)
+                cmd="anc__subcmd__help__subcmd__emit__subcmd__coverage__subcmd__matrix"
                 ;;
-            anc__help__emit,schema)
-                cmd="anc__help__emit__schema"
+            anc__subcmd__help__subcmd__emit,schema)
+                cmd="anc__subcmd__help__subcmd__emit__subcmd__schema"
                 ;;
-            anc__help__skill,install)
-                cmd="anc__help__skill__install"
+            anc__subcmd__help__subcmd__skill,install)
+                cmd="anc__subcmd__help__subcmd__skill__subcmd__install"
                 ;;
-            anc__help__skill,update)
-                cmd="anc__help__skill__update"
+            anc__subcmd__help__subcmd__skill,update)
+                cmd="anc__subcmd__help__subcmd__skill__subcmd__update"
                 ;;
-            anc__skill,help)
-                cmd="anc__skill__help"
+            anc__subcmd__skill,help)
+                cmd="anc__subcmd__skill__subcmd__help"
                 ;;
-            anc__skill,install)
-                cmd="anc__skill__install"
+            anc__subcmd__skill,install)
+                cmd="anc__subcmd__skill__subcmd__install"
                 ;;
-            anc__skill,update)
-                cmd="anc__skill__update"
+            anc__subcmd__skill,update)
+                cmd="anc__subcmd__skill__subcmd__update"
                 ;;
-            anc__skill__help,help)
-                cmd="anc__skill__help__help"
+            anc__subcmd__skill__subcmd__help,help)
+                cmd="anc__subcmd__skill__subcmd__help__subcmd__help"
                 ;;
-            anc__skill__help,install)
-                cmd="anc__skill__help__install"
+            anc__subcmd__skill__subcmd__help,install)
+                cmd="anc__subcmd__skill__subcmd__help__subcmd__install"
                 ;;
-            anc__skill__help,update)
-                cmd="anc__skill__help__update"
+            anc__subcmd__skill__subcmd__help,update)
+                cmd="anc__subcmd__skill__subcmd__help__subcmd__update"
                 ;;
             *)
                 ;;
@@ -118,8 +118,8 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__audit)
-            opts="-q -v -h --command --binary --source --principle --output --include-tests --audit-profile --quiet --verbose --examples --json --color --raw --help [PATH]"
+        anc__subcmd__audit)
+            opts="-q -v -h --command --binary --bin --repo --source --principle --output --include-tests --audit-profile --quiet --verbose --examples --json --color --raw --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -127,6 +127,17 @@ _anc() {
             case "${prev}" in
                 --command)
                     COMPREPLY=($(compgen -c "${cur}"))
+                    return 0
+                    ;;
+                --bin)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --repo)
+                    COMPREPLY=()
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o plusdirs
+                    fi
                     return 0
                     ;;
                 --principle)
@@ -152,7 +163,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__completions)
+        anc__subcmd__completions)
             opts="-q -v -h --quiet --verbose --examples --json --color --raw --help bash elvish fish powershell zsh"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -170,7 +181,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit)
+        anc__subcmd__emit)
             opts="-q -v -h --quiet --verbose --examples --json --color --raw --help coverage-matrix schema help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -188,7 +199,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit__coverage__matrix)
+        anc__subcmd__emit__subcmd__coverage__subcmd__matrix)
             opts="-q -v -h --out --json-out --check --quiet --verbose --examples --json --color --raw --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -214,7 +225,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit__help)
+        anc__subcmd__emit__subcmd__help)
             opts="coverage-matrix schema help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -228,7 +239,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit__help__coverage__matrix)
+        anc__subcmd__emit__subcmd__help__subcmd__coverage__subcmd__matrix)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -242,7 +253,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit__help__help)
+        anc__subcmd__emit__subcmd__help__subcmd__help)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -256,7 +267,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit__help__schema)
+        anc__subcmd__emit__subcmd__help__subcmd__schema)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -270,7 +281,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__emit__schema)
+        anc__subcmd__emit__subcmd__schema)
             opts="-q -v -h --quiet --verbose --examples --json --color --raw --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -288,7 +299,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help)
+        anc__subcmd__help)
             opts="audit completions emit skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -302,7 +313,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__audit)
+        anc__subcmd__help__subcmd__audit)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -316,7 +327,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__completions)
+        anc__subcmd__help__subcmd__completions)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -330,7 +341,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__emit)
+        anc__subcmd__help__subcmd__emit)
             opts="coverage-matrix schema"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -344,7 +355,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__emit__coverage__matrix)
+        anc__subcmd__help__subcmd__emit__subcmd__coverage__subcmd__matrix)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -358,7 +369,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__emit__schema)
+        anc__subcmd__help__subcmd__emit__subcmd__schema)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -372,7 +383,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__help)
+        anc__subcmd__help__subcmd__help)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -386,7 +397,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__skill)
+        anc__subcmd__help__subcmd__skill)
             opts="install update"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -400,7 +411,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__skill__install)
+        anc__subcmd__help__subcmd__skill__subcmd__install)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -414,7 +425,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__help__skill__update)
+        anc__subcmd__help__subcmd__skill__subcmd__update)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -428,7 +439,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill)
+        anc__subcmd__skill)
             opts="-q -v -h --quiet --verbose --examples --json --color --raw --help install update help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -446,7 +457,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill__help)
+        anc__subcmd__skill__subcmd__help)
             opts="install update help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -460,7 +471,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill__help__help)
+        anc__subcmd__skill__subcmd__help__subcmd__help)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -474,7 +485,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill__help__install)
+        anc__subcmd__skill__subcmd__help__subcmd__install)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -488,7 +499,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill__help__update)
+        anc__subcmd__skill__subcmd__help__subcmd__update)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -502,7 +513,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill__install)
+        anc__subcmd__skill__subcmd__install)
             opts="-q -v -h --all --dry-run --output --quiet --verbose --examples --json --color --raw --help claude_code codex cursor factory kiro opencode"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -524,7 +535,7 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        anc__skill__update)
+        anc__subcmd__skill__subcmd__update)
             opts="-q -v -h --all --dry-run --output --quiet --verbose --examples --json --color --raw --help claude_code codex cursor factory kiro opencode"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

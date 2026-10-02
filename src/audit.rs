@@ -27,6 +27,20 @@ pub trait Audit {
     /// Run the audit against the project.
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult>;
 
+    /// This audit's row as a Skip carrying `evidence`.
+    fn skip(&self, evidence: String) -> AuditResult {
+        AuditResult {
+            id: self.id().to_string(),
+            label: self.label().into(),
+            group: self.group(),
+            layer: self.layer(),
+            status: crate::types::AuditStatus::Skip(evidence),
+            confidence: crate::types::Confidence::High,
+            mitigation: None,
+            config_hint: None,
+        }
+    }
+
     /// Requirement IDs (from `crate::principles::REQUIREMENTS`) that this
     /// audit verifies. Empty by default so audits opt in explicitly.
     /// The registry validator fails if an ID here is not registered.

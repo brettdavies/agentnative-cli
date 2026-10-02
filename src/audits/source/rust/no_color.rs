@@ -41,11 +41,11 @@ impl Audit for NoColorSourceAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
         let mut found_any = false;
 
         for (_path, parsed_file) in parsed.iter() {

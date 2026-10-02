@@ -40,11 +40,11 @@ impl Audit for OutputModuleAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
 
         for (path, parsed_file) in parsed.iter() {
             // Skip main.rs and lib.rs — those aren't "dedicated" modules

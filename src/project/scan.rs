@@ -18,6 +18,19 @@ const SKIPPED_DIRS: &[&str] = &["target", "node_modules", "vendor", "venv", "dis
 /// directories, [`SKIPPED_DIRS`], and `tests` unless `include_tests`, does
 /// not follow symlinks, and stops at [`MAX_DEPTH`].
 pub fn walker(root: &Path, include_tests: bool) -> WalkBuilder {
+    build(root, include_tests, false)
+}
+
+/// [`walker`] for the source audits, which also skip example programs: an
+/// `examples` directory beside a package manifest or at the audit root,
+/// where Cargo and Python projects keep code that builds apart from the
+/// binary and never ships in it. A source module named `examples` deeper
+/// in a package is still read.
+pub fn source_walker(root: &Path, include_tests: bool) -> WalkBuilder {
+    build(root, include_tests, true)
+}
+
+fn build(root: &Path, include_tests: bool, skip_examples: bool) -> WalkBuilder {
     let mut builder = WalkBuilder::new(root);
     builder
         .standard_filters(false)
@@ -29,16 +42,29 @@ pub fn walker(root: &Path, include_tests: bool) -> WalkBuilder {
         .follow_links(false)
         .max_depth(Some(MAX_DEPTH))
         .sort_by_file_name(|a, b| a.cmp(b))
-        .filter_entry(move |entry| !skipped(entry, include_tests));
+        .filter_entry(move |entry| !skipped(entry, include_tests, skip_examples));
     builder
 }
 
-fn skipped(entry: &DirEntry, include_tests: bool) -> bool {
+fn skipped(entry: &DirEntry, include_tests: bool, skip_examples: bool) -> bool {
     if entry.depth() == 0 || !entry.file_type().is_some_and(|kind| kind.is_dir()) {
         return false;
     }
     let name = entry.file_name().to_string_lossy();
-    SKIPPED_DIRS.contains(&name.as_ref()) || (!include_tests && name == "tests")
+    SKIPPED_DIRS.contains(&name.as_ref())
+        || (!include_tests && name == "tests")
+        || (skip_examples && name == "examples" && is_example_root(entry))
+}
+
+/// Whether an `examples` directory holds a package's example programs: it
+/// sits at the audit root or beside a package manifest.
+fn is_example_root(entry: &DirEntry) -> bool {
+    entry.depth() == 1
+        || entry.path().parent().is_some_and(|dir| {
+            Language::ALL
+                .iter()
+                .any(|language| dir.join(language.manifest_name()).is_file())
+        })
 }
 
 /// Manifests the scan found, and why it stopped early if it did.

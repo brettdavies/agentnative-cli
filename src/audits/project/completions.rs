@@ -34,11 +34,14 @@ impl Audit for CompletionsAudit {
 
     fn applicable(&self, project: &Project) -> bool {
         project.path.is_dir()
-            && project.language == Some(Language::Rust)
-            && project.manifest_path.is_some()
+            && ((project.language == Some(Language::Rust) && project.manifest_path.is_some())
+                || project.manifest_skip(Some(Language::Rust)).is_some())
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
+        if let Some(reason) = project.manifest_skip(Some(Language::Rust)) {
+            return Ok(self.skip(reason));
+        }
         let manifest_path = project
             .manifest_path
             .as_ref()

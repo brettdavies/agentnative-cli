@@ -1,20 +1,32 @@
 # Web-audit coverage: the `agent-web-audit` skill against the anc.dev registry
 
-The `agent-web-audit` skill runs a 32-check registry through its own Python probe script. `anc web` runs the anc.dev
-registry, 65 checks vendored from `agentnative-site` at build time. This document is the check-by-check diff between the
-two, the vocabulary translation between their result models, and a walkthrough showing that the skill's report is
-constructible from `anc web --output json` plus the exit code, so the skill can consume one probe engine instead of
-carrying its own.
+The `agent-web-audit` skill runs a 32-check registry through its own Python probe script. The anc.dev registry it is
+compared against here holds 68 checks and lives in `agentnative-site` at `src/data/web-audit/registry.yaml`. This
+repository vendors that registry at `src/web_audit/vendored/registry.yaml`, currently a 65-check snapshot, and
+re-vendoring is what closes the gap.
+
+This document is the check-by-check diff between the skill and the live anc.dev registry, the vocabulary translation
+between their result models, and a walkthrough showing that the skill's report is constructible from one `anc web
+--output json` run plus the exit code, so the skill can consume one probe engine instead of carrying its own.
+
+`anc web` is the planned consumer, not a shipped command: the port lands the registry, the engine and the command
+together, and until it merges the subcommand and the `anc emit web-checks` / `anc emit web-remediation` surfaces the
+walkthrough cites do not exist in this repository. The vendored registry and
+`schema/web-scorecard.schema.json` do.
 
 ## Summary
 
-- Every one of the skill's 32 check ids appears in the anc.dev registry under the same id. The site registry was
-  vendored from the skill's and extended, so the overlap is by construction.
-- 30 of the 32 carry the same `with` assertion on both sides; 8 differ in a way the table names, and 2 differ in tier.
-  None is an accepted gap: each skill check has a covering registry check.
-- 33 registry checks have no skill counterpart. They are the registry's extensions (the modern MCP lane, JSON-RPC
-  conformance, the markdown twin family, llms.txt quality, API hygiene, agent-friendly 404s, WebMCP, `auth.md`,
-  `ai-catalog`). The skill gains them when it consumes `anc web`; nothing needs filing in the site repo.
+- 31 of the skill's 32 check ids appear in the anc.dev registry under the same id. The site registry was vendored from
+  the skill's and extended, so the overlap is by construction. The exception is `well-known-mcp-card`, which the
+  registry renamed to `mcp-server-card` when it adopted the SEP-2127 server-card shape; the check is covered, the id
+  moved. None is an accepted gap: each skill check has a covering registry check.
+- 10 of the 32 are identical on both sides. The other 22 carry a difference the table names, most of them the registry
+  resolving applicability in the engine and reporting `n_a` where the skill scores a check everywhere. Two of the 22 are
+  tier changes: `openapi` rises to required and `accept-markdown` to recommended.
+- 36 registry checks have no skill counterpart. They are the registry's extensions (the modern MCP lane, JSON-RPC
+  conformance, MCP auth enforcement, the markdown twin family, llms.txt quality, API hygiene, agent-friendly 404s,
+  WebMCP, `auth.md`, `ai-catalog`). The skill gains them when it consumes `anc web`; nothing needs filing in the site
+  repo.
 - The skill's `pass` / `fail` / `na` and A to F grade are derivable from the scorecard's seven-state rows and the
   skill's own registry weights.
 
@@ -31,7 +43,7 @@ One row per skill check id. `applies_to` is the skill's gate; `site types` and `
 | `mcp-get-fast-fail`        | mcp-protocol / recommended / mcp-present  | `mcp-get-fast-fail`                              | MCP / recommended / mcp / mcp-present                                     | The skill passes only status 405, 400, 404 or 406; the registry passes any status below 500, so a server that documents its endpoint on GET passes too. Both treat a timeout as the failure.                                                                  |
 | `mcp-cors-preflight`       | mcp-protocol / recommended / mcp-present  | `mcp-cors-preflight`                             | MCP / recommended / mcp / mcp-present                                     | The registry issues both the OPTIONS preflight and an Origin-bearing POST and classifies the preflight surface from the pair; no Allow-Origin on either surface is `n_a` (`posture-consistent`) where the skill fails.                                        |
 | `mcp-cors-actual`          | mcp-protocol / recommended / mcp-present  | `mcp-cors-actual`                                | MCP / recommended / mcp / mcp-present                                     | The skill asserts CORS on a `tools/list` op; the registry classifies the POST surface from the same two-probe pair as the preflight row. Same intent, same posture rule.                                                                                      |
-| `well-known-mcp-card`      | mcp-discovery / recommended / mcp-present | `well-known-mcp-card`, `mcp-card-legacy-aliases` | MCP / recommended / mcp / mcp-present; MCP / optional / mcp / mcp-present | The skill accepts the canonical card at any of three paths; the registry probes only the canonical path and scores the two legacy paths as redirects in a separate optional row. A card served only at a legacy path passes the skill and fails the registry. |
+| `well-known-mcp-card`      | mcp-discovery / recommended / mcp-present | `mcp-server-card`, `mcp-card-legacy-aliases`     | MCP / recommended / mcp / mcp-present; MCP / optional / mcp / mcp-present | Renamed `mcp-server-card` under the SEP-2127 shape. The skill accepts the card at any of three paths; the registry probes only the canonical one and scores the legacy paths in a separate optional row, so a legacy-only card fails it.                      |
 | `mcp-usage-doc`            | mcp-discovery / optional / mcp-present    | `mcp-usage-doc`                                  | MCP / optional / mcp / mcp-present                                        | Nothing.                                                                                                                                                                                                                                                      |
 | `llms-txt`                 | content-surface / recommended / any       | `llms-txt`                                       | Content for agents / recommended / all / none                             | Same assertion; the registry retains the body for the checks that read it.                                                                                                                                                                                    |
 | `llms-full-txt`            | content-surface / optional / docs-site    | `llms-full-txt`                                  | Content for agents / optional / content / docs-site                       | The docs-site gate is resolved by the engine (declared `content` type or a passing `llms.txt`) instead of by the reader.                                                                                                                                      |
@@ -59,7 +71,7 @@ One row per skill check id. `applies_to` is the skill's gate; `site types` and `
 
 ## Registry checks the skill does not run
 
-These 33 checks have no skill counterpart. Once the skill reads `anc web --output json`, every one arrives in the same
+These 36 checks have no skill counterpart. Once the skill reads `anc web --output json`, every one arrives in the same
 `results[]` array as the 32 above, so the skill's report can grow to cover them without a probe change on its side.
 
 | Registry id                  | Category               | Tier        | Title                                                                  |
@@ -94,6 +106,9 @@ These 33 checks have no skill counterpart. Once the skill reads `anc web --outpu
 | `mcp-accept-json`            | MCP                    | recommended | a JSON-only Accept is answered without SSE framing                     |
 | `mcp-accept-unsatisfiable`   | MCP                    | recommended | an unsatisfiable Accept draws a 406 rather than an unasked-for type    |
 | `mcp-card-legacy-aliases`    | MCP                    | optional    | Legacy MCP card paths redirect to the canonical card                   |
+| `mcp-auth-enforced`          | MCP                    | optional    | a tools/list without an access token is refused with 401               |
+| `mcp-auth-challenge`         | MCP                    | optional    | a 401 names the RFC 9728 metadata in its WWW-Authenticate challenge    |
+| `mcp-auth-servers`           | MCP                    | optional    | protected-resource metadata lists public https authorization_servers   |
 | `webmcp`                     | MCP                    | optional    | Root HTML exposes WebMCP browser tools                                 |
 | `ai-catalog`                 | Agent discovery & auth | optional    | /.well-known/ai-catalog.json published (ARD)                           |
 | `auth-md`                    | Agent discovery & auth | optional    | Agent auth/registration metadata doc published                         |
@@ -139,7 +154,7 @@ skill's own registry; no second probe is needed.
 | `mcp_endpoint`                                | `mcp_endpoint` (a URL or `null`)                                                                                           |
 | `mcp_discovery`                               | `mcp_discovery` (the discovery evidence items, same shape family)                                                          |
 | `categories`                                  | The skill's own registry; its seven categories differ from the scorecard's six `categories[]` rollups.                     |
-| `results[].id`                                | `results[].id`, filtered to the 32 ids the skill knows (or all 65).                                                        |
+| `results[].id`                                | `results[].id`, filtered to the 32 ids the skill knows (or all 68).                                                        |
 | `results[].category`, `applies_to`, `weight`  | The skill's registry entry for that id.                                                                                    |
 | `results[].tier`                              | `results[].tier`, or the skill registry's tier for the two rows that differ.                                               |
 | `results[].title`                             | `results[].label`                                                                                                          |
@@ -164,4 +179,11 @@ part of the JSON contract; only the summarized line is.
 Each of the skill's 32 check ids appears exactly once in the coverage table above, and every scorecard field the
 walkthrough cites (`target_url`, `mcp_endpoint`, `mcp_discovery`, `categories[]`,
 `results[].{id,label,tier,keyword,status,na_reason,unprobed,evidence}`, `summary`, `score_pct`, `score.global`) is a
-field of the web scorecard schema `anc web` emits.
+field of `schema/web-scorecard.schema.json`, the web scorecard schema this repository carries and `anc web` will emit
+against.
+
+The counts above are derived from the two registries rather than maintained by hand: 32 check ids in the skill's
+`checks/registry.yaml`, 68 in the site's `src/data/web-audit/registry.yaml`, 31 ids shared verbatim, one covered under a
+renamed id, and 36 with no skill counterpart, which is the 36 rows the second table lists. Re-run the comparison against
+both registries after either side changes; the vendored snapshot in this repository is a third number and is not the
+comparison target.

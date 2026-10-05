@@ -182,7 +182,10 @@ fn validate_json_output(
         }
     }
 
-    AuditStatus::Warn("--output/--format flag detected but could not validate JSON via safe probes (--help/--version override output flags in most CLIs)".into())
+    // The safe probes reach only `--help` and `--version`, which most CLIs
+    // answer in text whatever the output flag says, so a miss is anc's
+    // limit, not the tool's: the row is not scored.
+    AuditStatus::Skip("--output/--format flag detected but could not validate JSON via safe probes (--help/--version override output flags in most CLIs)".into())
 }
 
 /// Run a single JSON probe and return Some(status) if valid JSON found.
@@ -254,25 +257,56 @@ esac
         assert_eq!(result.status, AuditStatus::Pass, "got {:?}", result.status);
     }
 
-    #[test]
-    fn json_output_fail_with_invalid_json() {
-        let script = r#"
+    /// Advertises `--output` but answers every safe probe in text.
+    const UNVERIFIABLE_OUTPUT_FLAG: &str = r#"
 case "$*" in
   *--help*)
-    echo "Usage: test [--output FORMAT]";;
+    printf 'Usage: test [OPTIONS]\n\nOptions:\n  --output <FORMAT>  Output format: text or json\n';;
   *--output*)
     echo "this is not json";;
   *)
     echo "hello";;
 esac
 "#;
-        let project = test_project_with_sh_script(script);
+
+    #[test]
+    fn json_output_skips_when_no_safe_probe_can_validate() {
+        let project = test_project_with_sh_script(UNVERIFIABLE_OUTPUT_FLAG);
         let result = JsonOutputAudit.run(&project).expect("audit should run");
         match &result.status {
-            AuditStatus::Warn(msg) => {
+            AuditStatus::Skip(msg) => {
                 assert!(msg.contains("could not validate JSON"), "got: {msg}")
             }
-            other => panic!("expected Warn, got {other:?}"),
+            other => panic!("expected Skip, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_unverifiable_output_flag_leaves_the_schema_rows_unmeasured() {
+        use crate::audit::Audit;
+        use crate::audits::behavioral::schema_print::SchemaPrintAudit;
+
+        let project = test_project_with_sh_script(UNVERIFIABLE_OUTPUT_FLAG);
+        let catalog: Vec<Box<dyn Audit>> =
+            vec![Box::new(JsonOutputAudit), Box::new(SchemaPrintAudit)];
+        let raw: Vec<AuditResult> = catalog
+            .iter()
+            .map(|audit| audit.run(&project).expect("audit should run"))
+            .collect();
+
+        let rows = crate::scorecard::build_row_results(&raw, &catalog);
+        let schema_print = rows
+            .iter()
+            .find(|(row, _)| row.id == "p2-must-schema-print")
+            .map(|(row, _)| &row.status)
+            .expect("schema-print row");
+
+        match schema_print {
+            AuditStatus::Skip(msg) => assert!(
+                msg.starts_with("antecedent `p2-json-output` could not be measured:"),
+                "got: {msg}"
+            ),
+            other => panic!("expected Skip, got {other:?}"),
         }
     }
 

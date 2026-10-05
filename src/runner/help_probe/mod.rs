@@ -36,11 +36,14 @@ use super::{BinaryRunner, RunStatus};
 
 /// A flag discovered in `--help` output. `short` is the single-character
 /// variant (e.g., `-q`); `long` is the GNU-style variant (e.g., `--quiet`).
-/// At least one of the two is always set.
+/// At least one of the two is always set. `description` is the text after
+/// the description gap on the flag's own line, empty when the help puts the
+/// description on a later line or gives none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flag {
     pub short: Option<String>,
     pub long: Option<String>,
+    pub description: String,
 }
 
 impl Flag {
@@ -266,7 +269,12 @@ fn parse_flags(raw: &str) -> Vec<Flag> {
             }
         }
         if short.is_some() || long.is_some() {
-            flags.push(Flag { short, long });
+            let description = trimmed[header.len()..].trim().to_string();
+            flags.push(Flag {
+                short,
+                long,
+                description,
+            });
         }
     }
     flags
@@ -921,6 +929,7 @@ Options:
         let f = Flag {
             short: Some("-q".into()),
             long: Some("--quiet".into()),
+            description: String::new(),
         };
         assert!(f.matches("-q"));
         assert!(f.matches("--quiet"));

@@ -9,6 +9,12 @@
 //! reads each list-style subcommand's own `--help`, plus the top-level help
 //! for a flag every subcommand inherits. P7's evidence asks for the flag on
 //! every list / search command, so Pass needs all of them to carry one.
+//!
+//! `-n` counts only when it bounds a count: `-n` is also `--namespace`
+//! (helm, kubectl), `--dry-run` (rclone), and `--no-headers` (xsv), and
+//! terraform's single-dash `-no-color` parses as `-n`. A `-n` is a limit
+//! flag when its long form names a count (`--lines`, `--last`) or its
+//! description says so ("Max results", "number of").
 
 use crate::audit::Audit;
 use crate::audits::behavioral::list_style::list_style_subcommands;
@@ -18,7 +24,23 @@ use crate::runner::HelpOutput;
 use crate::runner::help_probe::Flag;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const LIMIT_FLAGS: &[&str] = &["--limit", "--max-results", "--max", "--top", "-n"];
+const LIMIT_FLAGS: &[&str] = &["--limit", "--max-results", "--max", "--top"];
+
+/// Long forms that make a `-n` a count.
+const COUNT_LONG_FORMS: &[&str] = &[
+    "--lines",
+    "--number",
+    "--num",
+    "--count",
+    "--max-count",
+    "--last",
+];
+
+/// Description words that make a `-n` a count, matched as whole words.
+const COUNT_WORDS: &[&str] = &["max", "maximum", "limit", "lines"];
+
+/// Description phrase that makes a `-n` a count.
+const COUNT_PHRASE: &str = "number of";
 
 pub struct LimitFlagAudit;
 
@@ -106,7 +128,7 @@ pub(crate) fn audit_limit_flag(
     (
         AuditStatus::Warn(format!(
             "list-style subcommand(s) with no limit flag in their --help: {} \
-             (looked for {}).{carried} SHOULD-tier: callers should be able to bound \
+             (looked for {}, or a -n that bounds a count).{carried} SHOULD-tier: callers should be able to bound \
              response size directly rather than scrape-then-truncate.",
             cov.without_list(),
             LIMIT_FLAGS.join(", "),
@@ -121,6 +143,18 @@ fn find_limit_flag(help: &HelpOutput) -> Option<String> {
 
 fn is_limit_flag(flag: &Flag) -> bool {
     LIMIT_FLAGS.iter().any(|name| flag.matches(name))
+        || (flag.matches("-n") && bounds_a_count(flag))
+}
+
+fn bounds_a_count(flag: &Flag) -> bool {
+    if COUNT_LONG_FORMS.iter().any(|name| flag.matches(name)) {
+        return true;
+    }
+    let description = flag.description.to_lowercase();
+    description.contains(COUNT_PHRASE)
+        || description
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|word| COUNT_WORDS.contains(&word))
 }
 
 #[cfg(test)]
@@ -185,6 +219,81 @@ Filter Options:
       --max-depth int                       If set limits the recursion depth to this (default -1)
 ";
 
+    // Excerpts of helm 4.3's `helm --help`, `helm list --help`, and
+    // `helm search --help`. `-n` is helm's global `--namespace`.
+    const HELM_HELP: &str = "\
+Usage:
+  helm [command]
+
+Available Commands:
+  get         download extended information of a named release
+  install     install a chart
+  list        list releases
+  search      search for a keyword in charts
+  show        show information of a chart
+
+Flags:
+      --burst-limit int                 client-side default throttling limit (default 100)
+  -h, --help                            help for helm
+  -n, --namespace string                namespace scope for this request
+";
+
+    const HELM_LIST_HELP: &str = "\
+Usage:
+  helm list [flags]
+
+Flags:
+  -h, --help                 help for list
+  -m, --max int              maximum number of releases to fetch (default 256)
+      --offset int           next release index in the list, used to offset from start value
+
+Global Flags:
+  -n, --namespace string                namespace scope for this request
+";
+
+    const HELM_SEARCH_HELP: &str = "\
+Usage:
+  helm search [command]
+
+Available Commands:
+  hub         search for charts in the Artifact Hub or your own hub instance
+  repo        search repositories for a keyword in charts
+
+Flags:
+  -h, --help   help for search
+
+Global Flags:
+  -n, --namespace string                namespace scope for this request
+";
+
+    // Excerpts of terraform 1.16's `terraform --help` and `terraform query
+    // --help`; its single-dash `-no-color` parses as `-n`.
+    const TERRAFORM_HELP: &str = "\
+Usage: terraform [global options] <subcommand> [args]
+
+All other commands:
+  output        Show output values from your root module
+  query         Search and list remote infrastructure with Terraform
+  version       Show the current Terraform version
+
+Global options (use these before the subcommand, if any):
+  -chdir=DIR    Switch to a different working directory before executing the
+                given subcommand.
+";
+
+    const TERRAFORM_QUERY_HELP: &str = "\
+Usage: terraform [global options] query [options]
+
+  Queries the remote infrastructure for resources.
+
+Other Options:
+
+  -json                      If specified, machine readable output will be
+                             printed in JSON format
+
+  -no-color                  If specified, output won't contain any color.
+";
+
     fn sub(name: &str, raw: &str) -> (String, HelpOutput) {
         (name.to_string(), HelpOutput::from_raw(raw))
     }
@@ -241,6 +350,77 @@ Filter Options:
             (AuditStatus::Warn(msg), None) => {
                 assert!(msg.contains("in their --help: ls (looked for"), "{msg}");
                 assert!(!msg.contains("Carries one"), "{msg}");
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn n_counts_as_a_limit_flag_only_when_it_bounds_a_count() {
+        // Each line as the named tool's help prints it.
+        let cases = [
+            // helm 4.3, global flags
+            (
+                "  -n, --namespace string                namespace scope for this request",
+                false,
+            ),
+            // rclone 1.75, `rclone copy --help`
+            (
+                "  -n, --dry-run         Do a trial run with no permanent changes",
+                false,
+            ),
+            // xsv, `xsv search --help`
+            (
+                "    -n, --no-headers       When set, the first row will not be interpreted",
+                false,
+            ),
+            // terraform 1.16, `terraform query --help`
+            (
+                "  -no-color                  If specified, output won't contain any color.",
+                false,
+            ),
+            // qmd, search options
+            (
+                "  -n <num>                   - Max results (default 5, or 20 for --format files|json)",
+                true,
+            ),
+            // docker 29.8, `docker ps --help`
+            (
+                "  -n, --last int        Show n last created containers (includes all",
+                true,
+            ),
+        ];
+        let verdicts: Vec<(&str, bool)> = cases
+            .iter()
+            .map(|&(line, _)| {
+                let help = HelpOutput::from_raw(format!("Options:\n{line}\n"));
+                (line, find_limit_flag(&help).is_some())
+            })
+            .collect();
+        assert_eq!(verdicts, cases);
+    }
+
+    #[test]
+    fn namespace_n_does_not_stand_in_for_a_limit() {
+        let help = HelpOutput::from_raw(HELM_HELP);
+        let subhelp = vec![sub("list", HELM_LIST_HELP), sub("search", HELM_SEARCH_HELP)];
+        match audit_limit_flag(&help, &subhelp) {
+            (AuditStatus::Warn(msg), None) => {
+                assert!(msg.contains("search"), "{msg}");
+                assert!(msg.contains("Carries one: list (--max)."), "{msg}");
+                assert!(!msg.contains("--namespace"), "{msg}");
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn single_dash_no_color_does_not_stand_in_for_a_limit() {
+        let help = HelpOutput::from_raw(TERRAFORM_HELP);
+        let subhelp = vec![sub("query", TERRAFORM_QUERY_HELP)];
+        match audit_limit_flag(&help, &subhelp) {
+            (AuditStatus::Warn(msg), None) => {
+                assert!(msg.contains("in their --help: query (looked for"), "{msg}");
             }
             other => panic!("expected Warn, got {other:?}"),
         }

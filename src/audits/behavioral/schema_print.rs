@@ -76,6 +76,8 @@ impl Audit for SchemaPrintAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

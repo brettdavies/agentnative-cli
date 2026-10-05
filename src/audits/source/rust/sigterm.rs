@@ -72,11 +72,11 @@ impl Audit for SigtermAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
         let mut has_handler = false;
         let mut has_long_running = false;
 
@@ -112,6 +112,8 @@ impl Audit for SigtermAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

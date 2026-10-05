@@ -1,9 +1,13 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+mod common;
+
 /// Helper to build a Command for the anc binary.
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    cmd
 }
 
 /// Helper to get the path to a fixture relative to the project root.
@@ -11,6 +15,9 @@ fn fixture_path(name: &str) -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     format!("{manifest_dir}/tests/fixtures/{name}")
 }
+
+/// Exit code of a Rust process that died from an uncaught panic.
+const RUST_PANIC_EXIT_CODE: i32 = 101;
 
 // ── Basic CLI tests ────────────────────────────────────────────────
 
@@ -262,6 +269,57 @@ fn test_binary_only_fixture() {
     );
 }
 
+/// A hand-written `Common commands:` block whose entries all lead with the
+/// tool name is graded on its real subcommands: the example audit names
+/// them, the naming audit evaluates them, and `format` is not mistaken for
+/// a destructive verb.
+#[test]
+#[cfg(unix)]
+fn test_handwritten_help_fixture_reports_real_subcommands() {
+    let path = fixture_path("handwritten-help/tally");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    let row = |id: &str| {
+        results
+            .iter()
+            .find(|r| r["audit_id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"))
+    };
+
+    let examples = row("p3-subcommand-examples");
+    assert_eq!(examples["status"], "fail", "{examples}");
+    let evidence = examples["evidence"].as_str().expect("fail evidence");
+    for name in [
+        "count", "list", "show", "format", "report", "config", "server",
+    ] {
+        assert!(evidence.contains(name), "{name} missing from: {evidence}");
+    }
+    assert!(
+        !evidence.contains("tally") && !evidence.contains("Launch"),
+        "tool name or description word leaked into names: {evidence}"
+    );
+    assert_ne!(row("p6-standard-names")["status"], "skip");
+    let prefix = row("p3-unprefixed-command-list");
+    assert_eq!(prefix["status"], "warn", "{prefix}");
+    let prefix_evidence = prefix["evidence"].as_str().expect("warn evidence");
+    assert!(
+        prefix_evidence.contains("`tally count <path>`") && !prefix_evidence.contains("`tally `"),
+        "prefix evidence should name prefixed entries and not the bare invocation: {prefix_evidence}"
+    );
+    assert!(
+        prefix_evidence.contains("and 2 more"),
+        "seven offenders, five quoted: {prefix_evidence}"
+    );
+    assert_eq!(
+        row("p5-force-yes")["status"],
+        "skip",
+        "{}",
+        row("p5-force-yes")
+    );
+}
+
 #[test]
 fn test_source_only_fixture() {
     let path = fixture_path("source-only");
@@ -296,6 +354,37 @@ fn test_source_only_fixture() {
     assert!(
         !has_behavioral,
         "source-only fixture should NOT have behavioral audits"
+    );
+}
+
+#[test]
+fn test_hostile_utf8_evidence_fixture_audits_to_a_scorecard() {
+    let path = fixture_path("hostile-utf8-evidence");
+
+    let assert = cmd()
+        .args(["audit", &path, "--source", "--output", "json"])
+        .assert()
+        .code(predicate::ne(RUST_PANIC_EXIT_CODE));
+
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let clamping = parsed["results"]
+        .as_array()
+        .expect("results should be an array")
+        .iter()
+        .find(|r| r["audit_id"] == "p7-output-clamping")
+        .expect("output-clamping row should be present");
+
+    assert_eq!(clamping["status"], "warn", "row: {clamping}");
+    let evidence = clamping["evidence"]
+        .as_str()
+        .expect("warn row carries evidence");
+    assert!(
+        evidence.contains("..."),
+        "multi-byte matched text is previewed, not aborted on: {evidence}"
     );
 }
 
@@ -347,6 +436,78 @@ fn test_perfect_fixture() {
 
     assert_eq!(fail_count, 0, "perfect-rust fixture should have 0 failures");
     assert_eq!(error_count, 0, "perfect-rust fixture should have 0 errors");
+}
+
+#[test]
+fn test_cfg_test_edge_cases_fixture_flags_only_production_unwraps() {
+    // End-to-end coverage of the code-unwrap audit's cfg-gate exemption logic
+    // through the full parse -> walk -> AuditResult -> scorecard pipeline.
+    // Unit tests in src/audits/source/rust/unwrap.rs cover the parser in
+    // isolation; this test wires the parser to a real project on disk and
+    // checks that the scorecard reflects the polarity-correct behavior fixed
+    // in PR #80.
+    //
+    // Expected evidence (pinned to the fixture's current layout — see
+    // tests/fixtures/cfg-test-edge-cases/src/lib.rs):
+    //   - line 20: production_path()              (no cfg gate)
+    //   - line 25: production_only_path()         (#[cfg(not(test))])
+    // Exempted (must NOT appear in evidence):
+    //   - line 30: test_only_helper()             (#[cfg(test)])
+    //   - line 37: tests::unit()                  (inside #[cfg(test)] mod)
+    let path = fixture_path("cfg-test-edge-cases");
+
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let code_unwrap = parsed["results"]
+        .as_array()
+        .expect("results should be an array")
+        .iter()
+        .find(|r| r["id"].as_str() == Some("code-unwrap"))
+        .expect("results should include a code-unwrap row");
+
+    assert_eq!(
+        code_unwrap["status"].as_str(),
+        Some("fail"),
+        "code-unwrap must fail on the fixture (two production unwraps): {code_unwrap}",
+    );
+
+    let evidence = code_unwrap["evidence"]
+        .as_str()
+        .expect("code-unwrap fail must carry an evidence string");
+    let lines: Vec<&str> = evidence.lines().collect();
+    assert_eq!(
+        lines.len(),
+        2,
+        "evidence must list exactly two unwraps (production_path + cfg(not(test)) production_only_path), got: {evidence}",
+    );
+
+    let has_production_path = lines
+        .iter()
+        .any(|l| l.contains("/lib.rs:20:") && l.contains("maybe().unwrap()"));
+    let has_production_only_path = lines
+        .iter()
+        .any(|l| l.contains("/lib.rs:25:") && l.contains("maybe().unwrap()"));
+    assert!(
+        has_production_path,
+        "evidence must flag production_path at lib.rs:20: {evidence}",
+    );
+    assert!(
+        has_production_only_path,
+        "evidence must flag the cfg(not(test)) production_only_path at lib.rs:25 (PR #80 regression guard): {evidence}",
+    );
+
+    // The two cfg(test) cases live at lib.rs:30 and lib.rs:37 in the fixture;
+    // neither must appear in evidence.
+    for forbidden in [":30:", ":37:"] {
+        assert!(
+            !evidence.contains(forbidden),
+            "cfg(test)-exempt line {forbidden} leaked into evidence: {evidence}",
+        );
+    }
 }
 
 // ── Bare invocation test ──────────────────────────────────────────
@@ -787,7 +948,7 @@ fn test_audit_profile_echoed_in_json_output() {
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
     assert_eq!(parsed["audit_profile"], "human-tui");
-    assert_eq!(parsed["schema_version"], "0.7");
+    assert_eq!(parsed["schema_version"], "0.9");
 }
 
 #[test]
@@ -977,7 +1138,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     );
 
     // Fixed enumerations also pin against the renderer contract.
-    assert_eq!(obj["schema_version"], "0.7");
+    assert_eq!(obj["schema_version"], "0.9");
 }
 
 #[test]
@@ -1296,4 +1457,200 @@ fn test_bad_invocation_without_json_uses_clap_rendering() {
         serde_json::from_str::<serde_json::Value>(first).is_err(),
         "text-mode error must not be JSON, but first line parsed: {first}"
     );
+}
+
+// ── next_step on every JSON error envelope ─────────────────────────
+
+const CLI_REFERENCE_DOCS: &str = "https://github.com/brettdavies/agentnative-cli#cli-reference";
+
+/// The first stderr line of a failing `--output json` invocation, parsed.
+fn error_envelope(args: &[&str]) -> serde_json::Value {
+    let output = cmd().args(args).output().expect("spawn anc");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    let line = stderr.lines().next().expect("envelope on the first line");
+    serde_json::from_str(line).unwrap_or_else(|e| panic!("not JSON ({e}): {line}"))
+}
+
+#[test]
+fn a_parse_error_envelope_points_at_the_subcommands_help() {
+    let envelope = error_envelope(&["audit", "--no-such-flag", "--output", "json"]);
+    assert_eq!(envelope["error"], "unknown-argument", "{envelope}");
+    assert_eq!(envelope["argument"], "--no-such-flag", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "show-help",
+            "command": "anc audit --help",
+            "docs": CLI_REFERENCE_DOCS,
+        }),
+        "{envelope}"
+    );
+}
+
+#[test]
+fn an_invalid_value_envelope_echoes_the_value() {
+    let envelope = error_envelope(&["skill", "install", "nohost", "--output", "json"]);
+    assert_eq!(envelope["error"], "invalid-value", "{envelope}");
+    assert_eq!(envelope["value"], "nohost", "{envelope}");
+    assert_eq!(
+        envelope["next_step"]["command"], "anc skill install --help",
+        "{envelope}"
+    );
+}
+
+#[test]
+fn a_missing_subcommand_envelope_points_at_the_top_level_help() {
+    let envelope = error_envelope(&["--json"]);
+    assert_eq!(envelope["error"], "missing-subcommand", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "show-help",
+            "command": "anc --help",
+            "docs": CLI_REFERENCE_DOCS,
+        }),
+        "{envelope}"
+    );
+}
+
+#[test]
+fn a_runtime_error_envelope_points_at_the_subcommands_help() {
+    let envelope = error_envelope(&["audit", "/nonexistent/anc-target", "--output", "json"]);
+    assert_eq!(envelope["kind"], "runtime", "{envelope}");
+    assert_eq!(
+        envelope["next_step"],
+        serde_json::json!({
+            "action": "show-help",
+            "command": "anc audit --help",
+            "docs": CLI_REFERENCE_DOCS,
+        }),
+        "{envelope}"
+    );
+}
+
+// ── argument validation ────────────────────────────────────────────
+
+#[test]
+fn a_principle_outside_one_to_eight_is_a_usage_error() {
+    for bad in ["0", "9"] {
+        let output = cmd()
+            .args(["audit", "--command", "ls", "--principle", bad])
+            .output()
+            .expect("spawn anc");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "--principle {bad}: {output:?}"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "no scorecard for --principle {bad}"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+        assert!(stderr.contains("1..=8"), "names the valid range: {stderr}");
+    }
+    let envelope = error_envelope(&[
+        "audit",
+        "--command",
+        "ls",
+        "--principle",
+        "9",
+        "--output",
+        "json",
+    ]);
+    assert_eq!(envelope["error"], "value-validation", "{envelope}");
+    assert_eq!(envelope["value"], "9", "{envelope}");
+}
+
+/// A Rust crate with one source file, for source-only runs whose output
+/// depends only on the flags.
+fn tiny_crate() -> tempfile::TempDir {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        tmp.path().join("Cargo.toml"),
+        "[package]\nname = \"tiny\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::create_dir_all(tmp.path().join("src")).expect("mkdir src");
+    std::fs::write(tmp.path().join("src/main.rs"), "fn main() {}\n").expect("write main.rs");
+    tmp
+}
+
+fn source_audit(
+    dir: &std::path::Path,
+    env: &[(&str, &str)],
+    args: &[&str],
+) -> std::process::Output {
+    let mut command = cmd();
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    command
+        .args(["audit", dir.to_str().expect("utf-8 path"), "--source"])
+        .args(args)
+        .output()
+        .expect("spawn anc")
+}
+
+#[test]
+fn agentnative_quiet_accepts_one_and_zero() {
+    let tmp = tiny_crate();
+    let quiet = source_audit(tmp.path(), &[], &["-q"]);
+    let loud = source_audit(tmp.path(), &[], &[]);
+    assert_ne!(quiet.stdout, loud.stdout, "-q changes the output");
+
+    let one = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", "1")], &[]);
+    assert!(
+        !String::from_utf8_lossy(&one.stderr).contains("invalid value"),
+        "AGENTNATIVE_QUIET=1 parses: {one:?}"
+    );
+    assert_eq!(one.stdout, quiet.stdout, "AGENTNATIVE_QUIET=1 is -q");
+
+    let zero = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", "0")], &[]);
+    assert!(
+        !String::from_utf8_lossy(&zero.stderr).contains("invalid value"),
+        "AGENTNATIVE_QUIET=0 parses: {zero:?}"
+    );
+    assert_eq!(zero.stdout, loud.stdout, "AGENTNATIVE_QUIET=0 is no -q");
+}
+
+#[test]
+fn agentnative_verbose_accepts_one_and_zero() {
+    let tmp = tiny_crate();
+    let one = source_audit(tmp.path(), &[("AGENTNATIVE_VERBOSE", "1")], &[]);
+    let stderr = String::from_utf8_lossy(&one.stderr);
+    assert!(
+        stderr.contains("verbose: anc"),
+        "AGENTNATIVE_VERBOSE=1 is -v: {stderr}"
+    );
+
+    let zero = source_audit(tmp.path(), &[("AGENTNATIVE_VERBOSE", "0")], &[]);
+    assert!(
+        !String::from_utf8_lossy(&zero.stderr).contains("invalid value"),
+        "AGENTNATIVE_VERBOSE=0 parses: {zero:?}"
+    );
+    let stderr = String::from_utf8_lossy(&zero.stderr);
+    assert!(
+        !stderr.contains("verbose: anc"),
+        "AGENTNATIVE_VERBOSE=0 is no -v: {stderr}"
+    );
+}
+
+#[test]
+fn a_boolean_env_var_is_on_for_any_value_but_a_falsey_one() {
+    let tmp = tiny_crate();
+    let quiet = source_audit(tmp.path(), &[], &["-q"]);
+    let loud = source_audit(tmp.path(), &[], &[]);
+    for on in ["yes", "maybe", "TRUE"] {
+        let output = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", on)], &[]);
+        assert_eq!(output.stdout, quiet.stdout, "AGENTNATIVE_QUIET={on} is -q");
+    }
+    for off in ["", "no", "OFF", "false"] {
+        let output = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", off)], &[]);
+        assert_eq!(
+            output.stdout, loud.stdout,
+            "AGENTNATIVE_QUIET={off:?} is no -q"
+        );
+    }
 }

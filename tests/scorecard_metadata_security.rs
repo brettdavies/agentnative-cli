@@ -17,8 +17,12 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::time::Instant;
 
+mod common;
+
 fn cmd() -> Command {
-    Command::cargo_bin("anc").expect("anc binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
+    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    cmd
 }
 
 fn fixture_path(name: &str) -> String {
@@ -103,19 +107,20 @@ fn hostile_binary_flooding_stdout_does_not_exhaust_memory() {
 #[test]
 #[cfg(unix)]
 fn hostile_binary_that_hangs_is_killed_at_timeout() {
-    // Fixture sleeps 30s on `--version`. probe_tool_version's BinaryRunner
-    // has a 2-second timeout, so a healthy anc returns in ~2-4s (one
-    // timeout per probe attempt: --version then -V). If a regression drops
-    // the timeout, the test will time out at assert_cmd's 20s ceiling and
-    // fail loudly.
+    // Fixture sleeps 30s on `--version` and `-V`. The version audit waits out
+    // one 5 s `--version` timeout and skips the short aliases once it fails;
+    // the scorecard's version probe reuses that cached result and spends one
+    // 2 s timeout on `-V`, so a healthy run takes about 7 s. Probing a flag
+    // twice, or probing aliases after `--version` fails, pushes past 10 s; a
+    // dropped timeout runs into assert_cmd's 20 s ceiling.
     let path = fixture_path("hostile-hang/probe.sh");
     let start = Instant::now();
     let (parsed, _) = run_and_parse(&["audit", &path, "--output", "json"]);
     let elapsed = start.elapsed();
 
     assert!(
-        elapsed < Duration::from_secs(15),
-        "hung version probe must be killed at 2s timeout; total run took {elapsed:?}",
+        elapsed < Duration::from_secs(10),
+        "a hung version flag must be waited out once, not once per audit; total run took {elapsed:?}",
     );
     assert!(
         parsed["tool"]["version"].is_null(),
@@ -141,7 +146,7 @@ fn hostile_binary_nonzero_version_exit_yields_null() {
     );
     // The scorecard itself must still emit — version probe failure is not
     // a scoring failure.
-    assert_eq!(parsed["schema_version"], "0.7");
+    assert_eq!(parsed["schema_version"], "0.9");
     assert_eq!(parsed["target"]["kind"], "binary");
 }
 
@@ -191,4 +196,57 @@ fn project_mode_without_built_binary_emits_manifest_version_and_null_binary() {
         parsed["tool"]["version"], "0.1.0",
         "manifest version (Cargo.toml [package].version) must populate tool.version when no binary exists",
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn broken_config_beside_a_binary_leaves_no_absolute_path_in_the_scorecard() {
+    // Evidence lands in committed scorecards, so naming the failing
+    // `.anc.toml` must not reveal the directories above it.
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dir = tmp.path().join("tool-dir");
+    std::fs::create_dir_all(&dir).expect("mkdir tool-dir");
+    let bin = dir.join("tool");
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o755)
+        .open(&bin)
+        .and_then(|mut f| f.write_all(b"#!/bin/sh\necho tool\n"))
+        .expect("write fixture binary");
+    std::fs::write(dir.join(".anc.toml"), "[p6\n").expect("write broken .anc.toml");
+
+    // A relative target keeps the caller's own path out of `run.invocation`,
+    // which echoes argv; every other field is what anc derived.
+    let output = cmd()
+        .current_dir(tmp.path())
+        .args(["audit", "tool-dir/tool", "--output", "json"])
+        .timeout(Duration::from_secs(20))
+        .output()
+        .expect("anc spawn");
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("scorecard is JSON");
+
+    let row = parsed["results"]
+        .as_array()
+        .expect("results array")
+        .iter()
+        .find(|r| r["id"] == "p6-may-standard-names")
+        .expect("p6-may-standard-names row");
+    let evidence = row["evidence"].as_str().unwrap_or_default();
+    assert!(
+        evidence.starts_with("could not parse .anc.toml at tool-dir/.anc.toml:"),
+        "evidence must name the broken file by its directory's name; got: {evidence}"
+    );
+    let scorecard = parsed.to_string();
+    let canonical = tmp.path().canonicalize().expect("canonical tempdir");
+    for root in [tmp.path(), canonical.as_path()] {
+        let root = root.to_str().expect("utf-8 path");
+        assert!(
+            !scorecard.contains(root),
+            "scorecard leaks the absolute path {root}: {scorecard}"
+        );
+    }
 }

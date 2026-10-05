@@ -61,6 +61,8 @@ impl Audit for ReadWriteDistinctionAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::Medium,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

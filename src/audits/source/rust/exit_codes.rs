@@ -39,11 +39,11 @@ impl Audit for ExitCodesAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
         let mut all_evidence = Vec::new();
 
         for (path, parsed_file) in parsed.iter() {
@@ -66,6 +66,8 @@ impl Audit for ExitCodesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }
@@ -108,6 +110,10 @@ fn find_raw_exit_codes(source: &str, file: &str) -> Vec<SourceLocation> {
             if let Some(start) = text.rfind('(')
                 && let Some(end) = text.rfind(')')
             {
+                #[expect(
+                    clippy::string_slice,
+                    reason = "start and end come from rfind on the ASCII parens"
+                )]
                 let arg = text[start + 1..end].trim();
                 // A raw integer literal is all digits (possibly with a leading minus)
                 let is_raw_literal = !arg.is_empty()

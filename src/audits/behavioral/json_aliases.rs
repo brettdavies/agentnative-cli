@@ -53,6 +53,8 @@ impl Audit for JsonAliasesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

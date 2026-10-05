@@ -35,13 +35,14 @@ mod rich_tui;
 mod schema_print;
 mod secret_non_leaky_path;
 mod sigpipe;
-mod standard_names;
+pub(crate) mod standard_names;
 mod stdin_input;
 mod structured_exit_codes;
 mod subcommand_examples;
 mod subcommand_help;
 mod subcommand_operations;
 mod timeout_behavioral;
+mod unprefixed_command_list;
 mod verbose_flag;
 mod version;
 
@@ -87,6 +88,7 @@ pub fn all_behavioral_audits() -> Vec<Box<dyn Audit>> {
         Box::new(consistent_envelope::ConsistentEnvelopeAudit),
         Box::new(subcommand_examples::SubcommandExamplesAudit),
         Box::new(paired_examples::PairedExamplesAudit),
+        Box::new(unprefixed_command_list::UnprefixedCommandListAudit),
         Box::new(subcommand_operations::SubcommandOperationsAudit),
         Box::new(force_yes::ForceYesAudit),
         Box::new(read_write_distinction::ReadWriteDistinctionAudit),
@@ -117,6 +119,8 @@ pub(crate) mod tests {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: Default::default(),
+            inventory: Default::default(),
         }
     }
 
@@ -177,6 +181,8 @@ pub(crate) mod tests {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            anc_config: Default::default(),
+            inventory: Default::default(),
         }
     }
 }

@@ -1,6 +1,6 @@
 pub mod help_probe;
 
-pub use help_probe::HelpOutput;
+pub use help_probe::{CommandBlock, HelpOutput};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -49,6 +49,16 @@ const MAX_OUTPUT_BYTES: usize = 1_048_576;
 
 type CacheKey = (Vec<String>, Vec<(String, String)>);
 
+fn cache_key(args: &[&str], env_overrides: &[(&str, &str)]) -> CacheKey {
+    (
+        args.iter().map(|s| (*s).to_owned()).collect(),
+        env_overrides
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect(),
+    )
+}
+
 /// Executes a binary with timeout, result caching, and partial-read support.
 pub struct BinaryRunner {
     binary: PathBuf,
@@ -80,26 +90,37 @@ impl BinaryRunner {
         })
     }
 
+    /// File stem of the binary this runner spawns: `anc` for `target/debug/anc`
+    /// and for `anc.exe`. The stem rather than the file name because the help
+    /// probe compares it against the bare token on a `Usage:` line, which
+    /// never carries an extension.
+    pub fn binary_stem(&self) -> Option<&str> {
+        self.binary.file_stem().and_then(|stem| stem.to_str())
+    }
+
     /// Run the binary with the given args and env overrides.
     ///
     /// Results are cached by (args, env_overrides). `NO_COLOR=1` is always set.
     pub fn run(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> RunResult {
-        let cache_key: CacheKey = (
-            args.iter().map(|s| (*s).to_owned()).collect(),
-            env_overrides
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-                .collect(),
-        );
-
-        if let Some(cached) = self.cache.borrow().get(&cache_key) {
-            return cached.clone();
+        if let Some(cached) = self.cached(args, env_overrides) {
+            return cached;
         }
 
         let result = self.spawn_and_wait(args, env_overrides);
 
-        self.cache.borrow_mut().insert(cache_key, result.clone());
+        self.cache
+            .borrow_mut()
+            .insert(cache_key(args, env_overrides), result.clone());
         result
+    }
+
+    /// The result of an earlier [`run`](Self::run) with these args and env
+    /// overrides, without spawning the binary.
+    pub fn cached(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> Option<RunResult> {
+        self.cache
+            .borrow()
+            .get(&cache_key(args, env_overrides))
+            .cloned()
     }
 
     /// Run the binary but read only `read_bytes` from stdout, then drop the
@@ -211,10 +232,14 @@ impl BinaryRunner {
             let (guard, timeout_result) =
                 cvar.wait_timeout(guard, timeout).expect("mutex poisoned");
             if !*guard && timeout_result.timed_out() {
-                *timed_out_clone.lock().expect("mutex poisoned") = true;
+                // Kill before raising the flag. Once the poll loop sees the
+                // flag it blocks in `wait()` while holding the child lock, so a
+                // kill attempted after the flag could not take the lock and the
+                // child would run to its natural exit.
                 if let Ok(mut c) = child_for_timeout.lock() {
                     let _ = c.kill();
                 }
+                *timed_out_clone.lock().expect("mutex poisoned") = true;
             }
         });
 
@@ -429,6 +454,19 @@ mod tests {
     }
 
     #[test]
+    fn cached_returns_only_earlier_runs() {
+        let runner = BinaryRunner::new("/bin/echo".into(), Duration::from_secs(5))
+            .expect("echo should exist");
+        assert!(runner.cached(&["hello"], &[]).is_none());
+        let ran = runner.run(&["hello"], &[]);
+        let cached = runner
+            .cached(&["hello"], &[])
+            .expect("run result is cached");
+        assert_eq!(cached.stdout, ran.stdout);
+        assert!(runner.cached(&["hello"], &[("A", "1")]).is_none());
+    }
+
+    #[test]
     fn empty_output() {
         let runner =
             BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh should exist");
@@ -460,6 +498,25 @@ mod tests {
         let result = runner.run(&["-c", "echo $MY_TEST_VAR"], &[("MY_TEST_VAR", "42")]);
         assert_eq!(result.status, RunStatus::Ok);
         assert!(result.stdout.contains("42"));
+    }
+
+    /// The timeout must cut the child off at the deadline every time, not wait
+    /// for it to exit. A run that outlives the deadline by seconds means the
+    /// kill never reached the child.
+    #[test]
+    fn timeout_bounds_every_run_near_the_deadline() {
+        let runner = BinaryRunner::new("/bin/sleep".into(), Duration::from_millis(20))
+            .expect("sleep should exist");
+        for attempt in 0..200 {
+            let start = std::time::Instant::now();
+            let result = runner.spawn_and_wait(&["3"], &[]);
+            let elapsed = start.elapsed();
+            assert_eq!(result.status, RunStatus::Timeout, "attempt {attempt}");
+            assert!(
+                elapsed < Duration::from_secs(1),
+                "attempt {attempt}: a 20 ms timeout took {elapsed:?}, so the child ran to completion"
+            );
+        }
     }
 
     #[test]

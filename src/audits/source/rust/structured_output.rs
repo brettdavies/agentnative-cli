@@ -36,11 +36,11 @@ impl Audit for StructuredOutputAudit {
     }
 
     fn applicable(&self, project: &Project) -> bool {
-        project.language == Some(Language::Rust)
+        project.has_language(Language::Rust)
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files();
+        let parsed = project.parsed_files(Language::Rust);
         let mut has_clap = false;
         let mut has_output_format = false;
 
@@ -79,6 +79,8 @@ impl Audit for StructuredOutputAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

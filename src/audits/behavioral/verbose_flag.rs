@@ -48,6 +48,8 @@ impl Audit for VerboseFlagAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
+            mitigation: None,
+            config_hint: None,
         })
     }
 }

@@ -1,0 +1,32 @@
+{
+  "description": "prose naming the Model Context Protocol is not WebMCP exposure",
+  "covers": [
+    "webmcp"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n</head>\n<body>\n<main>\n<h1>Example</h1><p>We publish a Model Context Protocol server and a WebMCP guide.</p>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    }
+  ]
+}

@@ -34,6 +34,7 @@ Sub-commands let you re-run one verification in isolation:
 | `finalize`    | `finalize-release.yml` callback ran in this repo (cross-repo dispatch loop closed)                           | `gh run list -e repository_dispatch`      |
 | `make-latest` | GitHub Release `vX.Y.Z` is non-draft, non-prerelease, and `releases/latest` resolves to it                   | `gh api /releases/latest`                 |
 | `crates`      | `crates.io` shows `agentnative vX.Y.Z` published                                                             | `crates.io` index API                     |
+| `tags`        | Each workspace library's tag sits on the binary tag's commit; SKIPs for anc, which publishes no library      | `git rev-parse`                           |
 | `backport`    | a merged PR to `dev` with the version in its title                                                           | `gh pr list --base dev --state merged`    |
 | `all`         | every above                                                                                                  | all of the above                          |
 

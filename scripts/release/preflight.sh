@@ -10,15 +10,24 @@
 #   smoke         Real-CLI grading over every documented profile (delegated to smoke.sh)
 #   mechanics     Release mechanics sanity (version, lockfile, advisories, toolchain age, leak check,
 #                 unguarded docs added to main, diff-B vs origin/dev)
-#   all           Run drift, surface, smoke, mechanics (and surface-smoke if present)
+#   changelog-sections
+#                 No PR this release carries leaves its changelog entry to its title for want
+#                 of a ## Changelog section (generate-changelog.py --audit-sections)
+#   semver        Rust only: cargo-semver-checks against the release type the version bump claims
+#   all           Run drift, surface, smoke, changelog-sections, semver, mechanics (and surface-smoke
+#                 if present)
 #
 # Post-tag verification (release.yml + homebrew dispatch + finalize-release) lives in
-# scripts/release/postflight.sh — that runs AFTER the tag push, not before.
+# scripts/release/postflight.sh, that runs AFTER the tag push, not before.
 #
 # Flags:
 #   --smoke-home PATH   Reuse an existing seeded $SMOKE_HOME instead of creating + seeding
 #   --no-cleanup        Keep $SMOKE_HOME after exit (default: shred on exit)
-#   --tag TAG           Override LAST_TAG resolution (default: git tag --sort=-version:refname | head -n 1)
+#   --tag TAG           Override LAST_TAG resolution (default: the newest `v[0-9]*` tag)
+#
+# Environment:
+#   CHANGELOG_PR_BASE   Branch whose merged PRs changelog-sections reads (default: dev, or main
+#                       when origin/dev does not exist)
 #
 # Exit codes:
 #   0 = all gates passed (or skipped with reason)
@@ -33,8 +42,8 @@
 #
 # The shared scaffolding (gate helpers, 1Password reads, shred cleanup, dispatch, surface,
 # mechanics) is vendored from ~/.claude/skills/github-repo-setup/ and stays generic, so a
-# fix belongs upstream in the template as well. The project-specific gate bodies live in
-# their own sibling scripts: drift.sh and smoke.sh.
+# fix belongs upstream in the template as well. The project-specific smoke gate body lives
+# in its own sibling script, smoke.sh.
 
 set -euo pipefail
 
@@ -49,6 +58,10 @@ readonly REPO_ROOT
 # Project-specific: path to the built release binary. Adjust per project.
 # Rust default: target/release/anc. Override BIN_PATH before invocation if needed.
 BIN_PATH="${BIN_PATH:-$REPO_ROOT/target/release/anc}"
+
+# A workspace declares the manifest carrying the tag's version in
+# `scripts/release/release.env`, which _lib.sh sources. It goes there rather
+# than here because postflight and sync-dev never run through this file.
 
 require_built_binary() {
   [[ -x "$BIN_PATH" ]] || {
@@ -88,14 +101,14 @@ ensure_smoke_home() {
 
 # Gate: surface --------------------------------------------------------------
 #
-# Generic: confirms what's actually changing since the last tag. Counts feed
-# the human's gut-check on release scope and the breaking-marker tally drives
-# the major-version decision.
+# Generic: confirms what's actually changing since the last release on the
+# binary's tag line. Counts feed the human's gut-check on release scope and the
+# breaking-marker tally drives the major-version decision.
 
 gate_surface() {
   header "Establish surface"
   local last_tag commits files breaking
-  last_tag="${LAST_TAG:-$(git tag --sort=-version:refname | head -n 1)}"
+  last_tag="${LAST_TAG:-$(last_release_tag)}"
   [[ -n "$last_tag" ]] || {
     gate_skip "LAST_TAG" "no tags in repo yet (first release); surface is everything on the branch"
     return
@@ -181,14 +194,144 @@ gate_surface_smoke() {
 # package.json/pyproject.toml/go.mod for the version source; project's own
 # dep-advisory scanner; project's own pinned toolchain marker.
 
+# Gate: semver ----------------------------------------------------------------
+#
+# Rust only. cargo-semver-checks compares the crate's public API against the
+# last published version and fails when the change is bigger than the version
+# claims. The release type comes from the version bump itself (_lib.sh's
+# semver_release_type), not from commit markers: a break reaches the branch
+# whether or not its commit carried a `!`, so the manifest version is the only
+# honest statement of what this release claims to be.
+#
+# Each package is read against its own tag line. The release package's bump is
+# over the newest `v` tag, and in a workspace its check names it, so a library
+# is never held to the binary's bump. Each member whose release is pending (no
+# tag yet at its version) gets its own check, its bump read over the newest tag
+# carrying its declared tag_prefix.
+gate_semver() {
+  header "Semver (public API vs the claim)"
+  [[ -f Cargo.toml ]] || {
+    gate_skip "semver" "no Cargo.toml (non-Rust repo)"
+    return
+  }
+  have_bin cargo || {
+    gate_skip "semver" "cargo not installed"
+    return
+  }
+  if ! cargo semver-checks --version >/dev/null 2>&1; then
+    gate_skip "semver" "cargo-semver-checks not installed (cargo install cargo-semver-checks)"
+    return
+  fi
+
+  local last_tag release_type package=""
+  last_tag="${LAST_TAG:-$(last_release_tag)}"
+  if [[ -z "$last_tag" ]]; then
+    gate_skip "semver" "no previous tag to compare against (first release)"
+  else
+    [[ "$(release_manifest)" == "Cargo.toml" ]] || package=$(project_crate 2>/dev/null || true)
+    release_type=$(semver_release_type "$last_tag")
+    semver_check "semver" "$package" "$last_tag" "$release_type"
+  fi
+
+  local name prefix version member_tag
+  while IFS=$'\t' read -r name _ prefix _ version; do
+    [[ -n "$name" && -n "$version" ]] || continue
+    git rev-parse --verify --quiet "refs/tags/$prefix$version" >/dev/null && continue
+    member_tag=$(last_tag_on_line "$prefix")
+    if [[ -z "$member_tag" ]]; then
+      gate_skip "semver ($name)" "no $prefix tag to compare against (first $name release)"
+      continue
+    fi
+    release_type=$(semver_release_type "${member_tag#"$prefix"}" "$version")
+    semver_check "semver ($name)" "$name" "$member_tag" "$release_type"
+  done < <(release_members)
+}
+
+# One cargo-semver-checks run for gate_semver: the package to check (empty for a
+# single-package repo), the tag whose version the release type was read
+# against, and that release type.
+semver_check() {
+  local label=$1 package=$2 baseline=$3 release_type=$4
+  local args=(check-release --release-type "$release_type")
+  [[ -z "$package" ]] || args+=(--package "$package")
+  local out rc
+  out=$(cargo semver-checks "${args[@]}" 2>&1) && rc=0 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    gate_pass "${package:+$package: }public API change fits a $release_type release (baseline $baseline)"
+  elif grep -q '^--- failure' <<<"$out"; then
+    gate_fail "$label" \
+      "the API change does not fit the $release_type bump this version claims over $baseline; re-run \`cargo semver-checks ${args[*]}\` for the detail"
+  else
+    # cargo-semver-checks reports a break as `--- failure` blocks. A non-zero
+    # exit without one means it compared nothing, typically a rustdoc build that
+    # failed, so the API question is still open rather than answered "no".
+    gate_skip "$label" \
+      "cargo-semver-checks did not compare the API with $baseline (exit $rc): $(grep -m1 '^error:' <<<"$out" || tail -n 1 <<<"$out")"
+  fi
+}
+
+# Gate: changelog-sections ---------------------------------------------------
+#
+# generate-changelog.py owns the rules for reading a PR body, so it runs the
+# audit: `--audit-sections` names the PRs whose entry would fall back to their
+# title because the body never offered the changelog section. It reads the PRs
+# from the integration branch's history since the previous release on the tag
+# line, as the changelog itself does, so stacked PRs are among them and a
+# member's tag never moves the binary's window. A section left empty on purpose
+# passes, because the generator reads it as "nothing for this crate".
+#
+# One audit per changelog the release writes: the release package's, and each
+# workspace member whose release is pending (no tag yet at its version), each
+# under the heading its [package.metadata.changelog] table declares.
+gate_changelog_sections() {
+  header "PR changelog sections"
+  if [[ ! -x "$REPO_ROOT/scripts/generate-changelog.py" ]]; then
+    gate_skip "PR changelog sections" "scripts/generate-changelog.py not vendored"
+    return
+  fi
+  have_bin gh || {
+    gate_skip "PR changelog sections" "gh not installed"
+    return
+  }
+
+  local base
+  base="${CHANGELOG_PR_BASE:-dev}"
+  git -C "$REPO_ROOT" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1 || base="main"
+
+  local targets=() name prefix version
+  targets+=("$(cd "$REPO_ROOT" && changelog_crate_args)")
+  while IFS=$'\t' read -r name _ prefix _ version; do
+    [[ -n "$name" && -n "$version" ]] || continue
+    git -C "$REPO_ROOT" rev-parse --verify --quiet "refs/tags/$prefix$version" >/dev/null && continue
+    targets+=("--crate $name --tag $prefix$version")
+  done < <(cd "$REPO_ROOT" && release_members)
+
+  local target label out
+  for target in "${targets[@]}"; do
+    label="PR changelog sections"
+    if [[ "$target" == --crate* ]]; then
+      read -r _ name _ <<<"$target"
+      label="$label ($name)"
+    fi
+    # shellcheck disable=SC2086  # target is a flag list, split on purpose
+    if out=$(cd "$REPO_ROOT" && scripts/generate-changelog.py --audit-sections --dev-branch "$base" $target 2>&1); then
+      gate_pass "$label: ${out%%$'\n'*}"
+    else
+      gate_fail "$label" "$out"
+    fi
+  done
+}
+
 gate_mechanics() {
   header "Release mechanics sanity"
-  local project_version changelog_version last_tag
+  local project_version changelog_version
 
-  # Rust: read version from Cargo.toml. Non-Rust: swap for the project's source of truth.
+  # The version a release tag names: the release manifest's for Rust, which a
+  # virtual workspace names in release.env. Non-Rust: swap for the project's
+  # source of truth.
   if [[ -f Cargo.toml ]]; then
-    project_version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/^version = "(.*)"/\1/')
-    gate_pass "Cargo.toml version = $project_version"
+    project_version=$(project_version)
+    gate_pass "$(release_manifest) version = $project_version"
     if [[ -f Cargo.lock ]]; then
       gate_pass "Cargo.lock present"
     else
@@ -198,7 +341,7 @@ gate_mechanics() {
     project_version=$(jaq -r .version package.json)
     gate_pass "package.json version = $project_version"
   elif [[ -f pyproject.toml ]]; then
-    project_version=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/^version = "(.*)"/\1/')
+    project_version=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/^version = "(.*)"/\1/' || true)
     gate_pass "pyproject.toml version = $project_version"
   elif [[ -f VERSION ]]; then
     project_version=$(<VERSION)
@@ -220,30 +363,64 @@ gate_mechanics() {
     gate_skip "binary --version" "build the release binary first ($BIN_PATH)"
   fi
 
-  if [[ -f CHANGELOG.md ]]; then
-    changelog_version=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | tr -d '[]## ')
+  # The changelog the release notes are cut from. One that release.env names
+  # must exist; a repo that declares none and keeps no CHANGELOG.md has
+  # nothing to check.
+  local release_changelog
+  release_changelog=$(release_changelog)
+  if [[ -f "$release_changelog" ]]; then
+    changelog_version=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$release_changelog" | tr -d '[]## ' || true)
     if [[ -n "$project_version" ]]; then
       if [[ "$changelog_version" == "$project_version" ]]; then
-        gate_pass "CHANGELOG top section = [$changelog_version] (matches project version)"
+        gate_pass "$release_changelog top section = [$changelog_version] (matches project version)"
       else
-        gate_fail "CHANGELOG mismatch" "changelog=$changelog_version project=$project_version"
+        gate_fail "$release_changelog mismatch" "changelog=$changelog_version project=$project_version"
       fi
     fi
-    if grep -q '\[Unreleased\]' CHANGELOG.md; then
-      gate_fail "CHANGELOG" "has [Unreleased] placeholder"
+    if grep -q '\[Unreleased\]' "$release_changelog"; then
+      gate_fail "$release_changelog" "has [Unreleased] placeholder"
     else
-      gate_pass "CHANGELOG has no [Unreleased] placeholder"
+      gate_pass "$release_changelog has no [Unreleased] placeholder"
     fi
+  elif [[ -n "${RELEASE_CHANGELOG:-}" ]]; then
+    gate_fail "$release_changelog" "missing; release.env names it as the release changelog"
   fi
+
+  # Each workspace member on its own tag line, checked while its release is
+  # pending: no `<tag_prefix><version>` tag exists yet, so the library
+  # pipeline will cut its notes from that section. The cut script writes only
+  # the release package's changelog, so this is what catches a member's that
+  # the operator forgot.
+  local name prefix member_changelog member_version member_top
+  while IFS=$'\t' read -r name _ prefix member_changelog member_version; do
+    [[ -n "$name" && -n "$member_version" ]] || continue
+    if git rev-parse --verify --quiet "refs/tags/$prefix$member_version" >/dev/null; then
+      gate_pass "$member_changelog not checked ($name $member_version is released as $prefix$member_version)"
+      continue
+    fi
+    if [[ ! -f "$member_changelog" ]]; then
+      gate_fail "$member_changelog" "missing; a $name release is pending (scripts/generate-changelog.py --crate $name --from-dev-prs --tag $prefix$member_version)"
+      continue
+    fi
+    member_top=$(grep -m1 -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$member_changelog" | tr -d '[]## ' || true)
+    if [[ "$member_top" == "$member_version" ]]; then
+      gate_pass "$member_changelog top section = [$member_top] (matches $name $member_version)"
+    else
+      gate_fail "$member_changelog" "top section=${member_top:-none} $name=$member_version; a $name release is pending (regenerate with scripts/generate-changelog.py --crate $name --from-dev-prs --tag $prefix$member_version)"
+    fi
+    if grep -q '\[Unreleased\]' "$member_changelog"; then
+      gate_fail "$member_changelog" "has [Unreleased] placeholder"
+    fi
+  done < <(release_members)
 
   # Rust: toolchain quarantine. Skip for non-Rust.
   if [[ -f rust-toolchain.toml ]]; then
     local toolchain_channel release_date_match
-    toolchain_channel=$(grep -m1 'channel = ' rust-toolchain.toml | sed -E 's/.*"([^"]+)".*/\1/')
+    toolchain_channel=$(grep -m1 'channel = ' rust-toolchain.toml | sed -E 's/.*"([^"]+)".*/\1/' || true)
     release_date_match=$(grep -m1 'released' rust-toolchain.toml | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
     if [[ -n "$release_date_match" ]]; then
       local age_days
-      age_days=$((($(date +%s) - $(date -d "$release_date_match" +%s)) / 86400))
+      age_days=$((($(date +%s) - $(epoch_of_date "$release_date_match")) / 86400))
       if [[ $age_days -ge 7 ]]; then
         gate_pass "rust-toolchain channel=$toolchain_channel (released $release_date_match, $age_days days ago; 7-day quarantine satisfied)"
       else
@@ -300,11 +477,14 @@ gate_mechanics() {
 
   # diff-B: files on dev that this branch lacks. Excluding all of docs/ would
   # hide a missed pick under a directory that ships to main, so exclude only
-  # the guarded set. Version files and the regenerated changelog are
-  # release-only by design.
+  # the guarded set. Version files and the regenerated changelogs are
+  # release-only by design, at any depth, so a workspace member's bump and
+  # changelog read as release edits; cut-release-branch.sh's check A excludes
+  # the same set.
   if git rev-parse --verify --quiet origin/dev >/dev/null 2>&1; then
     local missed
-    missed=$(git diff HEAD..origin/dev --name-only 2>/dev/null | grep -Ev "$guarded" | grep -Ev '^(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json|pyproject\.toml|uv\.lock|VERSION|CHANGELOG\.md)$' || true)
+    missed=$(git diff HEAD..origin/dev --name-only 2>/dev/null | grep -Ev "$guarded" \
+      | grep -Ev '^((.*/)?(Cargo\.toml|Cargo\.lock|package\.json|package-lock\.json|bun\.lock|pyproject\.toml|uv\.lock|VERSION|CHANGELOG\.md))$' || true)
     if [[ -z "$missed" ]]; then
       gate_pass "diff-B: no missed picks vs origin/dev"
     else
@@ -318,7 +498,7 @@ gate_mechanics() {
 # Main dispatcher ------------------------------------------------------------
 
 usage() {
-  sed -n '2,32p' "$0" | sed 's/^# \?//'
+  print_usage_header
   exit 2
 }
 
@@ -342,12 +522,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h | --help) usage ;;
-    drift | surface | smoke | mechanics | surface-smoke | all)
+    drift | surface | smoke | mechanics | changelog-sections | semver | surface-smoke | all)
       SUBCMD="$1"
       shift
       ;;
     post-tag)
-      echo "post-tag moved to scripts/release/postflight.sh — run that after the tag push" >&2
+      echo "post-tag moved to scripts/release/postflight.sh, run that after the tag push" >&2
       exit 2
       ;;
     *)
@@ -364,12 +544,16 @@ case "$SUBCMD" in
   surface) gate_surface ;;
   smoke) gate_smoke ;;
   mechanics) gate_mechanics ;;
+  changelog-sections) gate_changelog_sections ;;
+  semver) gate_semver ;;
   surface-smoke) gate_surface_smoke ;;
   all)
     gate_drift
     gate_surface
     gate_smoke
     gate_surface_smoke
+    gate_changelog_sections
+    gate_semver
     gate_mechanics
     ;;
 esac

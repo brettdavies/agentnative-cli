@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
-from datetime import date
+from datetime import datetime, timezone
 import json
 import os
 import re
@@ -410,7 +410,11 @@ def seed_version_section(changelog: Path, version: str) -> None:
     content = changelog.read_text() if changelog.exists() else header
     if re.search(rf"^## \[{re.escape(version)}\]", content, re.MULTILINE):
         return
-    section = f"## [{version}] - {date.today().isoformat()}\n\n"
+    # UTC, because cliff.toml renders its own header from `{{ timestamp | date() }}`
+    # in UTC. A local date here makes the two generation modes stamp different days
+    # for one release whenever the operator's offset crosses midnight.
+    stamp = datetime.now(timezone.utc).date().isoformat()
+    section = f"## [{version}] - {stamp}\n\n"
     first = re.search(r"^## \[", content, re.MULTILINE)
     if first:
         content = content[: first.start()] + section + content[first.start():]

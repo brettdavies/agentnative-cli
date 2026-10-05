@@ -27,27 +27,30 @@ scripts/release/preflight.sh all
 ```
 
 The preflight script (`scripts/release/preflight.sh`) is **project-authored**: the shared scaffolding (gate helpers,
-1Password reads, `shred -u` tempdir cleanup, subcommand dispatch, surface + mechanics gates) is vendored from the
-`github-repo-setup` skill's skeleton, and the two project-specific gate bodies live in sibling scripts
-(`scripts/release/drift.sh`, `scripts/release/smoke.sh`) that the roster delegates to. `all` runs the drift gate first,
+1Password reads, `shred -u` tempdir cleanup, subcommand dispatch, surface, changelog-sections, semver and mechanics gates)
+is vendored from the `github-repo-setup` skill's skeleton, and the project-specific smoke body lives in a sibling script
+(`scripts/release/smoke.sh`) that the roster delegates to, as it delegates drift to the vendored
+`scripts/release/drift.sh`. `all` runs the drift gate first,
 since nothing else matters while `main` holds changes `dev` never received. The recipes in the sections below document
 what each gate verifies and serve as the manual fallback when running by hand.
 
 Sub-commands let you re-run one section in isolation:
 
-| Sub-command | What it checks                                                                            | Source of truth                                                |
-| ----------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `drift`     | Commits on `main` that `dev` lacks, `.github/` parity, lockfile packages `main` has newer | `scripts/release/drift.sh`                                     |
-| `surface`   | Commits + diff vs last tag, breaking markers                                              | `git log`, `git diff`                                          |
-| `smoke`     | Schema parity, multi-target audit runs, scorecard validation, negative control            | `scripts/release/smoke.sh`                                     |
-| `mechanics` | Version, lockfile, toolchain age, advisories, leak check, unguarded docs, diff-B          | `Cargo.toml`, `CHANGELOG.md`, `cargo deny`, `guarded-paths.sh` |
-| `all`       | Every above sequentially, drift first                                                     |                                                                |
+| Sub-command          | What it checks                                                                                                              | Source of truth                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `drift`              | Commits on `main` that `dev` lacks, `.github/` parity, lockfile packages `main` has newer                                   | `scripts/release/drift.sh`                                     |
+| `surface`            | Commits + diff vs last tag, breaking markers                                                                                | `git log`, `git diff`                                          |
+| `smoke`              | Schema parity, multi-target audit runs, scorecard validation, negative control                                              | `scripts/release/smoke.sh`                                     |
+| `mechanics`          | Version, lockfile, toolchain age, advisories, leak check, unguarded docs, diff-B                                            | `Cargo.toml`, `CHANGELOG.md`, `cargo deny`, `guarded-paths.sh` |
+| `changelog-sections` | No PR merged into `dev` since the last release leaves its changelog entry to its title for want of a `## Changelog` section | `generate-changelog.py --audit-sections`, `gh`                 |
+| `semver`             | cargo-semver-checks against the release type the version bump claims over the last `v` tag                                  | `cargo semver-checks`                                          |
+| `all`                | Every above sequentially, drift first                                                                                       |                                                                |
 
 Flags:
 
 - `--smoke-home PATH`: reuse an existing seeded `$SMOKE_HOME` instead of creating + seeding
 - `--no-cleanup`: keep `$SMOKE_HOME` after exit (default: shred on exit)
-- `--tag TAG`: override `LAST_TAG` resolution (default: `git tag --sort=-version:refname | head -n 1`)
+- `--tag TAG`: override `LAST_TAG` resolution (default: the newest `v[0-9]*` tag)
 
 `anc` is a single-binary CLI with no deployed HTTP surface, so `scripts/release/surface-smoke.sh` is not vendored and
 the `surface-smoke` sub-command SKIPs.

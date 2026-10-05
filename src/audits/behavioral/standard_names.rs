@@ -207,6 +207,7 @@ impl Audit for StandardNamesAudit {
             confidence: Confidence::Low,
             mitigation: result.mitigation,
             config_hint: result.config_hint,
+            pass_evidence: None,
         })
     }
 }

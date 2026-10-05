@@ -116,6 +116,7 @@ impl Audit for DryRunAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

@@ -85,6 +85,7 @@ impl Audit for SubcommandOperationsAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

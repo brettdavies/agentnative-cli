@@ -56,6 +56,7 @@ impl Audit for MoreFormatsAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

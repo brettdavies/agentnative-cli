@@ -440,12 +440,13 @@ impl AuditResultView {
                 // When a Pass was assisted by `domain_verbs`, surface the
                 // formatted ratio + matched names in the row's `evidence`
                 // field so text-mode rendering and JSON-mode dispatch see
-                // the same prose. Pass without mitigation keeps the
-                // existing `evidence: null` shape.
-                let pass_evidence = r
-                    .mitigation
-                    .as_ref()
-                    .map(crate::audits::behavioral::standard_names::format_pass_evidence);
+                // the same prose. A Pass that names nothing it matched
+                // keeps `evidence: null`.
+                let pass_evidence = r.pass_evidence.clone().or_else(|| {
+                    r.mitigation
+                        .as_ref()
+                        .map(crate::audits::behavioral::standard_names::format_pass_evidence)
+                });
                 ("pass".to_string(), pass_evidence)
             }
             AuditStatus::Warn(e) => ("warn".to_string(), Some(e.clone())),
@@ -1039,6 +1040,7 @@ mod tests {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         }
     }
 
@@ -1283,6 +1285,15 @@ mod tests {
         let view = AuditResultView::from_result(&r);
         assert_eq!(view.status, "pass");
         assert!(view.evidence.is_none());
+    }
+
+    #[test]
+    fn pass_evidence_surfaces_as_the_row_evidence() {
+        let mut r = make_result("pass-id", AuditStatus::Pass, AuditGroup::P7);
+        r.pass_evidence = Some("list (--limit)".into());
+        let view = AuditResultView::from_result(&r);
+        assert_eq!(view.status, "pass");
+        assert_eq!(view.evidence.as_deref(), Some("list (--limit)"));
     }
 
     #[test]

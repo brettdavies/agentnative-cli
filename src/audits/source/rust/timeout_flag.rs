@@ -84,6 +84,7 @@ impl Audit for TimeoutFlagAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

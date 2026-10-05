@@ -81,6 +81,7 @@ impl Audit for EnumerateValidSetAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

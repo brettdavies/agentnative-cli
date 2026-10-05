@@ -190,14 +190,20 @@ package. A workspace file `anc` cannot read prints a `warning:` line, and the sc
 A candidate is a bin that a package declares and that exists at its language's build location. Nothing counts just for
 sitting in `node_modules/.bin`, `dist/`, or `build/`.
 
-| Language | Declared bins                                                                                                                                                         | Built location                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Rust     | `[[bin]]` names; `src/main.rs` gives the package name; `src/bin/<name>.rs` and `src/bin/<name>/main.rs` give `<name>`; `autobins = false` turns the implicit ones off | `target/release/<name>` or `target/debug/<name>` in the package, then at the audit root; the newer of the two |
-| Node     | a `bin` string gives the package name without its scope; a `bin` object gives its keys                                                                                | the declared file when executable, else `node_modules/.bin/<name>` in the package, then at the audit root     |
-| Python   | `[project.scripts]` keys                                                                                                                                              | `.venv/bin/<name>` in the package, then at the audit root                                                     |
-| Go       | each directory holding `package main` gives its directory name                                                                                                        | `<name>` in that directory, then at the module root                                                           |
+| Language | Declared bins                                                                                                                                                         | Built location                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Rust     | `[[bin]]` names; `src/main.rs` gives the package name; `src/bin/<name>.rs` and `src/bin/<name>/main.rs` give `<name>`; `autobins = false` turns the implicit ones off | `release/<name>` or `debug/<name>` in cargo's target directory; the newer of the two                      |
+| Node     | a `bin` string gives the package name without its scope; a `bin` object gives its keys                                                                                | the declared file when executable, else `node_modules/.bin/<name>` in the package, then at the audit root |
+| Python   | `[project.scripts]` keys                                                                                                                                              | `.venv/bin/<name>` in the package, then at the audit root                                                 |
+| Go       | each directory holding `package main` gives its directory name                                                                                                        | `<name>` in that directory, then at the module root                                                       |
 
 On Windows, Rust, Go, and Python names end in `.exe`, and the virtual environment's directory is `Scripts`.
+
+The target directory is the one cargo builds into: `CARGO_TARGET_DIR` when it is set (a relative value is relative to
+the current directory); otherwise the `target_directory` that `cargo metadata` reports at the audit root, which follows
+`build.target-dir` in cargo's config files and the workspace the root belongs to; otherwise `target` at the audit root,
+when cargo is not installed or gives no answer within 5 seconds. Without `CARGO_TARGET_DIR`, a package below the audit
+root is looked for in its own `target` first, where cargo builds a crate outside the root's workspace.
 
 ### One binary, several, or none
 
@@ -217,14 +223,15 @@ That holds for a single crate with several `[[bin]]` targets too: a repository o
 binary exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so
 `anc audit . --principle 6` offers `anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage
 envelope with `"error": "binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit
-root), and `command`, and a `next_step` of `choose-bin` whose `template` ends in `--bin <name>`. When two candidates
-share a name, each is offered by its path.
+root when the build is under it), and `command`, and a `next_step` of `choose-bin` whose `template` ends in
+`--bin <name>`. When two candidates share a name, each is offered by its path.
 
 `--source` runs no binary, so it needs no choice: with several candidates and no `--bin`, the source and project audits
 run with nothing graded.
 
 With none, the source and project audits run, and the warning names any bins the packages declare but have not built,
-with the ways forward: build one, audit a built binary by path, or audit an installed one with `--command`.
+the cargo target directories searched for the Rust ones, and the ways forward: build one, audit a built binary by path,
+or audit an installed one with `--command`.
 
 `--bin <NAME>`, or `AGENTNATIVE_BIN`, picks a candidate by name or by the path `anc` printed for it. It is unrelated to
 `--binary`, which runs only the behavioral audits:

@@ -12,8 +12,10 @@ use crate::anc_toml::ResolvedConfig;
 use crate::runner::{BinaryRunner, HelpOutput};
 
 pub use bins::Candidate;
+use cargo_target::CargoTarget;
 
 mod bins;
+mod cargo_target;
 mod inventory;
 mod scan;
 pub mod select;
@@ -115,14 +117,21 @@ impl std::fmt::Debug for Project {
 }
 
 impl Project {
+    /// Discover `path` with Rust builds in its own `target`.
     #[cfg(test)]
     pub fn discover(path: &Path) -> Result<Project> {
-        Self::discover_with_tests(path, false)
+        let root = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        Self::discover_in(path, false, &CargoTarget::at(root.join("target")))
     }
 
     /// Discover `path`; `include_tests` lets the package scan and the source
     /// walk enter `tests` directories.
     pub fn discover_with_tests(path: &Path, include_tests: bool) -> Result<Project> {
+        Self::discover_in(path, include_tests, &CargoTarget::from_env())
+    }
+
+    /// Discover `path`, finding Rust builds where `cargo` puts them.
+    fn discover_in(path: &Path, include_tests: bool, cargo: &CargoTarget) -> Result<Project> {
         let path = path
             .canonicalize()
             .with_context(|| format!("path does not exist: {}", path.display()))?;
@@ -150,7 +159,7 @@ impl Project {
         }
 
         // Directory path — detect language from manifest
-        let inventory = inventory::inventory(&path, include_tests);
+        let inventory = inventory::inventory(&path, include_tests, cargo);
         let (language, manifest_path) = detect_language(&path);
         let binary_paths: Vec<PathBuf> = inventory
             .candidates

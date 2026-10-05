@@ -326,7 +326,9 @@ agentnative. Three rules guard the probe:
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
-   `target/release/<bin>` and `target/debug/<bin>` exist, the function returns the one with the more recent mtime.
+   `release/<bin>` and `debug/<bin>` exist in a target directory, the function returns the one with the more recent
+   mtime. The target directory is cargo's (`src/project/cargo_target.rs`): `CARGO_TARGET_DIR`, else what `cargo
+   metadata` reports at the audit root, else `<root>/target`.
    Avoids the stale-release-binary trap in dev workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios
    where only one profile is built fall through cleanly to the existence check. Ties go to debug (cargo's dev-flow
    default). Test coverage: `test_discover_picks_newer_artifact_by_mtime` + `test_discover_picks_release_when_newer`.

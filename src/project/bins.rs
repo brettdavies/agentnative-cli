@@ -6,6 +6,7 @@ use std::env::consts::EXE_SUFFIX;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use super::cargo_target::{CargoTarget, TargetDirs};
 use super::inventory::Package;
 use super::{Language, MAX_DEPTH, is_executable};
 
@@ -31,16 +32,20 @@ pub struct Bins {
     pub candidates: Vec<Candidate>,
     /// Names of declared bins with no build output, in the same order.
     pub unbuilt: Vec<String>,
+    /// The cargo target directories searched for the unbuilt Rust bins.
+    pub target_dirs: Vec<PathBuf>,
 }
 
-/// Every bin the packages under `root` declare. Each package's `name` and
-/// `bins` are filled in along the way.
-pub fn candidates(root: &Path, packages: &mut [Package]) -> Bins {
+/// Every bin the packages under `root` declare, with Rust bins looked for
+/// where `cargo` says it builds them. Each package's `name` and `bins` are
+/// filled in along the way.
+pub fn candidates(root: &Path, packages: &mut [Package], cargo: &CargoTarget) -> Bins {
+    let targets = TargetDirs::new(cargo, root);
     let mut found = Bins::default();
     for pkg in packages.iter_mut() {
         let manifest = fs::read_to_string(&pkg.manifest).unwrap_or_default();
         let declared = match pkg.language {
-            Language::Rust => rust(root, pkg, &manifest),
+            Language::Rust => rust(&targets, pkg, &manifest),
             Language::Node => node(root, pkg, &manifest),
             Language::Python => python(root, pkg, &manifest),
             Language::Go => go(pkg, &manifest),
@@ -65,8 +70,18 @@ pub fn candidates(root: &Path, packages: &mut [Package]) -> Bins {
                     path,
                     manifest: pkg.manifest.clone(),
                 }),
-                None if !found.unbuilt.contains(&name) => found.unbuilt.push(name),
-                None => {}
+                None => {
+                    if pkg.language == Language::Rust {
+                        for dir in targets.of(&pkg.root) {
+                            if !found.target_dirs.contains(&dir) {
+                                found.target_dirs.push(dir);
+                            }
+                        }
+                    }
+                    if !found.unbuilt.contains(&name) {
+                        found.unbuilt.push(name);
+                    }
+                }
             }
         }
     }
@@ -80,9 +95,9 @@ type Declared = Option<(String, Vec<(String, Option<PathBuf>)>)>;
 /// `[[bin]]` targets, then the implicit `src/main.rs` (named for the
 /// package) and `src/bin/<name>.rs` or `src/bin/<name>/main.rs` that no
 /// explicit target claims, unless `autobins = false`. Each is built at
-/// `target/release` or `target/debug` under the package or the audit root,
-/// the newer of the two when both exist.
-fn rust(root: &Path, pkg: &Package, manifest: &str) -> Declared {
+/// `release` or `debug` in the package's target directories
+/// ([`TargetDirs::of`]), the newer of the two when both exist.
+fn rust(targets: &TargetDirs, pkg: &Package, manifest: &str) -> Declared {
     let doc: toml::Table = manifest.parse().ok()?;
     let package = doc.get("package")?.as_table()?;
     let package_name = package
@@ -115,10 +130,15 @@ fn rust(root: &Path, pkg: &Package, manifest: &str) -> Declared {
             }
         }
     }
+    let dirs = if names.is_empty() {
+        Vec::new()
+    } else {
+        targets.of(&pkg.root)
+    };
     let bins = names
         .into_iter()
         .map(|name| {
-            let built = rust_artifact(root, &pkg.root, &name);
+            let built = rust_artifact(&dirs, &name);
             (name, built)
         })
         .collect();
@@ -154,11 +174,11 @@ fn implicit_rust_bins(dir: &Path, package_name: &str) -> Vec<(PathBuf, String)> 
     found
 }
 
-fn rust_artifact(root: &Path, package_root: &Path, name: &str) -> Option<PathBuf> {
+fn rust_artifact(target_dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
     let file = format!("{name}{EXE_SUFFIX}");
-    bases(package_root, root).into_iter().find_map(|base| {
-        let release = base.join("target/release").join(&file);
-        let debug = base.join("target/debug").join(&file);
+    target_dirs.iter().find_map(|dir| {
+        let release = dir.join("release").join(&file);
+        let debug = dir.join("debug").join(&file);
         match (release.is_file(), debug.is_file()) {
             (true, true) => Some(pick_newer_artifact(&release, &debug)),
             (true, false) => Some(release),
@@ -398,8 +418,9 @@ mod tests {
         }
     }
 
+    /// The candidates under `root`, with Rust bins built in `root/target`.
     fn found(root: &Path) -> Vec<Candidate> {
-        inventory(root, false).candidates
+        inventory(root, false, &CargoTarget::at(root.join("target"))).candidates
     }
 
     fn names(root: &Path) -> Vec<String> {

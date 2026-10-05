@@ -79,7 +79,9 @@ pub(crate) fn audit_cursor_pagination(
     if triggers.is_empty() {
         return (
             AuditStatus::Skip(
-                "no list-style subcommand detected; vacuous skip for the list-only MAY.".into(),
+                "no list-style subcommand detected (list/ls/search/query/find, or a show/get \
+                 whose summary describes several results); vacuous skip for the list-only MAY."
+                    .into(),
             ),
             None,
         );

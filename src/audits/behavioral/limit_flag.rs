@@ -102,8 +102,9 @@ pub(crate) fn audit_limit_flag(
     if triggers.is_empty() {
         return (
             AuditStatus::Skip(
-                "no list-style subcommand detected (list/ls/search/query/find/show/get); \
-                 vacuous skip for the list-only SHOULD."
+                "no list-style subcommand detected (list/ls/search/query/find, or a show/get \
+                 whose summary describes several results); vacuous skip for the list-only \
+                 SHOULD."
                     .into(),
             ),
             None,

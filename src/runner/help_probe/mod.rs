@@ -132,6 +132,13 @@ impl CommandBlock {
         }
         rest
     }
+
+    /// The description part of `entry`: the text after the two-space (or
+    /// tab) description gap, trimmed. Empty when the entry has no gap.
+    pub fn summary<'a>(&self, entry: &'a str) -> &'a str {
+        let invocation = before_description_gap(entry.split('\t').next().unwrap_or(entry));
+        entry[invocation.len()..].trim()
+    }
 }
 
 /// Shared, lazily-parsed view over `<binary> --help`. Construct via
@@ -218,6 +225,22 @@ impl HelpOutput {
     pub fn subcommands(&self) -> &[String] {
         self.subcommands
             .get_or_init(|| subcommand_names(self.command_blocks()))
+    }
+
+    /// The command-list summary of top-level subcommand `name`: the
+    /// description on the first entry that names it. `None` when no entry
+    /// names it or that entry carries no description.
+    pub fn subcommand_summary(&self, name: &str) -> Option<&str> {
+        self.command_blocks()
+            .iter()
+            .find_map(|block| {
+                block
+                    .entries
+                    .iter()
+                    .find(|entry| block.command_text(entry).split_whitespace().next() == Some(name))
+                    .map(|entry| block.summary(entry))
+            })
+            .filter(|summary| !summary.is_empty())
     }
 
     /// Why [`HelpOutput::subcommands`] is empty, worded as what the parser

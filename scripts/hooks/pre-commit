@@ -7,6 +7,18 @@
 # every commit; the whole-repo equivalents live in scripts/hooks/pre-push.
 #
 # Activated per clone via: git config core.hooksPath scripts/hooks
+#
+# Requires bash >= 4.4 (mapfile, and empty-array expansion under `set -u`). The
+# guard re-execs under Homebrew's bash when `#!/usr/bin/env bash` found an older
+# one, such as the macOS /bin/bash 3.2, and otherwise stops with the install hint.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [ -x "$b" ] && exec "$b" "$0" "$@"
+  done
+  echo "ERROR: needs bash >= 4.4 (running $BASH_VERSION); install it with: brew install bash" >&2
+  exit 1
+fi
+
 set -euo pipefail
 
 RED='\033[0;31m'
@@ -16,6 +28,22 @@ RESET='\033[0m'
 
 pass() { echo -e "  ${GREEN}✓${RESET} $1"; }
 fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
+
+# without_git_repo_env <command>...: run a command in a subshell without git's
+# repository variables.
+#
+# Git exports GIT_DIR into a hook started from a linked worktree, and
+# GIT_INDEX_FILE into pre-commit. A tool that runs git in another directory
+# under them acts on this repository instead: it commits onto the branch,
+# resets it, or resolves the wrong top level. This hook keeps them for its own
+# `git diff --cached`, because during `commit -a` and `commit <paths>` the
+# staged set lives only in the temporary index GIT_INDEX_FILE names, and runs
+# every tool through this helper.
+without_git_repo_env() (
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE
+  "$@"
+)
 
 echo -e "${BOLD}Running pre-commit checks...${RESET}"
 
@@ -38,7 +66,7 @@ fi
 # 1. Rust formatting — staged .rs files only
 if [ ${#staged_rs[@]} -gt 0 ]; then
     if command -v cargo >/dev/null 2>&1; then
-        cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check (run \`cargo fmt\` and re-stage)"
+        without_git_repo_env cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check (run \`cargo fmt\` and re-stage)"
         pass "fmt (${#staged_rs[@]} file(s))"
     else
         echo "  - fmt (skipped: cargo not installed)"
@@ -50,7 +78,7 @@ fi
 # 2. Markdown lint — staged .md files only
 if [ ${#staged_md[@]} -gt 0 ]; then
     if command -v markdownlint-cli2 >/dev/null 2>&1; then
-        markdownlint-cli2 "${staged_md[@]}" || fail "markdownlint-cli2"
+        without_git_repo_env markdownlint-cli2 "${staged_md[@]}" || fail "markdownlint-cli2"
         pass "markdownlint (${#staged_md[@]} file(s))"
     else
         echo "  - markdownlint (skipped: install via \`brew install markdownlint-cli2\`)"
@@ -63,7 +91,7 @@ fi
 if [ ${#staged_sh[@]} -gt 0 ]; then
     if command -v shellcheck >/dev/null 2>&1; then
         mapfile -t staged_sh_uniq < <(printf '%s\n' "${staged_sh[@]}" | sort -u)
-        shellcheck --severity=warning "${staged_sh_uniq[@]}" || fail "shellcheck --severity=warning"
+        without_git_repo_env shellcheck --severity=warning "${staged_sh_uniq[@]}" || fail "shellcheck --severity=warning"
         pass "shellcheck (${#staged_sh_uniq[@]} file(s))"
     else
         echo "  - shellcheck (skipped: install via \`brew install shellcheck\`)"

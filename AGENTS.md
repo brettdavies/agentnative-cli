@@ -159,8 +159,8 @@ contract.
 - `src/audits/project/`: file and manifest inspection audits
 - `src/runner.rs`: binary execution with timeout and caching
 - `src/project/`: project discovery: workspace declarations (`workspace/`), the gitignore-aware tree scan (`scan.rs`),
-  the package inventory (`inventory.rs`), declared bins on disk (`bins.rs`), binary selection (`select.rs`), and the
-  per-language source cache (`mod.rs`)
+  the package inventory (`inventory.rs`), declared bins on disk (`bins.rs`) in cargo's target directory
+  (`cargo_target.rs`), binary selection (`select.rs`), and the per-language source cache (`mod.rs`)
 - `src/scorecard.rs`: output formatting (text and JSON)
 - `src/types.rs`: AuditResult, AuditStatus, AuditGroup, AuditLayer
 - `src/principles/registry.rs`: single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the

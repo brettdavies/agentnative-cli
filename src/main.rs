@@ -267,9 +267,15 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         if has_binary {
             all_audits.extend(all_behavioral_audits());
         } else if !project.inventory.unbuilt.is_empty() {
+            let target_dirs: Vec<String> = project
+                .inventory
+                .target_dirs
+                .iter()
+                .map(|dir| select::relative_path(&project.path, dir))
+                .collect();
             eprintln!(
                 "warning: {}",
-                unbuilt_warning(&project.inventory.unbuilt, binary_only)
+                unbuilt_warning(&project.inventory.unbuilt, &target_dirs, binary_only)
             );
         } else if binary_only {
             eprintln!("warning: --binary specified but no binary found");
@@ -835,15 +841,22 @@ fn audit_usage() -> String {
         .unwrap_or_default()
 }
 
-/// The no-binary warning when packages declare bins that are not built.
-fn unbuilt_warning(names: &[String], binary_only: bool) -> String {
+/// The no-binary warning when packages declare bins that are not built,
+/// naming the cargo target directories searched for the Rust ones.
+fn unbuilt_warning(names: &[String], target_dirs: &[String], binary_only: bool) -> String {
     let outcome = if binary_only {
         "nothing to audit with --binary"
     } else {
         "running source and project audits only"
     };
+    let quoted: Vec<String> = target_dirs.iter().map(|dir| format!("`{dir}`")).collect();
+    let searched = match quoted.as_slice() {
+        [] => String::new(),
+        [one] => format!(" (searched cargo's target directory {one})"),
+        many => format!(" (searched cargo's target directories {})", many.join(", ")),
+    };
     format!(
-        "no binary here is built: the packages declare {}. To grade one, build it, audit a built binary by path (`anc audit <path>`), or audit an installed one (`anc audit --command <name>`); {outcome}",
+        "no binary here is built: the packages declare {}{searched}. To grade one, build it, audit a built binary by path (`anc audit <path>`), or audit an installed one (`anc audit --command <name>`); {outcome}",
         names.join(", ")
     )
 }

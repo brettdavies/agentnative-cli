@@ -2,6 +2,64 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-10-02
+
+### Added
+
+- Recognize 12 more verbs in `p6-may-standard-names`: `archive`, `block`, `bookmark`, `follow`, `mute`, `reply`, `subscribe`, `unarchive`, `unblock`, `unfollow`, `unmute`, and `unsubscribe`. by @brettdavies in [#76](https://github.com/brettdavies/agentnative-cli/pull/76)
+- Add `.anc.toml`, whose `[p6] domain_verbs` lists a CLI's own verbs for `p6-may-standard-names` to accept beside the built-in list.
+- Add `using_domain_verbs` and `domain_match_count` (scorecard schema 0.8) to each row: present when `p6-standard-names` passes with help from `.anc.toml [p6] domain_verbs`, absent from every other row. by @brettdavies in [#83](https://github.com/brettdavies/agentnative-cli/pull/83)
+- Fill a passing `p6-standard-names` row's `evidence` with the built-in versus `domain_verbs` ratio when `domain_verbs` helped, such as `"7/8 subcommands standard (3 via .anc.toml [p6].domain_verbs: [post, like, repost])"`; other passing rows keep `evidence: null`.
+- Add the `p3-unprefixed-command-list` audit for the new SHOULD `p3-should-unprefixed-command-list`: a `--help` command list whose entries repeat the binary name warns with the offending entries named; a clap-shaped list passes; a tool whose help yields no subcommand names is not applicable; an examples section is never graded. by @brettdavies in [#95](https://github.com/brettdavies/agentnative-cli/pull/95)
+- Add `--repo <PATH>` (or `AGENTNATIVE_REPO`) to `anc audit`: read `.anc.toml` from a repository you fetched for a tool installed elsewhere, such as a package-manager install in a sandbox. `anc` reads `<PATH>/.anc.toml` over `~/.anc.toml` and never fetches. by @brettdavies in [#114](https://github.com/brettdavies/agentnative-cli/pull/114)
+- Add the `.anc.toml` lookup: every `.anc.toml` from the target's git repository root down to the target applies, so a directory, a built binary, a `--command` that resolves into a checkout, and a subdirectory of a multi-package repository all pick up the repository's `domain_verbs`. A binary is located by its real file, symlinks resolved.
+- Add `~/.anc.toml`, which applies under every audit as the lowest-precedence layer; `AGENTNATIVE_HOME_CONFIG` relocates it. Scorecards can differ between machines whose home files differ. Evidence names a relocated file `$AGENTNATIVE_HOME_CONFIG`, and a relocated file that does not exist prints a `warning:` line on stderr.
+- Void the whole config when any `.anc.toml` in the chain cannot be read or parsed, and name the failing file in the `p6-may-standard-names` warning.
+- Add a hint to the `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`: text mode prints the `domain_verbs = [...]` line to add under `[p6]`, the two files it can go in with what each is for (the repository's `.anc.toml`, which travels with the tool, and `~/.anc.toml`, which applies to every tool you audit), and a link to the README section. JSON carries the same as `config_hint` on the row, with `files` naming each file and its `repository`, `tool-repository`, or `user` scope (scorecard schema 0.9). by @brettdavies in [#115](https://github.com/brettdavies/agentnative-cli/pull/115)
+- Add a stderr warning when a workspace declaration (`Cargo.toml`, `package.json`, `pnpm-workspace.yaml`, `go.work`, or a `uv` `pyproject.toml`) cannot be read or names a member directory with no manifest. by @brettdavies in [#118](https://github.com/brettdavies/agentnative-cli/pull/118)
+- Add binary discovery for workspace roots and nested packages: `anc audit .` at a Cargo, npm, yarn, `pnpm`, go.work, or `uv` workspace root, or at a repo mixing languages, now grades a binary that a package declares and has built, such as a member crate's `target/release/<bin>` in the shared target directory. Rust `src/bin/<name>.rs` bins count too. by @brettdavies in [#119](https://github.com/brettdavies/agentnative-cli/pull/119)
+- Add `--bin <NAME>` (or `AGENTNATIVE_BIN`) to `anc audit`: choose which built binary a directory audit grades, by bin name or by the path `anc` prints for it. by @brettdavies in [#120](https://github.com/brettdavies/agentnative-cli/pull/120)
+- Add `next_step` to every `--output json` error envelope: an `action` from a closed set (`show-help`, `choose-bin`, `rerun`) with a runnable `command` or a `--bin <name>` `template`, and a `docs` link. `unknown-bin` and `bin-needs-directory` echo the offending name as `bin`, and parse errors echo clap's `argument` and `value`.
+- Add source audits for every language a directory audit finds: a repo mixing a Rust CLI and a Python package now gets both the Rust and the Python source audits. by @brettdavies in [#121](https://github.com/brettdavies/agentnative-cli/pull/121)
+
+### Changed
+
+- Change `p2-must-json-errors` to accept any error envelope that carries a discriminant, a type identifier, and a message, whatever the field names, instead of requiring the literal keys `error`, `kind`, and `message`. by @brettdavies in [#79](https://github.com/brettdavies/agentnative-cli/pull/79)
+- Change scores for CLIs with a hand-written command list: ten audits that skipped on "no subcommands" now evaluate real names, and five that answered on no evidence now answer on real ones, so scores can move in either direction. herdr moves from 77 to 72 and stays badge-eligible. by @brettdavies in [#94](https://github.com/brettdavies/agentnative-cli/pull/94)
+- Change scores for every CLI that lists commands in `--help`: the new SHOULD row enters the denominator, as a pass for clap-shaped lists and a warn for prefixed ones. herdr moves from 72 to 71 and stays badge-eligible; this repository gains a passing row. by @brettdavies in [#95](https://github.com/brettdavies/agentnative-cli/pull/95)
+- Speed up audits of a CLI that hangs on `--version`: the version audit stops probing short aliases once `--version` fails, and the scorecard reuses that result instead of probing again. Against a hanging fixture the audit takes 7 s instead of 14 s. by @brettdavies in [#110](https://github.com/brettdavies/agentnative-cli/pull/110)
+- Change Go binary discovery to the commands a module declares: each directory holding `package main` names a binary after itself, found in that directory or at the module root. by @brettdavies in [#119](https://github.com/brettdavies/agentnative-cli/pull/119)
+- Change a directory audit that finds several built binaries, which `anc` graded on the first one it found, to exit 2 until `--bin` names one. Text output lists one command per binary that keeps the flags you passed and adds `--bin NAME`; `--output json` returns a `binary-ambiguous` usage error with a `candidates` array. `--source` runs no binary and needs no `--bin`. CI that runs `anc audit .` on a repository that builds several binaries sets `AGENTNATIVE_BIN` (or passes `--bin`) to keep running. by @brettdavies in [#120](https://github.com/brettdavies/agentnative-cli/pull/120)
+- Change the no-binary warning to name the bins the packages declare but have not built, and how to proceed: build one, audit a built binary by path, or audit an installed one with `--command`.
+- Change manifest-reading audits and the scorecard's tool name and version to read the graded binary's own package, so a Cargo workspace root reads the member crate that builds the binary. With no binary built and several packages declaring one, those audits skip and name the packages. by @brettdavies in [#121](https://github.com/brettdavies/agentnative-cli/pull/121)
+- Change source audits to skip files the repository's `.gitignore` excludes, and anything under `node_modules`, `vendor`, `venv`, `dist`, or `build`. Repos with ignored or vendored source can see different source-audit results.
+- Change source audits to skip example programs, an `examples` directory beside a package manifest or at the audit root, so a library's `cargo run --example` code no longer counts against the CLI.
+
+### Fixed
+
+- Exempt `.unwrap()` calls inside `#[cfg(test)]`-gated items (inline `mod tests`, gated helper functions, gated `impl` blocks) from `code-unwrap` by default; `--include-tests` restores the prior behaviour. by @brettdavies in [#77](https://github.com/brettdavies/agentnative-cli/pull/77)
+- Resolve the `anyhow` (RUSTSEC-2026-0190) and `crossbeam-epoch` (RUSTSEC-2026-0204) advisories by bumping both crates in `Cargo.lock`. by @brettdavies in [#90](https://github.com/brettdavies/agentnative-cli/pull/90)
+- Fix `anc audit --source` aborting with exit 101 when a matched line contains multi-byte characters (braille, CJK, emoji) near the evidence preview boundary; previews are now bounded by character count. by @brettdavies in [#92](https://github.com/brettdavies/agentnative-cli/pull/92)
+- Fix the help parser so a hand-written `... commands:` block whose entries repeat the binary name yields the real top-level command names instead of no subcommands. by @brettdavies in [#94](https://github.com/brettdavies/agentnative-cli/pull/94)
+- Fix `p5-force-yes` and `p5-read-write-distinction` classifying `format`, `transform`, `perform`, `confirm`, and `firmware` as destructive because they contain `rm`.
+- Fix `p3-subcommand-examples` and `p6-standard-names` evidence to say whether no command block was found or a block was found but could not be read, instead of asserting the tool has no subcommands.
+- Fix `p2-json-output` opting out without probing any subcommand on a CLI whose command list is hand-written.
+- Fix audits of a CLI that hangs on a probe occasionally waiting for the CLI to exit on its own instead of stopping it at the probe timeout. A hung `--version` could stretch an audit by the length of the hang. by @brettdavies in [#109](https://github.com/brettdavies/agentnative-cli/pull/109)
+- Fix Node projects grading whichever file `node_modules/.bin` listed first, often a dependency's tool such as `tsc`. `anc` now grades only the bins `package.json` declares, as the executable declared file or its `node_modules/.bin` link. by @brettdavies in [#119](https://github.com/brettdavies/agentnative-cli/pull/119)
+- Fix Python projects grading any file under `dist/` or `build/`, such as a built wheel. `anc` now grades only `[project.scripts]` entries installed in `.venv/bin`. A project that relied on the old discovery can now find no binary; audit the binary by path or name it with `--command`.
+- Fix `anc audit --principle` accepting values outside 1 to 8 and exiting 0 with an empty scorecard; it is now a usage error at exit 2 that names the range. by @brettdavies in [#124](https://github.com/brettdavies/agentnative-cli/pull/124)
+- Fix `AGENTNATIVE_QUIET` and `AGENTNATIVE_VERBOSE` rejecting `1` and `0`: any value but `0`, `false`, `no`, `off`, or empty turns the flag on.
+
+### Documentation
+
+- Document where `anc` looks for `.anc.toml`, how nested files and `~/.anc.toml` combine, `--repo`, and the configuration hint with the two files it names, in a new README Configuration section linked from `anc audit --help`. by @brettdavies in [#116](https://github.com/brettdavies/agentnative-cli/pull/116)
+- Document what `anc audit DIR` grades: the package inventory, which declared and built binaries count for each language, the `binary-ambiguous` stop and `--bin`, and which package the manifest-reading audits read, in a new README section. by @brettdavies in [#122](https://github.com/brettdavies/agentnative-cli/pull/122)
+- Document the JSON error envelope and its `next_step` actions in a new README section, "Errors under `--output json`".
+- Document that source audits skip example programs: an `examples` directory beside a package manifest or at the audit root.
+- Correct the badge score formula and eligibility floor in `AGENTS.md` to match the scorer and the spec. by @brettdavies in [#123](https://github.com/brettdavies/agentnative-cli/pull/123)
+
+**Full Changelog**: [v0.5.0...v0.6.0](https://github.com/brettdavies/agentnative-cli/compare/v0.5.0...v0.6.0)
+
 ## [0.5.0] - 2026-06-01
 
 ### Added
@@ -68,7 +126,8 @@ All notable changes to this project will be documented in this file.
 - `RELEASES.md`: prose-scrubbing intro no longer promises a future vendoring; explicitly names the spec checkout as the Vale config source.
 - `CLAUDE.md`: § "Scorecard v0.5 Fields" renamed to § "Scorecard JSON fields"; the cross-link in `RELEASES-PREFLIGHT.md` updates to match.
 - `coverage/matrix.json` `schema_version` is now `"0.1"` (was `"1.0"`). The shape evolves additively until first public release locks it; consumers should feature-detect new fields rather than pin to an exact value. by @brettdavies in [#71](https://github.com/brettdavies/agentnative-cli/pull/71)
-- `p6-should-consistent-naming` heuristic now recognizes hierarchical noun-verb subcommand patterns. Top-level verbs combined with noun-grouped verbs (the standard `git`, `gh`, `kubectl`, `docker`, `npm`, `cargo`, `anc` shape) Pass; only genuine inconsistency at the second level (a non-verb subcommand whose children include both verbs and non-verbs) Warns. The audit probes one level deeper per non-verb top-level subcommand via the existing cached `BinaryRunner` infrastructure. by @brettdavies in [#73](https://github.com/brettdavies/agentnative-cli/pull/73)
+- `p6-should-consistent-naming` heuristic now recognizes hierarchical noun-verb subcommand patterns. Top-level verbs combined with noun-grouped verbs (the standard `git`, `gh`, `kubectl`, `docker`, `npm`, `cargo`, `anc` shape) Pass; only genuine inconsistency at the second level (a non-verb subcommand whose children include both verbs and non-verbs) Warns. The audit probes one level deeper per non-verb top-level subcommand via the existing cached `BinaryRunner` infrastructure.
+ by @brettdavies in [#73](https://github.com/brettdavies/agentnative-cli/pull/73)
 - `emit` added to the audit's `COMMON_VERBS` list so it is classified directly as a top-level verb action.
 - Warn evidence now names every offending subcommand by name so the operator can target the fix.
 

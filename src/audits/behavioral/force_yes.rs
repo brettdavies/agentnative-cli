@@ -6,9 +6,9 @@
 //! intent auditable in process tables and shell history.
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
-//! probe each one's `--help`, and audit for the presence of `--force`,
-//! `--yes`, `-y`, or `-f`. Fail when any destructive subcommand lacks both.
-//! Vacuous Skip when the binary has no destructive subcommands.
+//! probe each one's `--help`, and audit for one of [`CONFIRM_FLAGS`]. Fail
+//! when any destructive subcommand lists none. Vacuous Skip when the binary
+//! has no destructive subcommands.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::destructive_subcommands;
@@ -17,7 +17,16 @@ use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const REQUIRED_FLAGS: &[&str] = &["--force", "--yes", "-y", "-f"];
+/// Flags that confirm a destructive operation non-interactively.
+const CONFIRM_FLAGS: &[&str] = &[
+    "--force",
+    "--yes",
+    "-y",
+    "-f",
+    "--auto-approve",
+    "--assume-yes",
+    "--confirm",
+];
 
 pub struct ForceYesAudit;
 
@@ -98,10 +107,11 @@ pub(crate) fn audit_force_yes(
         AuditStatus::Pass
     } else {
         AuditStatus::Fail(format!(
-            "destructive subcommand(s) without `--force` or `--yes`: {}. \
-             Irreversible operations must require explicit confirmation so \
-             they can't be invoked accidentally.",
-            missing.join(", ")
+            "destructive subcommand(s) whose --help lists no confirmation flag: {}. \
+             Accepted flags: {}. Irreversible operations must require explicit \
+             confirmation so they can't be invoked accidentally.",
+            missing.join(", "),
+            CONFIRM_FLAGS.join(", "),
         ))
     }
 }
@@ -109,7 +119,7 @@ pub(crate) fn audit_force_yes(
 fn has_force_or_yes(help: &HelpOutput) -> bool {
     help.flags()
         .iter()
-        .any(|f| REQUIRED_FLAGS.iter().any(|name| f.matches(name)))
+        .any(|f| CONFIRM_FLAGS.iter().any(|name| f.matches(name)))
 }
 
 #[cfg(test)]
@@ -146,6 +156,38 @@ mod tests {
             audit_force_yes(&["purge".to_string()], &subhelp),
             AuditStatus::Pass
         );
+    }
+
+    #[test]
+    fn pass_on_widely_used_confirmation_flags() {
+        for flag in ["--auto-approve", "--assume-yes", "--confirm"] {
+            let subhelp = vec![(
+                "destroy".to_string(),
+                hp(&format!(
+                    "Usage: tool destroy\n\nOptions:\n      {flag}    Skip the prompt.\n  -h, --help    Show help.\n"
+                )),
+            )];
+            assert_eq!(
+                audit_force_yes(&["destroy".to_string()], &subhelp),
+                AuditStatus::Pass,
+                "{flag} confirms a destructive subcommand"
+            );
+        }
+    }
+
+    #[test]
+    fn fail_names_the_accepted_flags() {
+        let subhelp = vec![(
+            "delete".to_string(),
+            hp("Usage: tool delete <ID>\n\nOptions:\n  -h, --help    Show help.\n"),
+        )];
+        match audit_force_yes(&["delete".to_string()], &subhelp) {
+            AuditStatus::Fail(msg) => assert!(
+                msg.contains("Accepted flags: --force, --yes, -y, -f, --auto-approve, --assume-yes, --confirm."),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
     }
 
     #[test]

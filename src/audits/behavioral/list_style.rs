@@ -11,12 +11,14 @@ use crate::runner::HelpOutput;
 
 const LIST_VERBS: &[&str] = &["list", "ls", "search", "query", "find", "show", "get"];
 
-/// True iff the help text advertises at least one top-level subcommand
-/// whose name matches a list-style verb (case-insensitive).
-pub(crate) fn has_list_style_subcommand(help: &HelpOutput) -> bool {
+/// The top-level subcommands whose name matches a list-style verb
+/// (case-insensitive), in help order. Empty when the gate does not fire.
+pub(crate) fn list_style_subcommands(help: &HelpOutput) -> Vec<&str> {
     help.subcommands()
         .iter()
-        .any(|s| LIST_VERBS.iter().any(|verb| s.eq_ignore_ascii_case(verb)))
+        .map(String::as_str)
+        .filter(|s| LIST_VERBS.iter().any(|verb| s.eq_ignore_ascii_case(verb)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -28,21 +30,21 @@ mod tests {
         let help = HelpOutput::from_raw(
             "Usage: tool [COMMAND]\n\nCommands:\n  list    List items.\n  build   Build.\n",
         );
-        assert!(has_list_style_subcommand(&help));
+        assert!(!list_style_subcommands(&help).is_empty());
     }
 
     #[test]
     fn detects_search_verb() {
         let help =
             HelpOutput::from_raw("Usage: tool [COMMAND]\n\nCommands:\n  search    Search items.\n");
-        assert!(has_list_style_subcommand(&help));
+        assert!(!list_style_subcommands(&help).is_empty());
     }
 
     #[test]
     fn case_insensitive_match() {
         let help =
             HelpOutput::from_raw("Usage: tool [COMMAND]\n\nCommands:\n  LIST    UPPERCASE.\n");
-        assert!(has_list_style_subcommand(&help));
+        assert!(!list_style_subcommands(&help).is_empty());
     }
 
     #[test]
@@ -52,12 +54,12 @@ mod tests {
         let help = HelpOutput::from_raw(
             "Usage: tool [COMMAND]\n\nCommands:\n  audit    Run audits.\n  build    Build.\n  run    Run.\n",
         );
-        assert!(!has_list_style_subcommand(&help));
+        assert!(list_style_subcommands(&help).is_empty());
     }
 
     #[test]
     fn empty_subcommand_list_returns_false() {
         let help = HelpOutput::from_raw("Usage: tool [OPTIONS]\n\nOptions:\n  -h, --help\n");
-        assert!(!has_list_style_subcommand(&help));
+        assert!(list_style_subcommands(&help).is_empty());
     }
 }

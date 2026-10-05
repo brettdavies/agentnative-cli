@@ -6,6 +6,9 @@ use serde::Deserialize;
 /// How evidence cites `[p2] json_probe`.
 pub const JSON_PROBE_KEY: &str = "[p2].json_probe";
 
+/// How evidence cites `[p2] schema_command`.
+pub const SCHEMA_COMMAND_KEY: &str = "[p2].schema_command";
+
 /// How evidence cites `[p5] confirm_flags`.
 pub const CONFIRM_FLAGS_KEY: &str = "[p5].confirm_flags";
 
@@ -45,6 +48,10 @@ pub struct P2Config {
     /// when `p2-must-output-flag` cannot validate JSON on its own probes.
     /// The nearest file that declares one supplies it.
     pub json_probe: Option<Sourced<Vec<String>>>,
+    /// The subcommand path that prints the tool's output schema, for a
+    /// tool whose schema surface is not named `schema`. The nearest file
+    /// that declares one supplies it.
+    pub schema_command: Option<Sourced<Vec<String>>>,
 }
 
 /// `[p5]`: P5 (Safe Retries and Explicit Mutation Boundaries).
@@ -84,6 +91,8 @@ pub(super) struct FileConfig {
 struct FileP2 {
     #[serde(default)]
     json_probe: Option<Vec<String>>,
+    #[serde(default)]
+    schema_command: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -104,6 +113,11 @@ impl AncConfig {
             }
         }
         replace_command(&mut self.p2.json_probe, settings.p2.json_probe, file);
+        replace_command(
+            &mut self.p2.schema_command,
+            settings.p2.schema_command,
+            file,
+        );
         merge_list(&mut self.p5.confirm_flags, settings.p5.confirm_flags, file);
         merge_list(
             &mut self.p5.not_destructive,
@@ -228,6 +242,27 @@ mod tests {
                     "-o".into(),
                     "json".into()
                 ],
+                file: ".anc.toml".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn the_nearer_schema_command_replaces_the_one_below() {
+        let mut cfg = AncConfig::default();
+        cfg.absorb(
+            parse("[p2]\nschema_command = [\"explain\"]\n"),
+            "~/.anc.toml",
+        );
+        cfg.absorb(
+            parse("[p2]\nschema_command = [\"emit\", \"schema\"]\n"),
+            ".anc.toml",
+        );
+
+        assert_eq!(
+            cfg.p2.schema_command,
+            Some(Sourced {
+                value: vec!["emit".into(), "schema".into()],
                 file: ".anc.toml".into(),
             })
         );

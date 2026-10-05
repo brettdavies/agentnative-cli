@@ -10,15 +10,18 @@
 //! `--jsonl`, or the words "json"/"jsonl"), or when the `.anc.toml` chain's
 //! `[p2] json_probe` prints JSON. When neither shows structured output the
 //! audit Skips with evidence; otherwise it looks for either a `schema`
-//! subcommand or `--schema` flag.
+//! subcommand or `--schema` flag, then for the subcommand the chain names
+//! in `[p2] schema_command`.
 
-use crate::anc_toml::{JSON_PROBE_KEY, Sourced};
+use crate::anc_toml::{JSON_PROBE_KEY, SCHEMA_COMMAND_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::json_output::{probe_invocation, run_declared_probe};
-use crate::audits::behavioral::subcommand_help::probe_subcommands;
+use crate::audits::behavioral::subcommand_help::{probe_help, probe_subcommands};
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput};
-use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Verdict};
+use crate::types::{
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict,
+};
 
 const STRUCTURED_OUTPUT_FLAG_NAMES: &[&str] =
     &["--output", "--format", "--json", "--jsonl", "--ndjson"];
@@ -57,11 +60,9 @@ impl Audit for SchemaPrintAudit {
             None => AuditStatus::Skip("could not probe --help".into()).into(),
             Some(help) => {
                 let runner = project.runner_ref();
-                let declared = project
-                    .anc_config
-                    .config()
-                    .and_then(|cfg| cfg.p2.json_probe.as_ref());
-                let shown_by_probe = declared
+                let p2 = project.anc_config.config().map(|cfg| &cfg.p2);
+                let shown_by_probe = p2
+                    .and_then(|p2| p2.json_probe.as_ref())
                     .filter(|_| !has_structured_output_indicator(help))
                     .filter(|probe| run_declared_probe(runner, &probe.value).is_ok());
                 // First try the top-level help only. If that's inconclusive,
@@ -76,9 +77,15 @@ impl Audit for SchemaPrintAudit {
                     }
                     other => other,
                 };
+                let verdict = match (status, p2.and_then(|p2| p2.schema_command.as_ref())) {
+                    (status @ AuditStatus::Fail(_), Some(path)) => {
+                        audit_declared_schema_command(status, runner, help, path)
+                    }
+                    (status, _) => Verdict::from(status),
+                };
                 match shown_by_probe {
-                    Some(probe) => credit_the_probe(status, runner, probe),
-                    None => status.into(),
+                    Some(probe) => credit_the_probe(verdict, runner, probe),
+                    None => verdict,
                 }
             }
         };
@@ -101,10 +108,62 @@ impl Audit for SchemaPrintAudit {
     }
 }
 
+/// Pass when the help lists the declared schema command, naming it and the
+/// file that declared it; otherwise keep the built-in `fail` and say the
+/// declared command was not found.
+fn audit_declared_schema_command(
+    fail: AuditStatus,
+    runner: &BinaryRunner,
+    help: &HelpOutput,
+    path: &Sourced<Vec<String>>,
+) -> Verdict {
+    let shown = probe_invocation(runner, &path.value);
+    let cited = path.cite(SCHEMA_COMMAND_KEY);
+    if lists_command_path(runner, help, &path.value) {
+        return Verdict {
+            status: AuditStatus::Pass,
+            mitigation: Some(Mitigation::Config(format!(
+                "`{shown}` is the schema command declared via {cited}"
+            ))),
+        };
+    }
+    fail.with_note(&format!(
+        "The schema command `{shown}`, declared via {cited}, is not listed in --help."
+    ))
+    .into()
+}
+
+/// Whether each token of `path` is listed in its parent's `--help`: the
+/// first in `top_help`, each later one in `<bin> <path so far> --help`.
+fn lists_command_path(runner: &BinaryRunner, top_help: &HelpOutput, path: &[String]) -> bool {
+    let Some(first) = path.first() else {
+        return false;
+    };
+    lists_subcommand(top_help, first)
+        && (1..path.len()).all(|depth| {
+            let parent: Vec<&str> = path[..depth].iter().map(String::as_str).collect();
+            probe_help(runner, &parent).is_some_and(|help| lists_subcommand(&help, &path[depth]))
+        })
+}
+
+/// Whether `help` lists `name` as a subcommand: a parsed name, or an
+/// indented line whose text before the description gap is `name`, for a
+/// command block whose heading the parser does not read (kubectl's `Basic
+/// Commands (Beginner):`).
+fn lists_subcommand(help: &HelpOutput, name: &str) -> bool {
+    help.subcommands()
+        .iter()
+        .any(|parsed| parsed.to_lowercase() == name)
+        || help.raw().lines().any(|line| {
+            line.starts_with(char::is_whitespace) && line.trim().split("  ").next() == Some(name)
+        })
+}
+
 /// Name the declared probe that showed structured output when the help did
-/// not: in a Pass's evidence, or at the end of any other status.
+/// not: in a Pass's evidence beside any other setting it needed, or at the
+/// end of any other status.
 fn credit_the_probe(
-    status: AuditStatus,
+    verdict: Verdict,
     runner: &BinaryRunner,
     probe: &Sourced<Vec<String>>,
 ) -> Verdict {
@@ -114,7 +173,7 @@ fn credit_the_probe(
         probe.cite(JSON_PROBE_KEY)
     );
     let note = format!("The CLI has {shown}.");
-    Verdict::from(status).crediting(shown, &note)
+    verdict.crediting(shown, &note)
 }
 
 /// Whether the help names a structured-output flag or format.
@@ -261,24 +320,113 @@ Options:
   *) printf 'Usage: test <COMMAND>\n\nCommands:\n  get      Show a resource\n  version  Print the version\n' ;;
 esac"#;
 
-    fn run_with_probe(probe: Option<&[&str]>) -> AuditResult {
-        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(
-            JSON_ONLY_ON_A_SUBCOMMAND,
-        );
-        let mut cfg = crate::anc_toml::AncConfig::default();
-        cfg.p2.json_probe = probe.map(|args| Sourced {
+    fn sourced(args: &[&str]) -> Sourced<Vec<String>> {
+        Sourced {
             value: args.iter().map(|arg| (*arg).to_string()).collect(),
             file: ".anc.toml".into(),
-        });
+        }
+    }
+
+    /// Run the audit on `script` with the given `[p2]` declarations.
+    fn run_declared(
+        script: &str,
+        json_probe: Option<&[&str]>,
+        schema: Option<&[&str]>,
+    ) -> AuditResult {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(script);
+        let mut cfg = crate::anc_toml::AncConfig::default();
+        cfg.p2.json_probe = json_probe.map(sourced);
+        cfg.p2.schema_command = schema.map(sourced);
         project.anc_config.load = crate::anc_toml::AncConfigLoad::Loaded(cfg);
         SchemaPrintAudit.run(&project).expect("audit runs")
     }
 
+    /// Structured output in the help, no `schema` surface, and an `explain`
+    /// command plus an `emit shape` command.
+    const EXPLAIN_CLI: &str = r#"case "$*" in
+  "emit --help") printf 'Usage: test emit <COMMAND>\n\nCommands:\n  shape  Print the output shape\n' ;;
+  *--help*) printf 'Usage: test <COMMAND>\n\nCommands:\n  get      Show a resource\n  explain  Describe a resource type\n  emit     Emit artifacts\n\nOptions:\n  --output <FORMAT>  text or json\n' ;;
+esac"#;
+
+    #[test]
+    fn a_declared_schema_command_the_help_lists_passes_and_names_its_file() {
+        assert!(matches!(
+            run_declared(EXPLAIN_CLI, None, None).status,
+            AuditStatus::Fail(_)
+        ));
+
+        let result = run_declared(EXPLAIN_CLI, None, Some(&["explain"]));
+
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(
+            result.mitigation,
+            Some(Mitigation::Config(
+                "`test explain` is the schema command declared via .anc.toml [p2].schema_command"
+                    .into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_nested_declared_schema_command_is_found_in_its_parent_help() {
+        let result = run_declared(EXPLAIN_CLI, None, Some(&["emit", "shape"]));
+
+        assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_declared_schema_command_the_help_does_not_list_keeps_the_fail_and_says_so() {
+        match run_declared(EXPLAIN_CLI, None, Some(&["emit", "schema"])).status {
+            AuditStatus::Fail(msg) => assert!(
+                msg.ends_with(
+                    "The schema command `test emit schema`, declared via .anc.toml \
+                     [p2].schema_command, is not listed in --help."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_kubectl_shaped_cli_passes_on_its_declared_probe_and_schema_command() {
+        let script = r#"case "$*" in
+  "version --client -o json") echo '{"clientVersion":{}}' ;;
+  *--help*) printf 'tool controls things.\n\nBasic Commands (Intermediate):\n  explain         Get documentation for a resource\n  get             Display one or many resources\n' ;;
+esac"#;
+
+        let result = run_declared(
+            script,
+            Some(&["version", "--client", "-o", "json"]),
+            Some(&["explain"]),
+        );
+
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(
+            result.mitigation,
+            Some(Mitigation::Config(
+                "`test explain` is the schema command declared via .anc.toml [p2].schema_command; \
+                 structured output shown by `test version --client -o json`, the probe declared \
+                 via .anc.toml [p2].json_probe"
+                    .into()
+            ))
+        );
+    }
+
     #[test]
     fn a_declared_probe_that_prints_json_shows_structured_output() {
-        assert!(matches!(run_with_probe(None).status, AuditStatus::Skip(_)));
+        assert!(matches!(
+            run_declared(JSON_ONLY_ON_A_SUBCOMMAND, None, None).status,
+            AuditStatus::Skip(_)
+        ));
 
-        match run_with_probe(Some(&["version", "-o", "json"])).status {
+        match run_declared(
+            JSON_ONLY_ON_A_SUBCOMMAND,
+            Some(&["version", "-o", "json"]),
+            None,
+        )
+        .status
+        {
             AuditStatus::Fail(msg) => assert!(
                 msg.ends_with(
                     "The CLI has structured output shown by `test version -o json`, the probe \

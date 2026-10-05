@@ -192,3 +192,33 @@ fn json_probe_from_the_repo_file_validates_json_output_and_names_the_probe() {
         "row: {row}"
     );
 }
+
+/// The kubectl-shaped CLI with `explain`, its schema surface, under a block
+/// heading that carries a parenthetical.
+const KUBECTL_EXPLAIN_CLI: &str = r#"  "version --client -o json") echo '{"clientVersion":{"gitVersion":"v1.0.0"}}' ;;
+  "get --help") printf 'Display one or many resources.\n\nOptions:\n  -o, --output='"''"': One of: json, yaml, wide.\n' ;;
+  "--version") echo "tool 1.0.0" ;;
+  *) printf 'tool controls the thing.\n\nBasic Commands (Intermediate):\n  explain  Get documentation for a resource\n\nOther Commands:\n  get      Display one or many resources\n  version  Print the version\n' ;;"#;
+
+#[test]
+fn schema_command_from_the_repo_file_passes_schema_print_and_names_the_file() {
+    let fixture = Fixture::new(KUBECTL_EXPLAIN_CLI);
+    fixture.repo_config("[p2]\njson_probe = [\"version\", \"--client\", \"-o\", \"json\"]\n");
+    let without = fixture.row("p2-must-schema-print");
+    assert_eq!(without["status"], "fail", "row: {without}");
+
+    let row = fixture
+        .repo_config(
+            "[p2]\njson_probe = [\"version\", \"--client\", \"-o\", \"json\"]\nschema_command = [\"explain\"]\n",
+        )
+        .row("p2-must-schema-print");
+
+    assert_eq!(row["status"], "pass", "row: {row}");
+    assert_eq!(
+        row["evidence"],
+        "`tool explain` is the schema command declared via .anc.toml [p2].schema_command; \
+         structured output shown by `tool version --client -o json`, the probe declared via \
+         .anc.toml [p2].json_probe",
+        "row: {row}"
+    );
+}

@@ -4,6 +4,7 @@
 //! ```toml
 //! [p2]
 //! json_probe = ["version", "--client", "-o", "json"]
+//! schema_command = ["explain"]
 //!
 //! [p5]
 //! confirm_flags = ["-auto-approve"]
@@ -14,7 +15,9 @@
 //! ```
 //!
 //! `json_probe` names a read-only call that prints JSON, which
-//! `p2-must-output-flag` runs when it cannot validate JSON on its own probes.
+//! `p2-must-output-flag` runs when it cannot validate JSON on its own probes;
+//! `schema_command` names the subcommand `p2-must-schema-print` accepts as
+//! the schema surface.
 //! `confirm_flags` names flags that confirm a destructive subcommand, beside
 //! the built-in names `p5-must-force-yes` accepts; `not_destructive` names
 //! subcommands that audit leaves out of its destructive set. `domain_verbs` extends the
@@ -45,7 +48,9 @@ mod chain;
 mod settings;
 
 use chain::Chain;
-pub use settings::{AncConfig, CONFIRM_FLAGS_KEY, JSON_PROBE_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
+pub use settings::{
+    AncConfig, CONFIRM_FLAGS_KEY, JSON_PROBE_KEY, NOT_DESTRUCTIVE_KEY, SCHEMA_COMMAND_KEY, Sourced,
+};
 
 /// Filename probed in each directory of the chain.
 pub const ANC_TOML_FILENAME: &str = ".anc.toml";
@@ -741,6 +746,59 @@ mod tests {
             &chain::resolve(&root, Some(&home_file), None),
             DEFAULT_HOME_LABEL,
         ));
+
+        assert!(
+            msg.starts_with("could not parse .anc.toml at .anc.toml:"),
+            "got: {msg}"
+        );
+    }
+
+    fn schema_command(load: &AncConfigLoad) -> Option<(Vec<&str>, &str)> {
+        match load {
+            AncConfigLoad::Loaded(cfg) => cfg.p2.schema_command.as_ref().map(|path| {
+                (
+                    path.value.iter().map(String::as_str).collect(),
+                    path.file.as_str(),
+                )
+            }),
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn loaded_schema_command_names_the_file_that_declared_it() {
+        let root = repo("schema-command-parse");
+        let cli = root.join("cli");
+        write(&cli, "[p2]\nschema_command = [\"explain\"]\n");
+
+        assert_eq!(
+            schema_command(&load_for_target(&cli, None, None).load),
+            Some((vec!["explain"], "cli/.anc.toml"))
+        );
+    }
+
+    #[test]
+    fn repo_schema_command_replaces_the_home_one() {
+        let home = unique_tmp("schema-command-home");
+        let root = repo("schema-command-precedence");
+        write(&home, "[p2]\nschema_command = [\"describe\"]\n");
+        write(&root, "[p2]\nschema_command = [\"explain\"]\n");
+        let home_file = home.join(ANC_TOML_FILENAME);
+
+        let load = load_chain(
+            &chain::resolve(&root, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        );
+
+        assert_eq!(schema_command(&load), Some((vec!["explain"], ".anc.toml")));
+    }
+
+    #[test]
+    fn schema_command_of_the_wrong_type_voids_the_chain() {
+        let root = repo("schema-command-void");
+        write(&root, "[p2]\nschema_command = \"explain\"\n");
+
+        let msg = invalid(load_for_target(&root, None, None).load);
 
         assert!(
             msg.starts_with("could not parse .anc.toml at .anc.toml:"),

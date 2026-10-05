@@ -1,8 +1,17 @@
+use std::ffi::OsString;
+
+use crate::anc_toml::{JSON_PROBE_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::subcommand_help::should_skip;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
-use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+use crate::types::{
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict,
+};
+
+/// The evidence when an output flag is detected but no safe probe printed
+/// JSON. A `[p2] json_probe` declaration takes over from here.
+const UNVERIFIABLE: &str = "--output/--format flag detected but could not validate JSON via safe probes (--help/--version override output flags in most CLIs)";
 
 pub struct JsonOutputAudit;
 
@@ -33,25 +42,26 @@ impl Audit for JsonOutputAudit {
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let runner = project.runner_ref();
-        let help_result = runner.run(&["--help"], &[]);
-
-        let status = match help_result.status {
-            RunStatus::Ok => {
-                let output = format!("{}{}", help_result.stdout, help_result.stderr);
-                let lower = output.to_lowercase();
-                let has_output_flag = lower.contains("--output");
-                let has_format_flag = lower.contains("--format");
-
-                if has_output_flag || has_format_flag {
-                    // Flag found in top-level help, validate directly
-                    validate_json_output(runner, &[], has_output_flag, has_format_flag)
-                } else {
-                    // Flag not in top-level help. Probe subcommands, since most CLIs
-                    // (gh, kubectl, cargo) put --output on subcommands, not top-level.
-                    probe_subcommands(runner, project.help_output())
-                }
+        let declared = project
+            .anc_config
+            .config()
+            .and_then(|cfg| cfg.p2.json_probe.as_ref());
+        let verdict = match (detect_json_output(runner, project), declared) {
+            (AuditStatus::Skip(reason), Some(probe)) if reason == UNVERIFIABLE => {
+                audit_declared_probe(runner, probe)
             }
-            _ => AuditStatus::Skip("could not run --help to detect output flags".into()),
+            (status @ AuditStatus::OptOut(_), Some(probe)) => status
+                .with_note(&format!(
+                    "The probe declared via {} runs only for a tool whose help shows an \
+                     --output or --format flag.",
+                    probe.cite(JSON_PROBE_KEY)
+                ))
+                .into(),
+            (status, _) => Verdict::from(status),
+        };
+        let status = match project.anc_config.void_note() {
+            Some(note) => verdict.status.with_note(&note),
+            None => verdict.status,
         };
 
         Ok(AuditResult {
@@ -61,11 +71,94 @@ impl Audit for JsonOutputAudit {
             layer: AuditLayer::Behavioral,
             status,
             confidence: Confidence::High,
-            mitigation: None,
+            mitigation: verdict.mitigation,
             config_hint: None,
             pass_evidence: None,
         })
     }
+}
+
+/// Find an output flag in the help and validate JSON through the safe
+/// probes, without any declaration.
+fn detect_json_output(runner: &BinaryRunner, project: &Project) -> AuditStatus {
+    let help_result = runner.run(&["--help"], &[]);
+    match help_result.status {
+        RunStatus::Ok => {
+            let output = format!("{}{}", help_result.stdout, help_result.stderr);
+            let lower = output.to_lowercase();
+            let has_output_flag = lower.contains("--output");
+            let has_format_flag = lower.contains("--format");
+
+            if has_output_flag || has_format_flag {
+                // Flag found in top-level help, validate directly
+                validate_json_output(runner, &[], has_output_flag, has_format_flag)
+            } else {
+                // Flag not in top-level help. Probe subcommands, since most CLIs
+                // (gh, kubectl, cargo) put --output on subcommands, not top-level.
+                probe_subcommands(runner, project.help_output())
+            }
+        }
+        _ => AuditStatus::Skip("could not run --help to detect output flags".into()),
+    }
+}
+
+/// Run the declared probe: Pass when it exits 0 with JSON on stdout, naming
+/// the probe and the file that declared it; Fail otherwise, saying what it
+/// did instead.
+fn audit_declared_probe(runner: &BinaryRunner, probe: &Sourced<Vec<String>>) -> Verdict {
+    let shown = probe_invocation(runner, &probe.value);
+    let cited = probe.cite(JSON_PROBE_KEY);
+    match run_declared_probe(runner, &probe.value) {
+        Ok(()) => Verdict {
+            status: AuditStatus::Pass,
+            mitigation: Some(Mitigation::Config(format!(
+                "`{shown}` printed JSON; probe declared via {cited}"
+            ))),
+        },
+        Err(why) => AuditStatus::Fail(format!(
+            "`{shown}`, the probe declared via {cited}, {why}. The declared probe must exit 0 \
+             and print JSON on stdout."
+        ))
+        .into(),
+    }
+}
+
+/// Run `args` exactly as declared: no shell, with the runner's timeout,
+/// closed stdin, and `NO_COLOR=1`. `Ok` when the call exits 0 and its stdout
+/// parses as JSON; otherwise what it did instead.
+pub(crate) fn run_declared_probe(runner: &BinaryRunner, args: &[String]) -> Result<(), String> {
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let result = runner.run(&args, &[]);
+    match result.status {
+        RunStatus::Ok => {}
+        RunStatus::Timeout => return Err("timed out".into()),
+        RunStatus::Crash { signal } => return Err(format!("was killed by signal {signal}")),
+        RunStatus::NotFound | RunStatus::PermissionDenied | RunStatus::Error(_) => {
+            return Err("could not be run".into());
+        }
+    }
+    match result.exit_code {
+        Some(0) => {}
+        Some(code) => return Err(format!("exited {code}")),
+        None => return Err("exited without an exit code".into()),
+    }
+    let stdout = result.stdout.trim();
+    if stdout.is_empty() || serde_json::from_str::<serde_json::Value>(stdout).is_err() {
+        return Err("printed no JSON on stdout".into());
+    }
+    Ok(())
+}
+
+/// The declared call as evidence shows it: the binary's name, then the
+/// arguments, quoted where a shell would need it.
+pub(crate) fn probe_invocation(runner: &BinaryRunner, args: &[String]) -> String {
+    let argv: Vec<OsString> = runner
+        .binary_stem()
+        .into_iter()
+        .map(OsString::from)
+        .chain(args.iter().map(OsString::from))
+        .collect();
+    crate::argv::format_invocation(&argv)
 }
 
 /// Probe each top-level subcommand from the shared help parse for --output/--format.
@@ -185,7 +278,7 @@ fn validate_json_output(
     // The safe probes reach only `--help` and `--version`, which most CLIs
     // answer in text whatever the output flag says, so a miss is anc's
     // limit, not the tool's: the row is not scored.
-    AuditStatus::Skip("--output/--format flag detected but could not validate JSON via safe probes (--help/--version override output flags in most CLIs)".into())
+    AuditStatus::Skip(UNVERIFIABLE.into())
 }
 
 /// Run a single JSON probe and return Some(status) if valid JSON found.
@@ -220,6 +313,95 @@ mod tests {
     use super::*;
     use crate::audits::behavioral::tests::test_project_with_sh_script;
     use crate::types::AuditStatus;
+
+    /// Run the audit on `script` with `probe` declared in `.anc.toml`.
+    fn run_with_probe(script: &str, probe: &[&str]) -> AuditResult {
+        let mut project = test_project_with_sh_script(script);
+        let mut cfg = crate::anc_toml::AncConfig::default();
+        cfg.p2.json_probe = Some(Sourced {
+            value: probe.iter().map(|arg| (*arg).to_string()).collect(),
+            file: ".anc.toml".into(),
+        });
+        project.anc_config.load = crate::anc_toml::AncConfigLoad::Loaded(cfg);
+        JsonOutputAudit.run(&project).expect("audit should run")
+    }
+
+    /// An `--output` flag the safe probes cannot validate, and read-only
+    /// calls that print JSON, print text, or print JSON and then fail.
+    const OUTPUT_FLAG_WITH_PROBES: &str = r#"
+case "$*" in
+  "version -o json") echo '{"version":"1.0"}';;
+  "version --text") echo "version 1.0";;
+  "status -o json") echo '{"status":"down"}'; exit 1;;
+  *--help*)
+    printf 'Usage: test [OPTIONS]\n\nOptions:\n  --output <FORMAT>  Output format: text or json\n';;
+  *)
+    echo "this is not json";;
+esac
+"#;
+
+    #[test]
+    fn a_declared_probe_validates_what_the_safe_probes_cannot() {
+        let without = JsonOutputAudit
+            .run(&test_project_with_sh_script(OUTPUT_FLAG_WITH_PROBES))
+            .expect("audit should run");
+        assert!(
+            matches!(without.status, AuditStatus::Skip(_)),
+            "{:?}",
+            without.status
+        );
+
+        let with = run_with_probe(OUTPUT_FLAG_WITH_PROBES, &["version", "-o", "json"]);
+
+        assert_eq!(with.status, AuditStatus::Pass);
+        assert_eq!(
+            with.mitigation,
+            Some(Mitigation::Config(
+                "`test version -o json` printed JSON; probe declared via .anc.toml [p2].json_probe"
+                    .into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_declared_probe_that_prints_text_fails_and_says_so() {
+        match run_with_probe(OUTPUT_FLAG_WITH_PROBES, &["version", "--text"]).status {
+            AuditStatus::Fail(msg) => assert_eq!(
+                msg,
+                "`test version --text`, the probe declared via .anc.toml [p2].json_probe, printed \
+                 no JSON on stdout. The declared probe must exit 0 and print JSON on stdout."
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declared_probe_that_exits_nonzero_fails_even_with_json_on_stdout() {
+        match run_with_probe(OUTPUT_FLAG_WITH_PROBES, &["status", "-o", "json"]).status {
+            AuditStatus::Fail(msg) => assert!(msg.contains(", exited 1."), "{msg}"),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declared_probe_does_not_stand_in_for_a_missing_output_flag() {
+        let script = r#"
+case "$*" in
+  "version -o json") echo '{"version":"1.0"}';;
+  *) echo 'just some help text';;
+esac
+"#;
+        match run_with_probe(script, &["version", "-o", "json"]).status {
+            AuditStatus::OptOut(msg) => assert!(
+                msg.ends_with(
+                    "The probe declared via .anc.toml [p2].json_probe runs only for a tool whose \
+                     help shows an --output or --format flag."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected OptOut, got {other:?}"),
+        }
+    }
 
     #[test]
     fn json_output_pass_with_valid_json() {

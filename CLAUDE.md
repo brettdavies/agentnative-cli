@@ -328,7 +328,10 @@ agentnative. Three rules guard the probe:
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
    instant help output instead of running `audit .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
-   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
+   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands. The one call outside those
+   suffixes is a `.anc.toml [p2] json_probe`: `run_declared_probe` runs the declared arguments exactly as written,
+   through the same `BinaryRunner` (no shell, timeout, closed stdin), because the tool's repository or the operator
+   chose them. An empty declaration declares nothing, so the bare invocation never runs.
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
    `release/<bin>` and `debug/<bin>` exist in a target directory, the function returns the one with the more recent
    mtime. The target directory is cargo's (`src/project/cargo_target.rs`): `CARGO_TARGET_DIR`, else what `cargo
@@ -340,7 +343,7 @@ agentnative. Three rules guard the probe:
 
 **Rules for new behavioral audits:**
 
-- NEVER probe subcommands without `--help`/`--version` suffixes
+- NEVER probe subcommands without `--help`/`--version` suffixes, except through a declared `[p2] json_probe`
 - NEVER remove `arg_required_else_help` from `Cli`; it prevents recursive self-invocation
 - NEVER revert binary discovery to the always-prefer-release shape (rule 3); that pattern silently masked
   `p2-must-schema-print` regressions during the v0.4.0 spec sync

@@ -166,3 +166,29 @@ fn not_destructive_from_the_home_file_passes_force_yes_and_names_the_file() {
         "row: {row}"
     );
 }
+
+/// A kubectl-shaped CLI: the top-level help names no output format, `get`
+/// carries `-o, --output`, the safe probes answer in text, and
+/// `version --client -o json` prints JSON.
+const KUBECTL_LIKE_CLI: &str = r#"  "version --client -o json") echo '{"clientVersion":{"gitVersion":"v1.0.0"}}' ;;
+  "get --help") printf 'Display one or many resources.\n\nOptions:\n  -o, --output='"''"': One of: json, yaml, wide.\n' ;;
+  "--version") echo "tool 1.0.0" ;;
+  *) printf 'tool controls the thing.\n\nBasic Commands:\n  get      Display one or many resources\n  version  Print the version\n' ;;"#;
+
+#[test]
+fn json_probe_from_the_repo_file_validates_json_output_and_names_the_probe() {
+    let fixture = Fixture::new(KUBECTL_LIKE_CLI);
+    let without = fixture.row("p2-must-output-flag");
+    assert_eq!(without["status"], "skip", "row: {without}");
+
+    let row = fixture
+        .repo_config("[p2]\njson_probe = [\"version\", \"--client\", \"-o\", \"json\"]\n")
+        .row("p2-must-output-flag");
+
+    assert_eq!(row["status"], "pass", "row: {row}");
+    assert_eq!(
+        row["evidence"],
+        "`tool version --client -o json` printed JSON; probe declared via .anc.toml [p2].json_probe",
+        "row: {row}"
+    );
+}

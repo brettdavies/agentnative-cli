@@ -101,6 +101,9 @@ anc . -q
 `.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI:
 
 ```toml
+[p2]
+json_probe = ["version", "--client", "-o", "json"]
+
 [p5]
 confirm_flags = ["-auto-approve"]
 not_destructive = ["clean"]
@@ -111,11 +114,24 @@ domain_verbs = ["post", "like", "repost", "timeline"]
 
 | Setting                | Audit                   | What it declares                                                           |
 | ---------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `[p2] json_probe`      | `p2-must-output-flag`   | A read-only call that prints JSON, for anc to run and check                |
 | `[p5] confirm_flags`   | `p5-must-force-yes`     | Flags that confirm a destructive subcommand, beside the built-in names     |
 | `[p5] not_destructive` | `p5-must-force-yes`     | Subcommands whose names read as destructive but are not                    |
 | `[p6] domain_verbs`    | `p6-may-standard-names` | Verbs added to the standard list that subcommand names are checked against |
 
 ### The settings
+
+`json_probe`: when a tool's help shows an `--output` or `--format` flag, `p2-must-output-flag` checks it by passing
+`json` to the flag beside `--help` and `--version`, the only calls `anc` makes unprompted. Most tools answer those in
+text, and then the row is `skip`: `anc` could not check, so the row is not scored. A declared probe is the call `anc`
+runs instead, exactly as written: no shell, with the timeout, closed stdin, and `NO_COLOR=1` of every other probe. The
+row passes when the call exits 0 and its stdout parses as JSON, and fails otherwise, with evidence naming the call and
+the file: `` `kubectl version --client -o json` printed JSON; probe declared via .anc.toml [p2].json_probe ``.
+Declare a call that only reads and exits on its own; `kubectl version -o json` contacts a cluster and exits 1 without
+one, while `version --client` stays local. A probe that prints JSON also shows `p2-must-schema-print` that the tool
+emits structured output when its help does not say so. The probe never stands in for the flag: with no `--output` or
+`--format` in the help, the row stays `opt_out`. The nearest file that declares `json_probe` supplies it, and an empty
+list declares nothing.
 
 `confirm_flags`: `p5-must-force-yes` requires each destructive subcommand's own `--help` to list a confirmation flag.
 The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assume-yes`, and `--confirm`. A declared
@@ -168,7 +184,8 @@ The file in your home directory applies under every audit, inside repositories t
 vocabulary there. Two machines with different home files can score the same tool differently; CI runners have none.
 `AGENTNATIVE_HOME_CONFIG` relocates the file. Evidence and the hint then name it `$AGENTNATIVE_HOME_CONFIG`, never the
 path it holds, and when it names a file that does not exist, `anc` prints a `warning:` line on stderr and applies no
-user-level file.
+user-level file. A `json_probe` here runs against every tool you audit, so point `AGENTNATIVE_HOME_CONFIG` at a
+one-off file to declare a probe for a single run.
 
 ### A repository you fetched: `--repo`
 

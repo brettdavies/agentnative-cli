@@ -3,6 +3,9 @@
 
 use serde::Deserialize;
 
+/// How evidence cites `[p2] json_probe`.
+pub const JSON_PROBE_KEY: &str = "[p2].json_probe";
+
 /// How evidence cites `[p5] confirm_flags`.
 pub const CONFIRM_FLAGS_KEY: &str = "[p5].confirm_flags";
 
@@ -30,8 +33,18 @@ impl<T> Sourced<T> {
 /// The settings of every file in the chain, merged.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct AncConfig {
+    pub p2: P2Config,
     pub p5: P5Config,
     pub p6: P6Config,
+}
+
+/// `[p2]`: P2 (Structured, Parseable Output).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct P2Config {
+    /// The arguments of a read-only call that prints JSON, run as written
+    /// when `p2-must-output-flag` cannot validate JSON on its own probes.
+    /// The nearest file that declares one supplies it.
+    pub json_probe: Option<Sourced<Vec<String>>>,
 }
 
 /// `[p5]`: P5 (Safe Retries and Explicit Mutation Boundaries).
@@ -60,9 +73,17 @@ pub struct P6Config {
 #[derive(Debug, Default, Deserialize)]
 pub(super) struct FileConfig {
     #[serde(default)]
+    p2: FileP2,
+    #[serde(default)]
     p5: FileP5,
     #[serde(default)]
     p6: P6Config,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct FileP2 {
+    #[serde(default)]
+    json_probe: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -82,12 +103,28 @@ impl AncConfig {
                 self.p6.domain_verbs.push(verb);
             }
         }
+        replace_command(&mut self.p2.json_probe, settings.p2.json_probe, file);
         merge_list(&mut self.p5.confirm_flags, settings.p5.confirm_flags, file);
         merge_list(
             &mut self.p5.not_destructive,
             settings.p5.not_destructive,
             file,
         );
+    }
+}
+
+/// A nearer file's command replaces the one merged so far. An empty list
+/// declares nothing, so the command below it stands.
+fn replace_command(
+    merged: &mut Option<Sourced<Vec<String>>>,
+    declared: Option<Vec<String>>,
+    file: &str,
+) {
+    if let Some(value) = declared.filter(|args| !args.is_empty()) {
+        *merged = Some(Sourced {
+            value,
+            file: file.to_string(),
+        });
     }
 }
 
@@ -160,6 +197,40 @@ mod tests {
             .map(|entry| (entry.value.as_str(), entry.file.as_str()))
             .collect();
         assert_eq!(entries, [("clean", ".anc.toml"), ("rmdir", "~/.anc.toml")]);
+    }
+
+    #[test]
+    fn the_nearer_json_probe_replaces_the_one_below_and_an_empty_one_declares_nothing() {
+        let mut cfg = AncConfig::default();
+        cfg.absorb(
+            parse("[p2]\njson_probe = [\"version\", \"-o\", \"json\"]\n"),
+            "~/.anc.toml",
+        );
+        cfg.absorb(parse("[p2]\njson_probe = []\n"), "crates/.anc.toml");
+        assert_eq!(
+            cfg.p2.json_probe,
+            Some(Sourced {
+                value: vec!["version".into(), "-o".into(), "json".into()],
+                file: "~/.anc.toml".into(),
+            })
+        );
+
+        cfg.absorb(
+            parse("[p2]\njson_probe = [\"version\", \"--client\", \"-o\", \"json\"]\n"),
+            ".anc.toml",
+        );
+        assert_eq!(
+            cfg.p2.json_probe,
+            Some(Sourced {
+                value: vec![
+                    "version".into(),
+                    "--client".into(),
+                    "-o".into(),
+                    "json".into()
+                ],
+                file: ".anc.toml".into(),
+            })
+        );
     }
 
     #[test]

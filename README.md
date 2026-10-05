@@ -103,15 +103,17 @@ anc . -q
 ```toml
 [p5]
 confirm_flags = ["-auto-approve"]
+not_destructive = ["clean"]
 
 [p6]
 domain_verbs = ["post", "like", "repost", "timeline"]
 ```
 
-| Setting              | Audit                   | What it declares                                                           |
-| -------------------- | ----------------------- | -------------------------------------------------------------------------- |
-| `[p5] confirm_flags` | `p5-must-force-yes`     | Flags that confirm a destructive subcommand, beside the built-in names     |
-| `[p6] domain_verbs`  | `p6-may-standard-names` | Verbs added to the standard list that subcommand names are checked against |
+| Setting                | Audit                   | What it declares                                                           |
+| ---------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `[p5] confirm_flags`   | `p5-must-force-yes`     | Flags that confirm a destructive subcommand, beside the built-in names     |
+| `[p5] not_destructive` | `p5-must-force-yes`     | Subcommands whose names read as destructive but are not                    |
+| `[p6] domain_verbs`    | `p6-may-standard-names` | Verbs added to the standard list that subcommand names are checked against |
 
 ### The settings
 
@@ -121,6 +123,14 @@ flag counts beside them, and only where the subcommand's `--help` lists it, so a
 stand in for one. A single-dash name such as terraform's `-auto-approve` matches as a whole word. A pass that needed a
 declared flag says so in the row's evidence, naming the subcommand, the flag, and the file: `destroy accepts
 -auto-approve via .anc.toml [p5].confirm_flags`.
+
+`not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`,
+`clean`, and names built on them). A tool whose `clean` clears regenerable caches, for one, declares it here, and the
+audit leaves it out of the destructive set. Entries are lowercase; they are compared with the lowercased subcommand
+name. The row's evidence names each subcommand left out and the file that declared it: `declared not destructive: clean
+via .anc.toml [p5].not_destructive`. When every destructive subcommand is declared, the row is `skip`, as for a tool
+with none. A declared subcommand still counts as a write for `p5-must-read-write-distinction`, because clearing a
+cache changes state.
 
 `domain_verbs`: `p6-may-standard-names` passes when most subcommand names are standard verbs. A declared verb counts
 beside the built-in list. Entries are lowercase; they are compared with the lowercased subcommand name. A pass that

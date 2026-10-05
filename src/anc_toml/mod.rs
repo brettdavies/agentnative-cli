@@ -4,13 +4,15 @@
 //! ```toml
 //! [p5]
 //! confirm_flags = ["-auto-approve"]
+//! not_destructive = ["clean"]
 //!
 //! [p6]
 //! domain_verbs = ["mentions", "timeline", "whoami"]
 //! ```
 //!
 //! `confirm_flags` names flags that confirm a destructive subcommand, beside
-//! the built-in names `p5-must-force-yes` accepts. `domain_verbs` extends the
+//! the built-in names `p5-must-force-yes` accepts; `not_destructive` names
+//! subcommands that audit leaves out of its destructive set. `domain_verbs` extends the
 //! built-in standard-verb list consulted by the `p6-may-standard-names`
 //! audit. Built-ins stay conservative across all CLIs; a CLI whose
 //! vocabulary diverges from them (an X CLI shipping `post` / `like` /
@@ -38,7 +40,7 @@ mod chain;
 mod settings;
 
 use chain::Chain;
-pub use settings::{AncConfig, CONFIRM_FLAGS_KEY, Sourced};
+pub use settings::{AncConfig, CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 
 /// Filename probed in each directory of the chain.
 pub const ANC_TOML_FILENAME: &str = ".anc.toml";
@@ -606,6 +608,61 @@ mod tests {
             &chain::resolve(&root, Some(&home_file), None),
             DEFAULT_HOME_LABEL,
         ));
+
+        assert!(
+            msg.starts_with("could not parse .anc.toml at .anc.toml:"),
+            "got: {msg}"
+        );
+    }
+
+    fn not_destructive(load: &AncConfigLoad) -> Vec<(&str, &str)> {
+        match load {
+            AncConfigLoad::Loaded(cfg) => cfg
+                .p5
+                .not_destructive
+                .iter()
+                .map(|entry| (entry.value.as_str(), entry.file.as_str()))
+                .collect(),
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn loaded_not_destructive_names_the_file_that_declared_it() {
+        let root = repo("not-destructive-parse");
+        write(&root, "[p5]\nnot_destructive = [\"clean\"]\n");
+
+        assert_eq!(
+            not_destructive(&load_for_target(&root, None, None).load),
+            [("clean", ".anc.toml")]
+        );
+    }
+
+    #[test]
+    fn repo_file_is_credited_over_the_home_file_for_a_shared_not_destructive_entry() {
+        let home = unique_tmp("not-destructive-home");
+        let root = repo("not-destructive-precedence");
+        write(&home, "[p5]\nnot_destructive = [\"rmdir\", \"clean\"]\n");
+        write(&root, "[p5]\nnot_destructive = [\"clean\"]\n");
+        let home_file = home.join(ANC_TOML_FILENAME);
+
+        let load = load_chain(
+            &chain::resolve(&root, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        );
+
+        assert_eq!(
+            not_destructive(&load),
+            [("rmdir", "~/.anc.toml"), ("clean", ".anc.toml")]
+        );
+    }
+
+    #[test]
+    fn not_destructive_of_the_wrong_type_voids_the_chain() {
+        let root = repo("not-destructive-void");
+        write(&root, "[p5]\nnot_destructive = \"clean\"\n");
+
+        let msg = invalid(load_for_target(&root, None, None).load);
 
         assert!(
             msg.starts_with("could not parse .anc.toml at .anc.toml:"),

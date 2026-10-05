@@ -6,6 +6,9 @@ use serde::Deserialize;
 /// How evidence cites `[p5] confirm_flags`.
 pub const CONFIRM_FLAGS_KEY: &str = "[p5].confirm_flags";
 
+/// How evidence cites `[p5] not_destructive`.
+pub const NOT_DESTRUCTIVE_KEY: &str = "[p5].not_destructive";
+
 /// A merged setting and the file that supplied it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sourced<T> {
@@ -37,6 +40,9 @@ pub struct P5Config {
     /// Flags that confirm a destructive subcommand non-interactively,
     /// accepted beside the built-in names.
     pub confirm_flags: Vec<Sourced<String>>,
+    /// Subcommand names the tool declares are not destructive, compared
+    /// with the lowercased name.
+    pub not_destructive: Vec<Sourced<String>>,
 }
 
 /// `[p6]`: P6 (Composable and Predictable Command Structure).
@@ -63,6 +69,8 @@ pub(super) struct FileConfig {
 struct FileP5 {
     #[serde(default)]
     confirm_flags: Vec<String>,
+    #[serde(default)]
+    not_destructive: Vec<String>,
 }
 
 impl AncConfig {
@@ -75,6 +83,11 @@ impl AncConfig {
             }
         }
         merge_list(&mut self.p5.confirm_flags, settings.p5.confirm_flags, file);
+        merge_list(
+            &mut self.p5.not_destructive,
+            settings.p5.not_destructive,
+            file,
+        );
     }
 }
 
@@ -129,6 +142,24 @@ mod tests {
                 ("--really", ".anc.toml"),
             ]
         );
+    }
+
+    #[test]
+    fn not_destructive_entries_merge_like_confirm_flags() {
+        let mut cfg = AncConfig::default();
+        cfg.absorb(
+            parse("[p5]\nnot_destructive = [\"clean\", \"rmdir\"]\n"),
+            "~/.anc.toml",
+        );
+        cfg.absorb(parse("[p5]\nnot_destructive = [\"clean\"]\n"), ".anc.toml");
+
+        let entries: Vec<(&str, &str)> = cfg
+            .p5
+            .not_destructive
+            .iter()
+            .map(|entry| (entry.value.as_str(), entry.file.as_str()))
+            .collect();
+        assert_eq!(entries, [("clean", ".anc.toml"), ("rmdir", "~/.anc.toml")]);
     }
 
     #[test]

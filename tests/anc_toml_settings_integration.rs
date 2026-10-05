@@ -141,3 +141,28 @@ fn confirm_flags_in_both_files_credit_the_repo_file() {
         "row: {row}"
     );
 }
+
+/// A biome-shaped CLI: `clean` removes log files and takes no confirmation
+/// flag; `delete` confirms with `--force`.
+const CLEAN_CLI: &str = r#"  "clean --help") printf 'Usage: tool clean\n\nOptions:\n  -h, --help  Show help.\n' ;;
+  "delete --help") printf 'Usage: tool delete <ID>\n\nOptions:\n      --force  Skip the prompt.\n' ;;
+  "--version") echo "tool 1.0.0" ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean   Remove the log files\n  delete  Delete an item\n  list    List items\n' ;;"#;
+
+#[test]
+fn not_destructive_from_the_home_file_passes_force_yes_and_names_the_file() {
+    let fixture = Fixture::new(CLEAN_CLI);
+    let without = fixture.row("p5-must-force-yes");
+    assert_eq!(without["status"], "fail", "row: {without}");
+
+    let row = fixture
+        .home_config("[p5]\nnot_destructive = [\"clean\"]\n")
+        .row("p5-must-force-yes");
+
+    assert_eq!(row["status"], "pass", "row: {row}");
+    assert_eq!(
+        row["evidence"],
+        "declared not destructive: clean via $AGENTNATIVE_HOME_CONFIG [p5].not_destructive",
+        "row: {row}"
+    );
+}

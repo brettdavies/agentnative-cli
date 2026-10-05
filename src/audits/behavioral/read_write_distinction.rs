@@ -15,6 +15,9 @@
 //!   in which case the distinction is unobservable but not necessarily
 //!   missing.
 //! - Skip when neither side appears (no recognizable verb subcommands).
+//!
+//! `.anc.toml [p5] not_destructive` does not apply here: a subcommand a tool
+//! declares not destructive still changes state, so it stays a write.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::{is_read_verb, is_write_verb};

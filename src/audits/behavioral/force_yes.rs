@@ -6,12 +6,13 @@
 //! intent auditable in process tables and shell history.
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
-//! probe each one's `--help`, and audit for one of [`CONFIRM_FLAGS`] or a
-//! flag the `.anc.toml` chain declares in `[p5] confirm_flags`. Fail when
-//! any destructive subcommand lists none. Vacuous Skip when the binary has
-//! no destructive subcommands.
+//! less any the `.anc.toml` chain declares in `[p5] not_destructive`, probe
+//! each one's `--help`, and audit for one of [`CONFIRM_FLAGS`] or a flag the
+//! chain declares in `[p5] confirm_flags`. Fail when any destructive
+//! subcommand lists none. Vacuous Skip when the binary has no destructive
+//! subcommands.
 
-use crate::anc_toml::{CONFIRM_FLAGS_KEY, Sourced};
+use crate::anc_toml::{CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::destructive_subcommands;
 use crate::audits::behavioral::subcommand_help::probe_subcommands;
@@ -60,29 +61,30 @@ impl Audit for ForceYesAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let declared_flags = project
-            .anc_config
-            .config()
-            .map_or(&[][..], |cfg| cfg.p5.confirm_flags.as_slice());
+        let p5 = project.anc_config.config().map(|cfg| &cfg.p5);
+        let declared_flags = p5.map_or(&[][..], |p5| p5.confirm_flags.as_slice());
+        let not_destructive = p5.map_or(&[][..], |p5| p5.not_destructive.as_slice());
         let verdict = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()).into(),
             Some(top_help) => {
-                let destructive: Vec<String> = destructive_subcommands(top_help)
-                    .into_iter()
-                    .cloned()
-                    .collect();
-                if destructive.is_empty() {
-                    AuditStatus::Skip(
-                        "no destructive subcommands detected; MUST applies conditionally to CLIs \
-                         with destructive operations."
-                            .into(),
-                    )
+                let (destructive, excluded) =
+                    without_declared(&destructive_subcommands(top_help), not_destructive);
+                let verdict = if destructive.is_empty() {
+                    let found = if excluded.is_empty() {
+                        "no destructive subcommands detected"
+                    } else {
+                        "no destructive subcommands remain"
+                    };
+                    AuditStatus::Skip(format!(
+                        "{found}; MUST applies conditionally to CLIs with destructive operations."
+                    ))
                     .into()
                 } else {
                     let runner = project.runner_ref();
                     let subhelp = probe_subcommands(runner, top_help);
                     audit_force_yes(&destructive, &subhelp, declared_flags)
-                }
+                };
+                with_exclusions(verdict, &excluded)
             }
         };
         let status = match project.anc_config.void_note() {
@@ -149,6 +151,49 @@ pub(crate) fn audit_force_yes(
         accepted_flags(declared_flags),
     ))
     .into()
+}
+
+/// Split `detected` into the subcommands that stay destructive and, cited
+/// with the file that declared it, each one `not_destructive` removes.
+pub(crate) fn without_declared(
+    detected: &[&String],
+    not_destructive: &[Sourced<String>],
+) -> (Vec<String>, Vec<String>) {
+    let mut destructive = Vec::new();
+    let mut excluded = Vec::new();
+    for name in detected {
+        let lower = name.to_lowercase();
+        match not_destructive.iter().find(|entry| entry.value == lower) {
+            Some(entry) => excluded.push(format!("{name} via {}", entry.cite(NOT_DESTRUCTIVE_KEY))),
+            None => destructive.push((*name).clone()),
+        }
+    }
+    (destructive, excluded)
+}
+
+/// Name the subcommands a declaration removed: in a Pass's evidence beside
+/// any other setting it needed, or at the end of any other status.
+fn with_exclusions(verdict: Verdict, excluded: &[String]) -> Verdict {
+    if excluded.is_empty() {
+        return verdict;
+    }
+    let declared = format!("declared not destructive: {}", excluded.join(", "));
+    match verdict.status {
+        AuditStatus::Pass => {
+            let evidence = match verdict.mitigation {
+                Some(Mitigation::Config(prose)) => format!("{prose}; {declared}"),
+                _ => declared,
+            };
+            Verdict {
+                status: AuditStatus::Pass,
+                mitigation: Some(Mitigation::Config(evidence)),
+            }
+        }
+        status => Verdict {
+            status: status.with_note(&format!("Subcommands {declared}.")),
+            mitigation: verdict.mitigation,
+        },
+    }
 }
 
 /// The built-in names, then each declared flag with the file it came from.
@@ -251,6 +296,74 @@ mod tests {
                 "{msg}"
             ),
             other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declared_not_destructive_subcommand_leaves_the_destructive_set() {
+        let detected = ["clean".to_string(), "Purge".to_string()];
+        let detected: Vec<&String> = detected.iter().collect();
+
+        let (destructive, excluded) =
+            without_declared(&detected, &[declared("clean", ".anc.toml")]);
+
+        assert_eq!(destructive, ["Purge"]);
+        assert_eq!(excluded, ["clean via .anc.toml [p5].not_destructive"]);
+    }
+
+    /// A tool with `clean` (no confirmation flag) and `delete --force`.
+    const CLEAN_AND_DELETE_CLI: &str = r#"case "$*" in
+  "clean --help") printf 'Usage: tool clean\n\nOptions:\n  -h, --help  Show help.\n' ;;
+  "delete --help") printf 'Usage: tool delete <ID>\n\nOptions:\n      --force  Skip the prompt.\n' ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean   Remove cached logs\n  delete  Delete an item\n' ;;
+esac"#;
+
+    fn run_with_not_destructive(script: &str, names: &[&str]) -> AuditResult {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(script);
+        let mut cfg = crate::anc_toml::AncConfig::default();
+        cfg.p5.not_destructive = names
+            .iter()
+            .map(|name| declared(name, ".anc.toml"))
+            .collect();
+        project.anc_config.load = crate::anc_toml::AncConfigLoad::Loaded(cfg);
+        ForceYesAudit.run(&project).expect("audit runs")
+    }
+
+    #[test]
+    fn declaring_the_unconfirmed_subcommand_not_destructive_passes_and_says_so() {
+        let without = run_with_not_destructive(CLEAN_AND_DELETE_CLI, &[]);
+        assert!(
+            matches!(without.status, AuditStatus::Fail(_)),
+            "{:?}",
+            without.status
+        );
+
+        let with = run_with_not_destructive(CLEAN_AND_DELETE_CLI, &["clean"]);
+
+        assert_eq!(with.status, AuditStatus::Pass);
+        assert_eq!(
+            with.mitigation,
+            Some(Mitigation::Config(
+                "declared not destructive: clean via .anc.toml [p5].not_destructive".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn declaring_every_destructive_subcommand_not_destructive_skips_and_names_them() {
+        let script = r#"case "$*" in
+  "clean --help") printf 'Usage: tool clean\n' ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean   Remove cached logs\n  list    List items\n' ;;
+esac"#;
+
+        match run_with_not_destructive(script, &["clean"]).status {
+            AuditStatus::Skip(msg) => assert_eq!(
+                msg,
+                "no destructive subcommands remain; MUST applies conditionally to CLIs with \
+                 destructive operations. Subcommands declared not destructive: clean via \
+                 .anc.toml [p5].not_destructive."
+            ),
+            other => panic!("expected Skip, got {other:?}"),
         }
     }
 

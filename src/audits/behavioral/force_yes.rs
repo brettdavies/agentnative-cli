@@ -178,22 +178,8 @@ fn with_exclusions(verdict: Verdict, excluded: &[String]) -> Verdict {
         return verdict;
     }
     let declared = format!("declared not destructive: {}", excluded.join(", "));
-    match verdict.status {
-        AuditStatus::Pass => {
-            let evidence = match verdict.mitigation {
-                Some(Mitigation::Config(prose)) => format!("{prose}; {declared}"),
-                _ => declared,
-            };
-            Verdict {
-                status: AuditStatus::Pass,
-                mitigation: Some(Mitigation::Config(evidence)),
-            }
-        }
-        status => Verdict {
-            status: status.with_note(&format!("Subcommands {declared}.")),
-            mitigation: verdict.mitigation,
-        },
-    }
+    let note = format!("Subcommands {declared}.");
+    verdict.crediting(declared, &note)
 }
 
 /// The built-in names, then each declared flag with the file it came from.

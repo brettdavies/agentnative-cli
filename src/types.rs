@@ -55,6 +55,30 @@ pub struct Verdict {
     pub mitigation: Option<Mitigation>,
 }
 
+impl Verdict {
+    /// Record a declaration that shaped this verdict: `prose` in a Pass's
+    /// evidence, after any prose already there, or `note` at the end of any
+    /// other status.
+    pub fn crediting(self, prose: String, note: &str) -> Verdict {
+        match self.status {
+            AuditStatus::Pass => {
+                let evidence = match self.mitigation {
+                    Some(Mitigation::Config(earlier)) => format!("{earlier}; {prose}"),
+                    _ => prose,
+                };
+                Verdict {
+                    status: AuditStatus::Pass,
+                    mitigation: Some(Mitigation::Config(evidence)),
+                }
+            }
+            status => Verdict {
+                status: status.with_note(note),
+                mitigation: self.mitigation,
+            },
+        }
+    }
+}
+
 impl From<AuditStatus> for Verdict {
     fn from(status: AuditStatus) -> Self {
         Verdict {

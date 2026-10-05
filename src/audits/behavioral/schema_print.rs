@@ -18,9 +18,7 @@ use crate::audits::behavioral::json_output::{probe_invocation, run_declared_prob
 use crate::audits::behavioral::subcommand_help::probe_subcommands;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput};
-use crate::types::{
-    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict,
-};
+use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Verdict};
 
 const STRUCTURED_OUTPUT_FLAG_NAMES: &[&str] =
     &["--output", "--format", "--json", "--jsonl", "--ndjson"];
@@ -115,13 +113,8 @@ fn credit_the_probe(
         probe_invocation(runner, &probe.value),
         probe.cite(JSON_PROBE_KEY)
     );
-    match status {
-        AuditStatus::Pass => Verdict {
-            status: AuditStatus::Pass,
-            mitigation: Some(Mitigation::Config(shown)),
-        },
-        status => status.with_note(&format!("The CLI has {shown}.")).into(),
-    }
+    let note = format!("The CLI has {shown}.");
+    Verdict::from(status).crediting(shown, &note)
 }
 
 /// Whether the help names a structured-output flag or format.

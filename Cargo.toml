@@ -31,8 +31,8 @@ path = "src/main.rs"
 
 [dependencies]
 # AST pattern matching — pinned pre-1.0
-ast-grep-core = { version = "=0.42.0" }
-ast-grep-language = { version = "=0.42.0", default-features = false, features = [
+ast-grep-core = { version = "=0.42.3" }
+ast-grep-language = { version = "=0.42.3", default-features = false, features = [
     "tree-sitter-rust",
     "tree-sitter-python",
 ] }
@@ -72,7 +72,7 @@ libc = "0.2"
 # convention). `formatting` feature enables `OffsetDateTime::format` with the
 # `Rfc3339` well-known description; default `std` feature is required for
 # `OffsetDateTime::now_utc`.
-time = { version = "=0.3.47", default-features = false, features = ["std", "formatting"] }
+time = { version = "=0.3.55", default-features = false, features = ["std", "formatting"] }
 
 [build-dependencies]
 # Vendored spec frontmatter parser (build.rs → $OUT_DIR/generated_requirements.rs).

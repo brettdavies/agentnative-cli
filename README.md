@@ -98,13 +98,36 @@ anc . -q
 
 ## Configuration (`.anc.toml`)
 
-`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI. It carries one setting today,
-`[p6] domain_verbs`, which adds verbs to the standard list that `p6-may-standard-names` checks subcommand names against:
+`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI:
 
 ```toml
+[p5]
+confirm_flags = ["-auto-approve"]
+
 [p6]
 domain_verbs = ["post", "like", "repost", "timeline"]
 ```
+
+| Setting              | Audit                   | What it declares                                                           |
+| -------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `[p5] confirm_flags` | `p5-must-force-yes`     | Flags that confirm a destructive subcommand, beside the built-in names     |
+| `[p6] domain_verbs`  | `p6-may-standard-names` | Verbs added to the standard list that subcommand names are checked against |
+
+### The settings
+
+`confirm_flags`: `p5-must-force-yes` requires each destructive subcommand's own `--help` to list a confirmation flag.
+The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assume-yes`, and `--confirm`. A declared
+flag counts beside them, and only where the subcommand's `--help` lists it, so a declaration names the flag and cannot
+stand in for one. A single-dash name such as terraform's `-auto-approve` matches as a whole word. A pass that needed a
+declared flag says so in the row's evidence, naming the subcommand, the flag, and the file: `destroy accepts
+-auto-approve via .anc.toml [p5].confirm_flags`.
+
+`domain_verbs`: `p6-may-standard-names` passes when most subcommand names are standard verbs. A declared verb counts
+beside the built-in list. Entries are lowercase; they are compared with the lowercased subcommand name. A pass that
+needed a declared verb carries `using_domain_verbs` and `domain_match_count` on the row.
+
+A key `anc` does not know is ignored. A known key with a value of the wrong type, such as `confirm_flags =
+"-auto-approve"`, is a parse error.
 
 ### Where `anc` looks
 
@@ -123,9 +146,11 @@ A binary counts the same whether you pass its path or `--command` resolves it on
 a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding a
 `.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
 
-The files merge: each one's `domain_verbs` adds to the ones above it, and a verb listed twice keeps its first position.
-If any file in the chain cannot be read or parsed, no config applies, and the `p6-may-standard-names` warning names the
-failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`.
+The files merge. A list setting gathers every file's entries, each file's after the ones above it, and an entry listed
+twice keeps its first position; evidence credits it to the nearer file, so a flag both your `~/.anc.toml` and the tool's
+repository declare reads as the repository's. If any file in the chain cannot be read or parsed, no config applies: the
+`p6-may-standard-names` warning names the failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`, and
+a row another setting could have shaped ends its evidence with `No .anc.toml setting applied:` and the same message.
 
 ### `~/.anc.toml`
 
@@ -565,6 +590,10 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
   shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
 
+- `evidence` on a `pass` row: what the audit matched, for an audit that names it (`p7-limit` names each list command
+  and its limit flag), then, when an `.anc.toml` setting decided the pass, the setting, what it contributed, and the
+  file that supplied it, such as `destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`. The two parts are
+  joined by a semicolon. `null` when the pass carries neither. See [Configuration](#configuration-anctoml).
 - `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `files`
   lists where the setting can go, each as `{file, scope}`: `file` is `.anc.toml`, `~/.anc.toml`, or
   `$AGENTNATIVE_HOME_CONFIG` (never an absolute path), and `scope` is `repository` (the root of the repository this

@@ -1,18 +1,21 @@
 //! `.anc.toml` loader — per-CLI configuration found by the audit target's
 //! location.
 //!
-//! Today the schema carries one section:
-//!
 //! ```toml
+//! [p5]
+//! confirm_flags = ["-auto-approve"]
+//!
 //! [p6]
 //! domain_verbs = ["mentions", "timeline", "whoami"]
 //! ```
 //!
-//! `domain_verbs` extends the built-in standard-verb list consulted by the
-//! `p6-may-standard-names` audit. Built-ins stay conservative across all
-//! CLIs; CLIs whose platform vocabulary diverges from the global verb set
-//! (e.g. an X CLI shipping `post` / `like` / `repost`) declare those verbs
-//! here instead of being penalized for using their native terminology.
+//! `confirm_flags` names flags that confirm a destructive subcommand, beside
+//! the built-in names `p5-must-force-yes` accepts. `domain_verbs` extends the
+//! built-in standard-verb list consulted by the `p6-may-standard-names`
+//! audit. Built-ins stay conservative across all CLIs; a CLI whose
+//! vocabulary diverges from them (an X CLI shipping `post` / `like` /
+//! `repost`, terraform's `-auto-approve`) declares it here instead of being
+//! penalized for its native terminology. [`settings`] holds the shape.
 //!
 //! Loader contract ([`load_for_target`]):
 //!
@@ -29,13 +32,13 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
-
 use crate::types::{ConfigFile, ConfigScope};
 
 mod chain;
+mod settings;
 
 use chain::Chain;
+pub use settings::{AncConfig, CONFIRM_FLAGS_KEY, Sourced};
 
 /// Filename probed in each directory of the chain.
 pub const ANC_TOML_FILENAME: &str = ".anc.toml";
@@ -45,23 +48,6 @@ pub const HOME_CONFIG_ENV: &str = "AGENTNATIVE_HOME_CONFIG";
 
 /// The README section that explains where anc looks for `.anc.toml`.
 pub const DOCS_URL: &str = "https://github.com/brettdavies/agentnative-cli#configuration-anctoml";
-
-/// Root document for `.anc.toml`. New sections land here as the schema grows.
-#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
-pub struct AncConfig {
-    #[serde(default)]
-    pub p6: P6Config,
-}
-
-/// `[p6]` section — per-principle config bag for P6 (Predictable Surface).
-#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
-pub struct P6Config {
-    /// Per-CLI domain vocabulary that augments the global standard-verb list.
-    /// Treated additively: a verb is recognized if it appears in the built-in
-    /// list OR this slice.
-    #[serde(default)]
-    pub domain_verbs: Vec<String>,
-}
 
 /// Outcome of probing a target directory for `.anc.toml`. `Absent` is the
 /// happy path for the overwhelming majority of CLIs; `Loaded` carries the
@@ -123,6 +109,22 @@ pub struct ResolvedConfig {
     /// The files a new setting can go in, the repository's first. Empty for
     /// a `Project` built without resolving its config.
     pub settings_files: Vec<ConfigFile>,
+}
+
+impl ResolvedConfig {
+    /// The merged settings; `None` when no file exists or the chain is void.
+    pub fn config(&self) -> Option<&AncConfig> {
+        self.load.as_config()
+    }
+
+    /// The note a row carries when a void chain kept every setting from
+    /// applying, so a declaration that did nothing says why.
+    pub fn void_note(&self) -> Option<String> {
+        match &self.load {
+            AncConfigLoad::Invalid(msg) => Some(format!("No .anc.toml setting applied: {msg}.")),
+            _ => None,
+        }
+    }
 }
 
 /// The user-level layer: [`HOME_CONFIG_ENV`] when set, otherwise
@@ -192,32 +194,25 @@ fn settings_files(chain: &Chain, home_label: &str) -> Vec<ConfigFile> {
 fn load_chain(chain: &Chain, home_label: &str) -> AncConfigLoad {
     let mut merged: Option<AncConfig> = None;
     for file in chain.candidates() {
+        let shown = display_path(chain, file, home_label);
         let raw = match fs::read_to_string(file) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                let shown = display_path(chain, file, home_label);
                 return AncConfigLoad::Invalid(format!("could not read .anc.toml at {shown}: {e}"));
             }
         };
-        let cfg = match toml::from_str::<AncConfig>(&raw) {
-            Ok(cfg) => cfg,
+        let settings = match toml::from_str::<settings::FileConfig>(&raw) {
+            Ok(settings) => settings,
             Err(e) => {
-                let shown = display_path(chain, file, home_label);
                 return AncConfigLoad::Invalid(format!(
                     "could not parse .anc.toml at {shown}: {e}"
                 ));
             }
         };
-        let verbs = &mut merged
+        merged
             .get_or_insert_with(AncConfig::default)
-            .p6
-            .domain_verbs;
-        for verb in cfg.p6.domain_verbs {
-            if !verbs.contains(&verb) {
-                verbs.push(verb);
-            }
-        }
+            .absorb(settings, &shown);
     }
     merged.map_or(AncConfigLoad::Absent, AncConfigLoad::Loaded)
 }
@@ -549,6 +544,75 @@ mod tests {
         }
     }
 
+    fn confirm_flags(load: &AncConfigLoad) -> Vec<(&str, &str)> {
+        match load {
+            AncConfigLoad::Loaded(cfg) => cfg
+                .p5
+                .confirm_flags
+                .iter()
+                .map(|flag| (flag.value.as_str(), flag.file.as_str()))
+                .collect(),
+            other => panic!("expected Loaded, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn loaded_confirm_flags_name_the_file_that_declared_them() {
+        let root = repo("confirm-parse");
+        let cli = root.join("crates/cli");
+        write(&root, "[p5]\nconfirm_flags = [\"-auto-approve\"]\n");
+        write(&cli, "[p5]\nconfirm_flags = [\"--nuke\"]\n");
+
+        assert_eq!(
+            confirm_flags(&load_for_target(&cli, None, None).load),
+            [
+                ("-auto-approve", ".anc.toml"),
+                ("--nuke", "crates/cli/.anc.toml")
+            ]
+        );
+    }
+
+    #[test]
+    fn repo_file_is_credited_over_the_home_file_for_a_shared_confirm_flag() {
+        let home = unique_tmp("confirm-home");
+        let root = repo("confirm-precedence");
+        write(
+            &home,
+            "[p5]\nconfirm_flags = [\"-auto-approve\", \"--nuke\"]\n",
+        );
+        write(&root, "[p5]\nconfirm_flags = [\"-auto-approve\"]\n");
+        let home_file = home.join(ANC_TOML_FILENAME);
+
+        let load = load_chain(
+            &chain::resolve(&root, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        );
+
+        assert_eq!(
+            confirm_flags(&load),
+            [("-auto-approve", ".anc.toml"), ("--nuke", "~/.anc.toml")]
+        );
+    }
+
+    #[test]
+    fn confirm_flags_of_the_wrong_type_void_the_chain() {
+        let home = unique_tmp("confirm-void-home");
+        let root = repo("confirm-void");
+        write(&home, "[p5]\nconfirm_flags = [\"--nuke\"]\n");
+        write(&root, "[p5]\nconfirm_flags = \"-auto-approve\"\n");
+        let home_file = home.join(ANC_TOML_FILENAME);
+
+        let msg = invalid(load_chain(
+            &chain::resolve(&root, Some(&home_file), None),
+            DEFAULT_HOME_LABEL,
+        ));
+
+        assert!(
+            msg.starts_with("could not parse .anc.toml at .anc.toml:"),
+            "got: {msg}"
+        );
+    }
+
     #[test]
     fn file_target_reads_the_config_beside_it() {
         let dir = unique_tmp("file-target");
@@ -685,9 +749,10 @@ mod tests {
     #[test]
     fn as_config_returns_inner_for_loaded() {
         let cfg = AncConfig {
-            p6: P6Config {
+            p6: settings::P6Config {
                 domain_verbs: vec!["mentions".into()],
             },
+            ..AncConfig::default()
         };
         let load = AncConfigLoad::Loaded(cfg);
         let got = load.as_config().expect("as_config returns inner");

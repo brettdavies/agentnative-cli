@@ -31,6 +31,39 @@ pub enum AuditStatus {
     Error(String),
 }
 
+impl AuditStatus {
+    /// Append `note` to the evidence. `Pass` carries no evidence and is
+    /// returned unchanged.
+    pub fn with_note(self, note: &str) -> Self {
+        let join = |evidence: String| format!("{evidence} {note}");
+        match self {
+            AuditStatus::Pass => AuditStatus::Pass,
+            AuditStatus::Warn(e) => AuditStatus::Warn(join(e)),
+            AuditStatus::Fail(e) => AuditStatus::Fail(join(e)),
+            AuditStatus::OptOut(e) => AuditStatus::OptOut(join(e)),
+            AuditStatus::NotApplicable(e) => AuditStatus::NotApplicable(join(e)),
+            AuditStatus::Skip(e) => AuditStatus::Skip(join(e)),
+            AuditStatus::Error(e) => AuditStatus::Error(join(e)),
+        }
+    }
+}
+
+/// An audit's status and the opt-in a Pass depended on, if any.
+#[derive(Debug, PartialEq)]
+pub struct Verdict {
+    pub status: AuditStatus,
+    pub mitigation: Option<Mitigation>,
+}
+
+impl From<AuditStatus> for Verdict {
+    fn from(status: AuditStatus) -> Self {
+        Verdict {
+            status,
+            mitigation: None,
+        }
+    }
+}
+
 /// How confident an audit is in its verdict. Direct probes (flag parsers,
 /// exit-code observation) report `High`; heuristic text inference reports
 /// `Medium`; soft cross-signal inference reports `Low`. Consumers use this
@@ -93,21 +126,20 @@ pub struct AuditResult {
     #[serde(default)]
     pub confidence: Confidence,
     /// Per-audit transparency carrier: when an audit's Pass depended on a
-    /// per-CLI mitigation (today: `.anc.toml [p6] domain_verbs` for
-    /// `p6-standard-names`), the audit populates this so the scorecard
-    /// distinguishes a self-declared Pass from an unassisted one. `None` for
-    /// every audit that has no mitigation to declare. Carrier-shaped rather
-    /// than audit-specific so future audits with similar transparency needs
-    /// reuse the slot instead of growing parallel fields.
+    /// per-CLI `.anc.toml` setting, the audit populates this so the
+    /// scorecard distinguishes a self-declared Pass from an unassisted one.
+    /// Surfaces in the row's `evidence` after `pass_evidence`. `None` for
+    /// every audit that has no mitigation to declare.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mitigation: Option<MitigationInfo>,
+    pub mitigation: Option<Mitigation>,
     /// The `.anc.toml` setting that would clear this row's warning, attached
     /// when no config supplied it. `None` for every other row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_hint: Option<ConfigHint>,
     /// What a Pass matched, for an audit whose Pass names the subcommands or
-    /// flags it found. Surfaces as the row's `evidence`. `None` for every
-    /// other row; a non-Pass status carries its evidence in the status.
+    /// flags it found. Surfaces as the row's `evidence`, ahead of any
+    /// `mitigation` prose. `None` for every other row; a non-Pass status
+    /// carries its evidence in the status.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pass_evidence: Option<String>,
 }
@@ -155,17 +187,25 @@ pub enum ConfigScope {
     User,
 }
 
-/// Transparency metadata attached to an `AuditResult` when its verdict
-/// depended on a documented opt-in (config-driven recognition, suppression
-/// profile, etc.). Distinct from `evidence`, which is prose; `MitigationInfo`
-/// is the structured signal a downstream consumer (scorecard renderer,
-/// leaderboard) can dispatch on without parsing the evidence string.
-///
-/// Current uses:
-/// - `p6-standard-names`: when one or more subcommands matched the audit
-///   target's `.anc.toml [p6] domain_verbs` list (not the built-in
-///   `STANDARD_VERBS`), the audit fills `domain_match_count` and
-///   `domain_match_examples`.
+/// The `.anc.toml` setting a Pass depended on. The scorecard renders either
+/// variant as the Pass row's `evidence`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub enum Mitigation {
+    /// `p6-standard-names` recognized subcommands through `[p6]
+    /// domain_verbs`; the structured counts also surface as row fields.
+    DomainVerbs(MitigationInfo),
+    /// Any other setting: the prose names the setting, the values it
+    /// contributed, and the file that supplied them.
+    Config(String),
+}
+
+/// Transparency metadata attached to an `AuditResult` when
+/// `p6-standard-names` passed because one or more subcommands matched the
+/// audit target's `.anc.toml [p6] domain_verbs` list (not the built-in
+/// `STANDARD_VERBS`). Distinct from `evidence`, which is prose;
+/// `MitigationInfo` is the structured signal a downstream consumer
+/// (scorecard renderer, leaderboard) can dispatch on without parsing the
+/// evidence string.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct MitigationInfo {
     /// True iff the verdict was assisted by the named opt-in. Always present

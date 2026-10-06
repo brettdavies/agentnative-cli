@@ -62,8 +62,8 @@ The adversarial review surfaced 5 findings against this PR.
 - Removing `.anc.toml domain_verbs` entirely.
 - Monorepo / per-binary `.anc.toml` (one file per repo root remains the contract).
 - Surfacing the merged verb list to downstream agents at runtime (the discoverability anti-pattern in finding #5).
-- Validation of `domain_verbs` entries' shape (length cap, character set restrictions). Treat `domain_verbs = ["yeet",
-  "bork"]` as a self-declaration the user owns; the scorecard signal is the safeguard.
+- Validation of `domain_verbs` entries' shape (length cap, character set restrictions). Treat
+  `domain_verbs = ["yeet", "bork"]` as a self-declaration the user owns; the scorecard signal is the safeguard.
 
 ## Requirements
 
@@ -85,9 +85,9 @@ The adversarial review surfaced 5 findings against this PR.
   `reply`; verify the original PR list — adjust if PR #76 listed 11 cross-domain verbs vs. 12.)
 
 - **R5**: Five new tests:
-- `nonsense_domain_verbs_pass_with_transparency_flag` — `.anc.toml` containing `domain_verbs = ["yeet", "bork",
-  "blarg"]` against a CLI whose subcommands match. Asserts Pass, `using_domain_verbs: true`, and the evidence string
-  names all three domain verbs.
+- `nonsense_domain_verbs_pass_with_transparency_flag` — `.anc.toml` containing
+  `domain_verbs = ["yeet", "bork", "blarg"]` against a CLI whose subcommands match. Asserts Pass,
+  `using_domain_verbs: true`, and the evidence string names all three domain verbs.
 - `case_mismatch_domain_verbs_does_not_match` — `.anc.toml` containing `domain_verbs = ["Post"]` against a CLI with
   subcommand `post`. Asserts no match (consistent with the existing lowercased-subcommand semantics).
 - `pass_without_anc_toml_omits_transparency_fields` — absent `.anc.toml`. Asserts `using_domain_verbs` absent from JSON,
@@ -107,9 +107,9 @@ The adversarial review surfaced 5 findings against this PR.
 ### U1. Extend audit return shape
 
 `audit_standard_names(help: &Help, domain_verbs: &[String])` currently returns `AuditStatus`. Either extend it to return
-a tuple `(AuditStatus, AuditExtras)` where `AuditExtras` carries `using_domain_verbs: bool` and `domain_match_count:
-usize`, or store the extras as side-channel state on a `Result` struct. Prefer the tuple — explicit flow, no hidden
-state.
+a tuple `(AuditStatus, AuditExtras)` where `AuditExtras` carries `using_domain_verbs: bool` and
+`domain_match_count: usize`, or store the extras as side-channel state on a `Result` struct. Prefer the tuple — explicit
+flow, no hidden state.
 
 ### U2. Wire extras into AuditResult / scorecard JSON
 
@@ -119,9 +119,9 @@ scorecard always-present-null contract.
 
 ### U3. Construct evidence string with built-in/domain ratio
 
-In the audit's `run()`, when at least one match was via `domain_verbs`, format evidence as `"X/Y subcommands standard (Z
-via .anc.toml [p6].domain_verbs: [verb1, verb2])"`. When the Pass is built-ins-only, keep the existing form. When the
-audit Warns, append a pointer to the documentation file (R6).
+In the audit's `run()`, when at least one match was via `domain_verbs`, format evidence as
+`"X/Y subcommands standard (Z via .anc.toml [p6].domain_verbs: [verb1, verb2])"`. When the Pass is built-ins-only, keep
+the existing form. When the audit Warns, append a pointer to the documentation file (R6).
 
 ### U4. Trim platform-specific verbs from STANDARD_VERBS
 

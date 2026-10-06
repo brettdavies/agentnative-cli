@@ -98,8 +98,8 @@ requested a research spike first. The spike produces a written report that infor
   sub-modules.
 - `src/audits/source/python/bare_except.rs` — canonical AST-walking audit (no ast-grep `Pattern` — walks `except_clause`
   nodes directly). Shows the idiomatic shape for grammar-specific node-kind audits.
-- `src/audits/source/python/sys_exit.rs` — canonical call-site audit with guard-scope awareness (`if __name__ ==
-  "__main__":`). Shows how to structure context-sensitive Python audits.
+- `src/audits/source/python/sys_exit.rs` — canonical call-site audit with guard-scope awareness
+  (`if __name__ == "__main__":`). Shows how to structure context-sensitive Python audits.
 - `src/audits/source/python/no_color.rs` — canonical "pattern-list plus string-literal fallback" audit; easiest template
   for cross-language adaptations.
 - `src/audits/source/rust/unwrap.rs` — simplest ast-grep `Pattern` audit; template for Go equivalents.
@@ -150,8 +150,8 @@ requested a research spike first. The spike produces a written report that infor
 
 - **Research spike first, implementation second.** The user explicitly requested a spike. The spike is its own
   implementation unit producing a written report — the plan treats spike outputs as the inputs for all subsequent
-  per-language units. This is identical to the pattern that produced the successful `ast-grep-core v0.42.0 validated via
-  spike (3 PoC audits, 18 tests pass)` note in CLAUDE.md.
+  per-language units. This is identical to the pattern that produced the successful
+  `ast-grep-core v0.42.0 validated via spike (3 PoC audits, 18 tests pass)` note in CLAUDE.md.
 - **Language-extension map becomes a slice, not a string.** `parsed_files()` currently maps each language to a single
   extension string (`"rs"`, `"py"`, `"go"`, `"js"`). TypeScript needs `.ts` + `.tsx`; Ruby wants `.rb` + optionally
   `.rake`. Change `ext` to a slice of extensions per language so `walk_source_files` can accept multiple extensions
@@ -362,8 +362,8 @@ Go, TypeScript, and Ruby (accounting for Ruby's and Go's `µ` meta-variable char
 
 - Change `parsed_files()`'s `ext` from a `&str` to a `&[&str]` (or equivalent) and adjust `walk_source_files` /
   `walk_source_files_inner` signatures to accept multiple extensions. Update the `Rust | Python | Go | Node` extension
-  lists so the existing languages continue to match exactly the files they match today; add `TypeScript -> ["ts",
-  "tsx"]` and `Ruby -> ["rb"]`.
+  lists so the existing languages continue to match exactly the files they match today; add
+  `TypeScript -> ["ts", "tsx"]` and `Ruby -> ["rb"]`.
 - `detect_language`: insert the `tsconfig.json` audit between `pyproject.toml` and `package.json` so a repo containing
   both `tsconfig.json` and `package.json` is classified as TypeScript. Insert `Gemfile` before `*.gemspec` detection.
   Use glob-like detection for `*.gemspec` (list directory, look for any file ending in `.gemspec`).
@@ -495,8 +495,8 @@ spike pattern decisions are validated empirically per audit.
   string-literal fallback.
 - `naked_console_log` (code-quality — analog to `code-naked-println`); flags `console.log` outside an output module.
   Entry-point heuristic same as `process_exit_outside_entry`.
-- Optional fourth: `throw_string_literal` (P4 — analog to `p4-error-types`); flags `throw "message"` and `throw new
-  Error("message")` in favor of typed custom-error classes.
+- Optional fourth: `throw_string_literal` (P4 — analog to `p4-error-types`); flags `throw "message"` and
+  `throw new Error("message")` in favor of typed custom-error classes.
 - Modify: `src/audits/source/mod.rs` — wire `all_source_audits(Language::TypeScript)`.
 - Test: inline `#[cfg(test)]` per audit file.
 
@@ -557,8 +557,8 @@ so the entry-point heuristic is validated against real code before the audit shi
   audit on the `rescue` node kind.
 - `no_color` (P6 — analog to `p6-no-color`); looks for `ENV["NO_COLOR"]`, `ENV.fetch("NO_COLOR")`, and the
   string-literal fallback.
-- `exit_outside_entry` (P4 — analog to `p4-process-exit`); flags `exit`, `abort`, `Kernel.exit` outside the `if __FILE__
-  == $0` idiom.
+- `exit_outside_entry` (P4 — analog to `p4-process-exit`); flags `exit`, `abort`, `Kernel.exit` outside the
+  `if __FILE__ == $0` idiom.
 - Optional fourth: `raise_string_literal` (P4 — analog to Rust's error-types audit); flags `raise "message"` without a
   StandardError subclass.
 - Modify: `src/audits/source/mod.rs` — wire `all_source_audits(Language::Ruby)`.
@@ -593,8 +593,8 @@ confidence in pattern correctness should come from tests, not eye-balling.
   level or inside a regular method.
 - Edge case: `bare_rescue` ignores `rescue` inside a string literal or a heredoc (AST-awareness guard).
 - Edge case: `exit_outside_entry` recognizes both `if __FILE__ == $0` and `if $PROGRAM_NAME == __FILE__` forms.
-- Edge case: `raise_string_literal` does not flag `raise MyError, "msg"` (class + message) or `raise
-  MyError.new("msg")`.
+- Edge case: `raise_string_literal` does not flag `raise MyError, "msg"` (class + message) or
+  `raise MyError.new("msg")`.
 - Edge case: Each audit called with `""` returns `Pass`.
 - Error path: Ruby file with a syntax error does not crash the run.
 - Integration: `Audit::applicable` returns true only for `Language::Ruby`.
@@ -728,10 +728,10 @@ table to reflect the new coverage.
   it after implementation.
 - README's supported-languages section is the user-facing promise; update it in Unit 6 *only* once the starter audits
   are actually merged and passing to avoid promising coverage that is not yet shipped.
-- Changelog: each unit that changes behavior visible to users (Units 2, 3, 4, 5, 6) contributes bullets to the PR's `##
-  Changelog` section per the global PR convention — specifically: "Added Go source audits (4 starter audits)", "Added
-  TypeScript source audits", "Added Ruby source audits", and (if split into multiple PRs) feature-flag-enable notes per
-  grammar.
+- Changelog: each unit that changes behavior visible to users (Units 2, 3, 4, 5, 6) contributes bullets to the PR's
+  `## Changelog` section per the global PR convention — specifically: "Added Go source audits (4 starter audits)",
+  "Added TypeScript source audits", "Added Ruby source audits", and (if split into multiple PRs) feature-flag-enable
+  notes per grammar.
 - Release cadence: this work is a minor version bump (`v0.2.0`) consistent with the design-doc positioning that v0.2 is
   "more languages + `--fix`"; coordinate with whoever is cutting the next release before Unit 6 merges so the release
   notes land correctly. (The `--fix` half of v0.2 is a separate plan.)

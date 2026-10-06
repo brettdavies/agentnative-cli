@@ -179,11 +179,11 @@ matcher is still naive, so prose alone has not held here either.
 - KTD1. **Recognize the header by its last word, not by an allowlist.** A block header ending in `commands:` covers
   `Common commands:`, `Advanced commands:` and the three known forms without enumerating vendors. Instantiates R1.
 - KTD2. **Strip the binary name, then take the first remaining token.** This is the whole extraction rule. It yields
-  `status` from `herdr status [server|client]`, `server` from `herdr server stop`, `machine` from `herdr machine
-  <subcommand>`, and nothing from the bare `herdr` line. The invocation is the text before the two-space description
-  gap; in a prefixed block, a bare entry whose description follows a single space (`tool Launch the app`) is read as
-  description only, since commands are lowercase by convention and sentences are capitalized. Dropping the bare line
-  costs no coverage: bare-invocation behavior is probed by executing the binary with no arguments in
+  `status` from `herdr status [server|client]`, `server` from `herdr server stop`, `machine` from
+  `herdr machine <subcommand>`, and nothing from the bare `herdr` line. The invocation is the text before the two-space
+  description gap; in a prefixed block, a bare entry whose description follows a single space (`tool Launch the app`) is
+  read as description only, since commands are lowercase by convention and sentences are capitalized. Dropping the bare
+  line costs no coverage: bare-invocation behavior is probed by executing the binary with no arguments in
   `src/audits/behavioral/flag_existence.rs:71` and `src/audits/behavioral/non_interactive.rs:73`, never by reading it
   out of the help text. The rule preserves the existing output contract exactly, so none of the fifteen consumers
   changes. Rejected: returning `server stop` as one name, which three MUST audits turn into a false failure because they
@@ -312,8 +312,8 @@ vendored before the audit compiles.
   - A two-entry block where one command equals the binary name does not read as prefixed.
   - A localized help block still degrades to empty rather than inventing names.
   - An audit that parsed nothing reports that it parsed nothing, rather than asserting the tool has no subcommands.
-- **Verification:** the help-probe and behavioral suites pass; auditing the new fixture reports its commands; `anc audit
-  .` changes no row on this repo.
+- **Verification:** the help-probe and behavioral suites pass; auditing the new fixture reports its commands;
+  `anc audit .` changes no row on this repo.
 
 ### U2. One command-block parser
 

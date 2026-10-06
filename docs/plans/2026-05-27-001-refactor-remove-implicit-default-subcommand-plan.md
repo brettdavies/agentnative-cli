@@ -13,10 +13,10 @@ origin: maintainer decision — require the explicit verb (git/cargo/kubectl/doc
 Delete the implicit-`audit` injection from the `anc` CLI. Today `anc .` is silently rewritten to `anc audit .` by
 `src/argv.rs::inject_default_subcommand` (~163 LOC of clap-introspection heuristics, plus a ~225-line unit-test block).
 After this change the verb is required — `anc audit .` — matching every multi-subcommand CLI of its class (git, cargo,
-kubectl, docker, gh, terraform). Removing the injection lets clap emit its native, suggestion-bearing `unrecognized
-subcommand` error for typos like `anc check .`, deletes fragile code, and makes `anc` obey its own P6 principle. The
-only cost is five extra characters for interactive humans; agents — the primary audience — parse a contract and gain
-nothing from the keystroke savings.
+kubectl, docker, gh, terraform). Removing the injection lets clap emit its native, suggestion-bearing
+`unrecognized subcommand` error for typos like `anc check .`, deletes fragile code, and makes `anc` obey its own P6
+principle. The only cost is five extra characters for interactive humans; agents — the primary audience — parse a
+contract and gain nothing from the keystroke savings.
 
 This is a mild, documented breaking behavior change. It is pre-1.0 (current version `0.4.0`); CHANGELOG/version handling
 is a release-PR concern, not part of this plan's units.
@@ -37,11 +37,12 @@ The implicit default subcommand is wrong for `anc` on three counts:
    typo silently becomes a path. Dogfooding credibility demands the tool follow its own rule.
 
 3. **It is the root cause of a confusing-error class.** Because any unrecognized first token is treated as the `audit`
-   PATH target, `anc check .` produces `error: unexpected argument '.'` instead of clap's native `error: unrecognized
-   subcommand 'check'` with `tip: a similar subcommand exists: 'audit'`. clap's `suggestions` feature is already enabled
-   (`Cargo.toml:41` declares `clap = { version = "4.4", features = ["derive", "env"] }` with no `default-features =
-   false`, so the default `suggestions` feature is on). Removing the injection lets clap emit the native, did-you-mean
-   error in both the text path and the existing JSON-envelope path (`handle_clap_error` in `src/main.rs`).
+   PATH target, `anc check .` produces `error: unexpected argument '.'` instead of clap's native
+   `error: unrecognized subcommand 'check'` with `tip: a similar subcommand exists: 'audit'`. clap's `suggestions`
+   feature is already enabled (`Cargo.toml:41` declares `clap = { version = "4.4", features = ["derive", "env"] }` with
+   no `default-features = false`, so the default `suggestions` feature is on). Removing the injection lets clap emit the
+   native, did-you-mean error in both the text path and the existing JSON-envelope path (`handle_clap_error` in
+   `src/main.rs`).
 
 Removing the injection also deletes ~163 LOC of flag-introspection heuristics (`--` separator handling, `--command`
 value-collision pairing, subcommand-scoped-flag detection) plus the large unit-test block that exists only to pin that
@@ -81,11 +82,12 @@ behavior.
 
 ### The injection mechanism (to be deleted)
 
-- `src/argv.rs:22-185` — `inject_default_subcommand<I>`. Collects argv; short-circuits bare invocation (`args.len() <=
-  1`) as the fork-bomb guard; builds known-subcommand and flag catalogues via clap introspection (`get_subcommands()`,
-  `get_arguments()`); scans tokens, pairs value-taking flags with their values, special-cases the POSIX `--` separator,
-  tracks subcommand-scoped vs top-level flags, and injects `audit` at position 1 when the first non-flag token is not a
-  known subcommand (or when a subcommand-scoped flag appears with no positional). All of this is deleted.
+- `src/argv.rs:22-185` — `inject_default_subcommand<I>`. Collects argv; short-circuits bare invocation
+  (`args.len() <= 1`) as the fork-bomb guard; builds known-subcommand and flag catalogues via clap introspection
+  (`get_subcommands()`, `get_arguments()`); scans tokens, pairs value-taking flags with their values, special-cases the
+  POSIX `--` separator, tracks subcommand-scoped vs top-level flags, and injects `audit` at position 1 when the first
+  non-flag token is not a known subcommand (or when a subcommand-scoped flag appears with no positional). All of this is
+  deleted.
 - `src/argv.rs:257-485` — the `#[cfg(test)] mod tests` block. The injection-specific tests
   (`bare_invocation_is_untouched` through `trailing_flags_pass_through`, ~21 tests) are deleted. The `format_invocation`
   tests (`format_invocation_*`, lines 425-484) are **kept** — `format_invocation` survives.
@@ -112,9 +114,9 @@ behavior.
 - `src/main.rs:84-89` — JSON-mode sniff runs on raw argv (`json_error::json_mode_in_argv`), then `try_parse_from`; parse
   failures route to `handle_clap_error(e, json_mode)`.
 - `src/main.rs:367-423` — `handle_clap_error`. The `kind => { … }` arm (line 400) handles `InvalidSubcommand` (and every
-  other non-help/version variant): text mode prints clap's rendering via `error.print()` (which includes the `tip: a
-  similar subcommand exists` line when `suggestions` is enabled); JSON mode distills the first non-empty error line into
-  the `{"kind":"usage","error":<slug>,"message":...}` envelope.
+  other non-help/version variant): text mode prints clap's rendering via `error.print()` (which includes the
+  `tip: a similar subcommand exists` line when `suggestions` is enabled); JSON mode distills the first non-empty error
+  line into the `{"kind":"usage","error":<slug>,"message":...}` envelope.
 - `src/json_error.rs:99-122` — `classify_clap_error` already maps `K::InvalidSubcommand => "invalid-subcommand"`. The
   native error after removal will be `InvalidSubcommand` (for `anc check .`), which already has a slug. No new mapping
   needed.
@@ -167,9 +169,9 @@ unaffected.
   two-mode parser. The injection's entire reason to exist (ergonomic shorthand for humans) is the thing being removed.
 
 - **Rely on clap's already-enabled `suggestions` feature for the native error.** No new dependency, no feature-flag
-  change to `Cargo.toml`. `anc check .` will produce `error: unrecognized subcommand 'check'` + `tip: a similar
-  subcommand exists: 'audit'`; `anc foobar .` produces the same shape without a tip (no near match). Both already route
-  through `handle_clap_error`'s `kind` arm and `classify_clap_error`'s `invalid-subcommand` slug.
+  change to `Cargo.toml`. `anc check .` will produce `error: unrecognized subcommand 'check'` +
+  `tip: a similar subcommand exists: 'audit'`; `anc foobar .` produces the same shape without a tip (no near match).
+  Both already route through `handle_clap_error`'s `kind` arm and `classify_clap_error`'s `invalid-subcommand` slug.
 
 - **`run.invocation` capture simplifies but does not change semantics.** `main` already builds `run.invocation` from
   `raw_argv` (the unmodified argv), and the injection only rewrote the *copy* handed to clap. Removing injection makes
@@ -201,10 +203,10 @@ unaffected.
   framing). Keep `format_invocation`, `quote_arg`, `needs_quoting`. Rewrite the module doc to describe only invocation
   rendering. Edit the `format_invocation` doc comment (lines 187-196) to drop the "captured *before*
   `inject_default_subcommand`" clause.
-- Modify: `src/main.rs` — change line 25 import from `use argv::{format_invocation, inject_default_subcommand};` to `use
-  argv::format_invocation;`. Change line 86 to `Cli::try_parse_from(raw_argv.iter().cloned())`. Edit the comment block
-  at lines 74-79 (drop the injection framing). Verify `EXAMPLES_BLOCK` (lines 335-346) shows only `anc audit .` forms
-  (it already does — confirm, no edit expected).
+- Modify: `src/main.rs` — change line 25 import from `use argv::{format_invocation, inject_default_subcommand};` to
+  `use argv::format_invocation;`. Change line 86 to `Cli::try_parse_from(raw_argv.iter().cloned())`. Edit the comment
+  block at lines 74-79 (drop the injection framing). Verify `EXAMPLES_BLOCK` (lines 335-346) shows only `anc audit .`
+  forms (it already does — confirm, no edit expected).
 - Modify: `src/scorecard/mod.rs` — edit `RunInfo` doc comment (lines 257-270) to drop the `inject_default_subcommand`
   clause.
 
@@ -218,9 +220,9 @@ unaffected.
 
 - `anc audit .` → runs, exits 0/1/2 with a scorecard (unchanged).
 - `anc .` → clap error `unexpected argument '.'`-class? No: with no injection, `.` is parsed as the first token; since
-  `Cli` has `arg_required_else_help` and no top-level positional, clap treats `.` as an `InvalidSubcommand` → `error:
-  unrecognized subcommand '.'`, exit 2. (Verify the exact clap kind during implementation; the assertion in U2 keys on
-  exit code 2 + an `unrecognized`/`error` stderr substring, not the precise phrasing.)
+  `Cli` has `arg_required_else_help` and no top-level positional, clap treats `.` as an `InvalidSubcommand` →
+  `error: unrecognized subcommand '.'`, exit 2. (Verify the exact clap kind during implementation; the assertion in U2
+  keys on exit code 2 + an `unrecognized`/`error` stderr substring, not the precise phrasing.)
 - `anc check .` → `error: unrecognized subcommand 'check'` + `tip: a similar subcommand exists: 'audit'`, exit 2.
 - `anc` (bare) → help, exit 2 (fork-bomb guard intact).
 
@@ -273,9 +275,9 @@ text and JSON modes; update the `run.invocation` scorecard test to an explicit i
 
 - Add new integration tests for the native error:
 - `test_unrecognized_subcommand_errors_with_suggestion` — `anc check .` → exit 2, stderr contains `unrecognized` and
-    `audit` (the did-you-mean).
+  `audit` (the did-you-mean).
 - `test_unrecognized_subcommand_json_envelope` — `anc check . --output json` → exit 2, stderr is a JSON object with
-    `kind == "usage"` and `error == "invalid-subcommand"` (assert via `serde_json`).
+  `kind == "usage"` and `error == "invalid-subcommand"` (assert via `serde_json`).
 - `test_bare_path_now_errors` — `anc .` → exit 2 (no longer runs an audit).
 
 **Test scenarios:**
@@ -300,16 +302,16 @@ automatically" prose; refresh doc comments and the JSON-schema description that 
 **Files:**
 
 - Modify: `src/cli.rs` — `after_help` block (lines 19-32): keep the `Examples:` lines (already `anc audit …`);
-  **delete** the "When the first argument is not a subcommand, `audit` is inserted automatically: `anc .` ≡ `anc audit
-  .` / `anc --command ripgrep` ≡ `anc audit --command ripgrep`" paragraph (lines 27-30). Keep the bare-`anc` fork-bomb
-  note (lines 31-32).
-- Modify: `README.md` — Quick Start (67-93): rewrite `anc .` → `anc audit .`, `anc ./target/release/mycli` → `anc audit
-  ./target/release/mycli`, `anc --command ripgrep` → `anc audit --command ripgrep`, and each `anc . <flag>` → `anc audit
-  . <flag>`; update the "(`check` is the default subcommand)" comment on line 68. Lines 155/157: `anc . --binary` → `anc
-  audit . --binary`, `anc . --source` → `anc audit . --source`. CLI Reference paragraph (206-208): replace the "inserted
-  automatically … resolve to `anc audit …`" text with a statement that the `audit` verb is required (e.g. "Every audit
-  is invoked as `anc audit <path>`; there is no implicit default subcommand"). Line 359: drop the "default-subcommand
-  injection" clause from the scorecard field description.
+  **delete** the "When the first argument is not a subcommand, `audit` is inserted automatically: `anc .` ≡
+  `anc audit .` / `anc --command ripgrep` ≡ `anc audit --command ripgrep`" paragraph (lines 27-30). Keep the bare-`anc`
+  fork-bomb note (lines 31-32).
+- Modify: `README.md` — Quick Start (67-93): rewrite `anc .` → `anc audit .`, `anc ./target/release/mycli` →
+  `anc audit ./target/release/mycli`, `anc --command ripgrep` → `anc audit --command ripgrep`, and each `anc . <flag>` →
+  `anc audit . <flag>`; update the "(`check` is the default subcommand)" comment on line 68. Lines 155/157:
+  `anc . --binary` → `anc audit . --binary`, `anc . --source` → `anc audit . --source`. CLI Reference paragraph
+  (206-208): replace the "inserted automatically … resolve to `anc audit …`" text with a statement that the `audit` verb
+  is required (e.g. "Every audit is invoked as `anc audit <path>`; there is no implicit default subcommand"). Line 359:
+  drop the "default-subcommand injection" clause from the scorecard field description.
 - Modify: `AGENTS.md` — code block (16-38): rewrite every `anc .` / `anc --command ripgrep` to the explicit `anc audit`
   form; delete the line-16 "`check` is implicit when the first non-flag arg is a path" comment. Fix the line-46-48
   fork-bomb prose verb-drift (`check .` → `audit .`) while keeping the guard description.

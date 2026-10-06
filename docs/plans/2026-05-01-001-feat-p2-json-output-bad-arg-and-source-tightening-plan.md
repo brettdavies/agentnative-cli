@@ -53,9 +53,9 @@ Carried verbatim from origin requirements doc. R-IDs stable.
   actual reachability. Shifts anchored by the fixture matrix (R12) and enumerated in the PR description.
 - R6. Audit ID stays `p2-structured-output`; `covers()` stays `&["p2-must-output-flag"]`. No new requirement IDs added
   to `src/principles/registry.rs`.
-- R7. Add a Python source-layer audit applicable when `Project::language` is Python. Detects argparse `add_argument(...,
-  choices=[..., 'json', ...])` / click `Choice([..., 'json', ...])` declarations + a `json.dumps` / `json.dump` call
-  site reachable from the dispatch on that argument's value.
+- R7. Add a Python source-layer audit applicable when `Project::language` is Python. Detects argparse
+  `add_argument(..., choices=[..., 'json', ...])` / click `Choice([..., 'json', ...])` declarations + a `json.dumps` /
+  `json.dump` call site reachable from the dispatch on that argument's value.
 - R8. Detection produces the same tiered Strong / Medium / Weak shape as Rust (R4), with the same Confidence levels and
   the same Warn message when only the choice declaration exists without a `json.dumps` call site.
 - R9. The Python audit declares `covers() = &["p2-must-output-flag"]` and registers in
@@ -73,8 +73,8 @@ Carried verbatim from origin requirements doc. R-IDs stable.
   `p2-structured-output` depends on the Strong-tier resolution from `Open Questions → Deferred from Document Review`** —
   `Confidence::High` if option (b) "any same-crate `serde_json`" is chosen, `Confidence::Medium` if option (a)
   "within-arm strict" is chosen (anc's match arm calls `format_json` in `scorecard/`, not `serde_json` directly).
-- R14. `docs/coverage-matrix.md` and `coverage/matrix.json` are regenerated via `anc emit coverage-matrix` as part
-  of the same PR. The integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
+- R14. `docs/coverage-matrix.md` and `coverage/matrix.json` are regenerated via `anc emit coverage-matrix` as part of
+  the same PR. The integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
 
 ---
 
@@ -108,8 +108,8 @@ Carried from origin. Anything below is explicitly NOT in this plan.
   function takes `(runner, prefix, has_output_flag, has_format_flag)` and tries safe-suffix probes; R1/R2/R3 add a third
   path before the existing fallthrough returns Warn.
 - `src/audits/behavioral/bad_args.rs:35` — current bad-arg trigger using `--this-flag-does-not-exist-agentnative-probe`.
-  The bad-arg-VALUE probe is the same pattern with a different argument shape (`--output
-  __invalid_format_value_agentnative_probe__`).
+  The bad-arg-VALUE probe is the same pattern with a different argument shape
+  (`--output __invalid_format_value_agentnative_probe__`).
 - `src/audits/source/rust/structured_output.rs` — current Rust source audit, will be tightened in U2. Helper
   `audit_structured_output(source: &str) -> AuditStatus` at line 87 is the unit-testable core; new tier helper functions
   follow the same shape per CLAUDE.md "Source Audit Convention".
@@ -201,8 +201,8 @@ during implementation unless contradicting evidence surfaces.**
   case; expansion to additional tools is allowed if leaderboard inspection surfaces edge-case error-message shapes
   within a family. **Empty-family fallback** (per U4 Approach): if a parser family has no warn-capped leaderboard tool,
   the family fixture uses a synthetic minimal tool committed alongside the fixture (~20-line clap crate / ~10-line
-  argparse script / equivalent), captured via the same `NO_COLOR=1 LANG=C COLUMNS=80` env, labeled `source:
-  synthetic-minimal-tool` in the fixture's `README.md`, and called out in the PR description.
+  argparse script / equivalent), captured via the same `NO_COLOR=1 LANG=C COLUMNS=80` env, labeled
+  `source: synthetic-minimal-tool` in the fixture's `README.md`, and called out in the PR description.
 - **Concrete ast-grep pattern shape for Strong-tier reachability in Rust** (R4). The match-arm-to-call-site traversal is
   the load-bearing detection step. Expect iteration during U2 — the patterns are tuned against fixtures.
 - **Concrete ast-grep patterns for argparse `choices=` and click `Choice([...])`** (R7). argparse exposes `choices` as a
@@ -275,9 +275,9 @@ here, or carry the chosen path into the relevant unit's Approach.
   the same evidence-property shape (env-var existence) — the analogy doesn't hold here because safe-suffix and
   bad-arg-VALUE evidence different properties.
 - **(b) Single-Confidence-per-audit + extend R10 enumeration.** Keep the `Medium`-for-all-Pass-paths shift; extend R10's
-  PR-description and changelog enumeration scope from "audience-label shifts" to "any change in `(verdict, confidence,
-  audience)` tuple." CHANGELOG gets two sections: "Audience shifts (correctness wins)" and "Confidence demotions
-  (doctrine fix)."
+  PR-description and changelog enumeration scope from "audience-label shifts" to "any change in
+  `(verdict, confidence, audience)` tuple." CHANGELOG gets two sections: "Audience shifts (correctness wins)" and
+  "Confidence demotions (doctrine fix)."
 - **Tier label cross-language symmetry (gates U3).** Rust's match-arm AST is straightforward to ast-grep; Python's
   dispatch is structurally heterogeneous (`if`, `match`, dict-dispatch, `getattr`). When Rust resolves Strong via
   match-arm-to-call traversal, Python's Strong for the same label is doing strictly weaker reachability — for click
@@ -309,10 +309,10 @@ U4 (fixture matrix)
 
 - U1. **Bad-arg-VALUE probe in `validate_json_output()`**
 
-**Goal:** Add a third evidence path to `p2-json-output` that invokes `<bin> [prefix...] <flag>
-__invalid_format_value_agentnative_probe__` and parses stderr for the declared value enumeration. When the parser echoes
-`json` as a declared value, return `AuditStatus::Pass` at `Confidence::Medium`. When the probe cannot extract a value
-list, fall through to the existing safe-suffix Warn.
+**Goal:** Add a third evidence path to `p2-json-output` that invokes
+`<bin> [prefix...] <flag> __invalid_format_value_agentnative_probe__` and parses stderr for the declared value
+enumeration. When the parser echoes `json` as a declared value, return `AuditStatus::Pass` at `Confidence::Medium`. When
+the probe cannot extract a value list, fall through to the existing safe-suffix Warn.
 
 **Requirements:** R1, R2, R3.
 
@@ -331,14 +331,15 @@ list, fall through to the existing safe-suffix Warn.
 - The probe runs **after** the existing `--help`/`--version` safe-suffix loop produces a non-Pass result and **before**
   the `Warn` fallthrough. This preserves R3 ordering: existing passing tools see no change, the new path only activates
   when the prior loop didn't already conclude `Pass`.
-- The probe argv is built per detected flag (`--output` and/or `--format`): `[prefix..., flag,
-  "__invalid_format_value_agentnative_probe__"]`. Sentinel value follows the existing `bad_args.rs` naming convention
-  for grep-discoverability.
+- The probe argv is built per detected flag (`--output` and/or `--format`):
+  `[prefix..., flag, "__invalid_format_value_agentnative_probe__"]`. Sentinel value follows the existing `bad_args.rs`
+  naming convention for grep-discoverability.
 - After `runner.run`, parse the merged `(stdout, stderr)` lowercase output for a declared-value enumeration. Recognized
   shapes: `must be one of [...]` (clap), `valid choices: ...` (argparse), `must be one of: ...` (cobra/click). Extract
   the bracketed/comma-separated list; pass if `json` is enumerated.
-- The result-message format names the probe shape and the declared values: `"--output flag declares JSON in value
-  enumeration via bad-arg-VALUE probe (declared values: [text, json, yaml])"`. Confidence stays `Medium`.
+- The result-message format names the probe shape and the declared values:
+  `"--output flag declares JSON in value enumeration via bad-arg-VALUE probe (declared values: [text, json, yaml])"`.
+  Confidence stays `Medium`.
 - The `validate_json_output` function signature does not change. The new probe is private to the function (or a small
   private helper, e.g. `try_value_enum_probe(runner, prefix, flag) -> Option<AuditStatus>`).
 - The audit's top-level `Confidence::High` field at line 62 changes to `Confidence::Medium` to reflect the new
@@ -358,10 +359,10 @@ list, fall through to the existing safe-suffix Warn.
 - *Happy path — clap-shape echo.* sh-script fixture emits clap's shape `error: invalid value
   '__invalid_format_value_agentnative_probe__' for '--output <FORMAT>': must be one of [text, json]` to stderr on the
   invalid-value invocation; audit returns `Pass` at `Confidence::Medium`. **Covers AE1.**
-- *Happy path — argparse-shape echo.* sh-script fixture emits argparse's shape `error: argument --output: invalid
-  choice: '__invalid__' (choose from 'text', 'json', 'yaml')`; audit returns `Pass`.
-- *Happy path — click-shape echo.* sh-script fixture emits click's shape `Error: Invalid value for '--output': 'foo' is
-  not one of 'text', 'json', 'yaml'.`; audit returns `Pass`.
+- *Happy path — argparse-shape echo.* sh-script fixture emits argparse's shape
+  `error: argument --output: invalid choice: '__invalid__' (choose from 'text', 'json', 'yaml')`; audit returns `Pass`.
+- *Happy path — click-shape echo.* sh-script fixture emits click's shape
+  `Error: Invalid value for '--output': 'foo' is not one of 'text', 'json', 'yaml'.`; audit returns `Pass`.
 - *Edge — bad-arg-VALUE response missing `json`.* Fixture echoes `must be of [text, yaml]` (no json); audit falls back
   to safe-suffix probes; emits the existing Warn. **Covers AE2.**
 - *Edge — bad-arg-VALUE returns free-form error without enumeration.* Fixture emits `Error: unknown output format`; the
@@ -409,8 +410,8 @@ is reachable from the match arm gating that variant; Medium (`Confidence::Medium
 - `audit_structured_output(source: &str) -> AuditStatus` — the unit-testable contract per CLAUDE.md. Same shape as
   today, breaks no existing tests. Returns `Pass` for Strong/Medium tiers, `Warn` for Weak (with the shared
   `STRUCTURED_OUTPUT_WEAK_WARN` constant), `Skip` for non-clap codebases.
-- `tier_for_source(source: &str) -> Tier` — private to the rust audit file. Returns the resolved `Tier::Strong / Medium
-  / Weak`. Used only inside the trait-impl `run()` to select per-tier `Confidence`.
+- `tier_for_source(source: &str) -> Tier` — private to the rust audit file. Returns the resolved
+  `Tier::Strong / Medium / Weak`. Used only inside the trait-impl `run()` to select per-tier `Confidence`.
 - Both helpers internally call a shared private `analyze_source(source: &str) -> SourceAnalysis` that performs the
   single ast-grep pass and returns the structured signals (enum present? clap field bound to it? `serde_json` call in
   arm? `serde_json` call anywhere in source?). `audit_structured_output` and `tier_for_source` each project from
@@ -421,8 +422,8 @@ is reachable from the match arm gating that variant; Medium (`Confidence::Medium
   `Confidence::Medium` with the shared Weak-tier Warn message). `audit_structured_output` is exported solely for unit
   tests; `run()` does not call it.
 - `Tier` is a private enum inside `structured_output.rs`; not exported. U3 mirrors this shape (its own `tier_for_source`
-- `analyze_source`, its own private `Tier`) — the only shared surface across U2/U3 is the `STRUCTURED_OUTPUT_WEAK_WARN:
-  &str` constant.
+- `analyze_source`, its own private `Tier`) — the only shared surface across U2/U3 is the
+  `STRUCTURED_OUTPUT_WEAK_WARN: &str` constant.
 
 - Strong-tier ast-grep approach (subject to U4 fixture-driven tuning): identify the OutputFormat-bound clap field, find
   the match arm `OutputFormat::Json => $$$BODY`, search `$$$BODY` for `serde_json::$METHOD(...)` calls. Use
@@ -500,9 +501,9 @@ no behavior it just shares wording.
 **Approach:**
 
 - New struct `StructuredOutputPythonAudit` implements the `Audit` trait. `id()` is unique
-  (`"p2-structured-output-python"`); the Rust audit's ID stays as-is. **Both audits declare `covers() =
-  &["p2-must-output-flag"]`** — covers()-OR at the requirement layer credits the requirement when either passes (R9,
-  validated by `dangling_cover_ids` and the existing matrix.rs OR-coverage logic).
+  (`"p2-structured-output-python"`); the Rust audit's ID stays as-is. **Both audits declare
+  `covers() = &["p2-must-output-flag"]`** — covers()-OR at the requirement layer credits the requirement when either
+  passes (R9, validated by `dangling_cover_ids` and the existing matrix.rs OR-coverage logic).
 - The audit's `applicable()` returns true iff `project.language == Some(Language::Python)`. The Rust audit stays
   applicable iff Rust. The two audits run independently against their respective fixtures; they never co-mingle on a
   single project.
@@ -611,14 +612,14 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
   isolates the regex-extraction logic (U1) from real CLI behavior — the fixture's job is to encode the parser family's
   literal stderr format.
 - **External validation step (load-bearing).** For each behavioral fixture, capture literal stderr from one real
-  leaderboard tool of that parser family using a normalized capture environment: `NO_COLOR=1 LANG=C COLUMNS=80
-  <real-tool> --output __invalid_format_value_agentnative_probe__ 2>expected-stderr.txt`. The normalized env strips ANSI
-  color, locale-translated quote forms, and terminal-width-driven wrapping at capture time so the committed file is
-  environment-stable. Commit a small `capture.sh` alongside `expected-stderr.txt` documenting the exact invocation;
-  reviewers can re-run it when a real-tool version bumps. The sh-script reproduces the value-enumeration shape (the
-  substring U1's regex depends on) — byte-for-byte equality is deliberately not the contract; the smoke test asserts
-  substring containment, not byte parity, since drift on ANSI / version / `argv[0]` / locale doesn't affect U1's
-  detection.
+  leaderboard tool of that parser family using a normalized capture environment:
+  `NO_COLOR=1 LANG=C COLUMNS=80 <real-tool> --output __invalid_format_value_agentnative_probe__ 2>expected-stderr.txt`.
+  The normalized env strips ANSI color, locale-translated quote forms, and terminal-width-driven wrapping at capture
+  time so the committed file is environment-stable. Commit a small `capture.sh` alongside `expected-stderr.txt`
+  documenting the exact invocation; reviewers can re-run it when a real-tool version bumps. The sh-script reproduces the
+  value-enumeration shape (the substring U1's regex depends on) — byte-for-byte equality is deliberately not the
+  contract; the smoke test asserts substring containment, not byte parity, since drift on ANSI / version / `argv[0]` /
+  locale doesn't affect U1's detection.
 - **Empty-parser-family fallback rule (synthetic minimal tool).** If the leaderboard query reveals zero currently-warn-
   capped tools for a parser family, build a synthetic minimal tool of that family inside the fixture directory — a
   ~20-line clap-derive Cargo crate, a ~10-line argparse Python script, or the equivalent — and capture its
@@ -661,13 +662,13 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
   This is the property U1's regex actually depends on. Byte-for-byte equality is deliberately avoided — real-tool stderr
   drifts on ANSI color, version strings, locale, `argv[0]` echo, and trailing whitespace, none of which affect U1's
   detection.
-- *Smoke test — source fixtures parse.* For each Rust source fixture, the test shells out to `cargo metadata --offline
-  --manifest-path <fixture>/Cargo.toml --format-version=1` and asserts exit zero — `--offline` avoids network flake on
-  CI; the shell-out posture matches `tests/dogfood.rs`'s existing approach for `anc audit` and avoids growing
-  `[dev-dependencies]` with the `cargo_metadata` crate. For each Python source fixture, the test parses the `.py` files
-  via the existing `Project::discover` path. Catches manifest-parseability problems (malformed `Cargo.toml`, missing
-  `[package]`, unresolvable path-deps); does NOT cover detection-relevant issues — those land in U5's verdict-asserting
-  tests.
+- *Smoke test — source fixtures parse.* For each Rust source fixture, the test shells out to
+  `cargo metadata --offline --manifest-path <fixture>/Cargo.toml --format-version=1` and asserts exit zero — `--offline`
+  avoids network flake on CI; the shell-out posture matches `tests/dogfood.rs`'s existing approach for `anc audit` and
+  avoids growing `[dev-dependencies]` with the `cargo_metadata` crate. For each Python source fixture, the test parses
+  the `.py` files via the existing `Project::discover` path. Catches manifest-parseability problems (malformed
+  `Cargo.toml`, missing `[package]`, unresolvable path-deps); does NOT cover detection-relevant issues — those land in
+  U5's verdict-asserting tests.
 - *Verdict-asserting tests deferred to U5.* The tests that assert each fixture resolves to its documented expected
   verdict require U1/U2/U3 detection to be present and land in U5.
 
@@ -678,8 +679,8 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
   its `source` field — `tool-derived` or `synthetic-minimal-tool`.
 - Every behavioral fixture has an `expected-stderr.txt` captured under the normalized environment, plus a `capture.sh`
   documenting the capture invocation.
-- `cargo test --test integration` passes — U4's new smoke tests (no-panic, value-enumeration substring, `cargo metadata
-  --offline`) succeed against current detection.
+- `cargo test --test integration` passes — U4's new smoke tests (no-panic, value-enumeration substring,
+  `cargo metadata --offline`) succeed against current detection.
 - The PR description for U4 enumerates which behavioral fixtures are `synthetic-minimal-tool`-derived and which
   leaderboard tool + version was the source for each `tool-derived` fixture.
 
@@ -699,8 +700,8 @@ verdicts).
 **Files:**
 
 - Modify: `tests/integration.rs` — add fixture-matrix verdict-asserting tests for each U4 fixture (parser-family
-  behavioral verdicts; Rust + Python source-tier verdicts). **Replaces** the U4 verdict-overlapping smoke tests (`anc
-  audit <fixture>` no-panic + sh-script value-enumeration substring) — these are subsumed by the verdict-asserting
+  behavioral verdicts; Rust + Python source-tier verdicts). **Replaces** the U4 verdict-overlapping smoke tests
+  (`anc audit <fixture>` no-panic + sh-script value-enumeration substring) — these are subsumed by the verdict-asserting
   tests, so they are deleted in this unit. The structural smoke tests stay (`cargo metadata --offline` parseability and
   the per-fixture `Project::discover` Python parse) — they catch a different class of drift the verdict tests don't
   surface.
@@ -750,10 +751,11 @@ verdicts).
 - *Dogfood — `anc` self-audit produces Pass + Medium for `p2-json-output`.* Assertion against the JSON envelope from
   `anc audit $CARGO_MANIFEST_DIR --output json`. **Covers R13.**
 - *Dogfood — `anc` self-audit resolves `p2-structured-output` to its Strong-tier-resolution-dependent Confidence.* Same
-  envelope. The asserted `confidence` value depends on the Strong-tier decision from `Open Questions → Deferred from
-  Document Review`: `"high"` under option (b) "any same-crate `serde_json`", `"medium"` under option (a) "within-arm
-  strict" (since anc's match arm calls `format_json` in `scorecard/`, not `serde_json` directly). The concrete value is
-  set when that question is resolved; until then this scenario is parametric. **Covers R13.**
+  envelope. The asserted `confidence` value depends on the Strong-tier decision from
+  `Open Questions → Deferred from Document Review`: `"high"` under option (b) "any same-crate `serde_json`", `"medium"`
+  under option (a) "within-arm strict" (since anc's match arm calls `format_json` in `scorecard/`, not `serde_json`
+  directly). The concrete value is set when that question is resolved; until then this scenario is parametric. **Covers
+  R13.**
 - *Coverage matrix drift — committed artifacts agree with registry + audits.*
   `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` continues to pass after the regen. **Covers
   R14.**

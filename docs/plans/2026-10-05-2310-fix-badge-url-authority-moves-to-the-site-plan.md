@@ -160,12 +160,12 @@ corrects it so the repo does not carry two directions.
 
 ### Dependencies / Assumptions
 
-- The site can produce a real 0.10 scorecard before any CLI release. `scripts/SYNCS.md:53` documents inject mode, `bash
-  docker/score/build.sh --from-source <cli-repo> --run`, as "the way to score against an unreleased anc (feature branch
-  in agentnative-cli before tag + bottle)". The `MIN_ANC_VERSION` gate lives in `scripts/regen-scorecards.sh`, which the
-  same runbook marks deprecated at `:149` and `:197` in favor of the container path. So U2 lands its version widening
-  together with a real artifact at that version, and the set's "adding a version without a corpus able to satisfy it"
-  warning never applies.
+- The site can produce a real 0.10 scorecard before any CLI release. `scripts/SYNCS.md:53` documents inject mode,
+  `bash docker/score/build.sh --from-source <cli-repo> --run`, as "the way to score against an unreleased anc (feature
+  branch in agentnative-cli before tag + bottle)". The `MIN_ANC_VERSION` gate lives in `scripts/regen-scorecards.sh`,
+  which the same runbook marks deprecated at `:149` and `:197` in favor of the container path. So U2 lands its version
+  widening together with a real artifact at that version, and the set's "adding a version without a corpus able to
+  satisfy it" warning never applies.
 - The consumer still leads, for a different reason than release mechanics: the site must not render a shape the CLI is
   about to emit as the literal `undefined`, and inject mode is what lets it prove that on a branch.
 - The site deploys from `main`, and `origin/dev` is 578 commits ahead of `origin/main`. Merging to the site's `dev` is
@@ -304,8 +304,8 @@ flowchart TB
   which are PR-gated. The dev-direct exception covers planning docs, so this plan file and the earlier plan record U6
   corrects are the artifacts that may be pushed straight to `dev`.
 - `CHANGELOG.md` is generated and must never be hand-edited. The PR body's `## Changelog` is the source of truth, a
-  field removal belongs under `### Changed`, and `RELEASES-PREFLIGHT.md:111-114` additionally requires a `### Breaking
-  changes` row naming each removed field.
+  field removal belongs under `### Changed`, and `RELEASES-PREFLIGHT.md:111-114` additionally requires a
+  `### Breaking changes` row naming each removed field.
 - `scripts/release/smoke.sh` is not in the pre-push hook. It is the gate that catches a schema-and-emitter mismatch, so
   run it by hand for U5.
 - `run()` stays the sole constructor of `AuditResult`, and `compute_badge` stays the single derivation feeding both the
@@ -360,9 +360,9 @@ advancing the pin and refreshing the corpus both need the released binary.
 - **Approach:**
   1. Add `'0.10'` to `SUPPORTED_SCHEMA_VERSIONS` (KTD3), leaving the older entries in place, and extend the set's
      comment to name this migration window alongside the existing 0.5 through 0.7 note.
-  2. Produce one real 0.10 scorecard from the U5 branch with inject mode, `bash docker/score/build.sh --from-source
-     <cli-repo> --run -- --only ripgrep`, and land it with the set change so the version is never listed without an
-     artifact behind it.
+  2. Produce one real 0.10 scorecard from the U5 branch with inject mode,
+     `bash docker/score/build.sh --from-source <cli-repo> --run -- --only ripgrep`, and land it with the set change so
+     the version is never listed without an artifact behind it.
   3. Move the current-version surfaces the drift guard pins to 0.10: the "Current: X." sentence and the example
      `schema_version` in `content/scorecard-schema.md`, and the "(currently X)" pointer in
      `content/web-scorecard-schema.md`. `tests/scorecard-schema-version.test.ts` pins all three to
@@ -534,12 +534,12 @@ advancing the pin and refreshing the corpus both need the released binary.
   3. Rewrite the `RELEASES-POSTFLIGHT.md` checkbox that asks the operator to click the emitted `badge_url` and
      `scorecard_url`, so the postflight stops referencing removed fields.
   4. Append the 0.10 entry to the cumulative schema history in `CLAUDE.md`, and rewrite its `0.5` section at
-     `CLAUDE.md:209-223`. Appending alone does not meet this unit's goal: that section states the six-field `BadgeInfo {
-     eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }` signature, the rule that
-     `embed_markdown` is `Some` only when eligible, that `scorecard_url` / `badge_url` are populated whenever a slug
-     exists, and that the JSON `embed_markdown` and the printed hint can never disagree. All four statements describe
-     fields the scorecard no longer carries. The surviving facts in that section, the `score_pct` formula, the floor,
-     and `convention_url`, stay.
+     `CLAUDE.md:209-223`. Appending alone does not meet this unit's goal: that section states the six-field
+     `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }` signature, the rule
+     that `embed_markdown` is `Some` only when eligible, that `scorecard_url` / `badge_url` are populated whenever a
+     slug exists, and that the JSON `embed_markdown` and the printed hint can never disagree. All four statements
+     describe fields the scorecard no longer carries. The surviving facts in that section, the `score_pct` formula, the
+     floor, and `convention_url`, stay.
   5. Correct the superseded line in the earlier plan record, which resolves this defect as site-redirect-only with "No
      CLI change". That file is a planning doc and commits directly to `dev`, separately from this unit's PR.
 - **Test scenarios:** none; this unit is documentation. The schema-history entry is covered indirectly by U5's version

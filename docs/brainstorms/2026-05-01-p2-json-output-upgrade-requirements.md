@@ -20,16 +20,16 @@ fixture matrix; the audience classifier is allowed to re-derive labels naturally
 `src/audits/behavioral/json_output.rs` currently emits warn for every JSON-supporting CLI when its safe-suffix probes
 (`--help` / `--version`) cannot validate JSON — the dominant case, because terminal flags short-circuit before
 `--output` is honored in most CLIs. This single warn caps `anc`'s own dogfood score at ~97% (project) / ~89% (binary)
-and caps every JSON-supporting CLI on the leaderboard at warn on this dimension. The badge `score_pct` formula (`pass /
-(pass + warn + fail)` per `src/scorecard/mod.rs`) means the warn directly drags the ratio down.
+and caps every JSON-supporting CLI on the leaderboard at warn on this dimension. The badge `score_pct` formula
+(`pass / (pass + warn + fail)` per `src/scorecard/mod.rs`) means the warn directly drags the ratio down.
 
 Two structural facts shape the remedy:
 
 - A third safe-probe shape already exists in the codebase (`src/audits/behavioral/bad_args.rs`'s bad-arg trigger).
   Combining it with a deliberately- invalid value for a known flag (`<bin> --output __invalid_format_value__`) elicits
-  the parser's *declared value enumeration* in stderr — clap, cobra, argparse, and click all echo the form `must be one
-  of [text, json, yaml]` on this class of error. The parser rejects the value before any subcommand handler runs, so the
-  probe is universally side-effect-safe.
+  the parser's *declared value enumeration* in stderr — clap, cobra, argparse, and click all echo the form
+  `must be one of [text, json, yaml]` on this class of error. The parser rejects the value before any subcommand handler
+  runs, so the probe is universally side-effect-safe.
 - A source-layer Rust audit (`p2-structured-output`) already exists and covers the same requirement
   (`p2-must-output-flag`). Today it returns Pass when an `enum OutputFormat` or `enum Format` is detected — but says
   nothing about whether the enum is wired to a serializer. Source layer can do strictly more than behavioral via
@@ -92,8 +92,8 @@ Python has no equivalent source-layer audit at all (`src/audits/source/python/` 
 - R13. Dogfood guards (`tests/dogfood.rs`) update to reflect the new verdict for `p2-json-output` against `anc` itself
   (Pass at `Confidence::Medium`) and the tier `p2-structured-output` resolves to (Strong, given `anc`'s `OutputFormat`
   enum is wired to `serde_json::to_string_pretty` via the scorecard module).
-- R14. Coverage matrix artifacts (`docs/coverage-matrix.md`, `coverage/matrix.json`) are regenerated via `anc emit
-  coverage-matrix` as part of the same PR. The integration test
+- R14. Coverage matrix artifacts (`docs/coverage-matrix.md`, `coverage/matrix.json`) are regenerated via
+  `anc emit coverage-matrix` as part of the same PR. The integration test
   `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` passes.
 
 ---
@@ -109,8 +109,8 @@ Python has no equivalent source-layer audit at all (`src/audits/source/python/` 
   message that doesn't echo the declared enumeration (e.g., a custom Go parser printing "unknown output format"), the
   bad-arg-VALUE probe fails to extract a value list; `p2-json-output` falls back to the existing Warn with the existing
   evidence message. No regression.
-- AE3. **Covers R4 (Strong tier).** Given a Rust crate with `enum OutputFormat { Json, Text }`, a clap field `output:
-  OutputFormat`, a match arm `OutputFormat::Json => { serde_json::to_string_pretty(&result)? }`, when
+- AE3. **Covers R4 (Strong tier).** Given a Rust crate with `enum OutputFormat { Json, Text }`, a clap field
+  `output: OutputFormat`, a match arm `OutputFormat::Json => { serde_json::to_string_pretty(&result)? }`, when
   `p2-structured-output` runs against it, then the verdict is Pass at `Confidence::High`.
 - AE4. **Covers R4 (Medium tier).** Given a Rust crate with `enum OutputFormat { Json, Text }`, a clap field referencing
   it, but the `serde_json::to_string` call lives in a helper module not directly reachable from the match arm via local
@@ -169,9 +169,9 @@ Python has no equivalent source-layer audit at all (`src/audits/source/python/` 
   different probe shape. `p1-env-hints` v0.1.3 is direct precedent for this widening pattern; SRP-per-audit doctrine is
   about properties not probe shapes.
 - Source-layer detection becomes asymmetrically more nuanced than behavioral via reachability and flow analysis. Source
-  can attest things behavioral cannot (declaration wired to a serializer, not just declared) — and per `widening
-  detection does NOT raise confidence` doctrine, behavioral stays at Medium while source can earn High when reachability
-  is provable.
+  can attest things behavioral cannot (declaration wired to a serializer, not just declared) — and per
+  `widening detection does NOT raise confidence` doctrine, behavioral stays at Medium while source can earn High when
+  reachability is provable.
 - Audience-classifier shifts are accepted as correctness wins, not pinned away. Tools previously under-read (warn-capped
   despite advertising JSON output) becoming `agent-optimized` is the right direction.
 - No scorecard / spec version bump. Verdict shifts on already-scored tools are normal release-note territory; the

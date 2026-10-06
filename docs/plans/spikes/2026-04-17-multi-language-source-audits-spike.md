@@ -48,8 +48,8 @@ scratch crate built against the pinned `=0.42.0` dependencies, not from document
 ## Methodology
 
 A scratch crate at `/tmp/anc-spike/` was created with the same `[profile.release]` as `agentnative` (`strip = true`,
-`lto = true`, `codegen-units = 1`, `panic = "abort"`), pinning `ast-grep-core = 0.42.0` and `ast-grep-language =
-0.42.0`. Four probe binaries were built:
+`lto = true`, `codegen-units = 1`, `panic = "abort"`), pinning `ast-grep-core = 0.42.0` and
+`ast-grep-language = 0.42.0`. Four probe binaries were built:
 
 1. **Baseline** — `tree-sitter-rust` + `tree-sitter-python` only.
 2. **+Go** — baseline plus `tree-sitter-go`.
@@ -68,15 +68,15 @@ and lives outside the repo root.
 
 ### Go
 
-| Field | Value |
-| ----- | ----- |
-| Cargo feature flag | `tree-sitter-go` |
-| Exposed Rust type | `ast_grep_language::Go` |
-| Registration macro | `impl_lang_expando!(Go, language_go, 'µ')` |
-| Grammar version | `tree-sitter-go = 0.25.0` |
-| User-facing meta-var | `$VAR` (rewritten to `µVAR` internally) |
-| Binary-size delta | +225,200 bytes (~220 KB) |
-| Clean-build-time delta | negligible (within ±1s of baseline 9s) |
+| Field                  | Value                                      |
+| ---------------------- | ------------------------------------------ |
+| Cargo feature flag     | `tree-sitter-go`                           |
+| Exposed Rust type      | `ast_grep_language::Go`                    |
+| Registration macro     | `impl_lang_expando!(Go, language_go, 'µ')` |
+| Grammar version        | `tree-sitter-go = 0.25.0`                  |
+| User-facing meta-var   | `$VAR` (rewritten to `µVAR` internally)    |
+| Binary-size delta      | +225,200 bytes (~220 KB)                   |
+| Clean-build-time delta | negligible (within ±1s of baseline 9s)     |
 
 **Pattern-parse behavior.** The top-level Go pattern source must either be a complete Go declaration (function, import,
 package) or a bare expression the Go grammar accepts as a top-level snippet. `panic("boom")` parses cleanly as a
@@ -117,15 +117,15 @@ Workarounds tested and working:
 
 ### Ruby
 
-| Field | Value |
-| ----- | ----- |
-| Cargo feature flag | `tree-sitter-ruby` |
-| Exposed Rust type | `ast_grep_language::Ruby` |
-| Registration macro | `impl_lang_expando!(Ruby, language_ruby, 'µ')` |
-| Grammar version | `tree-sitter-ruby = 0.23.0` (resolved to 0.23.1 in lockfile — upstream patch release) |
-| User-facing meta-var | `$VAR` (rewritten to `µVAR` internally). **Caveat: Ruby global variables named with uppercase letters, e.g. `$PROGRAM_NAME`, are also rewritten by the same rule — writing the literal token in a pattern makes it a meta-var, not a match. `$0` is safe (digit, not rewritten).** |
-| Binary-size delta | +2,102,704 bytes (~2.1 MB) |
-| Clean-build-time delta | negligible |
+| Field                  | Value                                                                                                                                                                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cargo feature flag     | `tree-sitter-ruby`                                                                                                                                                                                                                                                                 |
+| Exposed Rust type      | `ast_grep_language::Ruby`                                                                                                                                                                                                                                                          |
+| Registration macro     | `impl_lang_expando!(Ruby, language_ruby, 'µ')`                                                                                                                                                                                                                                     |
+| Grammar version        | `tree-sitter-ruby = 0.23.0` (resolved to 0.23.1 in lockfile — upstream patch release)                                                                                                                                                                                              |
+| User-facing meta-var   | `$VAR` (rewritten to `µVAR` internally). **Caveat: Ruby global variables named with uppercase letters, e.g. `$PROGRAM_NAME`, are also rewritten by the same rule — writing the literal token in a pattern makes it a meta-var, not a match. `$0` is safe (digit, not rewritten).** |
+| Binary-size delta      | +2,102,704 bytes (~2.1 MB)                                                                                                                                                                                                                                                         |
+| Clean-build-time delta | negligible                                                                                                                                                                                                                                                                         |
 
 **Pattern-parse behavior.** All probed expression patterns work: `exit $CODE`, `exit($CODE)`, `raise $MSG`,
 `ENV["NO_COLOR"]`, `ENV[$K]`. The earlier plan assumption that parens matter (`exit($CODE)` vs `exit $CODE`) was
@@ -135,8 +135,8 @@ incorrect — the spike confirms both forms match the same Ruby `call` node with
 
 - Bare rescue: `rescue [rescue => e]` with child structure `rescue_keyword + exception_variable + then + body`. No
   `exceptions` child node.
-- Typed rescue: `rescue [rescue StandardError => e]` with child structure `rescue_keyword + exceptions +
-  exception_variable + then + body`. An `exceptions` child is present.
+- Typed rescue: `rescue [rescue StandardError => e]` with child structure
+  `rescue_keyword + exceptions + exception_variable + then + body`. An `exceptions` child is present.
 
 This makes the bare-rescue audit a direct analog of Python's `bare_except`: walk for `rescue` nodes and audit whether
 any child has kind `"exceptions"`.
@@ -165,15 +165,15 @@ the `if_statement` header text — exactly what Python's `sys_exit::is_main_guar
 
 ### TypeScript
 
-| Field | Value |
-| ----- | ----- |
-| Cargo feature flag | `tree-sitter-typescript` (ships `TypeScript` and `Tsx` in one crate) |
-| Exposed Rust types | `ast_grep_language::TypeScript`, `ast_grep_language::Tsx` |
-| Registration macro | `impl_lang!(TypeScript, language_typescript)` and `impl_lang!(Tsx, language_tsx)` — **no expando, `$` works natively** |
-| Grammar version | `tree-sitter-typescript = 0.23.2` |
-| User-facing meta-var | `$VAR` (no rewriting; `$` is not a valid identifier char in TS) |
-| Binary-size delta | +2,880,864 bytes (~2.9 MB) |
-| Clean-build-time delta | negligible |
+| Field                  | Value                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Cargo feature flag     | `tree-sitter-typescript` (ships `TypeScript` and `Tsx` in one crate)                                                   |
+| Exposed Rust types     | `ast_grep_language::TypeScript`, `ast_grep_language::Tsx`                                                              |
+| Registration macro     | `impl_lang!(TypeScript, language_typescript)` and `impl_lang!(Tsx, language_tsx)` — **no expando, `$` works natively** |
+| Grammar version        | `tree-sitter-typescript = 0.23.2`                                                                                      |
+| User-facing meta-var   | `$VAR` (no rewriting; `$` is not a valid identifier char in TS)                                                        |
+| Binary-size delta      | +2,880,864 bytes (~2.9 MB)                                                                                             |
+| Clean-build-time delta | negligible                                                                                                             |
 
 **Pattern-parse behavior.** Every expression pattern probed matched cleanly: `process.exit($CODE)`,
 `console.log($$$ARGS)`, `process.env.NO_COLOR`, `process.env[$K]`, `throw new Error($MSG)`. No wrapping needed. TSX also
@@ -246,13 +246,13 @@ Two small implementation notes for Unit 2:
 
 ### Binary size
 
-| Configuration | Stripped release size | Delta vs baseline |
-| ------------- | --------------------- | ----------------- |
-| Baseline (Rust + Python) | 2,005,000 B (~1.96 MB) | — |
-| + Go | 2,230,200 B (~2.18 MB) | **+220 KB** |
-| + Ruby | 4,107,704 B (~3.92 MB) | **+2.10 MB** |
-| + TypeScript (incl. Tsx) | 4,885,864 B (~4.66 MB) | **+2.88 MB** |
-| + all three | 7,213,544 B (~6.88 MB) | **+5.21 MB** |
+| Configuration            | Stripped release size  | Delta vs baseline |
+| ------------------------ | ---------------------- | ----------------- |
+| Baseline (Rust + Python) | 2,005,000 B (~1.96 MB) | —                 |
+| + Go                     | 2,230,200 B (~2.18 MB) | **+220 KB**       |
+| + Ruby                   | 4,107,704 B (~3.92 MB) | **+2.10 MB**      |
+| + TypeScript (incl. Tsx) | 4,885,864 B (~4.66 MB) | **+2.88 MB**      |
+| + all three              | 7,213,544 B (~6.88 MB) | **+5.21 MB**      |
 
 All three grammars sit well inside the plan's caps:
 
@@ -266,8 +266,8 @@ Clean release build of the scratch crate, `lto = true` + `codegen-units = 1`, on
 - Baseline: 9s
 - With all three grammars: 9s
 
-Tree-sitter grammars are mostly pre-compiled C with small Rust wrappers — they add link work but almost no compile
-work. Expect agentnative's CI clean-build time to grow by ~5–10s total, likely dominated by LTO.
+Tree-sitter grammars are mostly pre-compiled C with small Rust wrappers — they add link work but almost no compile work.
+Expect agentnative's CI clean-build time to grow by ~5–10s total, likely dominated by LTO.
 
 ## Surprises
 

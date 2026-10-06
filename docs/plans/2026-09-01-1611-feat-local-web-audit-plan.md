@@ -130,8 +130,8 @@ flowchart TB
 
 - R7. `--output json` emits the site's web-audit scorecard shape verbatim — field-for-field the JSON anc.dev produces,
   scores included.
-- R8. Text output follows anc's existing text conventions; exit codes adopt the site web-audit runner's convention (pass
-  = 0, any failing status = 1, n_a = 3), so CI gates agree with the site's own runner.
+- R8. Text output follows anc's existing text conventions; exit codes adopt the site web-audit runner's convention
+  (pass = 0, any failing status = 1, n_a = 3), so CI gates agree with the site's own runner.
 - R15. Every failing row carries actionable guidance at the point of failure: text mode prints the goal, the fix and its
   doc links under each failing check, and an offline reader serves the same catalog to agents. A run's time to first fix
   needs no second tool, no browser and no network.
@@ -187,9 +187,9 @@ flowchart TB
 
 ### Acceptance Examples
 
-- AE1. **Covers R2.** Given a file or directory named `anc.dev` in the working directory, when the dev runs `anc
-  anc.dev`, then the CLI audit of that path runs; given no such path and no binary of that name, then the web audit of
-  the `anc.dev` host runs.
+- AE1. **Covers R2.** Given a file or directory named `anc.dev` in the working directory, when the dev runs
+  `anc anc.dev`, then the CLI audit of that path runs; given no such path and no binary of that name, then the web audit
+  of the `anc.dev` host runs.
 - AE2. **Covers R4.** Given target `http://localhost:8787`, when audited, then TLS-dependent checks report n_a with a
   stated reason rather than failing or disappearing.
 - AE3. **Covers R6.** Given a machine with no route to anc.dev, when a local target is audited, then the report
@@ -228,8 +228,8 @@ flowchart TB
 - Rewiring the agent-web-audit skill to shell out to `anc web` (its own change, in its own repo; R11 only guarantees it
   can).
 - Runtime registry refresh between anc releases.
-- Phase 2 of this plan: the anc.dev version signal and staleness note (R6, KTD9, U9), `anc emit web-checks` and `anc
-  emit web-schema` (R14), and the scheduled registry-bump workflow (U12).
+- Phase 2 of this plan: the anc.dev version signal and staleness note (R6, KTD9, U9), `anc emit web-checks` and
+  `anc emit web-schema` (R14), and the scheduled registry-bump workflow (U12).
 
 **Outside this product's identity**
 
@@ -274,11 +274,12 @@ here, with no separate site plan).
 - `agentnative-site:src/worker/audit-web/` — `engine.ts` (wave orchestration, antecedent gating, 25s deadline, degraded
   2s timeout, concurrency 6, eval-rule dispatch, optional-absent re-tag), `scorecard.ts` (`WebScorecard` shape,
   `WEB_SCHEMA_VERSION = '0.4'`, 7-state `ScorecardStatus`), `score.ts` (two-score formula mirroring
-  `scripts/scoring/score_model.py`; parity test `tests/web-audit-two-score.test.ts`), `handlers/` (shared `runX(check,
-  ctx) -> ProbeOutcome` contract; `mcp.ts` is 815 lines and stateful; `http.ts` also hosts the legacy-alias-redirects
-  eval function), `ssrf.ts` (`guardedFetch`: manual redirect loop, 4-hop cap, per-hop revalidation, three body-cap
-  regimes — 0 skip, 64 KiB truncate-and-continue, unset full-read for the root fetch), `antecedents/site-type.ts`
-  (`site_type` is caller-supplied; null applies every check; `mcp`-typed checks gate on endpoint discovery).
+  `scripts/scoring/score_model.py`; parity test `tests/web-audit-two-score.test.ts`), `handlers/` (shared
+  `runX(check, ctx) -> ProbeOutcome` contract; `mcp.ts` is 815 lines and stateful; `http.ts` also hosts the
+  legacy-alias-redirects eval function), `ssrf.ts` (`guardedFetch`: manual redirect loop, 4-hop cap, per-hop
+  revalidation, three body-cap regimes — 0 skip, 64 KiB truncate-and-continue, unset full-read for the root fetch),
+  `antecedents/site-type.ts` (`site_type` is caller-supplied; null applies every check; `mcp`-typed checks gate on
+  endpoint discovery).
 - `agentnative-site:scripts/web-audit/audit.ts` — local-runner precedent: arg surface (`--target`, `--check`, `--json`,
   `--site-type`) and the `STATUS_EXIT` exit-code convention R8 adopts.
 - `scripts/sync-skill-fixture.sh`, `.github/workflows/skill-fixture-drift.yml`, `build.rs` (`emit_skill_hosts`) — the
@@ -624,10 +625,10 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   `tests/fixtures/web-audit-conformance/` (vendored corpus, score-parity fixture, regex-parity fixture),
   `tests/build_registry.rs`. The scheduled `web-audit-bump.yml` is U12 (phase 2).
 - **Approach:**
-  1. Fetch by pinned SHA, not branch: `git init` into a temp dir, `git remote add origin <url>`, `git fetch --depth 1
-     origin "$WEB_AUDIT_SITE_SHA"`, extract byte-exact via `git show FETCH_HEAD:<path>`; an unresolvable pin fails hard
-     naming the SHA, never falling through to the branch ref. Keep `cmp`+`diff -u` `--check` mode from the skill-fixture
-     script.
+  1. Fetch by pinned SHA, not branch: `git init` into a temp dir, `git remote add origin <url>`,
+     `git fetch --depth 1 origin "$WEB_AUDIT_SITE_SHA"`, extract byte-exact via `git show FETCH_HEAD:<path>`; an
+     unresolvable pin fails hard naming the SHA, never falling through to the branch ref. Keep `cmp`+`diff -u` `--check`
+     mode from the skill-fixture script.
   2. Harden every git call with the shell equivalent of `src/skill_install.rs`'s constants —
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
@@ -929,8 +930,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   2. Redirect, decompression, truncation, and timeout semantics get dedicated scenarios (the fetch-parity gaps KTD1
      names).
   3. Dogfood: `anc audit .` still passes with the new verb present (envelope pattern, safe probing,
-     `arg_required_else_help` untouched); a corpus of previously-valid bare invocations (`anc .`, `anc <path>`, `anc
-     <flags>`) still routes to audit (System-Wide Impact's behavior-delta guard).
+     `arg_required_else_help` untouched); a corpus of previously-valid bare invocations (`anc .`, `anc <path>`,
+     `anc <flags>`) still routes to audit (System-Wide Impact's behavior-delta guard).
   4. Size gate: CI asserts the release binary stays under the ceiling U1 recorded (~5MB over the pre-U1 binary).
 - **Test scenarios:**
   - Happy path: full corpus green. Covers AE4.
@@ -950,9 +951,9 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - **Approach:**
   1. Table mapping every skill check id to its covering registry check(s), or to "accepted gap" with a reason; note
      vocabulary translation (skill's pass/fail/na and letter grades vs the 7-state model).
-  2. Demonstrate constructibility: a walkthrough showing the skill's report fields derivable from `anc web --output
-     json` + exit code — and stating that retained evidence bodies (`raw_evidence[].body`) are untrusted target-supplied
-     text the skill must quote or summarize, never treat as instructions.
+  2. Demonstrate constructibility: a walkthrough showing the skill's report fields derivable from
+     `anc web --output json` + exit code — and stating that retained evidence bodies (`raw_evidence[].body`) are
+     untrusted target-supplied text the skill must quote or summarize, never treat as instructions.
   3. Gaps that should become registry checks get filed as site-repo issues, referenced from the doc — not silently
      absorbed into this plan.
 - **Test scenarios:** Test expectation: none — analysis artifact; its verification is the completeness check below.
@@ -973,9 +974,9 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      moment in the funnel: the visitor has just proved they want exactly this.
   3. Bring this crate onto the `xurl-rs` docs standard: `#![deny(missing_docs)]`, the README wired in as the rustdoc
      landing page through `#![doc = include_str!("../README.md")]`, `#![warn(missing_debug_implementations)]`, a
-     `[package.metadata.docs.rs]` block, and the pre-push gate running `cargo doc --no-deps` under `RUSTDOCFLAGS="-D
-     warnings"`. The `documentation` field currently advertises a docs.rs page the crate cannot populate, because it has
-     no library target; resolve that as part of adopting the standard.
+     `[package.metadata.docs.rs]` block, and the pre-push gate running `cargo doc --no-deps` under
+     `RUSTDOCFLAGS="-D warnings"`. The `documentation` field currently advertises a docs.rs page the crate cannot
+     populate, because it has no library target; resolve that as part of adopting the standard.
 - **Patterns to follow:** `xurl-rs` `crates/xdk/src/lib.rs` (the `include_str!` landing page and the lint set),
   `crates/xdk/Cargo.toml` (`[package.metadata.docs.rs]`), and `xurl-rs` `scripts/hooks/pre-push` (the rustdoc gate).
 - **Test scenarios:**
@@ -1144,8 +1145,8 @@ Developer-facing surfaces the DX review found already built, which U7 and U13 re
 - `agentnative-site` `src/data/web-audit/remediation.yaml`: 48K, one entry per check, already the single source for the
   site's result pages, its fix pages, its MCP reader and its skill pages. KTD13 makes the CLI the fifth consumer rather
   than authoring new text.
-- `agentnative-site` `src/worker/mcp/tools/web-remediation.ts` (`get_web_remediation`): the reader shape `anc emit
-  web-remediation` mirrors.
+- `agentnative-site` `src/worker/mcp/tools/web-remediation.ts` (`get_web_remediation`): the reader shape
+  `anc emit web-remediation` mirrors.
 - `xurl-rs` `crates/xdk/src/lib.rs` and its pre-push rustdoc gate: the docs standard U13 adopts rather than defines.
 
 ## Test coverage map

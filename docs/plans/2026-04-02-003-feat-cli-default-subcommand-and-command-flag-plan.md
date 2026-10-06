@@ -21,8 +21,7 @@ post-merge code review.
   of the merged PR (open against `dev`)
 - Pattern documented for reuse: `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`
 
-See **Post-Implementation Notes** at the end for the delta between the planned design
-and what actually shipped.
+See **Post-Implementation Notes** at the end for the delta between the planned design and what actually shipped.
 
 ## Overview
 
@@ -83,9 +82,9 @@ PATH without manually resolving its location — the design doc (line 209) speci
   subcommand list at runtime instead of maintaining a fragile static list.
 - **`--command` resolves via `which` on Unix, `where` on Windows**: Shell out to `which`/`where` rather than adding a
   crate dependency. Gate with `#[cfg(unix)]` / `#[cfg(windows)]` per existing project conventions (CLAUDE.md).
-- **`Project::discover()` already handles file paths**: When given an executable file, `discover()` sets `language:
-  None` and the file as `path`. Source audits are skipped (no language), project audits are skipped (not a dir). No new
-  `Project::from_binary()` constructor needed — just pass the resolved path to `discover()`.
+- **`Project::discover()` already handles file paths**: When given an executable file, `discover()` sets
+  `language: None` and the file as `path`. Source audits are skipped (no language), project audits are skipped (not a
+  dir). No new `Project::from_binary()` constructor needed — just pass the resolved path to `discover()`.
 
 ## Open Questions
 
@@ -157,8 +156,7 @@ argv = ["anc", "--command", "ripgrep"]
 
 - [x] **Unit 1: Default subcommand — `anc .` as `anc audit .`**
 
-**Goal:** Make `anc .` work by injecting `audit` when the first non-flag arg is not a known
-subcommand.
+**Goal:** Make `anc .` work by injecting `audit` when the first non-flag arg is not a known subcommand.
 
 **Requirements:** R1, R2, R5
 
@@ -267,14 +265,14 @@ known subcommand, so pre-parse injects `audit`)
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-| ---- | ---------- |
-| Pre-parse heuristic misidentifies a flag as a path | Use clap introspection for subcommand list; scan past known global flags |
-| Typos like `anc chekc .` produce path-not-found instead of subcommand error | Acceptable for v0.1 — error is still actionable |
-| `which` not available on Windows | Use `where` on Windows via `cfg(target_os)`, consistent with existing `libc` gating |
-| Adding `--command` changes shell completions | Regenerate completions after implementation (coordinate with Plan 002) |
-| Default subcommand breaks fork bomb safety | Bare invocation still hits `arg_required_else_help` before pre-parse |
-| Clap error messages reference injected `audit` context | Minor UX imperfection, acceptable for v0.1 |
+| Risk                                                                        | Mitigation                                                                          |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Pre-parse heuristic misidentifies a flag as a path                          | Use clap introspection for subcommand list; scan past known global flags            |
+| Typos like `anc chekc .` produce path-not-found instead of subcommand error | Acceptable for v0.1 — error is still actionable                                     |
+| `which` not available on Windows                                            | Use `where` on Windows via `cfg(target_os)`, consistent with existing `libc` gating |
+| Adding `--command` changes shell completions                                | Regenerate completions after implementation (coordinate with Plan 002)              |
+| Default subcommand breaks fork bomb safety                                  | Bare invocation still hits `arg_required_else_help` before pre-parse                |
+| Clap error messages reference injected `audit` context                      | Minor UX imperfection, acceptable for v0.1                                          |
 
 ## Sources & References
 
@@ -285,8 +283,8 @@ known subcommand, so pre-parse injects `audit`)
 ## Post-Implementation Notes
 
 What the planning sections above don't capture: the design above shipped in PR #12 and worked, but `/ce-review` of the
-  merged commit surfaced seven edge cases. PR #13 closed all of them. This section is the delta — readers picking up
-  later need both halves.
+merged commit surfaced seven edge cases. PR #13 closed all of them. This section is the delta — readers picking up later
+need both halves.
 
 ### Final code locations
 
@@ -307,9 +305,9 @@ What the planning sections above don't capture: the design above shipped in PR #
 2. **Value-taking flags must be paired with their values during scanning** — `anc --command audit` mis-routed because
    `audit` (the value) was treated as the explicit subcommand. Fixed by walking clap's `get_arguments()` for both `Cli`
    and every subcommand to learn which flags consume the next token.
-3. **Subcommand-scoped flags imply default-subcommand intent even with no positional** — `anc --command rg` and `anc
-   --output json --source` produced clap errors. Fixed by tracking whether any encountered flag is subcommand-scoped
-   (not in the top-level Cli flag set) and injecting `audit` if so when no positional was found.
+3. **Subcommand-scoped flags imply default-subcommand intent even with no positional** — `anc --command rg` and
+   `anc --output json --source` produced clap errors. Fixed by tracking whether any encountered flag is
+   subcommand-scoped (not in the top-level Cli flag set) and injecting `audit` if so when no positional was found.
 4. **POSIX `--` separator** — `anc -- .` was untested and ill-defined. Now injects `audit` before the separator so clap
    routes the remaining tokens to Audit.
 5. **`arg_required_else_help` only fires on zero args** — `anc -q` (or `--quiet`) reaches `match cli.command` with
@@ -333,17 +331,17 @@ What the planning sections above don't capture: the design above shipped in PR #
 
 ### Test parity
 
-| Stage | Unit | Integration | Notes |
-| ----- | ---- | ----------- | ----- |
-| Pre-Plan 003 baseline | 233 | 12 | from commit `45b5234` |
-| After PR #12 (initial impl) | 244 | 26 | +11 unit, +14 integration |
-| After PR #13 (edge-case fixes) | 253 | 34 | +9 unit, +8 integration |
+| Stage                          | Unit | Integration | Notes                     |
+| ------------------------------ | ---- | ----------- | ------------------------- |
+| Pre-Plan 003 baseline          | 233  | 12          | from commit `45b5234`     |
+| After PR #12 (initial impl)    | 244  | 26          | +11 unit, +14 integration |
+| After PR #13 (edge-case fixes) | 253  | 34          | +9 unit, +8 integration   |
 
 ### Plan 002 coordination
 
 The completions regeneration noted in System-Wide Impact happened twice (once per PR); both PRs commit the regenerated
-  `completions/anc.{bash,zsh,fish,elvish,powershell}` files. No separate Plan 002 step needed for this plan's completion
-  deltas.
+`completions/anc.{bash,zsh,fish,elvish,powershell}` files. No separate Plan 002 step needed for this plan's completion
+deltas.
 
 ### Solutions-docs follow-up
 
@@ -352,4 +350,4 @@ The full pattern (with all seven gotchas, before/after code, and the working inv
 - `~/dev/solutions-docs/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`
 
 Future Rust CLIs in this orbit that want a default subcommand should read that doc before reimplementing — the cluster
-  of edge cases is the kind of footgun that's much cheaper to avoid than rediscover.
+of edge cases is the kind of footgun that's much cheaper to avoid than rediscover.

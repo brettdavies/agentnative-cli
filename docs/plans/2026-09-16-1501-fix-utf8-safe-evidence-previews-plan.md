@@ -83,8 +83,8 @@ not only a fix.
 
 ### Success Criteria
 
-- `anc audit` on a tree containing braille, CJK, and emoji inside matched lines exits with a scorecard rather than exit
-  101.
+- `anc audit` on a tree containing braille, CJK, and emoji inside matched lines exits with a scorecard rather than
+  exit 101.
 - The repo's own dogfood run is unchanged: `anc audit` against this crate reports the same scorecard it does today.
 - A reader of the changed module can tell why byte slicing is refused there without reading this plan.
 
@@ -240,8 +240,8 @@ proof degrades the helper U1 creates.
   1. Add an inner `#![deny(clippy::string_slice)]` attribute to `src/source.rs` and to `src/audits/source/mod.rs`, each
      with a comment naming the invariant it protects rather than the incident that prompted it.
   2. Annotate the seven pre-existing slice sites under `src/audits/source/rust/` (three in `unwrap.rs`, two in
-     `headless_auth.rs`, one each in `error_types.rs` and `exit_codes.rs`) with `#[expect(clippy::string_slice, reason =
-     "…")]`, each reason naming the boundary the index is derived from.
+     `headless_auth.rs`, one each in `error_types.rs` and `exit_codes.rs`) with
+     `#[expect(clippy::string_slice, reason = "…")]`, each reason naming the boundary the index is derived from.
   3. Confirm the rest of the tree is unaffected, since the attributes are module-scoped and the lint is allow-by-default
      elsewhere.
 - **Execution note:** Prove the guard is not vacuous before declaring it done. Temporarily replace the helper's body

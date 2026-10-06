@@ -17,9 +17,9 @@ probing uses safe `--help`/`--version` suffixes exclusively.
 
 ## Problem Frame
 
-agentnative's behavioral audits work by spawning the target binary with various flags (`--help`, `--version`, `--output
-json`) and inspecting the output. When the target binary IS agentnative itself (the dogfood case), two paths caused
-recursive self-invocation:
+agentnative's behavioral audits work by spawning the target binary with various flags (`--help`, `--version`,
+`--output json`) and inspecting the output. When the target binary IS agentnative itself (the dogfood case), two paths
+caused recursive self-invocation:
 
 1. **NonInteractiveAudit** ran the binary with no args. Bare invocation defaulted to `audit .`, triggering a full audit
    suite in the child. That child's audits spawned grandchildren, each spawning more. Exponential growth.
@@ -185,16 +185,16 @@ paths without any depth tracking machinery.
   audit ." to "print help", which is the correct CLI behavior.
 - **Integration coverage:** `test_bare_invocation_prints_help` is the regression test. Existing dogfood tests
   (`test_audit_self`, `test_audit_json_output`, `test_audit_quiet`, etc.) prove end-to-end safety.
-- **Unchanged invariants:** All existing CLI behavior with explicit subcommands is unchanged. `audit .`, `audit --output
-  json`, `--help`, `--version`, `completions` all work identically.
+- **Unchanged invariants:** All existing CLI behavior with explicit subcommands is unchanged. `audit .`,
+  `audit --output json`, `--help`, `--version`, `completions` all work identically.
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-|------|------------|
-| `arg_required_else_help` changes bare invocation from `audit .` to help output | This IS the fix. Users who relied on bare invocation as a shortcut must now type `audit .` explicitly. This is standard CLI behavior. |
-| json-output audit can't validate JSON via safe probes (--help overrides --output) | Returns WARN instead of FAIL. Accurate severity — probe limitation, not tool deficiency. |
-| Future behavioral audit probes subcommands bare | Documented in CLAUDE.md: never probe without --help/--version suffixes. |
+| Risk                                                                              | Mitigation                                                                                                                            |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `arg_required_else_help` changes bare invocation from `audit .` to help output    | This IS the fix. Users who relied on bare invocation as a shortcut must now type `audit .` explicitly. This is standard CLI behavior. |
+| json-output audit can't validate JSON via safe probes (--help overrides --output) | Returns WARN instead of FAIL. Accurate severity — probe limitation, not tool deficiency.                                              |
+| Future behavioral audit probes subcommands bare                                   | Documented in CLAUDE.md: never probe without --help/--version suffixes.                                                               |
 
 ## Sources & References
 

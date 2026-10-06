@@ -20,9 +20,9 @@ TopLevelVerb without any probe evidence, and the addition of `emit` to `COMMON_V
 belt-and-suspenders (the structural rule already passes `anc emit coverage-matrix`).
 
 This plan does not redesign the bucketing. The bucketing redesign — including whether to drop the `COMMON_VERBS`
-vocabulary check entirely, whether to add a cross-group consistency check, and how to handle deep-noun trees like `gh
-repo issue create` — is owned by plan #001 (audit philosophy). This plan ships the smallest defensible patches that stop
-the audit from actively passing surfaces the spec describes as anti-patterns, plus four adversarial tests.
+vocabulary check entirely, whether to add a cross-group consistency check, and how to handle deep-noun trees like
+`gh repo issue create` — is owned by plan #001 (audit philosophy). This plan ships the smallest defensible patches that
+stop the audit from actively passing surfaces the spec describes as anti-patterns, plus four adversarial tests.
 
 PR reference: <https://github.com/brettdavies/agentnative-cli/pull/73> (merged 2026-06-01).
 
@@ -86,11 +86,11 @@ not make those harder to land.
 
 - **R4**: New unit tests:
 - `probe_failure_classifies_as_mixed` — a fake binary whose subcommand `--help` returns a non-zero exit gets classified
-    as `Mixed`, not `TopLevelVerb`.
+  as `Mixed`, not `TopLevelVerb`.
 - `non_english_help_does_not_silent_pass` — a probe whose stdout begins with `Comandos:` (or any non-English `Commands:`
-    header) parses as empty children and classifies as `Mixed`.
+  header) parses as empty children and classifies as `Mixed`.
 - `leaf_non_verb_with_successful_empty_probe_passes` — a true leaf (probe succeeds, children parsed as empty) still
-    classifies as `TopLevelVerb`. This pins the R2 distinction explicitly.
+  classifies as `TopLevelVerb`. This pins the R2 distinction explicitly.
 - `emit_not_in_common_verbs` — direct assertion against `COMMON_VERBS.contains(&"emit")`.
 
 ## Implementation Units
@@ -130,10 +130,10 @@ trait-bound stand-in or by constructing `ProbeResult` directly in test setup.
 
 ## Open questions
 
-- **Should `Failed` be its own `Classification` variant?** Cleaner separation (`Classification::Unclassifiable { reason
-  }` distinct from `Mixed`), but a larger diff and not strictly required. Default: collapse to `Mixed` to keep the diff
-  minimal; revisit if the registry test counts surface that the audit's evidence strings need finer-grained reason
-  codes.
+- **Should `Failed` be its own `Classification` variant?** Cleaner separation
+  (`Classification::Unclassifiable { reason }` distinct from `Mixed`), but a larger diff and not strictly required.
+  Default: collapse to `Mixed` to keep the diff minimal; revisit if the registry test counts surface that the audit's
+  evidence strings need finer-grained reason codes.
 
 - **`--audit-profile` opt-out for probe-failures?** Some legitimate CLIs may have subcommands whose `--help` exits
   non-zero (rare but possible: a subcommand that requires args to be present even for help). Should the audit gain a way

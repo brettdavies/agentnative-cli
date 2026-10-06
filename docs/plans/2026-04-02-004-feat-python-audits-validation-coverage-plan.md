@@ -66,11 +66,11 @@ real-world CLIs outside of self-dogfooding.
   Click/Typer CLIs, and (c) have clear ast-grep patterns:
 
 1. **`code-bare-except`** — detects bare `except:` without exception type (Python anti-pattern, analogous to `.unwrap()`
-     for Rust). Simple ast-grep pattern, high signal.
+   for Rust). Simple ast-grep pattern, high signal.
 2. **`p4-sys-exit`** — detects `sys.exit()` outside `if __name__ == "__main__"` (analogous to Rust's `process::exit()`
-     audit). Validates conditional pattern matching.
+   audit). Validates conditional pattern matching.
 3. **`p6-no-color-source`** — detects `os.environ.get("NO_COLOR")` or `os.getenv("NO_COLOR")` handling. Validates
-     cross-language audit parity (same concept as the Rust audit).
+   cross-language audit parity (same concept as the Rust audit).
 
 - **Fixture tests — what's blocking them**: The `#[ignore]` comments say "requires parseable Rust source" or "requires
   cargo build." The fixtures need to be valid enough for ast-grep to parse. Verify each fixture passes before
@@ -289,7 +289,7 @@ pipeline works end-to-end.
 - `agentnative audit ~/dev/xurl-rs` — Rust CLI, should produce meaningful results
 - Run against installed binary:
 - `agentnative audit --command rg` — behavioral audits only against ripgrep (or `agentnative audit $(which rg)` if
-    `--command` is not yet implemented)
+  `--command` is not yet implemented)
 - Review output for:
 - False positives (audits that flag correct code)
 - False negatives (violations not caught)
@@ -346,12 +346,12 @@ pipeline works end-to-end.
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                                                            | Mitigation                                                      |
+| --------------------------------------------------------------- | --------------------------------------------------------------- |
 | Python ast-grep patterns don't match expected tree-sitter nodes | Write unit tests with inline Python source; iterate on patterns |
-| `test_perfect_fixture` requires a compiled binary | Scope the test to `--source` mode to avoid build dependency |
-| Real-world validation reveals major false positive issues | Fix the audit logic; defer audits that can't be fixed to v0.2 |
-| `sys.exit()` detection has high false positive rate | Start with Warn instead of Fail; tune threshold in v0.2 |
+| `test_perfect_fixture` requires a compiled binary               | Scope the test to `--source` mode to avoid build dependency     |
+| Real-world validation reveals major false positive issues       | Fix the audit logic; defer audits that can't be fixed to v0.2   |
+| `sys.exit()` detection has high false positive rate             | Start with Warn instead of Fail; tune threshold in v0.2         |
 
 ## Sources & References
 

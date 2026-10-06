@@ -99,8 +99,9 @@ The adversarial review surfaced 3 findings against this PR.
 
 ### U1. Add polarity parameter to `cfg_args_contain_test`
 
-Change the signature from `fn cfg_args_contain_test(args: &str) -> bool` to `fn cfg_args_contain_test(args: &str,
-negated: bool) -> bool`. The bare-test branch (currently at lines 240-246) returns `!negated` rather than `true`.
+Change the signature from `fn cfg_args_contain_test(args: &str) -> bool` to
+`fn cfg_args_contain_test(args: &str, negated: bool) -> bool`. The bare-test branch (currently at lines 240-246) returns
+`!negated` rather than `true`.
 
 ### U2. Flip polarity on `not(...)` recursion
 
@@ -121,17 +122,17 @@ outer level (even parity restored).
 
 ### U3. Update call sites
 
-The function is called from `attribute_text_is_cfg_test` (line 198, approximate). Update the call to pass `negated:
-false` initially. There are no other callers in production code.
+The function is called from `attribute_text_is_cfg_test` (line 198, approximate). Update the call to pass
+`negated: false` initially. There are no other callers in production code.
 
 ### U4. Add 8 negative-case tests
 
-Tests for R1, R2, R3, R4, R5, R6, R7 plus a polarity-pinning test (`cfg(not(not(test)))` returns true; `cfg(not(any(
-test)))` returns false). Place tests in the existing test module of `src/audits/source/rust/unwrap.rs`. Name them
-descriptively: `cfg_not_test_does_not_exempt_production_unwrap`, `cfg_any_not_test_unix_does_not_exempt`,
+Tests for R1, R2, R3, R4, R5, R6, R7 plus a polarity-pinning test (`cfg(not(not(test)))` returns true;
+`cfg(not(any( test)))` returns false). Place tests in the existing test module of `src/audits/source/rust/unwrap.rs`.
+Name them descriptively: `cfg_not_test_does_not_exempt_production_unwrap`, `cfg_any_not_test_unix_does_not_exempt`,
 `cfg_all_not_test_feature_does_not_exempt`, `cfg_any_test_or_not_feature_still_exempts`,
-`cfg_attr_test_does_not_exempt`, `inner_attribute_one_shot_consumes_on_use_not_fn`, `mod_tests_without_gate_does_not_
-exempt`, `cfg_not_not_test_does_exempt`.
+`cfg_attr_test_does_not_exempt`, `inner_attribute_one_shot_consumes_on_use_not_fn`,
+`mod_tests_without_gate_does_not_ exempt`, `cfg_not_not_test_does_exempt`.
 
 ### U5. Correct the inner-attribute comment
 

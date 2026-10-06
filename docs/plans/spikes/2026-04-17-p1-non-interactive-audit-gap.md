@@ -8,16 +8,16 @@ date: 2026-04-17
 
 ## Question
 
-Running `anc audit` against the Claude Code binary at `/home/brett/.local/share/claude/versions/2.1.113` reports `[PASS]
-Non-interactive by default (p1-non-interactive)`. But typing `claude` with no arguments in an interactive terminal
-launches Claude's TUI. That feels like a straight-up P1 violation — an agent-native linter should not be handing out
-passes to tools whose bare-invocation UX is a full-screen interactive session. So: is the pass a bug, a principle gap,
-or a real P1-compliant case that only *looks* wrong from the outside?
+Running `anc audit` against the Claude Code binary at `/home/brett/.local/share/claude/versions/2.1.113` reports
+`[PASS] Non-interactive by default (p1-non-interactive)`. But typing `claude` with no arguments in an interactive
+terminal launches Claude's TUI. That feels like a straight-up P1 violation — an agent-native linter should not be
+handing out passes to tools whose bare-invocation UX is a full-screen interactive session. So: is the pass a bug, a
+principle gap, or a real P1-compliant case that only *looks* wrong from the outside?
 
 ## TL;DR
 
-- **Reproduced the pass.** `anc audit /home/brett/.local/share/claude/versions/2.1.113` prints `[PASS] Non-interactive
-  by default (p1-non-interactive)`.
+- **Reproduced the pass.** `anc audit /home/brett/.local/share/claude/versions/2.1.113` prints
+  `[PASS] Non-interactive by default (p1-non-interactive)`.
 - **The pass is technically correct per the principle as written.** Claude auto-detects non-TTY stdin, suppresses the
   TUI, and exits with an actionable error in 2.2s. That is exactly what P1's SHOULD clause asks for, and P1's MAY clause
   explicitly permits rich interactive UX when a TTY is detected provided the non-interactive path works. Claude is
@@ -94,13 +94,13 @@ non-interactive behavior P1's SHOULD clause asks for. The TUI is suppressed; no 
 
 Reading `content/principles/p1-non-interactive-by-default.md` against claude's `--help` output:
 
-| Requirement level | Requirement | Claude | Audit verifies? |
-| ----------------- | ----------- | ------ | --------------- |
-| MUST | Every flag settable via env var (with falsey parser on booleans) | Unverified from `--help` — Claude uses commander.js which can wire env vars, but the default `--help` format does not print `env = ...` hints | No audit today |
-| MUST | A `--no-interactive` flag gating every prompt call | Has `-p / --print` — non-canonical name but the principle explicitly allows equivalents. This is claude's non-interactive gate | No audit today |
-| MUST | Headless auth path (`--no-browser` or device-code equivalent) on authenticated CLIs | Claude authenticates (subcommands `auth`, `setup-token`). `--help` does not advertise `--no-browser`; the auth flow may or may not have a headless branch — needs empirical probe to confirm | No audit today |
-| SHOULD | Auto-detect non-TTY and suppress prompts | **Confirmed empirically** — non-TTY stdin → `--print` mode, no TUI, exits | Indirectly: the timeout probe catches a hang, which would be the symptom of failing this |
-| MAY | Rich interactive UX when TTY detected AND non-interactive path works | **Confirmed empirically** — bare `claude` in a terminal launches a TUI, bare `claude < /dev/null` does not. Non-interactive path (`-p "prompt"`) works. Textbook MAY | n/a |
+| Requirement level | Requirement                                                                         | Claude                                                                                                                                                                                       | Audit verifies?                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| MUST              | Every flag settable via env var (with falsey parser on booleans)                    | Unverified from `--help` — Claude uses commander.js which can wire env vars, but the default `--help` format does not print `env = ...` hints                                                | No audit today                                                                           |
+| MUST              | A `--no-interactive` flag gating every prompt call                                  | Has `-p / --print` — non-canonical name but the principle explicitly allows equivalents. This is claude's non-interactive gate                                                               | No audit today                                                                           |
+| MUST              | Headless auth path (`--no-browser` or device-code equivalent) on authenticated CLIs | Claude authenticates (subcommands `auth`, `setup-token`). `--help` does not advertise `--no-browser`; the auth flow may or may not have a headless branch — needs empirical probe to confirm | No audit today                                                                           |
+| SHOULD            | Auto-detect non-TTY and suppress prompts                                            | **Confirmed empirically** — non-TTY stdin → `--print` mode, no TUI, exits                                                                                                                    | Indirectly: the timeout probe catches a hang, which would be the symptom of failing this |
+| MAY               | Rich interactive UX when TTY detected AND non-interactive path works                | **Confirmed empirically** — bare `claude` in a terminal launches a TUI, bare `claude < /dev/null` does not. Non-interactive path (`-p "prompt"`) works. Textbook MAY                         | n/a                                                                                      |
 
 Net: **claude clears SHOULD empirically and clears MAY trivially. The three MUST bullets are unverified by any automated
 audit — not just this one.**
@@ -140,8 +140,8 @@ audit. The source-layer analog (below) is where structural coverage should grow.
 
 There is exactly one source-layer P1 audit: `p1-non-interactive-source` in `src/audits/project/non_interactive.rs`. It:
 
-- Is applicable only when `project.path.is_dir() && project.language == Some(Language::Rust) &&
-  project.manifest_path.is_some()`.
+- Is applicable only when
+  `project.path.is_dir() && project.language == Some(Language::Rust) && project.manifest_path.is_some()`.
 - Reads `Cargo.toml` and greps for any of `dialoguer`, `inquire`, `rustyline`, `crossterm`.
 - Returns `Warn` if any match, `Pass` otherwise.
 
@@ -202,8 +202,8 @@ are growing:
 - **Desktop-agent harnesses.** Computer-use-style agents (Operator, Anthropic's computer-use tool) drive a real terminal
   emulator by typing keys into it. Every child spawned inside that terminal has a TTY.
 
-Each of those scenarios exposes a failure mode today's audit cannot see: a CLI that gates a prompt or full-screen TUI
-on `isatty()` will pass the non-TTY probe trivially and still deadlock a TTY-driving agent.
+Each of those scenarios exposes a failure mode today's audit cannot see: a CLI that gates a prompt or full-screen TUI on
+`isatty()` will pass the non-TTY probe trivially and still deadlock a TTY-driving agent.
 
 ### TTY probe as a distinct capability
 
@@ -258,7 +258,7 @@ project's audience expects to fail. Resolve the framing first; let that drive th
 - `src/runner.rs` — `BinaryRunner::spawn_and_wait`, which sets stdin to `/dev/null` and enforces the 5-second timeout.
 - `src/audits/project/non_interactive.rs` — the Rust-only source-layer analog.
 - `/home/brett/dev/agentnative-site/content/principles/p1-non-interactive-by-default.md` — the principle definition.
-- Empirical probe: direct invocation of the ELF binary at `/home/brett/.local/share/claude/versions/2.1.113` with `stdin
-  </dev/null`, matching the harness exactly.
+- Empirical probe: direct invocation of the ELF binary at `/home/brett/.local/share/claude/versions/2.1.113` with
+  `stdin </dev/null`, matching the harness exactly.
 - Claude Code `--help` output (version as of 2026-04-17): lists `-p / --print`, `--output-format`, `auth` subcommand,
   `setup-token` subcommand, and several dozen other flags.

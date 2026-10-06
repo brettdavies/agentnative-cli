@@ -298,8 +298,8 @@ constraint to implementation preference.
   `$x:expr` fragment and the `=>` arm, and a candidate whose receiver is a `$`-prefixed fragment reference is discarded.
   Calls recovered under an ERROR root, which the motivating case produces, are still admitted. Governs R2.
 - KTD4. **Thread the existing `cfg(test)` gate into every re-parse, and treat a gated item-position macro invocation as
-  gated.** `macro_invocation` is absent from the audit's item-kind list, so without this a `#[cfg(test)] m! { x.unwrap()
-  }` would flip from silent to reported. Governs R3.
+  gated.** `macro_invocation` is absent from the audit's item-kind list, so without this a
+  `#[cfg(test)] m! { x.unwrap() }` would flip from silent to reported. Governs R3.
 - KTD5. **Offset re-parsed positions back to file coordinates and report each call once at its own start.** Lines and
   columns offset by different rules, which is where this goes wrong quietly: the interior's start line adds to every
   recovered line, while the interior's start column adds only to nodes on the interior's first line and nothing after
@@ -421,8 +421,8 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
      never restarts with the gate cleared.
   2. Treat a `#[cfg(test)]`-preceded macro invocation as gating its interior, which the audit's item-kind list does not
      currently cover.
-- **Patterns to follow:** the existing sibling-attribute propagation in `walk`, including its handling of `#[cfg(test)]
-  use foo;`.
+- **Patterns to follow:** the existing sibling-attribute propagation in `walk`, including its handling of
+  `#[cfg(test)] use foo;`.
 - **Test scenarios:**
   - Covers AE3. `assert_eq!(v.unwrap(), 1);` inside a `#[cfg(test)] mod tests` reports nothing without the flag.
   - Covers AE4. The same source with `--include-tests` reports one finding.
@@ -975,8 +975,8 @@ Ran `/devex-review` against the shipped product rather than this plan, on 2026-1
 gstack's headless browser (Aside is macOS-only and this host is Linux) plus the brew-installed `anc 0.6.0`. Two defects
 and one false alarm, all outside this plan's scope and recorded here so they are not rediscovered.
 
-1. [P1] The embed snippet the CLI prints is broken for any tool whose command name differs from its package name. `anc
-   audit --command rg` scores 82% and prints
+1. [P1] The embed snippet the CLI prints is broken for any tool whose command name differs from its package name.
+   `anc audit --command rg` scores 82% and prints
    `[![agent-native](https://anc.dev/badge/rg.svg)](https://anc.dev/score/rg)`. Measured: `/score/rg` returns 200 and
    redirects to `/score/ripgrep`, while `/badge/rg.svg` returns 404 and `/badge/ripgrep.svg` returns 200. The site
    aliases the score route and not the badge route, so a developer who follows the tool's own instruction gets a working
@@ -988,11 +988,11 @@ and one false alarm, all outside this plan's scope and recorded here so they are
    change: `tool.name` stays the invoked name. Deriving a canonical name from the `--version` banner was measured and
    rejected, since the first token gives `ripgrep` for `rg` but `jq-1.8.2`, `v26.10.0` and `Python` for `jq`, `node` and
    `python3`.
-2. [P2] The example the CLI itself advertises fails. `anc --examples` and bare `anc` both print `anc audit --command
-   ripgrep`, which exits 2 with `command 'ripgrep' not found on PATH` on a machine where ripgrep is installed, because
-   the binary is `rg`. It is the first third-party example a new user copies. Fixed in PR #146, which also adds
-   `gate_examples_resolve` to the release smoke gate: every `--command` target the help advertises must resolve on PATH.
-   Observed failing against the released `anc 0.6.0` binary before the fix.
+2. [P2] The example the CLI itself advertises fails. `anc --examples` and bare `anc` both print
+   `anc audit --command ripgrep`, which exits 2 with `command 'ripgrep' not found on PATH` on a machine where ripgrep is
+   installed, because the binary is `rg`. It is the first third-party example a new user copies. Fixed in PR #146, which
+   also adds `gate_examples_resolve` to the release smoke gate: every `--command` target the help advertises must
+   resolve on PATH. Observed failing against the released `anc 0.6.0` binary before the fix.
 3. Retracted, not a defect. This was reported as "one requirement id carries several contradictory rows", on the
    observation that `anc audit . --output json` emits 70 rows for 61 distinct requirement ids, with
    `p1-must-no-interactive` appearing three times as `pass`, `skip`, `pass` under three different `audit_id`s. The

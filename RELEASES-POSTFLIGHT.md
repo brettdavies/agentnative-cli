@@ -1,9 +1,9 @@
 # Post-release verification: `agentnative`
 
-Operational post-flight checklist. Runs **after** the `release/v<version> → main` PR merges and you push the tag (`git
-push origin vX.Y.Z`) per [`RELEASES.md` § Tagging and publishing](./RELEASES.md#tagging-and-publishing). Verifies that
-the tag-triggered pipeline landed cleanly across `release.yml` → `homebrew-tap` → `finalize-release.yml`, and that the
-published artifacts resolve on crates.io, the Homebrew tap, and the GitHub Release.
+Operational post-flight checklist. Runs **after** the `release/v<version> → main` PR merges and you push the tag
+(`git push origin vX.Y.Z`) per [`RELEASES.md` § Tagging and publishing](./RELEASES.md#tagging-and-publishing). Verifies
+that the tag-triggered pipeline landed cleanly across `release.yml` → `homebrew-tap` → `finalize-release.yml`, and that
+the published artifacts resolve on crates.io, the Homebrew tap, and the GitHub Release.
 
 Companion to [`RELEASES-PREFLIGHT.md`](./RELEASES-PREFLIGHT.md), which gates the release-branch cut. Both docs follow
 the same go/no-go shape: every box is explicit, an unchecked or red item holds the next release (or motivates a hotfix).
@@ -50,11 +50,11 @@ Flags:
 
 Run immediately after the tag push triggers `release.yml`.
 
-- [ ] **`release.yml` green end-to-end.** `gh run watch <id> --exit-status` then verify with `gh run view <id> --json
-  conclusion --jq .conclusion` because the watcher exit code alone is not authoritative (a completed watcher is not a
-  green watcher). Builds the seven cross-compile targets, publishes to crates.io via OIDC Trusted Publishing, and
-  dispatches `update-formula` into the homebrew-tap. Run `scripts/release/postflight.sh release` for the automated
-  check.
+- [ ] **`release.yml` green end-to-end.** `gh run watch <id> --exit-status` then verify with
+  `gh run view <id> --json conclusion --jq .conclusion` because the watcher exit code alone is not authoritative (a
+  completed watcher is not a green watcher). Builds the seven cross-compile targets, publishes to crates.io via OIDC
+  Trusted Publishing, and dispatches `update-formula` into the homebrew-tap. Run `scripts/release/postflight.sh release`
+  for the automated check.
 - [ ] **Homebrew-tap dispatch landed.** `gh run list -R brettdavies/homebrew-tap --limit 5` should show a recent
   `update-formula` (event=repository_dispatch) and a `Publish bottles` (event=workflow_run) both SUCCESS. The bottles
   workflow auto-merges the formula bump PR and pushes an `agentnative: add <version> bottle.` commit to tap `main`. Run
@@ -70,8 +70,8 @@ Run immediately after the tag push triggers `release.yml`.
 - [ ] **`cargo install agentnative --version <new>` on a clean environment** resolves and runs. Drive on a fresh
   container or a sibling machine so the local `~/.cargo/bin` isn't polluted. Confirms the publish landed all package
   data and the installer can reconstruct `anc` from source.
-- [ ] **`brew update && brew install brettdavies/tap/agentnative`** on a fresh prefix resolves the new bottle and `anc
-  --version` reports the new tag. Drive on a throwaway prefix (`HOMEBREW_PREFIX=/tmp/brew-postflight-X brew ...`).
+- [ ] **`brew update && brew install brettdavies/tap/agentnative`** on a fresh prefix resolves the new bottle and
+  `anc --version` reports the new tag. Drive on a throwaway prefix (`HOMEBREW_PREFIX=/tmp/brew-postflight-X brew ...`).
   Confirms the homebrew-tap end of the cross-repo dispatch chain landed cleanly and the published bottle SHA matches the
   formula.
 - [ ] **`cargo binstall agentnative`** (without `--version`) resolves to the new tag and installs the matching prebuilt
@@ -80,13 +80,13 @@ Run immediately after the tag push triggers `release.yml`.
   container.
 - [ ] **Live site renders the new scorecard.** Click the `badge_url` and `scorecard_url` from a real emitted scorecard
   against the live site. First-time renders for a new spec version can 404 even when the JSON looks correct.
-- [ ] **Last-good identifier recorded.** Before the release goes live, note the previous tag (`git tag
-  --sort=-version:refname | sed -n 2p`), the previous crates.io version, and the tap's formula commit for it somewhere
-  reachable under incident pressure, so a rollback is a single command. Commands live in
+- [ ] **Last-good identifier recorded.** Before the release goes live, note the previous tag
+  (`git tag --sort=-version:refname | sed -n 2p`), the previous crates.io version, and the tap's formula commit for it
+  somewhere reachable under incident pressure, so a rollback is a single command. Commands live in
   [`RELEASES.md` § Rollback commands](./RELEASES.md#rollback-commands).
-- [ ] **Rollback path confirmed.** If this release is bad, roll back at the surface first (`cargo yank`, `gh release
-  edit --latest`, formula revert on the tap), then land a `fix` or `revert` through the normal `dev` to `release/*` to
-  `main` flow so `main` reconverges with what is live.
+- [ ] **Rollback path confirmed.** If this release is bad, roll back at the surface first (`cargo yank`,
+  `gh release edit --latest`, formula revert on the tap), then land a `fix` or `revert` through the normal `dev` to
+  `release/*` to `main` flow so `main` reconverges with what is live.
 - [ ] **Backport `main` → `dev`** via a **merged PR to `dev` with the version in its title.**
   `scripts/sync-dev-after-release.sh vX.Y.Z` cuts `chore/sync-dev-after-vX.Y.Z`, writes the released version into
   `Cargo.toml`, refreshes the workspace entries in `Cargo.lock` offline, copies `CHANGELOG.md` from `main`, and opens

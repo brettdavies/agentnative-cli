@@ -24,8 +24,8 @@ Reference PRs (read the exact diffs before implementing): <https://github.com/br
 
 ### In scope (five items)
 
-1. **`scripts/sync-dev-after-release.sh` — GitHub Release published-state precondition.** Before the existing `tag
-   reachable from origin/main` check, verify the GitHub Release artifact for `$VERSION` exists and is
+1. **`scripts/sync-dev-after-release.sh` — GitHub Release published-state precondition.** Before the existing
+   `tag reachable from origin/main` check, verify the GitHub Release artifact for `$VERSION` exists and is
    published-not-draft:
 
    ```bash
@@ -53,15 +53,16 @@ Reference PRs (read the exact diffs before implementing): <https://github.com/br
    `--dry-run` is what item 2 above depends on, so land it in the same PR or land it first.
 
 4. **`scripts/generate-changelog.py` — PR-number extraction regex fix.** Mirror of
-   [skill PR #26](https://github.com/brettdavies/agentnative-skill/pull/26). The current extraction uses `grep -oP
-   '\(#\K\d+'`, which only matches the parenthesized `(#14)` form git-cliff emits on the initial prepend. The script's
-   own Python expansion step rewrites those to markdown-link form `[#14](https://github.com/.../pull/14)`. A second run
-   (e.g. `--dry-run` against an already-processed `CHANGELOG.md`, which is exactly the `sync-dev-after-release.sh`
-   regen-idempotency check's mode of operation — item 2 above) extracts zero PR numbers; with `set -euo pipefail`,
-   grep's exit-1-on-no-match aborts the script with empty output before `summarize_and_exit` can run. Change the regex
-   to `[\(\[]#\K\d+` (accepts both forms) and append `|| true` so the downstream `[[ -z "$PR_NUMBERS" ]]` branch handles
-   the empty case via `summarize_and_exit`. Land this together with item 3 — without it, item 2's `--dry-run` invocation
-   will produce opaque empty-output failures the first time anyone runs the sync script after a release.
+   [skill PR #26](https://github.com/brettdavies/agentnative-skill/pull/26). The current extraction uses
+   `grep -oP '\(#\K\d+'`, which only matches the parenthesized `(#14)` form git-cliff emits on the initial prepend. The
+   script's own Python expansion step rewrites those to markdown-link form `[#14](https://github.com/.../pull/14)`. A
+   second run (e.g. `--dry-run` against an already-processed `CHANGELOG.md`, which is exactly the
+   `sync-dev-after-release.sh` regen-idempotency check's mode of operation — item 2 above) extracts zero PR numbers;
+   with `set -euo pipefail`, grep's exit-1-on-no-match aborts the script with empty output before `summarize_and_exit`
+   can run. Change the regex to `[\(\[]#\K\d+` (accepts both forms) and append `|| true` so the downstream
+   `[[ -z "$PR_NUMBERS" ]]` branch handles the empty case via `summarize_and_exit`. Land this together with item 3 —
+   without it, item 2's `--dry-run` invocation will produce opaque empty-output failures the first time anyone runs the
+   sync script after a release.
 
 5. **`scripts/generate-changelog.py --dry-run` — wrap-tolerant comparison.** Known follow-up that the skill repo did
    *not* ship in PR #26. The dry-run comparison uses byte-exact `cmp -s`. The on-disk `CHANGELOG.md` is line-wrapped by
@@ -69,8 +70,8 @@ Reference PRs (read the exact diffs before implementing): <https://github.com/br
    will false-positive "drift" on every release until the comparison is made wrap-tolerant. The regen-idempotency check
    in item 2 is "warn, do not fail", so this does not block the sync — but the warning will fire on every release until
    fixed, training maintainers to ignore it. Fix it in the same pass that ports item 3. Suggested approach: run both
-   files through `fmt -w 9999` (or an equivalent paragraph-flatten) before diffing, then use `diff --ignore-all-space
-   --ignore-blank-lines`.
+   files through `fmt -w 9999` (or an equivalent paragraph-flatten) before diffing, then use
+   `diff --ignore-all-space --ignore-blank-lines`.
 
 ### Already shipped here
 

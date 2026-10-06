@@ -452,7 +452,8 @@ flowchart TB
      harness bug.
   5. Report tools that did not run (cursor, grok and nvidia-smi are absent from the image; sgpt crashes; yazi needs a
      TTY) apart from moved rows.
-  6. Refuse to run when a mounted binary's sha256 does not match its manifest.
+  6. Refuse to run when a mounted binary's sha256 does not match its manifest, naming the binary, both hashes and the
+     build command that refreshes it.
   7. Provide an A/A mode that runs one build twice and writes the rows that differ to a noise list. In a before/after,
      every moved tool and every noise-listed tool reruns three times per build, and a row counts as moved when its
      majority result differs between builds; a noise-listed row is never dropped unexamined.
@@ -532,7 +533,8 @@ flowchart TB
      (space-led, dash-led, not `---`) rather than "the line yields a definition", so env-hints' proximity windows keep
      their size.
   5. Keep `CONTRIBUTING.md`'s three-tool before/after for contributors, and add that a maintainer runs the U1
-     full-corpus harness before a scoring-engine change merges.
+     full-corpus harness before a scoring-engine change merges, naming the harness command and linking
+     agentnative-site's `docker/score/README.md`.
 - **Execution note:** The proof is the absence of change: U2's snapshots stay byte-identical, and the U1 harness reports
   zero moved rows, after its rerun rule, between `dev` and this branch.
 - **Patterns to follow:** `HelpOutput`'s lazy `OnceLock` accessors; `subcommand_help.rs::coverage` for lookups across
@@ -585,6 +587,12 @@ flowchart TB
      confirmation flag that is not built in.
   6. Rewrite the doc comments in `limit_flag.rs` and `verbose_flag.rs` to present behavior; the `-n` guard itself stays
      (Deferred to Follow-Up Work).
+  7. When a lookup misses only because R8 keeps a single-dash word distinct in a help that declares double-dash names,
+     the row's deny evidence says so and names the declared word, for example
+     `-verbose is declared, but this help also declares double-dash names, so it does not count as --verbose`.
+  8. Add a README section on how behavioral audits read `--help`: definition lines count and usage lines, examples and
+     prose do not; names are read whole; the dash rule; and how to report a misread through the false-positive issue
+     template with the tool's `--help` output. U6 to U8 extend it as each rule lands.
 - **Patterns to follow:** the per-line truth table in
   `limit_flag.rs::n_counts_as_a_limit_flag_only_when_it_bounds_a_count`, one `(line, expected names)` row per framework
   shape, each tagged with its tool and version; real-tool excerpts as `const <TOOL>_HELP` strings, as in
@@ -598,6 +606,8 @@ flowchart TB
   - Covers AE3. The cmake line yields six names, including `-h` and `/?`.
   - Covers AE4. terraform `force-unlock`, which lists only `-force`, is credited by `p5-force-yes`.
   - Covers AE5. A find-style help with `--help` does not credit `-print` for `--print`.
+  - A help that declares `--help` beside `-verbose` warns on `p7-verbose`, and the evidence names `-verbose` and why it
+    does not count.
   - Covers AE9. git's `-q, --[no-]quiet` yields three names, and curl's `--http1.0` and `--http1.1` stay distinct.
   - cmake's `-W<category>` is `-W` with placeholder `<category>`, `-Werror=<category>` is `-Werror`, and grep's `-NUM`
     stays `-NUM`.
@@ -635,7 +645,8 @@ flowchart TB
   second-column names and marker-separated descriptions are read.
 - **Requirements:** R2 (column gaps), R10.
 - **Dependencies:** U5.
-- **Files:** `src/runner/help_probe/flags/header.rs`, `src/runner/help_probe/snapshots/`.
+- **Files:** `src/runner/help_probe/flags/header.rs`, `src/runner/help_probe/snapshots/`, `README.md` (the help-reading
+  section).
 - **Approach:**
   1. After a gap, a token that parses as a name continues the header as another column, and prose ends it (KTD2's "what
      follows" rule). GetOpt long-only rows indented to the long column are definitions aligned with the rows around
@@ -663,7 +674,8 @@ flowchart TB
   declaring a flag.
 - **Requirements:** R5.
 - **Dependencies:** U6, which supplies the description column.
-- **Files:** `src/runner/help_probe/flags/classify.rs`, `src/runner/help_probe/snapshots/`.
+- **Files:** `src/runner/help_probe/flags/classify.rs`, `src/runner/help_probe/snapshots/`, `README.md` (the
+  help-reading section).
 - **Approach:**
   1. Track the description column each definition sets, including next-line descriptions (Go `flag`'s `4 spaces + TAB`,
      clap's long help at indent 10, kubectl's TAB), where the first description line sets it.
@@ -696,7 +708,7 @@ flowchart TB
 - **Dependencies:** U7.
 - **Files:** `src/runner/help_probe/flags/normalize.rs` (new: cleanup before classification),
   `src/runner/help_probe/flags/classify.rs`, `src/runner/help_probe/flags/header.rs` (box-table rows),
-  `src/runner/help_probe/snapshots/`.
+  `src/runner/help_probe/snapshots/`, `README.md` (the help-reading section).
 - **Approach:**
   1. Normalize before classifying: strip ANSI (broot ignores `NO_COLOR`), groff overstrike `X\bX` and box-drawing cell
      edges, and expand TABs.
@@ -1170,19 +1182,225 @@ required proof of approved behavior)
 - (confidence: 3/10) The R8 gate rescanned per lookup. Withdrawn: it is computed once per parse behind `OnceLock`, and
   definitions per help are few.
 
+## DX review
+
+Target: this plan, reviewed with `/plan-devex-review` on 2026-10-06 at `79ac1b7`, mode DX POLISH. Every decision below
+was taken at its recommended option under Brett's standing instruction for this session: "don't ask me any questions,
+don't ask me to approve any commands. do not block yourself."
+
+The developer-facing surfaces this plan changes are the scorecard rows and evidence a CLI author reads, the `.anc.toml`
+`confirm_flags` override, deny messages, the README, and the contributor and maintainer before/after flow. Install and
+first run are untouched.
+
+### Developer persona
+
+```text
+TARGET DEVELOPER PERSONA
+========================
+Who:       A CLI author running anc on their own tool during a refactor or pre-release pass
+           (PRODUCT.md, "Humans running anc"), with AI agents reading --output json as co-primary
+Context:   Their tool uses Go flag, a hand-written help, argparse, click or another framework; they read
+           a row that passed or warned and want to know which of their flags counted
+Tolerance: The first line of a finding; they stop reading if the lede sits in paragraph three
+Expects:   The row names a flag their own --help prints, spelled as printed, plus an action
+```
+
+### Developer empathy narrative
+
+I maintain a Go CLI built on the standard `flag` package. I run `anc audit --command mytool` before a release. My
+`p5-must-force-yes` row passes, and I can't tell why: my `destroy` help lists `-force-copy`, not `-f`. My verbose row
+passes too, but I have no verbose flag. anc read my `-version` as `-v`. A colleague's tool, which really does have
+`-verbose`, gets "no `--verbose` / `-v` flag advertised". I open my own help, find no line that matches the verdict, and
+stop trusting the rows. Today's behavior is observed in the published anc 0.6.0 scorecards for terraform, cmake and
+actionlint. After this plan, the row either credits a flag my help declares, quoted the way I wrote it, or says what it
+searched and why my word did not count.
+
+### Competitive DX benchmark
+
+The clock: a CLI author reads one flag row and finds the flag it names in their own `--help`. Both ends are inside the
+terminal.
+
+| Tool                | Start → result                    | Time + evidence type                      | DX choice                                                                   | Source                                    |
+| ------------------- | --------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------- |
+| ShellCheck          | finding → understood cause        | seconds; reported                         | stable `SC` code plus a wiki page per code                                  | in-distribution knowledge, not re-checked |
+| Clippy              | lint → understood fix             | seconds; reported                         | lint name, `help:` line, link to the lint's docs                            | in-distribution knowledge, not re-checked |
+| anc today           | flag row → flag found in own help | never for first-letter misreads; observed | evidence cites a derived name such as `-f` for `-force-copy`                | published anc 0.6.0 scorecards            |
+| anc after this plan | flag row → flag found in own help | under 2 min; estimated                    | evidence quotes the declared spelling; deny evidence names its search scope | this plan, R10 and U10                    |
+
+Target: Champion, under two minutes from reading the row to finding the flag. Auto-decided (D4).
+
+### Magical moment specification
+
+The moment: a CLI author reads a credited row and sees their own flag, spelled as their help prints it (`-force`,
+`-auto-approve`, `--http1.1`). The vehicle is the existing evidence text (R10), not a new command. A `--explain` dump of
+parsed definitions would also deliver it but is a new CLI surface, out of scope in DX POLISH (NOT in scope below).
+Auto-decided (D5).
+
+### Developer journey map
+
+```text
+STAGE           | DEVELOPER DOES                               | FRICTION POINTS                                 | STATUS
+----------------|----------------------------------------------|-------------------------------------------------|---------
+1. Discover     | reads README Quick Start                     | none from this plan                             | ok
+2. Install      | brew / cargo install                         | none from this plan                             | ok
+3. Hello World  | anc audit --command <tool>                   | none from this plan                             | ok
+4. Real Usage   | reads a flag row and checks it in own help   | row cites a derived name; deny contradicts help | fixed (R10, U10, D7)
+5. Debug        | wonders why -verbose does not count          | no statement of the reading rules               | fixed (D8 README section)
+6. Upgrade      | sees rows move after the anc release         | moves with no explanation                       | fixed (per-PR Changelog, D8 section)
+```
+
+### First-time developer confusion report
+
+```text
+FIRST-TIME DEVELOPER REPORT
+============================
+Persona: CLI author with a Go flag tool
+Attempting: understand one flag row after anc audit
+
+CONFUSION LOG:
+T+0:00  Runs anc audit --command mytool. Sees p7-should-verbose pass.          [observed today: terraform, cmake]
+T+0:30  Greps own --help for "verbose". Finds only -version.                   [addressed: U5, -version no longer reads as -v]
+T+1:00  A teammate's java-style tool declares -verbose and still warns.        [addressed: D7 near-miss evidence]
+T+2:00  Looks for how anc reads help. README covers confirm_flags only.        [addressed: D8 README section]
+T+3:00  Wants to report a misread. Finds the false-positive issue template.    [exists; D8 section points at it]
+```
+
+### Review passes
+
+Prior DX reviews on this branch belong to other plans; no trend applies to this plan.
+
+| #   | Dimension       | Before | After | Evidence and disposition                                                                                                                                                                                                                  |
+| --- | --------------- | ------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Getting started | 8/10   | 8/10  | Install and first run are untouched by this plan. No issues found.                                                                                                                                                                        |
+| 2   | CLI design      | 6/10   | 8/10  | `.anc.toml` `confirm_flags` follows the same dash rule as built-ins (KTD6), so a declaration need not match the dash count. A general override for a misread flag is a new API (NOT in scope).                                            |
+| 3   | Error messages  | 4/10   | 8/10  | Today a deny can contradict the help (`no --verbose / -v flag advertised` beside a declared `-verbose`). R10, U10 step 5 and D7 make every flag-naming row quote a declared spelling or say what it searched.                             |
+| 4   | Documentation   | 5/10   | 8/10  | README documents `confirm_flags` only. D8 adds the help-reading section, extended by U6 to U8.                                                                                                                                            |
+| 5   | Upgrade path    | 7/10   | 8/10  | Rows move once, in one minor release after the atomic merge (R14); each PR's Changelog names the rule with an example; the site's rescore splits its diff.                                                                                |
+| 6   | Dev environment | 6/10   | 8/10  | The harness lives in another repo; CONTRIBUTING now names its command and README (routine, U3 step 5), and its refusal names both hashes and the rebuild command (routine, U1 step 6).                                                    |
+| 7   | Community       | 7/10   | 8/10  | `false-positive.yml` already takes misread reports; the D8 section points at it and asks for the tool's `--help` output, which becomes a fixture.                                                                                         |
+| 8   | DX measurement  | 6/10   | 8/10  | Each PR's expected-moves table against its corpus diff is the measurement. A post-release `/devex-review` on terraform, actionlint and lazygit checks that evidence names their spelling; scheduling it is navigation, not a plan change. |
+
+Findings and dispositions:
+
+1. Pass 3: a deny can name nothing the author declared when R8 keeps a single-dash word distinct. Accepted (D7): U5 step
+   7 and its test.
+2. Pass 4: the reading rules exist only in the plan. Accepted (D8): U5 step 8, extended in U6 to U8.
+3. Pass 6: CONTRIBUTING pointed at the harness without naming it. Routine follow-through on U3 step 5's approved rule;
+   applied.
+4. Pass 6: the harness refusal did not say how to recover. Routine follow-through on U1 step 6's approved refusal;
+   applied.
+
+### NOT in scope
+
+- A `--explain` (or similar) command that prints anc's parsed definitions for a help text: a new CLI surface; DX POLISH
+  keeps the existing surface.
+- A general `.anc.toml` override that declares a flag anc misread: a new configuration API; the false-positive report
+  path plus fixtures fixes misreads at the source.
+- The site's `/audit` page copy on how help is read: agentnative-site content, a follow-up after the README section
+  lands.
+
+### What already exists
+
+- `.github/ISSUE_TEMPLATE/false-positive.yml`: the report path for a wrong audit result, with Audit ID and Reproduction
+  fields.
+- README "Three Audit Layers" and "Configuration (`.anc.toml`)" sections: the homes for the help-reading section and the
+  dash-rule note.
+- Evidence text on rows (R10's channel) and `Mitigation::Config` notes for declared flags in `force_yes.rs`.
+
+### DX scorecard
+
+```text
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD                             |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend  |
+|----------------------|--------|--------|--------|
+| Getting Started      |  8/10  |  8/10  |   =    |
+| API/CLI/SDK          |  8/10  |  6/10  |   ↑    |
+| Error Messages       |  8/10  |  4/10  |   ↑    |
+| Documentation        |  8/10  |  5/10  |   ↑    |
+| Upgrade Path         |  8/10  |  7/10  |   ↑    |
+| Dev Environment      |  8/10  |  6/10  |   ↑    |
+| Community            |  8/10  |  7/10  |   ↑    |
+| DX Measurement       |  8/10  |  6/10  |   ↑    |
++--------------------------------------------------------------------+
+| TTHW (row → flag)    | <2 min | never  |   ↑    |
+| Competitive Rank     | Champion (estimated)                         |
+| Magical Moment       | designed via evidence quoting the spelling   |
+| Product Type         | CLI Tool                                     |
+| Mode                 | POLISH                                       |
+| Overall DX           |  8/10  |  6/10  |   ↑    |
++====================================================================+
+| DX PRINCIPLE COVERAGE                                               |
+| Zero Friction      | covered (unchanged)                            |
+| Learn by Doing     | covered (README section examples)              |
+| Fight Uncertainty  | covered (R10, U10 step 5, D7)                  |
+| Opinionated + Escape Hatches | covered (dash rule, confirm_flags)   |
+| Code in Context    | covered (real tool lines in the README section) |
+| Magical Moments    | covered (declared spelling in evidence)        |
++====================================================================+
+```
+
+DX plan is solid. Developers will have a good experience.
+
+### DX implementation checklist
+
+```text
+DX IMPLEMENTATION CHECKLIST
+============================
+[ ] A flag row's evidence names a flag the author's --help prints, as printed
+[ ] Every deny row of a presence audit names its search scope (U10 step 5)
+[ ] A dash-rule near-miss says which declared word did not count and why (D7)
+[ ] README states how behavioral audits read --help, with real lines (D8)
+[ ] README points misread reports at the false-positive template with the --help output
+[ ] CONTRIBUTING names the harness command and links its README
+[ ] The harness refusal names the binary, both hashes and the rebuild command
+[ ] Each row-moving PR's Changelog names its rule with one example
+```
+
+### DX implementation tasks
+
+- [ ] **T5 (P2, human: ~2h / CC: ~10min)** — query and audits — Near-miss deny evidence for the dash rule
+  - Surfaced by: Pass 3 — a deny names nothing the author declared when R8 keeps a single-dash word distinct
+  - Files: `src/runner/help_probe/flags/mod.rs`, `src/audits/behavioral/verbose_flag.rs`
+  - Verify: U5's mixed-help `-verbose` test asserts the evidence text
+- [ ] **T6 (P2, human: ~2h / CC: ~10min)** — docs — README help-reading section
+  - Surfaced by: Pass 4 — the reading rules exist only in the plan
+  - Files: `README.md`
+  - Verify: the section exists after U5 and gains each rule in U6 to U8; prose checks pass
+
+### DX decision ledger
+
+| ID  | Decision                    | Answer                                                                   | Accepted scope                           |
+| --- | --------------------------- | ------------------------------------------------------------------------ | ---------------------------------------- |
+| D1  | Product type                | CLI Tool, auto-decided                                                   | review framing only                      |
+| D2  | Persona                     | CLI author mid-refactor, AI agents co-primary (PRODUCT.md), auto-decided | review framing only                      |
+| D3  | Empathy narrative           | accurate as written, auto-decided                                        | review framing only                      |
+| D4  | TTHW target for row → flag  | Champion, under 2 min, auto-decided                                      | review target only                       |
+| D5  | Magical moment vehicle      | existing evidence text (R10), auto-decided; `--explain` out of scope     | no plan change                           |
+| D6  | Mode                        | DX POLISH, auto-decided                                                  | review mode                              |
+| D7  | Near-miss deny evidence     | Apply, auto-decided at the recommended option                            | U5 step 7 and its test                   |
+| D8  | README help-reading section | Apply, auto-decided at the recommended option                            | U5 step 8; README in U6, U7 and U8 files |
+
+Outside voice: disabled by config (`codex_reviews=disabled`).
+
+### DX unresolved decisions
+
+None.
+
 ## GSTACK REVIEW REPORT
 
-| Review         | Trigger                      | Why                             | Runs | Status      | Findings                  |
-| -------------- | ---------------------------- | ------------------------------- | ---- | ----------- | ------------------------- |
-| CEO Review     | `/plan-ceo-review`           | Scope & strategy                | 0    | —           | —                         |
-| Outside Review | codex via `/plan-eng-review` | Independent 2nd opinion         | 1    | disabled    | —                         |
-| Eng Review     | `/plan-eng-review`           | Architecture & tests (required) | 1    | ISSUES OPEN | 6 issues, 0 critical gaps |
-| Design Review  | `/plan-design-review`        | UI/UX gaps                      | 0    | —           | —                         |
-| DX Review      | `/plan-devex-review`         | Developer experience gaps       | 0    | —           | —                         |
+| Review         | Trigger                                               | Why                             | Runs | Status      | Findings                                                    |
+| -------------- | ----------------------------------------------------- | ------------------------------- | ---- | ----------- | ----------------------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`                                    | Scope & strategy                | 0    | —           | —                                                           |
+| Outside Review | codex via `/plan-eng-review` and `/plan-devex-review` | Independent 2nd opinion         | 2    | disabled    | —                                                           |
+| Eng Review     | `/plan-eng-review`                                    | Architecture & tests (required) | 1    | ISSUES OPEN | 6 issues, 0 critical gaps                                   |
+| Design Review  | `/plan-design-review`                                 | UI/UX gaps                      | 0    | —           | —                                                           |
+| DX Review      | `/plan-devex-review`                                  | Developer experience gaps       | 1    | CLEAR       | score: 6/10 → 8/10, TTHW: never → under 2 min (row to flag) |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by `codex_reviews=disabled`; no findings.
-- **VERDICT:** Eng review found 6 issues (1 architecture, 1 code quality, 4 test gaps), all resolved into the plan, 0
-  critical gaps; NOT CLEARED only because this run found issues. DX review not yet run for this plan. Prior `dev` rows
-  in the review log belong to other plans.
+- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by `codex_reviews=disabled` for both reviews; no findings.
+- **VERDICT:** DX CLEARED. Eng review found 6 issues, all folded into the plan with 0 critical gaps and 0 unresolved
+  decisions; its row stays ISSUES OPEN because issues were found this run, so eng review required for a CLEAR row. Prior
+  `dev` rows in the review log belong to other plans.
 
 NO UNRESOLVED DECISIONS

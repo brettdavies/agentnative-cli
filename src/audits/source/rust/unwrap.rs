@@ -957,6 +957,79 @@ fn main() {}
     }
 
     #[test]
+    fn sibling_method_names_in_a_macro_argument_are_not_reported() {
+        // The method-name boundary is pinned rather than incidental: each of
+        // these shares a prefix or a shape with the matched call and none of
+        // them panics the way `.unwrap()` does.
+        let source = r#"
+fn main() {
+    println!("{}", v.unwrap_or(0));
+    println!("{}", v.unwrap_or_else(f));
+    println!("{}", r.unwrap_err());
+    println!("{}", v.expect("m"));
+    println!("{}", v.unwrap);
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn a_raw_string_in_a_macro_argument_is_not_reported() {
+        let source = r##"
+fn main() {
+    println!("{}", r#"call .unwrap() here"#);
+}
+"##;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn a_comment_inside_a_macro_interior_is_not_reported() {
+        let source = r#"
+fn main() {
+    println!(
+        // never call foo().unwrap() here
+        "{}",
+        1
+    );
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn a_string_literal_nested_in_a_test_macro_argument_is_not_reported() {
+        // This audit's own test module asserts on evidence text in exactly this
+        // shape, so `--include-tests` over this repository is the live case.
+        let source = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn t() {
+        assert!(evidence.contains("foo().unwrap()"));
+    }
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", true),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
     fn exempts_a_macro_argument_inside_a_cfg_test_mod() {
         let source = r#"
 #[cfg(test)]
@@ -1114,11 +1187,46 @@ fn main() {
         );
     }
 
+    /// A per-process scratch directory for a `Project::discover` fixture.
+    fn temp_project_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("anc-unwrap-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
+
+    #[test]
+    fn a_macro_interior_finding_carries_the_audits_own_confidence() {
+        // Confidence is one constant set at the single construction site in
+        // `run()`, and `SourceLocation` carries none, so macro position has no
+        // per-finding dimension to lower.
+        let audit = UnwrapAudit;
+        let dir = temp_project_dir("conf");
+        std::fs::create_dir_all(dir.join("src")).expect("create src dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write test Cargo.toml");
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "fn main() {\n    println!(\"{}\", v.unwrap());\n}\n",
+        )
+        .expect("write test main.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+        let result = audit.run(&project).expect("run audit");
+
+        assert!(
+            matches!(result.status, AuditStatus::Fail(_)),
+            "the macro-interior call should be reported, got {:?}",
+            result.status
+        );
+        assert_eq!(result.confidence, Confidence::High);
+    }
+
     #[test]
     fn applicable_for_rust() {
         let audit = UnwrapAudit;
-        let dir = std::env::temp_dir().join(format!("anc-unwrap-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
+        let dir = temp_project_dir("test");
         std::fs::write(
             dir.join("Cargo.toml"),
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
@@ -1131,8 +1239,7 @@ fn main() {
     #[test]
     fn not_applicable_for_python() {
         let audit = UnwrapAudit;
-        let dir = std::env::temp_dir().join(format!("anc-unwrap-py-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
+        let dir = temp_project_dir("py");
         std::fs::write(
             dir.join("pyproject.toml"),
             "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
@@ -1145,8 +1252,7 @@ fn main() {
     #[test]
     fn not_applicable_for_none() {
         let audit = UnwrapAudit;
-        let dir = std::env::temp_dir().join(format!("anc-unwrap-none-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
+        let dir = temp_project_dir("none");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(!audit.applicable(&project));
     }

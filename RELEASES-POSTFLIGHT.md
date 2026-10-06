@@ -42,7 +42,8 @@ Flags:
 
 - `--repo OWNER/REPO`: override the auto-detected nameWithOwner
 - `--tap-repo OWNER/REPO`: override the homebrew-tap repo (default: `brettdavies/homebrew-tap`)
-- `--tag vX.Y.Z`: override auto-detection (default: derived from `Cargo.toml` version, falls back to latest git tag)
+- `--tag vX.Y.Z`: override auto-detection (default: `v` plus the `Cargo.toml` version, falling back to the newest
+  `v[0-9]*` tag)
 - `--crate NAME`: override the crate name for the `crates` gate (default: `Cargo.toml` `[package].name`)
 
 ## Checklist
@@ -96,9 +97,9 @@ Run immediately after the tag push triggers `release.yml`.
   set with `--dry-run`, which creates no branch and leaves the tree clean. Keeps the next release's PREFLIGHT `diff-B`
   step quiet so a real missed change stands out instead of hiding in expected divergence noise.
 
-  The gate (`scripts/release/postflight.sh backport`) is signal-agnostic about which files moved: it looks for the
-  merged PR alone, since "which files" varies release-to-release. The only requirement is the version string in the PR
-  title.
+  The gate (`scripts/release/postflight.sh backport`) is signal-agnostic about which files moved: it searches merged PRs
+  to `dev` by the tag (the search index tokenizes `v0.2.0` as one word, so a bare `0.2.0` misses it) and accepts either
+  spelling in the title. Its SKIP names the sync command to run.
 
 ## Related docs
 

@@ -635,9 +635,10 @@ flowchart TB
   `p2-may-more-formats` skip to evaluated; terraform `p5-must-force-yes` unchanged, still a fail on `destroy`, whose
   help lists no confirmation flag, with `force-unlock` still credited, now through `-force`; terraform
   `p3-must-subcommand-examples` exemptions recomputed from whole names; new `secret_non_leaky_path` rows from
-  single-dash secret names in helps with no `--` name; the rest computed from the full-corpus parse diff before the run.
-  lazygit's long names stay hidden until U6, so its help reads as having no `--` name in this PR; no lookup asks for a
-  name lazygit spells with one dash, so no lazygit row moves for that reason.
+  single-dash secret names in helps with no `--` name; deny rows on helps that declare double-dash names whose evidence
+  gains step 7's near-miss note; the rest computed from the full-corpus parse diff before the run. lazygit's long names
+  stay hidden until U6, so its help reads as having no `--` name in this PR; no lookup asks for a name lazygit spells
+  with one dash, so no lazygit row moves for that reason.
 
 ### U6. Column layouts and description markers
 
@@ -825,6 +826,8 @@ flowchart TB
 - Every row-moving PR carries an expected-moves table and a corpus diff that match, after U1's rerun rule.
 - README's `.anc.toml` section, the `src/anc_toml/mod.rs` example, `CONTRIBUTING.md`'s before/after rule, and the doc
   comments in `limit_flag.rs` and `verbose_flag.rs` describe present behavior.
+- README's section on how behavioral audits read `--help` states every rule U5 to U8 land, with real help lines, and
+  points misread reports at the false-positive issue template.
 - The spec paragraph on dash forms is merged and linked from U5's PR.
 - U5 to U10 landed in one atomic stack merge.
 - Code from abandoned approaches is removed from the diff.
@@ -1388,19 +1391,80 @@ Outside voice: disabled by config (`codex_reviews=disabled`).
 
 None.
 
+## Engineering review (verification pass)
+
+Target: this plan, re-reviewed with `/plan-eng-review` on 2026-10-06 at `679c596`, after the first engineering review
+(`79ac1b7`) and the DX review. Decisions follow Brett's standing instruction for this session: "don't ask me any
+questions, don't ask me to approve any commands. do not block yourself."
+
+### Scope Challenge
+
+The complexity gate still trips (about 40 files, four new components including the `flags/` submodules). D1's answer
+(original arrangement) covers it exactly; no feature cut is proposed. Scope record: feature answers: none proposed;
+structure: A (D1, reused); accepted scope: the plan as amended; pending remedies: none. Result: scope accepted as-is.
+
+### 1. Architecture review
+
+No issues found. U5 step 7's near-miss note can only come from the query, the one place R8 is evaluated (KTD5), and U5
+already lists the query's file. The `flags/` split (D2) and the README section (D8) add no new coupling.
+
+### 2. Code quality review
+
+No issues found. Deny evidence has one shape across the series: U5 step 7 names a declared word R8 kept distinct, and
+U10 step 5 names the search scope. Neither duplicates the other.
+
+### 3. Test review
+
+No new gaps. The first pass's diagram holds, plus U5's mixed-help `-verbose` test for the near-miss note: 18/18 planned
+paths carry a test. The regression contract is unchanged.
+
+### 4. Performance review
+
+No issues found. The near-miss check runs only on a miss, over the same parsed definitions.
+
+### Outside voice
+
+Disabled by config (`codex_reviews=disabled`).
+
+### Follow-through corrections
+
+These record work already approved, with no new behavior:
+
+- The Definition of Done gains the README help-reading section, the deliverable of DX decision D8, so a done check
+  covers it.
+- U5's Verification seeds include the deny rows whose evidence gains step 7's near-miss note (DX decision D7), so the
+  expected-moves table predicts them.
+
+### Completion summary
+
+- Step 0: Scope Challenge — scope accepted as-is
+- Architecture Review: 0 issues found
+- Code Quality Review: 0 issues found
+- Test Review: diagram unchanged, 0 gaps identified
+- Performance Review: 0 issues found
+- NOT in scope: unchanged
+- What already exists: unchanged
+- TODOS.md updates: 0 items proposed (no `TODOS.md`)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (`codex_reviews=disabled`)
+- Parallelization: unchanged, 3 lanes
+- Lake Score: N/A (no scored answers this pass)
+
+Approval readiness: PASS (R1: D1, R2: D2, R3: D3 from the first pass; DX D7 and D8 from the DX ledger; no new choices)
+
 ## GSTACK REVIEW REPORT
 
-| Review         | Trigger                                               | Why                             | Runs | Status      | Findings                                                    |
-| -------------- | ----------------------------------------------------- | ------------------------------- | ---- | ----------- | ----------------------------------------------------------- |
-| CEO Review     | `/plan-ceo-review`                                    | Scope & strategy                | 0    | —           | —                                                           |
-| Outside Review | codex via `/plan-eng-review` and `/plan-devex-review` | Independent 2nd opinion         | 2    | disabled    | —                                                           |
-| Eng Review     | `/plan-eng-review`                                    | Architecture & tests (required) | 1    | ISSUES OPEN | 6 issues, 0 critical gaps                                   |
-| Design Review  | `/plan-design-review`                                 | UI/UX gaps                      | 0    | —           | —                                                           |
-| DX Review      | `/plan-devex-review`                                  | Developer experience gaps       | 1    | CLEAR       | score: 6/10 → 8/10, TTHW: never → under 2 min (row to flag) |
+| Review         | Trigger                                               | Why                             | Runs | Status       | Findings                                                                         |
+| -------------- | ----------------------------------------------------- | ------------------------------- | ---- | ------------ | -------------------------------------------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`                                    | Scope & strategy                | 0    | —            | —                                                                                |
+| Outside Review | codex via `/plan-eng-review` and `/plan-devex-review` | Independent 2nd opinion         | 3    | disabled     | —                                                                                |
+| Eng Review     | `/plan-eng-review`                                    | Architecture & tests (required) | 2    | CLEAR (PLAN) | 0 issues, 0 critical gaps (verification; the first run's 6 issues are folded in) |
+| Design Review  | `/plan-design-review`                                 | UI/UX gaps                      | 0    | —            | —                                                                                |
+| DX Review      | `/plan-devex-review`                                  | Developer experience gaps       | 1    | CLEAR        | score: 6/10 → 8/10, TTHW: never → under 2 min (row to flag)                      |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by `codex_reviews=disabled` for both reviews; no findings.
-- **VERDICT:** DX CLEARED. Eng review found 6 issues, all folded into the plan with 0 critical gaps and 0 unresolved
-  decisions; its row stays ISSUES OPEN because issues were found this run, so eng review required for a CLEAR row. Prior
-  `dev` rows in the review log belong to other plans.
+- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by `codex_reviews=disabled` for all three reviews; no
+  findings.
+- **VERDICT:** ENG + DX CLEARED — ready to implement. Prior `dev` rows in the review log belong to other plans.
 
 NO UNRESOLVED DECISIONS

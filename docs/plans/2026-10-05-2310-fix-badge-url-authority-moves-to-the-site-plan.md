@@ -372,7 +372,10 @@ advancing the pin and refreshing the corpus both need the released binary.
      `content/scorecard-schema.md`, leaving `eligible`, `score_pct` and `convention_url`. That page is a live surface
      publishing all three today, with an example embed built from `rg`, the exact wrong slug this plan exists to remove.
   5. Update `tests/build.test.ts`, which pins the unsupported-version error message and uses 0.10 as its sentinel for an
-     unsupported version.
+     unsupported version. Its `ScorecardBadge` fixture type at `tests/build.test.ts:103-110` declares `embed_markdown`,
+     `scorecard_url` and `badge_url` required, under a comment asserting every 0.5-and-later scorecard carries them, so
+     no 0.10 fixture literal can satisfy it. Make the three optional and correct the comment to name the window. The 13
+     existing literals that set all three stay valid, which is what AE5's 0.9 vintage needs.
 - **Patterns to follow:** the set's existing plural shape and its documented reason for being plural.
 - **Test scenarios:**
   - The real 0.10 scorecard from step 2 loads, validates, and renders.
@@ -387,8 +390,10 @@ advancing the pin and refreshing the corpus both need the released binary.
   and indifferent to the scorecard's schema vintage.
 - **Requirements:** R6, R9.
 - **Dependencies:** U2.
-- **Files:** `agentnative-site/src/shared/scorecard-format.mjs`, `agentnative-site/src/worker/audit/result.ts`, plus the
-  badge-and-score URL derivations the audit below surfaces, and their tests
+- **Files:** `agentnative-site/src/shared/scorecard-format.mjs`, `agentnative-site/src/worker/audit/result.ts`,
+  `agentnative-site/src/build/scorecards.mjs` (its comment at `:21` names `embed_markdown` among the fields the build
+  reads off `scorecard.badge`, which stops being true here), plus the badge-and-score URL derivations the audit below
+  surfaces, and their tests
 - **Approach:**
   1. Replace both reads of `scorecard.badge.embed_markdown` with generation from the registry name, using the site's own
      `scorePath` and `badgePath` (KTD2). Keep the above-floor gate that decides whether a snippet appears at all; that
@@ -399,8 +404,11 @@ advancing the pin and refreshing the corpus both need the released binary.
      does not exist, which is what the Objective rules out. Pass `hideBadgeEmbed: true` there for an uncurated target,
      as the web path already does.
   3. Audit the site's badge-and-score URL derivations for the same class of defect: a derivation that keeps reading a
-     value whose authority moved. Bound it by surface rather than by field name, since the cited learning's failure mode
-     is a derivation that reads stale input without naming the moved field at all.
+     value whose authority moved. The stopping rule is reads, not derivations. Building a path from a registry name is
+     the correct pattern and 51 files under `src/` do it, so a surface-shaped bound never terminates; the defect is a
+     URL-shaped value read off a scorecard object. Only `scorecard-format.mjs:411` and `:701` do that today, both
+     replaced by step 1, so the audit's expected result is an empty remainder. Record it as such rather than leaving the
+     step open.
 - **Execution note:** The failure mode here is silent. An absent field reaches `escHtml(undefined)` and renders the
   literal word `undefined` inside a copy-paste box on both the HTML page and the markdown twin, with build, typecheck
   and tests all green. Assert on rendered output, not on the absence of an exception.
@@ -415,6 +423,10 @@ advancing the pin and refreshing the corpus both need the released binary.
   - Covers the all-98 success criterion. Iterating every registry entry, the badge path the snippet generator produces
     has a corresponding SVG in the built output, so no curated tool renders a snippet pointing at a missing badge.
   - A live-scored target with no curated registry entry renders no embed block at all.
+  - The JSON projection agents read carries the same verdict. The MCP tools hand a scorecard through whole, which
+    `tests/web-audit-mcp-tools.test.ts:277,389` show by asserting on `body.scorecard.badge.score_pct`, so a 0.10
+    scorecard reaching an MCP client must carry `eligible`, `score_pct` and `convention_url` and none of the three
+    removed keys. Assert it on that projection, not only on the HTML page and the markdown twin.
 - **Verification:** `bun run build && bun test`; both representations checked with an explicit `Accept` header, since a
   bare `curl` resolves to the markdown twin.
 
@@ -567,3 +579,140 @@ and neither runs in the pre-push hook.
 - No document in either repo describes a removed field, and the superseded "No CLI change" line in the earlier plan
   record is corrected.
 - No placeholder 0.10 artifact, abandoned compatibility branch, or dead field remains in either diff.
+
+---
+
+## Engineering review
+
+Target: this plan file, `docs/plans/2026-10-05-2310-fix-badge-url-authority-moves-to-the-site-plan.md`. Reviewed on
+2026-10-05 against commit `e2170ca`.
+
+### Scope Challenge
+
+Complexity count: about 26 proposed changed files, 11 in `agentnative-cli` and 15 in `agentnative-site`, and zero new
+classes or services. That trips the 8-file gate, so the arrangement went to a decision rather than being assumed.
+
+Scope record: feature answers: none asked, no cuts proposed; structure: B, Original arrangement, answered at D1,
+2026-10-05; accepted scope: the seven units stay as written, with the same feature list, contracts and the nine fixes
+the document review applied; pending remedies: none at the time of the answer.
+
+What already exists, and the plan reuses rather than rebuilds: `curatedEntryForBinary` and the `/score/<binary>` alias
+it feeds, `scorePath` plus the `badgePath` helper U1 adds, the plural `SUPPORTED_SCHEMA_VERSIONS` set and its documented
+migration window, inject mode for scoring against an unreleased binary, the `scorecard_url` the served registry entry
+already carries, and `compute_badge` as the single derivation behind both CLI surfaces. No new abstraction is proposed
+and nothing is reimplemented.
+
+Search check: no new architectural pattern, infrastructure component, or concurrency approach. The work removes three
+fields and moves one string construction across an existing boundary, so external research adds nothing here.
+
+Findings:
+
+1. [P3] (confidence: 10/10) Distribution check, the schema `$id`. Measured: `https://anc.dev/scorecard-v0.9.schema.json`
+   and the v0.8 equivalent both return 404, and the site keeps no copy of the CLI schema. The `$id` is an identifier
+   rather than a fetchable document, so bumping it to v0.10 cannot break a consumer pinning the URL, because none can
+   dereference it. Recorded so the cross-repo blast-radius check is not read as requiring the site to start serving a
+   new schema URL. Folded as a factual note; it changes no behavior and asks for no work.
+2. No other issues found. The minimum change set was already settled by the document review, this repository keeps no
+   `TODOS.md` to cross-reference, and the change introduces no new build, publish, or install artifact.
+
+Scope Challenge result: scope accepted as-is.
+
+### Architecture
+
+Boundaries hold. The change moves one derived value from producer to consumer, and the consumer already owns the
+inputs: `src/shared/audit-envelope.ts:106` derives `scorecard_url` from the request origin rather than reading it, so
+U3 extends an established pattern instead of inventing one. The dependency chain U1 to U2 to U3 supplies `badgePath`
+before U3 consumes it, verified: `badgePath` is absent from site `dev` and present only on `fix/badge-alias-redirect`,
+which U1 lands.
+
+1. **The MCP projection is a third rendering of the same scorecard, and U3 only asserted on two.** Confidence 90%. The
+   MCP tools pass a scorecard through whole, which `tests/web-audit-mcp-tools.test.ts:277,389` show by asserting
+   `body.scorecard.badge.score_pct`. An agent is exactly the reader KD1 protects, so the vintage parity U3 checks on the
+   HTML page and the markdown twin has to hold on the JSON an agent reads. The surviving fields make this additive
+   rather than breaking: `score_pct`, `eligible` and `convention_url` all stay, so no MCP consumer loses a field it
+   reads today. Added as a U3 test scenario.
+2. **One comment asserts a read that stops happening.** Confidence 95%. `src/build/scorecards.mjs:21` names
+   `embed_markdown` among the fields the build reads off `scorecard.badge`. After U3 it reads two of the three. Added to
+   U3's file list.
+3. No single point of failure is introduced. A registry read already gates every curated surface, and U1's resolver
+   degrades through `registryOrNull`, so a registry failure leaves badge serving where it is today rather than breaking
+   it.
+
+Dispositions: finding 1 added to U3's test scenarios; finding 2 added to U3's file list; no diagram needed, since the
+plan's two mermaid diagrams already carry the authority move and the request path.
+
+### Code quality
+
+1. **U3 step 3 had no stopping rule.** Confidence 100%. It asked for an audit bound "by surface rather than by field
+   name"; that surface is 51 files under `src/` that construct a `/badge/` or `/score/` path, and constructing one is
+   the correct pattern, so the instruction could not terminate. The defect class is narrower: a URL-shaped value read
+   off a scorecard object, which only `scorecard-format.mjs:411` and `:701` do. Rewritten with that bound and the
+   expected empty remainder.
+2. No shared helper wants extracting. `badgePath` and `badgeSlugOf` land in `src/shared/audit-routes.ts` beside
+   `scorePath`, with two first-party callers (U1's redirect, U3's generation), which is the right threshold.
+3. `derive_tool_name` survives U5 correctly. The text path stops calling it, but `build_tool_info` still needs it for
+   the scorecard's `tool` block, so U5's wording ("stops the text path calling it") is accurate rather than a deletion.
+
+Dispositions: finding 1 rewritten in U3; findings 2 and 3 are confirmations, no action.
+
+### Tests
+
+Coverage of the change surface:
+
+```text
+  surface                              asserted by                                   state
+  ------------------------------------ --------------------------------------------- -----------
+  badge alias redirect (U1)            tests/audit-result-route.test.ts, +1 case      written, red observed
+  0.10 accepted, older kept (U2)       tests/scorecard-schema-version.test.ts         pinned to max(set)
+  real 0.10 artifact loads (U2)        inject-mode scorecard + build                  planned
+  snippet from registry name (U3)      AE1, all-98 iteration                          planned
+  0.9 and 0.10 parity (U3)             AE5, both vintages                             planned
+  no literal `undefined` rendered      HTML page + markdown twin                      planned
+  JSON/MCP projection parity (U3)      web-audit-mcp-tools.test.ts shape              planned (added here)
+  below-floor renders no snippet       both vintages                                  planned
+  uncurated live target, no embed      respondCli path                                planned
+  CLI emits none of the three (U5)     scorecard schema test + emitted JSON           planned
+```
+
+1. **The 0.10 fixture literal is blocked by a required-field type.** Confidence 100%.
+   `tests/build.test.ts:103-110` declares `embed_markdown`, `scorecard_url` and `badge_url` required on
+   `ScorecardBadge`, under a comment asserting every 0.5-and-later scorecard carries the block. AE5 needs a 0.10 literal
+   beside a 0.9 one, and that type refuses it. Thirteen existing literals set all three and stay valid, so the fix is
+   making the three optional, not rewriting the fixtures. Added to U2 step 5, which already touches that file.
+2. The non-vacuity discipline is already explicit where it matters. U3's execution note names the real failure mode: an
+   absent field reaches `escHtml(undefined)` and renders the literal word `undefined` with build, typecheck and tests
+   green, so the scenario asserts on rendered output rather than on the absence of an exception.
+3. U1's case is the only one whose red has been observed, by stubbing the resolver to return `null`. Every U2 through U7
+   scenario is still a claim about a test not yet written.
+
+Dispositions: finding 1 added to U2 step 5; finding 3 recorded as the standing gate on the units, not a plan defect.
+
+### Performance
+
+No issues found. Snippet generation replaces a string read with a string build at render time, the all-98 iteration is
+98 path existence checks inside a build test, and nothing here touches scoring: `score_pct` is byte-identical before and
+after for a fixed input, which the plan already states at line 137. The one scale note: the all-98 check grows with the
+registry, linearly, from 98 entries.
+
+Dispositions: none.
+
+### Outside voice
+
+A consumer of the published scorecard contract would ask why a field is being removed rather than deprecated, since
+removal is the breaking option and `additionalProperties: false` means a consumer cannot ignore what it does not
+expect. The plan's answer holds: the site is the only consumer that reads the three keys, it is first-party, and the
+version set widens rather than flips, so a 0.9 artifact keeps validating. The one thing the removal buys that a
+deprecation would not is the end of a wrong value in a published file, which is the defect.
+
+A release engineer would ask what happens to scorecards already committed at 0.9 carrying the wrong `rg` embed. U1
+answers it for the published badge URLs by redirect, and the corpus refresh in U7 replaces the files themselves. Nothing
+in the plan rewrites history, which is correct.
+
+### Approval readiness
+
+Ready to implement. Four findings, all plan-text corrections applied within this review's authority; no finding reopened
+a settled decision, and KD1 through KD3 plus KTD1 keep their `session-settled: user-directed` annotations and their
+`Governs R...` links verbatim. No question is pending.
+
+The one standing gap is status rather than specification: U1's branch `fix/badge-alias-redirect` is pushed at `0d5f12c`
+with no pull request open, and U2 through U7 all sit behind it.

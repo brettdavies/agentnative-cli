@@ -6,7 +6,9 @@
 //! probe parsed: a block whose entries all led with the tool name is
 //! prefixed, and every entry that names a command beyond that bare prefix
 //! is an offender. The bare-invocation entry, which documents what the tool
-//! does with no arguments, is not one.
+//! does with no arguments, is not one, and neither is a default-command
+//! entry that adds only argument placeholders (`opencode [project]`): it
+//! documents the same bare invocation and names no subcommand.
 //!
 //! Warn when any offender exists, Pass when every graded block is
 //! unprefixed, NotApplicable when no subcommand names were parsed from the
@@ -121,9 +123,18 @@ fn prefixed_commands(block: &CommandBlock) -> impl Iterator<Item = (&str, &str)>
             .entries
             .iter()
             .map(|entry| block.command_text(entry))
-            .filter(|command| !command.is_empty())
+            .filter(|command| !is_bare_invocation(command))
             .map(move |command| (prefix, command))
     })
+}
+
+/// Whether an entry's command text names no subcommand: empty, or only
+/// optional and positional placeholders (`[project]`, `<path>`,
+/// `[options]`).
+fn is_bare_invocation(command: &str) -> bool {
+    command
+        .split_whitespace()
+        .all(|token| token.starts_with('[') || token.starts_with('<'))
 }
 
 #[cfg(test)]
@@ -268,5 +279,34 @@ Commands:
             audit_unprefixed_command_list(&help),
             AuditStatus::NotApplicable(_)
         ));
+    }
+
+    #[test]
+    fn default_command_line_with_only_placeholders_is_not_an_offender() {
+        // Excerpt of opencode 1.18's `opencode --help`, which has no
+        // `Usage:` line, so the binary name is the prefix signal.
+        let help = HelpOutput::from_raw_for_binary(
+            "\
+Commands:
+  opencode completion          generate shell completion script
+  opencode acp                 start ACP (Agent Client Protocol) server
+  opencode mcp                 manage MCP (Model Context Protocol) servers
+  opencode [project]           start opencode tui                                          [default]
+  opencode attach <url>        attach to a running opencode server
+  opencode run [message..]     run opencode with a message
+
+Positionals:
+  project  path to start opencode in                                                        [string]
+",
+            "opencode",
+        );
+        match audit_unprefixed_command_list(&help) {
+            AuditStatus::Warn(msg) => {
+                assert!(msg.contains("`opencode run [message..]`"), "{msg}");
+                assert!(!msg.contains("[project]"), "{msg}");
+                assert!(!msg.contains(" more"), "{msg}");
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 }

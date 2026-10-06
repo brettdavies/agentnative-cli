@@ -170,6 +170,15 @@ impl HelpOutput {
         }
     }
 
+    /// [`HelpOutput::from_raw`] with the binary stem a probe records, for
+    /// help text whose only tool-name signal is the binary itself.
+    #[cfg(test)]
+    pub(crate) fn from_raw_for_binary(raw: impl Into<String>, binary_stem: &str) -> Self {
+        let mut help = Self::from_raw(raw);
+        help.binary_stem = Some(binary_stem.to_string());
+        help
+    }
+
     /// Spawn `<binary> --help` via the shared `BinaryRunner` and capture its
     /// combined stdout+stderr. Returns an empty `HelpOutput` rather than an
     /// error on timeout/crash — a misbehaving `--help` is a signal the audit

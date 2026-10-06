@@ -38,6 +38,7 @@ pub trait Audit {
             confidence: crate::types::Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         }
     }
 

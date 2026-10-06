@@ -105,6 +105,11 @@ pub struct AuditResult {
     /// when no config supplied it. `None` for every other row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_hint: Option<ConfigHint>,
+    /// What a Pass matched, for an audit whose Pass names the subcommands or
+    /// flags it found. Surfaces as the row's `evidence`. `None` for every
+    /// other row; a non-Pass status carries its evidence in the status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pass_evidence: Option<String>,
 }
 
 /// A ready-to-add `.anc.toml` setting for a warning config could clear.

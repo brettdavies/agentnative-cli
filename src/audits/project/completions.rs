@@ -70,6 +70,7 @@ impl Audit for CompletionsAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

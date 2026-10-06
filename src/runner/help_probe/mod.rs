@@ -36,11 +36,14 @@ use super::{BinaryRunner, RunStatus};
 
 /// A flag discovered in `--help` output. `short` is the single-character
 /// variant (e.g., `-q`); `long` is the GNU-style variant (e.g., `--quiet`).
-/// At least one of the two is always set.
+/// At least one of the two is always set. `description` is the text after
+/// the description gap on the flag's own line, empty when the help puts the
+/// description on a later line or gives none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flag {
     pub short: Option<String>,
     pub long: Option<String>,
+    pub description: String,
 }
 
 impl Flag {
@@ -129,6 +132,13 @@ impl CommandBlock {
         }
         rest
     }
+
+    /// The description part of `entry`: the text after the two-space (or
+    /// tab) description gap, trimmed. Empty when the entry has no gap.
+    pub fn summary<'a>(&self, entry: &'a str) -> &'a str {
+        let invocation = before_description_gap(entry.split('\t').next().unwrap_or(entry));
+        entry[invocation.len()..].trim()
+    }
 }
 
 /// Shared, lazily-parsed view over `<binary> --help`. Construct via
@@ -158,6 +168,15 @@ impl HelpOutput {
             command_blocks: OnceLock::new(),
             subcommands: OnceLock::new(),
         }
+    }
+
+    /// [`HelpOutput::from_raw`] with the binary stem a probe records, for
+    /// help text whose only tool-name signal is the binary itself.
+    #[cfg(test)]
+    pub(crate) fn from_raw_for_binary(raw: impl Into<String>, binary_stem: &str) -> Self {
+        let mut help = Self::from_raw(raw);
+        help.binary_stem = Some(binary_stem.to_string());
+        help
     }
 
     /// Spawn `<binary> --help` via the shared `BinaryRunner` and capture its
@@ -217,6 +236,22 @@ impl HelpOutput {
             .get_or_init(|| subcommand_names(self.command_blocks()))
     }
 
+    /// The command-list summary of top-level subcommand `name`: the
+    /// description on the first entry that names it. `None` when no entry
+    /// names it or that entry carries no description.
+    pub fn subcommand_summary(&self, name: &str) -> Option<&str> {
+        self.command_blocks()
+            .iter()
+            .find_map(|block| {
+                block
+                    .entries
+                    .iter()
+                    .find(|entry| block.command_text(entry).split_whitespace().next() == Some(name))
+                    .map(|entry| block.summary(entry))
+            })
+            .filter(|summary| !summary.is_empty())
+    }
+
     /// Why [`HelpOutput::subcommands`] is empty, worded as what the parser
     /// observed so an audit never asserts the tool has no subcommands when it
     /// means none were parsed.
@@ -266,7 +301,12 @@ fn parse_flags(raw: &str) -> Vec<Flag> {
             }
         }
         if short.is_some() || long.is_some() {
-            flags.push(Flag { short, long });
+            let description = trimmed[header.len()..].trim().to_string();
+            flags.push(Flag {
+                short,
+                long,
+                description,
+            });
         }
     }
     flags
@@ -921,6 +961,7 @@ Options:
         let f = Flag {
             short: Some("-q".into()),
             long: Some("--quiet".into()),
+            description: String::new(),
         };
         assert!(f.matches("-q"));
         assert!(f.matches("--quiet"));

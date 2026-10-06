@@ -76,6 +76,7 @@ impl Audit for ForceYesAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

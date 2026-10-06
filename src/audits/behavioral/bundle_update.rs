@@ -51,6 +51,7 @@ impl Audit for BundleUpdateAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

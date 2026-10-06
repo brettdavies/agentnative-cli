@@ -37,8 +37,8 @@ execution: code
 
 A directory audit inventories every package in the repo from workspace declarations and a scan that honors `.gitignore`.
 It picks the binary to grade from the bins those packages declare and have built. Source audits run for each language
-present; project audits read the graded binary's own manifest. Several built binaries stop the run with one `anc audit
-DIR --bin NAME` command per candidate.
+present; project audits read the graded binary's own manifest. Several built binaries stop the run with one
+`anc audit DIR --bin NAME` command per candidate.
 
 ### Problem Frame
 
@@ -95,12 +95,12 @@ directory target find the right binary and the right manifests.
 
 - R4. A candidate is a bin that an inventoried package declares and that exists on disk at its language's build location
   (KTD3).
-- R5. With one candidate, anc grades it. With none, anc runs source and project audits and warns; when packages
-  declare bins that are not built, the warning lists those bin names and the ways forward: build one, audit it by
-  path, or name it with `--command`.
-- R6. With several candidates and no `--bin`, anc exits 2 before running any audit. Text output lists one `anc audit DIR
-  --bin NAME` per candidate. JSON output is anc's usage-error envelope with `error: binary-ambiguous` and a `candidates`
-  list giving each candidate's bin name, package, relative path, and verbatim command.
+- R5. With one candidate, anc grades it. With none, anc runs source and project audits and warns; when packages declare
+  bins that are not built, the warning lists those bin names and the ways forward: build one, audit it by path, or name
+  it with `--command`.
+- R6. With several candidates and no `--bin`, anc exits 2 before running any audit. Text output lists one
+  `anc audit DIR --bin NAME` per candidate. JSON output is anc's usage-error envelope with `error: binary-ambiguous` and
+  a `candidates` list giving each candidate's bin name, package, relative path, and verbatim command.
 - R7. `--bin <name>`, also settable as `AGENTNATIVE_BIN`, grades the named candidate. An unknown name exits 2 listing
   the candidates, and `--bin` beside a binary-path or `--command` target is a usage error.
 
@@ -123,8 +123,8 @@ directory target find the right binary and the right manifests.
 - AE2. Two built binaries. Covers R6.
   - **Given:** AE1's checkout after a workspace build also produced `target/debug/xdk-consumer-check`.
   - **When:** `anc audit . --output json` runs.
-  - **Then:** anc exits 2 with `error: binary-ambiguous`, listing `xr` and `xdk-consumer-check`, each with its `anc
-    audit . --bin <name>` command.
+  - **Then:** anc exits 2 with `error: binary-ambiguous`, listing `xr` and `xdk-consumer-check`, each with its
+    `anc audit . --bin <name>` command.
 - AE3. Picking one. Covers R7.
   - **When:** `anc audit . --bin xr` runs on AE2's checkout.
   - **Then:** the result matches AE1.
@@ -162,8 +162,8 @@ directory target find the right binary and the right manifests.
   `https://doc.rust-lang.org/cargo/reference/cargo-targets.html`), npm
   (`https://docs.npmjs.com/cli/using-npm/workspaces`), yarn (`https://classic.yarnpkg.com/lang/en/docs/workspaces/`),
   pnpm (`https://pnpm.io/pnpm-workspace_yaml`), go.work (`go help work`), uv
-  (`https://docs.astral.sh/uv/concepts/projects/workspaces/`). The go.work `use` forms and uv's `[tool.uv.workspace]
-  members` and `[project.scripts]` were confirmed against local toolchains.
+  (`https://docs.astral.sh/uv/concepts/projects/workspaces/`). The go.work `use` forms and uv's
+  `[tool.uv.workspace] members` and `[project.scripts]` were confirmed against local toolchains.
 - `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`: why Rust picks the newer of `release`
   and `debug`.
 
@@ -176,8 +176,8 @@ directory target find the right binary and the right manifests.
 - KTD1. **`Project` gains a package inventory, and its single-valued fields derive from the graded package.** Each
   package records its root directory, language, manifest path, and declared bins. `language`, `manifest_path`, and
   `binary_paths` keep their meaning for the one graded package, so audits that read them need no change. Discovery
-  returns the inventory and candidates without building a runner; selection (R5 through R7) picks the graded binary,
-  and only then is its runner built, so `--bin` decides which binary every behavioral audit probes.
+  returns the inventory and candidates without building a runner; selection (R5 through R7) picks the graded binary, and
+  only then is its runner built, so `--bin` decides which binary every behavioral audit probes.
 - KTD2. **Declarations are read with code already in the binary.** `toml` reads Cargo and uv, `serde_json` reads npm and
   yarn, a line reader handles `go.work`, and `globset` expands member globs. `serde_yaml` is test-only, so
   `pnpm-workspace.yaml` gets a narrow reader for the top-level `packages` sequence in block and flow form, including `!`
@@ -286,10 +286,10 @@ config plan applies here too.
 - **Dependencies:** U1
 - **Files:** `src/project/scan.rs` (new), `src/project/mod.rs`, `tests/fixtures/mixed-no-root/` (new)
 - **Approach:**
-  1. Walk with `ignore` per R3, collecting the four manifest names. Configure the walker to read the repo's
-     `.gitignore` files and `.git/info/exclude` but not the operator's global excludes file (`core.excludesFile`), so
-     the same repo yields the same packages on every machine. Each manifest is its own package, so a directory holding
-     both `Cargo.toml` and `pyproject.toml`, the maturin layout, yields a Rust package and a Python package.
+  1. Walk with `ignore` per R3, collecting the four manifest names. Configure the walker to read the repo's `.gitignore`
+     files and `.git/info/exclude` but not the operator's global excludes file (`core.excludesFile`), so the same repo
+     yields the same packages on every machine. Each manifest is its own package, so a directory holding both
+     `Cargo.toml` and `pyproject.toml`, the maturin layout, yields a Rust package and a Python package.
   2. Merge with U1's members, deduplicating by package root and language.
   3. Store the inventory on `Project` (KTD1), leaving the single-valued fields to U3 and U5.
 - **Test scenarios:**
@@ -339,8 +339,8 @@ config plan applies here too.
   1. Add `--bin` per KTD5.
   2. After inventory, apply R5 through R7 in the order of KTD4, before any audit is collected.
   3. Render `binary-ambiguous` through the existing envelope helper plus the `candidates` array (KTD4).
-  4. Give the new test file's spawn helper the home-config override, which the config plan's isolation guard requires
-     of every file that spawns `anc audit`.
+  4. Give the new test file's spawn helper the home-config override, which the config plan's isolation guard requires of
+     every file that spawns `anc audit`.
 - **Patterns to follow:** `render_error` and its tests in `src/json_error.rs`; the spawn helpers in
   `tests/integration.rs`.
 - **Test scenarios:**
@@ -454,27 +454,26 @@ below names the option taken and why, and every one is open to reversal.
 
 ### R1: When the runner is built
 
-Finding: 1, P2, confidence 8/10, KTD1 against `src/project.rs` `Project::discover`; Architecture.
-Runtime evidence: `Project::discover` builds the runner from `binary_paths[0]` as soon as binaries are found
+Finding: 1, P2, confidence 8/10, KTD1 against `src/project.rs` `Project::discover`; Architecture. Runtime evidence:
+`Project::discover` builds the runner from `binary_paths[0]` as soon as binaries are found
 (`BinaryRunner::new(binary_paths[0].clone(), ...)`), before anything could apply `--bin`.
 
-| Choice | Current | A | B |
-| --- | --- | --- | --- |
+| Choice              | Current                        | A                                  | B           |
+| ------------------- | ------------------------------ | ---------------------------------- | ----------- |
 | Runner construction | inside discovery, first binary | after selection, the graded binary | unspecified |
 
 Options: A) Discovery returns inventory and candidates; the runner is built after selection (recommended). B) Leave it
-to the implementer.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD1 extended.
+to the implementer. State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD1 extended.
 
 ### R2: Multi-binary crates change behavior on upgrade
 
-Finding: 2, P2, confidence 9/10, R6 against `src/project.rs` `discover_rust_binaries`; Architecture (upgrade).
-Runtime evidence: `discover_rust_binaries` collects every `[[bin]]` name and the runner takes the first that exists, so
-a single crate with two built bins is graded on the first today; under R6 it exits 2. A CI job running `anc audit .` on
-such a crate starts failing after upgrade.
+Finding: 2, P2, confidence 9/10, R6 against `src/project.rs` `discover_rust_binaries`; Architecture (upgrade). Runtime
+evidence: `discover_rust_binaries` collects every `[[bin]]` name and the runner takes the first that exists, so a single
+crate with two built bins is graded on the first today; under R6 it exits 2. A CI job running `anc audit .` on such a
+crate starts failing after upgrade.
 
-| Choice | Current | A | B |
-| --- | --- | --- | --- |
+| Choice         | Current                      | A                                                   | B          |
+| -------------- | ---------------------------- | --------------------------------------------------- | ---------- |
 | Upgrade notice | DoD lists `binary-ambiguous` | `### Changed` entry plus README note naming `--bin` | as written |
 
 Options: A) Name the behavior change and its fix in the changelog and README (recommended). B) Keep the DoD wording.
@@ -483,10 +482,10 @@ stop-and-ask behavior itself is a session-settled Key Decision and is not reopen
 
 ### R3: Windows paths for bins
 
-Finding: 3, P3, confidence 6/10, KTD3's `.exe` and `Scripts` rules; Test review.
-Runtime evidence: the shared Rust CI only compile-checks Windows, so a Windows-only test would never run.
-Options: A) Compile-only Windows tests. B) Record the gap under NOT in scope (recommended).
-State: approved. Actual answer: B, best-judgement decision. Accepted scope: NOT in scope entry below.
+Finding: 3, P3, confidence 6/10, KTD3's `.exe` and `Scripts` rules; Test review. Runtime evidence: the shared Rust CI
+only compile-checks Windows, so a Windows-only test would never run. Options: A) Compile-only Windows tests. B) Record
+the gap under NOT in scope (recommended). State: approved. Actual answer: B, best-judgement decision. Accepted scope:
+NOT in scope entry below.
 
 Approval readiness: PASS (S0, R1 A, R2 A, R3 B; all best-judgement decisions under Brett's authorization).
 
@@ -541,12 +540,12 @@ COVERAGE: 9/10 paths planned | GAPS: 1 (Windows, recorded under NOT in scope)
 
 ### Failure modes
 
-| Path | Realistic failure | Covered by | User sees |
-| --- | --- | --- | --- |
-| pnpm file with anchors or nested maps | reader cannot parse | U1 warning test | stderr warning; scan still finds packages |
-| Multi-bin crate in CI after upgrade | exit 2 instead of a score | U4 tests; R2 changelog | `binary-ambiguous` with `--bin` commands |
-| Symlinked dir out of the repo | scan escapes the repo | U2 symlink test | nothing; not followed |
-| Fixture manifests under `tests/` | false packages | U2 test | nothing; skipped |
+| Path                                  | Realistic failure         | Covered by             | User sees                                 |
+| ------------------------------------- | ------------------------- | ---------------------- | ----------------------------------------- |
+| pnpm file with anchors or nested maps | reader cannot parse       | U1 warning test        | stderr warning; scan still finds packages |
+| Multi-bin crate in CI after upgrade   | exit 2 instead of a score | U4 tests; R2 changelog | `binary-ambiguous` with `--bin` commands  |
+| Symlinked dir out of the repo         | scan escapes the repo     | U2 symlink test        | nothing; not followed                     |
+| Fixture manifests under `tests/`      | false packages            | U2 test                | nothing; skipped                          |
 
 Critical gaps: 0.
 
@@ -591,8 +590,8 @@ _No new tasks from Performance._
 
 ## Developer experience review
 
-Brett authorized best-judgement decisions while unavailable. Each decision below names the option taken; all are open
-to reversal.
+Brett authorized best-judgement decisions while unavailable. Each decision below names the option taken; all are open to
+reversal.
 
 ### Developer persona
 
@@ -621,19 +620,19 @@ Predicted: the Node outcome, from `discover_simple_binaries` listing `node_modul
 
 ### Competitive benchmark
 
-| Tool | Start to result | Time and evidence type | DX choice |
-| --- | --- | --- | --- |
-| cargo run | workspace root to running one binary | seconds; documented | errors on several bins and lists `--bin` choices |
-| anc today | workspace root to a full scorecard | never; observed against xurl-rs | silently runs source audits only |
-| anc with this plan | workspace root to a full scorecard | one run, or two with `--bin`; estimated | grades the one built bin or prints a command per bin |
+| Tool               | Start to result                      | Time and evidence type                  | DX choice                                            |
+| ------------------ | ------------------------------------ | --------------------------------------- | ---------------------------------------------------- |
+| cargo run          | workspace root to running one binary | seconds; documented                     | errors on several bins and lists `--bin` choices     |
+| anc today          | workspace root to a full scorecard   | never; observed against xurl-rs         | silently runs source audits only                     |
+| anc with this plan | workspace root to a full scorecard   | one run, or two with `--bin`; estimated | grades the one built bin or prints a command per bin |
 
 Target chosen: Champion. Cargo's own `could not determine which binary to run` error is the model the plan already
 follows.
 
 ### Magical moment
 
-`anc audit .` at a workspace root grades the CLI the repo builds with no flags. When there are several, the error is
-a menu of exact commands, and pasting one gives a full scorecard.
+`anc audit .` at a workspace root grades the CLI the repo builds with no flags. When there are several, the error is a
+menu of exact commands, and pasting one gives a full scorecard.
 
 ### Developer journey
 
@@ -665,18 +664,16 @@ T+1:00  tries anc audit . --binary xr; usage error.                         [add
 
 Finding: P2, confidence 9/10, R5 ("prints today's no-binary warning") against this plan's own Risks section, which
 relies on that warning to name the fix; today's text is `warning: no binary found, running source audits only`
-(`src/main.rs`).
-Options: A) When packages declare bins but none is built, the warning lists the declared bin names and the three ways
-forward: build it, audit it by path, or use `--command` (recommended). B) Keep today's text.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: R5 updated, U4 test added.
+(`src/main.rs`). Options: A) When packages declare bins but none is built, the warning lists the declared bin names and
+the three ways forward: build it, audit it by path, or use `--command` (recommended). B) Keep today's text. State:
+approved. Actual answer: A, best-judgement decision. Accepted scope: R5 updated, U4 test added.
 
 #### DX-R2: `--bin` and `--binary` side by side
 
-Finding: P3, confidence 7/10, KTD5; `--binary` is an existing switch meaning "behavioral audits only", and `--bin`
-takes a name, so `anc audit . --binary xr` is a likely first guess that clap rejects.
-Options: A) Each flag's help names the other, and the README section shows both (recommended). B) Help text as
-planned.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD5 and U6 updated.
+Finding: P3, confidence 7/10, KTD5; `--binary` is an existing switch meaning "behavioral audits only", and `--bin` takes
+a name, so `anc audit . --binary xr` is a likely first guess that clap rejects. Options: A) Each flag's help names the
+other, and the README section shows both (recommended). B) Help text as planned. State: approved. Actual answer: A,
+best-judgement decision. Accepted scope: KTD5 and U6 updated.
 
 TODOS.md updates: 0 proposed (the repo has no TODOS.md).
 
@@ -728,17 +725,17 @@ TODOS.md updates: 0 proposed (the repo has no TODOS.md).
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-| --- | --- | --- | --- | --- | --- |
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via plan-review outside voice | Independent 2nd opinion | 7 | disabled | none (codex_reviews disabled) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 5 | ISSUES OPEN (PLAN) | 3 issues, 0 critical gaps; all resolved by R1-R3 |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 3 | ISSUES OPEN (PLAN) | score: 5/10 → 7/10, TTHW: never → 1 run; DX-R1 and DX-R2 resolved |
+| Review         | Trigger                             | Why                             | Runs | Status             | Findings                                                          |
+| -------------- | ----------------------------------- | ------------------------------- | ---- | ------------------ | ----------------------------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`                  | Scope & strategy                | 0    | —                  | —                                                                 |
+| Outside Review | codex via plan-review outside voice | Independent 2nd opinion         | 7    | disabled           | none (codex_reviews disabled)                                     |
+| Eng Review     | `/plan-eng-review`                  | Architecture & tests (required) | 5    | ISSUES OPEN (PLAN) | 3 issues, 0 critical gaps; all resolved by R1-R3                  |
+| Design Review  | `/plan-design-review`               | UI/UX gaps                      | 0    | —                  | —                                                                 |
+| DX Review      | `/plan-devex-review`                | Developer experience gaps       | 3    | ISSUES OPEN (PLAN) | score: 5/10 → 7/10, TTHW: never → 1 run; DX-R1 and DX-R2 resolved |
 
 - **OUTSIDE COVERAGE:** codex, plan-review phase for the engineering and DX reviews, disabled by config
   (`codex_reviews disabled`); no outside findings.
-- **VERDICT:** no review CLEAR. Both reviews found and resolved their issues, so each logs `issues_open`; a pass over the
-  amended plan that finds nothing is what logs clean. eng review required.
+- **VERDICT:** no review CLEAR. Both reviews found and resolved their issues, so each logs `issues_open`; a pass over
+  the amended plan that finds nothing is what logs clean. eng review required.
 
 NO UNRESOLVED DECISIONS

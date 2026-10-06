@@ -86,10 +86,10 @@ URL-rewriting comes from disabling user config wholesale, not from a `-c url.<re
 opposite of blocking).
 
 The host map (`SkillHost` enum, `KNOWN_HOSTS`, `resolve_host`, `host_envelope_str`) is **build-time-generated** from
-`src/skill_install/skill.json` by `build.rs::emit_skill_hosts`. To add or change a host, edit the JSON (or run `bash
-scripts/sync-skill-fixture.sh` to pull the upstream site contract) and `cargo build` regenerates the Rust map; no hand
-edits to `src/skill_install.rs` are required. CI's `skill-fixture-drift.yml` runs `--check` on every PR to catch fixture
-vs upstream drift.
+`src/skill_install/skill.json` by `build.rs::emit_skill_hosts`. To add or change a host, edit the JSON (or run
+`bash scripts/sync-skill-fixture.sh` to pull the upstream site contract) and `cargo build` regenerates the Rust map; no
+hand edits to `src/skill_install.rs` are required. CI's `skill-fixture-drift.yml` runs `--check` on every PR to catch
+fixture vs upstream drift.
 
 ## Agent-facing JSON surface
 
@@ -122,10 +122,10 @@ following scorecard-level fields beyond the base `results` / `summary`:
   derivation from the live run. `score_pct` is the credit-weighted score defined in `agentnative-spec`
   `principles/scoring.md`, over behavioral-layer rows only: `round(100 × Σ w·credit / Σ w)`, with credit 1 for `pass`,
   0.5 for `warn`, and 0 for `fail` and `opt_out`; `n_a`, `skip`, and `error` are excluded. `eligible` is true iff
-  `score_pct >= 70` (`BADGE_ELIGIBILITY_FLOOR_PCT`) and a tool slug was derivable. `embed_markdown` is
-  `null` below the floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
-  below the floor; `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint
-  (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
+  `score_pct >= 70` (`BADGE_ELIGIBILITY_FLOOR_PCT`) and a tool slug was derivable. `embed_markdown` is `null` below the
+  floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even below the floor;
+  `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint (`--output text`)
+  prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
 
 `--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
 values exit 2 with a structured error. The full per-category mapping of suppressed audit IDs is committed to
@@ -135,8 +135,9 @@ values exit 2 with a structured error. The full per-category mapping of suppress
 jaq '.audit_profiles' coverage/matrix.json
 ```
 
-Suppressed audits appear in `results[]` as `status: "skip"` with evidence starting with `"suppressed by audit_profile:
-"` (the shared prefix is pinned in `src/principles/registry.rs` as `SUPPRESSION_EVIDENCE_PREFIX`).
+Suppressed audits appear in `results[]` as `status: "skip"` with evidence starting with
+`"suppressed by audit_profile: "` (the shared prefix is pinned in `src/principles/registry.rs` as
+`SUPPRESSION_EVIDENCE_PREFIX`).
 
 ## Exit Codes
 

@@ -28,10 +28,10 @@ The PR body itself acknowledged a remaining gaming case (`{error:"ok", kind:"<pr
 the fix as "a larger refactor." This plan closes the three worst bypasses above while the larger redesign (role-based vs
 literal-name vs structural-stability vs move-to-P8) lives in plan #001.
 
-The deeper concern — that PR #79's predicates were calibrated to match `anc`'s own `InstallEnvelope` shape (`{status,
-reason, exit_code, message}`) — is parked. Plan #001 owns whether the audit should be reverted to literal-keys, kept
-with full name-role coupling, or redesigned around contract-stability (run multiple failure modes, verify shape
-consistency).
+The deeper concern — that PR #79's predicates were calibrated to match `anc`'s own `InstallEnvelope` shape
+(`{status, reason, exit_code, message}`) — is parked. Plan #001 owns whether the audit should be reverted to
+literal-keys, kept with full name-role coupling, or redesigned around contract-stability (run multiple failure modes,
+verify shape consistency).
 
 PR reference: <https://github.com/brettdavies/agentnative-cli/pull/79> (merged 2026-06-03).
 
@@ -86,14 +86,14 @@ The adversarial review surfaced 9 findings against this PR.
 
 - **R2**: `SUCCESS_VALUE_STRINGS` expands to recognize a documented family of success synonyms. Either:
 - (a) extend the array to include `okay`, `successful`, `noop`, `no-op`, `n/a`, `noop-success`, and any other common
-    phrasings, OR
+  phrasings, OR
 - (b) replace the equality check with a small set of prefix/substring rules (`val.starts_with("ok")` plus the explicit
-    phrases) coupled with case-insensitive comparison.
+  phrases) coupled with case-insensitive comparison.
 
   Either approach is acceptable; prefer (a) for simplicity unless the value set grows past 20. Source:
   `src/audits/behavioral/json_errors.rs:61-70, 163-168`.
 - Concrete tests: `{"status":"OKAY",...}`, `{"outcome":"successful",...}`, `{"result":"success",...}` all produce
-    `Warn`.
+  `Warn`.
 
 - **R3**: Add a function `outer_envelope_is_success_coded(obj: &Map<String, Value>) -> bool` that returns `true` if any
   top-level field has a value matching the (expanded) success guard. `classify_envelope` checks this at depth 0 before
@@ -101,18 +101,19 @@ The adversarial review surfaced 9 findings against this PR.
   Source: new check at `src/audits/behavioral/json_errors.rs::classify_object` entry.
 - Concrete test: `{"ok":true,"data":{"status":"error","code":"X","message":"debug."}}` produces `Warn`.
 - Negative pin: `{"ok":false,"status":"error","code":"X","message":"..."}` continues to `Pass` (the `ok:false` value is
-    not success-coded; `false` does not match any string in the success-guard set).
+  not success-coded; `false` does not match any string in the success-guard set).
 
 - **R4**: Six new unit tests:
 - `fail_numeric_discriminant_on_info_coded_value` — `{"level":0,"kind":"info","message":"..."}` → `Warn`.
 - `fail_success_synonym_okay` — `{"status":"OKAY","reason":"all-good","message":"we are fine."}` → `Warn`.
 - `fail_success_synonym_successful` — `{"outcome":"successful","kind":"foo","message":"all good."}` → `Warn`.
 - `fail_outer_success_with_nested_error_data` — `{"ok":true,"data":{"status":"error","code":"X","message":"..."}}` →
-    `Warn`.
+  `Warn`.
 - `pass_ok_false_canonical_error_envelope_regression` — `{"ok":false,"kind":"auth-required","message":"login please."}`
-    continues to `Pass`. Pin that the R3 guard doesn't over-fire on `ok:false`.
-- `pass_anc_install_envelope_regression` — anc's own `{"status":"error","reason":"destination-not-empty","exit_code":1,
-    "message":"..."}` continues to `Pass`. Pin that the R1/R2/R3 changes don't break the audit's primary dogfood.
+  continues to `Pass`. Pin that the R3 guard doesn't over-fire on `ok:false`.
+- `pass_anc_install_envelope_regression` — anc's own
+  `{"status":"error","reason":"destination-not-empty","exit_code":1, "message":"..."}` continues to `Pass`. Pin that the
+  R1/R2/R3 changes don't break the audit's primary dogfood.
 
 - **R5**: The existing 12 tests continue to pass (no regressions in either direction).
 
@@ -170,9 +171,9 @@ These are verification steps, not in-scope code changes.
   assigns it to discriminant. Adding a second discriminant-named field changes the assignment non-obviously. Deferred to
   plan #001 (the larger refactor); this plan does not change role-assignment ordering.
 
-- **Documentation pointer.** Should the Warn evidence string point to a docs page describing the role contract? Plan
-  #001 will likely revise that contract; for this plan, keep the Warn evidence string as-is (verbose but not pointing to
-  a doc that will change).
+- **Documentation pointer.** Should the Warn evidence string point to a docs page describing the role contract?
+  Plan #001 will likely revise that contract; for this plan, keep the Warn evidence string as-is (verbose but not
+  pointing to a doc that will change).
 
 ## Acceptance
 

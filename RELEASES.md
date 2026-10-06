@@ -54,10 +54,10 @@ The standard feature → PR → squash-merge flow remains required for everythin
 ## PR body
 
 Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six required sections, in
-template order, no inventions: `## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`, `##
-Testing`, `## Files Modified`. The template's other sections (`## Key Features`, `## Benefits`, `## Breaking Changes`,
-`## Deployment Notes`, `## Screenshots/Recordings`, `## Checklist`, `## Additional Context`) are optional: fill `##
-Breaking Changes` on a major, delete the rest when they do not apply.
+template order, no inventions: `## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`,
+`## Testing`, `## Files Modified`. The template's other sections (`## Key Features`, `## Benefits`,
+`## Breaking Changes`, `## Deployment Notes`, `## Screenshots/Recordings`, `## Checklist`, `## Additional Context`) are
+optional: fill `## Breaking Changes` on a major, delete the rest when they do not apply.
 
 - **No explainer prose anywhere in the body.** User-facing substance only.
 - **Summary describes the net diff only**: what merged `main` looks like vs the base branch. Not commit history,
@@ -234,9 +234,9 @@ git cherry-pick --continue --no-edit
 ```
 
 Repeat per conflicting commit. After all picks land, run `git ls-files docs/plans/ docs/brainstorms/`. If anything
-remains, drop it with the same two-step pattern and commit as `chore(release): drop stray plan spikes from cherry-pick
-rename detection` before the leak check. Rename detection occasionally re-adds a path under the rename target's new
-name; the post-pick `ls-files` check catches that.
+remains, drop it with the same two-step pattern and commit as
+`chore(release): drop stray plan spikes from cherry-pick rename detection` before the leak check. Rename detection
+occasionally re-adds a path under the rename target's new name; the post-pick `ls-files` check catches that.
 
 ## Tagging and publishing
 
@@ -369,10 +369,10 @@ drift the next regeneration overwrites.
 
 Two rulesets are committed under `.github/rulesets/` and applied to the repo via the GitHub API:
 
-- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks (`ci /
-  Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`, `guard-docs
-  / check-forbidden-docs`, `guard-provenance / check-provenance`, `guard-release / check-release-branch-name`),
-  creation/deletion blocked, non-fast-forward blocked).
+- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks
+  (`ci / Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`,
+  `guard-docs / check-forbidden-docs`, `guard-provenance / check-provenance`,
+  `guard-release / check-release-branch-name`), creation/deletion blocked, non-fast-forward blocked).
 - `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked). PR-only norm is convention +
   `guard-release-branch` on the main side.
 

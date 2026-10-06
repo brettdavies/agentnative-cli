@@ -71,7 +71,7 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 - `--output -` (default) — write the embedded schema to stdout.
 - `--output <path>` — write to a file (used by the committed-artifact regeneration step).
 - `--check` — exit non-zero with a structured error if `<path>` (or `schemas/scorecard.schema.json` when no path given)
-    disagrees with the embedded schema. Mirrors `anc emit coverage-matrix --check`.
+  disagrees with the embedded schema. Mirrors `anc emit coverage-matrix --check`.
 - R5. **Rich descriptions** sourced from doc comments on the Rust types. `schemars`'s `derive(JsonSchema)` already
   surfaces doc comments as `description` fields; the existing struct doc comments carry most of what's needed and the
   remainder land via additions to those comments (not via overlay files).
@@ -80,8 +80,8 @@ The build/distribution shape matters too. Three constraints from the kickoff:
   Rust functions producing the example values. The example functions live alongside the struct definitions and are
   unit-testable (the test asserts the example values themselves serialize cleanly through the struct).
 - R7. **Integration drift test** at `tests/scorecard_schema_drift.rs::generated_schema_matches_committed_artifact`
-  spawns the binary, runs `anc emit schema --check`, and asserts exit zero. CI fails when the embedded
-  schema and `schemas/scorecard.schema.json` disagree.
+  spawns the binary, runs `anc emit schema --check`, and asserts exit zero. CI fails when the embedded schema and
+  `schemas/scorecard.schema.json` disagree.
 - R8. **Round-trip validation test** at `tests/scorecard_schema_drift.rs::scorecards_validate_against_embedded_schema`
   runs `anc audit tests/fixtures/perfect-rust --output json`, parses the output, and validates against the embedded
   schema using a JSON Schema validator (likely `jsonschema` crate, dev-dep only). Catches bugs where the schema is
@@ -89,8 +89,8 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 - R9. **`$schema` and `$id`** at the schema root:
 - `$schema: "https://json-schema.org/draft/2020-12/schema"` (current published draft).
 - `$id: "https://anc.dev/scorecard-v{X.Y}.schema.json"` — the versioned URL the site archives at.
-- R10. **`title`** at the schema root reads `"agentnative scorecard"` and `description` summarizes "JSON Schema for `anc
-  audit --output json` scorecards, schema version X.Y. Generated from Rust types in `src/scorecard/mod.rs`. See
+- R10. **`title`** at the schema root reads `"agentnative scorecard"` and `description` summarizes "JSON Schema for
+  `anc audit --output json` scorecards, schema version X.Y. Generated from Rust types in `src/scorecard/mod.rs`. See
   https://anc.dev/scorecard-schema for the published archive of past versions."
 
 ---
@@ -114,8 +114,8 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 ### Deferred to Follow-Up Work
 
 - Multi-version support **inside the binary** (today's binary embeds only the current schema version). If consumers ever
-  need `anc emit schema --version 0.4`, that's a follow-up; the site's archive surface handles
-  past-version retrieval today.
+  need `anc emit schema --version 0.4`, that's a follow-up; the site's archive surface handles past-version retrieval
+  today.
 - A schema linter / style-guide (e.g., "every property has a description"). schemars + careful doc comments handle it
   without ceremony for v0.5; revisit if descriptions go missing on additions.
 - Localized descriptions. English only at launch.
@@ -128,8 +128,8 @@ The build/distribution shape matters too. Three constraints from the kickoff:
 
 The repo already ships one machine-readable artifact via the same workflow this plan extends:
 
-- **`anc emit coverage-matrix [--check]`** emits `docs/coverage-matrix.md` (human) + `coverage/matrix.json`
-  (machine, `schema_version: "1.0"`).
+- **`anc emit coverage-matrix [--check]`** emits `docs/coverage-matrix.md` (human) + `coverage/matrix.json` (machine,
+  `schema_version: "1.0"`).
 - Both files are committed; `--check` exits non-zero on drift.
 - Integration test `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` mirrors `--check` so CI
   catches drift from either side.
@@ -257,8 +257,8 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   `SchemaSettings`) or accepts Draft 07 with a Risks-table entry covering consumer-validator compatibility.
 - **Q2: schemars's handling of `&'static str` fields** (used in `Scorecard::schema_version`, `Scorecard::spec_version`,
   `BadgeInfo::convention_url`) and `Option<&'static str>`. These should serialize as `string` per JSON Schema, but the
-  derive may treat lifetimes specially. Verify during U3 — if it produces something off, add `#[schemars(with =
-  "String")]` on the field.
+  derive may treat lifetimes specially. Verify during U3 — if it produces something off, add
+  `#[schemars(with = "String")]` on the field.
 - **Q3: Enum representation for `audience`, `audit_profile`, and the per-result enums.** The runtime serializes these as
   plain strings (kebab-case for scorecard-level, snake_case for per-result). schemars's default for unit enums is
   `"enum": [...]`. Verify at U3 that the kebab/snake casing is preserved through the derive — if `#[serde(rename_all)]`
@@ -302,17 +302,17 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Files:**
 
 - Modify: `Cargo.toml` — add `schemars` to `[build-dependencies]` (NOT `[dependencies]` — runtime stays clean). Pin
-    tightly per repo convention for pre-1.0 ecosystem deps; if schemars is at >= 1.0 stable, use a `1.x` caret; if 0.x,
-    exact-pin (`=0.X.Y`).
+  tightly per repo convention for pre-1.0 ecosystem deps; if schemars is at >= 1.0 stable, use a `1.x` caret; if 0.x,
+  exact-pin (`=0.X.Y`).
 - Modify: `Cargo.lock` — regenerated by `cargo build`.
 
   **Approach:**
 
 1. `cargo search schemars --limit 1` → confirms latest stable.
 2. `cargo info schemars` (or web fetch the crate page) — confirms which JSON Schema draft the latest stable emits by
-     default.
+   default.
 3. Add to `[build-dependencies]`. The `derive` feature is needed (we'll add `JsonSchema` derives in U3); set
-     `default-features = true` unless something objectionable shows up.
+   `default-features = true` unless something objectionable shows up.
 4. `cargo build --release` — confirm it compiles cleanly. Smoke test only; no real generation yet.
 
   **Patterns to follow:** `Cargo.toml`'s `[build-dependencies]` block already pins `serde_yaml = "=0.9.34"` exactly;
@@ -337,25 +337,25 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Files:**
 
 - Modify: `src/scorecard/mod.rs` — add `JsonSchema` to every `#[derive(Serialize)]` line (or to a separate
-    `#[cfg_attr(feature = "schemars", derive(JsonSchema))]` if we want it gated; default is unconditional, since
-    schemars is build-only and the derive macro just generates impl code at compile time).
+  `#[cfg_attr(feature = "schemars", derive(JsonSchema))]` if we want it gated; default is unconditional, since schemars
+  is build-only and the derive macro just generates impl code at compile time).
 - Modify: `src/types.rs` (or wherever `AuditGroup`, `AuditLayer`, `Confidence`, `AuditStatus` live) — add `JsonSchema`
-    to those enums. Verify `#[serde(rename_all = "snake_case")]` is mirrored by `#[schemars(rename_all = "snake_case")]`
-    if schemars doesn't propagate it.
+  to those enums. Verify `#[serde(rename_all = "snake_case")]` is mirrored by `#[schemars(rename_all = "snake_case")]`
+  if schemars doesn't propagate it.
 - Modify: `src/scorecard/audience.rs` (or wherever the audience enum is defined) — same treatment.
 
   **Approach:**
 
-1. Walk `src/scorecard/mod.rs` top-to-bottom. For each `#[derive(Serialize)]`, change to `#[derive(Serialize,
-     JsonSchema)]`.
+1. Walk `src/scorecard/mod.rs` top-to-bottom. For each `#[derive(Serialize)]`, change to
+   `#[derive(Serialize, JsonSchema)]`.
 2. For each `#[serde(rename_all = "...")]`, add a parallel `#[schemars(rename_all = "...")]` (per Q3 — verify during a
-     smoke build whether schemars picks up the serde attr automatically; recent versions do).
+   smoke build whether schemars picks up the serde attr automatically; recent versions do).
 3. For each `#[serde(skip_serializing_if = "Option::is_none")]`, verify the schema output marks the field as not
-     required — schemars typically does this when it sees `Option<T>` plus a serde `skip` attr; confirm via the
-     generated schema.
-4. Smoke test: write a one-shot `examples/print-schema.rs` that does `println!("{}",
-     serde_json::to_string_pretty(&schema_for!(Scorecard)).unwrap())`. Run, eyeball the output, fix any obvious casing /
-     lifetime / rename issues. Delete the example file at end of U3.
+   required — schemars typically does this when it sees `Option<T>` plus a serde `skip` attr; confirm via the generated
+   schema.
+4. Smoke test: write a one-shot `examples/print-schema.rs` that does
+   `println!("{}", serde_json::to_string_pretty(&schema_for!(Scorecard)).unwrap())`. Run, eyeball the output, fix any
+   obvious casing / lifetime / rename issues. Delete the example file at end of U3.
 
   **Patterns to follow:** existing `Serialize` placements in `src/scorecard/mod.rs` are the model.
 
@@ -367,8 +367,8 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - `cargo build --release` clean.
 - Eyeball the generated schema for: (a) every field present, (b) correct casing on enum values, (c)
-    `additionalProperties: false` where we want it (probably on every struct), (d) `description` populated from doc
-    comments, (e) no surprise lifetime artifacts on `&'static str` fields.
+  `additionalProperties: false` where we want it (probably on every struct), (d) `description` populated from doc
+  comments, (e) no surprise lifetime artifacts on `&'static str` fields.
 
 ---
 
@@ -385,19 +385,19 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Files:**
 
 - Modify: `build.rs` — add a function (`emit_scorecard_schema()`) that calls `schema_for!(Scorecard)`, serializes via
-    `serde_json::to_string_pretty`, writes to `$OUT_DIR/scorecard.schema.json`. Add the `cargo:rerun-if-changed`
-    directive for `src/scorecard/mod.rs` (and any other file the schema depends on).
-- Create / modify: `src/scorecard/schema.rs` (new submodule) — `pub const EMBEDDED_SCHEMA: &str =
-    include_str!(concat!(env!("OUT_DIR"), "/scorecard.schema.json"));`. Submodule keeps the include at one well-known
-    site and gives the verb a stable import path.
+  `serde_json::to_string_pretty`, writes to `$OUT_DIR/scorecard.schema.json`. Add the `cargo:rerun-if-changed` directive
+  for `src/scorecard/mod.rs` (and any other file the schema depends on).
+- Create / modify: `src/scorecard/schema.rs` (new submodule) —
+  `pub const EMBEDDED_SCHEMA: &str = include_str!(concat!(env!("OUT_DIR"), "/scorecard.schema.json"));`. Submodule keeps
+  the include at one well-known site and gives the verb a stable import path.
 
   **Approach:**
 
 1. Sketch `emit_scorecard_schema()` in `build.rs`. Mirror the existing `emit_skill_hosts()` and `emit_requirements()`
-     patterns — both already write to `$OUT_DIR`.
+   patterns — both already write to `$OUT_DIR`.
 2. Drop the temporary `examples/print-schema.rs` from U3 — its job is now `build.rs`'s.
 3. Wire up the `EMBEDDED_SCHEMA` constant in `src/scorecard/schema.rs`. Re-export it from `src/scorecard/mod.rs` so
-     external call sites only need `use crate::scorecard::EMBEDDED_SCHEMA;`.
+   external call sites only need `use crate::scorecard::EMBEDDED_SCHEMA;`.
 4. `cargo build --release` — verify the file appears in `target/release/build/agentnative-*/out/`.
 
   **Patterns to follow:** `build.rs`'s `emit_skill_hosts()` (writes `$OUT_DIR/generated_hosts.rs`) and
@@ -407,15 +407,15 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Test scenarios:**
 
 - **Happy path:** `cargo build --release` succeeds; the generated JSON file exists in `$OUT_DIR`; binary embeds via
-    `include_str!`; a quick `cargo run --release -- audit . --output json` still works (regression smoke for accidental
-    compile-time breakage).
+  `include_str!`; a quick `cargo run --release -- audit . --output json` still works (regression smoke for accidental
+  compile-time breakage).
 - **Edge case:** schema generation panics during `build.rs` (e.g. a struct field schemars can't handle). Mitigation:
-    fail the build with a clear message naming the struct + field; do not silently emit a stub.
+  fail the build with a clear message naming the struct + field; do not silently emit a stub.
 
   **Verification:**
 
 - `head $(find target -name 'scorecard.schema.json' | head -1)` shows valid JSON starting with `"$schema"` and `"$id"`
-    keys.
+  keys.
 - `EMBEDDED_SCHEMA.starts_with("{")` returns true at runtime (informal audit; real test in U6).
 
 ---
@@ -432,37 +432,37 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
   **Files:**
 
-- Modify: `src/cli.rs` — add `ScorecardSchema` variant under the existing `Generate` subcommand enum, with `--output
-    <PATH>` and `--check` flags. Mirror the existing `coverage-matrix` arms exactly (same `--output -` / `--check`
-    semantics).
+- Modify: `src/cli.rs` — add `ScorecardSchema` variant under the existing `Generate` subcommand enum, with
+  `--output <PATH>` and `--check` flags. Mirror the existing `coverage-matrix` arms exactly (same `--output -` /
+  `--check` semantics).
 - Modify: `src/main.rs` — dispatch the new arm. Reads `EMBEDDED_SCHEMA`; either prints to stdout, writes to file, or
-    compares against file (per `--check`).
+  compares against file (per `--check`).
 - Modify: `completions/` — regenerate (the `scripts/generate-completions.sh` step from RELEASES.md). The new subcommand
-    needs to surface in shell completions.
+  needs to surface in shell completions.
 
   **Approach:**
 
 1. Read `src/cli.rs`'s existing `coverage-matrix` arm. Copy structure, swap names.
 2. Read `src/main.rs`'s dispatch on `Generate::CoverageMatrix` and copy the `--check` branch's diff logic. The diff
-     logic for our case is just `embedded == file_contents` (pretty-printed JSON byte-for-byte equal); wrap in a
-     friendly error message naming the file path and instructing to re-run without `--check`.
+   logic for our case is just `embedded == file_contents` (pretty-printed JSON byte-for-byte equal); wrap in a friendly
+   error message naming the file path and instructing to re-run without `--check`.
 3. Regenerate completions; commit them.
-4. Manual smoke: `anc emit schema` prints to stdout; `anc emit schema --output /tmp/x`
-     writes a file; `anc emit schema --check --output schemas/scorecard.schema.json` exits zero (after U7
-     lands the committed file); flipping a byte in the committed file makes `--check` exit nonzero with a clear diff.
+4. Manual smoke: `anc emit schema` prints to stdout; `anc emit schema --output /tmp/x` writes a file;
+   `anc emit schema --check --output schemas/scorecard.schema.json` exits zero (after U7 lands the committed file);
+   flipping a byte in the committed file makes `--check` exit nonzero with a clear diff.
 
   **Patterns to follow:** `src/cli.rs`'s existing `Generate::CoverageMatrix` is the canonical model.
 
   **Test scenarios:**
 
 - **Happy path stdout:** `anc emit schema` prints the embedded JSON to stdout; exits zero.
-- **Happy path file:** `anc emit schema --output /tmp/test-schema.json` writes the file; content matches
-    the embedded copy byte-for-byte.
-- **Drift detected:** `anc emit schema --check --output /tmp/wrong.json` (where `/tmp/wrong.json` has
-    unrelated content) exits nonzero with a structured error envelope (per repo convention — text mode prints a message,
-    JSON mode emits the standard error envelope).
-- **No drift:** `anc emit schema --check --output schemas/scorecard.schema.json` exits zero after U7's
-    committed-file regeneration.
+- **Happy path file:** `anc emit schema --output /tmp/test-schema.json` writes the file; content matches the embedded
+  copy byte-for-byte.
+- **Drift detected:** `anc emit schema --check --output /tmp/wrong.json` (where `/tmp/wrong.json` has unrelated content)
+  exits nonzero with a structured error envelope (per repo convention — text mode prints a message, JSON mode emits the
+  standard error envelope).
+- **No drift:** `anc emit schema --check --output schemas/scorecard.schema.json` exits zero after U7's committed-file
+  regeneration.
 
   **Verification:** all four scenarios above pass when run by hand. Real automation lives in U6.
 
@@ -482,21 +482,21 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - Create: `tests/scorecard_schema_drift.rs` — two integration tests as named in R7 / R8.
 - Modify: `Cargo.toml` `[dev-dependencies]` — add a JSON Schema validator. `jsonschema` (the Rust crate, not the Python
-    lib of the same name) is the leading choice; verify Draft 2020-12 support at U6 time. If `jsonschema` doesn't carry
-    2020-12 yet, use `boon` (a newer entrant with explicit 2020-12 support).
+  lib of the same name) is the leading choice; verify Draft 2020-12 support at U6 time. If `jsonschema` doesn't carry
+  2020-12 yet, use `boon` (a newer entrant with explicit 2020-12 support).
 
   **Approach:**
 
-1. **`generated_schema_matches_committed_artifact`** — spawns the binary with `assert_cmd::Command`, runs `anc emit
-     scorecard-schema --check --output schemas/scorecard.schema.json`, asserts exit zero. If the committed file is
-     stale, the test prints a clear "run `anc emit schema --output schemas/scorecard.schema.json && git
-     add schemas/`" hint.
-2. **`scorecards_validate_against_embedded_schema`** — spawn the binary with `anc audit tests/fixtures/perfect-rust
-     --output json`. Parse stdout. Load the embedded schema from `schemas/scorecard.schema.json` (committed file is the
-     test's source of truth). Validate the parsed scorecard against the schema. Assert validation passes with zero
-     errors.
+1. **`generated_schema_matches_committed_artifact`** — spawns the binary with `assert_cmd::Command`, runs
+   `anc emit scorecard-schema --check --output schemas/scorecard.schema.json`, asserts exit zero. If the committed file
+   is stale, the test prints a clear "run `anc emit schema --output schemas/scorecard.schema.json && git add schemas/`"
+   hint.
+2. **`scorecards_validate_against_embedded_schema`** — spawn the binary with
+   `anc audit tests/fixtures/perfect-rust --output json`. Parse stdout. Load the embedded schema from
+   `schemas/scorecard.schema.json` (committed file is the test's source of truth). Validate the parsed scorecard against
+   the schema. Assert validation passes with zero errors.
 3. Repeat the round-trip test with `binary-only/test.sh` and `--command echo` modes — three flavors of the same test
-     pattern, factored through a small helper.
+   pattern, factored through a small helper.
 
   **Patterns to follow:** `tests/scorecard_schema_v05.rs` is the closest precedent — same `assert_cmd::Command` +
   `serde_json::from_str` shape.
@@ -507,9 +507,9 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - `cargo test --test scorecard_schema_drift` — both tests pass when the schema is freshly regenerated.
 - Manual mutation: flip a byte in `schemas/scorecard.schema.json` → re-run → drift test fails with the regenerate hint;
-    round-trip test still passes (the embedded schema in the binary, not the file, is what validates).
+  round-trip test still passes (the embedded schema in the binary, not the file, is what validates).
 - Manual mutation: change a struct field's JSON name via `#[serde(rename = "...")]` without updating the schema →
-    rebuild → drift test fails.
+  rebuild → drift test fails.
 
 ---
 
@@ -555,14 +555,14 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Files:**
 
 - Modify: `src/cli.rs` — verify the clap `about` / `long_about` on the new arm reads cleanly. The verb's help is the
-    only doc most readers will see.
-- Modify: `AGENTS.md` — add a one-line entry under the existing `anc emit coverage-matrix` callout pointing at `anc
-    generate scorecard-schema`.
+  only doc most readers will see.
+- Modify: `AGENTS.md` — add a one-line entry under the existing `anc emit coverage-matrix` callout pointing at
+  `anc generate scorecard-schema`.
 - Modify: `README.md` — if there's a "Scorecard" or "JSON output" section, add a sentence linking to
-    `https://anc.dev/scorecard-v0.5.schema.json`.
+  `https://anc.dev/scorecard-v0.5.schema.json`.
 - Modify: `CLAUDE.md` § "Coverage Matrix Artifact Lifecycle" — rename to "Generated Artifact Lifecycle" and add a
-    parallel paragraph for the scorecard schema. Keep the same shape (committed, drift-checked, regeneration is a
-    deliberate commit).
+  parallel paragraph for the scorecard schema. Keep the same shape (committed, drift-checked, regeneration is a
+  deliberate commit).
 
   **Patterns to follow:** the existing AGENTS.md and CLAUDE.md sections describing `anc emit coverage-matrix`.
 
@@ -589,7 +589,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Approach:**
 
 - File the site-side plan with `parent: <this plan's path>`. Site-side scope: `sync-scorecard-schema.sh`, archive page
-    rendering, optional validator-as-CI for committed `scorecards/*.json`.
+  rendering, optional validator-as-CI for committed `scorecards/*.json`.
 
   **Verification:** site-side plan exists and references this one. Marked done in this plan when the site plan lands.
 

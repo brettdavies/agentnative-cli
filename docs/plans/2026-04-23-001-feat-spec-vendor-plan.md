@@ -83,8 +83,8 @@ first stable target; tag `v0.2.0` is already cut and propagated via `repository_
   anything).
 - No CI automation to auto-sync when spec cuts a new release. Manual `sync-spec.sh` matches the site-side model and the
   existing `sync-coverage-matrix.sh` precedent.
-- No change to the existing `coverage-matrix.json` artifact that the site vendors from this crate — `anc emit
-  coverage-matrix` still runs against the generated `REQUIREMENTS` and produces the same output shape.
+- No change to the existing `coverage-matrix.json` artifact that the site vendors from this crate —
+  `anc emit coverage-matrix` still runs against the generated `REQUIREMENTS` and produces the same output shape.
 - No dependency on `serde_yaml`'s 0.9+ API surface beyond basic parsing — keep the `build.rs` yaml handling narrow.
 
 ### Deferred to Follow-Up Work
@@ -193,9 +193,9 @@ Feature-detect new fields rather than version-gate. -
 - **Hand-maintained `Requirement` struct field for `principle: u8`.** Not in spec frontmatter (each file is a single
   principle; the `principle` number is derivable from the file's top-level `id: p1`). Resolution: `build.rs` computes
   `principle` from the file-level `id` field by parsing the numeric suffix. No manual mapping.
-- **Ordering of generated `REQUIREMENTS`.** Current hand-maintained order is by principle then level (`MUST → SHOULD →
-  MAY`). Resolution: generator sorts by `(principle, level_sort_key)` then preserves source-file order within a level,
-  matching current semantics. `level_sort_key`: MUST=0, SHOULD=1, MAY=2.
+- **Ordering of generated `REQUIREMENTS`.** Current hand-maintained order is by principle then level
+  (`MUST → SHOULD → MAY`). Resolution: generator sorts by `(principle, level_sort_key)` then preserves source-file order
+  within a level, matching current semantics. `level_sort_key`: MUST=0, SHOULD=1, MAY=2.
 - **What if the spec adds a new `level` value (e.g., `recommended`)?** Resolution: build fails with a specific,
   actionable error. The spec is the SoT but new levels are a coordinated change requiring a CLI-side struct update (enum
   addition). Silent tolerance would mask intent.
@@ -362,8 +362,8 @@ pub const SPEC_VERSION: &str = "0.2.0";  // from src/principles/spec/VERSION
 **Approach:**
 
 - Run `./scripts/sync-spec.sh` with spec repo checked out at `v0.2.0`.
-- Commit the resulting tree. Commit message: `feat: vendor agentnative-spec v0.2.0 under src/principles/spec/
-  (spec@83bf0fd)`.
+- Commit the resulting tree. Commit message:
+  `feat: vendor agentnative-spec v0.2.0 under src/principles/spec/ (spec@83bf0fd)`.
 - Ensure `Cargo.toml`'s `exclude` list does not yet exclude `src/principles/spec/` — verify before commit. (Current list
   excludes `docs/`, `scripts/`, `tests/`, etc., but not subpaths of `src/`. Confirm.)
 - Keep `src/principles/registry.rs` unchanged in this commit — the generator doesn't exist yet, so both the vendored

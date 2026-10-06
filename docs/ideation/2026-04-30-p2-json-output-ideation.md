@@ -63,10 +63,10 @@ post-adversarial re-rank as a coupled pair (A+B), which the user selected to bra
 
 **Description:** Extend `validate_json_output()` in `src/audits/behavioral/json_output.rs` with a third safe probe
 shape: invoke `<bin> --output __invalid_format_value_agentnative_probe__`. clap, cobra, and argparse all respond to
-known-flag-with-invalid-value with a parse error that includes the *declared value enumeration* (`error: invalid value
-'__invalid__' for '--output <FORMAT>': must be one of [text, json, yaml]`). Parse stderr for the value list; pass if
-`json` is enumerated. Side-effect-safe by construction — the parser rejects the value before any subcommand handler
-runs.
+known-flag-with-invalid-value with a parse error that includes the *declared value enumeration*
+(`error: invalid value '__invalid__' for '--output <FORMAT>': must be one of [text, json, yaml]`). Parse stderr for the
+value list; pass if `json` is enumerated. Side-effect-safe by construction — the parser rejects the value before any
+subcommand handler runs.
 
 **Warrant:** `direct:` `bad_args.rs` already uses a parallel technique for exit-code probing; the docstring at
 `json_output.rs:165-169` explicitly names the safe-suffix set as expandable. The active output-envelope plan U4
@@ -150,8 +150,8 @@ delete MUST entirely and let U3-U6 carry the surface. E's halfway demote is wors
 
 **Status:** Unexplored — long-term direction
 
-**Description:** Spec proposes a self-describing introspection subcommand: any CLI MAY ship `<tool> agentnative-probe
---output json` returning a known JSON envelope.
+**Description:** Spec proposes a self-describing introspection subcommand: any CLI MAY ship
+`<tool> agentnative-probe --output json` returning a known JSON envelope.
 
 **Warrant:** `external:` `cargo metadata --format-version=1` precedent.
 

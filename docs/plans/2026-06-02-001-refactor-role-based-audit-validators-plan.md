@@ -27,9 +27,9 @@ This work pays off in three ways:
 
 1. **It unsticks compliant CLIs that picked different names.** xurl-rs, agentnative-cli itself, and bird all use richer
    envelopes than anc currently accepts. The current behavior tells well-designed CLIs they're noncompliant.
-2. **It catches CLIs that game the names.** Today, `{"error":"ok","kind":"Auth failed: token
-   expired.","message":"auth_required"}` passes — three correctly-named fields with the wrong shapes. A role-based check
-   fails it.
+2. **It catches CLIs that game the names.** Today,
+   `{"error":"ok","kind":"Auth failed: token expired.","message":"auth_required"}` passes — three correctly-named fields
+   with the wrong shapes. A role-based check fails it.
 3. **It documents the spec's actual contract.** The audits become readable as English assertions about agent experience,
    not regex against a particular library's API.
 
@@ -390,8 +390,9 @@ Today: source-greps for `global = true` on the agentic-four `#[arg]` attributes.
 
 Reframed:
 
-1. **Probe:** Discover up to N (say, 5) subcommands via `tool --help`. For each, invoke `tool <subcommand> --quiet
-   --help` and assert exit 0. If clap accepted `--quiet` at the subcommand level, the flag is global.
+1. **Probe:** Discover up to N (say, 5) subcommands via `tool --help`. For each, invoke
+   `tool <subcommand> --quiet --help` and assert exit 0. If clap accepted `--quiet` at the subcommand level, the flag is
+   global.
 
 - Similarly for `--output json`, `--timeout 1`, `--no-interactive`.
 
@@ -413,8 +414,8 @@ Reframed:
 2. **Source fallback:** the existing cfg-test-aware ast-grep, demoted.
 
 The behavioral check catches what source-grep can't: an `expect()` that panics on bad input (source-grep on `.unwrap()`
-misses it), a `.unwrap_or_else(|| panic!(...))` (source-grep also misses), and a `let Some(x) = y else { unreachable!()
-}` (source-grep also misses).
+misses it), a `.unwrap_or_else(|| panic!(...))` (source-grep also misses), and a
+`let Some(x) = y else { unreachable!() }` (source-grep also misses).
 
 ### KTD7. Keep source checks as fixture validation tools
 
@@ -490,8 +491,8 @@ Probes share one execution helper: `Project::spawn(&[args])` which already exist
 `Project::spawn_with_env(&[args], &[(env, val)])`, lets env-var probes set per-spawn env without polluting the parent
 process. Both probes capture stdout, stderr, and exit code via `Output`.
 
-Probes have a hard timeout (3 seconds default; configurable per audit). A timed-out probe emits `Inconclusive { reason:
-"probe timeout (3s)" }`, which routes to the source fallback per KTD2.
+Probes have a hard timeout (3 seconds default; configurable per audit). A timed-out probe emits
+`Inconclusive { reason: "probe timeout (3s)" }`, which routes to the source fallback per KTD2.
 
 ---
 
@@ -504,8 +505,8 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 - **Requirements.** R1, R2, R10.
 - **Dependencies.** None.
 - **Files.**
-- **New:** `src/role_check.rs`. Types: `RoleSet`, `RoleClassifier`. Functions: `classify(value: &serde_json::Value) ->
-  RoleSet`, plus the three role predicates as `pub(crate)` helpers for testing.
+- **New:** `src/role_check.rs`. Types: `RoleSet`, `RoleClassifier`. Functions:
+  `classify(value: &serde_json::Value) -> RoleSet`, plus the three role predicates as `pub(crate)` helpers for testing.
 - **New:** `tests/role_check_tests.rs`. 25+ table-driven cases covering pass, fail, gaming, edge cases (empty object,
   deeply nested, null values, numeric values, boolean values, scientific-notation strings).
 - **Approach.**
@@ -540,8 +541,8 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 - Edge: deeply nested object beyond depth 2 → classifier doesn't see inner fields. Document this as intentional.
 - Edge: array-valued top-level `{"errors":["..."]}` → not yet supported. Document as limitation; revisit if real CLIs
   use this shape.
-- Verification: `classify` of a canonical pass envelope returns `RoleSet { discriminant: true, type_id: true, message:
-  true }`.
+- Verification: `classify` of a canonical pass envelope returns
+  `RoleSet { discriminant: true, type_id: true, message: true }`.
 - **Verification.** `cargo test --test role_check_tests` — all 25+ tests green.
 
 ### U2. `src/audits/probe_or_source.rs` — the tiered audit wrapper
@@ -568,8 +569,8 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 - The Inconclusive+Supports cell emits `Warn` because the source signal lends weight to a verdict but isn't enough
   alone. The Inconclusive+Contradicts cell emits `Skip` because the audit has no verdict.
-- Every emitted status carries an `evidence` string that names which path was taken: `"behavioral probe failed:
-  <reason>; source-grep also found: <files>"` etc.
+- Every emitted status carries an `evidence` string that names which path was taken:
+  `"behavioral probe failed: <reason>; source-grep also found: <files>"` etc.
 - **Patterns to follow.** anc's existing audit-runner module structure. The closure-based probe API mirrors how
   `src/probe.rs` already accepts `fn(&Project) -> AuditStatus` for some audits — the new wrapper just adds the typed
   outcome layer.
@@ -659,8 +660,8 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 - Source fallback: existing ast-grep for `global = true`. Demoted.
 - **Test scenarios.**
 - Probe pass: a fixture CLI where every subcommand accepts the four agentic flags. Pass.
-- Probe fail: a fixture CLI where one subcommand rejects `--quiet` (clap exit 2). Fail with evidence "subcommand `mytool
-  oddsubcmd` did not accept `--quiet` (exit 2)".
+- Probe fail: a fixture CLI where one subcommand rejects `--quiet` (clap exit 2). Fail with evidence "subcommand
+  `mytool oddsubcmd` did not accept `--quiet` (exit 2)".
 - Probe unavailable: same Skip path as U4.
 - Regression: xurl-rs passes.
 
@@ -741,8 +742,9 @@ After every U-merge:
 1. **Self-dogfood:** `cargo build --release && ./target/release/anc audit . --output json | jaq '.summary'`. Every
    previously-passing audit must continue to pass. `p2-must-json-errors` and the four reframed audits must pass on anc
    itself.
-2. **xurl-rs check:** `./target/release/anc audit /home/brett/dev/xurl-rs --output json | jaq '.results[] |
-   select(.status != "pass")'`. The five reframed audits should all pass on xurl-rs 1.3.0 after U3-U7 land.
+2. **xurl-rs check:**
+   `./target/release/anc audit /home/brett/dev/xurl-rs --output json | jaq '.results[] | select(.status != "pass")'`.
+   The five reframed audits should all pass on xurl-rs 1.3.0 after U3-U7 land.
 3. **bird check:** same against the bird CLI. Document any divergences as either real bird bugs or anc over-fits.
 4. **Cross-language coverage:** run the same against a Python CLI in the test fixtures (anc ships several). The
    role-based JSON check is language-agnostic; the others should be too.

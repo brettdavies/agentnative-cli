@@ -135,8 +135,8 @@ Unblocks the release archive step.
 
 **Dependencies:** None
 
-**Status:** Shipped as `RELEASES.md` (canonical template renamed from `RELEASING.md` — see bird commit `da19ad5 docs:
-rename RELEASING.md to RELEASES.md and align with canonical template`).
+**Status:** Shipped as `RELEASES.md` (canonical template renamed from `RELEASING.md` — see bird commit
+`da19ad5 docs: rename RELEASING.md to RELEASES.md and align with canonical template`).
 
 **Files:**
 

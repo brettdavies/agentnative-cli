@@ -61,8 +61,8 @@ tests, no test fixtures, and the README is a stub. The tool can't ship publicly 
 ### Relevant Code and Patterns
 
 - **Audit trait** (`src/audit.rs`): `id()`, `applicable()`, `run()` — all new audits follow this pattern
-- **Source audit pattern** (`src/audits/source/rust/unwrap.rs`): unit struct, const PATTERN, inner `audit_*(source,
-  file)` function, outer `Audit::run()` iterates `project.parsed_files()`
+- **Source audit pattern** (`src/audits/source/rust/unwrap.rs`): unit struct, const PATTERN, inner
+  `audit_*(source, file)` function, outer `Audit::run()` iterates `project.parsed_files()`
 - **Behavioral audit pattern** (`src/audits/behavioral/bad_args.rs`): unit struct, `applicable()` audits
   `project.runner.is_some()`, `run()` calls runner methods
 - **Test helpers** (`src/audits/behavioral/mod.rs:26-102`): `test_project_with_runner()` and
@@ -100,12 +100,13 @@ tests, no test fixtures, and the README is a stub. The tool can't ship publicly 
 
 ## Key Technical Decisions
 
-- **Self-contained conditional audits, no ConditionalAudit wrapper**: The design doc specifies `ConditionalAudit {
-  trigger, requirement }` but in practice every conditional audit (HeadlessAuth, NoPager, TimeoutFlag, TtyDetection,
-  OutputClamping, GlobalFlags, DryRun) already has built-in conditional logic: detect precondition → if absent, Skip; if
-  present, evaluate requirement. No concrete cross-layer pairs were identified that need a generic wrapper — even DryRun
-  handles its own detection inline. Decision: all conditional audits are self-contained. No `ConditionalAudit` struct or
-  `conditional.rs` module. If a genuine cross-layer pair emerges during implementation, extract the wrapper then.
+- **Self-contained conditional audits, no ConditionalAudit wrapper**: The design doc specifies
+  `ConditionalAudit { trigger, requirement }` but in practice every conditional audit (HeadlessAuth, NoPager,
+  TimeoutFlag, TtyDetection, OutputClamping, GlobalFlags, DryRun) already has built-in conditional logic: detect
+  precondition → if absent, Skip; if present, evaluate requirement. No concrete cross-layer pairs were identified that
+  need a generic wrapper — even DryRun handles its own detection inline. Decision: all conditional audits are
+  self-contained. No `ConditionalAudit` struct or `conditional.rs` module. If a genuine cross-layer pair emerges during
+  implementation, extract the wrapper then.
 - **Inline detection logic, no shared predicates module**: Each conditional audit (HeadlessAuth, NoPager, TimeoutFlag,
   TtyDetection, OutputClamping, DryRun) has exactly one consumer for its precondition detection. Inline the detection
   logic in each audit's `run()` method rather than extracting to a `predicates.rs` module. If a second consumer appears
@@ -122,9 +123,10 @@ tests, no test fixtures, and the README is a stub. The tool can't ship publicly 
   ProjectStructure audits regardless of `--principle N` filter (these audits are cross-cutting and should appear in
   every filtered view). This preserves the scorecard grouping, avoids a breaking JSON output change, and requires no new
   `--group` flag.
-- **Fix error fallback in orchestration loop**: The current error fallback in `main.rs` hardcodes `group:
-  AuditGroup::P1` and `layer: AuditLayer::Behavioral` when an audit returns `Err`. Fix by adding `group()` and `layer()`
-  methods to the Audit trait (or have audits provide their metadata upfront) so the error fallback uses correct values.
+- **Fix error fallback in orchestration loop**: The current error fallback in `main.rs` hardcodes
+  `group: AuditGroup::P1` and `layer: AuditLayer::Behavioral` when an audit returns `Err`. Fix by adding `group()` and
+  `layer()` methods to the Audit trait (or have audits provide their metadata upfront) so the error fallback uses
+  correct values.
 - **`.unwrap()` elimination strategy**: Replace `runner.as_ref().unwrap()` in behavioral audits with
   `runner.as_ref().expect("runner must exist when applicable() returns true")`. For mutex locks in runner.rs, use
   `.expect("mutex poisoned")` — mutex poisoning is a legitimate panic. Update the `code-unwrap` source audit pattern to
@@ -137,9 +139,10 @@ tests, no test fixtures, and the README is a stub. The tool can't ship publicly 
 - **Integration tests use `assert_cmd` against the built binary**: `assert_cmd::Command::cargo_bin("agentnative")` runs
   the real CLI. Tests cover flag combinations, exit codes, JSON schema, and warning messages.
 - **stdout/stderr cap uses `.take()` on the handle**: Wrap the stdout/stderr handles with `Read::take(1_048_577)` (1MB +
-  1 byte). If more than 1,048,576 bytes were read, the stream was truncated: truncate to 1MB and append `"\n[output
-  truncated at 1MB]"`. This avoids the `Read::take()` API limitation — once the wrapper hits its limit it returns
-  `Ok(0)` permanently, so you can't probe past it. Using `take(N+1)` and checking the read length is the correct idiom.
+  1 byte). If more than 1,048,576 bytes were read, the stream was truncated: truncate to 1MB and append
+  `"\n[output truncated at 1MB]"`. This avoids the `Read::take()` API limitation — once the wrapper hits its limit it
+  returns `Ok(0)` permanently, so you can't probe past it. Using `take(N+1)` and checking the read length is the correct
+  idiom.
 - **Directory walk limits are constants, not CLI flags**: `MAX_DEPTH` and `MAX_FILES` are internal constants. If hit, a
   warning is emitted via `eprintln!` and the walk stops. No CLI flag to override — monorepos should scope the path.
 
@@ -278,8 +281,8 @@ run(project):
   else -> return Warn("auth code found but no --no-browser flag")
 ```
 
-Detection logic is inlined in each audit's `run()` method. Extract to a shared module only when
-a second consumer appears.
+Detection logic is inlined in each audit's `run()` method. Extract to a shared module only when a second consumer
+appears.
 
 ## Implementation Units
 
@@ -341,14 +344,14 @@ extend the Audit trait with `group()` and `layer()` methods.
 **Approach:**
 
 - **stdout/stderr cap**: In `spawn_and_wait`, wrap `child.stdout.take()` and `child.stderr.take()` handles with
-  `std::io::Read::take(1_048_577)` (1MB + 1 byte) before passing to reader threads. Reader threads return `(String,
-  bool)` — if more than 1,048,576 bytes were read, the stream was truncated: set bool to true, truncate the string to
-  1MB, and append `"\n[output truncated at 1MB]"`. This avoids the `Read::take()` API limitation (the wrapper returns
-  `Ok(0)` after its limit, so you can't "read one more byte" after EOF).
+  `std::io::Read::take(1_048_577)` (1MB + 1 byte) before passing to reader threads. Reader threads return
+  `(String, bool)` — if more than 1,048,576 bytes were read, the stream was truncated: set bool to true, truncate the
+  string to 1MB, and append `"\n[output truncated at 1MB]"`. This avoids the `Read::take()` API limitation (the wrapper
+  returns `Ok(0)` after its limit, so you can't "read one more byte" after EOF).
 - **Walk limits**: Add `const MAX_DEPTH: usize = 20;` and `const MAX_FILES: usize = 10_000;` to `project.rs`. Change
   `walk_source_files_inner` to accept a `depth` counter and `file_count: &mut usize`. Return early with a warning when
-  either limit is hit. Warning text should be actionable: "hit 10,000-file limit; narrow the scan with `agentnative
-  audit src/`".
+  either limit is hit. Warning text should be actionable: "hit 10,000-file limit; narrow the scan with
+  `agentnative audit src/`".
 - **include_tests**: Add `include_tests: bool` field to `Project`. Set via `Project::discover()` or post-construction.
   Pass from `main.rs` after extracting from CLI args. In `walk_source_files_inner`, skip the `name == "tests"` exclusion
   when `include_tests` is true. The `target/` exclusion remains unconditional. Update `parsed_files()` to respect the
@@ -647,8 +650,8 @@ audits into the orchestration loop, and add `all_project_audits()` collection.
 - `all_project_audits() -> Vec<Box<dyn Audit>>` registry function.
 - **Orchestration wiring in `main.rs`**: Project audits are always collected when `project.path.is_dir()` is true,
   regardless of `has_binary` or `has_language`. The `--binary` flag suppresses project audits (pointed at a binary, not
-  a project). The `--source` flag includes project audits. Explicit logic: `if !binary_only && project.path.is_dir() {
-  all_audits.extend(all_project_audits()); }`
+  a project). The `--source` flag includes project audits. Explicit logic:
+  `if !binary_only && project.path.is_dir() { all_audits.extend(all_project_audits()); }`
 
 **Patterns to follow:**
 
@@ -956,15 +959,15 @@ Test expectation: none — README is documentation, verified manually.
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-|------|------------|
-| ast-grep patterns for new source audits may not work as expected | Validate each pattern against real Rust code during implementation; test with both passing and failing inputs |
-| Fixture projects add build time to tests | Use `#[ignore]` for fixture tests; shell scripts for behavioral-only fixtures |
-| Shared predicates may have false positives on detection heuristics | Prefer conservative detection; false negatives (Skip) are safer than false positives (incorrect Fail) |
-| Some source audits are inherently heuristic (env_flags, naked_println) | Document heuristic limitations; prefer Warn over Fail for ambiguous cases |
-| stdout/stderr cap may truncate useful `--help` output | 1MB is generous; real `--help` output is typically <10KB |
-| Project audits may produce false positives on unconventional project layouts | Use Skip for ambiguous cases; document expected project structure |
-| Adding `group()`/`layer()` to Audit trait requires updating all existing audit implementations | Mechanical change across ~11 existing audits; can be done in a single pass |
+| Risk                                                                                           | Mitigation                                                                                                    |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| ast-grep patterns for new source audits may not work as expected                               | Validate each pattern against real Rust code during implementation; test with both passing and failing inputs |
+| Fixture projects add build time to tests                                                       | Use `#[ignore]` for fixture tests; shell scripts for behavioral-only fixtures                                 |
+| Shared predicates may have false positives on detection heuristics                             | Prefer conservative detection; false negatives (Skip) are safer than false positives (incorrect Fail)         |
+| Some source audits are inherently heuristic (env_flags, naked_println)                         | Document heuristic limitations; prefer Warn over Fail for ambiguous cases                                     |
+| stdout/stderr cap may truncate useful `--help` output                                          | 1MB is generous; real `--help` output is typically <10KB                                                      |
+| Project audits may produce false positives on unconventional project layouts                   | Use Skip for ambiguous cases; document expected project structure                                             |
+| Adding `group()`/`layer()` to Audit trait requires updating all existing audit implementations | Mechanical change across ~11 existing audits; can be done in a single pass                                    |
 
 ## Sources & References
 

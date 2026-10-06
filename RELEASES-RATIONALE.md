@@ -113,9 +113,9 @@ harmless: the release PR merges into `main`, so `--from-dev-prs`, which reads `d
 
 ### Why internal-tooling commits don't appear in `## Changelog`
 
-`chore(cliff): ...`, `chore(prose-check): ...`, and similar internal tooling commits don't appear in the PR body's `##
-Changelog`. They are not user-facing. They belong in commit history and in the Files Modified / Key Details sections of
-the PR body, not in the source-of-truth release notes.
+`chore(cliff): ...`, `chore(prose-check): ...`, and similar internal tooling commits don't appear in the PR body's
+`## Changelog`. They are not user-facing. They belong in commit history and in the Files Modified / Key Details sections
+of the PR body, not in the source-of-truth release notes.
 
 ## Triple-diff verification
 
@@ -179,10 +179,10 @@ prior squash, it's a false positive (no action). Otherwise cherry-pick the commi
 
 `scripts/generate-changelog.py` (vendored from the `github-repo-setup` skill, with the repo-local `cliff.toml`) is the
 only sanctioned way to update `CHANGELOG.md`. On an overlay-built release branch it runs as `--from-dev-prs`: the PRs
-merged into `dev` since the previous release are the entries, and each PR's body supplies its `## Changelog → ###
-Breaking changes / Added / Changed / Deprecated / Fixed / Documentation` subsections (with author and PR-link
-attribution). On a cherry-picked branch it runs `git-cliff` first to prepend a versioned entry from the branch's
-commits, then expands the same way.
+merged into `dev` since the previous release are the entries, and each PR's body supplies its
+`## Changelog → ### Breaking changes / Added / Changed / Deprecated / Fixed / Documentation` subsections (with author
+and PR-link attribution). On a cherry-picked branch it runs `git-cliff` first to prepend a versioned entry from the
+branch's commits, then expands the same way.
 
 If a PR's body offers no changelog section at all, its title becomes a bullet under the group `cliff.toml` gives the
 same commit (`type!:` under Breaking changes, `feat` under Added, `fix` under Fixed, `docs` under Documentation,
@@ -195,10 +195,10 @@ wrong CHANGELOG entry, fix the input: edit the squash-merged PR body, then re-ru
 `CHANGELOG.md` directly.
 
 On a PR to `main`, the `ci / Changelog` required check fails when a published crate's manifest changed and the changelog
-beside it did not (a member that keeps none is held to the root's); `publish = false` crates are exempt. `preflight.sh
-mechanics` checks that the release changelog opens on the release version with no `[Unreleased]` placeholder. The
-release workflow cuts the GitHub Release body from the section whose heading names the tag's version, and falls back to
-generated notes, with a warning, when there is none.
+beside it did not (a member that keeps none is held to the root's); `publish = false` crates are exempt.
+`preflight.sh mechanics` checks that the release changelog opens on the release version with no `[Unreleased]`
+placeholder. The release workflow cuts the GitHub Release body from the section whose heading names the tag's version,
+and falls back to generated notes, with a warning, when there is none.
 
 ### Why `cliff.toml` skips chore/style/test/ci/build
 

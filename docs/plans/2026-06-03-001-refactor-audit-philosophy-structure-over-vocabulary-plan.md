@@ -116,10 +116,10 @@ The redesign for each audit will be authored in its own plan; this section captu
    behavioral check is possible (run the CLI, observe the output), prefer it. Source-layer is the cheap fallback for
    what behavioral can't reach.
 
-5. **Scorecard transparency is a hard requirement for any audit that admits per-CLI mitigation.** PR #76's `.anc.toml
-   domain_verbs` is acceptable only if a domain-verb-assisted Pass is visibly distinct in the scorecard JSON from a
-   built-ins-only Pass (see plan #003). The general rule: any audit that takes an external signal as input (config,
-   profile, suppression) must reflect that input in the output.
+5. **Scorecard transparency is a hard requirement for any audit that admits per-CLI mitigation.** PR #76's
+   `.anc.toml domain_verbs` is acceptable only if a domain-verb-assisted Pass is visibly distinct in the scorecard JSON
+   from a built-ins-only Pass (see plan #003). The general rule: any audit that takes an external signal as input
+   (config, profile, suppression) must reflect that input in the output.
 
 ## Relationship to per-PR plans
 
@@ -160,13 +160,13 @@ correctness regression independent of philosophy.
   two real places:
 
 1. `examples/` and `benches/` directories are canonically allowed to panic in idiomatic Rust style; flagging `.unwrap()`
-     (and most other code-quality audits) in them is probably wrong. The narrow fix is small (extend the `name ==
-     "tests"` check to include `examples` and `benches`), but should be a deliberate decision documented as part of the
-     philosophy work, not an ad-hoc patch.
+   (and most other code-quality audits) in them is probably wrong. The narrow fix is small (extend the `name == "tests"`
+   check to include `examples` and `benches`), but should be a deliberate decision documented as part of the philosophy
+   work, not an ad-hoc patch.
 2. `*_test.rs` files in `src/` (a non-Cargo-canonical but used convention) are walked and audited. Treating them as test
-     code requires either filename pattern matching (fragile, vocabulary-style — exactly what this plan argues against)
-     or honoring Cargo's `[[test]]` / `[[example]]` / `[[bench]]` target declarations in `Cargo.toml` (structural,
-     durable). The structural path is consistent with this plan's direction and avoids inventing a new vocabulary list.
+   code requires either filename pattern matching (fragile, vocabulary-style — exactly what this plan argues against) or
+   honoring Cargo's `[[test]]` / `[[example]]` / `[[bench]]` target declarations in `Cargo.toml` (structural, durable).
+   The structural path is consistent with this plan's direction and avoids inventing a new vocabulary list.
 
   Both belong here rather than in plan #004 because the asymmetry is a category-level question, not a polarity bug.
 

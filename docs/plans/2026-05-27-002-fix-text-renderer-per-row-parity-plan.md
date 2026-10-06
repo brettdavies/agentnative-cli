@@ -49,8 +49,8 @@ arrives.
 
 - `anc audit --command bat --output json` → correct: `opt_out` on `p2-must-output-flag`, `n_a` on
   `p2-must-schema-print`. ~43 rows.
-- `anc audit --command bat` (text) → prints `[FAIL] … (p2-schema-print)` — the raw probe id, the wrong status, no `[N/A
-  ]` badge anywhere. ~41 badges. Badge score computed from raw can differ from the JSON badge score.
+- `anc audit --command bat` (text) → prints `[FAIL] … (p2-schema-print)` — the raw probe id, the wrong status, no
+  `[N/A ]` badge anywhere. ~41 badges. Badge score computed from raw can differ from the JSON badge score.
 
 ### User-facing harm
 
@@ -66,8 +66,8 @@ The maintainer wants this fixed before the U2 release; it is not part of U3 (sco
   by both `build_scorecard()` and the text path, so text and JSON share one source of truth.
 - Rewire the text path in `main::run` so `format_text` and `compute_badge` consume the per-row + propagated results
   (carrying `audit_id` provenance for display) rather than the raw probe results.
-- Render the requirement-row id + tier + propagation evidence in the terminal (e.g. `[N/A ] p2-must-schema-print (must)
-  — antecedent p2-json-output is opt_out`).
+- Render the requirement-row id + tier + propagation evidence in the terminal (e.g.
+  `[N/A ] p2-must-schema-print (must) — antecedent p2-json-output is opt_out`).
 - Decide and document whether `exit_code` moves from raw to per-row results (see Key Technical Decisions — the trickiest
   call).
 - Regression test reproducing the `bat` case: a probe emitting `opt_out` + a conditional consequent → text shows `n_a`
@@ -108,10 +108,10 @@ ever sees `row_results`.**
 probe, `id` replaced with the row id, `audit_id` preserved. Audits with empty `covers()` pass through keyed by their own
 id.
 
-`propagate_antecedents` (lines 672-704): for each row whose registry entry is `Applicability::Conditional { antecedent:
-Some(ante), .. }`, looks up the antecedent probe's raw status and rewrites the row: `pass`/`warn`/`fail` → unchanged;
-`opt_out`/`n_a` → `NotApplicable` with a reason citing the antecedent id and its status; `skip` → `Skip`; `error` →
-`Error`. **This is the only producer of `n_a` in the system.**
+`propagate_antecedents` (lines 672-704): for each row whose registry entry is
+`Applicability::Conditional { antecedent: Some(ante), .. }`, looks up the antecedent probe's raw status and rewrites the
+row: `pass`/`warn`/`fail` → unchanged; `opt_out`/`n_a` → `NotApplicable` with a reason citing the antecedent id and its
+status; `skip` → `Skip`; `error` → `Error`. **This is the only producer of `n_a` in the system.**
 
 ### The text path feeds raw results to both renderer and badge
 
@@ -263,8 +263,8 @@ summary/badge. Tier via `registry::find(&r.id)`, defensively `None`-tolerant.
 - `--quiet` still skips `PASS`/`SKIP`/`OPT`/`N/A` rows (existing quiet arms cover the new statuses).
 - `--color` still wraps the status prefix in ANSI.
 
-**Verification:** `anc audit --command bat` text shows `[N/A ] p2-must-schema-print` and no `[FAIL] …
-(p2-schema-print)`.
+**Verification:** `anc audit --command bat` text shows `[N/A ] p2-must-schema-print` and no
+`[FAIL] … (p2-schema-print)`.
 
 ---
 
@@ -327,13 +327,13 @@ then diffs the per-row status set and the badge score. This is the `$100 Rule` g
 
 ## Risk Analysis
 
-| Risk                                                                                                                                            | Severity                            | Mitigation                                                                                                                                                                                                                                                          |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Risk                                                                                                                                             | Severity                            | Mitigation                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **exit-code semantics change** — a tool that raw-Fails an audit whose row propagates to `n_a` exits 2 in text today; after the fix it exits 0/1. | Medium (observable behavior change) | This IS the fix: the per-row truth is "not applicable," so exit 2 was wrong. Documented in Key Technical Decisions §4; pinned by a new unit test and the parity regression test. The `--audit-profile` R4 masking path is independent and its test must still pass. |
-| Renderer signature change ripples into existing `format_text_*` unit tests.                                                                     | Low                                 | Tests updated in Unit 4; they exercise the formatter, and the formatter still accepts a result set (now per-row + provenance).                                                                                                                                      |
-| Double-computing the pipeline (text arm + exit_code) wastes work or, worse, computes two different sets.                                        | Low                                 | Compute `build_row_results` **once** per run, share the projection across `format_text`/`compute_badge`/`exit_code`.                                                                                                                                                |
-| A requirement-row id missing from the registry yields `None` tier and could panic on a `(tier)` render.                                         | Low                                 | Defensive: omit the `(tier)` suffix when `registry::find` returns `None` (same tolerance `AuditResultView::from_row` already has).                                                                                                                                  |
-| Quiet/raw/color modes regress under the new statuses.                                                                                           | Low                                 | Existing `OptOut`/`NotApplicable` arms already handle quiet-skip and raw tokens; Unit 2 test scenarios cover all three.                                                                                                                                             |
+| Renderer signature change ripples into existing `format_text_*` unit tests.                                                                      | Low                                 | Tests updated in Unit 4; they exercise the formatter, and the formatter still accepts a result set (now per-row + provenance).                                                                                                                                      |
+| Double-computing the pipeline (text arm + exit_code) wastes work or, worse, computes two different sets.                                         | Low                                 | Compute `build_row_results` **once** per run, share the projection across `format_text`/`compute_badge`/`exit_code`.                                                                                                                                                |
+| A requirement-row id missing from the registry yields `None` tier and could panic on a `(tier)` render.                                          | Low                                 | Defensive: omit the `(tier)` suffix when `registry::find` returns `None` (same tolerance `AuditResultView::from_row` already has).                                                                                                                                  |
+| Quiet/raw/color modes regress under the new statuses.                                                                                            | Low                                 | Existing `OptOut`/`NotApplicable` arms already handle quiet-skip and raw tokens; Unit 2 test scenarios cover all three.                                                                                                                                             |
 
 ## Verification
 

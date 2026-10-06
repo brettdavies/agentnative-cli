@@ -50,15 +50,15 @@ audits).
 
 ## Auto-Detection Mode Matrix
 
-| Scenario | Binary? | Source? | What runs |
-|----------|:-------:|:-------:|-----------|
-| `anc audit ./project/` (Rust, built) | yes | yes | behavioral + source |
-| `anc audit ./project/` (Rust, not built) | no | yes | source only, warn "build for full coverage" |
-| `anc audit ./project/` (Python) | maybe | yes | behavioral (if binary found) + source (when audits exist) |
-| `anc audit ./project/` (unknown lang) | no | no | warn "no audits applicable" |
-| `anc audit /usr/bin/rg` (executable file) | yes | no | behavioral only |
-| `anc audit . --binary target/debug/foo` | yes | skip | behavioral only (forced) |
-| `anc audit . --source` | skip | yes | source only (forced) |
+| Scenario                                  | Binary? | Source? | What runs                                                 |
+| ----------------------------------------- | :-----: | :-----: | --------------------------------------------------------- |
+| `anc audit ./project/` (Rust, built)      |   yes   |   yes   | behavioral + source                                       |
+| `anc audit ./project/` (Rust, not built)  |   no    |   yes   | source only, warn "build for full coverage"               |
+| `anc audit ./project/` (Python)           |  maybe  |   yes   | behavioral (if binary found) + source (when audits exist) |
+| `anc audit ./project/` (unknown lang)     |   no    |   no    | warn "no audits applicable"                               |
+| `anc audit /usr/bin/rg` (executable file) |   yes   |   no    | behavioral only                                           |
+| `anc audit . --binary target/debug/foo`   |   yes   |  skip   | behavioral only (forced)                                  |
+| `anc audit . --source`                    |  skip   |   yes   | source only (forced)                                      |
 
 Behavioral audits are always language-agnostic. Source audits are language-specific. The orchestrator selects which
 source audit set based on `Project.language`.
@@ -78,8 +78,8 @@ source audit set based on `Project.language`.
 - **Subprocess transport layer** (`docs/solutions/architecture-patterns/xurl-subprocess-transport-layer.md`):
   `Command::new(path).args(args)` with `Stdio::piped()`, `NO_COLOR=1`, binary path validation (exists -> canonicalize ->
   is_file -> is_executable). Reader threads for stdout/stderr capture. (see origin: xurl-rs transport)
-- **SIGPIPE fix** (`docs/solutions/architecture-patterns/shell-completions-main-dependency-gating.md`): Must add `unsafe
-  { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }` at top of `main()` before any I/O. (see origin: bird CLI)
+- **SIGPIPE fix** (`docs/solutions/architecture-patterns/shell-completions-main-dependency-gating.md`): Must add
+  `unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }` at top of `main()` before any I/O. (see origin: bird CLI)
 - **Quiet flag pattern** (`docs/solutions/architecture-patterns/quiet-flag-diagnostic-suppression-pattern.md`):
   `FalseyValueParser` for env-backed booleans, classification rule for gatable vs fatal output. (see origin: bird CLI)
 - **Error handling pattern** (`docs/solutions/security-issues/rust-cli-security-code-quality-audit.md`): Extract `run()`
@@ -261,8 +261,8 @@ graph TB
 
   **Approach:**
 - Define `Language` enum: `Rust`, `Python`, `Go`, `Node`
-- Define `Project` struct: `path: PathBuf`, `language: Option<Language>`, `binary_paths: Vec<PathBuf>`, `manifest_path:
-  Option<PathBuf>`, `parsed_files: LazyFileCache` (populated on first access)
+- Define `Project` struct: `path: PathBuf`, `language: Option<Language>`, `binary_paths: Vec<PathBuf>`,
+  `manifest_path: Option<PathBuf>`, `parsed_files: LazyFileCache` (populated on first access)
 - `LazyFileCache` wraps `RefCell<HashMap<PathBuf, ParsedFile>>` where `ParsedFile` contains `source: String` and the AST
   root. Lazily populated when source audits first request files. Excludes `tests/`, `target/` by default.
 - `Project::discover(path: &Path) -> Result<Project>`:
@@ -314,8 +314,8 @@ graph TB
   **Approach:**
 - Define `RunResult` struct: `exit_code: Option<i32>`, `stdout: String`, `stderr: String`, `status: RunStatus`
 - Define `RunStatus` enum: `Ok`, `Timeout`, `Crash { signal: i32 }`, `NotFound`, `PermissionDenied`, `Error(String)`
-- Define `BinaryRunner` struct: `binary: PathBuf`, `timeout: Duration`, `cache: RefCell<HashMap<(Vec<String>,
-  Vec<(String, String)>), RunResult>>`
+- Define `BinaryRunner` struct: `binary: PathBuf`, `timeout: Duration`,
+  `cache: RefCell<HashMap<(Vec<String>, Vec<(String, String)>), RunResult>>`
 - `BinaryRunner::new(binary, timeout)` -- validates binary exists and is executable
 - `BinaryRunner::run(&self, args, env_overrides) -> RunResult` (cached):
 - Audit cache first, return clone if hit
@@ -568,13 +568,13 @@ graph TB
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-|------|------------|
-| SIGPIPE test flakiness across platforms | Guard with `#[cfg(unix)]`, skip on Windows |
-| Behavioral audit tests need a real binary | Use agentnative's own binary (cargo build first) or /bin/echo for basic tests |
-| `Arc<Mutex<Child>>` timeout contention | Lock is held only briefly for kill; reader threads don't need the lock |
-| `RefCell` file cache not `Send` | Audits run sequentially in v0.1; if parallelized later, switch to `RwLock` |
-| Binary discovery fails on cross-compilation | Only audit native target directory; document limitation |
+| Risk                                                                                                       | Mitigation                                                                             |
+| ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| SIGPIPE test flakiness across platforms                                                                    | Guard with `#[cfg(unix)]`, skip on Windows                                             |
+| Behavioral audit tests need a real binary                                                                  | Use agentnative's own binary (cargo build first) or /bin/echo for basic tests          |
+| `Arc<Mutex<Child>>` timeout contention                                                                     | Lock is held only briefly for kill; reader threads don't need the lock                 |
+| `RefCell` file cache not `Send`                                                                            | Audits run sequentially in v0.1; if parallelized later, switch to `RwLock`             |
+| Binary discovery fails on cross-compilation                                                                | Only audit native target directory; document limitation                                |
 | Behavioral audit design gaps (SigpipeAudit pipe buffer, QuietAudit comparison, JsonOutputAudit subcommand) | Start with described approach, refine based on real-world testing against bird/xurl-rs |
 
 ## Sources & References

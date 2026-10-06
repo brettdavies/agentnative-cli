@@ -124,10 +124,10 @@ because there's no sync mechanism.
 
 ### Relevant Code and Patterns
 
-- `scripts/sync-spec.sh` — canonical template for the new `sync-prose-tooling.sh`. Remote-first resolution (`git
-  ls-remote --tags`, then `git clone --depth 1 --branch`), local fallback via `SPEC_ROOT` env var, `git show
-  <ref>:<path> > dest` extraction. Trap-based cleanup. **Does NOT take a `--check` mode currently** — pattern for that
-  comes from `scripts/sync-skill-fixture.sh --check` (the skill fixture drift script).
+- `scripts/sync-spec.sh` — canonical template for the new `sync-prose-tooling.sh`. Remote-first resolution
+  (`git ls-remote --tags`, then `git clone --depth 1 --branch`), local fallback via `SPEC_ROOT` env var,
+  `git show <ref>:<path> > dest` extraction. Trap-based cleanup. **Does NOT take a `--check` mode currently** — pattern
+  for that comes from `scripts/sync-skill-fixture.sh --check` (the skill fixture drift script).
 - `scripts/sync-skill-fixture.sh` — second template, especially for `--check` drift mode (clones upstream, `cmp`s blob
   by blob, exits non-zero on diff). The new prose-tooling sync extends to multiple files but uses the same shape.
 - `scripts/SYNCS.md` (18.5K) — existing index of sync scripts; the new script registers here.
@@ -162,8 +162,9 @@ because there's no sync mechanism.
 
 ## Key Technical Decisions
 
-- **Vendor, do not symlink.** Symlinks break on Windows checkouts and obscure the byte-equivalence audit trail. The `git
-  show <ref>:<path>` pattern from `sync-spec.sh` writes a real file; CI drift detection uses `cmp` against upstream.
+- **Vendor, do not symlink.** Symlinks break on Windows checkouts and obscure the byte-equivalence audit trail. The
+  `git show <ref>:<path>` pattern from `sync-spec.sh` writes a real file; CI drift detection uses `cmp` against
+  upstream.
 - **Skip the `styles/spec/` vale pack.** RFC-2119 register is wrong for CLI prose. Vendoring would systematic-false-
   positive every README install instruction. The four packs we vendor (`brand`, `config`, `proselint`, `write-good`) are
   register-neutral.
@@ -200,14 +201,15 @@ because there's no sync mechanism.
 - **CI-only or pre-push integration?** CI-only first. Pre-push later if drift becomes painful.
 - **Where does `.impeccable.md` live?** Repo root, mirroring spec.
 - **Author `.impeccable.md` from scratch or copy spec's?** Author from scratch. Spec voice rules ("no second-person
-  imperative") are wrong for CLI prose; the linter channel needs its own voice document. Reference spec's `.impeccable
-  .md` for *shape*, not content.
+  imperative") are wrong for CLI prose; the linter channel needs its own voice document. Reference spec's
+  `.impeccable .md` for *shape*, not content.
 
 ### Deferred to Implementation
 
-- **Exact ast-grep patterns for clap macro extraction.** Surface variance (`#[arg(help = "…")]`, `#[command(about =
-  "…")]`, doc-comment-as-help) means the implementer surveys real `src/cli.rs` usage during U6 and picks canonical
-  patterns. The plan specifies extraction *targets* and *false-positive rules*, not the literal selectors.
+- **Exact ast-grep patterns for clap macro extraction.** Surface variance (`#[arg(help = "…")]`,
+  `#[command(about = "…")]`, doc-comment-as-help) means the implementer surveys real `src/cli.rs` usage during U6 and
+  picks canonical patterns. The plan specifies extraction *targets* and *false-positive rules*, not the literal
+  selectors.
 - **Output format for extracted strings.** Concrete shape (one literal per line vs. grouped by file vs.
   source-location-anchored) decided at U6 implementation. Constraint: must be valid markdown so existing
   `prose-check.sh` consumes it without further adaptation.
@@ -241,11 +243,11 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 - Mirror `scripts/sync-spec.sh`'s top-level shape: env-var-configurable remote URL (default
   `https://github.com/brettdavies/agentnative.git`) and local fallback path (default `$HOME/dev/agentnative-spec`).
-- Use `git ls-remote refs/heads/dev` (or `refs/heads/$SYNC_REF`) to resolve the upstream commit, then `git clone --depth
-  1 --branch <ref>` into a temp directory; trap-cleanup as in `sync-spec.sh`.
+- Use `git ls-remote refs/heads/dev` (or `refs/heads/$SYNC_REF`) to resolve the upstream commit, then
+  `git clone --depth 1 --branch <ref>` into a temp directory; trap-cleanup as in `sync-spec.sh`.
 - For each upstream path in the manifest, `git show <ref>:<path> > dest` to write the vendored copy.
-- The manifest (the list of files and destinations) lives inline as a bash array — explicit pairs `[upstream-path ->
-  local-dest]`. Keeps the script self-documenting; no separate config file.
+- The manifest (the list of files and destinations) lives inline as a bash array — explicit pairs
+  `[upstream-path -> local-dest]`. Keeps the script self-documenting; no separate config file.
 - `--check` mode: clone same ref, read each upstream blob via `git show`, `cmp` against the local vendored copy. Print
   diffs. Exit 0 on byte-equal, 1 on any diff.
 - Skip `styles/spec/` explicitly in the manifest. Document the skip in a comment.
@@ -594,8 +596,8 @@ that uses the already-vendored `ast-grep-core` directly.
 
 **Test scenarios:**
 
-- *Happy path (extraction)*: Fixture Rust file with `#[arg(help = "Run the audit.")]` → extracted line contains `"Run
-  the audit."`.
+- *Happy path (extraction)*: Fixture Rust file with `#[arg(help = "Run the audit.")]` → extracted line contains
+  `"Run the audit."`.
 - *Happy path (extraction)*: Fixture with `eprintln!("permission denied: {}", path)` → extracted line contains
   `"permission denied: {}"`.
 - *Happy path (extraction)*: Fixture with `panic!("internal invariant violated")` → extracted.

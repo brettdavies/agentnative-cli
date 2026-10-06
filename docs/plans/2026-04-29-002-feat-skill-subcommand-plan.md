@@ -21,8 +21,8 @@ JSON snapshot, and no allowlist validator — the URLs and destinations are comp
 The subcommand exposes two flags that close `anc`'s own dogfood loop on P2 (structured output) and P5 (introspection):
 
 - `--dry-run` prints the resolved `git clone` command (text mode) or a JSON envelope (json mode) with `mode: "dry-run"`
-  and `would_succeed`, then exits without spawning a process. Captures cleanly via `eval $(anc skill install --dry-run
-  <host>)` for users who prefer to inspect before running.
+  and `would_succeed`, then exits without spawning a process. Captures cleanly via
+  `eval $(anc skill install --dry-run <host>)` for users who prefer to inspect before running.
 - `--output {text,json}` selects the result envelope. JSON mode emits a uniform shape for **both success and error**:
   `{action, host, mode, command, destination, destination_status, status, would_succeed?, exit_code?, reason?}`.
   `reason` is a typed identifier
@@ -50,14 +50,15 @@ revisions reshaped R6c, U1, and the host-map mechanism relative to planning-time
 
 **Requirements trace:**
 
-- [x] **R1** — `Commands::Skill { SkillCmd::Install }` lands in `src/cli.rs`. No `list`/`path`/`update` verbs (deferred).
+- [x] **R1** — `Commands::Skill { SkillCmd::Install }` lands in `src/cli.rs`. No `list`/`path`/`update` verbs
+  (deferred).
 - [x] **R2** — `<host>` validated against the build-time-generated `SkillHost` enum (six variants:
   `claude_code`/`codex`/`cursor`/`factory`/`kiro`/`opencode`). Unknown hosts → clap exit 2 with possible-values list.
 - [x] **R6a** — `expand_tilde` reads `$HOME` via `std::env::var`, replaces leading `~`/`~/`, passes other paths through
   unchanged. `MissingHome` error only when input begins with `~`. Tests 2-4.
-- [x] **R6c** — Three named-const tables (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET`) applied via
-  `Command::args` / `env_remove` / `env`. Test 10 asserts each table contents on the constructed `Command`. Eng-review
-  wording corrected during manual smoke (see Document Review subsection).
+- [x] **R6c** — Three named-const tables (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET`) applied
+  via `Command::args` / `env_remove` / `env`. Test 10 asserts each table contents on the constructed `Command`.
+  Eng-review wording corrected during manual smoke (see Document Review subsection).
 - [x] **R9** — `check_destination` canonicalises before the conflict check. `DestIsFile` / `DestNotEmpty` /
   `DestReadFailed` typed errors. Tests 5-9.
 - [x] **R-DRY** — `--dry-run` flag short-circuits exec; emits resolved `git clone` command on stdout. Tests 13-15.
@@ -87,8 +88,8 @@ revisions reshaped R6c, U1, and the host-map mechanism relative to planning-time
 - [x] `cargo clippy --all-targets -- -Dwarnings` clean.
 - [x] `scripts/hooks/pre-push` clean (mirrors CI: fmt, clippy, test, cargo-deny, Windows compat).
 - [x] `bash scripts/sync-skill-fixture.sh --check` exits 0 against `agentnative-site/dev`.
-- [x] Manual smoke for all six hosts via `--dry-run` plus live install for `claude_code`/`codex`/`factory` into tempdirs.
-  Rerun-on-populated returns the typed `destination-not-empty` envelope per R9.
+- [x] Manual smoke for all six hosts via `--dry-run` plus live install for `claude_code`/`codex`/`factory` into
+  tempdirs. Rerun-on-populated returns the typed `destination-not-empty` envelope per R9.
 
 **Pattern Documentation Note follow-ups:**
 
@@ -128,9 +129,9 @@ The problem is **not**:
 The honest answer is **dogfood**. A 30-line shell script published at `anc.dev/install-skill.sh` would deliver the
 install UX for ~5% of the engineering cost. It would not, however, exercise `anc`'s own surface on P2 (structured output
 via `--output json`) or P5 (`--dry-run`). `anc` ships the agent-native CLI standard and must score itself on P1–P6 — the
-binary verb closes the dogfood loop. It also shares a single trust boundary with the future `anc skill
-update`/`list`/`path` verbs when those land; the shell-script path fragments that boundary and forces every future verb
-to re-justify its own hardening from scratch.
+binary verb closes the dogfood loop. It also shares a single trust boundary with the future
+`anc skill update`/`list`/`path` verbs when those land; the shell-script path fragments that boundary and forces every
+future verb to re-justify its own hardening from scratch.
 
 ---
 
@@ -288,9 +289,9 @@ to re-justify its own hardening from scratch.
   `src/skill_install/skill.json` (or run `bash scripts/sync-skill-fixture.sh`) and rebuild — the Rust map regenerates
   automatically. CI fails on drift between the fixture and the upstream site contract.
 - **D2 (B): `--dry-run` (not `--print`) for P5; `--output {text,json}` for P2.** The original `--print` flag was
-  scope-creep dressed as security; `--dry-run` is the standard CLI verb for "show me what would happen", and `--output
-  json` is the agent-native-spec compliance gate this repo ships against. Both apply to the live install path —
-  silent-ignore would be a P2 violation.
+  scope-creep dressed as security; `--dry-run` is the standard CLI verb for "show me what would happen", and
+  `--output json` is the agent-native-spec compliance gate this repo ships against. Both apply to the live install path
+  — silent-ignore would be a P2 violation.
 - **A1: single-file module placement.** `src/skill_install.rs` (~150 LOC). Promote to a `src/skill/` directory only when
   `update`/`list`/`path` verbs land — premature splitting now burns design budget on speculative shape.
 - **C1: always JSON envelope.** In `--output json` mode, stdout has structured JSON for both success and error. The
@@ -450,8 +451,8 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
     matches the JSON-derived `(url, dest_template)`, which would also catch a buggy `build.rs` codegen.
 13. **[Integration]** `anc skill install --dry-run claude_code --output text` writes a single-line `git clone …` command
     to stdout, exits 0.
-14. **[Integration]** `anc skill install --dry-run claude_code --output json` writes the envelope with `mode:
-    "dry-run"`, `would_succeed: true`, `status: "success"`.
+14. **[Integration]** `anc skill install --dry-run claude_code --output json` writes the envelope with
+    `mode: "dry-run"`, `would_succeed: true`, `status: "success"`.
 15. **[Integration]** `anc skill install --dry-run claude_code --output json` with a pre-placed regular file at the
     canonical destination → envelope has `status: "error"`, `reason: "destination-is-file"`, `would_succeed: false`,
     exit 1.
@@ -463,10 +464,10 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 18. **[Integration]** `anc skill install` (missing host) → clap exit 2.
 19. **[Integration]** `anc skill install claude_code --output json` (live mode) on an already-populated destination →
     envelope with `status: "error"`, `reason: "destination-not-empty"`, `exit_code` absent (we never spawned).
-20. **[Integration]** `anc skill install claude_code` with `HOME` unset → envelope with `reason: "home-not-set"`, exit
-    1.
-21. **[Integration]** `anc skill install claude_code` when `git` is not on PATH → envelope with `reason:
-    "git-not-found"`, exit 1.
+20. **[Integration]** `anc skill install claude_code` with `HOME` unset → envelope with `reason: "home-not-set"`,
+    exit 1.
+21. **[Integration]** `anc skill install claude_code` when `git` is not on PATH → envelope with
+    `reason: "git-not-found"`, exit 1.
 22. **[Integration]** `arg_required_else_help_unaffected_by_skill_subcommand` — bare `anc skill` prints help and exits
     with code `2`, pinning the fork-bomb-safety invariant from CLAUDE.md ("Bare invocation prints help"). Catches the
     regression where adding the skill subcommand accidentally drops `arg_required_else_help` on the parent.
@@ -501,11 +502,12 @@ Tests 24–25 live in `tests/dogfood.rs`. Test 26 is a CI step, not a Rust test.
 
 **Files:**
 
-- Modify: `README.md` — add a short "Install the skill" section with one-line examples per host. Mention the manual `git
-  clone` fallback **explicitly** (per F5) so future agents and users see the escape hatch when the site adds a host
+- Modify: `README.md` — add a short "Install the skill" section with one-line examples per host. Mention the manual
+  `git clone` fallback **explicitly** (per F5) so future agents and users see the escape hatch when the site adds a host
   between `anc` releases.
-- Modify: `RELEASES.md` — add a row under the pre-release checklist: `bash scripts/sync-skill-fixture.sh && git diff
-  src/skill_install/skill.json` to surface upstream drift before tag (mirrors the spec-vendor step).
+- Modify: `RELEASES.md` — add a row under the pre-release checklist:
+  `bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json` to surface upstream drift before tag
+  (mirrors the spec-vendor step).
 - Modify: `CLAUDE.md` — short paragraph on the hardcoded-map model, the named-const hardening surface
   (`GIT_HARDEN_FLAGS` / `GIT_HARDEN_ENV_REMOVE` / `GIT_HARDEN_ENV_SET` — the latter holding the
   `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, and `GIT_TERMINAL_PROMPT=0` triple), and the CI drift
@@ -595,8 +597,8 @@ the security review applied substantial pressure. Key findings absorbed:
 - **Tilde expansion gap (R6a).** `skill.json` ships literal `~`-prefixed destinations; `Command::new("git")` does not
   invoke a shell, so without explicit expansion every default install would fail. Added R6a as a hard requirement.
 - **Allowlist token-count check (R6).** Original allowlist checked prefix and position-keyed tokens but did not enforce
-  total token count. R6 now requires exactly 6 tokens, eliminating the `git clone --depth 1 --config <evil>=<value> URL
-  DEST` injection class structurally.
+  total token count. R6 now requires exactly 6 tokens, eliminating the
+  `git clone --depth 1 --config <evil>=<value> URL DEST` injection class structurally.
 - **`git clone` env + config sanitization (R6c).** Original plan invoked `git` with no env hardening; added explicit
   `-c` flags (`credential.helper=`, `core.askPass=`, `protocol.allow=https-only`, `http.followRedirects=false`,
   `insteadOf=` blocker) plus removal of `GIT_CONFIG_*`, `GIT_SSH*`, `GIT_PROXY_COMMAND`, `GIT_ASKPASS` from the spawned
@@ -661,9 +663,9 @@ alternative each decision rejected.
   Hardcoding drops ~30 transitive deps (rustls, ring, webpki-roots, serde_json-for-skill, ureq, and friends), eliminates
   the live-fetch threat surface, and turns the allowlist from a runtime invariant into a compile-time fact.
 - **D2 (B): `--dry-run` (not `--print`) for P5; `--output {text,json}` for P2.** The original `--print` flag was
-  scope-creep dressed as security. `--dry-run` is the standard CLI verb for "show me what would happen", and `--output
-  json` is the agent-native-spec compliance gate this repo ships against. The pair closes the dogfood loop on P2 and P5
-  in a way `--print` alone could not.
+  scope-creep dressed as security. `--dry-run` is the standard CLI verb for "show me what would happen", and
+  `--output json` is the agent-native-spec compliance gate this repo ships against. The pair closes the dogfood loop on
+  P2 and P5 in a way `--print` alone could not.
 - **A1 (single file):** `src/skill_install.rs`. Promote to `src/skill/` directory only when `update`/`list`/`path` verbs
   land. Premature splitting now burns design budget on speculative shape; the current ~150 LOC fits one file
   comfortably.
@@ -695,11 +697,12 @@ that introspection-only tests could not see — both surface only when an actual
 this plan is updated to reflect the as-shipped surface; this subsection captures *why* each correction was needed so
 future readers don't re-introduce the originals.
 
-- **`protocol.allow=https-only` is not valid git syntax.** `git` rejects it with `fatal: unknown value for config
-  'protocol.allow': https-only` and aborts the clone. The HTTPS-only intent is expressed correctly as a default-deny +
-  per-protocol-allow pair (the documented git-config form): `-c protocol.allow=never -c protocol.https.allow=always`.
-  This replaces the single `-c` pair the eng-review wording proposed. `GIT_HARDEN_FLAGS` count stays at 5 because the
-  existing `url.<repo>.insteadOf=` pair was simultaneously dropped (see below).
+- **`protocol.allow=https-only` is not valid git syntax.** `git` rejects it with
+  `fatal: unknown value for config 'protocol.allow': https-only` and aborts the clone. The HTTPS-only intent is
+  expressed correctly as a default-deny + per-protocol-allow pair (the documented git-config form):
+  `-c protocol.allow=never -c protocol.https.allow=always`. This replaces the single `-c` pair the eng-review wording
+  proposed. `GIT_HARDEN_FLAGS` count stays at 5 because the existing `url.<repo>.insteadOf=` pair was simultaneously
+  dropped (see below).
 
 - **`-c url.<repo>.insteadOf=` (empty value) does the *opposite* of blocking.** git's `url.<base>.insteadOf=<value>`
   directive rewrites URLs starting with `<value>` to start with `<base>`. With an empty `<value>`, every URL matches the
@@ -731,9 +734,9 @@ add Factory Droid and Kiro) was to eliminate the manual edit class entirely. Out
 - **Fixture moved:** `tests/fixtures/skill.json` → `src/skill_install/skill.json`. `tests/` is in `Cargo.toml`'s
   `exclude` list (so it ships nothing to crates.io); `src/` is not. The new path is inside the cargo package, available
   to `build.rs`.
-- **Codegen added:** `build.rs::emit_skill_hosts` parses the JSON, validates each install command tokenises as `git
-  clone --depth 1 <url> <dest>` (mirroring the site emitter's validation), and writes `$OUT_DIR/generated_hosts.rs` with
-  the `SkillHost` enum (PascalCase variants of snake_case JSON keys), the `KNOWN_HOSTS` const, `resolve_host`, and
+- **Codegen added:** `build.rs::emit_skill_hosts` parses the JSON, validates each install command tokenises as
+  `git clone --depth 1 <url> <dest>` (mirroring the site emitter's validation), and writes `$OUT_DIR/generated_hosts.rs`
+  with the `SkillHost` enum (PascalCase variants of snake_case JSON keys), the `KNOWN_HOSTS` const, `resolve_host`, and
   `host_envelope_str`. `cargo:rerun-if-changed` invalidates the build cache on JSON changes.
 - **Hand-written code shrinks:** `src/skill_install.rs` replaces four hand-maintained items (`SkillHost`, `KNOWN_HOSTS`,
   `resolve_host`, `host_envelope_str`) with one `include!` line. The hardening tables, orchestrator, envelope struct,
@@ -832,8 +835,9 @@ for `--path`), R7 (build-time schema validation), R8 (HTTPS fetch + body cap), R
 
 - R1 — `anc skill` is a new top-level subcommand whose only verb is `install <host>`.
 - R2 — `install` accepts `<host>` as a positional argument, validated by clap `ValueEnum` against the hardcoded enum.
-  Variant naming: `ClaudeCode`, `Codex`, `Cursor`, `Opencode` (note `Opencode` not `OpenCode` — clap `rename_all =
-  "snake_case"` produces `opencode` to match `skill.json`). Unknown hosts are rejected by clap with exit 2.
+  Variant naming: `ClaudeCode`, `Codex`, `Cursor`, `Opencode` (note `Opencode` not `OpenCode` — clap
+  `rename_all = "snake_case"` produces `opencode` to match `skill.json`). Unknown hosts are rejected by clap with
+  exit 2.
 - R6a — Tilde expansion of the destination via `std::env::var("HOME")` before `Command::new("git")` exec. No
   `home`/`dirs` crate dep. Destinations not starting with `~` or `~/` are rejected at clap-validation time.
 - R6c — `git clone` runs with sanitized environment and explicit config flags. **Setting** (not removing)
@@ -851,9 +855,9 @@ for `--path`), R7 (build-time schema validation), R8 (HTTPS fetch + body cap), R
   emit a JSON envelope (json mode) with `mode: "dry-run"` and `would_succeed`. Single-line stdout in text mode is
   suitable for `eval $(anc skill install --dry-run <host>)` capture.
 - R-OUT — `--output {text,json}` flag, P2 compliance. Applies to BOTH dry-run AND live install paths. JSON envelope
-  shape is uniform across success and error: `{action, host, mode, command, destination, destination_status, status,
-  would_succeed?, exit_code?, reason?}`. The `status` field distinguishes `success`/`error`; `reason` is a
-  machine-readable typed identifier on error
+  shape is uniform across success and error:
+  `{action, host, mode, command, destination, destination_status, status, would_succeed?, exit_code?, reason?}`. The
+  `status` field distinguishes `success`/`error`; `reason` is a machine-readable typed identifier on error
   (`destination-not-empty`/`destination-is-file`/`home-not-set`/`git-not-found`/`git-clone-failed`).
 - R-LIST — `pub const KNOWN_HOSTS: &[&str]` exposed at module boundary so a future `anc skill list` verb is a one-arm
   match and shell completions can resolve the host enum. No `list` verb in v1; the constant is the seed.
@@ -891,8 +895,8 @@ dispatch) — fold into U1.
 
 - `README.md` — short "Install the skill" section with one-line examples per host. Mention the manual `git clone`
   fallback explicitly (per F5) so future agents see the escape hatch.
-- `RELEASES.md` — add a row under the pre-release checklist: `bash scripts/sync-skill-fixture.sh && git diff
-  tests/fixtures/skill.json` to surface drift before tag.
+- `RELEASES.md` — add a row under the pre-release checklist:
+  `bash scripts/sync-skill-fixture.sh && git diff tests/fixtures/skill.json` to surface drift before tag.
 - `tests/fixtures/skill.json` — vendored copy of `agentnative-site/src/data/skill.json`.
 - `scripts/sync-skill-fixture.sh` — mirrors `scripts/sync-spec.sh` for the fixture. Supports `--check` mode that exits
   non-zero on drift, mirroring `anc emit coverage-matrix --check`.
@@ -921,8 +925,8 @@ doesn't need local tag history), embedded staleness 60-day nudge, allowlist bypa
 Add a "Why a binary verb, not a bash one-liner?" paragraph in the Problem Frame or Key Technical Decisions. The honest
 answer is dogfood: `anc` ships the agent-native CLI standard and must score itself on P1–P6. A bash one-liner at
 `anc.dev/install-skill.sh` would deliver the install UX but wouldn't exercise `anc`'s own surface on P2 (structured
-output) or P5 (`--dry-run`). The binary verb closes the dogfood loop and shares a future trust boundary with `anc skill
-update`/`list`/`path` when those land.
+output) or P5 (`--dry-run`). The binary verb closes the dogfood loop and shares a future trust boundary with
+`anc skill update`/`list`/`path` when those land.
 
 ### Document Review Subsection
 

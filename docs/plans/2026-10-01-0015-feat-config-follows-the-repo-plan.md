@@ -46,8 +46,8 @@ pointing anc at a tool misses it:
 
 - A binary target, by path or `--command`, is a file, so the loader returns absent. `anc audit target/release/xr` inside
   the xurl-rs checkout ignores the `.anc.toml` at the checkout's root.
-- A subdirectory target reads only that directory, so a monorepo's root config never reaches `anc audit
-  crates/xurl-cli`.
+- A subdirectory target reads only that directory, so a monorepo's root config never reaches
+  `anc audit crates/xurl-cli`.
 - anc.dev's batch scorer and live sandbox audit tools a package manager installed (`docker/score/score-anc100.sh` and
   `src/worker/score/sandbox-exec.ts` in agentnative-site). The installed binary never sits inside its repo, and the
   sandbox blocks the network before `anc audit` runs, so neither the binary's location nor a fetch from inside anc can
@@ -212,9 +212,8 @@ A Cargo workspace root has a related, separate gap: `anc audit .` there finds no
   existing usage-error envelope. Help text says the caller fetches the repo and anc reads only `<PATH>/.anc.toml`.
 - KTD6. **The resolved config lives on `Project`, computed once per run.** One entry point in the `anc_toml` module
   takes `Project::discover`'s canonical path (which already gives R2's real location), the home-layer path, and the
-  `--repo` value, and returns the merged result; `src/main.rs` only calls it and stores the result, so the 928-line
-  file gains no resolution logic. `standard_names` reads the stored value instead of calling the loader with
-  `project.path`.
+  `--repo` value, and returns the merged result; `src/main.rs` only calls it and stores the result, so the 928-line file
+  gains no resolution logic. `standard_names` reads the stored value instead of calling the loader with `project.path`.
 - KTD7. **The hint rides on the result row, like the mitigation fields.** `standard_names` already holds the flagged
   verbs, so it attaches the hint to its own result: an optional `config_hint` on `AuditResult`, surfaced on the row view
   and absent rather than null on every other row, in scorecard schema 0.9. Text mode prints one `hint:` line under that
@@ -326,8 +325,8 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   3. Resolve the home-layer path per KTD3, then call the `anc_toml` entry point (KTD6) and store its result on
      `Project`.
   4. Point `standard_names` at the stored result; it keeps warning on an invalid chain, now naming the file.
-  5. Set `AGENTNATIVE_HOME_CONFIG` to a temp path in every test helper that spawns `anc audit`, in each test file
-     listed above, so no test reads the real home file (R5 applies the home layer to every audit, including dogfood).
+  5. Set `AGENTNATIVE_HOME_CONFIG` to a temp path in every test helper that spawns `anc audit`, in each test file listed
+     above, so no test reads the real home file (R5 applies the home layer to every audit, including dogfood).
   6. Add a guard test that reads each test file and fails, naming the file, when it spawns `anc` with `audit` but never
      sets `AGENTNATIVE_HOME_CONFIG`.
 - **Execution note:** Start with a failing integration test for AE1's shape: a staged repo with a root `.anc.toml` and
@@ -373,8 +372,8 @@ U1 through U5 land in order; U1 and U2 change no surface. The open `anc web` sta
   - A pass: no hint.
   - A warning caused by an invalid chain: no hint, and the evidence names the file.
   - Rows from every other audit never carry the field.
-  - A binary inside a repo: the hint names `.anc.toml` at the repo root; outside any repo: `~/.anc.toml`; with
-    `--repo`: that directory's file.
+  - A binary inside a repo: the hint names `.anc.toml` at the repo root; outside any repo: `~/.anc.toml`; with `--repo`:
+    that directory's file.
   - No warning or evidence string contains `docs/solutions`.
   - The committed schema matches `anc emit schema`, and a 0.9 scorecard carrying the field validates against it.
 - **Verification:** the schema drift test passes, and a JSON scorecard captured from AE5 validates against the committed
@@ -446,40 +445,39 @@ below names the option taken and why, and every one is open to reversal.
 - Complexity: 17 files (10 source, config, and doc files; 7 test files including the new guard) and 2 new types (the
   chain resolver and the config hint). The gate tripped.
 - Feature cuts proposed: none. Every requirement traces to a session-settled Key Decision.
-- Structure: original arrangement. The smaller arrangement folds resolution into `src/anc_toml.rs`, which is already
-  219 lines; the module split keeps each file under the 200-line review threshold.
+- Structure: original arrangement. The smaller arrangement folds resolution into `src/anc_toml.rs`, which is already 219
+  lines; the module split keeps each file under the 200-line review threshold.
 - Result: scope accepted as-is. Pending remedies resolved below: R1, R2, R3.
 
 ### R1: Display path for a failing config file
 
-Finding: 1, P1, confidence 9/10, KTD4 against `src/main.rs` `build_target_info`; Architecture (privacy).
-Plan baseline: KTD4 displayed a failing file repo-relative, `~/`-prefixed, or absolute.
-Runtime evidence: `build_target_info`'s doc comment: "Absolute paths from `Project::discover`'s canonicalization would
-leak operator PII (home-dir username, org/employer dir structure) into committed scorecards". Evidence strings are
-scorecard fields, and a `~/dev/<project>/` path leaks the same structure.
+Finding: 1, P1, confidence 9/10, KTD4 against `src/main.rs` `build_target_info`; Architecture (privacy). Plan baseline:
+KTD4 displayed a failing file repo-relative, `~/`-prefixed, or absolute. Runtime evidence: `build_target_info`'s doc
+comment: "Absolute paths from `Project::discover`'s canonicalization would leak operator PII (home-dir username,
+org/employer dir structure) into committed scorecards". Evidence strings are scorecard fields, and a `~/dev/<project>/`
+path leaks the same structure.
 
-| Choice | Current | A | B |
-| --- | --- | --- | --- |
+| Choice                    | Current                              | A                                                                   | B          |
+| ------------------------- | ------------------------------------ | ------------------------------------------------------------------- | ---------- |
 | Failing-file display path | absolute or `~/...` outside the repo | repo-relative, literal `~/.anc.toml`, or `<dir basename>/.anc.toml` | as written |
-| Scorecard PII test for it | none | added to U3 in `tests/scorecard_metadata_security.rs` | none |
+| Scorecard PII test for it | none                                 | added to U3 in `tests/scorecard_metadata_security.rs`               | none       |
 
-Options: A) Basename-only display path, with the PII test (recommended). B) Keep KTD4 as written.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD4 rewritten, U2's display-path scenario
-updated, U3's PII scenario added.
+Options: A) Basename-only display path, with the PII test (recommended). B) Keep KTD4 as written. State: approved.
+Actual answer: A, best-judgement decision. Accepted scope: KTD4 rewritten, U2's display-path scenario updated, U3's PII
+scenario added.
 
 ### R2: Where chain resolution runs
 
-Finding: 2, P3, confidence 8/10, KTD6 against `src/main.rs` (928 lines); Code quality.
-Plan baseline: `src/main.rs` resolved the chain.
-Runtime evidence: `src/main.rs` is 928 lines and already owns target classification, tool identity, and audit
-collection.
+Finding: 2, P3, confidence 8/10, KTD6 against `src/main.rs` (928 lines); Code quality. Plan baseline: `src/main.rs`
+resolved the chain. Runtime evidence: `src/main.rs` is 928 lines and already owns target classification, tool identity,
+and audit collection.
 
-| Choice | Current | A | B |
-| --- | --- | --- | --- |
+| Choice              | Current       | A                                                            | B          |
+| ------------------- | ------------- | ------------------------------------------------------------ | ---------- |
 | Resolution location | `src/main.rs` | one entry point in the `anc_toml` module; `main.rs` calls it | as written |
 
-Options: A) Entry point in `anc_toml` (recommended). B) Keep it in `src/main.rs`.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: KTD6 rewritten, U3 step 3 updated.
+Options: A) Entry point in `anc_toml` (recommended). B) Keep it in `src/main.rs`. State: approved. Actual answer: A,
+best-judgement decision. Accepted scope: KTD6 rewritten, U3 step 3 updated.
 
 ### R3: Windows coverage for chain resolution
 
@@ -487,13 +485,13 @@ Finding: 3, P3, confidence 6/10, U1 "decide under home by path prefix after cano
 Runtime evidence: Windows `canonicalize` returns verbatim `\\?\` paths, and the shared Rust CI only compile-checks
 Windows (`cargo check --all-targets`), so a Windows-only test would compile and never run.
 
-| Choice | Current | A | B |
-| --- | --- | --- | --- |
-| Windows path coverage | none | `cfg(windows)` unit tests, compiled but never executed | recorded as a known gap |
+| Choice                | Current | A                                                      | B                       |
+| --------------------- | ------- | ------------------------------------------------------ | ----------------------- |
+| Windows path coverage | none    | `cfg(windows)` unit tests, compiled but never executed | recorded as a known gap |
 
 Options: A) Compile-only Windows tests. B) Record the gap under NOT in scope (recommended): a test that never runs
-proves nothing and reads as coverage.
-State: approved. Actual answer: B, best-judgement decision. Accepted scope: NOT in scope entry below.
+proves nothing and reads as coverage. State: approved. Actual answer: B, best-judgement decision. Accepted scope: NOT in
+scope entry below.
 
 Approval readiness: PASS (S0, R1 A, R2 A, R3 B; all best-judgement decisions under Brett's authorization).
 
@@ -546,12 +544,12 @@ COVERAGE: 10/11 paths planned | GAPS: 1 (Windows, recorded under NOT in scope)
 
 ### Failure modes
 
-| Path | Realistic failure | Covered by | User sees |
-| --- | --- | --- | --- |
-| Unreadable `~/.anc.toml` | permission denied | U2 invalid-outcome test | warning naming `~/.anc.toml` |
-| `--repo` typo in a CI script | missing directory | U3 exit-2 test | usage error envelope |
-| No home directory | `home_dir()` returns none | U1 no-home test | home layer skipped, by design |
-| Worktree nested in a repo | wrong root chosen | U1 worktree test | nothing; the worktree's root applies |
+| Path                         | Realistic failure         | Covered by              | User sees                            |
+| ---------------------------- | ------------------------- | ----------------------- | ------------------------------------ |
+| Unreadable `~/.anc.toml`     | permission denied         | U2 invalid-outcome test | warning naming `~/.anc.toml`         |
+| `--repo` typo in a CI script | missing directory         | U3 exit-2 test          | usage error envelope                 |
+| No home directory            | `home_dir()` returns none | U1 no-home test         | home layer skipped, by design        |
+| Worktree nested in a repo    | wrong root chosen         | U1 worktree test        | nothing; the worktree's root applies |
 
 Critical gaps: 0.
 
@@ -596,8 +594,8 @@ _No new tasks from Performance._
 
 ## Developer experience review
 
-Brett authorized best-judgement decisions while unavailable. Each decision below names the option taken; all are open
-to reversal.
+Brett authorized best-judgement decisions while unavailable. Each decision below names the option taken; all are open to
+reversal.
 
 ### Developer persona
 
@@ -616,25 +614,26 @@ Decisions: product type CLI tool (the plan's surface is `anc audit` flags and ou
 ### Developer perspective
 
 I build `xr`, an X client, and run `anc audit target/release/xr`. `p6-may-standard-names` warns: 16 of 41 subcommands
-use standard verbs, and it lists `post`, `like`, `repost`, and the rest. The evidence says per-CLI vocabulary "can opt in
-via .anc.toml [p6] domain_verbs" and points at `docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`.
-That path is not in the published repository, and the README never mentions `.anc.toml`. I guess the format, write a
-`.anc.toml` at my repo root, and re-run: the same warning, because a binary target never reads config. I try
-`anc audit .` from the root and get no behavioral audits at all, because the workspace root has no binary. I stop.
+use standard verbs, and it lists `post`, `like`, `repost`, and the rest. The evidence says per-CLI vocabulary "can opt
+in via .anc.toml [p6] domain_verbs" and points at
+`docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`. That path is not in the published
+repository, and the README never mentions `.anc.toml`. I guess the format, write a `.anc.toml` at my repo root, and
+re-run: the same warning, because a binary target never reads config. I try `anc audit .` from the root and get no
+behavioral audits at all, because the workspace root has no binary. I stop.
 
 Observed: the warning text and the missing doc path (captured from an anc build of `dev`). Predicted: the guessing.
 
 ### Competitive benchmark
 
-| Tool | Start to result | Time and evidence type | DX choice |
-| --- | --- | --- | --- |
-| ruff | add a rule exception in `pyproject.toml` to a clean run | ~2 min, estimated | config found by walking up from each file; docs show the exact table |
-| cargo | set a workspace lint level to a clean build | ~2 min, estimated | `[workspace.lints]` at the root applies to every member |
-| anc today | domain verb warning to a passing check | never for a binary target; ~10 min for a directory, estimated | the opt-in sentence links an unpublished doc |
-| anc with this plan | domain verb warning to a passing check | under 2 min, estimated | the warning prints the line and the file to put it in |
+| Tool               | Start to result                                         | Time and evidence type                                        | DX choice                                                            |
+| ------------------ | ------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| ruff               | add a rule exception in `pyproject.toml` to a clean run | ~2 min, estimated                                             | config found by walking up from each file; docs show the exact table |
+| cargo              | set a workspace lint level to a clean build             | ~2 min, estimated                                             | `[workspace.lints]` at the root applies to every member              |
+| anc today          | domain verb warning to a passing check                  | never for a binary target; ~10 min for a directory, estimated | the opt-in sentence links an unpublished doc                         |
+| anc with this plan | domain verb warning to a passing check                  | under 2 min, estimated                                        | the warning prints the line and the file to put it in                |
 
-Times are estimates from documented behavior; no web research ran. Target chosen: Champion, under 2 minutes, because
-the fix can be printed in the warning itself.
+Times are estimates from documented behavior; no web research ran. Target chosen: Champion, under 2 minutes, because the
+fix can be printed in the warning itself.
 
 ### Magical moment
 
@@ -673,17 +672,17 @@ T+4:00  Tries anc audit . at the root; no behavioral audits run.                
 
 Finding: P1, confidence 9/10, `src/audits/behavioral/standard_names.rs:32` holds
 `docs/solutions/architecture-patterns/anc-toml-domain-verbs-pattern-2026-06-03.md`, and the warn evidence at line 286
-sends users there; `main` has no `docs/solutions` directory.
-Options: A) Point the warning at the README section U5 adds and drop the unpublished path (recommended). B) Keep it.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: R9 and U4 updated; U4 test added.
+sends users there; `main` has no `docs/solutions` directory. Options: A) Point the warning at the README section U5 adds
+and drop the unpublished path (recommended). B) Keep it. State: approved. Actual answer: A, best-judgement decision.
+Accepted scope: R9 and U4 updated; U4 test added.
 
 #### DX-R2: The hint does not say where the file goes
 
 Finding: P2, confidence 8/10, R9 specifies a ready-to-paste line but no location; a user who saves the file in a
-directory the chain never reads gets the same warning again.
-Options: A) The hint names the file anc would read for this target: `<repo root>/.anc.toml` as a repo-relative path,
-`~/.anc.toml` outside any repo, or the `--repo` directory (recommended). B) Line only.
-State: approved. Actual answer: A, best-judgement decision. Accepted scope: R9 and U4 updated.
+directory the chain never reads gets the same warning again. Options: A) The hint names the file anc would read for this
+target: `<repo root>/.anc.toml` as a repo-relative path, `~/.anc.toml` outside any repo, or the `--repo` directory
+(recommended). B) Line only. State: approved. Actual answer: A, best-judgement decision. Accepted scope: R9 and U4
+updated.
 
 TODOS.md updates: 0 proposed (the repo has no TODOS.md).
 
@@ -739,17 +738,17 @@ Community and measurement stay low: anc has no telemetry and this plan adds none
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-| --- | --- | --- | --- | --- | --- |
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | codex via plan-review outside voice | Independent 2nd opinion | 5 | disabled | none (codex_reviews disabled) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 4 | ISSUES OPEN (PLAN) | 4 issues, 0 critical gaps; all resolved by R1-R3 |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 2 | ISSUES OPEN (PLAN) | score: 5/10 → 7/10, TTHW: never → <2 min; DX-R1 and DX-R2 resolved |
+| Review         | Trigger                             | Why                             | Runs | Status             | Findings                                                           |
+| -------------- | ----------------------------------- | ------------------------------- | ---- | ------------------ | ------------------------------------------------------------------ |
+| CEO Review     | `/plan-ceo-review`                  | Scope & strategy                | 0    | —                  | —                                                                  |
+| Outside Review | codex via plan-review outside voice | Independent 2nd opinion         | 5    | disabled           | none (codex_reviews disabled)                                      |
+| Eng Review     | `/plan-eng-review`                  | Architecture & tests (required) | 4    | ISSUES OPEN (PLAN) | 4 issues, 0 critical gaps; all resolved by R1-R3                   |
+| Design Review  | `/plan-design-review`               | UI/UX gaps                      | 0    | —                  | —                                                                  |
+| DX Review      | `/plan-devex-review`                | Developer experience gaps       | 2    | ISSUES OPEN (PLAN) | score: 5/10 → 7/10, TTHW: never → <2 min; DX-R1 and DX-R2 resolved |
 
 - **OUTSIDE COVERAGE:** codex, plan-review phase for the engineering and DX reviews, disabled by config
   (`codex_reviews disabled`); no outside findings.
-- **VERDICT:** no review CLEAR. Both reviews found and resolved their issues, so each logs `issues_open`; a pass over the
-  amended plan that finds nothing is what logs clean. eng review required.
+- **VERDICT:** no review CLEAR. Both reviews found and resolved their issues, so each logs `issues_open`; a pass over
+  the amended plan that finds nothing is what logs clean. eng review required.
 
 NO UNRESOLVED DECISIONS

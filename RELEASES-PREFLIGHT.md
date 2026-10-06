@@ -162,15 +162,15 @@ Still manual:
 
 ### Distribution and install paths
 
-The release builds cross-compiled binaries and the homebrew tap dispatches downstream. None of this runs in `cargo
-test`.
+The release builds cross-compiled binaries and the homebrew tap dispatches downstream. None of this runs in
+`cargo test`.
 
 - [ ] Last green run of `release.yml` (on this branch or a sibling) cross-compiled all seven targets listed in
-  `RELEASES.md` § Tagging and publishing. If the workflow has changed since, dry-run with `cargo build --release
-  --target <target>` for each.
-- [ ] In a clean container or fresh machine: download a **prior** release archive, run `anc --version` and `anc audit
-  <some-repo>`. Confirms the archive layout (binary + completions + README + licenses) still works without the project's
-  toolchain. Install of the **newly** published artifact happens post-tag in
+  `RELEASES.md` § Tagging and publishing. If the workflow has changed since, dry-run with
+  `cargo build --release --target <target>` for each.
+- [ ] In a clean container or fresh machine: download a **prior** release archive, run `anc --version` and
+  `anc audit <some-repo>`. Confirms the archive layout (binary + completions + README + licenses) still works without
+  the project's toolchain. Install of the **newly** published artifact happens post-tag in
   [`RELEASES-POSTFLIGHT.md`](./RELEASES-POSTFLIGHT.md).
 - [ ] `anc skill install <host>` for each host slug in `src/skill_install/skill.json`, against a clean per-host
   destination directory. Confirms the hardened `git clone` reaches the live skill-bundle repo, not just the test

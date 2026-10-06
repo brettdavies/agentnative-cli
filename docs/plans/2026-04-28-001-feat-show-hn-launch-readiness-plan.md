@@ -137,10 +137,10 @@ keeping the v0.2.0 release coherent with the post-rename repo state and the cent
 - **Spec `v0.3.0` HARD GATE for U1.5:** ✅ **CLEARED.** Tag `v0.3.0` published to `agentnative-spec` `main` at
   2026-04-29T16:26:54Z (09:26 PT) via spec PR #15 (squash `5cea8bf`). Wave step 1/7 of the central tracker's launch wave
   is closed; CLI Phase A (U1.5 → release PR cut) is unblocked and runnable tonight per Q-CLI2.
-- **Launch wave context:** CLI v0.2.0 is **step 2 of 7** in the central tracker's `Release Versions and Order — SoT for
-  v0.3.0 launch wave` section. Post target rolled back from Wed 2026-04-29 to **Thu 2026-04-30 09:00 AM PT** (24h push
-  to absorb spec PR #15 review-block + wave bake time). Per the central tracker's day-2 status log entry `2026-04-29 —
-  wave step 1 fired: spec v0.3.0 published`.
+- **Launch wave context:** CLI v0.2.0 is **step 2 of 7** in the central tracker's
+  `Release Versions and Order — SoT for v0.3.0 launch wave` section. Post target rolled back from Wed 2026-04-29 to
+  **Thu 2026-04-30 09:00 AM PT** (24h push to absorb spec PR #15 review-block + wave bake time). Per the central
+  tracker's day-2 status log entry `2026-04-29 — wave step 1 fired: spec v0.3.0 published`.
 
 ### Coordinating in-flight plans (do NOT dual-file)
 
@@ -272,8 +272,8 @@ release commits in `git log --grep='feat(v0\.1' --oneline`.
 **Test scenarios:**
 
 - Happy path: `cargo build` after version bump succeeds; `Cargo.lock` updates cleanly.
-- Edge case: `cliff.toml` extracts the right commits when the release branch is cut. Verify by running `git cliff --tag
-  v0.2.0 --unreleased` (dry-run, no changes) before tagging.
+- Edge case: `cliff.toml` extracts the right commits when the release branch is cut. Verify by running
+  `git cliff --tag v0.2.0 --unreleased` (dry-run, no changes) before tagging.
 - Test expectation: no new test code — this is release-prep, not feature work.
 
 **Verification:**
@@ -296,9 +296,9 @@ in spec `v0.3.0` — wave step 1/7 closed).
 
 **Dependencies:** **HARD BLOCK — spec `v0.3.0` tag must exist on `agentnative-spec` `main`.** ✅ **Cleared 2026-04-29
 09:26 PT** via spec PR #15 (squash `5cea8bf` on `main`); release URL
-`https://github.com/brettdavies/agentnative/releases/tag/v0.3.0`. Verify via `gh release view --repo
-brettdavies/agentnative v0.3.0` (exit 0) before running U1.5 — preserved as the runtime safety audit; expected to pass
-on first invocation.
+`https://github.com/brettdavies/agentnative/releases/tag/v0.3.0`. Verify via
+`gh release view --repo brettdavies/agentnative v0.3.0` (exit 0) before running U1.5 — preserved as the runtime safety
+audit; expected to pass on first invocation.
 
 **Files:**
 
@@ -331,11 +331,13 @@ vendoring contract works. Brett's prior re-vendor cadence: re-run after every ne
 
 **Test scenarios:**
 
-- Happy path: `cargo test` exits 0 with all 405+ tests passing post-re-vendor; `cargo run -- audit . --output json | jq
-  .scorecard.spec_version` reports `"0.3.0"`; coverage matrix matches committed artifact.
-- Edge case: `v0.3.0` adds, removes, or renames a requirement ID. Mitigation: `cargo run -- generate coverage-matrix
-  --check` flags drift; regenerate via `cargo run -- generate coverage-matrix` and commit the artifact diff in the same
-  chore commit if the change is small, or split into a follow-on commit if it's substantive.
+- Happy path: `cargo test` exits 0 with all 405+ tests passing post-re-vendor;
+  `cargo run -- audit . --output json | jq .scorecard.spec_version` reports `"0.3.0"`; coverage matrix matches committed
+  artifact.
+- Edge case: `v0.3.0` adds, removes, or renames a requirement ID. Mitigation:
+  `cargo run -- generate coverage-matrix --check` flags drift; regenerate via `cargo run -- generate coverage-matrix`
+  and commit the artifact diff in the same chore commit if the change is small, or split into a follow-on commit if it's
+  substantive.
 - Error path: spec tag pulls a frontmatter shape `build.rs` can't parse. Diagnose the parse error; if the spec
   introduced a breaking frontmatter change between `v0.2.0` and `v0.3.0`, update the CLI's parser before the re-vendor
   lands.
@@ -410,11 +412,11 @@ crates.io, GitHub Releases, and the Homebrew tap.
 
 **Approach:**
 
-- After `release/launch` merges to `main`, `git tag -a vX.Y.Z -m "vX.Y.Z"` on the merge commit; `git push origin
-  vX.Y.Z`.
+- After `release/launch` merges to `main`, `git tag -a vX.Y.Z -m "vX.Y.Z"` on the merge commit;
+  `git push origin vX.Y.Z`.
 - Per global CLAUDE.md "CI monitoring is automated": after `git push --tags`, the CI-watch hook fires and the agent
-  spawns `gh run watch <id> --exit-status` background processes for each active run. After watchers complete, re-run `gh
-  run list --branch main` to catch the chained Homebrew dispatch (`finalize-release.yml` may chain further).
+  spawns `gh run watch <id> --exit-status` background processes for each active run. After watchers complete, re-run
+  `gh run list --branch main` to catch the chained Homebrew dispatch (`finalize-release.yml` may chain further).
 - If anything is red, **do not proceed to U4**. Diagnose (most likely candidates: a target build failure on Windows, a
   homebrew dispatch token issue, a crates.io rate-limit). Use `/investigate` if the failure mode isn't immediately
   obvious.
@@ -454,9 +456,9 @@ cold device).
 - Per Q-CLI4 (resolved): use a fresh Linux box with Linuxbrew installed but no prior `brettdavies/tap` footprint and no
   `agentnative` binary on PATH. Linuxbrew is one of the 5 release-pipeline build targets, so this exercises the same
   tap-formula install path readers will use. macOS coverage is best-effort: if time permits the night of, run the
-  documented `brew uninstall agentnative && brew untap brettdavies/tap && rm -rf
-  ~/Library/Caches/Homebrew/downloads/*agentnative*` sequence on the dev machine as a smoke test, but do not gate the
-  launch on it.
+  documented
+  `brew uninstall agentnative && brew untap brettdavies/tap && rm -rf ~/Library/Caches/Homebrew/downloads/*agentnative*`
+  sequence on the dev machine as a smoke test, but do not gate the launch on it.
 - Run, in order, capturing stdout/stderr to a verification log:
 
 1. `brew install brettdavies/tap/agentnative` (or follow whatever tap-prefixed form the README documents at launch time)
@@ -541,9 +543,9 @@ sees plans that match reality.
 - This unit lands as a single docs commit `chore(plans): reconcile checkboxes and statuses for launch readiness` direct
   to `dev` per the global CLAUDE.md branch-discipline carve-out for `docs/plans/**`. No feature branch needed.
 
-**Patterns to follow:** Spec-side naming-alignment plan's close-out block (the `> **Close-out (2026-04-27).** All 9
-implementation units shipped...` admonition at the top) is a good pattern for plans that need a terminal "this actually
-shipped, here's the evidence" summary on top of a stale body.
+**Patterns to follow:** Spec-side naming-alignment plan's close-out block (the
+`> **Close-out (2026-04-27).** All 9 implementation units shipped...` admonition at the top) is a good pattern for plans
+that need a terminal "this actually shipped, here's the evidence" summary on top of a stale body.
 
 **Test scenarios:**
 
@@ -632,9 +634,10 @@ Run in order. The first three steps are HARD GATES — do not advance past a fai
 2. ☐ **HARD GATE — `dev` is green.** `gh run list --branch dev --limit 5` shows recent successes; no in-flight runs.
 3. ☐ **HARD GATE — clean working tree.** `git status` empty on `dev`.
 4. ☐ Run U1.5: `git -C ~/dev/agentnative-spec fetch --tags` → `SPEC_REF=v0.3.0 ./scripts/sync-spec.sh` → bump
-   `scripts/sync-spec.sh` default `SPEC_REF` to `v0.3.0` → `cargo build --release` → `cargo test` → eyeball `git diff
-   src/principles/spec/principles/` (all 7 should flip `draft → active`) → commit as `chore(spec): re-vendor to v0.3.0 —
-   active-status principles` → `git push origin dev` (pre-push hook runs CI locally).
+   `scripts/sync-spec.sh` default `SPEC_REF` to `v0.3.0` → `cargo build --release` → `cargo test` → eyeball
+   `git diff src/principles/spec/principles/` (all 7 should flip `draft → active`) → commit as
+   `chore(spec): re-vendor to v0.3.0 — active-status principles` → `git push origin dev` (pre-push hook runs CI
+   locally).
 
 **Phase B — branch-cut to release:**
 
@@ -664,8 +667,8 @@ Run in order. The first three steps are HARD GATES — do not advance past a fai
 2. ☐ Best-effort macOS smoke test on dev machine: `brew uninstall agentnative && brew untap brettdavies/tap && rm -rf
    ~/Library/Caches/Homebrew/downloads/*agentnative* && brew install brettdavies/tap/agentnative && anc --version`.
    Pass/fail informational only — Linux is the gate.
-3. ☐ Update the central launch tracker: flip Gate 7 from `on-dev-pending` to `done`. Commit as `chore: update launch
-   tracker — CLI v0.2.0 shipped`.
+3. ☐ Update the central launch tracker: flip Gate 7 from `on-dev-pending` to `done`. Commit as
+   `chore: update launch tracker — CLI v0.2.0 shipped`.
 
 If any HARD GATE in Phase A fails, the launch posture pivots to either "push CLI launch by 24h" or "ship without
 re-vendor" per the central tracker's pre-launch-night rules. Phase B/C/D failures escalate per the Risks table. **No

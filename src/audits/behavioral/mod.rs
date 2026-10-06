@@ -38,6 +38,7 @@ mod sigpipe;
 pub(crate) mod standard_names;
 mod stdin_input;
 mod structured_exit_codes;
+mod subcommand_arguments;
 mod subcommand_examples;
 mod subcommand_help;
 mod subcommand_operations;

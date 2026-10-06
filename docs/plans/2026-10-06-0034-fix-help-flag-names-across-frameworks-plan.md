@@ -393,6 +393,10 @@ flowchart TB
   `// Excerpts of <tool> <version>'s ...` convention.
 - `limit_flag.rs` (lines 13-17) and `verbose_flag.rs` (lines 62-65) describe first-letter parsing as present behavior;
   U5 rewrites both comments.
+- The grammar splits by concern under `src/runner/help_probe/flags/`: model and query, text normalization, line
+  classification, header tokenization. Each file stays under the 200-line refactor trigger, tests excluded.
+- Column positions are counted in characters after normalization, and every slice falls on a character boundary, so
+  multibyte help text cannot panic the tokenizer.
 - U5 to U10 land together in one atomic stack merge (R14).
 
 ### System-Wide Impact
@@ -417,9 +421,9 @@ flowchart TB
 | U2   | Help fixture corpus and characterization snapshots     | `tests/fixtures/help/`, `src/runner/help_probe/`                                          | none       |
 | U3   | Definition model, query and one classifier, zero moves | `src/runner/help_probe/`, `src/audits/behavioral/`                                        | U1, U2     |
 | U4   | Spec paragraph on dash forms                           | `brettdavies/agentnative:README.md`                                                       | none       |
-| U5   | Read every declared name whole                         | `src/runner/help_probe/flags.rs`, `force_yes.rs`, `README.md`                             | U3, U4     |
-| U6   | Column layouts and description markers                 | `src/runner/help_probe/flags.rs`                                                          | U5         |
-| U7   | Wrapped description lines are not definitions          | `src/runner/help_probe/flags.rs`                                                          | U6         |
+| U5   | Read every declared name whole                         | `src/runner/help_probe/flags/header.rs`, `force_yes.rs`, `README.md`                      | U3, U4     |
+| U6   | Column layouts and description markers                 | `src/runner/help_probe/flags/header.rs`                                                   | U5         |
+| U7   | Wrapped description lines are not definitions          | `src/runner/help_probe/flags/classify.rs`                                                 | U6         |
 | U8   | Column 0, box tables, brackets, plus rows              | `src/runner/help_probe/`                                                                  | U7         |
 | U9   | `advertises_flag` onto the query                       | `src/runner/help_probe/mod.rs`, `force_yes.rs`                                            | U8         |
 | U10  | Presence checks onto the query                         | `quiet.rs`, `flag_existence.rs`, `non_interactive.rs`, `json_output.rs`, `install_all.rs` | U9         |
@@ -508,12 +512,14 @@ flowchart TB
   stays exactly as it is.
 - **Requirements:** R7, R8 (inert until U5), R13; KTD3, KTD4, KTD5.
 - **Dependencies:** U1, U2.
-- **Files:** `src/runner/help_probe/mod.rs`, `src/runner/help_probe/flags.rs` (new: the model and query, split out of
-  `mod.rs`), `src/runner/help_probe/env_hints_bash.rs`, `src/runner/help_probe/fixture_snapshots.rs`, `CONTRIBUTING.md`,
-  and under `src/audits/behavioral/`: `color_flag.rs`, `cursor_pagination.rs`, `env_hints.rs`, `examples_subcommand.rs`,
-  `force_yes.rs`, `json_aliases.rs`, `limit_flag.rs`, `more_formats.rs`, `no_pager_behavioral.rs`, `raw_flag.rs`,
-  `rich_tui.rs`, `schema_print.rs`, `secret_non_leaky_path.rs`, `subcommand_arguments.rs`, `subcommand_examples.rs`,
-  `subcommand_help.rs`, `subcommand_operations.rs`, `timeout_behavioral.rs`, `verbose_flag.rs`.
+- **Files:** `src/runner/help_probe/mod.rs`, `src/runner/help_probe/flags/` (new module, moved out of the current
+  `mod.rs`: the model and query in `flags/mod.rs`, the line classifier in `flags/classify.rs`, the header tokenizer in
+  `flags/header.rs`), `src/runner/help_probe/env_hints_bash.rs`, `src/runner/help_probe/fixture_snapshots.rs`,
+  `CONTRIBUTING.md`, and under `src/audits/behavioral/`: `color_flag.rs`, `cursor_pagination.rs`, `env_hints.rs`,
+  `examples_subcommand.rs`, `force_yes.rs`, `json_aliases.rs`, `limit_flag.rs`, `more_formats.rs`,
+  `no_pager_behavioral.rs`, `raw_flag.rs`, `rich_tui.rs`, `schema_print.rs`, `secret_non_leaky_path.rs`,
+  `subcommand_arguments.rs`, `subcommand_examples.rs`, `subcommand_help.rs`, `subcommand_operations.rs`,
+  `timeout_behavioral.rs`, `verbose_flag.rs`.
 - **Approach:**
   1. Introduce the definition model (KTD3), filled by the current tokenizer, which still yields at most one short and
      one long per line, first letter included.
@@ -561,7 +567,8 @@ flowchart TB
   dash rule takes effect.
 - **Requirements:** R1, R2 (separators within a header), R3, R7, R8, R10; KTD6, KTD7.
 - **Dependencies:** U3, U4.
-- **Files:** `src/runner/help_probe/flags.rs`, `src/runner/help_probe/snapshots/`, `src/audits/behavioral/force_yes.rs`,
+- **Files:** `src/runner/help_probe/flags/header.rs`, `src/runner/help_probe/flags/mod.rs` (query),
+  `src/runner/help_probe/snapshots/`, `src/audits/behavioral/force_yes.rs`,
   `src/audits/behavioral/secret_non_leaky_path.rs`, `src/audits/behavioral/limit_flag.rs` and
   `src/audits/behavioral/verbose_flag.rs` (doc comments), `src/anc_toml/mod.rs` (doc example), `README.md`,
   `tests/fixtures/go-flag-help/` (new end-to-end fixture), `tests/integration.rs`.
@@ -600,6 +607,8 @@ flowchart TB
   - Space- and pipe-separated aliases: docopt's `-h --help`, commander's `-y --yes`, java's `-? -h -help`.
   - Punctuation shorts: rg's `-.`, curl's `-#`, eza's `-@`.
   - A synthetic definition line `-Alh  list all, long, human` yields one name, `-Alh`.
+  - No fixture, and no help whose header or description carries multibyte text (box-drawing cells, CJK descriptions),
+    makes the tokenizer panic, and `NON_ENGLISH_HELP` parses as it does today.
   - A Go-style help that declares `-token` with no file or env alternative is scanned by `secret_non_leaky_path.rs`; a
     help that declares `--help` beside `-password` leaves `-password` out of the scan.
   - In terraform's help, a subcommand's `-compact-warnings` no longer counts as global through the top level's `-chdir`,
@@ -626,7 +635,7 @@ flowchart TB
   second-column names and marker-separated descriptions are read.
 - **Requirements:** R2 (column gaps), R10.
 - **Dependencies:** U5.
-- **Files:** `src/runner/help_probe/flags.rs`, `src/runner/help_probe/snapshots/`.
+- **Files:** `src/runner/help_probe/flags/header.rs`, `src/runner/help_probe/snapshots/`.
 - **Approach:**
   1. After a gap, a token that parses as a name continues the header as another column, and prose ends it (KTD2's "what
      follows" rule). GetOpt long-only rows indented to the long column are definitions aligned with the rows around
@@ -654,7 +663,7 @@ flowchart TB
   declaring a flag.
 - **Requirements:** R5.
 - **Dependencies:** U6, which supplies the description column.
-- **Files:** `src/runner/help_probe/flags.rs`, `src/runner/help_probe/snapshots/`.
+- **Files:** `src/runner/help_probe/flags/classify.rs`, `src/runner/help_probe/snapshots/`.
 - **Approach:**
   1. Track the description column each definition sets, including next-line descriptions (Go `flag`'s `4 spaces + TAB`,
      clap's long help at indent 10, kubectl's TAB), where the first description line sets it.
@@ -675,6 +684,7 @@ flowchart TB
   - actionlint's `-format string` followed by a line that starts with four spaces and a TAB gets that text as its
     description.
   - A dash-led line after a blank line and a new heading is classified fresh, not as continuation.
+  - pandoc's long-only row at its long column, after a row with no description, stays a definition (step 3).
 - **Verification:** The snapshots drop the wrapped-line definitions U2 recorded, fixture by fixture, and the corpus diff
   equals the expected moves, which list the rows that relied on a phantom name. Real flags declared only in prose (rg's
   `--no-context-separator`, fd's hidden `--newer` and `--older`) stop counting, as "the help text is the record" says.
@@ -684,7 +694,8 @@ flowchart TB
 - **Goal:** Definitions are found in the layouts the classifier skips today.
 - **Requirements:** R4, R6.
 - **Dependencies:** U7.
-- **Files:** `src/runner/help_probe/flags.rs`, `src/runner/help_probe/mod.rs` (normalization before classification),
+- **Files:** `src/runner/help_probe/flags/normalize.rs` (new: cleanup before classification),
+  `src/runner/help_probe/flags/classify.rs`, `src/runner/help_probe/flags/header.rs` (box-table rows),
   `src/runner/help_probe/snapshots/`.
 - **Approach:**
   1. Normalize before classifying: strip ANSI (broot ignores `NO_COLOR`), groff overstrike `X\bX` and box-drawing cell
@@ -765,6 +776,10 @@ flowchart TB
   - Covers AE10. A help declaring `-format` with no `--` name is probed with `-format json`.
   - `--output-format` alone does not trigger `json_output.rs`'s probe.
   - `--allow` alone does not pass `install_all.rs`.
+  - A find-style help that declares `--help` beside `-print` does not satisfy `p1-non-interactive`'s `--print` marker
+    (R8).
+  - Each audit's deny evidence names its search scope (step 5), and a flag shown only in a usage line leaves that
+    evidence true.
   - Integration: a hand-written help fixture that mentions `-q` only in its usage line, audited with
     `anc audit <path> --output json`, yields a `p7-quiet` row that does not pass, and the scorecard's `audience` counts
     it.
@@ -830,3 +845,344 @@ flowchart TB
   moves to the same anc release so live scores and the corpus share one rule set.
 - After the series, record the cross-framework flag grammar as a `docs/solutions/` learning, linked from the
   env-var-shape and pager-matcher learnings.
+
+---
+
+## Engineering review
+
+Target: this plan, reviewed with `/plan-eng-review` on 2026-10-06 at `f74f497`. Every decision below was taken at its
+recommended option under Brett's standing instruction for this session: "don't ask me any questions, don't ask me to
+approve any commands. do not block yourself."
+
+### Scope Challenge
+
+- **What already exists:** `HelpOutput`'s lazy `OnceLock` accessors (`src/runner/help_probe/mod.rs:152-155`),
+  `parse_command_blocks` for column reading, `insta` as a dev-dependency (`Cargo.toml:91`), `.gitattributes` keeping
+  `**/fixtures/**` and `*.snap` byte-exact, the `tests/fixtures/handwritten-help/tally` end-to-end pattern driven by
+  `tests/integration.rs`, `limit_flag.rs`'s per-line truth table, and the site's `score-anc100.sh` and `build.sh`. The
+  plan reuses each.
+- **Minimum change:** every unit maps to a requirement; no unit is deferrable without dropping one. Short-letter
+  meaning, synopsis reading and clap alias annotations are already deferred.
+- **Complexity:** about 40 files touched (the 19 flag-reading audit files in U3, five presence audits in U10, the
+  help-probe module, fixtures, `README.md`, `CONTRIBUTING.md`, `src/anc_toml/mod.rs`, `tests/integration.rs`, two site
+  files, one spec file) and three new components (the `flags/` module, the snapshot test module, the site harness). The
+  gate trips; D1 resolves it.
+- **Search check:** no new architectural pattern; the plan reuses `insta` snapshots and the site's scorer image.
+  External search not run.
+- **TODOS cross-reference:** the repo has no `TODOS.md`; deferred work lives in this plan's Deferred to Follow-Up Work.
+- **Distribution:** no new shipped artifact; the harness is a maintainer tool in agentnative-site.
+
+Scope record: feature answers: none proposed; structure: A (D1, auto-decided); accepted scope: the plan's ten units as
+written; pending remedies: none. Result: scope accepted as-is.
+
+### 1. Architecture review
+
+- [P2] (confidence: 7/10) Implementation Units index, U5 to U7 rows — every grammar rule lands in one new
+  `src/runner/help_probe/flags.rs`, beside a `mod.rs` that is already 1,038 lines. Normalization, line classification,
+  header tokenization and the query would share one file past the 200-line refactor trigger.
+
+Dispositions: A1 accepted (D2): the grammar splits into `src/runner/help_probe/flags/` by concern.
+
+### 2. Code quality review
+
+- [P3] (confidence: 6/10) U6 step 1 and U7 step 1 — the new rules compute description columns and column gaps and cut
+  lines at them. Today's `parse_short_flag` (`src/runner/help_probe/mod.rs:375-387`) reads `bytes[1] as char` and is
+  panic-free only because it accepts ASCII alone; a column counted in characters and used as a byte offset panics on
+  multibyte text such as `NON_ENGLISH_HELP` (`mod.rs:667`) or box-drawing cells.
+
+KTD4's consolidation passes the shared-code rubric with three verified callers: `parse_flags` (`mod.rs:289`),
+`flag_line_names` (`mod.rs:333`) and `env_hints_bash::is_flag_line` (`env_hints_bash.rs:122`). It removes two duplicate
+classifiers and #147's second tokenizer; the plan already approves it.
+
+Dispositions: C1 accepted (D3): character-counted columns, boundary-safe slicing, and a no-panic test in U5.
+
+### 3. Test review
+
+Framework: `cargo test` with `insta` snapshots; integration tests drive the built binary.
+
+```text
+CODE PATHS                                         USER FLOWS
+[+] help_probe/flags (U3-U8)                       [+] CLI author reads a moved row
+  |-- normalize (U8)                                 |-- [GAP->ADDED] evidence names a declared spelling (U10 step 5)
+  |   |-- [PLANNED] ANSI, overstrike, TAB            |-- [PLANNED] Go flag fixture end to end (U5) [->E2E]
+  |   `-- [GAP->ADDED] multibyte, no panic (D3)      `-- [PLANNED] usage-only -q does not pass (U10)
+  |-- classify (U3, U7, U8)                        [+] Maintainer runs a before/after
+  |   |-- [PLANNED] continuation at desc column      |-- [PLANNED] dev vs dev: zero moves (U1)
+  |   |-- [GAP->ADDED] pandoc no-desc row (U7.3)     |-- [PLANNED] stale binary refused (U1)
+  |   `-- [PLANNED] col-0 accept and reject          `-- [PLANNED] scorecards/ untouched (U1)
+  |-- header (U3, U5, U6)
+  |   |-- [PLANNED] whole names, aliases, placeholders
+  |   `-- [PLANNED] column gaps vs description gaps
+  `-- query (U3, U5)
+      |-- [PLANNED] single letters exact (R7)
+      |-- [PLANNED] dash rule, no-`--` help (R8)
+      `-- [GAP->ADDED] mixed help, -print vs --print (U10)
+COVERAGE: 17/17 planned paths carry a test after this review | GAPS added: 4
+```
+
+Gaps found and added to the plan:
+
+- G1. U7 step 3 (pandoc's rows with no description fall back to column positions) had no test; U7 now pins pandoc's
+  long-only row as a definition. Required proof of approved behavior; no question.
+- G2. R8's mixed-help branch had no test in the presence audits; U10 now checks that find-style `-print` does not
+  satisfy `--print`. Required proof; no question.
+- G3. U10 step 5 (deny evidence names its search scope) had no test; U10 now asserts it. Required proof; no question.
+- G4. Multibyte safety (D3), added to U5.
+
+Regression rule: the plan already carries the regression contract (U3 snapshots byte-identical and zero moved rows;
+every later snapshot line explained by its unit's rule; the existing audit tests unchanged). Carried forward.
+
+Test Plan Artifact: `~/.gstack/projects/brettdavies-agentnative-cli/brett-dev-eng-review-test-plan-20261006-123433.md`.
+
+Dispositions: G1-G3 accepted as required proof; G4 accepted (D3).
+
+### 4. Performance review
+
+No issues found. Parsing runs once per `HelpOutput` behind `OnceLock` (`mod.rs:152`) and every rule is a single pass
+over lines; the largest captured help (gcc's `--help=warnings`, about 460 options) is small. Corpus cost is the real
+expense: each before/after runs the full registry under two builds, plus three reruns for moved and noise-listed tools,
+across about 14 runs in the series (U10 is five PRs). U1's A/A run records the wall time.
+
+### Outside voice
+
+Disabled by config (`codex_reviews=disabled`); no outside or native replacement reviewer ran. Re-enable with
+`gstack-config set codex_reviews enabled`.
+
+### NOT in scope
+
+The plan's Scope Boundaries and Deferred to Follow-Up Work hold the full list: framework detection, a bundle backstop,
+synopsis reading, spelling probes, a matched-flag JSON field, the `error_probe.rs` gate, prose and example matchers,
+short-letter meaning, value semantics behind a name, clap alias annotations, section awareness for example lines,
+`BinaryRunner`'s inherited terminal environment, subcommand `-help` probing, kubectl's grouped headings, the dead
+dogfood allowlist, and the site's goose and sgpt corpus problems.
+
+### Diagrams
+
+```text
+raw help --> normalize --> classify --+--> definition --> header --> definitions --> query --> audits
+ (U8)        (ANSI,       (U3,U7,U8)  |                  (U5,U6)    (names, forms,    (R7,R8)
+             overstrike,              +--> continuation --> joins the previous description
+             TAB)                     `--> usage, example, prose --> dropped
+
+U1 harness --+
+U2 fixtures -+--> U3 (zero moves) --> U5 --> U6 --> U7 --> U8 --> U9 --> U10 (5 PRs)
+U4 spec -----------------------------^      `----------- one atomic stack merge -----------'
+```
+
+Files that warrant an inline diagram when built: `src/runner/help_probe/flags/classify.rs` (the line-state machine
+across definition, continuation and section reset).
+
+### Failure modes
+
+| Path              | Realistic failure                                                          | Covered by                                     | What users see                                          |
+| ----------------- | -------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------- |
+| Header tokenizer  | An unlisted placeholder style ends a name late and mints a phantom name    | Snapshots per fixture, corpus diff             | Caught before merge; a missed case shows as a wrong row |
+| Continuation rule | A real definition indented past the previous description column is dropped | lazygit and clap cases in U7; corpus diff      | Caught before merge                                     |
+| Line acceptance   | Column-0 prose is accepted as a definition                                 | Rejection cases in U8                          | Caught before merge                                     |
+| Dash rule         | A Go tool's help prints one `--` name and loses equivalence                | Accepted in KTD6; evidence quotes the spelling | A checkable warn                                        |
+| Column math       | Multibyte text panics the tokenizer                                        | D3 test in U5                                  | Caught before merge                                     |
+| Harness           | A stale binary or a compose run clobbers results                           | sha256 manifest and `docker run` in U1         | Run refused                                             |
+
+Critical gaps: 0.
+
+### Worktree parallelization strategy
+
+| Step               | Modules touched                                          | Depends on                     |
+| ------------------ | -------------------------------------------------------- | ------------------------------ |
+| U1 harness         | agentnative-site `docker/score/`                         | —                              |
+| U2 fixtures        | `tests/fixtures/help/`, `src/runner/help_probe/` tests   | —                              |
+| U4 spec paragraph  | spec repo `README.md`                                    | —                              |
+| U3 model and query | `src/runner/help_probe/`, `src/audits/behavioral/`       | U1, U2                         |
+| U5 to U10          | `src/runner/help_probe/flags/`, `src/audits/behavioral/` | U3, U4, then each the previous |
+
+Parallel lanes: Lane A: U1 (site). Lane B: U2 → U3 → U5 … U10 (CLI, sequential: shared modules, and each corpus diff
+needs the previous head as its base). Lane C: U4 (spec). Execution order: launch A, B's U2 and C together; U3 waits for
+A and U2; U5 waits for U3 and C. Conflict flags: none across lanes.
+
+## Implementation Tasks
+
+Synthesized from this review's findings. Each task derives from a specific finding above.
+
+- [ ] **T1 (P2, human: ~4h / CC: ~20min)** — help_probe — Split the flag grammar into `flags/` submodules by concern
+  - Surfaced by: Architecture A1 — all grammar work planned for one `flags.rs` beside a 1,038-line `mod.rs`
+  - Files: `src/runner/help_probe/flags/mod.rs`, `flags/classify.rs`, `flags/header.rs`, `flags/normalize.rs`
+  - Verify: `cargo test`; each file under 200 lines excluding tests
+- [ ] **T2 (P2, human: ~2h / CC: ~10min)** — help_probe — Count columns in characters, slice on boundaries, add the
+  multibyte no-panic test
+  - Surfaced by: Code quality C1 — column math over multibyte help text can panic
+  - Files: `src/runner/help_probe/flags/header.rs`, `flags/classify.rs`
+  - Verify: the U5 no-panic test passes over every fixture and the multibyte cases
+- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — help_probe — Pin pandoc's no-description long-only row as a definition
+  - Surfaced by: Test review G1 — U7 step 3 had no test
+  - Files: `src/runner/help_probe/flags/classify.rs`
+  - Verify: U7's truth table includes the pandoc row
+- [ ] **T4 (P3, human: ~1h / CC: ~5min)** — audits — Add the find-style `--print` marker and deny-scope evidence tests
+  - Surfaced by: Test review G2 and G3 — R8's mixed branch and U10 step 5 had no test
+  - Files: `src/audits/behavioral/non_interactive.rs`, `src/audits/behavioral/quiet.rs`
+  - Verify: both tests fail at U9's head and pass at U10's
+
+_No new tasks from Performance review._
+
+### Unresolved decisions
+
+None.
+
+### Completion summary
+
+- Step 0: Scope Challenge — scope accepted as-is
+- Architecture Review: 1 issue found
+- Code Quality Review: 1 issue found
+- Test Review: diagram produced, 4 gaps identified
+- Performance Review: 0 issues found
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to user (no `TODOS.md`; deferred work stays in the plan)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: codex, disabled (`codex_reviews=disabled`)
+- Parallelization: 3 lanes, 3 parallel / 1 sequential chain
+- Lake Score: 1/2
+
+## Decision ledger
+
+### R1: file arrangement under the complexity gate
+
+- **Finding:** Scope Challenge complexity gate (about 40 files, three new components), reviewer plan-eng-review
+- **Plan baseline:** the plan's ten units and their file lists as written at `f74f497`
+- **Runtime evidence:** n/a (plan arrangement)
+- **Comparison grid:**
+
+| Choice              | Current                    | A               | B                                       |
+| ------------------- | -------------------------- | --------------- | --------------------------------------- |
+| R1 arrangement      | ten units, one rule per PR | keep as written | pause to look for a smaller arrangement |
+| R2 module layout    | pending                    | pending         | pending                                 |
+| R3 multibyte safety | pending                    | pending         | pending                                 |
+
+- **Question D1:**
+
+```text
+D1 — Keep the plan's file arrangement?
+Project/branch/task: agentnative-cli `dev`, the help-flag names plan.
+ELI10: The plan touches about 40 files and adds three new components, which trips the review's complexity gate. The only question here is whether a smaller file arrangement delivers the same approved work. Every unit maps to a requirement, and the touched files are the ones that read flags today.
+Stakes if we pick wrong: merging units to save files puts several row-moving rules in one corpus diff, and moved rows lose their single cause.
+Recommendation: A because no smaller arrangement keeps the one-rule-per-PR attribution contract.
+Note: options differ in kind, not coverage — no completeness score.
+Pending remedies not decided here: R2, R3.
+Net: the file count follows the number of flag readers; cutting it cuts attribution.
+Header: Arrangement
+Options:
+A) Original arrangement (recommended)
+Keep the ten units and their files: the `flags/` module, 19 audit ports in U3, five presence audits in U10, fixtures, docs, the site harness and the spec paragraph. ✅ One rule per PR, so every moved row has one cause. ✅ Touches only files that read flags plus new fixtures. ❌ About 14 full-corpus runs across the series.
+B) Pause to investigate
+Look for unit merges that cut corpus runs while keeping attribution, then return to this choice. ✅ Could save corpus time. ✅ Costs only investigation. ❌ No candidate found keeps per-rule attribution, so it likely returns to A.
+```
+
+- **State:** approved
+- **Actual answer:** A, auto-decided at the recommended option under Brett's standing instruction (this session,
+  2026-10-06)
+- **Accepted scope:** the plan's ten units as written
+- **History:** none
+
+### R2: flag grammar module layout
+
+- **Finding:** Architecture A1, [P2] (confidence: 7/10), Implementation Units index U5 to U7, reviewer plan-eng-review
+- **Plan baseline:** all grammar work in one new `src/runner/help_probe/flags.rs`
+- **Runtime evidence:** `src/runner/help_probe/mod.rs` is 1,038 lines today, `env_hints_bash.rs` 478
+- **Comparison grid:**
+
+| Choice              | Current         | A                                                            | B                                              |
+| ------------------- | --------------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| R1 arrangement      | approved A (D1) | approved A (D1)                                              | approved A (D1)                                |
+| R2 module layout    | one `flags.rs`  | `flags/` split: model and query, normalize, classify, header | one `flags.rs`, split when it passes 200 lines |
+| R3 multibyte safety | pending         | pending                                                      | pending                                        |
+
+- **Question D2:**
+
+```text
+D2 — Split the flag grammar by concern before U5?
+Project/branch/task: agentnative-cli `dev`, the help-flag names plan.
+ELI10: Every new parsing rule (cleanup, deciding what a line is, reading names, the lookup) is planned for one new file next to a module that is already over a thousand lines. That file would grow past the repo's 200-line review trigger and mix four jobs. Splitting it by job now means each later PR edits the one file that owns its rule.
+Stakes if we pick wrong: the split lands mid-series as its own refactor PR, which needs a zero-move corpus run of its own.
+Recommendation: A because each rule's PR then touches the one file that owns that rule.
+Completeness: A=9/10, B=6/10
+Net: settle the shape before U5 so the series needs no refactor step.
+Header: Module layout
+Options:
+A) Split by concern (recommended)
+`flags/mod.rs` holds the model and query, `flags/classify.rs` the line classifier, `flags/header.rs` the tokenizer, and U8 adds `flags/normalize.rs` (human: ~4h / CC: ~20min). ✅ U5 and U6 edit `header.rs`, U7 `classify.rs`, U8 `normalize.rs`. ✅ Every file stays under the 200-line trigger with no later refactor. ❌ Four small files to navigate instead of one.
+B) One file, split later
+Keep `flags.rs` and split when it crosses 200 lines. ✅ Fewer files at the start. ✅ No up-front structure call. ❌ The split becomes a mid-series refactor PR with its own corpus run.
+```
+
+- **State:** approved
+- **Actual answer:** A, auto-decided at the recommended option under Brett's standing instruction (this session,
+  2026-10-06)
+- **Accepted scope:** U3, U5, U6, U7 and U8 file lists and the unit index name the `flags/` submodules; Implementation
+  Constraints state the split and the 200-line bound
+- **History:** none
+
+### R3: multibyte safety in column math
+
+- **Finding:** Code quality C1, [P3] (confidence: 6/10), U6 step 1 and U7 step 1, reviewer plan-eng-review
+- **Plan baseline:** no statement on characters versus bytes
+- **Runtime evidence:** `parse_short_flag` (`src/runner/help_probe/mod.rs:375-387`) reads `bytes[1] as char` and accepts
+  ASCII only, so it cannot panic today; `NON_ENGLISH_HELP` (`mod.rs:667`) exists as a fixture
+- **Comparison grid:**
+
+| Choice              | Current         | A                                                                    | B                       |
+| ------------------- | --------------- | -------------------------------------------------------------------- | ----------------------- |
+| R1 arrangement      | approved A (D1) | approved A (D1)                                                      | approved A (D1)         |
+| R2 module layout    | approved A (D2) | approved A (D2)                                                      | approved A (D2)         |
+| R3 multibyte safety | unspecified     | character-counted columns, boundary-safe slices, no-panic test in U5 | left to the implementer |
+
+- **Question D3:**
+
+```text
+D3 — Require character-safe column math and a no-panic test?
+Project/branch/task: agentnative-cli `dev`, the help-flag names plan.
+ELI10: The new rules measure columns and cut lines at them. If a column is counted in characters but used as a byte position, any help with non-English text or table borders crashes anc. Stating the rule once and testing multibyte input makes that crash impossible to ship unnoticed.
+Stakes if we pick wrong: a panic aborts the audit for that tool, and its published scorecard has no rows at all.
+Recommendation: A because the test costs minutes and the failure is a crash.
+Completeness: A=10/10, B=5/10
+Net: a cheap guard against a crash class the plan's own column math creates.
+Header: Multibyte safety
+Options:
+A) Constrain and test (recommended)
+Implementation Constraints state character-counted columns and boundary-safe slices; U5 adds a test over every fixture plus multibyte headers and descriptions (human: ~2h / CC: ~10min). ✅ Every unit inherits the rule from one place. ✅ The parser-level test catches the panic before the corpus does. ❌ One more test and one constraint line.
+B) Leave it to the implementer
+No plan change. ✅ Nothing to add. ✅ Rust's slicing panics loudly when a test happens to hit it. ❌ No fixture exercises multibyte headers today, so the first panic could come from the corpus or a user's audit.
+```
+
+- **State:** approved
+- **Actual answer:** A, auto-decided at the recommended option under Brett's standing instruction (this session,
+  2026-10-06)
+- **Accepted scope:** the Implementation Constraints line on character-counted columns and the U5 no-panic test scenario
+- **History:** none
+
+Approval readiness: PASS (R1: D1, R2: D2, R3: D3, each auto-decided under Brett's standing instruction; G1-G3 carried as
+required proof of approved behavior)
+
+### Suppressed findings
+
+- (confidence: 3/10) Windows CRLF checkouts could change fixture bytes and snapshots. Withdrawn: `.gitattributes` marks
+  `**/fixtures/**` and `*.snap` as `-text`, so both keep their committed bytes, and `str::lines()` strips a trailing
+  `\r` from real CRLF help.
+- (confidence: 3/10) The R8 gate rescanned per lookup. Withdrawn: it is computed once per parse behind `OnceLock`, and
+  definitions per help are few.
+
+## GSTACK REVIEW REPORT
+
+| Review         | Trigger                      | Why                             | Runs | Status      | Findings                  |
+| -------------- | ---------------------------- | ------------------------------- | ---- | ----------- | ------------------------- |
+| CEO Review     | `/plan-ceo-review`           | Scope & strategy                | 0    | —           | —                         |
+| Outside Review | codex via `/plan-eng-review` | Independent 2nd opinion         | 1    | disabled    | —                         |
+| Eng Review     | `/plan-eng-review`           | Architecture & tests (required) | 1    | ISSUES OPEN | 6 issues, 0 critical gaps |
+| Design Review  | `/plan-design-review`        | UI/UX gaps                      | 0    | —           | —                         |
+| DX Review      | `/plan-devex-review`         | Developer experience gaps       | 0    | —           | —                         |
+
+- **OUTSIDE COVERAGE:** codex, plan-review phase, disabled by `codex_reviews=disabled`; no findings.
+- **VERDICT:** Eng review found 6 issues (1 architecture, 1 code quality, 4 test gaps), all resolved into the plan, 0
+  critical gaps; NOT CLEARED only because this run found issues. DX review not yet run for this plan. Prior `dev` rows
+  in the review log belong to other plans.
+
+NO UNRESOLVED DECISIONS

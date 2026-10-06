@@ -478,6 +478,11 @@ flowchart TB
   reviewed snapshot diff.
 - **Requirements:** R12; the fixtures are the test surface for R1 to R6.
 - **Dependencies:** None.
+- **Research inputs:** `~/.gstack/projects/brettdavies-agentnative-cli/research/help-flag-parser-2026-10-06/` holds the
+  planning captures (`help-samples/`, indexed in `help-samples/_index.tsv` and `help-samples/_fw_index.tsv`), the
+  synthetic framework probe programs and the corpus capture script (`help-samples/_probe-src/`), and the framework
+  survey (`framework-docs.md`, whose §10 lists the fixture set). Those captures ran with `NO_COLOR=1 TERM=dumb` rather
+  than the scorer's environment, so step 1 takes them again; the probe programs regenerate the synthetic ones.
 - **Files:** `tests/fixtures/help/` (captures plus a provenance index), `src/runner/help_probe/fixture_snapshots.rs`
   (new test module), `src/runner/help_probe/snapshots/`.
 - **Approach:**

@@ -452,16 +452,31 @@ advancing the pin and refreshing the corpus both need the released binary.
 - **Dependencies:** U1 through U4 merged on the site's `dev` and verified against the real 0.10 scorecard U2 produced.
   The site's release cut is not a prerequisite: merging U5 to the CLI's `dev` ships nothing, and `RELEASES-PREFLIGHT.md`
   gates readiness rather than deployment (KTD7).
-- **Files:** `src/scorecard/mod.rs`, `src/main.rs`, `schema/scorecard.schema.json`, `tests/scorecard_schema_v05.rs`,
-  `tests/integration.rs`, `tests/scorecard_metadata_security.rs`
+- **Files:** `src/scorecard/mod.rs`, `src/main.rs`, `schema/scorecard.schema.json`, `scripts/release/smoke.sh`,
+  `tests/scorecard_schema_v05.rs`, `tests/integration.rs`, `tests/scorecard_metadata_security.rs`
 - **Approach:**
   1. Drop `embed_markdown`, `scorecard_url` and `badge_url` from `BadgeInfo` and from `compute_badge`; build the
      surviving convention URL from `BADGE_BASE_URL` instead of the adjacent bare literal (KTD1).
   2. Drop the slug precondition on `eligible`, which simplifies the signature to `compute_badge(results)` and stops the
      text path calling `derive_tool_name` (R5).
-  3. Re-gate `text_hint` on `eligible` rather than on `embed_markdown`, and give it the new wording: the score, that it
-     clears the floor, and the convention page. Follow `PRODUCT.md`'s second-person imperative register and keep RFC
-     2119 keywords out of it.
+  3. Re-gate `text_hint` on `eligible` rather than on `embed_markdown`, and replace the four-line block with this one
+     line, settled at D3:
+
+     ```rust
+     Some(format!(
+         "\n🏆 Score: {}% — your tool qualifies for the agent-native badge. Claim one at {}/badge\n",
+         self.score_pct, BADGE_BASE_URL,
+     ))
+     ```
+
+     The verb is the authority statement in miniature: the website issues badges, the CLI does not. `Claim` rather than
+     `Get`, settled at D4, because claiming is gated. `content/badge.md:113-120` requires a registry entry filed by
+     pull request, a committed scorecard, and a site build before a `/score` page renders a snippet, and
+     `/score/some-random-cli` measures 404 today, so an uncurated tool has no page until that PR merges. `Get` promises
+     self-service that holds for the 98 curated tools and for nobody else. `Claim` also lands the reader on that page's
+     own `## Claiming the badge` heading, so the verb that sent them is the verb they arrive on. The line satisfies
+     `PRODUCT.md`'s second-person imperative register, carries no RFC 2119 keyword, and keeps the verdict in the first
+     clause where a reader at terminal speed finds it.
   4. Guard the hint behind the quiet check (KTD6).
   5. Edit the schema in the same commit (KTD4): remove the three fields from `$defs.BadgeInfo` properties and
      `required`, bump `$id` and the `schema_version` property to 0.10, update the worked example, and correct the
@@ -472,6 +487,14 @@ advancing the pin and refreshing the corpus both need the released binary.
      released `anc`'s output.
   7. Bump `SCHEMA_VERSION` to `"0.10"`, extend its cumulative history comment, and update the four version assertions in
      the test suite.
+  8. Add a hard `gate_convention_url` to `scripts/release/smoke.sh`, settled at D5. The CLI now compiles one URL it can
+     never check, since it carries no HTTP client, and a site rename would break every installed binary with nothing
+     failing anywhere. The gate follows the `gate_examples_resolve` shape at `smoke.sh:217`: read the convention URL out
+     of the emitted scorecard's `badge.convention_url` rather than hard-coding it a third time, request it, and
+     `gate_fail` on any status other than 200. Wire it into `main` beside the other gates so a failure exits non-zero.
+     Accepted tradeoff, stated at D5: this is the script's first network dependency, so an anc.dev outage or a CI egress
+     block fails a release that is otherwise sound. Name that in the gate's own failure message so an operator can tell
+     an outage from a real rename.
 - **Execution note:** Observe the red before the green on the schema half. The removal's hard failure is
   `check-jsonschema` inside `scripts/release/smoke.sh`, which is not in the pre-push hook, so run that script by hand.
   Note also that no test currently covers the eligible path through the real binary: `tests/scorecard_schema_v05.rs:320`
@@ -489,6 +512,9 @@ advancing the pin and refreshing the corpus both need the released binary.
   - The emitted JSON carries `score_pct`, `eligible` and `convention_url`, and none of the three removed keys.
   - `anc emit schema` still matches the committed schema byte for byte.
   - `--raw` output is unchanged.
+  - Covers D5. `gate_convention_url` passes against the live page and fails on a non-200. Observe the red by pointing
+    the gate at a known-404 path, measured today as `https://anc.dev/scorecard-v0.9.schema.json`, before wiring it to
+    the scorecard's real `badge.convention_url`.
 - **Verification:** `cargo test --quiet`, `cargo clippy --all-targets -- -Dwarnings`, `cargo fmt --check`, and
   `scripts/release/smoke.sh` run manually, whose schema-parity and `check-jsonschema` gates are what prove the schema
   and emitter agree.
@@ -507,7 +533,13 @@ advancing the pin and refreshing the corpus both need the released binary.
   2. Update the `badge` bullet in `AGENTS.md` and its stale `schema_version` reference, which still says 0.5.
   3. Rewrite the `RELEASES-POSTFLIGHT.md` checkbox that asks the operator to click the emitted `badge_url` and
      `scorecard_url`, so the postflight stops referencing removed fields.
-  4. Append the 0.10 entry to the cumulative schema history in `CLAUDE.md`.
+  4. Append the 0.10 entry to the cumulative schema history in `CLAUDE.md`, and rewrite its `0.5` section at
+     `CLAUDE.md:209-223`. Appending alone does not meet this unit's goal: that section states the six-field `BadgeInfo {
+     eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }` signature, the rule that
+     `embed_markdown` is `Some` only when eligible, that `scorecard_url` / `badge_url` are populated whenever a slug
+     exists, and that the JSON `embed_markdown` and the printed hint can never disagree. All four statements describe
+     fields the scorecard no longer carries. The surviving facts in that section, the `score_pct` formula, the floor,
+     and `convention_url`, stay.
   5. Correct the superseded line in the earlier plan record, which resolves this defect as site-redirect-only with "No
      CLI change". That file is a planning doc and commits directly to `dev`, separately from this unit's PR.
 - **Test scenarios:** none; this unit is documentation. The schema-history entry is covered indirectly by U5's version
@@ -619,11 +651,11 @@ Scope Challenge result: scope accepted as-is.
 
 ### Architecture
 
-Boundaries hold. The change moves one derived value from producer to consumer, and the consumer already owns the
-inputs: `src/shared/audit-envelope.ts:106` derives `scorecard_url` from the request origin rather than reading it, so
-U3 extends an established pattern instead of inventing one. The dependency chain U1 to U2 to U3 supplies `badgePath`
-before U3 consumes it, verified: `badgePath` is absent from site `dev` and present only on `fix/badge-alias-redirect`,
-which U1 lands.
+Boundaries hold. The change moves one derived value from producer to consumer, and the consumer already owns the inputs:
+`src/shared/audit-envelope.ts:106` derives `scorecard_url` from the request origin rather than reading it, so U3 extends
+an established pattern instead of inventing one. The dependency chain U1 to U2 to U3 supplies `badgePath` before U3
+consumes it, verified: `badgePath` is absent from site `dev` and present only on `fix/badge-alias-redirect`, which U1
+lands.
 
 1. **The MCP projection is a third rendering of the same scorecard, and U3 only asserted on two.** Confidence 90%. The
    MCP tools pass a scorecard through whole, which `tests/web-audit-mcp-tools.test.ts:277,389` show by asserting
@@ -674,11 +706,11 @@ Coverage of the change surface:
   CLI emits none of the three (U5)     scorecard schema test + emitted JSON           planned
 ```
 
-1. **The 0.10 fixture literal is blocked by a required-field type.** Confidence 100%.
-   `tests/build.test.ts:103-110` declares `embed_markdown`, `scorecard_url` and `badge_url` required on
-   `ScorecardBadge`, under a comment asserting every 0.5-and-later scorecard carries the block. AE5 needs a 0.10 literal
-   beside a 0.9 one, and that type refuses it. Thirteen existing literals set all three and stay valid, so the fix is
-   making the three optional, not rewriting the fixtures. Added to U2 step 5, which already touches that file.
+1. **The 0.10 fixture literal is blocked by a required-field type.** Confidence 100%. `tests/build.test.ts:103-110`
+   declares `embed_markdown`, `scorecard_url` and `badge_url` required on `ScorecardBadge`, under a comment asserting
+   every 0.5-and-later scorecard carries the block. AE5 needs a 0.10 literal beside a 0.9 one, and that type refuses it.
+   Thirteen existing literals set all three and stay valid, so the fix is making the three optional, not rewriting the
+   fixtures. Added to U2 step 5, which already touches that file.
 2. The non-vacuity discipline is already explicit where it matters. U3's execution note names the real failure mode: an
    absent field reaches `escHtml(undefined)` and renders the literal word `undefined` with build, typecheck and tests
    green, so the scenario asserts on rendered output rather than on the absence of an exception.
@@ -699,10 +731,10 @@ Dispositions: none.
 ### Outside voice
 
 A consumer of the published scorecard contract would ask why a field is being removed rather than deprecated, since
-removal is the breaking option and `additionalProperties: false` means a consumer cannot ignore what it does not
-expect. The plan's answer holds: the site is the only consumer that reads the three keys, it is first-party, and the
-version set widens rather than flips, so a 0.9 artifact keeps validating. The one thing the removal buys that a
-deprecation would not is the end of a wrong value in a published file, which is the defect.
+removal is the breaking option and `additionalProperties: false` means a consumer cannot ignore what it does not expect.
+The plan's answer holds: the site is the only consumer that reads the three keys, it is first-party, and the version set
+widens rather than flips, so a 0.9 artifact keeps validating. The one thing the removal buys that a deprecation would
+not is the end of a wrong value in a published file, which is the defect.
 
 A release engineer would ask what happens to scorecards already committed at 0.9 carrying the wrong `rg` embed. U1
 answers it for the published badge URLs by redirect, and the corpus refresh in U7 replaces the files themselves. Nothing
@@ -716,3 +748,245 @@ a settled decision, and KD1 through KD3 plus KTD1 keep their `session-settled: u
 
 The one standing gap is status rather than specification: U1's branch `fix/badge-alias-redirect` is pushed at `0d5f12c`
 with no pull request open, and U2 through U7 all sit behind it.
+
+## Developer experience review
+
+Mode: DX POLISH. Product type: CLI Tool (D1). Reviewed against the badge moment this plan reshapes, not against all of
+`anc`.
+
+### Developer persona card
+
+```text
+TARGET DEVELOPER PERSONA
+========================
+Who:       A CLI maintainer running `anc` during a refactor or pre-release pass, plus an AI agent
+           reading `anc audit --output json` in a pipeline. Both are in scope (D2).
+Context:   Mid-flow on the command line, reading at terminal speed, not desk speed.
+Tolerance: The high-leverage moment is the first line. An actionable lede in paragraph three is not read.
+Expects:   A verdict plus an action, and for every JSON field to stand alone in a reasoning trace.
+Source:    Declared in `PRODUCT.md:33-43`, not inferred. The third declared audience, CI integrators,
+           is out of scope here: this plan's CI surface is one suppressed line.
+```
+
+### Developer empathy narrative
+
+Accepted at D3 as the baseline.
+
+I maintain a small Rust CLI. Someone links me anc.dev and I install with `brew install brettdavies/tap/agentnative`. I
+run `anc audit .` and watch rows scroll by. At the bottom, something I did not expect: a trophy. "Score: 78% — your tool
+qualifies for the agent-native badge." Then an indented markdown snippet and a convention URL. This is the good part. I
+did not ask for a badge and now I have earned one, and the thing I need is already formatted for pasting. I copy it into
+my README, push, and open the file on GitHub. The link works. The image does not: a broken-image icon where my score
+should be. I click the link, which lands on a real page with a real score, so the badge exists, which makes the broken
+image more confusing, not less. I check for a typo, re-copy the snippet, maybe re-run the audit. Nothing changes,
+because the snippet names my binary and the badge is filed under my package name. I have no way to know that from here,
+and `anc` has no way to tell me, since it never makes a network request. I either give up and delete the line or I open
+an issue.
+
+### Competitive DX benchmark
+
+The clock: from a qualifying `anc` run to a badge rendering in the maintainer's README. Boundaries differ per cohort, so
+the rows are not comparable to each other as single numbers.
+
+| Tool                                 | Start → result                                                  | Time + evidence type            | DX choice                                   | Source                         |
+| ------------------------------------ | --------------------------------------------------------------- | ------------------------------- | ------------------------------------------- | ------------------------------ |
+| `anc` today, curated, name matches   | run → paste → renders                                           | seconds, observed printed block | CLI prints the snippet                      | `src/scorecard/mod.rs:158`     |
+| `anc` today, curated, binary differs | run → paste → broken image                                      | never completes, measured       | CLI prints a snippet it cannot verify       | `/badge/rg.svg` → 404          |
+| `anc` today, uncurated               | run → paste → image and link both 404                           | never completes, measured       | same snippet, no page behind it             | `/score/some-random-cli` → 404 |
+| `anc` after this plan, curated       | run → `/badge` → `/score/<tool>` → paste                        | seconds plus one context switch | site issues, CLI points                     | `content/badge.md:34`          |
+| `anc` after this plan, uncurated     | run → `/badge` → registry PR → scorecard commit → build → paste | gated on PR review              | listing is a reviewed gate                  | `content/badge.md:113-120`     |
+| Codecov, Coveralls                   | push a token-authenticated report → badge                       | minutes, reported               | no human in the loop; the token is the gate | in-distribution knowledge      |
+| OpenSSF Scorecard                    | listing-gated, closest peer model                               | not measured                    | gated listing, like this one                | in-distribution knowledge      |
+
+Research ran on in-distribution knowledge: the outside-voice provider is disabled in this checkout, and the peer rows
+are labeled reported or not-measured accordingly. The first-party rows were measured live.
+
+### Magical moment specification
+
+The moment is the unexpected trophy at the end of an audit: a maintainer who ran a linter discovers they earned
+something. The plan preserves the moment and removes the false payload. Delivery vehicle, settled at D3 and D4: one
+terminal line carrying the score, the qualification, and a claim pointer, specified verbatim in U5 step 3.
+
+The word `Claim` is the whole design. `Get` promised self-service that holds for 98 tools and for nobody else; `Claim`
+tells the truth and lands the reader on that page's own `## Claiming the badge` heading.
+
+### Developer journey map
+
+```text
+STAGE           | DEVELOPER DOES                        | FRICTION POINTS                  | STATUS
+----------------|---------------------------------------|----------------------------------|----------
+1. Discover     | follows a link to anc.dev             | none in scope                    | ok
+2. Install      | brew / cargo / binstall, one command  | none; measured Champion today    | ok
+3. Hello World  | `anc audit .`, rows plus a verdict    | none; 0.07s binary, 2.64s dir    | ok
+4. Real Usage   | reads the trophy line, claims a badge | the payload was wrong; now a      | fixed (U5)
+                |                                       | pointer with an honest verb       |
+5. Debug        | a badge does not render               | no error path existed at all;     | fixed by removal
+                |                                       | the failure is now prevented      | (residual below)
+6. Upgrade      | consumes schema 0.10                  | breaking removal under            | fixed (U2, U5)
+                |                                       | additionalProperties:false        |
+```
+
+### First-time developer confusion report
+
+```text
+FIRST-TIME DEVELOPER REPORT
+============================
+Persona: CLI maintainer, mid-refactor
+Attempting: claim an agent-native badge after this plan ships
+
+CONFUSION LOG:
+T+0:00  Runs `anc audit .`. Rows scroll. Last line: trophy, 78%, "Claim one at https://anc.dev/badge".
+T+0:20  Opens the page. Reads "How to embed it" with a `<tool>` placeholder template.
+T+0:40  Scrolls to "Claiming the badge". Step 1 is "file a registry entry" via a PR to another repo.
+T+1:30  Decides whether that is worth it. Curated already: goes to /score/<tool>, copies, done.
+        Not curated: opens the registry README, files a PR, and waits. The trophy becomes a task.
+T+3:00  Final state: succeeded if curated; queued on someone else's review if not.
+```
+
+Addressed: the line no longer promises self-service (D4), so the T+0:40 discovery is a confirmation rather than a
+reversal. Not addressed, by choice: the gate itself. Residual at T+0:20, the `<tool>` template is now the only remaining
+way to hand-build a 404 badge URL.
+
+### Pass findings
+
+Scores are before and after this plan plus this review's corrections, scoped to the badge moment.
+
+1. **Getting Started, 5 → 8.** The reward moment handed over a payload that was wrong for 12 of 98 curated tools and for
+   every uncurated tool. It is now a true pointer. Not higher because claiming is PR-gated, which is the trust model
+   rather than friction to remove.
+2. **API/CLI/SDK design, 7 → 9.** `badge` drops from six fields to three, and the three that go were the ones asserting
+   facts the CLI cannot know. The survivors each stand alone in a reasoning trace, which is `PRODUCT.md`'s agent test.
+   Residual: `eligible` is a bare boolean, so an agent reading `eligible: false, score_pct: 62` cannot tell how far off
+   the floor is without the schema document. Out-of-scope opportunity, below.
+3. **Error messages, 6 → 8.** Three paths traced. The original failure had no error path anywhere: a broken image in a
+   README with no message in any system, which the plan fixes by prevention rather than by messaging, the Pit of Success
+   choice. `/badge/<unknown>.svg` still 404s, which is correct, since resolving it to another tool's badge would render
+   a confidently wrong score. `--quiet` suppression is specified (KTD6) and covered (AE3). Residual: a 404 badge renders
+   as a broken image with no diagnostic.
+4. **Documentation, 6 → 9.** Four live surfaces published the removed fields or wrong facts: `README.md`'s claim that
+   the CLI's derivation matches the registry slug convention, false for exactly the 12 tools at issue;
+   `content/scorecard-schema.md`, whose worked example used `rg`, the wrong slug this plan exists to remove; the
+   schema's own `badge` description, stating the floor as 80 and the formula as `pass / (pass + warn + fail)`; and
+   `CLAUDE.md:209-223`. U6 step 4 covered only the history append, leaving that last one describing a six-field struct
+   and a text-hint agreement that stops existing. Corrected in this review.
+5. **Upgrade path, 7 → 8.** A breaking removal under `additionalProperties: false` is the hard case, and the plan
+   handles it properly: the version set widens rather than flips, the consumer leads, and inject mode verifies against a
+   real 0.10 artifact before the CLI side merges. Residual: `$id` bumps to a v0.10 URL while
+   `https://anc.dev/scorecard-v0.9.schema.json` 404s today, so the identifier does not resolve for any version.
+6. **Developer environment, 7 → 8.** Quiet-gated, so CI and `--output json` paths stay clean. Residual: the 🏆 in that
+   line is the only emoji in all of `anc`'s shipped output, and neither `PRODUCT.md` nor `BRAND.md` mentions emoji. It
+   is kept here because the line ships with it today and no breakage was measured; it is a taste call the author can
+   overturn in one word.
+7. **Community and ecosystem, 8 → 8.** The plan changes no community mechanic. It protects one: a badge that renders is
+   a badge the registry can back, so the signal keeps meaning what it claims. `content/badge.md:110` already states that
+   contract, that the badge is an outbound link rather than a stamp.
+8. **DX measurement, 5 → 8.** The feedback loop already works: today's live `devex-review` at 00:05 is what found this
+   defect, which is the boomerang landing. The plan adds a permanent structural guard in U3's all-98 badge-path check.
+   D5 adds the missing half, a hard release gate on the one URL the CLI compiles and cannot verify. Residual, accepted
+   at D5: that gate is the release script's first network dependency.
+
+### NOT in scope
+
+- **Shortening the claiming flow.** Declined at D4 option C. The registry PR gate is the trust model
+  (`content/badge.md:79`), not incidental friction.
+- **A diagnostic SVG for unresolvable badge slugs.** Serving a readable "unknown tool" image instead of a 404 would
+  catch the one remaining way to build a wrong URL, the `<tool>` template at `content/badge.md:28`. New site behavior,
+  deferred under POLISH.
+- **Publishing the schema at its `$id`.** Would make the version identifier resolve. Site scope.
+- **A `floor_pct` field on the badge block.** Would let an agent compute distance to eligibility without reading the
+  schema document. A field addition, deferred under POLISH.
+- **Expectation-setting on the `/badge` page itself.** D4 placed the fix on the CLI line instead.
+
+### What already exists
+
+- `compute_badge` is already the single derivation feeding both the JSON and the terminal, so the two surfaces cannot
+  disagree. The plan keeps that property rather than rebuilding it.
+- `src/shared/audit-envelope.ts:106` already derives `scorecard_url` from the request origin, which is the pattern U3
+  adopts for snippet generation.
+- `gate_examples_resolve` at `scripts/release/smoke.sh:217` is the shape D5's new gate follows.
+- `content/badge.md` already carries the complete claiming flow, the floor, the below-floor color policy, and the
+  outbound-link contract. U4 makes it normative rather than writing it.
+- `scripts/release/smoke.sh:104` reads `.badge.score_pct`, which survives this change. Verified, not assumed.
+
+### TODOS.md
+
+No TODO file is written. This repository keeps none, and the user's standing instruction forbids creating or committing
+any `TODO*.md`. The deferred items live in **NOT in scope** above and in the task list below.
+
+### DX scorecard
+
+```text
++====================================================================+
+|              DX PLAN REVIEW — SCORECARD                            |
++====================================================================+
+| Dimension            | Score  | Prior  | Trend                     |
+|----------------------|--------|--------|---------------------------|
+| Getting Started      |  8/10  |  5/10  | +3 up                     |
+| API/CLI/SDK          |  9/10  |  7/10  | +2 up                     |
+| Error Messages       |  8/10  |  6/10  | +2 up                     |
+| Documentation        |  9/10  |  6/10  | +3 up                     |
+| Upgrade Path         |  8/10  |  7/10  | +1 up                     |
+| Dev Environment      |  8/10  |  7/10  | +1 up                     |
+| Community            |  8/10  |  8/10  | flat                      |
+| DX Measurement       |  8/10  |  5/10  | +3 up                     |
++--------------------------------------------------------------------+
+| TTHW                 | curated: seconds. uncurated: PR-gated.      |
+| Competitive Rank     | Gated by design, not by friction            |
+| Magical Moment       | designed, via the one-line terminal hint     |
+| Product Type         | CLI Tool                                    |
+| Mode                 | POLISH                                      |
+| Overall DX           |  8/10  |  6/10  | +2 up                     |
++====================================================================+
+| DX PRINCIPLE COVERAGE                                              |
+| Zero Friction                | covered                              |
+| Learn by Doing               | covered                              |
+| Fight Uncertainty            | covered, one residual (404 badge)    |
+| Opinionated + Escape Hatches | covered                              |
+| Code in Context              | covered                              |
+| Magical Moments              | covered                              |
++====================================================================+
+```
+
+### Implementation tasks
+
+Synthesized from this review's findings. Each derives from a specific finding above.
+
+- [ ] **T1 (P1, human: ~30min / CC: ~5min)** — CLI docs — Rewrite `CLAUDE.md:209-223` for the three-field `BadgeInfo`
+  - Surfaced by: Pass 4 — U6 step 4 covered only the history append, leaving four statements describing removed fields
+  - Files: `CLAUDE.md`
+  - Verify: `rg 'embed_markdown|badge_url' CLAUDE.md` returns only the 0.10 history entry
+- [ ] **T2 (P1, human: ~1h / CC: ~10min)** — CLI release — Add a hard `gate_convention_url` to the release smoke script
+  - Surfaced by: Pass 8 and D5 — the CLI compiles one URL it can never check
+  - Files: `scripts/release/smoke.sh`
+  - Verify: the gate fails against a known-404 URL, then passes against the scorecard's `badge.convention_url`
+- [ ] **T3 (P2, human: ~5min / CC: ~2min)** — CLI output — Settle the 🏆 on the rewritten hint line
+  - Surfaced by: Pass 6 — the only emoji in all of `anc`'s shipped output, with no voice-contract basis
+  - Files: `src/scorecard/mod.rs`
+  - Verify: the author's call; no test change either way
+- [ ] **T4 (P3, human: ~2h / CC: ~20min)** — site worker — Serve a diagnostic SVG for unresolvable badge slugs
+  - Surfaced by: Pass 3 — a 404 badge renders as a broken image with no diagnostic
+  - Files: `src/worker/audit/result.ts`, `src/worker/index.ts`
+  - Verify: an unknown slug returns a readable image; a canonical slug is untouched
+- [ ] **T5 (P3, human: ~1h / CC: ~10min)** — site — Publish the scorecard schema at its `$id`
+  - Surfaced by: Pass 5 — `scorecard-v0.9.schema.json` 404s, so the identifier resolves for no version
+  - Files: site build and routing
+  - Verify: the `$id` URL returns the schema document
+
+## GSTACK REVIEW REPORT
+
+| Review         | Trigger                 | Why                             | Runs | Status   | Findings                                                      |
+| -------------- | ----------------------- | ------------------------------- | ---- | -------- | ------------------------------------------------------------- |
+| CEO Review     | `/plan-ceo-review`      | Scope & strategy                | 0    | —        | —                                                             |
+| Outside Review | codex, `/plan-*-review` | Independent 2nd opinion         | 8    | disabled | none; provider off in this checkout                           |
+| Eng Review     | `/plan-eng-review`      | Architecture & tests (required) | 7    | clean    | 4 issues, 0 critical gaps, 4 applied                          |
+| Design Review  | `/plan-design-review`   | UI/UX gaps                      | 0    | —        | —                                                             |
+| DX Review      | `/plan-devex-review`    | Developer experience gaps       | 3    | clean    | score: 6/10 → 8/10, TTHW: curated seconds, uncurated PR-gated |
+
+- **OUTSIDE COVERAGE:** codex, plan-review phase, `outside_status: disabled` (`codex_reviews=disabled`). No outside
+  provider ran and no native fallback was dispatched, per the disabled terminal branch. Outside coverage is therefore
+  missing for both reviews of this plan, not clean. Re-enable with `gstack-config set codex_reviews enabled`.
+- **VERDICT:** ENG CLEARED, DX CLEARED — ready to implement. Five decisions settled (D1 through D5), nine corrections
+  applied across both reviews, no remedy pending. CEO and Design reviews were not run and are not required for this
+  change: the scope question was settled by the user before planning, and the plan has no end-user UI surface.
+
+NO UNRESOLVED DECISIONS

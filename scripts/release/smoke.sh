@@ -25,6 +25,8 @@
 #      non-empty result set, and echoes back the profile it was asked for.
 #   3. Every scorecard validates against the committed schema (needs uvx).
 #   4. Negative control: the no-version fixture still fails `p3-must-version`.
+#   5. Every `--command` target the help text advertises resolves on PATH, so a
+#      reader copying an example gets a verdict instead of a usage error.
 #
 # Exit codes:
 #   0 = all gates passed (or skipped with reason)
@@ -204,6 +206,45 @@ gate_negative_control() {
   esac
 }
 
+# Gate 5: the advertised examples name commands that exist --------------------
+#
+# Every `--command <name>` the help text advertises is something a reader will
+# copy verbatim. v0.6.0 shipped `--command ripgrep`, which exits 2 everywhere
+# because the binary ripgrep installs is `rg`. No unit test catches this: the
+# flag parses, and resolution needs a machine with the tool on PATH. The
+# release host is that machine, so the check belongs here.
+
+gate_examples_resolve() {
+  header "Advertised examples name resolvable commands"
+  local names
+  names=$(
+    {
+      "$BIN" --examples 2>/dev/null
+      "$BIN" audit --help 2>/dev/null
+      "$BIN" --help 2>/dev/null
+    } \
+      | grep -oE -- '--command[= ]+[A-Za-z0-9_.-]+' \
+      | sed -E 's/--command[= ]+//' \
+      | sort -u
+  )
+  if [[ -z "$names" ]]; then
+    gate_fail "examples" "no --command example found in --examples or --help (did the block move?)"
+    return
+  fi
+
+  local name unresolved=""
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    command -v -- "$name" >/dev/null 2>&1 || unresolved+=" $name"
+  done <<<"$names"
+
+  if [[ -n "$unresolved" ]]; then
+    gate_fail "examples" "advertised --command target(s) not on PATH:${unresolved}"
+    return
+  fi
+  gate_pass "every advertised --command target resolves ($(echo "$names" | tr '\n' ' ' | sed 's/ $//'))"
+}
+
 # Main -----------------------------------------------------------------------
 
 usage() {
@@ -244,6 +285,7 @@ main() {
     gate_real_targets
     gate_schema_validation
     gate_negative_control
+    gate_examples_resolve
   fi
 
   if [[ -n "$RESULT_FILE" ]]; then

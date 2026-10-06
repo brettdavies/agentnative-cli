@@ -72,7 +72,7 @@ anc .
 anc ./target/release/mycli
 
 # Resolve a command on PATH and run behavioral audits against it
-anc --command ripgrep
+anc --command rg
 
 # Run only behavioral audits (skip source analysis)
 anc . --binary
@@ -119,9 +119,9 @@ lowest precedence first:
 | Any target outside a repository, outside `~` | `~/.anc.toml`, then the `.anc.toml` in the target's directory                    |
 | Any target with `--repo <PATH>`              | `~/.anc.toml`, then `<PATH>/.anc.toml`                                           |
 
-A binary counts the same whether you pass its path or `--command` resolves it on `PATH`, and symlinks resolve first,
-so a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding
-a `.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
+A binary counts the same whether you pass its path or `--command` resolves it on `PATH`, and symlinks resolve first, so
+a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding a
+`.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
 
 The files merge: each one's `domain_verbs` adds to the ones above it, and a verb listed twice keeps its first position.
 If any file in the chain cannot be read or parsed, no config applies, and the `p6-may-standard-names` warning names the
@@ -164,8 +164,8 @@ The repository's `.anc.toml` is where a tool's own vocabulary belongs: it travel
 repository applies it. For a target inside a repository or under `--repo`, the line names that repository's root. For a
 target outside any repository, such as the installed tool above, it names the tool's own repository root, which `anc`
 reads from a checkout or through `--repo`. `~/.anc.toml` holds your own vocabulary and applies to every tool you audit,
-so a verb added there for one tool passes for all of them. `--output json` carries the same hint as `config_hint` on
-the row.
+so a verb added there for one tool passes for all of them. `--output json` carries the same hint as `config_hint` on the
+row.
 
 ## What a directory audit grades
 
@@ -219,12 +219,12 @@ error: found 2 built binaries here, and anc grades one per run; run one of these
 Usage: anc audit [OPTIONS] [PATH]
 ```
 
-That holds for a single crate with several `[[bin]]` targets too: a repository or crate that builds more than one
-binary exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so
-`anc audit . --principle 6` offers `anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage
-envelope with `"error": "binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit
-root when the build is under it), and `command`, and a `next_step` of `choose-bin` whose `template` ends in
-`--bin <name>`. When two candidates share a name, each is offered by its path.
+That holds for a single crate with several `[[bin]]` targets too: a repository or crate that builds more than one binary
+exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so `anc audit . --principle 6` offers
+`anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage envelope with `"error":
+"binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit root when the build is
+under it), and `command`, and a `next_step` of `choose-bin` whose `template` ends in `--bin <name>`. When two candidates
+share a name, each is offered by its path.
 
 `--source` runs no binary, so it needs no choice: with several candidates and no `--bin`, the source and project audits
 run with nothing graded.
@@ -377,7 +377,7 @@ nor hurt the score.
 ## CLI Reference
 
 When the first non-flag argument is not a recognized subcommand, `audit` is inserted automatically. `anc .`, `anc -q .`,
-and `anc --command ripgrep` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
+and `anc --command rg` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
 deliberate fork-bomb guard for when agentnative dogfoods itself.
 
 ```text

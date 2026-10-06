@@ -37,32 +37,34 @@ pub(crate) fn probe_subcommands(
     probe_named(runner, &names)
 }
 
-/// Probe `<bin> <name> --help` for each of `names`, under the same skip and
-/// drop rules as [`probe_subcommands`].
+/// Probe `<bin> <name> --help` through [`probe_help`] for each of `names`
+/// that [`should_skip`] leaves in, keeping the names whose probe returned
+/// help.
 pub(crate) fn probe_named(runner: &BinaryRunner, names: &[&str]) -> Vec<(String, HelpOutput)> {
-    let mut out = Vec::new();
-    for &name in names {
-        if should_skip(name) {
-            continue;
+    names
+        .iter()
+        .filter(|name| !should_skip(name))
+        .filter_map(|&name| Some((name.to_string(), probe_help(runner, &[name])?)))
+        .collect()
+}
+
+/// Probe `<bin> <path...> --help`. `None` when the child could not be
+/// spawned or printed nothing.
+pub(crate) fn probe_help(runner: &BinaryRunner, path: &[&str]) -> Option<HelpOutput> {
+    let args: Vec<&str> = path.iter().copied().chain(["--help"]).collect();
+    let result = runner.run(&args, &[]);
+    // Capture partial output from timeouts/crashes the same way HelpOutput::probe does.
+    // Only NotFound / PermissionDenied / Error are dropped here — those mean we
+    // couldn't even spawn the child, not that the subcommand misbehaved.
+    match result.status {
+        RunStatus::Ok | RunStatus::Timeout | RunStatus::Crash { .. } => {
+            let mut raw = String::with_capacity(result.stdout.len() + result.stderr.len());
+            raw.push_str(&result.stdout);
+            raw.push_str(&result.stderr);
+            (!raw.trim().is_empty()).then(|| HelpOutput::from_raw(raw))
         }
-        let result = runner.run(&[name, "--help"], &[]);
-        // Capture partial output from timeouts/crashes the same way HelpOutput::probe does.
-        // Only NotFound / PermissionDenied / Error are dropped here — those mean we
-        // couldn't even spawn the child, not that the subcommand misbehaved.
-        match result.status {
-            RunStatus::Ok | RunStatus::Timeout | RunStatus::Crash { .. } => {
-                let mut raw = String::with_capacity(result.stdout.len() + result.stderr.len());
-                raw.push_str(&result.stdout);
-                raw.push_str(&result.stderr);
-                if raw.trim().is_empty() {
-                    continue;
-                }
-                out.push((name.to_string(), HelpOutput::from_raw(raw)));
-            }
-            _ => continue,
-        }
+        _ => None,
     }
-    out
 }
 
 /// Whether `name` is a built-in the subcommand probes leave alone.

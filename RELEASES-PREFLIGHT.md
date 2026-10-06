@@ -1,8 +1,10 @@
 # Pre-release verification: `agentnative`
 
-Operational pre-flight checklist. Runs **before** step 1 of
-[`RELEASES.md` § Releasing dev to main](./RELEASES.md#releasing-dev-to-main). Gates the cut of the `release/v<version>`
-branch, not the daily dev integration. Each box is an explicit go/no-go. If any item is unchecked or red, hold the
+Operational pre-flight checklist. Walk it before step 1 of
+[`RELEASES.md` § Releasing dev to main](./RELEASES.md#releasing-dev-to-main), the cut: it gates the `release/v<version>`
+branch, not the daily dev integration. The automated gates (`scripts/release/preflight.sh all`) run at step 3, against
+the committed release branch, because the mechanics checks read the bumped version and the release tree; the cut runs
+the drift gate itself before it branches. Each box is an explicit go/no-go. If any item is unchecked or red, hold the
 release.
 
 CI (fmt, clippy, test, cargo-deny, skill-fixture-drift, Windows-compat) catches mechanical regressions inside this repo.
@@ -27,19 +29,19 @@ scripts/release/preflight.sh all
 ```
 
 The preflight script (`scripts/release/preflight.sh`) is **project-authored**: the shared scaffolding (gate helpers,
-1Password reads, `shred -u` tempdir cleanup, subcommand dispatch, surface, changelog-sections, semver and mechanics gates)
-is vendored from the `github-repo-setup` skill's skeleton, and the project-specific smoke body lives in a sibling script
-(`scripts/release/smoke.sh`) that the roster delegates to, as it delegates drift to the vendored
-`scripts/release/drift.sh`. `all` runs the drift gate first,
-since nothing else matters while `main` holds changes `dev` never received. The recipes in the sections below document
-what each gate verifies and serve as the manual fallback when running by hand.
+1Password reads, `shred -u` tempdir cleanup, subcommand dispatch, surface, changelog-sections, semver and mechanics
+gates) is vendored from the `github-repo-setup` skill's skeleton, and the project-specific smoke body lives in a sibling
+script (`scripts/release/smoke.sh`) that the roster delegates to, as it delegates drift to the vendored
+`scripts/release/drift.sh`. `all` runs the drift gate first, since nothing else matters while `main` holds changes `dev`
+never received. The recipes in the sections below document what each gate verifies and serve as the manual fallback when
+running by hand.
 
 Sub-commands let you re-run one section in isolation:
 
 | Sub-command          | What it checks                                                                                                              | Source of truth                                                |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `drift`              | Commits on `main` that `dev` lacks, `.github/` parity, lockfile packages `main` has newer                                   | `scripts/release/drift.sh`                                     |
-| `surface`            | Commits + diff vs last tag, breaking markers                                                                                | `git log`, `git diff`                                          |
+| `surface`            | Commits since the last release reached `dev`, files changed since the last tag, breaking markers                            | `git log`, `git diff`                                          |
 | `smoke`              | Schema parity, multi-target audit runs, scorecard validation, negative control                                              | `scripts/release/smoke.sh`                                     |
 | `mechanics`          | Version, lockfile, toolchain age, advisories, leak check, unguarded docs, diff-B                                            | `Cargo.toml`, `CHANGELOG.md`, `cargo deny`, `guarded-paths.sh` |
 | `changelog-sections` | No PR merged into `dev` since the last release leaves its changelog entry to its title for want of a `## Changelog` section | `generate-changelog.py --audit-sections`, `gh`                 |
@@ -65,15 +67,22 @@ Everything below assumes you know what's changing. Run this first.
 Driven by `scripts/release/preflight.sh surface`.
 
 ```bash
-LAST_TAG=$(git tag --sort=-version:refname | head -n 1)
-git log "$LAST_TAG..dev" --oneline                              # commits going out
-git diff "$LAST_TAG..dev" --stat                                # file-level scope
-git diff "$LAST_TAG..dev" -- src/scorecard/                     # JSON-shape surface
-git log "$LAST_TAG..dev" --grep '^[a-z]\+\(([^)]*)\)\?!:' --oneline   # Conventional-Commits breaking markers, scoped or not
+LAST_TAG=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)
+# The commit that synced the tag back into dev opens dev's window.
+SINCE=$(git log origin/dev --format='%H %s' \
+  | grep -E -m1 "^[0-9a-f]+ chore\(release\): (sync dev after|backport) ${LAST_TAG//./\\.}( |$)" | cut -d' ' -f1)
+git log "$SINCE..origin/dev" --oneline                          # commits going out
+git diff "$LAST_TAG" origin/dev --name-only \
+  | grep -Ev "$(scripts/release/guarded-paths.sh)"              # file-level scope: what ships
+git diff "$LAST_TAG" origin/dev -- src/scorecard/               # JSON-shape surface
+git log "$SINCE..origin/dev" --grep '^[a-z]\+\(([^)]*)\)\?!:' --oneline   # Conventional-Commits breaking markers, scoped or not
 ```
 
-On a repo with no tags yet, or whose lineage is squash-only so no tag is an ancestor of `dev`, the surface is
-`origin/main..origin/dev` instead of `$LAST_TAG..dev`; `preflight.sh surface` SKIPs the tag counts in that case.
+Every release squash-merges into `main`, so the tag shares no recent history with `dev`, and a log from the tag counts
+`dev`'s whole past. The window opens at the commit that synced the tag back into `dev`, whose subject reads
+`chore(release): sync dev after vX.Y.Z`: the boundary `generate-changelog.py` uses. The file list compares trees, so it
+reads from the tag directly, minus the guarded set `dev` carries but never ships. With no commit syncing the tag back,
+`preflight.sh surface` SKIPs, and the surface is `origin/main..origin/dev`.
 
 Every `!:` commit drives the major-version decision and gets a row in the release's `### Breaking changes` section.
 
@@ -88,24 +97,33 @@ Security PRs, hotfixes, and config edits land on `main` first. The release branc
 Dependabot raises the same fix again.
 
 - [ ] The previous release's bookkeeping (`Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`) reached `dev` (gate 0 fails when
-      it never did; run `scripts/sync-dev-after-release.sh v<version>` and merge its PR first).
+  it never did; run `scripts/sync-dev-after-release.sh v<version>` and merge its PR first).
 - [ ] Every commit on `main` since the last release has its changes on `dev` (gate 1 lists the ones that do not, as
-      `differs` or `missing`). Backport them by PR into `dev` first, merge, and rerun.
-- [ ] `.github/` is identical on both branches (gate 2). A difference either way is a config change that only reached
-      one branch.
+  `differs` or `missing`). Backport them by PR into `dev` first, merge, and rerun.
+- [ ] Nothing under `.github/` on `main` is missing from `dev` (gate 2). `.github/` reaches `main` through the release,
+  so config that has reached `dev` and not `main` is what this release delivers, and the gate counts it. The gate fails
+  on the other direction, where `main` holds workflow or ruleset config `dev` never received, and names each path as
+  `missing` or `differs`.
 - [ ] No `Cargo.lock` package resolves newer on `main` than on `dev` (gate 3). The one benign case is a version still
-      inside a release-age window when the advisory is already patched at `dev`'s version.
+  inside a release-age window when the advisory is already patched at `dev`'s version.
 - [ ] `dev`-newer packages are the routine updates this release ships; the gate counts them and does not list them.
 
-### Pending dependency updates
+### Dependabot preflight
 
-Dependabot's weekly schedule is a floor, not the only trigger: the release commit bumps `Cargo.toml` and re-resolves
-`Cargo.lock`, and any push that touches a watched manifest re-evaluates immediately. Surface what is pending before
-the cut so it merges on `dev` (or gets rejected) instead of arriving as PRs the moment the release lands.
+Run before the version is bumped and before the release branch is cut. A release commit that re-resolves `Cargo.lock`
+triggers Dependabot's out-of-cycle re-evaluation, so an update still pending at the cut arrives as a PR the moment the
+release lands, after the tag it needed to make. Surface what is pending now, so each update merges on `dev` or is
+declined first.
 
-- [ ] Actions → "Dependabot Preflight" → "Run workflow" (`.github/workflows/dependabot-preflight.yml`). A red `cargo`
-      job lists direct deps with a newer compatible version; the `github-actions` job's summary table lists SHA-pinned
-      actions behind their latest tag. Merge or decline each on `dev` before continuing.
+- [ ] Trigger the workflow: Actions → "Dependabot Preflight" → "Run workflow" (head = `dev`). The caller is
+  `.github/workflows/dependabot-preflight.yml`, a thin caller of the `brettdavies/.github` reusable.
+- [ ] Review the `cargo` job's `cargo outdated --workspace --depth 1` report in the run summary; the job runs red while
+  any direct dependency has a newer compatible version. For each one, decide: merge an update PR on `dev` now, accept
+  the stale version this release, or rule the update out with a `Cargo.toml` constraint.
+- [ ] Review the `github-actions` job's pin-drift table. For every drifted action, bump the pinned SHA on `dev` and
+  update the trailing `# <version>` comment.
+- [ ] (Optional) Have Dependabot open PRs for whatever the preflight surfaced: Insights → Dependency graph → Dependabot
+  → "Check for updates". Merge anything that passes CI on `dev`.
 
 ### Cross-repo blast radius
 
@@ -129,8 +147,8 @@ The gate asserts, over a default matrix of six real CLIs spanning every document
 - [ ] `anc emit schema` matches committed `schema/scorecard.schema.json`, the copy consumers validate against.
 - [ ] Each target grades to completion: exit code is a verdict (0/1/2) rather than a panic (101) or a signal (128+N),
   the JSON parses with a non-empty result set, and the scorecard echoes back the profile it was asked for.
-- [ ] Every emitted scorecard validates against the committed schema (needs `uvx` for `check-jsonschema`; SKIPs
-  without it).
+- [ ] Every emitted scorecard validates against the committed schema (needs `uvx` for `check-jsonschema`; SKIPs without
+  it).
 - [ ] `tests/fixtures/no-version-flag/noversion` still produces a real `fail` on `p3-must-version` (#55). This is the
   negative control: every other target can come back green whether the auditor works or has stopped auditing, and this
   one cannot.
@@ -167,31 +185,38 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
 - [ ] `Cargo.toml` `version` bumped to the new tag value (`check-version` in `release.yml` enforces this; catch early).
 - [ ] `Cargo.lock` regenerated via `cargo update -p agentnative`, committed.
 - [ ] Rebuild locally, confirm `anc --version` prints the new tag value.
-- [ ] Every PR merged since `$LAST_TAG` has a non-empty `## Changelog` section. Spot-check via `gh pr list --base dev
-  --state merged --search "merged:>$(git log -1 --format=%aI $LAST_TAG)"` then `gh pr view <num> --json body`.
+- [ ] No PR this release carries leaves its changelog entry to its title. Swept, not sampled, by
+  `scripts/release/preflight.sh changelog-sections`, which runs `generate-changelog.py --audit-sections`. It reads the
+  PRs from `dev`'s history since the previous release, stacked PRs included, and names every one that never offered the
+  `## Changelog` section under a title the fallback would print. A section left empty on purpose passes: the generator
+  reads it as nothing user-facing.
 - [ ] `anc emit coverage-matrix --check` exits 0; `git status` shows `docs/coverage-matrix.md` and
   `coverage/matrix.json` pristine.
 - [ ] `rust-toolchain.toml` last bumped ≥7 days ago (supply-chain quarantine). If a bump landed inside the window, hold
   or revert it before tagging.
 - [ ] No unmerged dependency advisories from `cargo deny check advisories`. The full local pre-push check
   (`scripts/hooks/pre-push`) mirrors CI; run it explicitly before pushing the release branch.
-- [ ] Triple-diff verification before tag: `git diff origin/main..HEAD`, `git diff HEAD..origin/dev` filtered by the
-  guarded set (not all of `docs/`, since a directory that ships to `main` would hide a missed pick),
-  `git diff origin/dev..origin/main` (sanity): all three agree on intended scope.
-- [ ] **Leak check before pushing the release branch.** No guarded path may surface in the diff vs `origin/main`. The
-  set resolves from `.github/workflows/guard-main-docs.yml` via `scripts/release/guarded-paths.sh`; never restate the
-  pattern inline. If cherry-picks pulled in guarded paths via rename detection, resolve per `RELEASES.md` § Cherry-pick
-  conflicts on guarded paths.
+- [ ] `scripts/release/cut-release-branch.sh` exited 0, so its check A held: the staged tree equals `origin/dev`'s apart
+  from the version carriers and the guarded paths. A cherry-pick release runs the triple diff in `RELEASES.md` §
+  Exception: cherry-pick instead, with `HEAD..origin/dev` filtered by the guarded set (not all of `docs/`, since a
+  directory that ships to `main` would hide a missed pick).
+- [ ] **Leak check before pushing the release branch.** No guarded path may be added or modified in the diff vs
+  `origin/main`. The cut's check B screens the staged tree, and `preflight.sh mechanics` screens the committed branch;
+  both resolve the set from `.github/workflows/guard-main-docs.yml` via `scripts/release/guarded-paths.sh`, so never
+  restate the pattern inline. `--diff-filter=ACMR`, because a release that removes a guarded doc `main` still carries
+  lists the removal too, and that is cleanup, not a leak. If cherry-picks pulled in guarded paths via rename detection,
+  resolve per `RELEASES.md` § Cherry-pick conflicts on guarded paths.
 
   ```bash
   GUARDED="$(scripts/release/guarded-paths.sh)"
-  git diff origin/main..HEAD --name-only | grep -E "$GUARDED" && echo "LEAKED: reset and redo" || echo "(clean)"
+  git diff origin/main..HEAD --diff-filter=ACMR --name-only | grep -E "$GUARDED" && echo "LEAKED: reset and redo" || echo "(clean)"
   ```
 
 - [ ] **Every doc this release adds to `main` is meant to ship.** The leak check is blind to a category nobody
-  registered. The command below lists the unguarded additions; each one needs a reason to ship, or it gets registered
-  in the workflow's `extra_paths` and removed from the branch. `--no-renames` lists a doc moved from one `main` carries
-  as added, where rename detection would report it as a rename and the `A` filter would drop it.
+  registered. The cut's check D and `preflight.sh mechanics` list the unguarded additions, as does the command below;
+  each one needs a reason to ship, or it gets registered in the workflow's `extra_paths` and removed from the branch.
+  `--no-renames` lists a doc moved from one `main` carries as added, where rename detection would report it as a rename
+  and the `A` filter would drop it.
 
   ```bash
   git diff --no-renames origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED"

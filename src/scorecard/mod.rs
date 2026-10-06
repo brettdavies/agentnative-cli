@@ -7,7 +7,9 @@ use serde::Serialize;
 
 use crate::audit::Audit;
 use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
-use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint, ConfigScope};
+use crate::types::{
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint, ConfigScope, Mitigation,
+};
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
 /// leaderboard pipeline) pin against this to detect shape changes.
@@ -418,6 +420,26 @@ pub struct AuditResultView {
     pub config_hint: Option<ConfigHint>,
 }
 
+// A Pass row's evidence reads what the audit observed before the
+// `.anc.toml` setting the Pass depended on, so a reader sees what the tool
+// showed and then what it declared. `None` keeps an unassisted Pass that
+// names nothing at `evidence: null`.
+fn pass_row_evidence(r: &AuditResult) -> Option<String> {
+    let declared = r.mitigation.as_ref().map(|m| match m {
+        Mitigation::DomainVerbs(info) => {
+            crate::audits::behavioral::standard_names::format_pass_evidence(info)
+        }
+        Mitigation::Config(prose) => prose.clone(),
+    });
+    match (r.pass_evidence.as_deref(), declared) {
+        (Some(observed), Some(declared)) => {
+            let observed = observed.strip_suffix('.').unwrap_or(observed);
+            Some(format!("{observed}; {declared}"))
+        }
+        (observed, declared) => observed.map(str::to_string).or(declared),
+    }
+}
+
 impl AuditResultView {
     /// Construct from a raw probe result (pre-fan-out callers and test
     /// fixtures). `audit_id` defaults to `r.id` and `tier` is looked up
@@ -436,19 +458,7 @@ impl AuditResultView {
     /// requirement row id.
     pub fn from_row(r: &AuditResult, audit_id: &str) -> Self {
         let (status, evidence) = match &r.status {
-            AuditStatus::Pass => {
-                // When a Pass was assisted by `domain_verbs`, surface the
-                // formatted ratio + matched names in the row's `evidence`
-                // field so text-mode rendering and JSON-mode dispatch see
-                // the same prose. A Pass that names nothing it matched
-                // keeps `evidence: null`.
-                let pass_evidence = r.pass_evidence.clone().or_else(|| {
-                    r.mitigation
-                        .as_ref()
-                        .map(crate::audits::behavioral::standard_names::format_pass_evidence)
-                });
-                ("pass".to_string(), pass_evidence)
-            }
+            AuditStatus::Pass => ("pass".to_string(), pass_row_evidence(r)),
             AuditStatus::Warn(e) => ("warn".to_string(), Some(e.clone())),
             AuditStatus::Fail(e) => ("fail".to_string(), Some(e.clone())),
             AuditStatus::OptOut(e) => ("opt_out".to_string(), Some(e.clone())),
@@ -457,8 +467,10 @@ impl AuditResultView {
             AuditStatus::Error(e) => ("error".to_string(), Some(e.clone())),
         };
         let (using_domain_verbs, domain_match_count) = match &r.mitigation {
-            Some(m) => (Some(m.using_domain_verbs), Some(m.domain_match_count)),
-            None => (None, None),
+            Some(Mitigation::DomainVerbs(m)) => {
+                (Some(m.using_domain_verbs), Some(m.domain_match_count))
+            }
+            _ => (None, None),
         };
         // Serialize AuditGroup / AuditLayer / Confidence via serde_json so
         // the JSON mirrors the canonical enum spelling (snake_case).
@@ -1294,6 +1306,22 @@ mod tests {
         let view = AuditResultView::from_result(&r);
         assert_eq!(view.status, "pass");
         assert_eq!(view.evidence.as_deref(), Some("list (--limit)"));
+    }
+
+    #[test]
+    fn pass_row_evidence_names_what_matched_then_the_setting() {
+        let mut r = make_result("pass-id", AuditStatus::Pass, AuditGroup::P5);
+        r.pass_evidence = Some("delete (--force).".into());
+        r.mitigation = Some(Mitigation::Config(
+            "destroy accepts -auto-approve via .anc.toml [p5].confirm_flags".into(),
+        ));
+        let view = AuditResultView::from_result(&r);
+        assert_eq!(
+            view.evidence.as_deref(),
+            Some(
+                "delete (--force); destroy accepts -auto-approve via .anc.toml [p5].confirm_flags"
+            )
+        );
     }
 
     #[test]

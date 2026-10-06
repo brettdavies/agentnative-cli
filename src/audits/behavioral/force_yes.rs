@@ -6,18 +6,32 @@
 //! intent auditable in process tables and shell history.
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
-//! probe each one's `--help`, and audit for the presence of `--force`,
-//! `--yes`, `-y`, or `-f`. Fail when any destructive subcommand lacks both.
-//! Vacuous Skip when the binary has no destructive subcommands.
+//! less any the `.anc.toml` chain declares in `[p5] not_destructive`, probe
+//! each one's `--help`, and audit for one of [`CONFIRM_FLAGS`] or a flag the
+//! chain declares in `[p5] confirm_flags`. Fail when any destructive
+//! subcommand lists none. Vacuous Skip when the binary has no destructive
+//! subcommands.
 
+use crate::anc_toml::{CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::destructive_subcommands;
 use crate::audits::behavioral::subcommand_help::probe_subcommands;
 use crate::project::Project;
 use crate::runner::HelpOutput;
-use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+use crate::types::{
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict,
+};
 
-const REQUIRED_FLAGS: &[&str] = &["--force", "--yes", "-y", "-f"];
+/// Flags that confirm a destructive operation non-interactively.
+const CONFIRM_FLAGS: &[&str] = &[
+    "--force",
+    "--yes",
+    "-y",
+    "-f",
+    "--auto-approve",
+    "--assume-yes",
+    "--confirm",
+];
 
 pub struct ForceYesAudit;
 
@@ -47,25 +61,35 @@ impl Audit for ForceYesAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let status = match project.help_output() {
-            None => AuditStatus::Skip("could not probe --help".into()),
+        let p5 = project.anc_config.config().map(|cfg| &cfg.p5);
+        let declared_flags = p5.map_or(&[][..], |p5| p5.confirm_flags.as_slice());
+        let not_destructive = p5.map_or(&[][..], |p5| p5.not_destructive.as_slice());
+        let verdict = match project.help_output() {
+            None => AuditStatus::Skip("could not probe --help".into()).into(),
             Some(top_help) => {
-                let destructive: Vec<String> = destructive_subcommands(top_help)
-                    .into_iter()
-                    .cloned()
-                    .collect();
-                if destructive.is_empty() {
-                    AuditStatus::Skip(
-                        "no destructive subcommands detected; MUST applies conditionally to CLIs \
-                         with destructive operations."
-                            .into(),
-                    )
+                let (destructive, excluded) =
+                    without_declared(&destructive_subcommands(top_help), not_destructive);
+                let verdict = if destructive.is_empty() {
+                    let found = if excluded.is_empty() {
+                        "no destructive subcommands detected"
+                    } else {
+                        "no destructive subcommands remain"
+                    };
+                    AuditStatus::Skip(format!(
+                        "{found}; MUST applies conditionally to CLIs with destructive operations."
+                    ))
+                    .into()
                 } else {
                     let runner = project.runner_ref();
                     let subhelp = probe_subcommands(runner, top_help);
-                    audit_force_yes(&destructive, &subhelp)
-                }
+                    audit_force_yes(&destructive, &subhelp, declared_flags)
+                };
+                with_exclusions(verdict, &excluded)
             }
+        };
+        let status = match project.anc_config.void_note() {
+            Some(note) => verdict.status.with_note(&note),
+            None => verdict.status,
         };
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -74,42 +98,102 @@ impl Audit for ForceYesAudit {
             layer: self.layer(),
             status,
             confidence: Confidence::High,
-            mitigation: None,
+            mitigation: verdict.mitigation,
             config_hint: None,
             pass_evidence: None,
         })
     }
 }
 
+/// Pass when every destructive subcommand's `--help` lists a built-in
+/// confirmation flag or one of `declared_flags`. A built-in match takes
+/// priority; a Pass that needed a declared flag names the subcommand, the
+/// flag, and the file that declared it.
 pub(crate) fn audit_force_yes(
     destructive: &[String],
     subhelp: &[(String, HelpOutput)],
-) -> AuditStatus {
+    declared_flags: &[Sourced<String>],
+) -> Verdict {
     let mut missing: Vec<&str> = Vec::new();
+    let mut confirmed_by_declaration: Vec<String> = Vec::new();
     for verb in destructive {
-        let entry = subhelp.iter().find(|(name, _)| name == verb);
-        match entry {
-            Some((_, help)) if has_force_or_yes(help) => {}
-            Some(_) => missing.push(verb.as_str()),
+        let Some((_, help)) = subhelp.iter().find(|(name, _)| name == verb) else {
+            missing.push(verb.as_str());
+            continue;
+        };
+        if CONFIRM_FLAGS.iter().any(|flag| help.advertises_flag(flag)) {
+            continue;
+        }
+        match declared_flags
+            .iter()
+            .find(|flag| help.advertises_flag(&flag.value))
+        {
+            Some(flag) => confirmed_by_declaration.push(format!(
+                "{verb} accepts {} via {}",
+                flag.value,
+                flag.cite(CONFIRM_FLAGS_KEY)
+            )),
             None => missing.push(verb.as_str()),
         }
     }
     if missing.is_empty() {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Fail(format!(
-            "destructive subcommand(s) without `--force` or `--yes`: {}. \
-             Irreversible operations must require explicit confirmation so \
-             they can't be invoked accidentally.",
-            missing.join(", ")
-        ))
+        return Verdict {
+            status: AuditStatus::Pass,
+            mitigation: (!confirmed_by_declaration.is_empty())
+                .then(|| Mitigation::Config(confirmed_by_declaration.join("; "))),
+        };
     }
+    AuditStatus::Fail(format!(
+        "destructive subcommand(s) whose --help lists no confirmation flag: {}. \
+         Accepted flags: {}. Irreversible operations must require explicit \
+         confirmation so they can't be invoked accidentally.",
+        missing.join(", "),
+        accepted_flags(declared_flags),
+    ))
+    .into()
 }
 
-fn has_force_or_yes(help: &HelpOutput) -> bool {
-    help.flags()
+/// Split `detected` into the subcommands that stay destructive and, cited
+/// with the file that declared it, each one `not_destructive` removes.
+pub(crate) fn without_declared(
+    detected: &[&String],
+    not_destructive: &[Sourced<String>],
+) -> (Vec<String>, Vec<String>) {
+    let mut destructive = Vec::new();
+    let mut excluded = Vec::new();
+    for name in detected {
+        let lower = name.to_lowercase();
+        match not_destructive.iter().find(|entry| entry.value == lower) {
+            Some(entry) => excluded.push(format!("{name} via {}", entry.cite(NOT_DESTRUCTIVE_KEY))),
+            None => destructive.push((*name).clone()),
+        }
+    }
+    (destructive, excluded)
+}
+
+/// Name the subcommands a declaration removed: in a Pass's evidence beside
+/// any other setting it needed, or at the end of any other status.
+fn with_exclusions(verdict: Verdict, excluded: &[String]) -> Verdict {
+    if excluded.is_empty() {
+        return verdict;
+    }
+    let declared = format!("declared not destructive: {}", excluded.join(", "));
+    let note = format!("Subcommands {declared}.");
+    verdict.crediting(declared, &note)
+}
+
+/// The built-in names, then each declared flag with the file it came from.
+fn accepted_flags(declared_flags: &[Sourced<String>]) -> String {
+    CONFIRM_FLAGS
         .iter()
-        .any(|f| REQUIRED_FLAGS.iter().any(|name| f.matches(name)))
+        .map(|flag| (*flag).to_string())
+        .chain(
+            declared_flags
+                .iter()
+                .map(|flag| format!("{} via {}", flag.value, flag.cite(CONFIRM_FLAGS_KEY))),
+        )
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
@@ -118,6 +202,178 @@ mod tests {
 
     fn hp(raw: &str) -> HelpOutput {
         HelpOutput::from_raw(raw)
+    }
+
+    fn declared(flag: &str, file: &str) -> Sourced<String> {
+        Sourced {
+            value: flag.to_string(),
+            file: file.to_string(),
+        }
+    }
+
+    const GO_STYLE_DESTROY_HELP: &str = "Usage: tool destroy [options]\n\nOptions:\n\n  -auto-approve          Skip interactive approval.\n\n  -lock=false            Don't hold a lock.\n";
+
+    #[test]
+    fn a_declared_flag_confirms_where_the_builtins_do_not() {
+        let subhelp = vec![("destroy".to_string(), hp(GO_STYLE_DESTROY_HELP))];
+        let destructive = ["destroy".to_string()];
+
+        assert!(matches!(
+            audit_force_yes(&destructive, &subhelp, &[]).status,
+            AuditStatus::Fail(_)
+        ));
+
+        let verdict = audit_force_yes(
+            &destructive,
+            &subhelp,
+            &[declared("-auto-approve", ".anc.toml")],
+        );
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(
+            verdict.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts -auto-approve via .anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_builtin_flag_takes_priority_over_a_declared_one() {
+        let subhelp = vec![
+            (
+                "delete".to_string(),
+                hp("Options:\n  -auto-approve  Skip approval.\n  --force        Skip approval.\n"),
+            ),
+            ("destroy".to_string(), hp(GO_STYLE_DESTROY_HELP)),
+        ];
+        let destructive = ["delete".to_string(), "destroy".to_string()];
+
+        let verdict = audit_force_yes(
+            &destructive,
+            &subhelp,
+            &[declared("-auto-approve", "~/.anc.toml")],
+        );
+
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(
+            verdict.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts -auto-approve via ~/.anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_declared_flag_missing_from_the_subcommand_help_still_fails_and_is_named() {
+        let subhelp = vec![(
+            "destroy".to_string(),
+            hp("Usage: tool destroy [options]\n\n  Destroy everything.\n"),
+        )];
+
+        match audit_force_yes(
+            &["destroy".to_string()],
+            &subhelp,
+            &[declared("-auto-approve", ".anc.toml")],
+        )
+        .status
+        {
+            AuditStatus::Fail(msg) => assert!(
+                msg.contains("--confirm, -auto-approve via .anc.toml [p5].confirm_flags."),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declared_not_destructive_subcommand_leaves_the_destructive_set() {
+        let detected = ["clean".to_string(), "Purge".to_string()];
+        let detected: Vec<&String> = detected.iter().collect();
+
+        let (destructive, excluded) =
+            without_declared(&detected, &[declared("clean", ".anc.toml")]);
+
+        assert_eq!(destructive, ["Purge"]);
+        assert_eq!(excluded, ["clean via .anc.toml [p5].not_destructive"]);
+    }
+
+    /// A tool with `clean` (no confirmation flag) and `delete --force`.
+    const CLEAN_AND_DELETE_CLI: &str = r#"case "$*" in
+  "clean --help") printf 'Usage: tool clean\n\nOptions:\n  -h, --help  Show help.\n' ;;
+  "delete --help") printf 'Usage: tool delete <ID>\n\nOptions:\n      --force  Skip the prompt.\n' ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean   Remove cached logs\n  delete  Delete an item\n' ;;
+esac"#;
+
+    fn run_with_not_destructive(script: &str, names: &[&str]) -> AuditResult {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(script);
+        let mut cfg = crate::anc_toml::AncConfig::default();
+        cfg.p5.not_destructive = names
+            .iter()
+            .map(|name| declared(name, ".anc.toml"))
+            .collect();
+        project.anc_config.load = crate::anc_toml::AncConfigLoad::Loaded(cfg);
+        ForceYesAudit.run(&project).expect("audit runs")
+    }
+
+    #[test]
+    fn declaring_the_unconfirmed_subcommand_not_destructive_passes_and_says_so() {
+        let without = run_with_not_destructive(CLEAN_AND_DELETE_CLI, &[]);
+        assert!(
+            matches!(without.status, AuditStatus::Fail(_)),
+            "{:?}",
+            without.status
+        );
+
+        let with = run_with_not_destructive(CLEAN_AND_DELETE_CLI, &["clean"]);
+
+        assert_eq!(with.status, AuditStatus::Pass);
+        assert_eq!(
+            with.mitigation,
+            Some(Mitigation::Config(
+                "declared not destructive: clean via .anc.toml [p5].not_destructive".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn declaring_every_destructive_subcommand_not_destructive_skips_and_names_them() {
+        let script = r#"case "$*" in
+  "clean --help") printf 'Usage: tool clean\n' ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean   Remove cached logs\n  list    List items\n' ;;
+esac"#;
+
+        match run_with_not_destructive(script, &["clean"]).status {
+            AuditStatus::Skip(msg) => assert_eq!(
+                msg,
+                "no destructive subcommands remain; MUST applies conditionally to CLIs with \
+                 destructive operations. Subcommands declared not destructive: clean via \
+                 .anc.toml [p5].not_destructive."
+            ),
+            other => panic!("expected Skip, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_void_config_says_no_setting_applied() {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(
+            r#"case "$*" in
+  "delete --help") printf 'Usage: tool delete <ID>\n\nOptions:\n  -h, --help  Show help.\n' ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  delete  Delete an item\n' ;;
+esac"#,
+        );
+        project.anc_config.load = crate::anc_toml::AncConfigLoad::Invalid(
+            "could not parse .anc.toml at .anc.toml: bad".into(),
+        );
+
+        match ForceYesAudit.run(&project).expect("audit runs").status {
+            AuditStatus::Fail(msg) => assert!(
+                msg.ends_with(
+                    "No .anc.toml setting applied: could not parse .anc.toml at .anc.toml: bad."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
     }
 
     #[test]
@@ -129,7 +385,7 @@ mod tests {
             ),
         )];
         assert_eq!(
-            audit_force_yes(&["delete".to_string()], &subhelp),
+            audit_force_yes(&["delete".to_string()], &subhelp, &[]).status,
             AuditStatus::Pass
         );
     }
@@ -143,9 +399,41 @@ mod tests {
             ),
         )];
         assert_eq!(
-            audit_force_yes(&["purge".to_string()], &subhelp),
+            audit_force_yes(&["purge".to_string()], &subhelp, &[]).status,
             AuditStatus::Pass
         );
+    }
+
+    #[test]
+    fn pass_on_widely_used_confirmation_flags() {
+        for flag in ["--auto-approve", "--assume-yes", "--confirm"] {
+            let subhelp = vec![(
+                "destroy".to_string(),
+                hp(&format!(
+                    "Usage: tool destroy\n\nOptions:\n      {flag}    Skip the prompt.\n  -h, --help    Show help.\n"
+                )),
+            )];
+            assert_eq!(
+                audit_force_yes(&["destroy".to_string()], &subhelp, &[]).status,
+                AuditStatus::Pass,
+                "{flag} confirms a destructive subcommand"
+            );
+        }
+    }
+
+    #[test]
+    fn fail_names_the_accepted_flags() {
+        let subhelp = vec![(
+            "delete".to_string(),
+            hp("Usage: tool delete <ID>\n\nOptions:\n  -h, --help    Show help.\n"),
+        )];
+        match audit_force_yes(&["delete".to_string()], &subhelp, &[]).status {
+            AuditStatus::Fail(msg) => assert!(
+                msg.contains("Accepted flags: --force, --yes, -y, -f, --auto-approve, --assume-yes, --confirm."),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
     }
 
     #[test]
@@ -154,7 +442,7 @@ mod tests {
             "delete".to_string(),
             hp("Usage: tool delete <ID>\n\nOptions:\n  -h, --help    Show help.\n"),
         )];
-        match audit_force_yes(&["delete".to_string()], &subhelp) {
+        match audit_force_yes(&["delete".to_string()], &subhelp, &[]).status {
             AuditStatus::Fail(msg) => {
                 assert!(msg.contains("delete"));
                 assert!(msg.contains("--force"));
@@ -169,7 +457,7 @@ mod tests {
         // (timeout, crash, refused --help). Treat as Fail; the operator must
         // surface a confirmation flag in the documented help text.
         let subhelp: Vec<(String, HelpOutput)> = Vec::new();
-        match audit_force_yes(&["delete".to_string()], &subhelp) {
+        match audit_force_yes(&["delete".to_string()], &subhelp, &[]).status {
             AuditStatus::Fail(msg) => assert!(msg.contains("delete")),
             other => panic!("expected Fail, got {other:?}"),
         }
@@ -188,6 +476,9 @@ mod tests {
             ),
         ];
         let destructive = vec!["delete".to_string(), "purge".to_string()];
-        assert_eq!(audit_force_yes(&destructive, &subhelp), AuditStatus::Pass);
+        assert_eq!(
+            audit_force_yes(&destructive, &subhelp, &[]).status,
+            AuditStatus::Pass
+        );
     }
 }

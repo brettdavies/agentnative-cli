@@ -24,7 +24,7 @@ use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{
     AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, ConfigFile, ConfigHint,
-    MitigationInfo,
+    Mitigation, MitigationInfo,
 };
 
 /// Cap on the number of domain-verb matches listed in the Pass evidence
@@ -205,7 +205,7 @@ impl Audit for StandardNamesAudit {
             layer: self.layer(),
             status: result.status,
             confidence: Confidence::Low,
-            mitigation: result.mitigation,
+            mitigation: result.mitigation.map(Mitigation::DomainVerbs),
             config_hint: result.config_hint,
             pass_evidence: None,
         })

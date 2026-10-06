@@ -89,7 +89,7 @@
         },
         "evidence": {
           "type": ["string", "null"],
-          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path, the antecedent propagation reason. `null` for clean Pass."
+          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path, the antecedent propagation reason. On a Pass: what the audit matched, for an audit that names it (`list (--max)`), then, when a `.anc.toml` setting decided the Pass, the setting, what it contributed, and the file that supplied it, e.g. `destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`, the two joined by a semicolon. `null` for a Pass that carries neither."
         },
         "confidence": {
           "type": "string",
@@ -107,7 +107,7 @@
         },
         "using_domain_verbs": {
           "type": "boolean",
-          "description": "Schema 0.8+. `true` when the verdict depended on a per-CLI opt-in: today, `p6-standard-names` passing because `.anc.toml [p6] domain_verbs` recognized at least one subcommand. Absent from every row that consulted no opt-in."
+          "description": "Schema 0.8+. `true` when `p6-standard-names` passed because `.anc.toml [p6] domain_verbs` recognized at least one subcommand. Absent from every other row; a Pass another `.anc.toml` setting decided names that setting in `evidence`."
         },
         "domain_match_count": {
           "type": "integer",

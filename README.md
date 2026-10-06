@@ -98,13 +98,73 @@ anc . -q
 
 ## Configuration (`.anc.toml`)
 
-`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI. It carries one setting today,
-`[p6] domain_verbs`, which adds verbs to the standard list that `p6-may-standard-names` checks subcommand names against:
+`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI:
 
 ```toml
+[p2]
+json_probe = ["version", "--client", "-o", "json"]
+schema_command = ["explain"]
+
+[p5]
+confirm_flags = ["-auto-approve"]
+not_destructive = ["clean"]
+
 [p6]
 domain_verbs = ["post", "like", "repost", "timeline"]
 ```
+
+| Setting                | Audit                   | What it declares                                                           |
+| ---------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `[p2] json_probe`      | `p2-must-output-flag`   | A read-only call that prints JSON, for anc to run and check                |
+| `[p2] schema_command`  | `p2-must-schema-print`  | The subcommand that prints the output schema, when it is not `schema`      |
+| `[p5] confirm_flags`   | `p5-must-force-yes`     | Flags that confirm a destructive subcommand, beside the built-in names     |
+| `[p5] not_destructive` | `p5-must-force-yes`     | Subcommands whose names read as destructive but are not                    |
+| `[p6] domain_verbs`    | `p6-may-standard-names` | Verbs added to the standard list that subcommand names are checked against |
+
+### The settings
+
+`json_probe`: when a tool's help shows an `--output` or `--format` flag, `p2-must-output-flag` checks it by passing
+`json` to the flag beside `--help` and `--version`, the only calls `anc` makes unprompted. Most tools answer those in
+text, and then the row is `skip`: `anc` could not check, so the row is not scored. A declared probe is the call `anc`
+runs instead, exactly as written: no shell, with the timeout, closed stdin, and `NO_COLOR=1` of every other probe. The
+row passes when the call exits 0 and its stdout parses as JSON, and fails otherwise, with evidence naming the call and
+the file: `` `kubectl version --client -o json` printed JSON; probe declared via .anc.toml [p2].json_probe ``.
+Declare a call that only reads and exits on its own; `kubectl version -o json` contacts a cluster and exits 1 without
+one, while `version --client` stays local. A probe that prints JSON also shows `p2-must-schema-print` that the tool
+emits structured output when its help does not say so. The probe never stands in for the flag: with no `--output` or
+`--format` in the help, the row stays `opt_out`. The nearest file that declares `json_probe` supplies it, and an empty
+list declares nothing.
+
+`schema_command`: `p2-must-schema-print` looks for a `schema` subcommand or a `--schema` flag, at the top level and one
+level down. A tool whose schema surface has another name, such as kubectl's `explain`, declares the subcommand path, one
+token per level (`["emit", "schema"]` for `<bin> emit schema`). The declared path counts when each token is listed in
+its parent's `--help`; `anc` reads a parent's help with `--help` and never runs the command itself. The row then
+passes, and its evidence names the command and the file: `` `kubectl explain` is the schema command declared via
+.anc.toml [p2].schema_command ``. A declared path the help does not list leaves the row failing, and the evidence says
+so. A built-in `schema` surface takes priority. Entries are lowercase. The nearest file that declares `schema_command`
+supplies it, and an empty list declares nothing.
+
+`confirm_flags`: `p5-must-force-yes` requires each destructive subcommand's own `--help` to list a confirmation flag.
+The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assume-yes`, and `--confirm`. A declared
+flag counts beside them, and only where the subcommand's `--help` lists it, so a declaration names the flag and cannot
+stand in for one. A single-dash name such as terraform's `-auto-approve` matches as a whole word. A pass that needed a
+declared flag says so in the row's evidence, naming the subcommand, the flag, and the file: `destroy accepts
+-auto-approve via .anc.toml [p5].confirm_flags`.
+
+`not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`,
+`clean`, and names built on them). A tool whose `clean` clears regenerable caches, for one, declares it here, and the
+audit leaves it out of the destructive set. Entries are lowercase; they are compared with the lowercased subcommand
+name. The row's evidence names each subcommand left out and the file that declared it: `declared not destructive: clean
+via .anc.toml [p5].not_destructive`. When every destructive subcommand is declared, the row is `skip`, as for a tool
+with none. A declared subcommand still counts as a write for `p5-must-read-write-distinction`, because clearing a
+cache changes state.
+
+`domain_verbs`: `p6-may-standard-names` passes when most subcommand names are standard verbs. A declared verb counts
+beside the built-in list. Entries are lowercase; they are compared with the lowercased subcommand name. A pass that
+needed a declared verb carries `using_domain_verbs` and `domain_match_count` on the row.
+
+A key `anc` does not know is ignored. A known key with a value of the wrong type, such as `confirm_flags =
+"-auto-approve"`, is a parse error.
 
 ### Where `anc` looks
 
@@ -123,9 +183,11 @@ A binary counts the same whether you pass its path or `--command` resolves it on
 a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding a
 `.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
 
-The files merge: each one's `domain_verbs` adds to the ones above it, and a verb listed twice keeps its first position.
-If any file in the chain cannot be read or parsed, no config applies, and the `p6-may-standard-names` warning names the
-failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`.
+The files merge. A list setting gathers every file's entries, each file's after the ones above it, and an entry listed
+twice keeps its first position; evidence credits it to the nearer file, so a flag both your `~/.anc.toml` and the tool's
+repository declare reads as the repository's. If any file in the chain cannot be read or parsed, no config applies: the
+`p6-may-standard-names` warning names the failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`, and
+a row another setting could have shaped ends its evidence with `No .anc.toml setting applied:` and the same message.
 
 ### `~/.anc.toml`
 
@@ -133,7 +195,8 @@ The file in your home directory applies under every audit, inside repositories t
 vocabulary there. Two machines with different home files can score the same tool differently; CI runners have none.
 `AGENTNATIVE_HOME_CONFIG` relocates the file. Evidence and the hint then name it `$AGENTNATIVE_HOME_CONFIG`, never the
 path it holds, and when it names a file that does not exist, `anc` prints a `warning:` line on stderr and applies no
-user-level file.
+user-level file. A `json_probe` or `schema_command` here applies to every tool you audit, so point
+`AGENTNATIVE_HOME_CONFIG` at a one-off file to declare either for a single run.
 
 ### A repository you fetched: `--repo`
 
@@ -565,6 +628,10 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
   shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
 
+- `evidence` on a `pass` row: what the audit matched, for an audit that names it (`p7-limit` names each list command
+  and its limit flag), then, when an `.anc.toml` setting decided the pass, the setting, what it contributed, and the
+  file that supplied it, such as `destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`. The two parts are
+  joined by a semicolon. `null` when the pass carries neither. See [Configuration](#configuration-anctoml).
 - `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `files`
   lists where the setting can go, each as `{file, scope}`: `file` is `.anc.toml`, `~/.anc.toml`, or
   `$AGENTNATIVE_HOME_CONFIG` (never an absolute path), and `scope` is `repository` (the root of the repository this

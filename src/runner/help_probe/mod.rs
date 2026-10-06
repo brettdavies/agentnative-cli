@@ -216,6 +216,21 @@ impl HelpOutput {
         self.flags.get_or_init(|| parse_flags(&self.raw))
     }
 
+    /// Whether the help lists `name` as a flag. A `--long` or `-s` name
+    /// matches a parsed flag. A single-dash name longer than one letter, the
+    /// Go `flag` package's `-auto-approve`, matches a flag line that names
+    /// it, because the flag parser reads such a line as the short flag `-a`.
+    pub fn advertises_flag(&self, name: &str) -> bool {
+        let single_dash_word = name.len() > 2 && name.starts_with('-') && !name.starts_with("--");
+        if single_dash_word {
+            return self
+                .raw
+                .lines()
+                .any(|line| flag_line_names(line).any(|n| n == name));
+        }
+        self.flags().iter().any(|flag| flag.matches(name))
+    }
+
     /// `[env: FOO]` hints parsed out of the help surface. Lazy + cached.
     pub fn env_hints(&self) -> &[EnvHint] {
         self.env_hints.get_or_init(|| parse_env_hints(&self.raw))
@@ -310,6 +325,25 @@ fn parse_flags(raw: &str) -> Vec<Flag> {
         }
     }
     flags
+}
+
+/// The flag names a flag line declares, as written (`-auto-approve` from
+/// `-auto-approve  Skip approval`, `-lock` from `-lock=false`). Empty for a
+/// line that is not a flag line.
+fn flag_line_names(line: &str) -> impl Iterator<Item = &str> {
+    let trimmed = line.trim_start();
+    let is_flag_line = line.starts_with(char::is_whitespace)
+        && trimmed.starts_with('-')
+        && !trimmed.starts_with("---");
+    let header = if is_flag_line {
+        before_description_gap(trimmed)
+    } else {
+        ""
+    };
+    header
+        .split(',')
+        .filter_map(|piece| piece.split_whitespace().next())
+        .map(|token| token.split(['=', '[']).next().unwrap_or(token))
 }
 
 /// The text before clap's two-space description gap: the flag header of a
@@ -662,6 +696,17 @@ Options:
             .find(|f| f.long.as_deref() == Some("--regexp"))
             .expect("regexp flag parsed");
         assert_eq!(regexp.short.as_deref(), Some("-e"));
+    }
+
+    #[test]
+    fn advertises_a_single_dash_long_flag_by_its_whole_name() {
+        let help = HelpOutput::from_raw(
+            "Usage: terraform [global options] apply [options]\n\nOptions:\n\n  -auto-approve          Skip interactive approval of plan before applying.\n\n  -lock=false            Don't hold a state lock during the operation.\n",
+        );
+        assert!(help.advertises_flag("-auto-approve"));
+        assert!(help.advertises_flag("-lock"));
+        assert!(!help.advertises_flag("-auto"));
+        assert!(!help.advertises_flag("-approve"));
     }
 
     #[test]

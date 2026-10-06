@@ -222,22 +222,26 @@ Existing field semantics:
   appends a post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so
   the JSON `embed_markdown` and the printed hint can never disagree.
 
-`0.8` addition (`MitigationInfo` carrier on `AuditResult`):
+`0.8` addition (`Mitigation` carrier on `AuditResult`):
 
-- `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples, builtin_match_count, subcommand_total
-  }` is attached to an `AuditResult` when the audit's verdict was assisted by a documented per-CLI opt-in. Today's only
-  producer is `src/audits/behavioral/standard_names.rs`: when `p6-standard-names` Passes because one or more subcommands
-  were recognized via `.anc.toml [p6] domain_verbs` (rather than the built-in `STANDARD_VERBS` list), the audit fills
-  `MitigationInfo` with the bifurcated match counts and the first `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb
-  names in encounter order.
-- `AuditResultView` surfaces two top-level fields derived from the carrier: `using_domain_verbs: Option<bool>` and
-  `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from rows
-  that did not consult `domain_verbs`. The Pass row's `evidence` field is populated (rather than `null`) via
-  `format_pass_evidence(&mitigation)`; rows without mitigation keep the historical `evidence: null` on Pass.
-- The carrier shape is deliberately not audit-specific. Future audits that admit per-CLI mitigation (suppression profile
-  assistance, conditional-applicability config) can populate `MitigationInfo` with the same fields rather than growing
-  parallel typed carriers. The semantic contract is "this verdict depended on a self-declared opt-in; here is what
-  assisted."
+- `AuditResult.mitigation: Option<Mitigation>` is set when a Pass depended on a `.anc.toml` setting. The semantic
+  contract is "this verdict depended on a self-declared opt-in; here is what assisted." `Mitigation` has two variants:
+  - `DomainVerbs(MitigationInfo)`: `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples,
+    builtin_match_count, subcommand_total }`, filled by `src/audits/behavioral/standard_names.rs` when
+    `p6-standard-names` Passes because one or more subcommands were recognized via `.anc.toml [p6] domain_verbs`
+    (rather than the built-in `STANDARD_VERBS` list), with the bifurcated match counts and the first
+    `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb names in encounter order.
+  - `Config(String)`: every other setting. The prose names the setting, what it contributed, and the file that
+    supplied it, cited through `anc_toml::Sourced::cite` (`destroy accepts -auto-approve via .anc.toml
+    [p5].confirm_flags`). An audit that credits a setting returns a `types::Verdict { status, mitigation }` from its
+    core helper.
+- `AuditResultView` surfaces two top-level fields from the `DomainVerbs` variant: `using_domain_verbs: Option<bool>`
+  and `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from
+  every other row. `scorecard::pass_row_evidence` composes a Pass row's `evidence`: `AuditResult.pass_evidence` (what
+  the audit observed, such as the subcommands and flags `p7-limit` matched) first, then the mitigation prose
+  (`format_pass_evidence` for `DomainVerbs`, the prose itself for `Config`), joined by a semicolon. A Pass with
+  neither keeps `evidence: null`. A setting that shapes a non-Pass verdict says so in that status's own evidence
+  string.
 
 `0.9` addition (`ConfigHint` carrier on `AuditResult`):
 
@@ -324,7 +328,10 @@ agentnative. Three rules guard the probe:
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
    instant help output instead of running `audit .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
-   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
+   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands. The one call outside those
+   suffixes is a `.anc.toml [p2] json_probe`: `run_declared_probe` runs the declared arguments exactly as written,
+   through the same `BinaryRunner` (no shell, timeout, closed stdin), because the tool's repository or the operator
+   chose them. An empty declaration declares nothing, so the bare invocation never runs.
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
    `release/<bin>` and `debug/<bin>` exist in a target directory, the function returns the one with the more recent
    mtime. The target directory is cargo's (`src/project/cargo_target.rs`): `CARGO_TARGET_DIR`, else what `cargo
@@ -336,7 +343,7 @@ agentnative. Three rules guard the probe:
 
 **Rules for new behavioral audits:**
 
-- NEVER probe subcommands without `--help`/`--version` suffixes
+- NEVER probe subcommands without `--help`/`--version` suffixes, except through a declared `[p2] json_probe`
 - NEVER remove `arg_required_else_help` from `Cli`; it prevents recursive self-invocation
 - NEVER revert binary discovery to the always-prefer-release shape (rule 3); that pattern silently masked
   `p2-must-schema-print` regressions during the v0.4.0 spec sync

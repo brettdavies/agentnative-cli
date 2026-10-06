@@ -20,14 +20,14 @@ Input model: targets are passed as positional path arguments or via `--command <
 #[command(after_help = "Examples:
   anc audit .                          # human scorecard for the current project
   anc audit . --output json            # JSON envelope for agents (--json works too)
-  anc audit --command ripgrep          # audit a PATH-resolved binary by name
+  anc audit --command rg               # audit a PATH-resolved binary by name
   anc emit coverage-matrix             # emit the spec coverage matrix
   anc emit schema                      # print the scorecard JSON Schema
   anc skill install claude_code          # install the bundle into Claude Code
 
 When the first argument is not a subcommand, `audit` is inserted automatically:
   anc .                  ≡  anc audit .
-  anc --command ripgrep  ≡  anc audit --command ripgrep
+  anc --command rg       ≡  anc audit --command rg
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
 that prevents recursive self-invocation when agentnative audits itself.")]
@@ -133,7 +133,7 @@ pub enum Commands {
   anc audit .                                  # default: project at cwd
   anc audit . --output json                    # JSON envelope for agents
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
-  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit --command rg                       # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
   anc audit --command xr --repo ./xr-src       # .anc.toml from a repo you fetched
   anc audit . --bin xr                         # one of several built binaries

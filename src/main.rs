@@ -433,7 +433,7 @@ Examples:
   anc audit .                                  # default: project at cwd
   anc audit . --output json                    # JSON envelope (agent-friendly)
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
-  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit --command rg                       # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
   anc emit coverage-matrix                     # emit the spec coverage matrix
   anc emit schema                              # print the scorecard JSON Schema

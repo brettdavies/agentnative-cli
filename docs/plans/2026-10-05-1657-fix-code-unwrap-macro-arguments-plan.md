@@ -972,25 +972,38 @@ None. D1, D2 and D3 are answered and recorded; the folded corrections required n
 ## Live DX audit
 
 Ran `/devex-review` against the shipped product rather than this plan, on 2026-10-05 at commit `3e4f665`, driving
-gstack's headless browser (Aside is macOS-only and this host is Linux) plus the brew-installed `anc 0.6.0`. Three
-defects found, all outside this plan's scope and recorded here so they are not rediscovered.
+gstack's headless browser (Aside is macOS-only and this host is Linux) plus the brew-installed `anc 0.6.0`. Two defects
+and one false alarm, all outside this plan's scope and recorded here so they are not rediscovered.
 
 1. [P1] The embed snippet the CLI prints is broken for any tool whose command name differs from its package name. `anc
    audit --command rg` scores 82% and prints
    `[![agent-native](https://anc.dev/badge/rg.svg)](https://anc.dev/score/rg)`. Measured: `/score/rg` returns 200 and
    redirects to `/score/ripgrep`, while `/badge/rg.svg` returns 404 and `/badge/ripgrep.svg` returns 200. The site
    aliases the score route and not the badge route, so a developer who follows the tool's own instruction gets a working
-   link wrapped around a broken image. Fix on either side: alias the badge route, or emit the canonical slug.
+   link wrapped around a broken image. Measured further with a manual-redirect fetch: `/score/rg` answers
+   `opaqueredirect`, so the score route is a redirect rather than an alias, while `/badge/rg.svg` is a plain 404.
+   Resolution: extend the redirect the score route already uses to the badge route, with a 301 or 308 so proxies cache
+   the mapping, driven by the same explicit slug table and never a fuzzy fallback, so an unknown slug keeps 404ing
+   instead of serving another tool's badge. GitHub's camo proxy follows redirects, so a README badge renders. No CLI
+   change: `tool.name` stays the invoked name. Deriving a canonical name from the `--version` banner was measured and
+   rejected, since the first token gives `ripgrep` for `rg` but `jq-1.8.2`, `v26.10.0` and `Python` for `jq`, `node` and
+   `python3`.
 2. [P2] The example the CLI itself advertises fails. `anc --examples` and bare `anc` both print `anc audit --command
    ripgrep`, which exits 2 with `command 'ripgrep' not found on PATH` on a machine where ripgrep is installed, because
-   the binary is `rg`. It is the first third-party example a new user copies.
-3. [P2] One requirement id carries several contradictory rows. `anc audit . --output json` emits 70 rows for 61 distinct
-   requirement ids on this repository; `p1-must-no-interactive` appears three times with statuses `pass`, `skip`, `pass`
-   under three different `audit_id`s, and `p8-should-bundle-exists` appears twice under the `P6` and `P8` headings with
-   `warn` and `opt_out`. An agent keying by requirement id gets a different answer depending on which row it reads, and
-   the run reports two counts of itself: `summary.total` 70 against `coverage_summary` 60. `CLAUDE.md:166` documents the
-   opposite as the contract from schema 0.6 onward, "one result per requirement row instead of per-`audit_id`", and the
-   emitted `schema_version` is 0.9. Either the output or that line is wrong.
+   the binary is `rg`. It is the first third-party example a new user copies. Fixed in PR #146, which also adds
+   `gate_examples_resolve` to the release smoke gate: every `--command` target the help advertises must resolve on PATH.
+   Observed failing against the released `anc 0.6.0` binary before the fix.
+3. Retracted, not a defect. This was reported as "one requirement id carries several contradictory rows", on the
+   observation that `anc audit . --output json` emits 70 rows for 61 distinct requirement ids, with
+   `p1-must-no-interactive` appearing three times as `pass`, `skip`, `pass` under three different `audit_id`s. The
+   schema documents exactly that shape: `schema/scorecard.schema.json:30` reads "One entry per requirement row covered
+   by an audit that ran in this invocation; a single probe whose `Audit::covers()` lists multiple rows produces multiple
+   entries (each entry's `audit_id` carries the probe's id for provenance)." `audit_id` is the discriminator, and
+   `coverage_summary` counting 60 distinct requirements against `summary.total` 70 rows is the same design, since
+   `src/scorecard/mod.rs:946` reduces audit ids to a set of covered requirement ids. The claim rested on reading
+   `CLAUDE.md:166`'s compressed phrase "one result per requirement row instead of per-`audit_id`" as a uniqueness
+   guarantee, which describes the `id` field's meaning rather than row cardinality. The schema should have been checked
+   before the finding was raised.
 
 Not defects, verified while looking: both `next_step.docs` anchors in the error envelopes resolve (`README.md:377` and
 `:208`); the `binary-ambiguous` error prints one annotated copy-paste command per candidate bin; `anc.dev` is live at

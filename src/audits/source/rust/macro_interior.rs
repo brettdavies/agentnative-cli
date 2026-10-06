@@ -69,9 +69,15 @@ struct Recovered {
 /// Returned locations are in file coordinates with `file` attached, at most one
 /// per position, and carry the same snippet shape the plain matcher reports.
 /// An interior the audit cannot speak for yields nothing.
+///
+/// The walker's gate stops at the token tree, so `include_cfg_test` crosses the
+/// boundary too: an interior that gates its own contents on `cfg(test)` is test
+/// code, and reporting it by default would be the noise this audit exists to
+/// avoid.
 pub(super) fn unwrap_calls_in_interior(
     token_tree: &Node<'_, StrDoc<Rust>>,
     file: &str,
+    include_cfg_test: bool,
 ) -> Vec<SourceLocation> {
     let text = token_tree.text();
     let Some(interior) = strip_delimiters(text.as_ref()) else {
@@ -84,6 +90,10 @@ pub(super) fn unwrap_calls_in_interior(
     // many macros the audited project contains, and it runs before the ancestor
     // walk below so that walk is paid for only by an interior that could match.
     if !interior.contains(".unwrap()") {
+        return Vec::new();
+    }
+
+    if !include_cfg_test && owning_macro_declares_cfg_test(token_tree, interior) {
         return Vec::new();
     }
 
@@ -223,6 +233,47 @@ fn follows_macro_rules_header(tree: &Node<'_, StrDoc<Rust>>) -> bool {
     )
 }
 
+/// Whether the macro that owns this token tree gates any of its contents on
+/// `cfg(test)`.
+///
+/// Read at the whole invocation rather than at this token tree, because a
+/// nested tree does not carry the attribute: in `cfg_if! { if #[cfg(test)] { ..
+/// } }` the gated call sits in an inner tree whose own text holds no `cfg`.
+fn owning_macro_declares_cfg_test(node: &Node<'_, StrDoc<Rust>>, interior: &str) -> bool {
+    match node.ancestors().find(|a| a.kind() == "macro_invocation") {
+        Some(invocation) => declares_cfg_test(invocation.text().as_ref()),
+        None => declares_cfg_test(interior),
+    }
+}
+
+/// Whether the text gates contents on `cfg(test)`.
+///
+/// Read from the text rather than the recovered tree, because the two shapes
+/// that matter recover differently: a `thread_local!` interior's
+/// `#[cfg(test)] static ..` yields an `attribute_item`, while a `cfg_if!`
+/// interior's `if #[cfg(test)] { .. }` yields an ERROR plus an array
+/// expression with no attribute node to find. The predicate text is what both
+/// shapes share. The polarity helper is the walker's own, so `cfg(not(test))`
+/// is production here exactly as it is there.
+///
+/// Whole-interior rather than per-candidate: the gate cannot be attributed to
+/// one branch of a `cfg_if!`, so an interior that mixes a gated and an
+/// ungated branch loses the ungated call. That direction under-reports instead
+/// of reporting test code as production, which is the trade this audit wants.
+fn declares_cfg_test(interior: &str) -> bool {
+    interior
+        .split("cfg")
+        .skip(1)
+        .filter_map(|after| {
+            let args = after.trim_start();
+            args.starts_with('(').then_some(args)
+        })
+        .any(|args| {
+            super::unwrap::balanced_parens(args)
+                .is_some_and(|inner| super::unwrap::cfg_args_contain_test(inner, false))
+        })
+}
+
 /// Whether the macro that owns this token tree leaves its arguments as tokens.
 ///
 /// The nearest enclosing `macro_invocation` is the owner: a macro nested inside
@@ -290,7 +341,7 @@ mod tests {
         root.root()
             .dfs()
             .filter(|node| node.kind() == "token_tree")
-            .flat_map(|node| unwrap_calls_in_interior(&node, "t.rs"))
+            .flat_map(|node| unwrap_calls_in_interior(&node, "t.rs", false))
             .collect()
     }
 

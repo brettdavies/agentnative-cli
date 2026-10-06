@@ -14,6 +14,7 @@ use ast_grep_core::Node;
 use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
 use ast_grep_language::Rust;
 
+use super::macro_interior;
 use crate::audit::Audit;
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
@@ -104,9 +105,9 @@ fn walk<'a>(
     include_cfg_test: bool,
     out: &mut Vec<SourceLocation>,
 ) {
-    if (!inside_cfg_test || include_cfg_test)
-        && let Some(snippet) = unwrap_call_snippet(&node)
-    {
+    let reportable = !inside_cfg_test || include_cfg_test;
+
+    if reportable && let Some(snippet) = unwrap_call_snippet(&node) {
         let pos = node.start_pos();
         out.push(SourceLocation {
             file: file.to_string(),
@@ -114,6 +115,22 @@ fn walk<'a>(
             column: pos.column(&node) + 1,
             text: snippet,
         });
+    }
+
+    // Macro arguments reach here as a flat `token_tree`, so the plain matcher
+    // above never sees the call inside one. Nested token trees mean the same
+    // call is recoverable from an outer and an inner interior; a plain call is
+    // never inside a token tree, so deduplicating by position only ever folds
+    // those overlapping recoveries.
+    if reportable && node.kind() == "token_tree" {
+        for location in macro_interior::unwrap_calls_in_interior(&node, file) {
+            if !out
+                .iter()
+                .any(|seen| seen.line == location.line && seen.column == location.column)
+            {
+                out.push(location);
+            }
+        }
     }
 
     // tree-sitter-rust models `#[cfg(test)]` as an `attribute_item` *sibling*
@@ -155,8 +172,10 @@ fn walk<'a>(
 
 /// Match a `call_expression` whose receiver chain ends in `.unwrap()`.
 ///
-/// Returns the matched snippet (the call text) for evidence reporting.
-fn unwrap_call_snippet<'a>(node: &Node<'a, StrDoc<Rust>>) -> Option<String> {
+/// Returns the matched snippet (the call text) for evidence reporting. Shared
+/// with [`super::macro_interior`] so a call recovered from a macro interior is
+/// held to the same test as one the walker matches directly.
+pub(super) fn unwrap_call_snippet<'a>(node: &Node<'a, StrDoc<Rust>>) -> Option<String> {
     if node.kind() != "call_expression" {
         return None;
     }
@@ -796,6 +815,139 @@ fn helper() {
         } else {
             panic!("expected Fail with --include-tests, got {included:?}");
         }
+    }
+
+    /// Single evidence line for a source expected to produce exactly one finding.
+    fn sole_evidence(source: &str, file: &str, include_cfg_test: bool) -> String {
+        match audit_unwrap_with(source, file, include_cfg_test) {
+            AuditStatus::Fail(evidence) => {
+                assert_eq!(
+                    evidence.lines().count(),
+                    1,
+                    "expected exactly one finding, got:\n{evidence}"
+                );
+                evidence
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reports_unwrap_in_macro_argument() {
+        let source = r#"
+fn render(f: &mut Formatter, v: Option<u8>) -> fmt::Result {
+    write!(f, "{}", v.unwrap())?;
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/render.rs", false),
+            "src/render.rs:3:21 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn reports_unwrap_in_item_position_macro_interior() {
+        let source = r#"
+lazy_static! {
+    static ref RE: Regex = Regex::new("x").unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/re.rs", false),
+            r#"src/re.rs:3:28 — Regex::new("x").unwrap()"#
+        );
+    }
+
+    #[test]
+    fn macro_interior_column_matches_a_plain_call_after_a_newline() {
+        // The interior's start column applies only to its first line. A call
+        // after the interior's first newline carries the column it would have
+        // outside a macro, which is what this pins: the two sources put the
+        // same call at the same indentation, one wrapped and one bare.
+        let wrapped = r#"
+fn render() {
+    write!(
+        f,
+        v.unwrap(),
+    )?;
+}
+"#;
+        let bare = r#"
+fn render() {
+    let a = 1;
+    let b = 2;
+        v.unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(wrapped, "src/render.rs", false),
+            "src/render.rs:5:9 — v.unwrap()"
+        );
+        assert_eq!(
+            sole_evidence(bare, "src/render.rs", false),
+            "src/render.rs:5:9 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn macro_interior_column_is_offset_on_the_interiors_first_line() {
+        // A call on the interior's first line does take the interior's start
+        // column. Asserting the line alone would pass with the two column rules
+        // inverted.
+        let source = r#"
+fn render() {
+    write!(f, v.unwrap())?;
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/render.rs", false),
+            "src/render.rs:3:15 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn nested_macro_interiors_report_one_finding() {
+        let source = r#"
+fn render() {
+    write!(f, "{}", format!("{}", v.unwrap()))?;
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/render.rs", false),
+            "src/render.rs:3:35 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn ignores_macro_rules_fragment_and_arm() {
+        // No call expression with this text exists in the source: tree-sitter
+        // models the macro body as flat tokens, and `$x` is a metavariable.
+        let source = r#"
+macro_rules! unwrap_or_bail {
+    ($x:expr) => {
+        $x.unwrap()
+    };
+}
+
+fn main() {}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn ignores_macro_interior_without_a_call() {
+        let source = r#"
+fn main() {
+    println!("plain text");
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
     }
 
     #[test]

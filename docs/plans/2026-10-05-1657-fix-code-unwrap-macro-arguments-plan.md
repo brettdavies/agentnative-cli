@@ -99,6 +99,13 @@ flowchart TB
 - R8. A `.unwrap()` call inside an attribute's arguments, such as a clap `#[arg(default_value_t = load().unwrap())]`
   initializer, is reported on the same terms as R1. An attribute's arguments are a token tree, so the plain path never
   enters one, and such an initializer panics at startup exactly as a `lazy_static!` one does.
+- R9. A `.unwrap()` written in the arguments of a macro that never evaluates them is not reported, at any nesting depth.
+  `stringify!` and `concat!` expand to a literal and `cfg!` to a boolean, so no call in them runs; a `quote!` body is a
+  template for the crate the macro generates, where that crate's own audit is the one that should report it.
+- R10. A `.unwrap()` in a `macro_rules!` transcriber is not reported, whether the definition sits at item position or
+  nested inside another macro's arguments. A transcriber is a token template rather than code this crate runs.
+- R11. A comment between `#[cfg(test)]` and the item it decorates does not drop the exemption for that item's body. A
+  doc comment on a test-only item is idiomatic, so consuming the gate on it would report test code as production.
 
 **Test-code exemption**
 
@@ -175,6 +182,16 @@ flowchart TB
   - **Given:** production source containing `serde_json::json!({ "id": v.unwrap(), "name": "x" })`
   - **When:** the source audit runs with no flags
   - **Then:** `code-unwrap` fails at the call's own column, and does so wherever in the object the pair sits.
+- AE12. A token-only macro's arguments
+  - **Covers R9.**
+  - **Given:** production source containing `stringify!(v.unwrap())`, and a `quote! { let y = x.unwrap(); }` body
+  - **When:** the source audit runs
+  - **Then:** neither is reported, and a real call beside them in the same function still is.
+- AE13. A macro definition nested in another macro's arguments
+  - **Covers R10.**
+  - **Given:** a `cfg_if!` block whose body holds `macro_rules! inner { () => { GLOBAL.unwrap() }; }`
+  - **When:** the source audit runs
+  - **Then:** the transcriber is not reported, and a sibling macro written after the definition still is.
 
 AE5 and AE7 are the examples that separate this change from a lexical one. A token scan that skipped only top-level
 string literals would still report AE5, and no token scan distinguishes AE7 at all.
@@ -389,7 +406,7 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
 
 - **Goal:** `.unwrap()` inside a macro interior is reported with the same evidence shape as one outside, and synthesized
   matches are discarded.
-- **Requirements:** R1, R2, R6, R7. Instantiates KD2 and KD3 through KTD1, KTD2, KTD3, KTD5.
+- **Requirements:** R1, R2, R6, R7, R8, R9, R10. Instantiates KD2 and KD3 through KTD1, KTD2, KTD2a, KTD2b, KTD3, KTD5.
 - **Dependencies:** None.
 - **Files:** a new interior-re-parse module under `src/audits/source/rust/` (D2), its declaration in
   `src/audits/source/rust/mod.rs`, and `src/audits/source/rust/unwrap.rs`
@@ -401,13 +418,19 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
      text ends with that substring, and a reported call's text is always a substring of the interior. It mirrors the
      suffix test the plain path already runs first, and keeps the cost proportional to real unwraps instead of to how
      many macros the audited project contains.
-  3. Parse the surviving text twice through the one entry point (KTD2): the bare interior for the item grammar, and the
-     interior wrapped in a synthetic function body for the expression grammar.
-  4. Collect candidate call expressions from both trees, applying the same `.unwrap()` text test the plain path uses.
-  5. Keep a candidate only when KTD3's structural test holds: interiors inside a `macro_definition` are never re-parsed,
-     a candidate whose receiver is a `$`-prefixed fragment is discarded, and the range comparison serves as the
+  3. Answer for the whole invocation from its outermost token tree, declining a nested one (KTD2b).
+  4. Parse the surviving text twice through the one entry point (KTD2): the bare interior for the item grammar, and the
+     interior read through KTD2a's same-width normalization, wrapped in a synthetic argument list, for the expression
+     grammar.
+  5. Collect candidate call expressions from both trees, applying the same `.unwrap()` text test the plain path uses.
+  6. Keep a candidate only when KTD3's structural test holds. A `macro_rules!` body is never re-parsed, read from the
+     `macro_definition` ancestor at item position and from the `macro_rules` token pair before a bare token tree when
+     nested (R10). The arguments of a non-evaluating macro are never re-parsed, read from the owning invocation in the
+     file's tree and from the enclosing call in the recovered tree, since one parse now reaches inside a nested one
+     (R9). A candidate whose receiver is a `$`-prefixed fragment is discarded, a candidate whose own subtree rests on
+     parser error recovery is discarded while an error above one is admitted, and the text comparison serves as the
      offset-sanity assertion rather than the discriminator.
-  6. Offset each kept candidate's line and column from interior-relative to file coordinates, subtracting the expression
+  7. Offset each kept candidate's line and column from interior-relative to file coordinates, subtracting the expression
      wrapper's prefix for candidates recovered from that pass, and record at most one finding per position (KTD5).
 - **Execution note:** Begin by confirming three things against scratch interiors, because the rest of the unit rests on
   them: that the pinned parser recovers calls under an ERROR root, that the bare interior recovers the initializer call
@@ -440,14 +463,21 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
 
 - **Goal:** test code stays exempt by default inside macro interiors, including item-position macro invocations, and
   `--include-tests` lifts that exemption on the same terms as elsewhere.
-- **Requirements:** R3, R4. Instantiates KTD4.
+- **Requirements:** R3, R4, R11. Instantiates KTD4.
 - **Dependencies:** U1.
 - **Files:** `src/audits/source/rust/unwrap.rs`
 - **Approach:**
   1. Pass the walk's ambient `inside_cfg_test` and `include_cfg_test` state into the interior match path so a re-parse
      never restarts with the gate cleared.
-  2. Treat a `#[cfg(test)]`-preceded macro invocation as gating its interior, which the audit's item-kind list does not
-     currently cover.
+  2. Treat a `#[cfg(test)]`-preceded macro invocation as gating its interior, by adding `macro_invocation` to the
+     item-kind list.
+  3. Step the one-shot gate over a comment sibling, so a comment or doc comment between the attribute and the item does
+     not consume it (R11). Without this the item-kind entry above is defeated by an idiomatic doc comment.
+  4. Read a `cfg(test)` the interior declares of its own from the owning invocation's text rather than its parse tree:
+     a `thread_local!` interior recovers an `attribute_item` while a `cfg_if!` interior recovers an error node plus an
+     array expression, and the predicate text is the one form both shapes share. The polarity helper is the walker's own,
+     so `cfg(not(test))` stays production. Read at the whole invocation, an invocation mixing a gated and an ungated
+     branch loses the ungated call, which under-reports rather than reporting test code as production.
 - **Patterns to follow:** the existing sibling-attribute propagation in `walk`, including its handling of
   `#[cfg(test)] use foo;`.
 - **Test scenarios:**
@@ -495,7 +525,7 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
 
 - **Goal:** the behavior holds end to end through the real CLI, and this repository's own audit result is known rather
   than assumed.
-- **Requirements:** R1 through R8, and the first two success criteria.
+- **Requirements:** R1 through R11, and the first two success criteria.
 - **Dependencies:** U3.
 - **Files:** `tests/integration.rs`, `tests/fixtures/` (a new fixture directory for macro interiors)
 - **Approach:**
@@ -547,8 +577,8 @@ the gate stops with `binary-ambiguous` and exit 2, and the fix is to pass `--bin
 
 ## Definition of Done
 
-- Every requirement R1 through R8 is exercised by at least one passing test, and every acceptance example AE1 through
-  AE11 is covered by a named scenario.
+- Every requirement R1 through R11 is exercised by at least one passing test, and every acceptance example AE1 through
+  AE13 is covered by a named scenario.
 - The red was observed before the green: the AE1 fixture went unreported against the call-expression-only matcher, on a
   fresh build.
 - The degradation observation is recorded: a lexical interior scan fails the string-literal and comment controls.
@@ -939,20 +969,20 @@ tests, and the plan's own Sequencing states why each step depends on the one bef
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex;
 checkbox as you ship.
 
-- [ ] **T1 (P2, human: ~1h / CC: ~10min)** — interior module — Place the re-parse, both grammars, the guard and the
+- [x] **T1 (P2, human: ~1h / CC: ~10min)** — interior module — Place the re-parse, both grammars, the guard and the
   offsetting in a new module beside the audit
   - Surfaced by: Scope Challenge finding 2, resolved at D2 — `unwrap.rs` is the directory's only file past the 200-line
     trigger at 252 production lines against 144 for the next largest
   - Files: new module under `src/audits/source/rust/`, `src/audits/source/rust/mod.rs`,
     `src/audits/source/rust/unwrap.rs`
   - Verify: `cargo test --quiet`; the new module is declared but absent from `all_rust_audits()`
-- [ ] **T2 (P2, human: ~10min / CC: ~2min)** — interior module — Gate the re-parse on the interior text containing
+- [x] **T2 (P2, human: ~10min / CC: ~2min)** — interior module — Gate the re-parse on the interior text containing
   `.unwrap()`
   - Surfaced by: Performance finding 1, resolved at D3 — 4388 parser constructions over `src/` to find 16 candidate
     lines, on a 15.02 s baseline
   - Files: the new interior module
   - Verify: the literal-only interior scenario still reaches the matcher and is rejected there
-- [ ] **T3 (P2, human: ~45min / CC: ~10min)** — interior module — Implement and assert the split offsetting rule
+- [x] **T3 (P2, human: ~45min / CC: ~10min)** — interior module — Implement and assert the split offsetting rule
   - Surfaced by: Code Quality finding 1 and Test finding 1 — the line rule and the column rule differ, and AE8 asserted
     only the line
   - Files: the new interior module, `src/audits/source/rust/unwrap.rs`

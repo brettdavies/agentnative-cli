@@ -17,6 +17,12 @@
 //! Two kinds of interior are never re-parsed at all, because a call in them is
 //! not a call this crate runs: a `macro_rules!` transcriber, which is a token
 //! template, and the arguments of a macro that never evaluates them.
+//!
+//! Only the outermost token tree of an invocation is re-parsed. The interior is
+//! first read through [`read_as_expressions`], which makes a nested macro's
+//! arguments ordinary call arguments, so one parse reaches every nesting level.
+//! Re-parsing each level separately would cost a parse per enclosing tree, and
+//! a deeply nested interior would pay for its own depth twice over.
 
 use ast_grep_core::Node;
 use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
@@ -79,6 +85,10 @@ pub(super) fn unwrap_calls_in_interior(
     file: &str,
     include_cfg_test: bool,
 ) -> Vec<SourceLocation> {
+    if !is_outermost_token_tree(token_tree) {
+        return Vec::new();
+    }
+
     let text = token_tree.text();
     let Some(interior) = strip_delimiters(text.as_ref()) else {
         return Vec::new();
@@ -109,7 +119,7 @@ pub(super) fn unwrap_calls_in_interior(
 
     let mut found: Vec<Recovered> = Vec::new();
     collect_from_item_grammar(interior, &mut found);
-    collect_from_expression_grammar(interior, &mut found);
+    collect_from_expression_grammar(&read_as_expressions(interior), interior, &mut found);
 
     found
         .into_iter()
@@ -138,8 +148,11 @@ fn collect_from_item_grammar(interior: &str, found: &mut Vec<Recovered>) {
 /// The interior wrapped in a synthetic argument list, so each argument parses as
 /// its own expression. The wrapper's prefix comes off before any position is
 /// read.
-fn collect_from_expression_grammar(interior: &str, found: &mut Vec<Recovered>) {
-    let wrapped = format!("{EXPR_WRAPPER_PREFIX}{interior}{EXPR_WRAPPER_SUFFIX}");
+///
+/// `parse_text` is the interior read through [`read_as_expressions`], while
+/// `interior` stays the real text every kept position is checked against.
+fn collect_from_expression_grammar(parse_text: &str, interior: &str, found: &mut Vec<Recovered>) {
+    let wrapped = format!("{EXPR_WRAPPER_PREFIX}{parse_text}{EXPR_WRAPPER_SUFFIX}");
     let prefix_columns = EXPR_WRAPPER_PREFIX.chars().count();
     let root = Rust.ast_grep(&wrapped);
     collect_candidates(&root.root(), interior, found, |pos| {
@@ -182,10 +195,98 @@ fn collect_candidates(
             && interior_holds(interior, rel, &snippet)
             && !rests_on_error_recovery(&node)
             && !receiver_is_fragment(&node)
+            && !under_non_evaluating_call(&node)
         {
             found.push(Recovered { pos: rel, snippet });
         }
     }
+}
+
+/// Whether this token tree is the one an invocation opens, rather than a tree
+/// nested inside another.
+///
+/// Only the outermost tree is re-parsed, because one parse of it reaches every
+/// level. Re-parsing a nested tree as well would re-read the same text once per
+/// enclosing level.
+fn is_outermost_token_tree(node: &Node<'_, StrDoc<Rust>>) -> bool {
+    let mut above = node.parent();
+    while let Some(ancestor) = above {
+        if ancestor.kind() == "token_tree" {
+            return false;
+        }
+        above = ancestor.parent();
+    }
+    true
+}
+
+/// Read the interior as Rust the parser can descend into, without moving a
+/// single character.
+///
+/// Two substitutions, each one character wide, so every recovered position is
+/// already the position in the real interior and no offset changes:
+///
+/// - A macro bang becomes a space. A macro nested in another macro's arguments
+///   is itself only tokens, so the parser stops at it exactly as it stopped at
+///   the outer one; read as `format (..)` it is an ordinary call and the parser
+///   descends. This is what lets one parse reach every nesting level.
+/// - A lone colon becomes a comma. A DSL that writes `key: value` puts a call
+///   where no Rust expression context accepts it, so the parser glues the key,
+///   the colon and the call into one node that the error-recovery guard
+///   discards, leaving nothing to report. Read as `key, value` the pair is two
+///   arguments, each parsed on its own.
+///
+/// `::` is left alone, because a path separator is not a key and substituting it
+/// would move a call's start. A `!` that is the not-operator is left alone,
+/// because it does not follow a name. `macro_rules!` is left alone too, since
+/// its bang is followed by the macro's name rather than a delimiter.
+///
+/// A call whose own span contains a substituted character no longer matches the
+/// real interior, so [`interior_holds`] drops it rather than reporting text the
+/// source does not carry.
+fn read_as_expressions(interior: &str) -> String {
+    let chars: Vec<char> = interior.chars().collect();
+    chars
+        .iter()
+        .enumerate()
+        .map(|(index, &current)| {
+            let before = index.checked_sub(1).map(|previous| chars[previous]);
+            let after = chars.get(index + 1).copied();
+            match current {
+                '!' if before.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                    && matches!(after, Some('(' | '[' | '{')) =>
+                {
+                    ' '
+                }
+                ':' if after != Some(':') && before != Some(':') => ',',
+                _ => current,
+            }
+        })
+        .collect()
+}
+
+/// Whether a recovered call sits in the arguments of a macro that never
+/// evaluates them.
+///
+/// Read from the recovered tree rather than the file's, because one parse now
+/// reaches every level: a `stringify!` nested in another macro's arguments is an
+/// ordinary call there, so its name is readable where the candidate is.
+fn under_non_evaluating_call(node: &Node<'_, StrDoc<Rust>>) -> bool {
+    node.ancestors().any(|ancestor| {
+        matches!(
+            ancestor.kind().as_ref(),
+            "call_expression" | "macro_invocation"
+        ) && ancestor
+            .children()
+            .next()
+            .is_some_and(|name| is_non_evaluating(name.text().as_ref()))
+    })
+}
+
+/// Whether a macro path names a macro that leaves its arguments as tokens.
+/// Matched on the last segment, so `quote::quote` and `::quote::quote` count.
+fn is_non_evaluating(path: &str) -> bool {
+    let name = path.rsplit("::").next().unwrap_or_default().trim();
+    NON_EVALUATING_MACROS.contains(&name)
 }
 
 /// A `macro_rules!` body is a pattern, not code: `$x.unwrap()` in it re-parses
@@ -287,9 +388,7 @@ fn inside_non_evaluating_macro(node: &Node<'_, StrDoc<Rust>>) -> bool {
     let Some(path) = invocation.children().next() else {
         return false;
     };
-    let text = path.text();
-    let name = text.rsplit("::").next().unwrap_or_default().trim();
-    NON_EVALUATING_MACROS.contains(&name)
+    is_non_evaluating(path.text().as_ref())
 }
 
 /// Whether the parser had to recover inside the candidate itself.
@@ -490,6 +589,142 @@ mod tests {
         let found =
             interior_locations("fn f() {\n    m!(\n        // v.unwrap()\n        1\n    );\n}");
         assert!(found.is_empty());
+    }
+
+    /// The interior-relative column of `needle`, as the normalisation preserves it.
+    fn column_of(source: &str, needle: &str) -> Option<usize> {
+        let chars: Vec<char> = source.chars().collect();
+        let want: Vec<char> = needle.chars().collect();
+        chars
+            .windows(want.len())
+            .position(|window| window == want.as_slice())
+            .map(|index| index + 1)
+    }
+
+    #[test]
+    fn a_key_value_interior_reports_its_call() {
+        // No Rust expression context accepts `"id": v.unwrap()`, so the parser
+        // glues the pair into one node the error guard discards. Reading the
+        // colon as a comma makes it two arguments.
+        let source = r#"fn f(v: Option<u8>) { let _ = serde_json::json!({ "id": v.unwrap() }); }"#;
+        let found = interior_locations(source);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(found[0].text, "v.unwrap()");
+        assert_eq!(Some(found[0].column), column_of(source, "v.unwrap()"));
+    }
+
+    #[test]
+    fn key_value_coverage_does_not_depend_on_position() {
+        // A call after the only key was unreported while the same call after a
+        // second key was reported, so what the row covered varied inside one
+        // macro. Every one of these reports now.
+        for interior in [
+            r#"{"k": v.unwrap()}"#,
+            r#"{"a": 1, "b": v.unwrap()}"#,
+            r#"{"k": v.unwrap(), "j": 1}"#,
+            r#"target: v.unwrap(), "m""#,
+        ] {
+            let source = format!("fn f() {{ let _ = m!({interior}); }}");
+            let found = interior_locations(&source);
+            assert_eq!(found.len(), 1, "{interior} -> {found:?}");
+            assert_eq!(found[0].text, "v.unwrap()", "{interior}");
+            assert_eq!(
+                Some(found[0].column),
+                column_of(&source, "v.unwrap()"),
+                "{interior}"
+            );
+        }
+    }
+
+    #[test]
+    fn one_parse_reaches_every_nesting_level() {
+        // A nested macro's arguments are tokens again, so the parser used to stop
+        // at each level and every level had to be re-parsed on its own.
+        let source = "fn f() { a!(b!(c!(v.unwrap()))); }";
+        let found = interior_locations(source);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(found[0].text, "v.unwrap()");
+        assert_eq!(Some(found[0].column), column_of(source, "v.unwrap()"));
+    }
+
+    #[test]
+    fn only_the_outermost_token_tree_answers_for_an_invocation() {
+        // The linearity invariant: a nested tree declines, so the interior is
+        // read once per invocation rather than once per enclosing level.
+        let root = Rust.ast_grep("fn f() { a!(b!(c!(v.unwrap()))); }");
+        let trees: Vec<_> = root
+            .root()
+            .dfs()
+            .filter(|node| node.kind() == "token_tree")
+            .collect();
+        assert!(trees.len() > 1, "expected nested token trees");
+        let outermost: Vec<bool> = trees.iter().map(is_outermost_token_tree).collect();
+        assert_eq!(
+            outermost.iter().filter(|&&is| is).count(),
+            1,
+            "exactly one tree may answer for the invocation"
+        );
+        assert!(
+            outermost[0],
+            "the first tree in walk order is the outermost"
+        );
+    }
+
+    #[test]
+    fn a_nested_token_only_macro_is_still_discarded() {
+        // One parse reaches inside `stringify!`, so the name has to be read in
+        // the recovered tree rather than in the file's.
+        for source in [
+            "fn f(v: Option<u8>) { write!(o, \"{}\", stringify!(v.unwrap())).ok(); }",
+            "fn f(v: Option<u8>) { write!(o, \"{}\", quote::quote! { x.unwrap() }).ok(); }",
+        ] {
+            assert!(
+                interior_locations(source).is_empty(),
+                "reported a token-only call: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_path_separator_is_never_read_as_a_key() {
+        // Substituting `::` would move the call's start, so the reported column
+        // would name the wrong character.
+        let source = r#"fn f() { write!(o, "{}", a::b().unwrap()).ok(); }"#;
+        let found = interior_locations(source);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(found[0].text, "a::b().unwrap()");
+        assert_eq!(Some(found[0].column), column_of(source, "a::b().unwrap()"));
+    }
+
+    #[test]
+    fn a_not_operator_is_never_read_as_a_macro_bang() {
+        let source = r#"fn f(v: Option<bool>) { assert!(!flag, "{}", v.unwrap()); }"#;
+        let found = interior_locations(source);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(Some(found[0].column), column_of(source, "v.unwrap()"));
+    }
+
+    #[test]
+    fn an_attribute_argument_reports_its_call() {
+        // An attribute's arguments are a token tree, so the plain path never
+        // enters one, and a clap `default_value_t` initializer panics at startup
+        // exactly as a `lazy_static!` one does.
+        let source = "struct Args {\n    #[arg(default_value_t = load().unwrap())]\n    n: u8,\n}";
+        let found = interior_locations(source);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(found[0].text, "load().unwrap()");
+        assert_eq!((found[0].line, found[0].column), (2, 29));
+    }
+
+    #[test]
+    fn a_chained_unwrap_in_an_interior_reports_once() {
+        // Both the outer and the inner call end with `.unwrap()` and share a
+        // start, so position keys them to one row. The plain path reports the
+        // same chain twice; this is the side that satisfies "at most once".
+        let source = "fn f() { write!(o, \"{}\", a.unwrap().unwrap()).ok(); }";
+        let found = interior_locations(source);
+        assert_eq!(found.len(), 1, "got {found:?}");
+        assert_eq!(Some(found[0].column), column_of(source, "a.unwrap()"));
     }
 
     #[test]

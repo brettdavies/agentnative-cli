@@ -118,19 +118,15 @@ fn walk<'a>(
     }
 
     // Macro arguments reach here as a flat `token_tree`, so the plain matcher
-    // above never sees the call inside one. Nested token trees mean the same
-    // call is recoverable from an outer and an inner interior; a plain call is
-    // never inside a token tree, so deduplicating by position only ever folds
-    // those overlapping recoveries.
+    // above never sees the call inside one. The interior module answers for the
+    // whole invocation from its outermost tree and declines a nested one, so each
+    // call arrives once and no position needs folding here.
     if reportable && node.kind() == "token_tree" {
-        for location in macro_interior::unwrap_calls_in_interior(&node, file, include_cfg_test) {
-            if !out
-                .iter()
-                .any(|seen| seen.line == location.line && seen.column == location.column)
-            {
-                out.push(location);
-            }
-        }
+        out.extend(macro_interior::unwrap_calls_in_interior(
+            &node,
+            file,
+            include_cfg_test,
+        ));
     }
 
     // tree-sitter-rust models `#[cfg(test)]` as an `attribute_item` *sibling*

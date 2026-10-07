@@ -196,6 +196,9 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
   or revert it before tagging.
 - [ ] No unmerged dependency advisories from `cargo deny check advisories`. The full local pre-push check
   (`scripts/hooks/pre-push`) mirrors CI; run it explicitly before pushing the release branch.
+- [ ] Every row of the `Release matrix check` run on the release branch is green. It is the only build of the
+  cross-compiled targets before the tag, and no ruleset can require it: the check is path-filtered on PRs, and a
+  required context that never reports leaves a PR pending.
 - [ ] `scripts/release/cut-release-branch.sh` exited 0, so its check A held: the staged tree equals `origin/dev`'s apart
   from the version carriers and the guarded paths. A cherry-pick release runs the triple diff in `RELEASES.md` §
   Exception: cherry-pick instead, with `HEAD..origin/dev` filtered by the guarded set (not all of `docs/`, since a

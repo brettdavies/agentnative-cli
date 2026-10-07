@@ -26,6 +26,20 @@ cargo binstall agentnative
 # https://github.com/brettdavies/agentnative-cli/releases
 ```
 
+The Homebrew formula installs the pre-built archive the release publishes for your platform and compiles nothing. The
+tap signs the bottles it builds from those archives, and `brew verify brettdavies/tap/agentnative` checks one against
+that attestation.
+
+Each release archive carries a build-provenance attestation and an attested SBOM, signed by the release workflow. To
+check that an archive you downloaded was built by it, from this repository:
+
+```bash
+gh attestation verify agentnative-x86_64-unknown-linux-gnu.tar.gz --repo brettdavies/agentnative-cli \
+  --signer-workflow brettdavies/.github/.github/workflows/rust-release.yml
+```
+
+Releases up to 0.6.0 carry no attestation; compare those against the release's `sha256sum.txt`.
+
 ## Install the skill
 
 `anc` ships a companion skill bundle (`agentnative-skill`) that teaches AI coding agents how to operate the linter and

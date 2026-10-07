@@ -251,14 +251,23 @@ git push origin main --tags
 Always use annotated tags (`-a -m`). The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
-| Step            | What                                                                                                                                                                                                                                                                                            |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
-| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
-| `build`         | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
-| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                |
-| `release`       | Create a **non-draft** GitHub Release with `make_latest: false`. Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                     |
-| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                          |
+| Step                  | What                                                                                                                                                                                                                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-version`       | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
+| `audit`               | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
+| `build`               | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
+| `sbom`                | Generate a CycloneDX SBOM of `anc` from the tagged lockfile, with a read-only token.                                                                                                                                                                                                            |
+| `attest`              | Sign what `build` uploaded, before anything is published: build provenance for all 7 archives and `sha256sum.txt`, and the SBOM against the archives. A failure here or in `sbom` publishes nothing (gate).                                                                                     |
+| `publish-crate`       | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                |
+| `release`             | Create a **non-draft** GitHub Release with `make_latest: false`. Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                     |
+| `verify-attestations` | Download every published file and verify it against its attestation with `gh attestation verify --signer-workflow`. A failure withholds the Homebrew dispatch (gate).                                                                                                                           |
+| `homebrew`            | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                          |
+
+The tap's formula installs this release's archives. Its `update-formula` workflow downloads the four it names (the two
+`apple-darwin` and the two `linux-musl` archives), verifies each against the attestation `attest` made, and pins its
+checksum; an archive with no attestation stops the bump, so `attest: true` in `release.yml` is what lets a release reach
+Homebrew. The tap then builds bottles from those archives, signs them in its own `publish.yml`, and uploads them to this
+repo's release assets.
 
 After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
 this repo, which idempotently flips `make_latest: true`.
@@ -439,7 +448,17 @@ changelog check that reads a PR's files, and uses no extra secrets.
 
 Seven targets, listed in the `build` row of [§ Tagging and publishing](#tagging-and-publishing). The two musl rows are
 hard-blocking (`linux_musl_required: true`) and the x86_64-musl binary is exec-verified inside `alpine:latest`
-(`linux_musl_verify_alpine: true`).
+(`linux_musl_verify_alpine: true`). `release-matrix-check.yml` builds the same seven rows on every push to a `release/*`
+branch, and on a PR that changes `Cargo.toml`, `Cargo.lock`, or `rust-toolchain.toml`, so a broken row surfaces before
+the tag.
+
+Four of the archives are also what Homebrew installs. `Formula/agentnative.rb` in `brettdavies/homebrew-tap` names
+`agentnative-aarch64-apple-darwin.tar.gz`, `agentnative-x86_64-apple-darwin.tar.gz`,
+`agentnative-aarch64-unknown-linux-musl.tar.gz`, and `agentnative-x86_64-unknown-linux-musl.tar.gz`, and installs the
+`anc` at the top of each archive's single directory. The musl builds are the Linux ones because they are static and run
+against any glibc, Homebrew's included. An archive name, the place of `anc` inside it, and those four targets are
+therefore a contract with the formula: change one and the tap's bump for the next release fails, so the formula changes
+in the same step.
 
 ### First-time publish (one-time)
 

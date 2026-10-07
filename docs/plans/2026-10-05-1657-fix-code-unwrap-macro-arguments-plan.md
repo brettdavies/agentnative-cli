@@ -96,6 +96,9 @@ flowchart TB
   matter.
 - R6. A `.unwrap()` call inside an item-position macro interior, such as a `lazy_static!` or `thread_local!` body, is
   reported on the same terms as R1.
+- R8. A `.unwrap()` call inside an attribute's arguments, such as a clap `#[arg(default_value_t = load().unwrap())]`
+  initializer, is reported on the same terms as R1. An attribute's arguments are a token tree, so the plain path never
+  enters one, and such an initializer panics at startup exactly as a `lazy_static!` one does.
 
 **Test-code exemption**
 
@@ -162,6 +165,16 @@ flowchart TB
     named `unwrap`, each inside a macro argument
   - **When:** the source audit runs
   - **Then:** none of them is reported.
+- AE10. Attribute-argument initializer
+  - **Covers R8.**
+  - **Given:** production source containing `#[arg(default_value_t = load().unwrap())]`
+  - **When:** the source audit runs with no flags
+  - **Then:** `code-unwrap` fails and names the initializer's line and column.
+- AE11. A key and its value
+  - **Covers R1, R2.**
+  - **Given:** production source containing `serde_json::json!({ "id": v.unwrap(), "name": "x" })`
+  - **When:** the source audit runs with no flags
+  - **Then:** `code-unwrap` fails at the call's own column, and does so wherever in the object the pair sits.
 
 AE5 and AE7 are the examples that separate this change from a lexical one. A token scan that skipped only top-level
 string literals would still report AE5, and no token scan distinguishes AE7 at all.
@@ -207,9 +220,8 @@ requirements with their acceptance examples fix the paths a planner would otherw
   grow. Evidence that would change the call: the existing contents gaining a second responsibility of their own.
 - Matching a spaced `.unwrap ()`. The current text test already excludes it outside macros, so including it inside them
   would make macro interiors stricter than plain code and break the parity the Objective states.
-- Reading `.unwrap()` inside attribute arguments and closures passed to attributes, such as a clap `value_parser`. These
-  are not macro invocations, so they fall outside this plan's authority; a real call there is already reachable by the
-  existing plain-code path.
+- A spaced `.unwrap ()` inside a closure passed to an attribute. The text test governs that shape wherever it appears,
+  so the macro path adds nothing to it.
 - A source-mode `code-unwrap` control in the release smoke gate, which today grades binaries in command mode only and
   would need a directory target to see a source audit at all. A regression here is caught by the audit's own controls
   under `cargo test`, which both CI and the pre-push hook run on every change, so the release gate would be a second
@@ -281,15 +293,30 @@ constraint to implementation preference.
   over a lexical token scan with a literal filter, a bounded allowlist of expression-taking macros, and flagging at
   reduced confidence: the audit's 32-false-positive release makes noise the more expensive failure.) Instantiates KD2;
   governs R2, R5.
-- KTD2. **Try the expression grammar and the item grammar, taking whichever recovers calls that map to real source.**
-  (session-settled: user-directed — chosen over expression interiors only and over parsing items only as a fallback:
-  always attempting both keeps one rule instead of a precedence question, at the cost of a second parse attempt per
-  interior.) The two grammars are two inputs to one entry point, not two calls: the pinned crate exposes only
-  `LanguageExt::ast_grep`, which always starts at the grammar root, so the item grammar is the bare interior and the
-  expression grammar is the interior wrapped in a synthetic function body. `Pattern::contextual` reaches a non-root
-  context the same way. The wrapper's prefix comes back off before KTD3 or KTD5 reads a position, and it shifts only the
-  first line: a single-line prefix changes the column of nodes on the interior's first line and nothing else.
-  Instantiates KD3; governs R6.
+- KTD2. **Try the item grammar on the bare interior and the expression grammar on a normalized reading of it, taking
+  whichever recovers calls that map to real source.** (session-settled: user-directed — chosen over expression interiors
+  only and over parsing items only as a fallback: always attempting both keeps one rule instead of a precedence
+  question, at the cost of a second parse attempt per interior.) The two grammars are two inputs to one entry point, not
+  two calls: the pinned crate exposes only `LanguageExt::ast_grep`, which always starts at the grammar root, so the item
+  grammar is the bare interior and the expression grammar is the interior wrapped in a synthetic argument list.
+  `Pattern::contextual` reaches a non-root context the same way. The wrapper's prefix comes back off before KTD3 or KTD5
+  reads a position, and it shifts only the first line: a single-line prefix changes the column of nodes on the
+  interior's first line and nothing else. Instantiates KD3; governs R6.
+- KTD2a. **Normalize the interior before the expression parse, with substitutions that preserve every character
+  position.** (session-settled: user-directed — chosen over accepting the `key: value` boundary and recording it, and
+  over a third collector that splits the interior at top-level separators: one same-width reading costs no offset
+  arithmetic and answers both the recall gap and the nesting cost at once.) The parser stops wherever the text is not an
+  expression it can descend into, which is what hides a `key: value` call and what forces a parse per nesting level. A
+  macro bang is read as a space, so a nested macro's arguments are ordinary call arguments; a lone colon is read as a
+  comma, so a key and its value are two arguments. `::` keeps its meaning, because a path separator is not a key and
+  substituting it would move a call's start. Both substitutions are one character wide, so a recovered position is
+  already the real one; a call whose own span contains a substituted character stops matching the interior and KTD3
+  drops it. Governs R1, R2, R7.
+- KTD2b. **Re-parse only an invocation's outermost token tree.** (session-settled: user-directed.) KTD2a makes one parse
+  reach every nesting level, so re-parsing a nested tree as well re-reads the same text once per enclosing level.
+  Measured on synthetic `m!(m!(..))` chains at depths 50, 100, 200 and 400: 0.06, 0.24, 1.10 and 6.21 s per-level
+  against 0.02, 0.04, 0.08 and 0.18 s outermost-only, which is linear in depth rather than near-quadratic. It also
+  removes the walker's fold of overlapping recoveries, since each call arrives once. Governs R7.
 - KTD3. **A recovered call is a finding only when the source itself holds the call, which takes a structural test rather
   than a range comparison.** This is the fabrication guard. A re-parsed interior is a verbatim slice of the file, so
   every recovered node maps back to a real range by construction, and a range comparison alone admits the cases the
@@ -468,7 +495,7 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
 
 - **Goal:** the behavior holds end to end through the real CLI, and this repository's own audit result is known rather
   than assumed.
-- **Requirements:** R1 through R7, and the first two success criteria.
+- **Requirements:** R1 through R8, and the first two success criteria.
 - **Dependencies:** U3.
 - **Files:** `tests/integration.rs`, `tests/fixtures/` (a new fixture directory for macro interiors)
 - **Approach:**
@@ -520,8 +547,8 @@ the gate stops with `binary-ambiguous` and exit 2, and the fix is to pass `--bin
 
 ## Definition of Done
 
-- Every requirement R1 through R7 is exercised by at least one passing test, and every acceptance example AE1 through
-  AE9 is covered by a named scenario.
+- Every requirement R1 through R8 is exercised by at least one passing test, and every acceptance example AE1 through
+  AE11 is covered by a named scenario.
 - The red was observed before the green: the AE1 fixture went unreported against the call-expression-only matcher, on a
   fresh build.
 - The degradation observation is recorded: a lexical interior scan fails the string-literal and comment controls.
@@ -865,9 +892,8 @@ Dispositions: finding 1 accepted at D3, folded into U1 step 2 with its non-vacui
   D1 because one case does not size a shared primitive.
 - Splitting the existing contents of `unwrap.rs`. D2 addressed the refactor trigger by placing the new concern outside
   the file instead.
-- `.expect()` and the other panic-shaped calls, the audit's registry wiring, a spaced `.unwrap ()`, attribute arguments,
-  and re-scoring the published corpus. All four were already scoped out by the plan and this review found no reason to
-  reopen them.
+- `.expect()` and the other panic-shaped calls, the audit's registry wiring, a spaced `.unwrap ()`, and re-scoring the
+  published corpus. All four were already scoped out by the plan and this review found no reason to reopen them.
 - A `code-unwrap` control in the release smoke gate. Fails the mechanism-sizing test: `cargo test` already catches a
   regression before merge, and adding the gate later costs the same as adding it now.
 

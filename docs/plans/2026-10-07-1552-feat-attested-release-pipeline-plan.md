@@ -36,7 +36,7 @@ execution: code
 `agentnative-cli` adopts the attested release pipeline: its release signs every archive and publishes an SBOM, its
 Homebrew formula installs those archives instead of compiling, and the tap signs the bottles. A pre-tag build of every
 release target and tighter branch protection catch failures before a tag exists. The upstream skills and templates take
-the same standard, and a pipeline-only release proves the whole chain.
+the same standard, and the next `anc` release proves the whole chain.
 
 ### Problem Frame
 
@@ -66,8 +66,9 @@ repo scaffolded today starts behind the standard.
 - **v0.6.0's archives and bottles are not signed after the fact.** (session-settled: user-approved; chosen over
   rebuilding the 0.6.0 bottles and over attesting the existing files in place: an attestation made later would vouch for
   a build that run did not do, and the proving release makes it moot.) Governs R1, R3.
-- **A pipeline-only release is the proving run.** (session-settled: user-approved; chosen over proving the pipeline on
-  the next feature release: a release with no product change isolates a pipeline failure.) Governs R9.
+- **The proving release is a normal cut of `dev`.** (session-settled: user-directed; chosen over a pipeline-only release
+  cherry-picked from the four pipeline commits: `dev` already held unreleased product changes, a cherry-pick cut would
+  run on `main`'s older release scripts, and a larger release is acceptable.) Governs R9.
 - **Branch protection adopts the standard's optional hardening.** (session-settled: user-approved; chosen over leaving
   the baseline: two of the unrequired checks guard failures that otherwise surface only at tag time.) Governs R5.
 - **The upstream skills and templates are in scope.** (session-settled: user-directed; chosen over fixing
@@ -141,8 +142,7 @@ repo scaffolded today starts behind the standard.
 ### Open Questions
 
 - **Version of the proving release.** The maintainer picks it. Blocks U11; nothing else waits on it.
-- **Whether the open product stacks merge before the proving release.** If they do, the release is no longer
-  pipeline-only. Blocks U11 only.
+- **When the proving release is cut, and which open stacks land first.** The maintainer decides. Blocks U11 only.
 
 ---
 

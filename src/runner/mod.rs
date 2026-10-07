@@ -66,6 +66,27 @@ pub struct BinaryRunner {
     cache: RefCell<HashMap<CacheKey, RunResult>>,
 }
 
+/// The terminal environment every probe runs in.
+///
+/// A probe inherits the operator's shell otherwise, and a tool reads these to
+/// decide how to wrap its help, whether to colour it, and whether to page it, so
+/// the same tool audited from a terminal and from a scorer would be graded on
+/// different text. Fixing them makes a verdict a property of the tool.
+///
+/// `TERM=dumb` suppresses cursor and colour control sequences, `COLUMNS=80`
+/// fixes the wrap width the help parsers read, and `PAGER=cat` keeps a tool that
+/// pipes its help from blocking on a pager or emitting its escapes. `NO_COLOR`
+/// is the same intent and predates the rest.
+///
+/// Not `env_clear`: that drops `PATH` and the tool stops resolving its own
+/// helpers. A caller's own override is applied after these and still wins.
+const PROBE_ENV: &[(&str, &str)] = &[
+    ("NO_COLOR", "1"),
+    ("TERM", "dumb"),
+    ("COLUMNS", "80"),
+    ("PAGER", "cat"),
+];
+
 impl BinaryRunner {
     /// Create a new runner, validating the binary exists and is executable.
     pub fn new(binary: PathBuf, timeout: Duration) -> Result<Self> {
@@ -131,7 +152,7 @@ impl BinaryRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("NO_COLOR", "1");
+            .envs(PROBE_ENV.iter().copied());
 
         let mut child = match Self::spawn_with_retry(&mut cmd) {
             Ok(c) => c,
@@ -188,7 +209,7 @@ impl BinaryRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("NO_COLOR", "1");
+            .envs(PROBE_ENV.iter().copied());
 
         for (k, v) in env_overrides {
             cmd.env(k, v);
@@ -440,6 +461,51 @@ mod tests {
         let result = runner.run(&["-c", "exit 42"], &[]);
         assert_eq!(result.status, RunStatus::Ok);
         assert_eq!(result.exit_code, Some(42));
+    }
+
+    #[test]
+    fn probes_run_in_a_fixed_terminal_environment() {
+        // A probe's verdict must not depend on the terminal the operator
+        // happened to run `anc` from, so the values the child sees are the
+        // audit's, not the caller's.
+        let runner =
+            BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh should exist");
+        let result = runner.run(
+            &[
+                "-c",
+                r#"echo "TERM=$TERM COLUMNS=$COLUMNS PAGER=$PAGER NO_COLOR=$NO_COLOR""#,
+            ],
+            &[],
+        );
+        assert_eq!(
+            result.stdout.trim(),
+            "TERM=dumb COLUMNS=80 PAGER=cat NO_COLOR=1"
+        );
+    }
+
+    #[test]
+    fn a_caller_override_still_wins_over_the_fixed_environment() {
+        let runner =
+            BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh should exist");
+        let result = runner.run(
+            &["-c", r#"echo "TERM=$TERM""#],
+            &[("TERM", "xterm-256color")],
+        );
+        assert_eq!(result.stdout.trim(), "TERM=xterm-256color");
+    }
+
+    #[test]
+    fn a_partial_read_uses_the_same_fixed_environment() {
+        // `run_partial` is a second spawn site, so it has to agree with the
+        // first or a SIGPIPE probe would wrap differently from every other.
+        let runner =
+            BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh should exist");
+        let result = runner.run_partial(&["-c", r#"echo "TERM=$TERM COLUMNS=$COLUMNS""#], 64);
+        assert!(
+            result.stdout.starts_with("TERM=dumb COLUMNS=80"),
+            "got {:?}",
+            result.stdout
+        );
     }
 
     #[test]

@@ -47,11 +47,23 @@
             "integration_id": 15368
           },
           {
+            "context": "ci / Windows check",
+            "integration_id": 15368
+          },
+          {
             "context": "ci / Package check",
             "integration_id": 15368
           },
           {
+            "context": "ci / Security audit (advisories)",
+            "integration_id": 15368
+          },
+          {
             "context": "ci / Security audit (bans licenses sources)",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci / Shellcheck",
             "integration_id": 15368
           },
           {

@@ -331,8 +331,8 @@ regenerate. Hand-editing `CHANGELOG.md` directly produces drift the next regener
 
 ### Status-check context strings
 
-The `required_status_checks[].context` strings in `protect-main.json` MUST match exactly what GitHub publishes for each
-check:
+The `required_status_checks[].context` strings in `protect-main.json` and `protect-dev.json` MUST match exactly what
+GitHub publishes for each check:
 
 - **Inline job** (with `name:` field): published as just `<job-name>` (no workflow-name prefix).
 - **Reusable-workflow caller** (`uses: .../foo.yml@ref`): published as `<caller-job-id> / <reusable-job-id-or-name>`.

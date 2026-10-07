@@ -25,3 +25,8 @@ permissions:
 jobs:
   ci:
     uses: brettdavies/.github/.github/workflows/rust-ci.yml@main
+    with:
+      # An advisory turns this run red rather than leaving it green with one
+      # failed job. The rulesets already block the merge; this is so the run's
+      # colour matches what a human scanning the Actions tab should act on.
+      advisories_blocking: true

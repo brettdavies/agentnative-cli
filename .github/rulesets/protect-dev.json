@@ -17,6 +17,39 @@
     },
     {
       "type": "required_signatures"
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "ci / Fmt, clippy, test",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci / Windows check",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci / Package check",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci / Security audit (advisories)",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci / Security audit (bans licenses sources)",
+            "integration_id": 15368
+          },
+          {
+            "context": "ci / Shellcheck",
+            "integration_id": 15368
+          }
+        ]
+      }
     }
   ],
   "conditions": {

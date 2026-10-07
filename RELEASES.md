@@ -379,11 +379,23 @@ drift the next regeneration overwrites.
 Two rulesets are committed under `.github/rulesets/` and applied to the repo via the GitHub API:
 
 - `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks
-  (`ci / Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`,
+  (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
+  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`, `ci / Changelog`,
   `guard-docs / check-forbidden-docs`, `guard-provenance / check-provenance`,
   `guard-release / check-release-branch-name`), creation/deletion blocked, non-fast-forward blocked).
-- `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked). PR-only norm is convention +
+- `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked, required status checks
+  (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
+  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`)). PR-only norm is convention +
   `guard-release-branch` on the main side.
+
+`dev` requires only the checks that report on every PR. `ci / Changelog`, the three guards, and `Release matrix check`
+stay off its list: each runs on some PRs and not others, and a required check that never reports leaves a PR pending
+forever. `dev` also does not require a branch to be up to date before it merges, so a merge does not re-run every open
+PR behind it. The repository-admin bypass is what lets a planning document push to `dev` directly.
+
+`ci / Security audit (advisories)` is required on both branches, and `ci.yml` passes `advisories_blocking: true` so the
+run itself goes red. An advisory published against a dependency therefore blocks unrelated merges until the dependency
+moves or the advisory is acknowledged in `deny.toml`.
 
 ### Applying changes
 

@@ -74,10 +74,27 @@ Run immediately after the tag push triggers `release.yml`.
   `anc --version` reports the new tag. Drive on a throwaway prefix (`HOMEBREW_PREFIX=/tmp/brew-postflight-X brew ...`).
   Confirms the homebrew-tap end of the cross-repo dispatch chain landed cleanly and the published bottle SHA matches the
   formula.
+- [ ] **Every Homebrew bottle verifies against its attestation.**
+  `brew verify --os=all --arch=all brettdavies/tap/agentnative` reports `has a valid attestation` for each bottle. The
+  tap signs the bottles in its `publish.yml`; this is the check Homebrew runs for a user who sets
+  `HOMEBREW_VERIFY_ATTESTATIONS`, and a failure means that user cannot install the formula.
 - [ ] **`cargo binstall agentnative`** (without `--version`) resolves to the new tag and installs the matching prebuilt
   binary. Confirms the GitHub Release asset layout (binary + completions + licenses, expected archive naming) matches
   binstall's asset-resolution rules and the `[package.metadata.binstall]` overrides in `Cargo.toml`. Drive on a clean
   container.
+- [ ] **A release archive verifies against its attestation.** `release.yml` verifies every published file in its
+  `verify-attestations` job and withholds the Homebrew dispatch when one fails; this is the same check from outside CI.
+  Download one archive of the release and run the command below. The reusable workflow is the signer, so `--repo` alone
+  fails; the `--signer-workflow` flag names it. Expect `Verification succeeded`. A failure with a green `release.yml`
+  means the attestation jobs were skipped: check that `release.yml` still passes `attest: true` and grants
+  `attestations: write`.
+
+  ```bash
+  gh release download v<X.Y.Z> --repo brettdavies/agentnative-cli --pattern 'agentnative-x86_64-unknown-linux-gnu.tar.gz'
+  gh attestation verify agentnative-x86_64-unknown-linux-gnu.tar.gz --repo brettdavies/agentnative-cli \
+    --signer-workflow brettdavies/.github/.github/workflows/rust-release.yml
+  ```
+
 - [ ] **Live site renders the new scorecard.** Click the `badge_url` and `scorecard_url` from a real emitted scorecard
   against the live site. First-time renders for a new spec version can 404 even when the JSON looks correct.
 - [ ] **Last-good identifier recorded.** Before the release goes live, note the previous tag

@@ -283,6 +283,9 @@ exec-compat sanity check. Alpine and other musl-libc hosts can run them without 
 dynamic targets fail loudly on missing-symbol mismatch, but a statically-linked binary that happens to compile could
 still segfault on first exec without the verify step.
 
+The musl archives are also what the Homebrew formula installs on Linux. A soft-failed musl row would publish a release
+with no archive for the tap to pin, so the formula bump for that release would stop.
+
 ### Known CI transient: cargo-deny Docker Hub timeout
 
 The `EmbarkStudios/cargo-deny-action` container image is pulled from Docker Hub at job start. Docker Hub timeouts

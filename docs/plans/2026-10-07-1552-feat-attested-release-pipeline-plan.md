@@ -140,8 +140,7 @@ repo scaffolded today starts behind the standard.
 
 ### Open Questions
 
-- **Version of the proving release.** The maintainer picks it. Blocks U11 and the one README sentence in U7 that names
-  the first attested version; nothing else waits on it.
+- **Version of the proving release.** The maintainer picks it. Blocks U11; nothing else waits on it.
 - **Whether the open product stacks merge before the proving release.** If they do, the release is no longer
   pipeline-only. Blocks U11 only.
 
@@ -245,9 +244,11 @@ sequenceDiagram
 - `agent-skills`: `github-repo-setup/references/branch-protection.md` documents required checks on `dev` as optional and
   the advisories check as two independent levers. `github-repo-setup/templates/required-checks.json` is the standard for
   `main`.
-- A reusable workflow's permissions are validated before any job starts, so a caller that sets `attest: true` without
-  granting `attestations: write` fails the whole run at startup
-  (`docs/solutions/workflow-issues/reusable-workflow-permissions-are-validated-before-any-job-starts.md`).
+- GitHub checks every permission a called workflow's jobs name against the caller's grant before any job starts
+  (`docs/solutions/workflow-issues/reusable-workflow-permissions-are-validated-before-any-job-starts.md`). For that
+  reason `rust-release.yml`'s `attest` job names none and takes the caller's token, so a caller that sets `attest: true`
+  without granting `attestations: write` starts normally and fails in that job, after the tag is pushed and before
+  anything is published.
 - The tap's bottle pipeline and its `brew pr-pull` pitfalls:
   `docs/solutions/architecture-patterns/homebrew-all-bottle-publishing-pipeline-architecture-2026-04-20.md` and
   `docs/solutions/best-practices/no-flags-are-pipeline-circuit-breakers-read-source-2026-04-20.md`.
@@ -312,8 +313,7 @@ sequenceDiagram
 - **Files:** `github-repo-setup/templates/RELEASES.md`, `github-repo-setup/templates/RELEASES-PREFLIGHT.md`,
   `github-repo-setup/templates/RELEASES-POSTFLIGHT.md`, `github-repo-setup/templates/RELEASES-RATIONALE.md`,
   `github-repo-setup/references/release-pipeline.md`, `github-repo-setup/references/reusable-workflows.md`,
-  `github-repo-setup/references/template-catalog.md`, `github-repo-setup/CHECKLIST.md`,
-  `github-repo-setup/scripts/seed-repo-files.sh`, `github-repo-setup/tests/bootstrap-repo.bats`
+  `github-repo-setup/references/template-catalog.md`, `github-repo-setup/scripts/seed-repo-files.sh`
 - **Approach:**
   1. Move the attestation rows of the pipeline table, the paragraph on the archives the formula depends on, the two
      postflight checks, and the rationale paragraph on the pre-tag build check from `xurl-rs`'s runbooks into the
@@ -368,13 +368,14 @@ sequenceDiagram
 - **Files:** `homebrew-tap-publish/SKILL.md`, `homebrew-tap-publish/templates/formula-prebuilt.rb` (create),
   `homebrew-tap-publish/templates/homebrew-dispatch-job.yml`, `homebrew-tap-publish/references/conventions.md`
 - **Approach:**
-  1. Make the prebuilt formula the first path, and keep the source-build formula as the path for a tool whose release is
-     not yet attested.
+  1. Make the prebuilt formula the standard, and keep the source-build formula as the form a new tool is pre-seeded with
+     and the form for a release that is not attested.
   2. Say that a caller of `rust-release.yml` gets the dispatch from the reusable, and keep the hand-added dispatch job
      only as the path for a release workflow that does not call it.
-  3. State the ordering constraint from KTD7, and the order for a tool with no release yet: the tap's formula update
-     fails when the formula file does not exist, so the first attested release comes first and the formula is then
-     created pinned to its archives.
+  3. State the ordering constraint from KTD7, and the order for a tool with no release yet. The tap cannot pre-seed a
+     prebuilt formula: its formula update fails when the formula file does not exist, and its bottle job skips only the
+     source-form `v0.0.0` placeholder. So a new tool pre-seeds a source-build formula, releases once with
+     `attest: true`, and then converts, pinned to that release.
   4. Describe what the tap's CI does now: verify archives on a bump, attest and verify bottles on publish.
 - **Patterns to follow:** `Formula/xurl-rs.rb` on the tap; the tap's `RELEASES.md` table that distinguishes the two
   formula forms.
@@ -424,7 +425,8 @@ sequenceDiagram
 - **Approach:**
   1. Derive the release sections from U2's templates (KTD1).
   2. Give the README's install section the prebuilt Homebrew install and the two verification commands.
-  3. Leave the sentence that names the first attested version for the proving release, per the open question.
+  3. Have the README name 0.6.0 as the last release without attestations, which holds whatever version the proving
+     release takes.
 - **Patterns to follow:** The install and verify section of `xurl-rs`'s `crates/xurl-cli/README.md`.
 - **Test scenarios:**
   - Markdown lint and the repo's prose check pass.
@@ -463,7 +465,7 @@ sequenceDiagram
 - **Requirements:** R2, R3
 - **Dependencies:** none
 - **Repo:** `homebrew-tap`
-- **Files:** `Formula/agentnative.rb`, `README.md` (where it describes how each formula installs)
+- **Files:** `Formula/agentnative.rb`
 - **Approach:**
   1. Rewrite the formula in the shape KTD4 names, pinned to v0.6.0's four archives with their checksums from that
      release's `sha256sum.txt`.
@@ -501,8 +503,7 @@ sequenceDiagram
 - **Requirements:** R1, R2, R3, R9
 - **Dependencies:** U5, U6, U7, U8, U9
 - **Repo:** `agentnative-cli`
-- **Files:** `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md` (through the cut script), `README.md` (the sentence naming the
-  first attested version)
+- **Files:** `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md` (through the cut script)
 - **Approach:**
   1. Confirm U9 is on tap `main` and U5 is on `dev` (KTD7).
   2. Cut the release branch with the repo's cut script at the version the maintainer picks, and run the full preflight.
@@ -561,7 +562,7 @@ A CI run counts as green only when every check's conclusion is read from the rol
 
 | Risk                                                                                                                                                                          | Mitigation                                                                                                                                                                                                |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The caller sets `attest: true` without `attestations: write`, and the release fails at startup with the tag already pushed.                                                   | U5 adds both in one change and compares the caller with `xurl-rs`'s.                                                                                                                                      |
+| The caller sets `attest: true` without `attestations: write`, and the `attest` job fails with the tag already pushed.                                                         | U5 adds both in one change and compares the caller with `xurl-rs`'s.                                                                                                                                      |
 | The proving tag is pushed before the formula conversion is on tap `main`, so the bump takes the source path.                                                                  | KTD7 orders it, and U11's first step checks it.                                                                                                                                                           |
 | `anc`'s release differs from `xr`'s in ways the first attested run has not seen: the Alpine check, a single-crate layout, and a formula name that differs from the repo slug. | All three ran green for v0.6.0 without signing. The signing jobs take no input that differs, and the tap takes the repo slug from the dispatch payload and the archive names from the formula's own URLs. |
 | The live ruleset apply blocks other sessions' open stacks.                                                                                                                    | The maintainer times the apply (KTD6), and U8 lists which open PRs are red beforehand.                                                                                                                    |

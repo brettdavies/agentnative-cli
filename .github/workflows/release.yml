@@ -2,7 +2,10 @@
 #
 # crate: agentnative (crates.io name) | bin: anc (installed executable)
 #
-# Pipeline: check-version -> build (5 targets) -> crates.io -> draft release -> homebrew
+# Pipeline: check-version -> build (7 targets) -> attest (build provenance, and a
+# CycloneDX SBOM of the binary) -> crates.io -> release (non-draft) -> verify the
+# published files against their attestations -> homebrew bottle build -> bottles
+# upload back to release assets -> finalize-release marks the release final.
 name: Release
 
 on:
@@ -13,6 +16,8 @@ on:
 permissions:
   contents: write
   id-token: write
+  # The reusable workflow's attest job takes this from the caller.
+  attestations: write
 
 jobs:
   pipeline:
@@ -27,5 +32,9 @@ jobs:
       # after build to catch dlopen/NSS/locale surprises that pass the
       # static-link `file` assertion.
       linux_musl_verify_alpine: true
+      # The Homebrew formula installs the darwin and musl archives, and the tap
+      # verifies each against its attestation before it pins the checksum, so
+      # a release without attestations never reaches Homebrew.
+      attest: true
     secrets:
       CI_RELEASE_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}

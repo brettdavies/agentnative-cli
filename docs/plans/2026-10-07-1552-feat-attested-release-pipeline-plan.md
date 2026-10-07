@@ -154,12 +154,12 @@ repo scaffolded today starts behind the standard.
   `RELEASES*.md` templates in generic form, lifted from `xurl-rs`'s runbooks, and `agentnative-cli`'s runbooks derive
   from the templates. The fleet rule is that a repo's copy derives from the template; writing `anc`'s text by hand would
   leave two hand-written variants and a template that matches neither.
-- KTD2. **The pre-tag build check is a reusable workflow in `brettdavies/.github` with thin callers.** `xurl-rs` carries
-  it today as a standalone 117-line workflow with its own copy of the target matrix. Copying it into `agentnative-cli`
-  would make three matrices to keep equal: two checks and the release build. One reusable beside `rust-release.yml` puts
-  both matrices in one repo, where a parity check can hold them equal. Triggers stay in each caller, because path
-  filters are per repo. This did not need a bake-off: both alternatives are fully specified already, and the choice is
-  reversible by replacing a caller.
+- KTD2. **The pre-tag build check is a reusable workflow in `brettdavies/.github` with thin callers.** (session-settled:
+  user-approved; chosen over copying the workflow into `agentnative-cli`, and over leaving `xurl-rs` on its own copy:
+  one matrix definition, held equal to the release build's.) `xurl-rs` carries it today as a standalone 117-line
+  workflow with its own copy of the target matrix. Copying it into `agentnative-cli` would make three matrices to keep
+  equal: two checks and the release build. One reusable beside `rust-release.yml` puts both matrices in one repo, where
+  a parity check can hold them equal. Triggers stay in each caller, because path filters are per repo.
 - KTD3. **`brettdavies/.github` is the only home of the reusable workflows.** `rust-tool-release` stops carrying copies
   of `rust-ci.yml`, `rust-release.yml`, and `rust-finalize-release.yml` and points at the live files. The copies are
   128, 282, and 51 lines against 267, 659, and 81 live, and nothing deploys from them: every repo calls the reusables by

@@ -1,0 +1,45 @@
+# Builds every target the release matrix builds, without releasing anything.
+#
+# The release build only runs on a `v*` tag push, so a dependency that breaks a
+# cross-compiled target is discovered while cutting the release. That is the
+# wrong moment: the tag exists, and the fix lands after a failed publish.
+#
+# This runs the same seven targets at the two moments that matter: when the
+# dependency graph or toolchain pin changes, which is what breaks a cross
+# build, and on every release branch, which is the last point before a tag
+# exists.
+#
+# The matrix and its build steps live in the shared workflow this calls, beside
+# the release workflow whose matrix they mirror. Every row is hard-fail there,
+# and the release workflow runs with `linux_musl_required: true`, so its musl
+# rows are hard-fail too. A red musl row in this check means the release would
+# fail on the same row.
+name: Release matrix check
+
+on:
+  workflow_dispatch:
+  # Dependency and toolchain changes are what break a cross-compiled target,
+  # so those PRs pay the matrix and nothing else does.
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - .github/workflows/release-matrix-check.yml
+  # Every release branch runs the full matrix regardless of what changed. This
+  # is the last point before a tag exists, and a release carries commits the
+  # path filter above may never have seen together.
+  push:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    uses: brettdavies/.github/.github/workflows/rust-release-matrix-check.yml@main

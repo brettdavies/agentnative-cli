@@ -1,4 +1,5 @@
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -53,13 +54,11 @@ impl Audit for QuietAudit {
 }
 
 pub(crate) fn audit_quiet(help: &HelpOutput) -> AuditStatus {
-    if help.find_flag(QUIET_FLAGS).is_some() {
-        return AuditStatus::Pass;
-    }
-    AuditStatus::Warn(help.noting_dash_rule(
+    pass_or_warn(
+        help,
         QUIET_FLAGS,
         "no option definition in --help declares --quiet or -q; usage lines are not read.",
-    ))
+    )
 }
 
 #[cfg(test)]

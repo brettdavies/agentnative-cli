@@ -2,18 +2,18 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/pandoc__--help.txt
 ---
-   2 | -f, -r | --from=FORMAT, --read=FORMAT
-   3 | -t, -w | --to=FORMAT, --write=FORMAT
-   4 | -o | --output=FILE
+   2 | -f, -r, --from, --read | 
+   3 | -t, -w, --to, --write | 
+   4 | -o, --output | 
    5 | --data-dir | 
-   6 | -M | --metadata=KEY[=VALUE]
+   6 | -M, --metadata | 
    7 | --metadata-file | 
-   8 | -d | --defaults=FILE
+   8 | -d, --defaults | 
    9 | --file-scope | 
   10 | --sandbox | 
-  11 | -s | --standalone[=true|false]
+  11 | -s, --standalone | 
   12 | --template | 
-  13 | -V | --variable=KEY[=VALUE]
+  13 | -V, --variable | 
   14 | --variable-json | 
   15 | --wrap | 
   16 | --ascii | 
@@ -21,14 +21,14 @@ input_file: tests/fixtures/help/pandoc__--help.txt
   18 | --toc-depth | 
   19 | --lof, --list-of-figures | 
   20 | --lot, --list-of-tables | 
-  21 | -N | --number-sections[=true|false]
+  21 | -N, --number-sections | 
   22 | --number-offset | 
   23 | --top-level-division | 
   24 | --extract-media | 
   25 | --resource-path | 
-  26 | -H | --include-in-header=FILE
-  27 | -B | --include-before-body=FILE
-  28 | -A | --include-after-body=FILE
+  26 | -H, --include-in-header | 
+  27 | -B, --include-before-body | 
+  28 | -A, --include-after-body | 
   29 | --no-highlight | 
   30 | --highlight-style | 
   31 | --syntax-definition | 
@@ -36,7 +36,7 @@ input_file: tests/fixtures/help/pandoc__--help.txt
   33 | --dpi | 
   34 | --eol | 
   35 | --columns | 
-  36 | -p | --preserve-tabs[=true|false]
+  36 | -p, --preserve-tabs | 
   37 | --tab-stop | 
   38 | --pdf-engine | 
   39 | --pdf-engine-opt | 
@@ -50,8 +50,8 @@ input_file: tests/fixtures/help/pandoc__--help.txt
   47 | --typst-input | 
   48 | --indented-code-classes | 
   49 | --default-image-extension | 
-  50 | -F | --filter=PROGRAM
-  51 | -L | --lua-filter=SCRIPTPATH
+  50 | -F, --filter | 
+  51 | -L, --lua-filter | 
   52 | --shift-heading-level-by | 
   53 | --base-header-level | 
   54 | --track-changes | 
@@ -63,14 +63,14 @@ input_file: tests/fixtures/help/pandoc__--help.txt
   60 | --markdown-headings | 
   61 | --list-tables | 
   62 | --listings | 
-  63 | -i | --incremental[=true|false]
+  63 | -i, --incremental | 
   64 | --slide-level | 
   65 | --section-divs | 
   66 | --html-q-tags | 
   67 | --email-obfuscation | 
   68 | --id-prefix | 
-  69 | -T | --title-prefix=STRING
-  70 | -c | --css=URL
+  69 | -T, --title-prefix | 
+  70 | -c, --css | 
   71 | --epub-subdirectory | 
   72 | --epub-cover-image | 
   73 | --epub-title-page | 
@@ -80,7 +80,7 @@ input_file: tests/fixtures/help/pandoc__--help.txt
   77 | --chunk-template | 
   78 | --epub-chapter-level | 
   79 | --ipynb-output | 
-  80 | -C | --citeproc
+  80 | -C, --citeproc | 
   81 | --bibliography | 
   82 | --csl | 
   83 | --citation-abbreviations | 
@@ -106,8 +106,8 @@ input_file: tests/fixtures/help/pandoc__--help.txt
  103 | --list-extensions | 
  104 | --list-highlight-languages | 
  105 | --list-highlight-styles | 
- 106 | -D | --print-default-template=FORMAT
+ 106 | -D, --print-default-template | 
  107 | --print-default-data-file | 
  108 | --print-highlight-style | 
- 109 | -v | --version
- 110 | -h | --help
+ 109 | -v, --version | 
+ 110 | -h, --help |

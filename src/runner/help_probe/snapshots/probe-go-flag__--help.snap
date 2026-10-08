@@ -4,8 +4,8 @@ input_file: tests/fixtures/help/probe-go-flag__--help.txt
 ---
    2 | -auto-approve | 
    5 | -chdir | 
-   7 | -f | 
+   7 | -f | skip confirmation prompts
    8 | -force | 
   10 | -n | 
   12 | -no-color | 
-  14 | -v |
+  14 | -v | verbose

@@ -11,7 +11,7 @@ input_file: tests/fixtures/help/claude__--help.txt
   18 | --autocompact | Auto-compact window size (auto, or
   19 | --ax-screen-reader | Render screen-reader friendly output
   20 | --bg, --background | Start the session in the background and
-  22 | --resume | 
+  22 | --resume | continues that
   24 | --bare | Minimal mode: skip hooks (those defined
   26 | --append-system-prompt, --add-dir | 
   28 | --settings, --agents, --plugin-dir | 
@@ -24,7 +24,7 @@ input_file: tests/fixtures/help/claude__--help.txt
   35 | -d, --debug | Enable debug mode with optional category
   36 | --debug-file | Write debug logs to a specific file path
   37 | --desktop | Open in the Claude Desktop app instead
-  39 | --resume | 
+  39 | --resume | to pick the session)
   40 | --disable-slash-commands | Disable all skills
   41 | --disallowedTools, --disallowed-tools | 
   44 | --effort | Effort level for the current session
@@ -32,10 +32,10 @@ input_file: tests/fixtures/help/claude__--help.txt
   46 | --exclude-dynamic-system-prompt-sections | 
   51 | --fallback-model | Enable automatic fallback to specified
   52 | --file | File resources to download at startup.
-  54 | --file | 
+  54 | --file | file_abc:doc.txt
   56 | --fork-session | When resuming, create a new session ID
   57 | --forward-subagent-text | Forward subagent text and thinking
-  59 | --print | 
+  59 | --print | and --output-format=stream-json)
   60 | --from-pr | Resume a session linked to a PR by PR
   61 | -h, --help | Display help for command
   62 | --ide | Automatically connect to IDE on startup
@@ -55,9 +55,9 @@ input_file: tests/fixtures/help/claude__--help.txt
   78 | --permission-mode | Permission mode to use for the session
   79 | --permission-prompts | Who answers permission prompts with
   80 | --print | 
-  81 | --permission-prompt-tool | 
+  81 | --permission-prompt-tool | or "none"
   83 | --plugin-dir | Load a plugin from a directory or .zip
-  85 | --plugin-dir | 
+  85 | --plugin-dir | B.zip)
   87 | --plugin-url | Fetch a plugin .zip from a URL for this
   89 | --plugin-url | 
   90 | -p, --print | Print response and exit (useful for
@@ -67,7 +67,7 @@ input_file: tests/fixtures/help/claude__--help.txt
   95 | --replay-user-messages | Re-emit user messages from stdin back on
   97 | --output-format | 
   98 | --restricted | Restricted mode: removes the built-in
- 100 | --tools | 
+ 100 | --tools | names them, and ignores user,
  102 | -r, --resume | Resume a conversation by session ID, or
  103 | --safe-mode | Start with all customizations
  104 | --session-id | Use a specific session ID for the
@@ -76,11 +76,11 @@ input_file: tests/fixtures/help/claude__--help.txt
  107 | --strict-mcp-config | Only use MCP servers from --mcp-config,
  108 | --system-prompt | System prompt to use for the session
  109 | --system-prompt-snapshot | Record the system prompt once per
- 111 | --system-prompt | 
- 112 | --append-system-prompt | 
+ 111 | --system-prompt | or
+ 112 | --append-system-prompt | included — sent,
  114 | --teleport | Resume a teleport session, optionally
  115 | --tmux | Create a tmux session for the worktree
- 117 | --tmux | 
+ 117 | --tmux | for traditional tmux.
  118 | --tools | Specify the list of available tools from
  119 | --verbose | Override verbose mode setting from
  120 | -v, --version | Output the version number

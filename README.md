@@ -420,9 +420,17 @@ spelling:
 | `-h,-H,--help,-help,-usage,/? = Print usage information and exit.` (cmake)          | `-h`, `-H`, `--help`, `-help`, `-usage`, `/?` |
 | `-W<category>                 = Enable the specified category of warnings.` (cmake) | `-W`                                          |
 | `-0, --http1.0                     Use HTTP/1.0` (curl)                             | `-0`, `--http1.0`                             |
+| `-cd   --print-config-dir   Print the config directory` (lazygit)                   | `-cd`, `--print-config-dir`                   |
+| `-f FORMAT, -r FORMAT  --from=FORMAT, --read=FORMAT` (pandoc)                       | `-f`, `-r`, `--from`, `--read`                |
+| `--ignore-files-only   --ignore option only ignores files` (files-to-prompt)        | `--ignore-files-only`                         |
 
 A value placeholder (`<FILE>`, `=false`, `N`, `[=WHEN]`) is never part of a name. A single letter matches only the same
 letter: `-f` is not `-force-copy`, and `-v` is not `-version`.
+
+Names can sit in a second column with no comma between the columns, as lazygit and pandoc print them. After a gap, text
+that leads with a flag name and holds only names and placeholders is another column; text that reads on as a sentence is
+the description, so the files-to-prompt line above declares one name. A description can also be set off by a marker in
+place of a gap: `#` (Thor), `=` (cmake), `--` (ffmpeg) or `-`.
 
 One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
 double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:

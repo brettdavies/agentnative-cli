@@ -2,18 +2,26 @@
 //! description after them.
 //!
 //! ```text
-//! header := group (sep group)*
-//! group  := name placeholder*
-//! sep    := "," | " " | "|" | punctuation
+//! definition := group (sep group)* (gap column)* description?
+//! column     := group (sep group)*
+//! group      := name placeholder*
+//! sep        := "," | " " | "|" | punctuation
+//! gap        := 2+ spaces | TAB
 //! ```
 //!
 //! Every name is kept whole and in the order printed. A name ends where its
-//! placeholder starts, and a word that is neither a name nor a placeholder is
-//! prose, which ends the header.
+//! placeholder starts. After a gap, text that leads with a name and holds only
+//! names and placeholders is another column of names (`-cd   --print-config-dir`);
+//! anything else is the description. A word that is neither a name nor a
+//! placeholder is prose: it ends the names, and the description starts at the
+//! next gap, or at the prose itself when the line has no later gap.
 
 use super::FlagName;
-use super::pieces::{Kind, pieces};
-use crate::runner::help_probe::before_description_gap;
+use super::pieces::{Kind, Piece, pieces};
+
+/// Punctuation that sets a description off from its header: Thor's `#`,
+/// cmake's `=`, ffmpeg's `--`, qmd's `-`.
+const MARKERS: &[&str] = &["#", "=", "--", "-"];
 
 /// What a definition line declares.
 pub(super) struct Header<'a> {
@@ -23,13 +31,21 @@ pub(super) struct Header<'a> {
     pub description: &'a str,
 }
 
-/// Read a definition line without its indentation. `None` when the line
-/// declares no name.
+/// Read a definition line. `None` when the line declares no name.
 pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
-    let header = before_description_gap(line);
+    let all = pieces(line);
     let mut names: Vec<FlagName> = Vec::new();
     let mut placeholder: Option<&str> = None;
-    for piece in pieces(header) {
+    let mut prose: Option<usize> = None;
+    let mut after_gap: Option<usize> = None;
+    for (i, piece) in all.iter().enumerate() {
+        if i > 0 && piece.after_gap && (prose.is_some() || !is_name_column(&all[i..])) {
+            after_gap = Some(i);
+            break;
+        }
+        if prose.is_some() {
+            continue;
+        }
         match piece.kind(names.is_empty()) {
             Kind::Names(declared, attached) => {
                 for name in declared {
@@ -37,7 +53,7 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
                         names.push(FlagName::new(name));
                     }
                 }
-                if !attached.is_empty() {
+                if !attached.is_empty() && !MARKERS.contains(&attached) {
                     placeholder.get_or_insert(attached);
                 }
             }
@@ -45,17 +61,40 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
                 placeholder.get_or_insert(piece.text);
             }
             Kind::Punctuation => {}
-            Kind::Prose => break,
+            Kind::Prose => prose = Some(i),
         }
     }
     if names.is_empty() {
         return None;
     }
+    let description = after_gap
+        .or(prose)
+        .map(|i| {
+            if MARKERS.contains(&all[i].text) {
+                i + 1
+            } else {
+                i
+            }
+        })
+        .and_then(|i| all.get(i))
+        .map_or("", |first| line[first.start..].trim_end());
     Some(Header {
         names,
         placeholder,
-        description: line[header.len()..].trim(),
+        description,
     })
+}
+
+/// Whether the pieces up to the next gap are a column of names: they lead
+/// with a name and hold no prose. `--ignore option only ignores files` leads
+/// with a name and is a description.
+fn is_name_column(rest: &[Piece<'_>]) -> bool {
+    let mut kinds = rest
+        .iter()
+        .enumerate()
+        .take_while(|(i, piece)| *i == 0 || !piece.after_gap)
+        .map(|(_, piece)| piece.kind(false));
+    matches!(kinds.next(), Some(Kind::Names(..))) && kinds.all(|kind| !matches!(kind, Kind::Prose))
 }
 
 #[cfg(test)]
@@ -221,10 +260,58 @@ mod tests {
             "-o, /out, --output=<out>   three names",
             &["-o", "/out", "--output"],
         ),
+        // Names in a second column, with no comma between the columns.
         (
             "pandoc 3.12",
             "-f FORMAT, -r FORMAT  --from=FORMAT, --read=FORMAT",
-            &["-f", "-r"],
+            &["-f", "-r", "--from", "--read"],
+        ),
+        (
+            "lazygit 0.65.1",
+            "-cd   --print-config-dir   Print the config directory",
+            &["-cd", "--print-config-dir"],
+        ),
+        (
+            "lazygit 0.65.1",
+            "-v    --version            Print the current version",
+            &["-v", "--version"],
+        ),
+        (
+            "shellcheck 0.11.0",
+            "-f FORMAT           --format=FORMAT            Output format (checkstyle, diff, gcc, json, json1, quiet, tty)",
+            &["-f", "--format"],
+        ),
+        (
+            "shellcheck 0.11.0",
+            "-o check1,check2..  --enable=check1,check2..   List of optional checks to enable (or 'all')",
+            &["-o", "--enable"],
+        ),
+        (
+            "shellcheck 0.11.0",
+            "-C[WHEN]            --color[=WHEN]             Use color (auto, always, never)",
+            &["-C", "--color"],
+        ),
+        // A description that starts with a flag is not a second column.
+        (
+            "files-to-prompt 0.6",
+            "--ignore-files-only   --ignore option only ignores files",
+            &["--ignore-files-only"],
+        ),
+        (
+            "GNU tar 1.35",
+            "--null                 -T reads null-terminated names; implies",
+            &["--null"],
+        ),
+        (
+            "synthetic",
+            "-q, --quiet     -qq for silence",
+            &["-q", "--quiet"],
+        ),
+        // A comma-separated list in prose does not chain names.
+        (
+            "terraform 1.16.4 untaint",
+            "-state, state-out, and -backup are legacy options supported for the local",
+            &["-state"],
         ),
         (
             "GNU findutils 4.10.0",
@@ -334,11 +421,90 @@ mod tests {
         assert_eq!(placeholder("-q, --quiet"), None);
     }
 
+    /// A definition line and the description the help gives it on that line.
+    const DESCRIPTIONS: &[(&str, &str, &str)] = &[
+        ("clap 4.6.7", "-q, --quiet    Say less.", "Say less."),
+        ("clap 4.6.7", "--null", ""),
+        (
+            "lazygit 0.65.1",
+            "-cd   --print-config-dir   Print the config directory",
+            "Print the config directory",
+        ),
+        (
+            "pandoc 3.12",
+            "-f FORMAT, -r FORMAT  --from=FORMAT, --read=FORMAT",
+            "",
+        ),
+        (
+            "files-to-prompt 0.6",
+            "--ignore-files-only   --ignore option only ignores files",
+            "--ignore option only ignores files",
+        ),
+        (
+            "GNU tar 1.35",
+            "--null                 -T reads null-terminated names; implies",
+            "-T reads null-terminated names; implies",
+        ),
+        // Description markers.
+        (
+            "Go flag 1.27.1",
+            "-f\tskip confirmation prompts",
+            "skip confirmation prompts",
+        ),
+        (
+            "cmake 4.4.4",
+            "-S <path-to-source>          = Explicitly specify a source directory.",
+            "Explicitly specify a source directory.",
+        ),
+        (
+            "cmake 4.4.4",
+            "--compile-no-warning-as-error= Ignore COMPILE_WARNING_AS_ERROR property and",
+            "Ignore COMPILE_WARNING_AS_ERROR property and",
+        ),
+        (
+            "cmake 4.4.4",
+            "-h,-H,--help,-help,-usage,/? = Print usage information and exit.",
+            "Print usage information and exit.",
+        ),
+        (
+            "Thor 1.5.0",
+            "-n, --limit=N  # maximum number of results",
+            "maximum number of results",
+        ),
+        (
+            "ffmpeg 9.0.2",
+            "-h      -- print basic options",
+            "print basic options",
+        ),
+        (
+            "qmd",
+            "--timeout <minutes>         - Embed session cap in minutes (0 = no limit; default 30)",
+            "Embed session cap in minutes (0 = no limit; default 30)",
+        ),
+        // Prose after one space, with and without a later gap.
+        (
+            "fzf 0.74.4",
+            "--preview-border[=STYLE] Short for --preview-window=border-STYLE",
+            "Short for --preview-window=border-STYLE",
+        ),
+        (
+            "jq 1.8.2",
+            "--slurpfile name file     set $name to an array of JSON values read",
+            "set $name to an array of JSON values read",
+        ),
+    ];
+
     #[test]
-    fn the_description_is_the_text_after_the_gap() {
-        let description = |line| tokenize(line).map(|header| header.description);
-        assert_eq!(description("-q, --quiet    Say less."), Some("Say less."));
-        assert_eq!(description("--null"), Some(""));
+    fn the_description_starts_after_the_header_and_any_marker() {
+        let wrong: Vec<String> = DESCRIPTIONS
+            .iter()
+            .filter_map(|(tool, line, expected)| {
+                let read = tokenize(line).map(|header| header.description);
+                (read != Some(*expected))
+                    .then(|| format!("{tool}: `{line}` gave {read:?}, not {expected:?}"))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     #[test]

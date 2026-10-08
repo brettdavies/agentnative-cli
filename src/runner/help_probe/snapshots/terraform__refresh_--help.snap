@@ -11,4 +11,4 @@ input_file: tests/fixtures/help/terraform__refresh_--help.txt
   28 | -target | Resource to target. Operation will be limited to this
   32 | -var | Set a variable in the Terraform configuration. This
   35 | -var-file | Set variables in the Terraform configuration from
-  39 | -state |
+  39 | -state | and -backup are legacy options supported for the local

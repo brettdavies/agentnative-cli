@@ -17,7 +17,7 @@ input_file: tests/fixtures/help/git__commit_-h.txt
   32 | -s, --signoff, --no-signoff | add a Signed-off-by trailer
   33 | -t, --template, --no-template | 
   35 | -e, --edit, --no-edit | force edit of commit
-  36 | --cleanup, --no-cleanup | 
+  36 | --cleanup, --no-cleanup | how to strip spaces and #comments from message
   37 | --status, --no-status | include status in commit message template
   38 | -S, --gpg-sign, --no-gpg-sign | 
   42 | -a, --all, --no-all | commit all changed files

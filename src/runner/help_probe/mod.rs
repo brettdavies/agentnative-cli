@@ -476,13 +476,23 @@ fn usage_tool_name(raw: &str) -> Option<String> {
     None
 }
 
-/// A block header is any line whose last word is `commands:` or
-/// `subcommands:`, case-insensitively: clap's `Commands:`, cobra's
-/// `Available Commands:`, and hand-written `Common commands:` alike.
+/// A block header is any line ending in `:` that carries `commands` or
+/// `subcommands` as a whole word, case-insensitively: clap's `Commands:`,
+/// cobra's `Available Commands:`, hand-written `Common commands:`, and the
+/// grouped headings a large cobra tool uses, where the word is not last
+/// (`Basic Commands (Beginner):`, `Subcommands provided by plugins:`).
+///
+/// Whole-word rather than substring, so `Metacommands:` is not a header. The
+/// cost of matching the word mid-line is bounded by [`parse_command_blocks`],
+/// which drops a header no indented entry follows, so a prose line that happens
+/// to end in `commands:` contributes nothing.
 fn is_command_header(trimmed: &str) -> bool {
-    trimmed.split_whitespace().last().is_some_and(|last| {
-        last.eq_ignore_ascii_case("commands:") || last.eq_ignore_ascii_case("subcommands:")
-    })
+    trimmed.ends_with(':')
+        && trimmed
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|word| {
+                word.eq_ignore_ascii_case("commands") || word.eq_ignore_ascii_case("subcommands")
+            })
 }
 
 /// The tokens a prefixed block's entries may lead with: the `Usage:` line's
@@ -851,6 +861,63 @@ Options:
         );
         assert_eq!(help.subcommands(), ["apply", "get"]);
         assert_eq!(help.command_blocks()[0].header, "Available Commands:");
+    }
+
+    #[test]
+    fn grouped_command_headings_are_read() {
+        // kubectl groups its commands under several headings, and only some of
+        // them end in the word `Commands:`.
+        let help = HelpOutput::from_raw(concat!(
+            "Usage:\n  kubectl [flags] [options]\n\n",
+            "Basic Commands (Beginner):\n",
+            "  create          Create a resource from a file or from stdin\n",
+            "  expose          Expose a replication controller as a new service\n\n",
+            "Basic Commands (Intermediate):\n",
+            "  explain         Get documentation for a resource\n",
+            "  get             Display one or many resources\n\n",
+            "Troubleshooting and Debugging Commands:\n",
+            "  describe        Show details of a specific resource\n\n",
+            "Subcommands provided by plugins:\n",
+            "  gadget          Run a plugin\n\n",
+            "Usage:\n  kubectl [command]\n",
+        ));
+        assert_eq!(
+            help.subcommands(),
+            ["create", "expose", "explain", "get", "describe", "gadget"]
+        );
+        assert_eq!(
+            help.command_blocks()
+                .iter()
+                .map(|b| b.header.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Basic Commands (Beginner):",
+                "Basic Commands (Intermediate):",
+                "Troubleshooting and Debugging Commands:",
+                "Subcommands provided by plugins:",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_heading_word_inside_a_longer_word_is_not_a_command_header() {
+        assert!(!is_command_header("Metacommands:"));
+        assert!(!is_command_header("Usage:"));
+        assert!(!is_command_header("Flags:"));
+        assert!(!is_command_header("Basic Commands (Beginner)"));
+        assert!(is_command_header("Basic Commands (Beginner):"));
+        assert!(is_command_header("Subcommands provided by plugins:"));
+    }
+
+    #[test]
+    fn a_prose_line_with_no_entries_yields_no_block() {
+        // A header is dropped unless indented entries follow it, which is what
+        // bounds the cost of matching a heading word mid-line.
+        let help = HelpOutput::from_raw(
+            "Usage: tool\n\nRun `tool help` to list commands:\n\nFlags:\n  -h  help\n",
+        );
+        assert!(help.command_blocks().is_empty());
+        assert!(help.subcommands().is_empty());
     }
 
     #[test]

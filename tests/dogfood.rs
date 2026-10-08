@@ -31,13 +31,7 @@ fn audit_repo_json() -> Value {
 }
 
 fn collect_failed(parsed: &Value, prefix: &str) -> Vec<String> {
-    parsed["results"]
-        .as_array()
-        .expect("results array")
-        .iter()
-        .filter(|r| {
-            r["id"].as_str().is_some_and(|id| id.starts_with(prefix)) && r["status"] == "fail"
-        })
+    failed_rows(parsed, prefix)
         .map(|r| {
             format!(
                 "{} ({})",
@@ -46,6 +40,26 @@ fn collect_failed(parsed: &Value, prefix: &str) -> Vec<String> {
             )
         })
         .collect()
+}
+
+/// Failing rows whose requirement id carries `prefix`.
+fn failed_rows<'a>(parsed: &'a Value, prefix: &'a str) -> impl Iterator<Item = &'a Value> {
+    parsed["results"]
+        .as_array()
+        .expect("results array")
+        .iter()
+        .filter(move |r| {
+            r["id"].as_str().is_some_and(|id| id.starts_with(prefix)) && r["status"] == "fail"
+        })
+}
+
+/// A row's probe id, which is what an allowlist of audits names.
+///
+/// A row is keyed by its requirement id (`p2-must-schema-print`), while an
+/// audit is named by its own id (`p2-schema-print`), so the two never match as
+/// strings and an allowlist compared against the requirement id can never fire.
+fn audit_id(row: &Value) -> &str {
+    row["audit_id"].as_str().unwrap_or("?")
 }
 
 /// Test 24 — CRITICAL. P5 (introspection — `--dry-run`, `--print` etc.)
@@ -91,9 +105,16 @@ fn dogfood_no_p2_fail_after_skill_subcommand() {
     const PENDING_FAILS: &[&str] = &["p2-schema-print", "p2-json-errors"];
 
     let parsed = audit_repo_json();
-    let failed: Vec<String> = collect_failed(&parsed, "p2-")
-        .into_iter()
-        .filter(|f| !PENDING_FAILS.iter().any(|id| f.contains(id)))
+    let failed: Vec<String> = failed_rows(&parsed, "p2-")
+        .filter(|row| !PENDING_FAILS.contains(&audit_id(row)))
+        .map(|row| {
+            format!(
+                "{} / {} ({})",
+                row["id"].as_str().unwrap_or("?"),
+                audit_id(row),
+                row["evidence"].as_str().unwrap_or("(no evidence)"),
+            )
+        })
         .collect();
     assert!(
         failed.is_empty(),
@@ -101,4 +122,31 @@ fn dogfood_no_p2_fail_after_skill_subcommand() {
          Failures:\n  {}",
         failed.join("\n  "),
     );
+}
+
+/// The allowlist above is keyed on `audit_id`, so it has to name ids the
+/// scorecard actually emits. A requirement id there would silently never match,
+/// which is how the allowlist sat dead while reading as protection.
+#[test]
+fn dogfood_p2_pending_allowlist_names_real_audit_ids() {
+    const PENDING_FAILS: &[&str] = &["p2-schema-print", "p2-json-errors"];
+
+    let parsed = audit_repo_json();
+    let emitted: Vec<&str> = parsed["results"]
+        .as_array()
+        .expect("results array")
+        .iter()
+        .filter_map(|r| r["audit_id"].as_str())
+        .collect();
+    for pending in PENDING_FAILS {
+        assert!(
+            emitted.contains(pending),
+            "allowlisted `{pending}` is not an audit_id this repo's scorecard emits, so the \
+             allowlist entry can never match. Emitted p2 audit ids: {:?}",
+            emitted
+                .iter()
+                .filter(|id| id.starts_with("p2-"))
+                .collect::<Vec<_>>(),
+        );
+    }
 }

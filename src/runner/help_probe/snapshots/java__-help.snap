@@ -2,7 +2,6 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/java__-help.txt
 ---
-  12 | -m | or --module <module>/<mainclass> are passed as the arguments
   17 | -cp | 
   18 | -classpath | 
   19 | --class-path | A : separated list of directories, JAR archives, and ZIP arc

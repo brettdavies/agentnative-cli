@@ -3,9 +3,9 @@
 //! Covers: `p1-must-no-interactive`. This is the second behavioral proof
 //! of the same MUST — the existing `p1-non-interactive` audit probes
 //! *runtime* behavior (bare invocation, stdin-primary). This audit probes
-//! the *flag surface area* — does the CLI advertise any of the canonical
-//! non-interactive flags (`--no-interactive`, `-p`, `--batch`, ...) in
-//! its `--help` output at all.
+//! the *flag surface area* — does an option definition in the CLI's
+//! `--help` declare any of the canonical non-interactive flags
+//! (`--no-interactive`, `-p`, `--batch`, ...).
 //!
 //! Skip rather than Warn when the target already satisfies P1 via an
 //! alternative gate (help-on-bare-invocation or stdin-clean-exit) — those
@@ -13,7 +13,7 @@
 
 use crate::audit::Audit;
 use crate::project::Project;
-use crate::runner::RunStatus;
+use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Canonical non-interactive gate flags. A tool that advertises any one
@@ -65,47 +65,18 @@ impl Audit for FlagExistenceAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let runner = project.runner_ref();
 
-        // Skip when the target already satisfies P1 via an alternative gate.
         // These probes hit BinaryRunner's cache when `p1-non-interactive`
         // already ran, so the cost is zero.
         let bare = runner.run(&[], &[]);
         let bare_output = format!("{}{}", bare.stdout, bare.stderr);
-        let help_on_bare = HELP_ON_BARE_MARKERS.iter().any(|m| bare_output.contains(m));
-        let stdin_clean_exit = matches!(bare.status, RunStatus::Ok);
-
-        if help_on_bare || stdin_clean_exit {
-            return Ok(AuditResult {
-                id: self.id().to_string(),
-                label: self.label().into(),
-                group: self.group(),
-                layer: self.layer(),
-                status: AuditStatus::Skip(
-                    "target satisfies P1 via alternative gate (help-on-bare or stdin-primary)"
-                        .into(),
-                ),
-                confidence: Confidence::High,
-                mitigation: None,
-                config_hint: None,
-                pass_evidence: None,
-            });
-        }
-
-        let status = match project.help_output() {
-            None => AuditStatus::Skip("could not probe --help".into()),
-            Some(help) => {
-                let raw = help.raw();
-                if raw.trim().is_empty() {
-                    AuditStatus::Skip(
-                        "--help produced no output (likely non-English or unsupported)".into(),
-                    )
-                } else if GATE_FLAGS.iter().any(|needle| contains_flag(raw, needle)) {
-                    AuditStatus::Pass
-                } else {
-                    AuditStatus::Warn(format!(
-                        "no non-interactive flag found in --help; expected one of: {}",
-                        GATE_FLAGS.join(", ")
-                    ))
-                }
+        let status = if has_alternative_gate(&bare_output, matches!(bare.status, RunStatus::Ok)) {
+            AuditStatus::Skip(
+                "target satisfies P1 via alternative gate (help-on-bare or stdin-primary)".into(),
+            )
+        } else {
+            match project.help_output() {
+                None => AuditStatus::Skip("could not probe --help".into()),
+                Some(help) => audit_flag_existence(help),
             }
         };
 
@@ -123,135 +94,131 @@ impl Audit for FlagExistenceAudit {
     }
 }
 
-/// A flag needle like `"--no-interactive"` matches when it appears in the
-/// help text bounded by a non-flag character on either side — so `--no-input`
-/// does not satisfy a search for `-p`, and `--print-json` does not satisfy
-/// a search for `--print`.
-fn contains_flag(haystack: &str, needle: &str) -> bool {
-    let mut rest = haystack;
-    while let Some(pos) = rest.find(needle) {
-        let before_ok = pos == 0 || !is_flag_name_char(rest.as_bytes()[pos - 1] as char);
-        let after_idx = pos + needle.len();
-        let after_ok =
-            after_idx >= rest.len() || !is_flag_name_char(rest.as_bytes()[after_idx] as char);
-        if before_ok && after_ok {
-            return true;
-        }
-        rest = &rest[after_idx..];
-    }
-    false
+/// Whether the bare invocation already shows the target is safe to call
+/// without a terminal: it printed usage, or it exited on its own.
+fn has_alternative_gate(bare_output: &str, bare_exited: bool) -> bool {
+    bare_exited || HELP_ON_BARE_MARKERS.iter().any(|m| bare_output.contains(m))
 }
 
-fn is_flag_name_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '-' || c == '_'
-}
-
-/// Core unit for tests. Takes pre-captured help text and the bare-invocation
-/// status, returns a `AuditStatus` — mirrors the audit convention in
-/// `CLAUDE.md` §"Source Audit Convention" (adapted for behavioral audits).
-#[cfg(test)]
-fn audit_flag_existence(help_raw: &str, bare_stdout: &str, bare_ok: bool) -> AuditStatus {
-    let help_on_bare = HELP_ON_BARE_MARKERS.iter().any(|m| bare_stdout.contains(m));
-    if help_on_bare || bare_ok {
-        return AuditStatus::Skip(
-            "target satisfies P1 via alternative gate (help-on-bare or stdin-primary)".into(),
-        );
-    }
-    if help_raw.trim().is_empty() {
+/// Core unit. Whether the help declares one of [`GATE_FLAGS`].
+pub(crate) fn audit_flag_existence(help: &HelpOutput) -> AuditStatus {
+    if help.raw().trim().is_empty() {
         return AuditStatus::Skip(
             "--help produced no output (likely non-English or unsupported)".into(),
         );
     }
-    if GATE_FLAGS
-        .iter()
-        .any(|needle| contains_flag(help_raw, needle))
-    {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(format!(
-            "no non-interactive flag found in --help; expected one of: {}",
-            GATE_FLAGS.join(", ")
-        ))
+    if help.find_flag(GATE_FLAGS).is_some() {
+        return AuditStatus::Pass;
     }
+    AuditStatus::Warn(help.noting_dash_rule(
+        GATE_FLAGS,
+        &format!(
+            "no option definition in --help declares a non-interactive flag (one of: {}); usage \
+             lines are not read.",
+            GATE_FLAGS.join(", ")
+        ),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn happy_path_batch_flag_in_help() {
-        // --help advertises `--batch` → Pass. Bare invocation did NOT print
-        // Usage and did NOT exit cleanly, so the alternative gates do not fire.
-        let help = "  --batch    Run in batch mode.\n";
-        assert_eq!(audit_flag_existence(help, "", false), AuditStatus::Pass);
+    fn audit(help: &str) -> AuditStatus {
+        audit_flag_existence(&HelpOutput::from_raw(help))
     }
 
     #[test]
-    fn happy_path_short_print_flag() {
-        let help = "  -p, --print    Print output.\n";
-        assert_eq!(audit_flag_existence(help, "", false), AuditStatus::Pass);
-    }
-
-    #[test]
-    fn skip_when_help_on_bare_invocation() {
-        // Bare invocation printed Usage → tool is already agent-safe.
-        let help = "  --foo    Do a thing.\n";
-        let result = audit_flag_existence(help, "Usage: foo [OPTIONS]\n", false);
-        assert!(matches!(result, AuditStatus::Skip(_)));
-    }
-
-    #[test]
-    fn skip_when_stdin_clean_exit() {
-        // Bare invocation exited 0 (stdin-primary behavior) → skip.
-        let help = "  --foo    Do a thing.\n";
-        let result = audit_flag_existence(help, "", true);
-        assert!(matches!(result, AuditStatus::Skip(_)));
-    }
-
-    #[test]
-    fn warn_when_no_gate_flag_and_no_alt_gate() {
-        let help = "  --color    When to color.\n  --version   Print version.\n";
-        match audit_flag_existence(help, "", false) {
-            AuditStatus::Warn(msg) => assert!(msg.contains("--no-interactive")),
-            other => panic!("expected Warn, got {other:?}"),
+    fn a_declared_gate_flag_passes() {
+        for help in [
+            "Options:\n      --batch    Run in batch mode.\n  -h, --help     Show help.\n",
+            "Options:\n  -p, --print    Print output.\n  -h, --help     Show help.\n",
+            "Options:\n  -y             Assume yes.\n  -h, --help     Show help.\n",
+        ] {
+            assert_eq!(audit(help), AuditStatus::Pass, "{help}");
         }
     }
 
     #[test]
-    fn non_english_help_is_skipped() {
-        // Localized help without any English flag text → empty input after
-        // we strip non-ASCII — the audit honors the English-only regex
-        // exception from docs/coverage-matrix.md. The parsers would still
-        // return zero matches, so we Warn. For "completely unparseable"
-        // localized help with no ASCII flags at all, we Skip via the empty
-        // branch. Exercise both.
-        // Completely non-English: no flags detected → warn about missing flag.
-        let help = "用法: outil\n选项:\n  -H, --header     自定义请求头\n";
-        let result = audit_flag_existence(help, "", false);
-        assert!(matches!(result, AuditStatus::Warn(_)));
-
-        // Empty help output → Skip.
-        let empty = "";
-        let result = audit_flag_existence(empty, "", false);
-        assert!(matches!(result, AuditStatus::Skip(_)));
+    fn the_alternative_gates_are_usage_on_bare_or_a_clean_exit() {
+        assert!(has_alternative_gate("Usage: foo [OPTIONS]\n", false));
+        assert!(has_alternative_gate("", true));
+        assert!(!has_alternative_gate("foo: waiting for input", false));
     }
 
     #[test]
-    fn word_boundary_rejects_partial_matches() {
-        // `--print-json` must NOT satisfy a search for `--print` — but
-        // `--print` alone in a neighbor line must.
-        let help = "  --print-json    Print as JSON.\n";
-        let result = audit_flag_existence(help, "", false);
-        assert!(matches!(result, AuditStatus::Warn(_)));
+    fn warn_names_the_flags_searched_and_where() {
+        let help =
+            "Options:\n      --color      When to color.\n      --version    Print version.\n";
+        assert_eq!(
+            audit(help),
+            AuditStatus::Warn(
+                "no option definition in --help declares a non-interactive flag (one of: \
+                 --no-interactive, --non-interactive, -p, --print, --no-input, --batch, \
+                 --headless, -y, --yes, --assume-yes); usage lines are not read."
+                    .into()
+            )
+        );
     }
 
     #[test]
-    fn contains_flag_word_boundary() {
-        assert!(contains_flag("use --batch mode", "--batch"));
-        assert!(contains_flag("  --batch\n", "--batch"));
-        assert!(!contains_flag("--batching", "--batch"));
-        assert!(contains_flag("-p, --print", "-p"));
-        assert!(!contains_flag("-pr", "-p"));
+    fn empty_help_is_skipped_and_localized_help_is_still_read() {
+        assert!(matches!(audit(""), AuditStatus::Skip(_)));
+        let localized = "用法: outil\n选项:\n  -H, --header     自定义请求头\n";
+        assert!(matches!(audit(localized), AuditStatus::Warn(_)));
+    }
+
+    /// Help text that names a gate flag without declaring it.
+    const NOT_DECLARED: &[(&str, &str)] = &[
+        (
+            "a longer flag that starts with the name",
+            "Options:\n      --print-json    Print as JSON.\n      --batching      Group requests.\n",
+        ),
+        (
+            "a short cluster that starts with the letter",
+            "Options:\n  -pr             Print and release.\n      --help      Show help.\n",
+        ),
+        (
+            "a usage line",
+            "Usage: tool [-y] [--batch] <file>\n\nOptions:\n  -h, --help    Show help.\n",
+        ),
+        (
+            "another flag's wrapped description",
+            "Options:\n      --confirm    Ask before each step. This is the default without\n                   --yes on a terminal.\n  -h, --help       Show help.\n",
+        ),
+        (
+            "a sentence",
+            "Run with --no-input in CI.\n\nOptions:\n  -h, --help    Show help.\n",
+        ),
+    ];
+
+    #[test]
+    fn a_gate_flag_named_but_not_declared_does_not_pass() {
+        let passed: Vec<&str> = NOT_DECLARED
+            .iter()
+            .filter(|(_, help)| audit(help) == AuditStatus::Pass)
+            .map(|(what, _)| *what)
+            .collect();
+        assert!(passed.is_empty(), "{passed:?}");
+    }
+
+    #[test]
+    fn a_single_dash_word_passes_in_a_help_without_double_dash_names() {
+        let help = "Usage of tool:\n  -batch\n    \tRun without prompting\n  -version\n    \tShow version\n";
+        assert_eq!(audit(help), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_single_dash_word_beside_double_dash_names_warns_and_says_why() {
+        // GNU findutils 4.10.0 declares `--help` and `--version`, and names
+        // its actions with one dash.
+        let help = "Options:\n      --help       display this help and exit\n      --version    output version information and exit\n  -print           print the full file name\n";
+        match audit(help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-print` is declared, but this help also declares double-dash names, so it does not count as `--print`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 }

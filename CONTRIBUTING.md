@@ -73,6 +73,12 @@ PRs that pass the hook locally also pass CI. Fix locally before pushing; the hoo
   warrant their own PR.
 - **Tests:** new auditors ship with a unit test and a regression fixture; scoring-engine changes ship with before/after
   scorecards for at least three tools from the registry.
+- **Full-corpus before/after:** before a scoring-engine change merges, a maintainer scores the whole registry with the
+  base and head builds in one pinned scorer image and attaches the row diff to the PR. The harness lives in
+  `agentnative-site`: `bash docker/score/compare.sh diff --cli ~/dev/agentnative-cli --image <image-id> --noise
+  <noise.tsv> <base-ref> <head-ref>`. Its
+  [README](https://github.com/brettdavies/agentnative-site/blob/dev/docker/score/README.md#comparing-two-anc-builds)
+  covers the A/A run that produces the noise list and how to read the report.
 
 ## Registry submissions
 

@@ -1,0 +1,17 @@
+Usage: py_click.py [OPTIONS] [PATH]
+
+  click probe. Mentions --force in prose and --dry-run at the start of a
+  wrapped line.
+
+Options:
+  -f, --force              skip confirmation prompts
+  -n, --limit INTEGER      maximum number of results to return, a deliberately
+                           long description so that click has to wrap it onto
+                           continuation lines
+  --dry-run                print what would change
+  -v, --verbose            increase verbosity
+  -o, --output PATH        write output here
+  -cd, --print-config-dir  multi-letter single-dash alias
+  -no-color                single-dash word option
+  --color / --no-color2    boolean pair
+  --help                   Show this message and exit.

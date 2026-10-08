@@ -1,0 +1,16 @@
+NAME:
+   probe - urfave/cli v2 probe
+
+USAGE:
+   probe [global options] command [command options]
+
+COMMANDS:
+   help, h  Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --force, -f               skip confirmation prompts (default: false)
+   --limit value, -n value   maximum number of results to return, a deliberately long description (default: 0)
+   --dry-run                 print what would change (default: false)
+   --output FILE, -o FILE    write output to FILE
+   --print-config-dir, --cd  multi-letter alias (default: false)
+   --help, -h                show help

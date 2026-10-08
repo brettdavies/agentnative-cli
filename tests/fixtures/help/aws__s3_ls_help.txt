@@ -1,0 +1,323 @@
+LS()                                                                      LS()
+
+NNAAMMEE
+       ls -
+
+DDEESSCCRRIIPPTTIIOONN
+       List S3 objects and common prefixes under a prefix or all S3 buckets.
+       Note that the --output and --no-paginate arguments are ignored for this
+       command.
+
+SSYYNNOOPPSSIISS
+
+            ls
+          <S3Uri> or NONE
+          [--recursive]
+          [--page-size <value>]
+          [--human-readable]
+          [--summarize]
+          [--request-payer <value>]
+          [--bucket-name-prefix <value>]
+          [--bucket-region <value>]
+          [--debug]
+          [--endpoint-url <value>]
+          [--no-verify-ssl]
+          [--no-paginate]
+          [--output <value>]
+          [--query <value>]
+          [--profile <value>]
+          [--region <value>]
+          [--version <value>]
+          [--color <value>]
+          [--no-sign-request]
+          [--ca-bundle <value>]
+          [--cli-read-timeout <value>]
+          [--cli-connect-timeout <value>]
+          [--cli-binary-format <value>]
+          [--no-cli-pager]
+          [--cli-auto-prompt]
+          [--no-cli-auto-prompt]
+          [--cli-error-format <value>]
+
+OOPPTTIIOONNSS
+       ppaatthhss (string)
+
+       ----rreeccuurrssiivvee (boolean) Command is performed on all files or objects
+       under the specified directory or prefix.
+
+       ----ppaaggee--ssiizzee (integer) The number of results to return in each response
+       to a list operation. The default value is 1000 (the maximum allowed).
+       Using a lower value may help if an operation times out.
+
+       ----hhuummaann--rreeaaddaabbllee (boolean) Displays file sizes in human readable
+       format.
+
+       ----ssuummmmaarriizzee (boolean) Displays summary information (number of objects,
+       total size).
+
+       ----rreeqquueesstt--ppaayyeerr (string) Confirms that the requester knows that they
+       will be charged for the request. Bucket owners need not specify this
+       parameter in their requests. Documentation on downloading objects from
+       requester pays buckets can be found at
+       _h_t_t_p_:_/_/_d_o_c_s_._a_w_s_._a_m_a_z_o_n_._c_o_m_/_A_m_a_z_o_n_S_3_/_l_a_t_e_s_t_/_d_e_v_/_O_b_j_e_c_t_s_i_n_R_e_q_u_e_s_t_e_r_P_a_y_s_B_u_c_k_e_t_s_._h_t_m_l
+
+       ----bbuucckkeett--nnaammee--pprreeffiixx (string) Limits the response to bucket names that
+       begin with the specified bucket name prefix.
+
+       ----bbuucckkeett--rreeggiioonn (string) Limits the response to buckets that are
+       located in the specified Amazon Web Services Region. The Amazon Web
+       Services Region must be expressed according to the Amazon Web Services
+       Region code, such as us-west-2 for the US West (Oregon) Region. For a
+       list of the valid values for all of the Amazon Web Services Regions,
+       see _h_t_t_p_s_:_/_/_d_o_c_s_._a_w_s_._a_m_a_z_o_n_._c_o_m_/_g_e_n_e_r_a_l_/_l_a_t_e_s_t_/_g_r_/_r_a_n_d_e_._h_t_m_l_#_s_3___r_e_g_i_o_n
+
+GGLLOOBBAALL OOPPTTIIOONNSS
+       ----ddeebbuugg (boolean)
+
+       Turn on debug logging.
+
+       ----eennddppooiinntt--uurrll (string)
+
+       Override command's default URL with the given URL.
+
+       ----nnoo--vveerriiffyy--ssssll (boolean)
+
+       By default, the AWS CLI uses SSL when communicating with AWS services.
+       For each SSL connection, the AWS CLI will verify SSL certificates. This
+       option overrides the default behavior of verifying SSL certificates.
+
+       ----nnoo--ppaaggiinnaattee (boolean)
+
+       Disable automatic pagination. If automatic pagination is disabled, the
+       AWS CLI will only make one call, for the first page of results.
+
+       ----oouuttppuutt (string)
+
+       The formatting style for command output.
+
+       +o json
+
+       +o text
+
+       +o table
+
+       +o yaml
+
+       +o yaml-stream
+
+       +o off
+
+       ----qquueerryy (string)
+
+       A JMESPath query to use in filtering the response data.
+
+       ----pprrooffiillee (string)
+
+       Use a specific profile from your credential file.
+
+       ----rreeggiioonn (string)
+
+       The region to use. Overrides config/env settings.
+
+       ----vveerrssiioonn (string)
+
+       Display the version of this tool.
+
+       ----ccoolloorr (string)
+
+       Turn on/off color output.
+
+       +o on
+
+       +o off
+
+       +o auto
+
+       ----nnoo--ssiiggnn--rreeqquueesstt (boolean)
+
+       Do not sign requests. Credentials will not be loaded if this argument
+       is provided.
+
+       ----ccaa--bbuunnddllee (string)
+
+       The CA certificate bundle to use when verifying SSL certificates.
+       Overrides config/env settings.
+
+       ----ccllii--rreeaadd--ttiimmeeoouutt (int)
+
+       The maximum socket read time in seconds. If the value is set to 0, the
+       socket read will be blocking and not timeout. The default value is 60
+       seconds.
+
+       ----ccllii--ccoonnnneecctt--ttiimmeeoouutt (int)
+
+       The maximum socket connect time in seconds. If the value is set to 0,
+       the socket connect will be blocking and not timeout. The default value
+       is 60 seconds.
+
+       ----ccllii--bbiinnaarryy--ffoorrmmaatt (string)
+
+       The formatting style to be used for binary blobs. The default format is
+       base64. The base64 format expects binary blobs to be provided as a
+       base64 encoded string. The raw-in-base64-out format preserves
+       compatibility with AWS CLI V1 behavior and binary values must be passed
+       literally. When providing contents from a file that map to a binary
+       blob ffiilleebb:://// will always be treated as binary and use the file
+       contents directly regardless of the ccllii--bbiinnaarryy--ffoorrmmaatt setting. When
+       using ffiillee:://// the file contents will need to properly formatted for the
+       configured ccllii--bbiinnaarryy--ffoorrmmaatt.
+
+       +o base64
+
+       +o raw-in-base64-out
+
+       ----nnoo--ccllii--ppaaggeerr (boolean)
+
+       Disable cli pager for output.
+
+       ----ccllii--aauuttoo--pprroommpptt (boolean)
+
+       Automatically prompt for CLI input parameters.
+
+       ----nnoo--ccllii--aauuttoo--pprroommpptt (boolean)
+
+       Disable automatically prompt for CLI input parameters.
+
+       ----ccllii--eerrrroorr--ffoorrmmaatt (string)
+
+       The formatting style for error output. By default, errors are displayed
+       in enhanced format.
+
+       +o legacy
+
+       +o json
+
+       +o yaml
+
+       +o text
+
+       +o table
+
+       +o enhanced
+
+EEXXAAMMPPLLEESS
+       NNOOTTEE::
+          To use the following examples, you must have the AWS CLI installed
+          and configured. See the _G_e_t_t_i_n_g _s_t_a_r_t_e_d _g_u_i_d_e in the _A_W_S _C_L_I _U_s_e_r
+          _G_u_i_d_e for more information.
+
+          Unless otherwise stated, all examples have unix-like quotation
+          rules. These examples will need to be adapted to your terminal's
+          quoting rules. See _U_s_i_n_g _q_u_o_t_a_t_i_o_n _m_a_r_k_s _w_i_t_h _s_t_r_i_n_g_s in the _A_W_S _C_L_I
+          _U_s_e_r _G_u_i_d_e .
+
+       EExxaammppllee 11:: LLiissttiinngg aallll uusseerr oowwnneedd bbuucckkeettss
+
+       The following llss command lists all of the buckets owned by the user.
+       In this example, the user owns the buckets aammzznn--ss33--ddeemmoo--bbuucckkeett and
+       aammzznn--ss33--ddeemmoo--bbuucckkeett22.  The timestamp is the date the bucket was
+       created, shown in your machine's time zone.  This date can change when
+       making changes to your bucket, such as editing its bucket policy.  Note
+       if  ss33:://// is used for the path argument <<SS33UUrrii>>, it will list all of
+       the buckets as well.
+
+          aws s3 ls
+
+       Output:
+
+          2013-07-11 17:08:50 amzn-s3-demo-bucket
+          2013-07-24 14:55:44 amzn-s3-demo-bucket2
+
+       EExxaammppllee 22:: LLiissttiinngg aallll pprreeffiixxeess aanndd oobbjjeeccttss iinn aa bbuucckkeett
+
+       The following llss command lists objects and common prefixes under a
+       specified bucket and prefix.  In this example, the user owns the bucket
+       aammzznn--ss33--ddeemmoo--bbuucckkeett with the objects tteesstt..ttxxtt and ssoommeePPrreeffiixx//tteesstt..ttxxtt.
+       The LLaassttWWrriitteeTTiimmee and LLeennggtthh are arbitrary. Note that since the llss
+       command has no interaction with the local filesystem, the ss33:://// URI
+       scheme is not required to resolve ambiguity and may be omitted.
+
+          aws s3 ls s3://amzn-s3-demo-bucket
+
+       Output:
+
+                                     PRE somePrefix/
+          2013-07-25 17:06:27         88 test.txt
+
+       EExxaammppllee 33:: LLiissttiinngg aallll pprreeffiixxeess aanndd oobbjjeeccttss iinn aa ssppeecciiffiicc bbuucckkeett aanndd
+       pprreeffiixx
+
+       The following llss command lists objects and common prefixes under a
+       specified bucket and prefix.  However, there are no objects nor common
+       prefixes under the specified bucket and prefix.
+
+          aws s3 ls s3://amzn-s3-demo-bucket/noExistPrefix
+
+       Output:
+
+          None
+
+       EExxaammppllee 44:: RReeccuurrssiivveellyy lliissttiinngg aallll pprreeffiixxeess aanndd oobbjjeeccttss iinn aa bbuucckkeett
+
+       The following llss command will recursively list objects in a bucket.
+       Rather than showing PPRREE ddiirrnnaammee// in the output, all the content in a
+       bucket will be listed in order.
+
+          aws s3 ls s3://amzn-s3-demo-bucket \
+              --recursive
+
+       Output:
+
+          2013-09-02 21:37:53         10 a.txt
+          2013-09-02 21:37:53    2863288 foo.zip
+          2013-09-02 21:32:57         23 foo/bar/.baz/a
+          2013-09-02 21:32:58         41 foo/bar/.baz/b
+          2013-09-02 21:32:57        281 foo/bar/.baz/c
+          2013-09-02 21:32:57         73 foo/bar/.baz/d
+          2013-09-02 21:32:57        452 foo/bar/.baz/e
+          2013-09-02 21:32:57        896 foo/bar/.baz/hooks/bar
+          2013-09-02 21:32:57        189 foo/bar/.baz/hooks/foo
+          2013-09-02 21:32:57        398 z.txt
+
+       EExxaammppllee 55:: SSuummmmaarriizziinngg aallll pprreeffiixxeess aanndd oobbjjeeccttss iinn aa bbuucckkeett
+
+       The following llss command demonstrates the same command using the
+       --human-readable and --summarize options. --human-readable displays
+       file size in Bytes/MiB/KiB/GiB/TiB/PiB/EiB. --summarize displays the
+       total number of objects and total size at the end of the result
+       listing:
+
+          aws s3 ls s3://amzn-s3-demo-bucket \
+              --recursive \
+              --human-readable \
+              --summarize
+
+       Output:
+
+          2013-09-02 21:37:53   10 Bytes a.txt
+          2013-09-02 21:37:53  2.9 MiB foo.zip
+          2013-09-02 21:32:57   23 Bytes foo/bar/.baz/a
+          2013-09-02 21:32:58   41 Bytes foo/bar/.baz/b
+          2013-09-02 21:32:57  281 Bytes foo/bar/.baz/c
+          2013-09-02 21:32:57   73 Bytes foo/bar/.baz/d
+          2013-09-02 21:32:57  452 Bytes foo/bar/.baz/e
+          2013-09-02 21:32:57  896 Bytes foo/bar/.baz/hooks/bar
+          2013-09-02 21:32:57  189 Bytes foo/bar/.baz/hooks/foo
+          2013-09-02 21:32:57  398 Bytes z.txt
+
+          Total Objects: 10
+             Total Size: 2.9 MiB
+
+       EExxaammppllee 66:: LLiissttiinngg ffrroomm aann SS33 aacccceessss ppooiinntt
+
+       The following llss command lists objects from access point
+       (mmyyaacccceessssppooiinntt):
+
+          aws s3 ls s3://arn:aws:s3:us-west-2:123456789012:accesspoint/myaccesspoint/
+
+       Output:
+
+                                     PRE somePrefix/
+          2013-07-25 17:06:27         88 test.txt
+
+                                                                          LS()

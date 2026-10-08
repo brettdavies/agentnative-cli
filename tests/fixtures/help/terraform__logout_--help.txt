@@ -1,0 +1,9 @@
+Usage: terraform [global options] logout [hostname]
+
+  Removes locally-stored credentials for specified hostname.
+
+  Note: the API token is only removed from local storage, not destroyed on the
+  remote server, so it will remain valid until manually revoked.
+
+  If no hostname is provided, the default hostname is app.terraform.io.
+      %s

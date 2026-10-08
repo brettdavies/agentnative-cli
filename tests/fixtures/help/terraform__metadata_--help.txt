@@ -1,0 +1,6 @@
+Usage: terraform [global options] metadata <subcommand> [options] [args]
+
+  This command has subcommands for metadata related purposes.
+
+Subcommands:
+    functions    Show signatures and descriptions for the available functions

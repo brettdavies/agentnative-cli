@@ -1,0 +1,157 @@
+Usage
+
+  cmake [options] <path-to-source>
+  cmake [options] <path-to-existing-build>
+  cmake [options] -S <path-to-source> -B <path-to-build>
+
+Specify a source directory to (re-)generate a build system for it in the
+current working directory.  Specify an existing build directory to
+re-generate its build system.
+
+Options
+  -S <path-to-source>          = Explicitly specify a source directory.
+  -B <path-to-build>           = Explicitly specify a build directory.
+  -C <initial-cache>           = Pre-load a script to populate the cache.
+  -D <var>[:<type>]=<value>    = Create or update a cmake cache entry.
+  -U <globbing_expr>           = Remove matching entries from CMake cache.
+  -G <generator-name>          = Specify a build system generator.
+  -T <toolset-name>            = Specify toolset name if supported by
+                                 generator.
+  -A <platform-name>           = Specify platform name if supported by
+                                 generator.
+  --toolchain <file>           = Specify toolchain file
+                                 [CMAKE_TOOLCHAIN_FILE].
+  --install-prefix <directory> = Specify install directory
+                                 [CMAKE_INSTALL_PREFIX].
+  --project-file <project-file-name>
+                               = Specify an alternate project file name.
+  -W<category>                 = Enable the specified category of warnings.
+  -Wno-<category>              = Suppress the specified category of warnings.
+  -Werror=<category>           = Make the specified category of warnings
+                                 errors.
+  -Wno-error=<category>        = Make the specified category of warnings not
+                                 errors.
+  --preset <preset>,--preset=<preset>
+                               = Specify a configure preset.
+  --presets-file <file>,--presets-file=<file>
+                               = Specify the path to a presets file.
+  --list-presets[=<type>]      = List available presets.
+  --workflow [<options>]       = Run a workflow preset.
+  -E                           = CMake command mode.  Run "cmake -E" for a
+                                 summary of commands.
+  -L[A][H]                     = List non-advanced cached variables.
+  -LR[A][H] <regex>            = Show cached variables that match the regex.
+  --fresh                      = Configure a fresh build tree, removing any
+                                 existing cache file.
+  --build <dir>                = Build a CMake-generated project binary tree.
+                                 Run "cmake --build" to see compatible
+                                 options and a quick help.
+  --install <dir>              = Install a CMake-generated project binary
+                                 tree.  Run "cmake --install" to see
+                                 compatible options and a quick help.
+  --open <dir>                 = Open generated project in the associated
+                                 application.
+  -N                           = View mode only.
+  -P <file>                    = Process script mode.
+  --find-package               = Legacy pkg-config like mode.  Do not use.
+  --graphviz=<file>            = Generate graphviz of dependencies, see
+                                 CMakeGraphVizOptions.cmake for more.
+  --system-information [file]  = Dump information about this system.
+  --print-config-dir           = Print CMake config directory for user-wide
+                                 FileAPI queries.
+  --log-level=<ERROR|WARNING|NOTICE|STATUS|VERBOSE|DEBUG|TRACE>
+                               = Set the verbosity of messages from CMake
+                                 files.  --loglevel is also accepted for
+                                 backward compatibility reasons.
+  --log-context                = Prepend log messages with context, if given
+  --debug-trycompile           = Do not delete the try_compile build tree.
+                                 Only useful on one try_compile at a time.
+  --debug-output               = Put cmake in a debug mode.
+  --debug-find                 = Put cmake find in a debug mode.
+  --debug-find-pkg=<pkg-name>[,...]
+                               = Limit cmake debug-find to the
+                                 comma-separated list of packages
+  --debug-find-var=<var-name>[,...]
+                               = Limit cmake debug-find to the
+                                 comma-separated list of result variables
+  --trace                      = Put cmake in trace mode.
+  --trace-expand               = Put cmake in trace mode with variable
+                                 expansion.
+  --trace-format=<human|json-v1>
+                               = Set the output format of the trace.
+  --trace-source=<file>        = Trace only this CMake file/module.  Multiple
+                                 options allowed.
+  --trace-redirect=<file>      = Redirect trace output to a file instead of
+                                 stderr.
+  --check-system-vars          = Find problems with variable usage in system
+                                 files.
+  --compile-no-warning-as-error= Ignore COMPILE_WARNING_AS_ERROR property and
+                                 CMAKE_COMPILE_WARNING_AS_ERROR variable.
+  --link-no-warning-as-error   = Ignore LINK_WARNING_AS_ERROR property and
+                                 CMAKE_LINK_WARNING_AS_ERROR variable.
+  --profiling-format=<fmt>     = Output data for profiling CMake scripts.
+                                 Supported formats: google-trace
+  --profiling-output=<file>    = Select an output path for the profiling data
+                                 enabled through --profiling-format.
+  -h,-H,--help,-help,-usage,/? = Print usage information and exit.
+  --version[=json-v1],-version[=json-v1],/V[=json-v1],/version[=json-v1] [<file>]
+                               = Print version number and exit.
+  --help <keyword> [<file>]    = Print help for one keyword and exit.
+  --help-full [<file>]         = Print all help manuals and exit.
+  --help-manual <man> [<file>] = Print one help manual and exit.
+  --help-manual-list [<file>]  = List help manuals available and exit.
+  --help-command <cmd> [<file>]= Print help for one command and exit.
+  --help-command-list [<file>] = List commands with help available and exit.
+  --help-commands [<file>]     = Print cmake-commands manual and exit.
+  --help-diagnostic <diag> [<file>]
+                               = Print help for one diagnostic and exit.
+  --help-diagnostic-list [<file>]
+                               = List diagnostics with help available and
+                                 exit.
+  --help-diagnostics [<file>]  = Print cmake-diagnostics manual and exit.
+  --help-module <mod> [<file>] = Print help for one module and exit.
+  --help-module-list [<file>]  = List modules with help available and exit.
+  --help-modules [<file>]      = Print cmake-modules manual and exit.
+  --help-policy <cmp> [<file>] = Print help for one policy and exit.
+  --help-policy-list [<file>]  = List policies with help available and exit.
+  --help-policies [<file>]     = Print cmake-policies manual and exit.
+  --help-property <prop> [<file>]
+                               = Print help for one property and exit.
+  --help-property-list [<file>]= List properties with help available and
+                                 exit.
+  --help-properties [<file>]   = Print cmake-properties manual and exit.
+  --help-variable var [<file>] = Print help for one variable and exit.
+  --help-variable-list [<file>]= List variables with help available and exit.
+  --help-variables [<file>]    = Print cmake-variables manual and exit.
+
+Generators
+
+The following generators are available on this platform (* marks default):
+  Green Hills MULTI            = Generates Green Hills MULTI files
+                                 (experimental, work-in-progress).
+* Unix Makefiles               = Generates standard UNIX makefiles.
+  Ninja                        = Generates build.ninja files.
+  Ninja Multi-Config           = Generates build-<Config>.ninja files.
+  FASTBuild                    = Generates fbuild.bff files.
+  Watcom WMake                 = Generates Watcom WMake makefiles.
+  CodeBlocks - Ninja           = Generates CodeBlocks project files
+                                 (deprecated).
+  CodeBlocks - Unix Makefiles  = Generates CodeBlocks project files
+                                 (deprecated).
+  CodeLite - Ninja             = Generates CodeLite project files
+                                 (deprecated).
+  CodeLite - Unix Makefiles    = Generates CodeLite project files
+                                 (deprecated).
+  Eclipse CDT4 - Ninja         = Generates Eclipse CDT 4.0 project files
+                                 (deprecated).
+  Eclipse CDT4 - Unix Makefiles= Generates Eclipse CDT 4.0 project files
+                                 (deprecated).
+  Kate - Ninja                 = Generates Kate project files (deprecated).
+  Kate - Ninja Multi-Config    = Generates Kate project files (deprecated).
+  Kate - Unix Makefiles        = Generates Kate project files (deprecated).
+  Sublime Text 2 - Ninja       = Generates Sublime Text 2 project files
+                                 (deprecated).
+  Sublime Text 2 - Unix Makefiles
+                               = Generates Sublime Text 2 project files
+                                 (deprecated).
+

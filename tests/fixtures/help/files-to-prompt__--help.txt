@@ -1,0 +1,47 @@
+Usage: files-to-prompt [OPTIONS] [PATHS]...
+
+  Takes one or more paths to files or directories and outputs every file,
+  recursively, each one preceded with its filename like this:
+
+      path/to/file.py
+      ----
+      Contents of file.py goes here
+      ---
+      path/to/file2.py
+      ---
+      ...
+
+  If the `--cxml` flag is provided, the output will be structured as follows:
+
+      <documents>
+      <document path="path/to/file1.txt">
+      Contents of file1.txt
+      </document>
+      <document path="path/to/file2.txt">
+      Contents of file2.txt
+      </document>
+      ...
+      </documents>
+
+  If the `--markdown` flag is provided, the output will be structured as
+  follows:
+
+      path/to/file1.py
+      ```python
+      Contents of file1.py
+      ```
+
+Options:
+  -e, --extension TEXT
+  --include-hidden      Include files and folders starting with .
+  --ignore-files-only   --ignore option only ignores files
+  --ignore-gitignore    Ignore .gitignore files and include all files
+  --ignore TEXT         List of patterns to ignore
+  -o, --output PATH     Output to a file instead of stdout
+  -c, --cxml            Output in XML-ish format suitable for Claude's long
+                        context window.
+  -m, --markdown        Output Markdown with fenced code blocks
+  -n, --line-numbers    Add line numbers to the output
+  -0, --null            Use NUL character as separator when reading from stdin
+  --version             Show the version and exit.
+  --help                Show this message and exit.

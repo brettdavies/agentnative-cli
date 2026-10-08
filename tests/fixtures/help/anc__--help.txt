@@ -1,0 +1,64 @@
+The agent-native CLI linter — audits a CLI tool against the agent-readiness spec.
+
+Runs three layers of audits against a target: behavioral (spawn the binary and inspect output), source (ast-grep over Rust/Python files), and project (manifest, completions, bundle presence). The result is a scorecard you can read interactively (text mode) or pipe into another tool (`--output json`).
+
+Default output format is text; color and progress affordances auto-detect the TTY and disappear when stdout is piped or redirected (NO_COLOR-compatible). Use `--verbose` / `-v` to escalate diagnostic detail when debugging unexpected results.
+
+Input model: targets are passed as positional path arguments or via `--command <name>`. Stdin is not consumed; `-` is reserved and behaves like a literal filename rather than a stdin sentinel.
+
+Usage: anc [OPTIONS] [COMMAND]
+
+Commands:
+  audit        Audit a CLI project or binary for agent-readiness
+  completions  Generate shell completions
+  emit         Render build artifacts (coverage matrix, scorecard schema)
+  skill        Install or manage the agentnative skill bundle
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+  -q, --quiet
+          Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty
+          
+          [env: AGENTNATIVE_QUIET=]
+
+  -v, --verbose
+          Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty
+          
+          [env: AGENTNATIVE_VERBOSE=]
+
+      --examples
+          Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body
+
+      --json
+          Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum
+
+      --color <WHEN>
+          Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)
+          
+          [env: AGENTNATIVE_COLOR=]
+          [default: auto]
+          [possible values: auto, always, never]
+
+      --raw
+          Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Examples:
+  anc audit .                          # human scorecard for the current project
+  anc audit . --output json            # JSON envelope for agents (--json works too)
+  anc audit --command ripgrep          # audit a PATH-resolved binary by name
+  anc emit coverage-matrix             # emit the spec coverage matrix
+  anc emit schema                      # print the scorecard JSON Schema
+  anc skill install claude_code          # install the bundle into Claude Code
+
+When the first argument is not a subcommand, `audit` is inserted automatically:
+  anc .                  ≡  anc audit .
+  anc --command ripgrep  ≡  anc audit --command ripgrep
+
+Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
+that prevents recursive self-invocation when agentnative audits itself.

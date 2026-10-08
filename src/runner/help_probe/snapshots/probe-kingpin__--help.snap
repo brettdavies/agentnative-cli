@@ -1,0 +1,8 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-kingpin__--help.txt
+---
+   8 | --help-man | 
+   9 | -f | skip confirmation prompts
+  10 | -n, --limit | maximum number of results to return, a deliberately long
+  13 | -o, --output | write output here

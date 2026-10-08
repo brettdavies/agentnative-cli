@@ -1,0 +1,77 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/cmake__--help.txt
+---
+  12 | -S | = Explicitly specify a source directory.
+  13 | -B | = Explicitly specify a build directory.
+  14 | -C | = Pre-load a script to populate the cache.
+  15 | -D | = Create or update a cmake cache entry.
+  16 | -U | = Remove matching entries from CMake cache.
+  17 | -G | = Specify a build system generator.
+  18 | -T | = Specify toolset name if supported by
+  20 | -A | = Specify platform name if supported by
+  22 | --toolchain | = Specify toolchain file
+  24 | --install-prefix | 
+  26 | --project-file | 
+  28 | -W | = Enable the specified category of warnings.
+  29 | -W | = Suppress the specified category of warnings.
+  30 | -W | = Make the specified category of warnings
+  32 | -W | = Make the specified category of warnings not
+  34 | --preset | 
+  36 | --presets-file | 
+  38 | --list-presets | = List available presets.
+  39 | --workflow | = Run a workflow preset.
+  40 | -E | = CMake command mode.  Run "cmake -E" for a
+  42 | -L | = List non-advanced cached variables.
+  43 | -L | = Show cached variables that match the regex.
+  44 | --fresh | = Configure a fresh build tree, removing any
+  46 | --build | = Build a CMake-generated project binary tree.
+  49 | --install | = Install a CMake-generated project binary
+  52 | --open | = Open generated project in the associated
+  54 | -N | = View mode only.
+  55 | -P | = Process script mode.
+  56 | --find-package | = Legacy pkg-config like mode.  Do not use.
+  57 | --graphviz | = Generate graphviz of dependencies, see
+  59 | --system-information | = Dump information about this system.
+  60 | --print-config-dir | = Print CMake config directory for user-wide
+  62 | --log-level | 
+  66 | --log-context | = Prepend log messages with context, if given
+  67 | --debug-trycompile | = Do not delete the try_compile build tree.
+  69 | --debug-output | = Put cmake in a debug mode.
+  70 | --debug-find | = Put cmake find in a debug mode.
+  71 | --debug-find-pkg | 
+  74 | --debug-find-var | 
+  77 | --trace | = Put cmake in trace mode.
+  78 | --trace-expand | = Put cmake in trace mode with variable
+  80 | --trace-format | 
+  82 | --trace-source | = Trace only this CMake file/module.  Multiple
+  84 | --trace-redirect | = Redirect trace output to a file instead of
+  86 | --check-system-vars | = Find problems with variable usage in system
+  88 | --compile-no-warning-as-error | 
+  90 | --link-no-warning-as-error | = Ignore LINK_WARNING_AS_ERROR property and
+  92 | --profiling-format | = Output data for profiling CMake scripts.
+  94 | --profiling-output | = Select an output path for the profiling data
+  96 | -u, --help | 
+  97 | -v, --version | 
+  99 | --help | = Print help for one keyword and exit.
+ 100 | --help-full | = Print all help manuals and exit.
+ 101 | --help-manual | 
+ 102 | --help-manual-list | = List help manuals available and exit.
+ 103 | --help-command | 
+ 104 | --help-command-list | 
+ 105 | --help-commands | = Print cmake-commands manual and exit.
+ 106 | --help-diagnostic | 
+ 108 | --help-diagnostic-list | 
+ 111 | --help-diagnostics | = Print cmake-diagnostics manual and exit.
+ 112 | --help-module | 
+ 113 | --help-module-list | = List modules with help available and exit.
+ 114 | --help-modules | = Print cmake-modules manual and exit.
+ 115 | --help-policy | 
+ 116 | --help-policy-list | = List policies with help available and exit.
+ 117 | --help-policies | = Print cmake-policies manual and exit.
+ 118 | --help-property | 
+ 120 | --help-property-list | 
+ 122 | --help-properties | = Print cmake-properties manual and exit.
+ 123 | --help-variable | 
+ 124 | --help-variable-list | 
+ 125 | --help-variables | = Print cmake-variables manual and exit.

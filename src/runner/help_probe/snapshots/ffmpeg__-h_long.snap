@@ -1,0 +1,8 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/ffmpeg__-h_long.txt
+---
+   5 | -h | -- print basic options
+   6 | -h | 
+   7 | -h | 
+   8 | -h |

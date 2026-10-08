@@ -1,0 +1,20 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/anc__audit_--help.txt
+---
+  14 | --command | 
+  17 | --binary | 
+  20 | --bin | 
+  25 | --repo | 
+  30 | -q, --quiet | 
+  35 | --source | 
+  38 | --principle | 
+  41 | -v, --verbose | 
+  46 | --examples | 
+  49 | --output | 
+  55 | --include-tests | 
+  58 | --json | 
+  61 | --audit-profile | 
+  70 | --color | 
+  77 | --raw | 
+  80 | -h, --help |

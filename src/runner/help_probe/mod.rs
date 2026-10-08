@@ -63,6 +63,8 @@ impl Flag {
 }
 
 mod env_hints_bash;
+#[cfg(test)]
+mod fixture_snapshots;
 
 /// Which detection pattern surfaced an [`EnvHint`]. Agents debugging a
 /// false positive need to know whether a hint came from a clap
@@ -280,15 +282,24 @@ impl HelpOutput {
 }
 
 /// Parse flag declarations from clap-style help text.
+fn parse_flags(raw: &str) -> Vec<Flag> {
+    parse_numbered_flags(raw)
+        .into_iter()
+        .map(|(_, flag)| flag)
+        .collect()
+}
+
+/// Every flag line of `raw`, as its 1-based line number and the flag read
+/// from it.
 ///
 /// A "flag line" is a line that starts with whitespace and then a dash. The
 /// header portion (before the description) is split from the description by
 /// two or more spaces — clap's canonical shape. We tokenize the header on
 /// commas and whitespace, then classify each token as short (`-s`) or long
 /// (`--long`).
-fn parse_flags(raw: &str) -> Vec<Flag> {
+fn parse_numbered_flags(raw: &str) -> Vec<(usize, Flag)> {
     let mut flags = Vec::new();
-    for line in raw.lines() {
+    for (index, line) in raw.lines().enumerate() {
         if !line.starts_with(' ') {
             continue;
         }
@@ -317,11 +328,14 @@ fn parse_flags(raw: &str) -> Vec<Flag> {
         }
         if short.is_some() || long.is_some() {
             let description = trimmed[header.len()..].trim().to_string();
-            flags.push(Flag {
-                short,
-                long,
-                description,
-            });
+            flags.push((
+                index + 1,
+                Flag {
+                    short,
+                    long,
+                    description,
+                },
+            ));
         }
     }
     flags

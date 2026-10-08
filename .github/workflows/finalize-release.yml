@@ -2,7 +2,7 @@
 # Copy to .github/workflows/finalize-release.yml in the tool repo.
 #
 # Triggered by repository_dispatch from homebrew-tap's publish workflow
-# after bottles are uploaded. Publishes the draft GitHub Release.
+# after the formula bump lands on the tap. Marks the GitHub Release latest.
 name: Finalize Release
 
 on:

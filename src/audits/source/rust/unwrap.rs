@@ -123,7 +123,7 @@ fn walk<'a>(
     // never inside a token tree, so deduplicating by position only ever folds
     // those overlapping recoveries.
     if reportable && node.kind() == "token_tree" {
-        for location in macro_interior::unwrap_calls_in_interior(&node, file) {
+        for location in macro_interior::unwrap_calls_in_interior(&node, file, include_cfg_test) {
             if !out
                 .iter()
                 .any(|seen| seen.line == location.line && seen.column == location.column)
@@ -161,6 +161,14 @@ fn walk<'a>(
             walk(child, file, inside_cfg_test, include_cfg_test, out);
             continue;
         }
+        if is_comment(kind.as_ref()) {
+            // A comment between an attribute and the item it decorates is a
+            // sibling of both, and a doc comment on a test-only item is
+            // idiomatic. Consuming the one-shot flag here would report that
+            // item's whole body as production code.
+            walk(child, file, inside_cfg_test, include_cfg_test, out);
+            continue;
+        }
         let child_inside = inside_cfg_test || (next_is_cfg_test && is_item_like(kind.as_ref()));
         // The one-shot gate fires on the very next sibling regardless of kind:
         // `#[cfg(test)] use foo;` consumes the flag without gating any later
@@ -189,7 +197,12 @@ pub(super) fn unwrap_call_snippet<'a>(node: &Node<'a, StrDoc<Rust>>) -> Option<S
 
 /// Item-like node kinds whose preceding `#[cfg(test)]` attribute gates their
 /// bodies. Mirrors tree-sitter-rust's item nodes.
+///
+/// A macro in item position (`thread_local! { .. }`, `lazy_static! { .. }`) is
+/// an item, so `macro_invocation` belongs here: a `#[cfg(test)]` before one
+/// gates the calls its body holds.
 const ITEM_KINDS: &[&str] = &[
+    "macro_invocation",
     "mod_item",
     "function_item",
     "function_signature_item",
@@ -206,6 +219,12 @@ const ITEM_KINDS: &[&str] = &[
 
 fn is_item_like(kind: &str) -> bool {
     ITEM_KINDS.contains(&kind)
+}
+
+/// Comment kinds the gate steps over. A `///` doc comment is a `line_comment`
+/// carrying a marker child, so the two kinds cover every form.
+fn is_comment(kind: &str) -> bool {
+    kind == "line_comment" || kind == "block_comment"
 }
 
 /// Strip `#[ ... ]` / `#![ ... ]` framing and check whether the inner attribute
@@ -244,7 +263,7 @@ fn attribute_text_is_cfg_test(attr: &str) -> bool {
 /// recursion claims "this attribute resolves to test-gated"; sibling predicates
 /// inside `any(...)` / `all(...)` cannot revoke that claim, so a production
 /// item with `cfg(any(not(test), unix))` correctly returns `false`.
-fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
+pub(super) fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
     let bytes = args.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -323,7 +342,7 @@ fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
 /// Given a string that starts with `(`, return the slice between the opening
 /// paren and the matching closing paren, respecting nested parens and string
 /// literals. Returns `None` if no balanced match exists.
-fn balanced_parens(s: &str) -> Option<&str> {
+pub(super) fn balanced_parens(s: &str) -> Option<&str> {
     let bytes = s.as_bytes();
     if bytes.first().copied() != Some(b'(') {
         return None;
@@ -934,6 +953,151 @@ fn main() {}
         assert_eq!(
             audit_unwrap_with(source, "src/lib.rs", false),
             AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn exempts_a_macro_argument_inside_a_cfg_test_mod() {
+        let source = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn t() {
+        assert_eq!(v.unwrap(), 1);
+    }
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", true),
+            "src/lib.rs:6:20 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn exempts_a_cfg_test_gated_item_position_macro_invocation() {
+        // A macro in item position is an item, so the gate's taxonomy has to
+        // cover `macro_invocation` for its body to inherit the exemption.
+        let source = r#"
+#[cfg(test)]
+thread_local! {
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", true),
+            "src/lib.rs:4:24 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn a_comment_between_cfg_test_and_its_item_does_not_clear_the_gate() {
+        // A doc comment on a test-only item is idiomatic, and the gate fires on
+        // the next sibling, so a comment sibling must be stepped over rather
+        // than consume it.
+        let source = r#"
+#[cfg(test)]
+// a note
+mod a {
+    fn h(v: Option<u8>) { let _ = v.unwrap(); }
+}
+
+#[cfg(test)]
+/// A doc comment.
+thread_local! {
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        if let AuditStatus::Fail(evidence) = &included {
+            assert_eq!(evidence.lines().count(), 2, "got:\n{evidence}");
+        } else {
+            panic!("expected Fail with --include-tests, got {included:?}");
+        }
+    }
+
+    #[test]
+    fn a_cfg_test_attribute_inside_a_macro_interior_gates_it() {
+        // The walker's gate stops at the token tree, so an attribute written
+        // inside the interior has to be read there.
+        let source = r#"
+thread_local! {
+    #[cfg(test)]
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", true),
+            "src/lib.rs:4:24 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn a_cfg_if_test_branch_inside_a_macro_interior_gates_it() {
+        // `cfg_if!` recovers its attribute as an error plus an array rather
+        // than an `attribute_item`, which is why the gate is read from the
+        // interior's text.
+        let source = r#"
+cfg_if! {
+    if #[cfg(test)] {
+        static PROBE: u8 = load().unwrap();
+    } else {
+        static REAL: u8 = load2().unwrap();
+    }
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        assert!(matches!(included, AuditStatus::Fail(_)));
+    }
+
+    #[test]
+    fn cfg_not_test_inside_a_macro_interior_still_reports() {
+        // Polarity crosses the boundary unchanged: a production-only branch is
+        // not test code.
+        let source = r#"
+thread_local! {
+    #[cfg(not(test))]
+    static REAL: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", false),
+            "src/lib.rs:4:23 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn cfg_not_test_gated_macro_interior_still_reports() {
+        // The existing polarity rule reaches interiors too: a production-only
+        // item is not test code.
+        let source = r#"
+#[cfg(not(test))]
+thread_local! {
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", false),
+            "src/lib.rs:4:24 — load().unwrap()"
         );
     }
 

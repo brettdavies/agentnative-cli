@@ -27,9 +27,4 @@ input_file: tests/fixtures/help/aws__s3_ls_help.txt
  174 | --no-cli-pager | 
  178 | --cli-auto-prompt | 
  182 | --no-cli-auto-prompt | 
- 186 | --cli-error-format | 
- 267 | --recursive | 
- 285 | --human-readable | and --summarize options. --human-readable displays
- 291 | --recursive | 
- 292 | --human-readable | 
- 293 | --summarize |
+ 186 | --cli-error-format |

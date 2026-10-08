@@ -22,9 +22,20 @@
 //! with a bracket, is a usage wrap or prose unless a gap sets a description
 //! off from it, or its description starts at the column the definition above
 //! it uses.
+//!
+//! Three more dash-led shapes are not definitions at any indent: a line
+//! under one that ends in a backslash (an example command carries on), a
+//! line indented to the arguments of the usage line above it (the synopsis
+//! wraps), and a line that reads on as a sentence directly under prose at
+//! the same indent.
 
+use super::NameForm;
 use super::header::{self, Header};
 use super::pieces::column_of;
+
+/// How far right of a short name its long name starts (`-x, --long`). clap,
+/// pflag and GNU print a long-only row at that column.
+const LONG_AFTER_SHORT: usize = 4;
 
 /// One line of a help text.
 pub(super) enum Line<'a> {
@@ -51,6 +62,14 @@ struct Layout {
     description: Description,
     /// Columns a name starts at, in every definition under this heading.
     name_columns: Vec<usize>,
+    /// The line above ends in a backslash: a shell command in an example
+    /// carries on.
+    after_backslash: bool,
+    /// Column the arguments of the usage line being read start at. A line
+    /// indented that far carries the synopsis on.
+    synopsis: Option<usize>,
+    /// Indent of the line above, when it is prose.
+    prose: Option<usize>,
 }
 
 /// What the definition being read has by way of a description.
@@ -67,7 +86,11 @@ enum Description {
 
 impl Layout {
     fn read<'a>(&mut self, line: &'a str) -> Line<'a> {
+        let continued =
+            std::mem::replace(&mut self.after_backslash, line.trim_end().ends_with('\\'));
+        let above_prose = self.prose.take();
         if line.trim().is_empty() {
+            self.synopsis = None;
             return Line::Other;
         }
         if is_section_heading(line) {
@@ -76,8 +99,14 @@ impl Layout {
         }
         let trimmed = line.trim_start();
         let indent = column_of(line, line.len() - trimmed.len());
-        let shaped = is_definition_shaped(trimmed);
-        if self.continues(indent, shaped) {
+        let in_synopsis = self.synopsis.is_some_and(|column| indent >= column);
+        if !in_synopsis {
+            self.synopsis = synopsis_column(line);
+        }
+        let shaped = is_definition_shaped(trimmed) && !continued && !in_synopsis;
+        let header = if shaped { header::tokenize(line) } else { None };
+        let set_off = header.as_ref().is_some_and(|header| header.set_off);
+        if self.continues(indent, shaped, set_off) {
             if let Description::Awaited(_) = self.description {
                 self.description = Description::At(indent);
             }
@@ -90,19 +119,19 @@ impl Layout {
         if indent == 0 {
             self.name_columns.clear();
         }
-        if !shaped {
-            return Line::Other;
-        }
         let needs_gap = indent == 0 || trimmed.starts_with("[-");
-        let Some(header) = header::tokenize(line) else {
-            return if needs_gap {
-                Line::Other
-            } else {
-                Line::Unnamed
-            };
+        let Some(header) = header else {
+            if shaped && !needs_gap {
+                return Line::Unnamed;
+            }
+            self.prose = Some(indent);
+            return Line::Other;
         };
         let aligned = indent == 0 && above.is_some() && header.description_column == above;
-        if needs_gap && !header.set_off && !aligned {
+        let wraps_a_sentence =
+            above_prose == Some(indent) && !header.set_off && !header.description.is_empty();
+        if (needs_gap && !header.set_off && !aligned) || wraps_a_sentence {
+            self.prose = Some(indent);
             return Line::Other;
         }
         self.description = match header.description_column {
@@ -110,23 +139,46 @@ impl Layout {
             None => Description::Awaited(indent),
         };
         self.name_columns.extend(&header.name_columns);
+        if let (Some(first), Some(column)) = (header.names.first(), header.name_columns.first())
+            && first.form == NameForm::Letter
+        {
+            self.name_columns.push(column + LONG_AFTER_SHORT);
+        }
         Line::Definition(header)
     }
 
     /// Whether a line at `indent` carries on the current definition's
     /// description: it sits at or past the description column, or it is the
-    /// first line under a definition that has no description yet. A dash-led
-    /// line at a column where names start is a definition instead: a GetOpt
-    /// long-only row sits at the long column of the rows around it.
-    fn continues(&self, indent: usize, shaped: bool) -> bool {
+    /// first line under a definition that has no description yet. A line
+    /// shaped like a definition, at a column where names start, is a
+    /// definition instead: under a definition with no description always (a
+    /// long-only row sits at the long column of the rows around it), and at
+    /// the description column when a gap sets off a description of its own.
+    fn continues(&self, indent: usize, shaped: bool, set_off: bool) -> bool {
+        let at_name_column = shaped && self.name_columns.contains(&indent);
         match self.description {
-            Description::At(column) => indent >= column,
-            Description::Awaited(definition) => {
-                indent > definition && !(shaped && self.name_columns.contains(&indent))
-            }
+            Description::At(column) => indent >= column && !(at_name_column && set_off),
+            Description::Awaited(definition) => indent > definition && !at_name_column,
             Description::None => false,
         }
     }
+}
+
+/// The column a usage line's arguments start at: the third word of
+/// `usage: prog [-h] ...`. argparse and git wrap a long synopsis to it.
+fn synopsis_column(line: &str) -> Option<usize> {
+    let trimmed = line.trim_start();
+    if !trimmed
+        .get(.."usage:".len())
+        .is_some_and(|lead| lead.eq_ignore_ascii_case("usage:"))
+    {
+        return None;
+    }
+    let argument = trimmed.split_whitespace().nth(2)?;
+    Some(column_of(
+        line,
+        argument.as_ptr() as usize - line.as_ptr() as usize,
+    ))
 }
 
 /// Whether text leads the way a definition does: with a dash (`-x`, `-word`,
@@ -507,6 +559,106 @@ Advanced:
             .map(|(what, raw)| format!("{what}: read {:?}", declared(raw)))
             .collect();
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Indented, dash-led text that is part of an example, a usage synopsis
+    /// or a sentence.
+    const INDENTED_NOT_DEFINITIONS: &[(&str, &str)] = &[
+        (
+            "aws-cli 2 s3 ls: an example command continued with a backslash",
+            "       The following ls command will recursively list objects in a bucket.\n\n          aws s3 ls s3://amzn-s3-demo-bucket \\\n              --recursive\n\n       Output:\n",
+        ),
+        (
+            "aws-cli 2 s3 ls: three continued lines, each a flag",
+            "          aws s3 ls s3://amzn-s3-demo-bucket \\\n              --recursive \\\n              --human-readable \\\n              --summarize\n",
+        ),
+        (
+            "aws-cli 2 s3 ls: a sentence that wraps onto a flag name",
+            "       The following ls command demonstrates the same command using the\n       --human-readable and --summarize options. --human-readable displays\n       file size in Bytes/MiB/KiB/GiB/TiB/PiB/EiB. --summarize displays the\n",
+        ),
+        (
+            "OpenJDK 21 java: a sentence that wraps onto a flag name",
+            " Arguments following the main class, source file, -jar <jarfile>,\n -m or --module <module>/<mainclass> are passed as the arguments to\n main class.\n",
+        ),
+        (
+            "argparse (Python 3.14.8): a usage line that wraps onto required options",
+            "usage: prog [-h] [--verbose] --input INPUT --mode {fast,slow}\n            --output OUTPUT --format FORMAT\n",
+        ),
+    ];
+
+    #[test]
+    fn indented_examples_usage_wraps_and_sentences_declare_nothing() {
+        let wrong: Vec<String> = INDENTED_NOT_DEFINITIONS
+            .iter()
+            .filter(|(_, raw)| !declared(raw).is_empty())
+            .map(|(what, raw)| format!("{what}: read {:?}", declared(raw)))
+            .collect();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Definitions that sit where an example, a synopsis or a sentence could,
+    /// with every name each line declares.
+    const BESIDE_PROSE_AND_USAGE: &[(&str, &str, &[&[&str]])] = &[
+        (
+            "definitions directly under a usage line, left of its arguments",
+            "Usage: nc [OPTIONS] HOST PORT\n  -l         Listen for a connection\n  -p PORT    Local port\n",
+            &[&["-l"], &["-p"]],
+        ),
+        (
+            "Go flag 1.27.1: definitions directly under `Usage of`",
+            "Usage of tool:\n  -format string\n    \tOutput format\n  -n int\n    \tLimit\n",
+            &[&["-format"], &["-n"]],
+        ),
+        (
+            "a name alone on its line, under a sentence at the same indent",
+            "Options:\n  These options control what is printed.\n  --null\n      Print a NUL byte after each name.\n",
+            &[&["--null"]],
+        ),
+        (
+            "a described long-only row under a short-only row with no description",
+            "Options:\n  -c <CONFIG>\n      --json     Output JSON\n  -h, --help     Print help\n",
+            &[&["-c"], &["--json"], &["-h", "--help"]],
+        ),
+        (
+            "a definition after an example block that ended with a blank line",
+            "Examples:\n  tool sync \\\n    --all\n\nOptions:\n  -a, --all    Sync everything\n",
+            &[&["-a", "--all"]],
+        ),
+    ];
+
+    #[test]
+    fn a_long_only_row_under_a_short_is_read_wherever_the_description_sits() {
+        let undescribed = "Options:\n  -x\n      --format <FORMAT>\n      --quiet            Say less\n  -h, --help             Print help\n";
+        assert_eq!(definition_lines(undescribed), [2, 3, 4, 5]);
+
+        let description_at_the_long_column = "Options:\n  -h  Show help\n  -V  Show version\n      --json   Emit JSON\n      --quiet  Say less\n";
+        assert_eq!(
+            definition_lines(description_at_the_long_column),
+            [2, 3, 4, 5]
+        );
+    }
+
+    #[test]
+    fn definitions_beside_prose_and_usage_are_still_read() {
+        let misread: Vec<String> = BESIDE_PROSE_AND_USAGE
+            .iter()
+            .filter(|(_, raw, expected)| declared(raw) != *expected)
+            .map(|(what, raw, expected)| {
+                format!("{what}: read {:?}, declares {expected:?}", declared(raw))
+            })
+            .collect();
+        assert!(misread.is_empty(), "{misread:#?}");
+    }
+
+    #[test]
+    fn an_example_does_not_switch_off_the_single_dash_rule() {
+        let help = crate::runner::HelpOutput::from_raw(
+            "Usage of tool:\n  -force\n    \tSkip the prompt\n  -out string\n    \tWhere to write\n\nExamples:\n  tool -force \\\n    --out x\n",
+        );
+        assert_eq!(
+            help.find_flag(&["--force"]).map(|found| found.spelling),
+            Some("-force")
+        );
     }
 
     #[test]

@@ -2,6 +2,32 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/aws__s3_ls_help.txt
 ---
+  45 | --recursive | Command is performed on all files or objects
+  48 | --page-size | The number of results to return in each response
+  52 | --human-readable | Displays file sizes in human readable
+  55 | --summarize | Displays summary information (number of objects,
+  58 | --request-payer | Confirms that the requester knows that they
+  64 | --bucket-name-prefix | Limits the response to bucket names that
+  67 | --bucket-region | Limits the response to buckets that are
+  75 | --debug | 
+  79 | --endpoint-url | 
+  83 | --no-verify-ssl | 
+  89 | --no-paginate | 
+  94 | --output | 
+ 110 | --query | 
+ 114 | --profile | 
+ 118 | --region | 
+ 122 | --version | 
+ 126 | --color | 
+ 136 | --no-sign-request | 
+ 141 | --ca-bundle | 
+ 146 | --cli-read-timeout | 
+ 152 | --cli-connect-timeout | 
+ 158 | --cli-binary-format | 
+ 174 | --no-cli-pager | 
+ 178 | --cli-auto-prompt | 
+ 182 | --no-cli-auto-prompt | 
+ 186 | --cli-error-format | 
  267 | --recursive | 
  285 | --human-readable | and --summarize options. --human-readable displays
  291 | --recursive | 

@@ -1,0 +1,11 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__graph_--help.txt
+---
+  18 | -p | Render graph using the specified plan file instead of the
+  21 | -d | Highlight any cycles in the graph with colored edges.
+  26 | -t | Type of operation graph to output. Can be: plan,
+  33 | -m | (deprecated) In prior versions of Terraform, specified the
+  36 | -v | Set a value for one of the input variables in the root
+  40 | -v | Load variable values from the given file, in addition
+  45 | -f | Output format for the graph. Supported values are

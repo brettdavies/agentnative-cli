@@ -1,0 +1,8 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__output_--help.txt
+---
+  10 | -s | Path to the state file to read. Defaults to
+  16 | -n | If specified, output won't contain any color.
+  18 | -j | If specified, machine readable output will be
+  21 | -r | For value types that can be automatically

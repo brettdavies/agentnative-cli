@@ -1,0 +1,26 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__init_--help.txt
+---
+  18 | -b | Disable backend or HCP Terraform initialization
+  24 | -b | Configuration to be merged with what is in the
+  32 | -f | Suppress prompts about copying state data when
+  37 | -f | Copy the contents of the given module into the target
+  40 | -g | Disable downloading modules for this configuration.
+  42 | -i | Disable interactive prompts. Note that some actions may
+  46 | -l | Don't hold a state lock during backend migration.
+  50 | -l | Duration to retry a state lock.
+  52 | -n | If specified, output won't contain any color.
+  54 | -j | If specified, machine readable output will be
+  57 | -p | Directory containing plugin binaries. This overrides all
+  62 | -r | Reconfigure a backend, ignoring any saved
+  65 | -m | Reconfigure a backend, and attempt to migrate any
+  68 | -u | Install the latest module and provider versions
+  73 | -l | Set a dependency lockfile mode.
+  76 | -i | A rare option used for HCP Terraform and the remote backend
+  83 | -t | Set the Terraform test directory, defaults to "tests".
+  85 | -v | Set a value for one of the input variables in the root
+  89 | -v | Load variable values from the given file, in addition
+  94 | -e | 
+  98 | -s | 
+ 103 | -e |

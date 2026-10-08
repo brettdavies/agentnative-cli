@@ -1,0 +1,5 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__destroy_--help.txt
+---
+

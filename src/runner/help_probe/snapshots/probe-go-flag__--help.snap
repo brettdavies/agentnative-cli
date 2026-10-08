@@ -1,0 +1,11 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-go-flag__--help.txt
+---
+   2 | -a | 
+   5 | -c | 
+   7 | -f | 
+   8 | -f | 
+  10 | -n | 
+  12 | -n | 
+  14 | -v |

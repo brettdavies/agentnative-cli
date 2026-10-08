@@ -1,0 +1,10 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-kong__--help.txt
+---
+   4 | -h, --help | Show context-sensitive help.
+   5 | -f, --force | skip confirmation prompts
+   6 | -n, --limit | maximum number of results to return, a deliberately long
+   8 | --dry-run | print what would change
+   9 | -o, --output | write output here
+  11 | -v, --verbose | increase verbosity

@@ -5,7 +5,6 @@ date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
 artifact_contract: ce-unified-plan/v1
-artifact_readiness: implementation-ready
 product_contract_source: ce-brainstorm
 execution: code
 ---
@@ -18,18 +17,19 @@ execution: code
   complete web audit locally, with results they can trust to match the public run, without exposing anything outside
   their network.
 - **Means:** `anc web <target>` runs a Rust-native port of the site's registry-driven check engine on a ureq/rustls
-  blocking stack (KTD1), with the check registry and conformance fixtures vendored from `agentnative-site` at build time
-  (KTD3, KTD4).
-- **Product authority:** This plan owns the CLI feature and the site-side companion units (U8, U9) — no separate plan
+  blocking stack (KTD1), with the site's data-only vendoring contract vendored from `agentnative-site` at build time
+  (KTD3, KTD4, KTD14).
+- **Product authority:** This plan owns the CLI feature and the site-side companion units (U8, U9, U15) — no separate plan
   exists in the site repo. `agentnative-site` remains canonical for check definitions, engine semantics, and the "Web
   audit" / "check" / "probe" vocabulary (`agentnative-site:CONCEPTS.md`).
 - **Phases:** The phase line follows dependency, not convenience. Phase 1 ships everything that needs no anc.dev
-  endpoint: U1–U8, U10, U11, U13, all eleven handler kinds, the conformance corpus and suite, the fix catalog and its
-  readers, the docs, and the skill coverage diff. Phase 2 ships only what depends on U9's served signal: U9 and U12 (R6,
-  KTD9, the scheduled registry-bump workflow).
+  endpoint: U1–U8, U10, U11, U13–U17, every handler kind and eval rule the vendored registry carries, the vendoring
+  contract, the conformance corpus and suite, the fix catalog and its readers, the docs, and the skill coverage diff.
+  Phase 2 ships only what depends on U9's served signal: U9 and U12 (R6, KTD9, the scheduled registry-bump workflow).
 - **Stop conditions:** Stop and surface to the user if U1's measured binary delta exceeds ~5MB (the size bet behind KD2
   fails), or if corpus generation in U8 reveals the TS engine is nondeterministic for fixed inputs (the parity mechanism
-  fails).
+  fails), or if U15's generator finds a scenario whose requests differ between concurrency 1 and the default (request
+  parity fails).
 
 ---
 
@@ -39,15 +39,16 @@ Preservation note — changed: R8 (exit codes adopt the site web-audit runner's 
 R9 (fixtures are authored site-side then vendored — no corpus exists today), R10 (site hooks enumerated and pulled into
 this plan's units), R6 (JSON-mode staleness note surfaces on stderr), AE6 (reworded to the deliverable DNS property).
 Added: R12–R14, KD8, AE6–AE9. Dependencies updated (site-side work moved from external dependencies into U8/U9).
-Outstanding Questions resolved into the Planning Contract.
+Outstanding Questions resolved into the Planning Contract. Vendoring contract and HTTPS only: changed R1, R9, R10, R11
+(count dropped), F1, AE2; added KD10, KD11, R20, R21, AE10, and one open question.
 
 ### Summary
 
-Bring the anc.dev web audit — 65 registry-defined checks across 6 categories — into the `anc` binary as `anc web
-<target>`, batteries included, emitting the same JSON the site produces. Check definitions stay single-source in the
-site repo and vendor in at build time; the 11 generic probe handlers are ported to Rust once and held to parity by
-golden fixtures authored site-side. The site-side vendoring hooks (fixture generator, version signal) are units of this
-plan.
+Bring the anc.dev web audit, every registry-defined check, into the `anc` binary as `anc web <target>`, batteries
+included, emitting the same JSON the site produces. Check definitions stay single-source in the site repo and reach the
+CLI through one data-only vendoring contract the site generates. The generic probe handlers are ported to Rust once and
+held to parity by golden fixtures authored site-side, including the requests each scenario sends. The site-side
+vendoring hooks (contract generator, fixture generator, version signal) are units of this plan.
 
 ### Problem Frame
 
@@ -86,17 +87,26 @@ audience that most needs local auditing is exactly the audience that can't assem
   picture.** (session-settled: user-directed, 2026-10-01 — chosen over deferring authenticated targets: the anc.dev
   scorecard points rows it could not evaluate behind a sign-in to a local `anc web` run, and the site's access-scoring
   definition, `agentnative-site` plan KTD25, scores a credentialed local run as the full picture.) Governs R18, R19.
+- KD10. **The site publishes one vendoring contract, and the CLI reads site data, never site source.**
+  (session-settled: user-approved, 2026-10-08 — chosen over packaging the site engine as a TypeScript package: the CLI
+  is Rust and cannot consume TypeScript, and the site engine already imports nothing Worker-specific.) Governs R9, R10,
+  R20.
+- KD11. **Every run sends HTTPS only.** (session-settled: user-directed, 2026-10-08 — chosen over allowing http to a
+  local target's own origin: the local engine keeps the site engine's no-plaintext rule at every vantage.) Governs R1,
+  R21.
 
 ```mermaid
 flowchart TB
-  REG["registry.yaml - 65 check definitions (single source, site repo)"]
-  FIX["golden conformance fixtures (authored site-side, U8)"]
-  TS["site engine - TS, 11 handlers"]
-  RS["anc web engine - Rust port of the 11 handlers"]
+  REG["registry.yaml - check definitions (single source, site repo)"]
+  FIX["golden conformance fixtures and request sets (authored site-side, U8, U15)"]
+  CON["vendoring contract - generated data the CLI vendors (U15)"]
+  TS["site engine - TS"]
+  RS["anc web engine - Rust port of the handlers"]
   REG --> TS
-  REG -->|build-time vendor + drift CI| RS
+  REG -->|projected| CON
+  FIX --> CON
+  CON -->|build-time vendor + drift CI| RS
   FIX -->|must reproduce| TS
-  FIX -->|vendored, must reproduce| RS
   TS --> PUB["anc.dev run: official scorecard, badge, leaderboard"]
   RS --> LOC["local run: pre-flight report"]
 ```
@@ -105,7 +115,7 @@ flowchart TB
 
 **Command surface**
 
-- R1. `anc web <target>` runs the full web audit against an HTTP(S) target — hostname, host:port, or URL; local,
+- R1. `anc web <target>` runs the full web audit against an HTTPS target — hostname, host:port, or URL; local,
   internal, or public.
 - R2. A bare URL-ish first argument routes to the web audit; an existing path or discoverable binary of the same name
   wins the tie, and a token that fails the hostname grammar keeps today's fast offline audit-path error.
@@ -125,13 +135,18 @@ flowchart TB
   checks report n_a with a stated reason, and `--external-dns` forces them on.
 - R13. A run against an unresponsive or tarpitting target completes within the engine's per-audit deadline, reporting
   partial results per R4 rather than hanging the shell or CI step.
+- R20. For each conformance scenario the local engine sends the requests the site engine recorded, each distinct
+  request once, as the site's per-audit request memo does.
+- R21. A run sends no plaintext request: an `http` target ends the run unreachable before any request goes out, and a
+  root or redirect hop that leads to `http` is refused as the site engine refuses it.
 
 **Output**
 
 - R7. `--output json` emits the site's web-audit scorecard shape verbatim — field-for-field the JSON anc.dev produces,
   scores included.
-- R8. Text output follows anc's existing text conventions; exit codes adopt the site web-audit runner's convention
-  (pass = 0, any failing status = 1, n_a = 3), so CI gates agree with the site's own runner.
+- R8. Text output follows anc's existing text conventions; exit codes follow the one table the binary and the site
+  web-audit runner share (0 clean, 1 warnings only, 2 failures or a usage error, 3 could not check; KTD12), so CI gates
+  agree with the site's own runner.
 - R15. Every failing row carries actionable guidance at the point of failure: text mode prints the goal, the fix and its
   doc links under each failing check, and an offline reader serves the same catalog to agents. A run's time to first fix
   needs no second tool, no browser and no network.
@@ -151,28 +166,28 @@ flowchart TB
 
 **Vendoring**
 
-- R9. Check definitions vendor verbatim from the site repo at CLI build time via the established sync-script + drift-CI
-  - build-codegen pattern; conformance fixtures are authored in the site repo (U8) and vendor the same way; nothing is
-    fetched at runtime.
+- R9. Every vendored input reaches the CLI from the site's vendoring contract at CLI build time, through the
+  established sync-script, drift-CI and build-codegen pattern. The contract holds data only, including the conformance
+  fixtures authored site-side (U8); the CLI parses no site source code, and nothing is fetched at runtime.
 - R10. The probe engine is never published as a depend-able package (npm, crates.io, JSR); site-repo changes stay
-  limited to the vendoring hooks this plan defines (fixture generator, corpus-completeness gate, version signal) and the
-  one registry content change U8 carries, the Vary-header pattern expressed without lookaround — no engine
-  restructuring.
+  limited to the vendoring hooks this plan defines (fixture generator, corpus-completeness gate, version signal, the
+  vendoring contract with its generator and the engine-constant exports it reads) and the one registry content change
+  U8 carries, the Vary-header pattern expressed without lookaround — no engine restructuring.
 
 **Ecosystem consumer**
 
 - R11. The agent-web-audit skill's report is constructible from `anc web --output json` and exit codes; the coverage gap
-  between the skill's 32-check registry and the site's 65-check registry is diffed and either closed or documented as
+  between the skill's 32-check registry and the site's registry is diffed and either closed or documented as
   accepted gaps before ship.
 
 ### Key Flows
 
 - F1. **Local pre-flight loop.**
-  - **Trigger:** Dev runs `anc web localhost:8787` (or a bare URL-ish target).
+  - **Trigger:** Dev runs `anc web staging.internal:8443` (or a bare URL-ish target) against an HTTPS server.
   - **Steps:** Target resolves; vendored registry loads; probe waves run with antecedent gating; report renders
     verdicts, n_a reasons, scores, and any staleness note; exit code gates the shell or CI step.
   - **Outcome:** An actionable fix list with zero public exposure.
-  - **Covers R1–R8, R12, R13.**
+  - **Covers R1–R8, R12, R13, R21.**
 - F2. **Pre-flight to official.**
   - **Trigger:** Local report is clean and the site deploys publicly.
   - **Steps:** Dev (or anyone) runs the audit on anc.dev; the official scorecard and badge mint from the public run.
@@ -190,8 +205,9 @@ flowchart TB
 - AE1. **Covers R2.** Given a file or directory named `anc.dev` in the working directory, when the dev runs
   `anc anc.dev`, then the CLI audit of that path runs; given no such path and no binary of that name, then the web audit
   of the `anc.dev` host runs.
-- AE2. **Covers R4.** Given target `http://localhost:8787`, when audited, then TLS-dependent checks report n_a with a
-  stated reason rather than failing or disappearing.
+- AE2. **Covers R21.** Given target `http://localhost:8787`, or an HTTPS target whose root redirects to `http`, when
+  audited, then no plaintext request goes out, the run ends unreachable naming the no-plaintext reason, and the exit
+  code is 3 (could not check).
 - AE3. **Covers R6.** Given a machine with no route to anc.dev, when a local target is audited, then the report
   completes normally with no staleness note and no error.
 - AE4. **Covers R5.** Given a public target and a current vendored registry, when audited locally and via anc.dev, then
@@ -199,15 +215,18 @@ flowchart TB
 - AE5. **Covers R3, R4.** Given an internal HTTPS target signed by a private CA, when audited, then TLS-dependent checks
   report what the bundled trust roots observed — a failure, honestly labeled — with no trust-store override available in
   v1.
-- AE6. **Covers R12.** Given target `http://intranet.corp.internal`, when audited without flags, then no query reaches a
-  third-party DoH resolver — the hostname touches only the machine's own configured resolver — and DNS checks report n_a
-  ("needs public DNS — verified on anc.dev"); when audited with `--external-dns`, the DoH queries fire.
+- AE6. **Covers R12.** Given target `https://intranet.corp.internal`, when audited without flags, then no query reaches
+  a third-party DoH resolver — the hostname touches only the machine's own configured resolver — and DNS checks report
+  n_a ("needs public DNS — verified on anc.dev"); when audited with `--external-dns`, the DoH queries fire.
 - AE7. **Covers R13.** Given a target that accepts connections but never responds, when audited, then the run completes
   within the per-audit deadline with unprobed checks reported per R4 and a failing exit code per R8.
 - AE8. **Covers R2.** Given `anc report.json` where no such file exists and no binary of that name is on PATH, when
   invoked, then the run fails fast and offline through today's audit error path — no DNS lookup, no connection attempt.
 - AE9 (phase 2). **Covers R6.** Given a stale vendored registry and `--output json`, when a public target is audited,
   then stdout carries only the verbatim scorecard JSON and the upgrade note appears on stderr.
+- AE10. **Covers R20.** Given the vendored `run-healthy` scenario and an empty unported list, when the local engine
+  audits it through the mock transport, then the requests it sends equal the scenario's recorded request set, and none
+  goes out twice.
 
 ### Success Criteria
 
@@ -228,21 +247,21 @@ flowchart TB
 - Rewiring the agent-web-audit skill to shell out to `anc web` (its own change, in its own repo; R11 only guarantees it
   can).
 - Runtime registry refresh between anc releases.
-- Phase 2 of this plan: the anc.dev version signal and staleness note (R6, KTD9, U9), `anc emit web-checks` and
-  `anc emit web-schema` (R14), and the scheduled registry-bump workflow (U12).
+- Phase 2 of this plan: the anc.dev version signal and staleness note (R6, KTD9, U9) and the scheduled registry-bump
+  workflow (U12).
 
 **Outside this product's identity**
 
 - Badges, official scorecards, or leaderboard entries minted from local runs.
 - Uploading or submitting local results anywhere.
 - Publishing the probe engine as a reusable package.
-- Restructuring the site's engine beyond the U8/U9 vendoring hooks.
+- Restructuring the site's engine beyond the U8, U9 and U15 vendoring hooks.
 
 <!-- ce-section: work-relationships -->
 ### How This Work Fits Together
 
-This plan owns the CLI feature and the site-side vendoring hooks (U8, U9 — committed in `agentnative-site`, planned
-here, with no separate site plan).
+This plan owns the CLI feature and the site-side vendoring hooks (U8, U9, U15 — committed in `agentnative-site`,
+planned here, with no separate site plan).
 
 - agent-web-audit skill rewiring — this work **enables** it; a later change in the skill's own repo swaps its 32-check
   Python probe script for `anc web`. U11's coverage diff is the input that change will consume.
@@ -253,35 +272,59 @@ here, with no separate site plan).
 
 - The site's probe engine remains fetch-only — standard `fetch`/`URL`/`AbortController`, no Workers-specific APIs in the
   probe path (verified; the Bun runner exists because of it).
-- The site's `dev` branch is the vendoring source: `guard-main-docs.yml` blocks `scripts/scoring/` from `main`, and the
-  existing `sync-skill-fixture.sh` already defaults to `dev` for the same forever-branch reason. The sync pins a
+- The site's `main` branch is the vendoring source, because anc.dev serves `main` and site `dev` runs ahead of it until
+  a site release; the contract lives under `src/data/web-audit/contract/`, which ships to `main`. The sync pins a
   committed SHA on that branch (KTD3); GitHub permits fetch-by-SHA, which the mechanism relies on.
 - ureq/rustls/webpki-roots/aws-lc-rs/regex license clearance through `deny.toml` is unvalidated territory (zero network
   crates exist today); U1 proves it before anything builds on the stack — including adding `CDLA-Permissive-2.0`
   (webpki-roots' Mozilla-CA-bundle license) to the allow list as a recorded decision.
 - Internal targets are reachable unauthenticated from the machine running `anc`.
+- U16 can pin a contract only after it reaches site `main`: site PRs squash-merge to `dev`, and `dev` reaches `main`
+  through a release.
+
+### Open Questions
+
+- Q1 (deferred; decide before U7 and U13). With HTTPS only (KD11), bundled trust roots (R3) and no trust-store flag
+  (Scope Boundaries), a localhost or self-signed development server cannot complete a run, and neither can the TTHW
+  smoke (T19) against a local fixture server; an internal host with a publicly trusted certificate can. Either the
+  deferred trust-store flag joins phase 1, or the docs name a publicly trusted certificate as the requirement for a
+  local target and the smoke test gets a target the bundled roots trust. The certificate branch publishes each internal
+  hostname to Certificate Transparency logs and cannot cover `.internal`, `localhost` or private-IP targets; a
+  trust-store flag, if chosen, adds roots only and keeps chain and hostname verification, with no skip-verify mode.
 
 ### Sources
 
-- `agentnative-site:src/data/web-audit/registry.yaml` — 65 checks, 6 categories, 11 handler kinds; entry schema fields:
+- `agentnative-site:src/data/web-audit/registry.yaml` — 68 checks, 13 handler kinds and 4 eval rules at site `dev`
+  `ef3cf67`; entry schema fields:
   `id, category, tier, principle, site_types, antecedent, eval, weight, handler, with, hint, title`. `keyword` is
   build-derived from `tier` (required→must, recommended→should, optional→may) and rejected if hand-authored; the
   registry also carries required top-level blocks `version`, `mcp_discovery`, `categories`, `category_order`.
 - `agentnative-site:src/build/13-web-audit-registry.mjs` — the normalizer KTD3's codegen mirrors: keyword derivation,
   `{ua:...}` token expansion (throws on literal UA strings), and structural validation.
 - `agentnative-site:src/shared/user-agents.ts` (+ `src/shared/site-url.ts`) — probe UA token map and `AUDIT_USER_AGENT`;
-  behavioral test inputs, vendored per KTD3/KTD8.
+  behavioral test inputs that reach the CLI through the contract (KTD14), never restated in Rust (KTD8).
 - `agentnative-site:src/worker/audit-web/` — `engine.ts` (wave orchestration, antecedent gating, 25s deadline, degraded
   2s timeout, concurrency 6, eval-rule dispatch, optional-absent re-tag), `scorecard.ts` (`WebScorecard` shape,
-  `WEB_SCHEMA_VERSION = '0.4'`, 7-state `ScorecardStatus`), `score.ts` (two-score formula mirroring
+  `WEB_SCHEMA_VERSION = '0.5'`, 7-state `ScorecardStatus`), `score.ts` (two-score formula mirroring
   `scripts/scoring/score_model.py`; parity test `tests/web-audit-two-score.test.ts`), `handlers/` (shared
   `runX(check, ctx) -> ProbeOutcome` contract; `mcp.ts` is 815 lines and stateful; `http.ts` also hosts the
   legacy-alias-redirects eval function), `ssrf.ts` (`guardedFetch`: manual redirect loop, 4-hop cap, per-hop
   revalidation, three body-cap regimes — 0 skip, 64 KiB truncate-and-continue, unset full-read for the root fetch),
   `antecedents/site-type.ts` (`site_type` is caller-supplied; null applies every check; `mcp`-typed checks gate on
   endpoint discovery).
+- `agentnative-site:src/worker/audit-web/request-hop.ts` and `tests/web-audit-request-memo.test.ts` — the per-audit
+  request memo KTD15 ports, and the cases U17 ports with it.
+- `agentnative-site:src/build/13-web-audit-registry.mjs` (`emitWebAuditRegistry`, `emitWebRemediation`) — the registry
+  and remediation projections the contract commits (KTD14); `scripts/web-audit/conformance-corpus.ts` (`stubFetchFor`)
+  — the one seam every engine request passes, where U15 records request sets.
+- `docs/solutions/architecture-patterns/evict-test-only-files-from-a-drift-guarded-vendored-surface.md`,
+  `docs/solutions/best-practices/repoint-every-generator-that-writes-to-a-relocated-files-old-path.md`,
+  `docs/solutions/tooling-decisions/mirror-a-subtree-exclusion-to-every-formatter-in-the-chain.md`,
+  `docs/solutions/integration-issues/nondeterministic-upstream-scope-serialization-defeats-byte-drift-gate.md` — the
+  contract's shape (one directory per consumer destination), the move, the formatter exclusions, and the sorted
+  request sets.
 - `agentnative-site:scripts/web-audit/audit.ts` — local-runner precedent: arg surface (`--target`, `--check`, `--json`,
-  `--site-type`) and the `STATUS_EXIT` exit-code convention R8 adopts.
+  `--site-type`) and the per-status `STATUS_EXIT` table that KTD12's single table replaces.
 - `scripts/sync-skill-fixture.sh`, `.github/workflows/skill-fixture-drift.yml`, `build.rs` (`emit_skill_hosts`) — the
   vendoring pattern U2 extends; the codegen validation mirrors the site build script, the precedent KTD3 follows.
 - `src/skill_install.rs` — the git hardening surface (`GIT_HARDEN_FLAGS`, `GIT_HARDEN_ENV_*`) U2's sync script mirrors
@@ -322,21 +365,27 @@ here, with no separate site plan).
   release matrix, and the local Windows cross-compile check. The measured aws-lc-rs cost is ~4MB, so U1's size ceiling
   is ~5MB and the plain build ships.) The trust store stays webpki-roots — bundled roots are the parity requirement (R3,
   AE5), separable from the provider choice. Contract details:
-  - The Transport is **single-hop**: the ureq agent has redirects disabled; a `src/web_audit/fetch.rs` layer above it
-    ports `guardedFetch` — the manual redirect loop, the 4-hop cap, per-call follow/no-follow, header lowercasing, and
-    the never-throws error-result shape — so the mock seam matches the site's `fetchImpl` boundary by construction.
+  - The Transport is **single-hop**: the ureq agent has redirects disabled, and a call returns the response head with
+    the body still unread, so the body caps apply above the seam, where the site's request memo reads too (KTD15). A
+    `src/web_audit/fetch.rs` layer above it ports `guardedFetch` — the manual redirect loop, the 4-hop cap, per-call
+    follow/no-follow, the per-call cross-origin policy (`crossOriginRedirects` return or refuse, `refuseRedirects`),
+    header lowercasing, and the never-throws error-result shape — so the mock seam matches the site's `fetchImpl`
+    boundary by construction.
+  - An `Authorization` header never crosses origins: the fetch layer drops it from any hop whose origin differs from
+    the first hop's, whatever the call's redirect policy (R18). The site engine sends no credential, so this costs no
+    parity.
   - Every hop, initial target and each redirect destination alike, is locality-classified (KTD10) before connecting:
     cloud-metadata ranges (`169.254.0.0/16`, IMDS IPv6) are refused outright, and a hop whose locality class crosses
     from the resolved target's class is refused with a `blocked:` evidence string in place of the response.
   - Proxy selection is **per-request**: targets classified local/private bypass any configured proxy; public paths
     (public targets, DoH resolvers, the U9 version signal) honor `HTTP_PROXY`/`HTTPS_PROXY` via `Proxy::try_from_env()`
     and `NO_PROXY`.
-  - Body caps mirror the site's three regimes: `Some(0)` skips the body, `Some(AUDIT_PROBE_MAX_BODY_BYTES)` (64 KiB, a
-    named constant matching the site's) **truncates and continues** with a truncation flag — never an error — and `None`
-    reads fully (the canonical root fetch's regime) up to `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB of decompressed bytes,
-    past which the read truncates and continues with the flag set and an evidence note on the root-derived checks. The
-    site reads the root fully within Workers memory; the local ceiling is a knowing OOM-safety divergence for pages over
-    16 MiB. Bounds apply to decompressed bytes, so a compression bomb stops at the ceiling.
+  - Body caps mirror the site's: `Some(0)` skips the body, a capped read (the probe, document, metadata and OpenAPI
+    caps, read from the contract's `constants.json` per KTD14) **truncates and continues** with a truncation flag —
+    never an error — and `None` reads fully (the canonical root fetch's regime) up to `AUDIT_ROOT_MAX_BODY_BYTES` = 16
+    MiB of decompressed bytes, past which the read truncates and continues with the flag set and an evidence note on the
+    root-derived checks. The site reads the root fully within Workers memory; the local ceiling is a knowing OOM-safety
+    divergence for pages over 16 MiB. Bounds apply to decompressed bytes, so a compression bomb stops at the ceiling.
   - Registry `*_regex` patterns compile with the `regex` crate, linear-time by construction, under flags chosen to match
     JavaScript's `i` and `im` semantics where the crate can (ASCII classes for `\d` and `\w`, explicit line-terminator
     classes where `.` is used). Lookaround and backreferences fail the build naming the check id; the one such pattern
@@ -350,27 +399,38 @@ here, with no separate site plan).
     API), and the U1 self-signed-server test pins that coupling. Governs R3.
 - KTD2. **Concurrency and deadlines port as a thread pool, not async, and the deadline is enforced at request issue
   time.** A pool of 6 worker threads mirrors the engine's `DEFAULT_CONCURRENCY`; one shared deadline instant mirrors the
-  25s per-audit budget; a dead root fetch drops per-check timeouts to the degraded 2s mode. Blocking I/O cannot be
-  cancelled from outside, so `AbortController` semantics map to: every request is issued with ureq's `timeout_global` =
-  min(per-check timeout, remaining budget); the collector waits on a channel with `recv_timeout` until the deadline and
-  then assembles the scorecard, resolving unreturned checks as skip; stalled workers are abandoned, never joined, and
-  exit with the process. A trickling-body tarpit and a never-responds tarpit are both tested against the wall clock.
-  Governs R13.
-- KTD3. **Vendor the full normalization input set pinned to a committed site SHA; `build.rs` mirrors the site build
-  script, with two failure classes.** The sync set is `registry.yaml` **plus** `src/shared/user-agents.ts` and
-  `src/shared/site-url.ts` — the engine consumes the *normalized* registry, so the UA token map and the normalizer's
-  rules are vendored data, not Rust constants. The codegen (via the existing `serde_yaml` dependency) mirrors
-  `agentnative-site:src/build/13-web-audit-registry.mjs`: it derives `keyword` from `tier` (rejecting a hand-authored
-  one), expands `{ua:...}` tokens against the vendored map (failing the build, naming the check id, on an unknown token
-  or a literal User-Agent value), compiles every registry regex pattern at build time with the `regex` crate
-  (lookaround, backreferences, or any pattern the crate rejects fails the build naming the check id), and emits the
-  required top-level blocks (`version`, `mcp_discovery`, `categories`, `category_order`) as compiled tables.
-  Structurally malformed entries fail the build loudly; a well-formed entry naming a handler kind **or eval rule** the
-  Rust engine has not ported compiles to an unsupported binding that reports skip at runtime ("handler `<kind>` not yet
-  ported to the local engine", per R4) — and any run containing such a skip flags its headline score as non-comparable
-  (see U7), so degradation never masquerades as parity. The sync pins `WEB_AUDIT_SITE_SHA` rather than floating HEAD; in
-  phase 1 the pin moves by a deliberate re-run of the sync script, and the phase 2 scheduled bump workflow (U12) makes
-  staleness calendar-visible. Governs R9.
+  25s per-audit budget; a dead root fetch drops per-check timeouts to the degraded 2s mode. All three numbers come from
+  the contract's `constants.json` (KTD14). Blocking I/O cannot be cancelled from outside, so `AbortController` semantics
+  map to:
+  - Every request's header phase is bounded when it is issued, through ureq's connect, send and response-header
+    timeouts, at min(per-check timeout, remaining budget).
+  - Every body read runs under its reader's deadline: the caller's own or, for a body the request memo reads on its
+    own, a deadline a later caller can push back (KTD15). A read past its deadline stops and reports the timeout.
+  - The collector waits on a channel with `recv_timeout` until the audit deadline and then assembles the scorecard,
+    resolving unreturned checks as skip; stalled workers and readers are abandoned, never joined, and exit with the
+    process.
+
+  A trickling-body tarpit and a never-responds tarpit are both tested against the wall clock. Governs R13.
+- KTD3. **Vendor the site's contract (KTD14) pinned to a committed site SHA; `build.rs` compiles the registry
+  projection, with two failure classes.** The engine consumes the *normalized* registry, so the CLI vendors the
+  projection the site's normalizer emits (keywords derived, `{ua:...}` tokens expanded, server-card requirements
+  spliced) instead of re-running that normalizer in Rust. The codegen reads `registry.json`, `remediation.json` and
+  `constants.json` through strict serde types, compiles every registry regex pattern at build time with the `regex`
+  crate (lookaround, backreferences, or any pattern the crate rejects fails the build naming the check id), and emits
+  the top-level blocks as compiled tables.
+  - Every enumerated value outside the handler kinds and eval rules (antecedent, retained-document key, n_a reason,
+    status, CORS surface, protected-resource operation) parses strictly: an unknown value, a malformed entry, or an
+    unknown contract file fails the build loudly, naming it.
+  - A handler kind or eval rule the Rust engine's dispatch does not implement compiles to an unsupported binding that
+    reports skip at runtime ("handler `<kind>` not yet ported to the local engine", per R4), and any run containing such
+    a skip flags its headline score as non-comparable (see U7), so degradation never masquerades as parity.
+  - "Ported" means the dispatch implements the value: the ported list is the dispatch table, so a listed kind with no
+    implementation does not compile. Every handler kind and eval rule starts unported and leaves the list as U5, U6 and
+    U14 land.
+
+  The sync pins `SITE_SHA` rather than floating HEAD, to the first site `main` commit whose contract the CLI has
+  caught up to; in phase 1 the pin moves by a deliberate re-run of the sync script, and the phase 2 scheduled bump
+  workflow (U12) makes staleness calendar-visible. Governs R9.
 - KTD4. **Parity pins to the wire JSON.** Rust serde mirrors of `WebScorecard` and its rows reject out-of-contract
   values (unknown statuses, unknown fields fail deserialization loudly), so a canonical-side addition breaks the build
   instead of being silently misread. Every numeric field is an integer type: the site emits only half-up rounded
@@ -409,15 +469,16 @@ here, with no separate site plan).
   audit error — a dot-bearing filename typo must never trigger a network attempt (AE8). Every rule must be checked
   against the seven documented argv pre-parse gotchas. Governs R2.
 - KTD8. **Identifying User-Agent, identical to the site engine's.** The site sends an identifying UA after the
-  CDN-tarpit incident; the CLI sends the same UA family so servers classify both probes alike. `AUDIT_USER_AGENT` and
-  the probe UA tokens are vendored from the site's shared module (KTD3), never restated as Rust constants. Residual
+  CDN-tarpit incident; the CLI sends the same UA family so servers classify both probes alike. `AUDIT_USER_AGENT` comes
+  from the contract's `constants.json`, and the probe UA tokens arrive expanded in the registry projection (KTD14),
+  never restated as Rust constants. Residual
   risk: egress class differs (workstation vs Cloudflare), an accepted best-effort parity gap under KD2.
-- KTD9 (phase 2). **Staleness compares vendored `spec_version` + registry version against the U9 site signal, for public
-  targets only.** No version endpoint exists today; `spec_version` is only embedded in scorecard payloads. U9 defines
-  the served signal; the CLI fetches it only during `anc web` runs against targets the locality classifier labels public
-  — a local or private target's run makes no anc.dev connection at all — with a bounded timeout, silently skipping on
-  any failure (per KD5 and R6). The remaining public-target fetch is disclosed in `anc web --help`. The new version
-  literals get rows in the ecosystem version-model table
+- KTD9 (phase 2). **Staleness compares vendored `spec_version` + registry fingerprint against the U9 site signal, for
+  public targets only.** No version endpoint exists today; `spec_version` is only embedded in scorecard payloads. U9
+  defines the served signal; the CLI fetches it only during `anc web` runs against targets the locality classifier
+  labels public — a local or private target's run makes no anc.dev connection at all — with a bounded timeout, silently
+  skipping on any failure (per KD5 and R6). The remaining public-target fetch is disclosed in `anc web --help`. The new
+  version literals get rows in the ecosystem version-model table
   (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
 - KTD10. **Locality classification mirrors the site's `ssrf.ts` and gates the whole request chain.** `locality.rs` ports
   the site's classifier verbatim: IPv4 literals in every inet_aton form (dotted, short-dotted, decimal, octal, hex),
@@ -435,6 +496,60 @@ here, with no separate site plan).
   the site (never auto-detected; null applies every check per `antecedents/site-type.ts`), so `--site-type content|api`
   is an optional flag with the same semantics, and `--check <id>` gates a single check with the per-status exit codes
   that make `n_a = 3` meaningful for CI and the skill consumer. Governs R1, R8.
+- KTD14. **The vendoring contract is one site directory, generated and drift-checked on the site, and mirrored as two
+  directories on the CLI.** (session-settled: user-approved, 2026-10-08 — chosen over packaging the site engine as a
+  TypeScript package: the CLI reads data, not TypeScript; instantiates KD10 for R9, R10, R20.) The site keeps its
+  sources where they are (`src/data/web-audit/registry.yaml`, `remediation.yaml`, `src/shared/user-agents.ts`, the
+  engine modules) and commits their data projections under `src/data/web-audit/contract/`:
+  - `build/registry.json` and `build/remediation.json` are the projections `src/build/13-web-audit-registry.mjs`
+    already emits to `dist/_internal/`, and a site test holds the two derivations byte-equal.
+  - `build/constants.json` holds `AUDIT_USER_AGENT`, the engine settings the port must match (concurrency; the
+    per-check, per-audit, degraded and follow timeouts; the redirect cap; the probe, document, metadata and OpenAPI body
+    caps; the request memo's caps; the follow request caps) and the registry fingerprint prefix the site's stored
+    scorecards carry, which is the identity R5 and R6 mean by registry version. Each value is imported from its owning
+    module, never restated. It is JSON because the site's funnel-path guard scans YAML under `src/`, and the user-agent
+    string carries a site URL.
+  - `test/score-parity.json` (hand-authored, moved from `tests/fixtures/web-audit-score-parity.json`) and
+    `test/conformance/` (the U8 corpus, moved from `tests/fixtures/web-audit-conformance/`). Every scenario adds a
+    `requests.json`: the requests the site engine sent, sorted by the request memo's identity key, each recorded once.
+  - One command regenerates every generated file (`scripts/web-audit/gen-fixtures.ts`, extended), and its check runs
+    in the site's `bun test` gate, so a stale projection or constant fails the site PR that caused it.
+
+  The CLI's sync maps the two directories whole: `build/` to `src/web_audit/vendored/contract/`, inside the crate, and
+  `test/` to `tests/fixtures/web-audit-contract/`, outside it. Neither repo keeps a per-file list beyond the site's
+  listing test. Chosen over vendoring `registry.yaml` with its normalizer inputs: the
+  projection is the engine's actual input, and vendoring it deletes the Rust copy of the site normalizer instead of
+  extending it to the server-card schema and the retained-document keys. Both shapes are data, so the choice turns on
+  which normalizer copies survive and needs no bake-off.
+- KTD15. **The request memo ports with the site's semantics, and a memo-owned body read runs on its own thread.** The
+  memo (`agentnative-site:src/worker/audit-web/request-hop.ts`) lives for one audit, is consulted once per redirect hop
+  inside the fetch layer, and is keyed on what the target sees: method, URL, lowercased sorted headers, and body.
+  - It keeps two stages per request, the status and headers, then the body.
+  - It answers a caller from the record only when the record serves the caller's body cap and would have reached it by
+    its deadline, and it reuses a recorded timeout only for a caller whose budget is no longer.
+  - It keeps the better of two answers and retains at most the per-body and per-audit byte caps from `constants.json`
+    (KTD14).
+  - A caller that skips the body (a status-only probe, a redirect it follows) returns at the headers, and a detached
+    reader thread reads the body. The header phase is bounded by that caller's deadline, the body read checks a
+    deadline a later waiter can push back between chunks, a capture whose deadline passes is recorded as timed out,
+    and a blocked thread is abandoned, never joined, like a stalled worker (KTD2).
+  - The pool shares the memo behind a lock, and an identical request already in flight is joined, not re-sent.
+  - A credentialed request's `Authorization` value enters the key as a digest, never verbatim, and the memo and
+    request types redact header values wherever they print. A key still tells the credentialed handshake from the
+    token-less enforcement probe, without holding the token (R18).
+
+  Governs R20.
+- KTD16. **Conformance compares the full scorecard and request set, at the public vantage.** The suite (U10) lands
+  after every handler kind and eval rule is ported (U5, U6, U14), so it compares every scenario's scorecard byte for
+  byte and its distinct requests with `requests.json` as parsed entries. A request sent twice fails unless the memo's
+  own rules require the second send under that interleaving: a body cut at a smaller cap than a later reader's, or a
+  recorded timeout reaching a caller with a longer budget (KTD15). Conformance runs at the public vantage, with an
+  injected resolver and the site's guard rules, so the requests that reach the mock transport are the ones the site's
+  guard let through when the corpus was recorded. A later site bump that brings an unported kind turns the suite red
+  until the kind is ported or the bump is held. Until the phase 1 Definition of Done is met, a release keeps `anc web`
+  out of `--help`, keeps today's audit routing for bare URL-ish tokens (KTD7), and prints no "did you mean anc web"
+  hint; after that, a later unported kind runs as flagged skips (KTD3) and never hides the verb again. Governs R5,
+  R20.
 
 ### High-Level Technical Design
 
@@ -473,30 +588,65 @@ Vendoring and parity pipeline (build and CI time):
 
 ```mermaid
 flowchart TB
-  S1["site: registry.yaml + user-agents.ts (pinned SHA on dev)"] -->|sync-web-audit.sh| V1["vendored normalization inputs"]
-  S2["site: U8 corpus generator + completeness gate"] -->|sync-web-audit.sh| V2["vendored conformance corpus + scoring-parity fixture"]
-  V1 --> B1["build.rs: mirror site normalizer (keyword, UA tokens, regex compile); unknown handler/eval -> unsupported binding"]
-  V2 --> T1["cargo test: golden scorecard parity, scoring parity"]
+  S0["site sources: registry.yaml, remediation.yaml, user-agents.ts, engine constants"] -->|"gen-fixtures.ts, checked in bun test"| S1["site: src/data/web-audit/contract/ (pinned SHA on main)"]
+  S1 -->|"sync-web-audit.sh: contract/build/"| V1["src/web_audit/vendored/contract/ (in the crate)"]
+  S1 -->|"sync-web-audit.sh: contract/test/"| V2["tests/fixtures/web-audit-contract/ (corpus, request sets, score parity)"]
+  V1 --> B1["build.rs: strict read of registry.json, remediation.json, constants.json; regex compile; unported value -> unsupported binding"]
+  V2 --> T1["cargo test: scorecard parity, request-set parity, scoring parity"]
   D1["web-audit-drift.yml: sync --check on PR"] -.->|cmp against pinned SHA| V1
-  D2["phase 2: scheduled bump workflow, site dev HEAD vs pinned SHA -> bump PR"] -.-> S1
+  D1 -.-> V2
+  D2["phase 2: scheduled bump workflow, site main HEAD vs pinned SHA -> bump PR"] -.-> S1
+```
+
+Contract layout (KTD14):
+
+```text
+src/data/web-audit/contract/        agentnative-site
+  README.md                         site-only: consumers, the regenerate command
+  build/                            -> anc: src/web_audit/vendored/contract/
+    registry.json                   generated: normalized registry projection
+    remediation.json                generated: normalized fix catalog
+    constants.json                  generated: user agent, engine settings, registry fingerprint
+  test/                             -> anc: tests/fixtures/web-audit-contract/
+    score-parity.json               hand-authored scoring cases
+    conformance/                    generated corpus
+      scenarios/<name>/             scenario.json, scorecard.json, requests.json
+      regex-parity.json, scores.json, README.md
+```
+
+One request's life in the memo (KTD15):
+
+```mermaid
+stateDiagram-v2
+  [*] --> InFlight: first caller sends
+  InFlight --> Settled: no response, failure recorded
+  InFlight --> HeadersKnown: status and headers arrive
+  HeadersKnown --> Settled: the sender reads the body
+  HeadersKnown --> Capturing: the sender skips the body
+  Capturing --> Settled: body read ends, whole, capped, or timed out
+  Settled --> InFlight: a caller the record cannot serve sends again
 ```
 
 ### System-Wide Impact
 
 - **Bare-invocation behavior delta.** Scripts relying on bare `anc "$X"` today get a fast offline exit 2 for any bad
-  token; after KTD7, a grammar-passing token drives a network-touching run in the `STATUS_EXIT` code space (0/1/3)
+  token; after KTD7, a grammar-passing token drives a network-touching run in KTD12's result space (0 to 3)
   instead. U7 documents the split in `--help` and the release notes recommend explicit `anc audit` in scripts; U10
   regression-tests a corpus of previously-valid bare invocations to prove they still route to audit.
-- **Emit symmetry (phase 2).** `anc emit schema` self-describes the CLI scorecard; the web family gets the same
-  treatment in U12 — `anc emit web-checks` (vocabulary) and `anc emit web-schema` (scorecard shape) — so agents can
-  validate either output family offline (R14).
-- **Two scorecard schemas, one binary.** CLI scorecard 0.8 and web scorecard 0.4 version independently and are not
+- **Emit symmetry.** `anc emit schema` self-describes the CLI scorecard; the web family gets the same treatment in U7
+  — `anc emit web-checks` (vocabulary) and `anc emit web-schema` (scorecard shape) — so agents can validate either
+  output family offline (R14).
+- **Two scorecard schemas, one binary.** CLI scorecard 0.8 and web scorecard 0.5 version independently and are not
   comparable; U7's docs state which command emits which, mirroring the existing "Scorecard JSON fields" documentation
   convention.
 - **DoH failure semantics.** A blocked or unreachable resolver (corporate egress filtering) must not read as "record
   absent": the dns-doh handler reports transport failure as error/skip with a stated reason, and only a
   resolver-confirmed absence as a failing verdict (U5) — otherwise filtered networks produce false negatives that break
   R5's promise for public targets.
+- **The contract couples site PRs to CLI re-pins.** A site change to the registry, the engine's requests or an engine
+  setting regenerates the contract in the same site PR, whose check fails otherwise, and reaches the CLI
+  only through a re-pin. Between re-pins the CLI tests against the contract it holds, so a stale CLI shows as a pin
+  date, not a red build.
 - **Redirect crossings are refused and visible.** A hop that leaves the target's locality class — or lands in a
   cloud-metadata range — is refused per KTD1/KTD10 and recorded as `blocked:` evidence, preserving the Success
   Criteria's "nothing exposed publicly" property without silently following hostile redirects.
@@ -505,7 +655,7 @@ flowchart TB
 
 - **Registry volatility vs drift CI.** The site registry is a 973-line surface that changes at feature cadence; PR-only
   drift checking (the `skill-fixture-drift.yml` model) goes silently stale when the CLI repo is quiet. Mitigation
-  (KTD3): pin a committed site SHA now, and in phase 2 (U12) add a scheduled weekly workflow that diffs site `dev` HEAD
+  (KTD3): pin a committed site SHA now, and in phase 2 (U12) add a scheduled weekly workflow that diffs site `main` HEAD
   against the pin and opens a bump PR — staleness becomes calendar-visible, Dependabot-shaped, instead of contingent on
   unrelated CLI activity.
 - **aws-lc-sys build toolchain.** cmake is required on every target and NASM on x86-64 Windows. Checked against GitHub's
@@ -525,11 +675,21 @@ flowchart TB
 - **Corpus lagging the registry.** A site PR adding a check without regenerating the U8 corpus leaves the newest check
   conformance-untested — no build failure, just an invisible gap. Mitigation: U8 includes a site-side CI gate asserting
   every registry check id has at least one corpus scenario before a registry-touching PR merges to `dev`.
+- **Request-set churn.** Every engine request change (a header, a new probe, a JSON-RPC body) regenerates the affected
+  `requests.json` files, and the port must match each header value and body byte. Mitigation (KTD16): request sets
+  compare as parsed entries, JSON-RPC bodies serialize in the site's key order (U6), and the comparison tightens only
+  as kinds port.
+- **Tooling rewrites generated contract files.** Biome reformats `JSON.stringify` output, and the CLI's markdownlint
+  auto-fixes markdown. Mitigation: the site's Biome exclusion and `.gitattributes` `-text` line move with the contract
+  (U15), and the CLI ignores `tests/fixtures/web-audit-contract/` in markdownlint and its prose check (U16).
 
 ### Assumptions
 
 - The TS engine is deterministic for fixed fetch inputs (same responses in, same scorecard out). U8's generator proves
   this; nondeterminism is a stop condition.
+- The site engine's distinct request set for each corpus scenario does not depend on request completion order. U15's
+  concurrency-1 cross-check tests it on two JS schedules, and a difference is a stop condition; KTD16 names the re-sends
+  the memo's rules allow under other interleavings.
 
 ---
 
@@ -538,16 +698,20 @@ flowchart TB
 | U-ID | Phase | Title                             | Repo | Key files                                                                                                                 | Depends on     |
 | ---- | ----- | --------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | U1   | 1     | Networking foundation + size gate | cli  | `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/transport.rs`, `src/web_audit/fetch/`, `tests/fixtures/tls/`      | —              |
-| U2   | 1     | Vendoring pipeline                | cli  | `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`, `tests/fixtures/web-audit-conformance/` | —              |
+| U2   | 1     | Vendoring pipeline                | cli  | `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`, `tests/fixtures/web-audit-contract/`    | —              |
 | U3   | 1     | Scorecard types + scoring         | cli  | `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`, `schema/web-scorecard.schema.json`                                | U2             |
-| U4   | 1     | Engine orchestration              | cli  | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3         |
-| U5   | 1     | Eleven stateless handlers         | cli  | `src/web_audit/handlers/*.rs`                                                                                             | U4             |
+| U4   | 1     | Engine orchestration              | cli  | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3, U16–17 |
+| U5   | 1     | Stateless handlers and eval rules | cli  | `src/web_audit/handlers/*.rs`                                                                                             | U4             |
 | U6   | 1     | MCP handler                       | cli  | `src/web_audit/handlers/mcp/`                                                                                             | U4             |
 | U7   | 1     | CLI surface                       | cli  | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`                                                     | U4             |
 | U8   | 1     | Conformance corpus generator      | site | `scripts/web-audit/gen-fixtures.ts`, `src/data/web-audit/registry.yaml` (Vary pattern)                                    | —              |
-| U10  | 1     | Conformance suite + dogfood       | cli  | `tests/web_audit_conformance.rs`, `tests/integration.rs`                                                                  | U5, U6, U7, U8 |
+| U10  | 1     | Conformance suite + dogfood       | cli  | `tests/web_audit_conformance.rs`, `tests/integration.rs`                                                                  | U5–8, U14, U17 |
 | U11  | 1     | Skill coverage diff               | cli  | `docs/web-audit-skill-coverage.md`                                                                                        | U7             |
 | U13  | 1     | Docs and discovery                | both | `README.md`, `Cargo.toml`, `src/main.rs`, site refusal message                                                            | U7             |
+| U14  | 1     | Credentialed MCP probes + vantage | cli  | `src/web_audit/handlers/mcp/session.rs`, `src/web_audit/handlers/protected_resource.rs`, `src/runner/mod.rs`              | U6, U7, U16    |
+| U15  | 1     | Vendoring contract                | site | `src/data/web-audit/contract/`, `scripts/web-audit/gen-fixtures.ts`, `tests/web-audit-contract.test.ts`                   | U8             |
+| U16  | 1     | Re-pin to the contract            | cli  | `scripts/sync-web-audit.sh`, `build.rs`, `build_support/web_registry.rs`, `src/web_audit/scorecard.rs`                    | U2, U3, U15    |
+| U17  | 1     | Request memo                      | cli  | `src/web_audit/fetch/memo.rs`, `src/web_audit/fetch/redirect.rs`, `tests/web_audit_memo.rs`                               | U1, U16        |
 | U9   | 2     | Version signal                    | site | worker route + build step                                                                                                 | —              |
 | U12  | 2     | Staleness note and bump workflow  | cli  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/web-audit-bump.yml`                                           | U7, U9         |
 
@@ -558,7 +722,7 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 
 - **Goal:** Land the ureq/rustls/webpki-roots stack behind the single-hop `Transport` trait plus the guarded-fetch
   layer, and prove the size and license bets before anything builds on them.
-- **Requirements:** R3. Implements KTD1 (session-settled; cites R3).
+- **Requirements:** R3, R21. Implements KTD1 (session-settled; cites R3).
 - **Dependencies:** None.
 - **Files:** `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/mod.rs`, `src/web_audit/transport.rs`,
   `src/web_audit/fetch/{mod,redirect,body,proxy}.rs`, `tests/web_audit_transport.rs`, `tests/fixtures/tls/` (self-signed
@@ -568,13 +732,14 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      pre-1.0 crate per repo convention), gzip + brotli features, `rustls` as a direct dependency at ureq's resolved
      version (for the TLS evidence match), and `regex` (first used in U5; added here so the size and license gates
      measure the full v1 dependency set).
-  2. Define the single-hop `Transport` trait (request in, response head + capped body out) with a ureq-backed impl and a
-     test mock; UA constant sourced from the vendored user-agents module per KTD8.
+  2. Define the single-hop `Transport` trait (request in, response head plus an unread body stream out; `fetch/body.rs`
+     applies the caps above it) with a ureq-backed impl and a test mock; UA constant sourced from the vendored
+     user-agents module per KTD8.
   3. Build the `fetch/` modules per KTD1, one responsibility each: `redirect.rs` (4-hop loop, per-call follow flag,
-     per-hop locality/metadata gating via KTD10), `proxy.rs` (per-request selection with local-target bypass and
-     `NO_PROXY`), `body.rs` (three-regime caps: skip / 64 KiB truncate-and-continue / 16 MiB root ceiling, on
-     decompressed bytes, with the truncation flag), and never-throws error results with TLS evidence distinguishing
-     bundled-root rejection.
+     per-hop locality/metadata gating via KTD10, and the site guard's refusal of any `http` hop per R21), `proxy.rs`
+     (per-request selection with local-target bypass and `NO_PROXY`), `body.rs` (the skip, capped truncate-and-continue
+     and 16 MiB root-ceiling regimes, on decompressed bytes, with the truncation flag), and never-throws error results
+     with TLS evidence distinguishing bundled-root rejection.
   4. Measure `target/release/anc` before/after with the full dependency set; run `cargo deny check`; add
      `CDLA-Permissive-2.0` (webpki-roots) to the `deny.toml` allow list as a recorded licensing decision and validate
      the aws-lc-rs tree's licensing the same way.
@@ -601,6 +766,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
     `NO_PROXY` entries are honored.
   - Edge: a public target that 302s to `169.254.169.254` (and to an IPv6 metadata address) gets the hop refused with
     `blocked:` evidence, not followed. Same for a local target redirecting to a public host.
+  - Edge: an `http` URL, or an HTTPS response that redirects to `http`, sends no plaintext request; the hop is refused
+    with the site guard's insecure-scheme result. Covers AE2.
   - Error: connect timeout and total deadline each surface as distinct, matchable errors.
   - Error: an in-test rustls server presenting the checked-in self-signed certificate (`tests/fixtures/tls/`, expiry far
     out, regeneration command documented) yields the bundled-root rejection evidence class, not a generic TLS error; the
@@ -621,9 +788,9 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - **Requirements:** R9. Implements KTD3 (cites R9).
 - **Dependencies:** None (fixture sync activates once U8 publishes the corpus).
 - **Files:** `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `build.rs`,
-  `src/web_audit/registry.yaml`, `src/web_audit/user-agents.ts`, `src/web_audit/site-url.ts` (vendored build inputs),
-  `tests/fixtures/web-audit-conformance/` (vendored corpus, score-parity fixture, regex-parity fixture),
-  `tests/build_registry.rs`. The scheduled `web-audit-bump.yml` is U12 (phase 2).
+  `src/web_audit/vendored/contract/` (vendored build inputs), `tests/fixtures/web-audit-contract/` (vendored corpus,
+  request sets, score-parity and regex-parity fixtures), `tests/build_registry.rs`. The scheduled `web-audit-bump.yml`
+  is U12 (phase 2).
 - **Approach:**
   1. Fetch by pinned SHA, not branch: `git init` into a temp dir, `git remote add origin <url>`,
      `git fetch --depth 1 origin "$WEB_AUDIT_SITE_SHA"`, extract byte-exact via `git show FETCH_HEAD:<path>`; an
@@ -633,17 +800,14 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
      pinning the hardening surface.
-  3. Sync set, split by consumer: build inputs (`src/data/web-audit/registry.yaml`,
-     `src/data/web-audit/remediation.yaml`, `src/shared/user-agents.ts`, `src/shared/site-url.ts`) vendor under
-     `src/web_audit/` because `build.rs` needs them in the crates.io package; test inputs
-     (`tests/fixtures/web-audit-score-parity.json`, the U8 corpus directory, and the U8 `regex-parity.json`) vendor
-     under `tests/fixtures/web-audit-conformance/`, which `Cargo.toml` already excludes from the package. The drift
-     check covers both roots. Keep the set explicit — do not widen the drift guard to files that shouldn't vendor.
-  4. `build.rs` gains `emit_web_registry` mirroring the site normalizer per KTD3: keyword derivation (reject
-     hand-authored), `{ua:...}` expansion against the vendored map (fail on unknown token or literal UA, naming the
-     check id), registry regex compilation with the `regex` crate under JS-matching flags (fail on lookaround,
-     backreferences, or any rejected pattern, naming the check id), top-level block emission, KTD3's two failure classes
-     across both `handler` and `eval` values, sorted stable output, codegen to `$OUT_DIR/generated_web_registry.rs`,
+  3. Sync set, split by consumer: the contract's `build/` directory vendors under `src/web_audit/vendored/contract/`
+     because `build.rs` needs it in the crates.io package, and its `test/` directory vendors under
+     `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14). Both map whole, and the
+     drift check compares both listings and bytes.
+  4. `build.rs` gains `emit_web_registry` per KTD3: strict reads of the three contract files against a pinned list of
+     the files it reads, strict enum parsing, registry regex compilation with the `regex` crate under JS-matching flags
+     (fail on lookaround, backreferences, or any rejected pattern, naming the check id), top-level block emission,
+     KTD3's two failure classes, sorted stable output, codegen to `$OUT_DIR/generated_web_registry.rs`, and
      `cargo:rerun-if-changed` on every vendored input.
   5. Drift workflow mirrors `skill-fixture-drift.yml` (PR trigger, cmp against the pinned SHA across both vendored
      roots).
@@ -651,17 +815,18 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   hardening); `docs/solutions/architecture-patterns/cross-repo-artifact-sync-commit-over-fetch-20260420.md`;
   `docs/solutions/architecture-patterns/evict-test-only-files-from-a-drift-guarded-vendored-surface.md`.
 - **Test scenarios:**
-  - Happy path: codegen over the vendored inputs yields 65 checks, 6 categories, 11 handler kinds, 2 eval rules (counter
-    tests, deliberate-bump semantics like the principle registry's), with every `{ua:...}` token expanded to the
-    vendored literal.
-  - Edge: a well-formed entry with an unknown handler kind or unknown eval rule builds successfully and binds to the
-    unsupported placeholder; a hand-authored `keyword` fails the build.
-  - Error: a registry entry with a missing tier, malformed `with` block, unknown UA token, literal User-Agent string,
-    lookaround, or backreference fails the build with a message naming the entry id.
+  - Happy path: codegen over the vendored contract yields the pin's check, category, handler-kind and eval-rule counts
+    (counter tests, deliberate-bump semantics like the principle registry's), and the emitted tables equal
+    `registry.json` row for row.
+  - Edge: a handler kind or eval rule the dispatch does not implement builds and binds to the unsupported placeholder,
+    and an unknown value of any other enumerated field fails the build naming it.
+  - Error: a projection entry with a missing field, an unknown field, a malformed `with` block, lookaround, or a
+    backreference fails the build with a message naming the entry id; an extra or missing contract file fails the
+    build naming the file.
   - Integration: `scripts/sync-web-audit.sh --check` exits 0 against the pinned SHA; the hardening test asserts the
     exact env/flag surface on the git invocation.
-- **Verification:** Build fails on each structural-mutation class; unknown-handler and unknown-eval entries build and
-  skip at runtime; drift workflow red when the vendored copy diverges from the pin, green when current.
+- **Verification:** Build fails on each structural-mutation class; unported values build and skip at runtime; drift
+  workflow red when the vendored copy diverges from the pin, green when current.
 
 ### U3. Scorecard types and scoring
 
@@ -685,8 +850,7 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   `docs/solutions/design-patterns/web-audit-fairness-scoring-model.md`; `schema/scorecard.schema.json` (the existing
   emit-schema artifact convention).
 - **Test scenarios:**
-  - Happy path: every row of the vendored `web-audit-score-parity.json` reproduces its expected relative and global
-    scores.
+  - Happy path: every case of the vendored `score-parity.json` reproduces its expected relative and global scores.
   - Edge: all-n_a input scores without dividing by zero; a lone `broken` MUST check produces the negative-credit result
     the formula defines.
   - Edge: a value exactly at .5 rounds up (half-up, catching any banker's-rounding regression).
@@ -701,8 +865,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 
 - **Goal:** The wave scheduler: discovery, antecedent gating, concurrency, deadlines, and scorecard assembly —
   everything except the handlers themselves.
-- **Requirements:** R1, R4, R13, R12. Implements KTD2 (cites R13) and KTD10 (cites R12).
-- **Dependencies:** U1, U3.
+- **Requirements:** R1, R4, R13, R12, R20, R21. Implements KTD2 (cites R13), KTD10 (cites R12) and KTD15 (cites R20).
+- **Dependencies:** U1, U3, U16, U17.
 - **Files:** `src/web_audit/engine/{mod,waves,antecedents,pool}.rs`, `src/web_audit/locality.rs`,
   `tests/web_audit_engine.rs`.
 - **Approach:**
@@ -710,19 +874,27 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      unreachable short-circuit, wave 1 over the antecedent-source check set, antecedent context, wave 2 with site-type
      filter and antecedent resolution, the optional-absent re-tag (an absent MAY check finalizes as n_a with the
      `optional-absent` reason, matching the site), and scorecard assembly.
-  2. Thread pool of 6 with a shared deadline instant (25s default) in `pool.rs`: each request is issued with
-     `timeout_global` = min(per-check timeout, remaining budget), the collector uses `recv_timeout` to the deadline and
-     abandons stalled workers, past-deadline checks resolve as skip; dead root fetch flips per-check timeouts to the
-     degraded 2s mode (KTD2).
+  2. Thread pool of 6 with a shared deadline instant (25s default) in `pool.rs`: each request's header phase is bounded
+     at issue by min(per-check timeout, remaining budget) and each body read by its reader's deadline, the collector
+     uses `recv_timeout` to the deadline and abandons stalled workers, past-deadline checks resolve as skip; dead root
+     fetch flips per-check timeouts to the degraded 2s mode (KTD2).
   3. `locality.rs` classifies targets per KTD10 as a verbatim port of the site's `ssrf.ts`: inet_aton IPv4 forms,
      IPv4-mapped and compatible IPv6, zone ids, `[::]`, `localhost`/`.localhost`, `.internal`, all before any
      resolution, then system-resolver-only lookups; the engine withholds external-DNS checks (and, in phase 2, the KTD9
      version fetch) for local/private targets (`--external-dns` overrides the DNS gate) and supplies the per-hop
      classification the `fetch/` modules enforce.
+  4. One request memo per audit (KTD15) rides on every fetch. Following declared hosts with reciprocity and the follow
+     opt-out, API anchor hosts, the SEP-2127 discovery order and the MCP lanes port with the engine sequence at the U16
+     pin; the domain budget is an always-admit budget, since a local run is one user's single audit.
+  5. An `http` target ends unreachable before any request (R21), and the locality resolver and the audit clock are
+     injectable, so conformance runs at the public vantage with no DNS resolution and the corpus's fixed clock (KTD16).
 - **Test scenarios:**
-  - Happy path: mock transport with a healthy target runs both waves and produces a full 65-row scorecard.
-  - Edge: an unmet antecedent yields n_a with `antecedent-unmet` reason on every downstream check (Covers AE2's shape);
-    an absent MAY check re-tags to n_a with `optional-absent`.
+  - Happy path: mock transport with a healthy target runs both waves and produces a scorecard with every registry row.
+  - Edge: an unmet antecedent yields n_a with `antecedent-unmet` reason on every downstream check; an absent MAY check
+    re-tags to n_a with `optional-absent`.
+  - Error: an `http` target ends unreachable with the no-plaintext reason and the transport sees no request. Covers
+    AE2.
+  - Integration: identical requests from two checks in one audit reach the mock transport once.
   - Edge: the site's `web-audit-ssrf.test.ts` table, one case per form: loopback (v4 and `::1`), RFC1918, IPv6 ULA
     `fc00::/7`, link-local (v4 and `fe80::/10`), `[::]`, decimal/octal/hex/short-dotted IPv4 literals (`0x7f.0.0.1`,
     `0x0a.1.2.3`, `2130706433`, `127.1`), IPv4-mapped IPv6 (`[::ffff:127.0.0.1]`), zone ids (`fe80::1%eth0`),
@@ -732,16 +904,17 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   - Error: a transport that stalls forever on wave 1 still completes within the deadline with skip-labeled remaining
     checks. Covers AE7.
   - Error: a transport that trickles one byte per second on wave 1 (slow-loris body) still completes within the deadline
-    with skip-labeled remaining checks; requests issued near the deadline carry the shortened `timeout_global`. Covers
-    AE7.
+    with skip-labeled remaining checks; requests issued near the deadline carry the shortened header timeout, and their
+    body reads stop at the reader's deadline. Covers AE7.
   - Integration: unreachable target (connection refused on root fetch) produces the unreachable report, not a panic.
 - **Verification:** Engine tests green; a wall-clock assertion proves the tarpit case exits inside the deadline plus
   grace.
 
-### U5. Eleven stateless handlers
+### U5. Stateless handlers and eval rules
 
 - **Goal:** Port http, cors-preflight, dns-doh, auth-md, webmcp, scoped-llms, markdown-frontmatter, content-without-js,
-  llms-txt-quality, api-hygiene, and the legacy-alias-redirects eval function.
+  llms-txt-quality, api-hygiene, server-card, and the legacy-alias-redirects, retained-document and api-description eval
+  rules.
 - **Requirements:** R4, R5, R12.
 - **Dependencies:** U4.
 - **Files:** `src/web_audit/handlers/` (one module per handler), `tests/web_audit_handlers.rs`.
@@ -752,9 +925,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   2. dns-doh queries the Cloudflare/Google JSON APIs over the fetch layer; the engine's locality gate (U4) decides
      whether it runs at all. Resolver transport failure reports error/skip with a stated reason; only a
      resolver-confirmed absence is a failing verdict (System-Wide Impact's false-negative guard).
-  3. The legacy-alias-redirects eval function ports as the eleventh stateless entry point (it lives in the site's
-     `http.ts` but dispatches on the `eval` key); `scoped-discovery`, the registry's other eval value, is validated but
-     inert at runtime.
+  3. The legacy-alias-redirects, retained-document and api-description eval rules port as stateless entry points that
+     dispatch on the `eval` key; `scoped-discovery` is validated but inert at runtime.
   4. Redirect-following (through the fetch layer's per-call flag — the canonical-redirect check needs the 301 visible,
      not erased), header normalization, and decompression behavior pinned by tests, not assumed.
 - **Execution note:** Fixture-first — port each handler against its U8 corpus slice; the site's per-handler tests
@@ -774,8 +946,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   - Edge: a private-CA HTTPS target yields the bundled-root TLS failure evidence on TLS-dependent checks, honestly
     labeled. Covers AE5.
   - Error: transport failure mid-check yields error status with evidence, not a panic.
-- **Verification:** Per-handler corpus slices green; handler-kind (11) and eval-rule (2) counter tests still match the
-  registry codegen.
+- **Verification:** Per-handler corpus slices green; KTD3's unported list no longer names any kind or rule this unit
+  ports.
 
 ### U6. MCP handler
 
@@ -793,6 +965,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      into events and `jsonrpc.rs` matches ids, both pure functions tested without a transport. There is no early return
      on id match: a server that keeps its stream open times out here exactly as it does on anc.dev.
   3. Session-ID and lane state live in the engine context the way `mcpSessionId`/`mcpLanes` do in `HandlerContext`.
+  4. JSON-RPC request bodies serialize in the site's key order (`agentnative-site:src/worker/audit-web/handlers/mcp.ts`),
+     since request sets compare bodies byte for byte (KTD16).
 - **Test scenarios:**
   - Happy path: a mock MCP server speaking modern streamable-HTTP passes initialize and tools-list checks.
   - Edge: legacy-lane server detected and labeled as the TS engine labels it; SSE-framed and plain-JSON responses both
@@ -818,8 +992,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   1. `Commands::Web` as a flat top-level variant (the `Audit` shape, not the nested `Skill` shape), routed to a
      `run_web` helper; flags per KTD11 (`--site-type content|api`, `--check <id>`) plus `--external-dns` (KD8) and the
      standard `--output` pair.
-  2. URL-ish pre-dispatch sniff per KTD7's grammar; path/binary existence wins; scheme-less targets default https,
-     localhost and IP-literal locals default http; grammar misses fall through to today's behavior unchanged. 3a. Render
+  2. URL-ish pre-dispatch sniff per KTD7's grammar; path/binary existence wins; scheme-less targets default https for
+     every target (R21); grammar misses fall through to today's behavior unchanged. 3a. Render
      contract (DX review D6). Progress goes to stderr, emitted only when stdout is a terminal and silenced by `--quiet`,
      its env binding, `NO_COLOR` or a pipe, so a twenty-five second run never reads as a hang. The report opens with a
      verdict line, then failing rows each carrying KTD13's goal, fix and doc links, then passing checks as a count that
@@ -833,8 +1007,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      could-not-check code. One test per path. 3c. Exit codes per KTD12: the closing line names the code and what earned
      it; `--help` carries the single table.
   3. Text renderer follows `anc` text conventions through `output::emit`/`color::should_color`; JSON mode prints the U3
-     scorecard verbatim on stdout; exit codes per KTD5; the report header names the vendored registry version and the
-     pinned site SHA so a reader can compare against anc.dev by hand until U12 automates it.
+     scorecard verbatim on stdout; exit codes per KTD12; the report header names the vendored registry fingerprint and
+     the pinned site SHA so a reader can compare against anc.dev by hand until U12 automates it.
   4. When any unported-handler or unported-eval skip is present, flag the headline score as non-comparable — inline in
      text mode, on stderr in JSON mode — naming the unported kinds and skipped check ids (KTD3's degradation-honesty
      rule). 4a. Offline readers (DX review D9, phase 1): `anc emit web-remediation` serves KTD13's whole fix catalog,
@@ -843,6 +1017,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      three are serializers over data compiled in phase 1 and need no network.
   5. `--help` documents the single exit-code table, the two scorecard schema families, and the `--external-dns` egress
      (in AE6's words); release notes carry the bare-invocation migration note (System-Wide Impact).
+  6. Until the phase 1 Definition of Done is met, `anc web` stays out of `--help`, bare URL-ish tokens keep today's audit
+     routing, and the "did you mean anc web" hint is not printed (KTD16).
 - **Patterns to follow:** `src/cli.rs` `Audit` variant; the seven gotchas in
   `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`;
   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`.
@@ -852,15 +1028,17 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   - Edge: `anc anc.dev` with and without a same-named local path. Covers AE1.
   - Edge: `anc report.json` (no such file, no such binary) fails fast through the audit error path with zero network
     activity. Covers AE8.
-  - Edge: `anc localhost:8787` routes to web with http; `anc ./localhost:8787` (explicit path form) routes to audit;
+  - Edge: `anc localhost:8787` routes to web with https; `anc ./localhost:8787` (explicit path form) routes to audit;
     `--` separator and value-flag tokens still behave per the existing argv tests.
-  - Edge: `--check <id>` runs the single check with per-status exit codes (pass 0, fail 1, n_a 3); `--site-type api`
-    filters as the site's `siteTypeApplies` does; omitted site-type runs everything.
+  - Edge: `--check <id>` runs the single check with KTD12's exit codes (clean 0, warnings 1, failures 2, could not check
+    3); `--site-type api` filters as the site's `siteTypeApplies` does; omitted site-type runs everything.
   - Integration: a run against a local target makes no connection to anc.dev (transport panics on any non-target host).
     Covers AE3.
   - Edge: a run with an unported-handler skip carries the non-comparable-score flag naming the kind.
-  - Error: unresolvable bare token gets the existing audit error path plus a "did you mean anc web" hint; exit codes
-    match the STATUS_EXIT table for pass/fail/n_a scorecards.
+  - Edge: `anc web http://localhost:8787` exits 3 naming the no-plaintext reason, with no connection attempted. Covers
+    AE2.
+  - Error: unresolvable bare token gets the existing audit error path plus a "did you mean anc web" hint once the verb
+    is enabled (KTD16); exit codes match KTD12's table for clean, warning, failure and could-not-check scorecards.
   - Integration: `--help` and `--version` make zero network calls (assert via a transport that panics on use).
 - **Verification:** Integration tests green; text and JSON renderers exercised against a full mock-target scorecard.
 
@@ -870,9 +1048,9 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   scorecard for each, committed where the CLI sync can pull them, with a completeness gate.
 - **Requirements:** R5, R9, R10.
 - **Dependencies:** None (informs U5/U6; corpus format agreed with U3's types).
-- **Files (agentnative-site):** `scripts/web-audit/gen-fixtures.ts`, `tests/fixtures/web-audit-conformance/` (committed
-  corpus and `regex-parity.json`, `dev` branch), `src/data/web-audit/registry.yaml` (the Vary-header pattern), CI gate
-  workflow.
+- **Files (agentnative-site):** `scripts/web-audit/gen-fixtures.ts`, `src/data/web-audit/contract/test/conformance/`
+  (committed corpus and `regex-parity.json`, `dev` branch, at the location U15 gives it),
+  `src/data/web-audit/registry.yaml` (the Vary-header pattern), CI gate workflow.
 - **Approach:**
   1. A Bun script that feeds the engine a stubbed `fetchImpl` (the same seam the site's handler tests already use — the
      single-hop boundary KTD1's Transport reproduces) from declarative exchange files, then writes the resulting
@@ -901,15 +1079,15 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 
 ### U9. Version signal (site repo, phase 2)
 
-- **Goal:** A cheap, publicly served signal carrying `spec_version` and the registry version, for the CLI staleness
+- **Goal:** A cheap, publicly served signal carrying `spec_version` and the registry fingerprint, for the CLI staleness
   note.
 - **Requirements:** R6.
 - **Dependencies:** None.
 - **Files (agentnative-site):** worker route (small JSON endpoint under the existing audit-web route namespace), build
   step wiring the registry version constant.
 - **Approach:**
-  1. Serve `{ spec_version, registry_version, web_schema_version }` from values the build already computes
-     (`spec-version.gen.ts`, `registry.version`); no new state, cacheable.
+  1. Serve `{ spec_version, registry_fingerprint, web_schema_version }` from values the build already computes
+     (`spec-version.gen.ts`, the registry fingerprint KTD14 also writes to `constants.json`); no new state, cacheable.
   2. Follow the site's existing route/versioning conventions; add the new literals to the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`) as part of the change.
 - **Test scenarios:**
@@ -921,12 +1099,12 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 
 - **Goal:** The CI evidence for the parity claim, plus proof the new verb doesn't regress anc's own agent-readiness or
   existing bare-invocation behavior.
-- **Requirements:** R5, R13. Also guards R2 and R3 (size).
-- **Dependencies:** U5, U6, U7, U8.
+- **Requirements:** R5, R13, R20. Also guards R2 and R3 (size). Implements KTD16 (cites R5, R20).
+- **Dependencies:** U5, U6, U7, U8, U14, U17.
 - **Files:** `tests/web_audit_conformance.rs`, `tests/integration.rs`, CI workflow addition for the size gate.
 - **Approach:**
-  1. Drive the Rust engine from each vendored corpus scenario's exchanges through the mock Transport; assert
-     byte-comparable scorecard JSON against the golden output. Covers AE4.
+  1. Drive the Rust engine from each vendored corpus scenario's exchanges through the mock Transport, and compare its
+     scorecard and its sent requests with the scenario's goldens under KTD16's rule. Covers AE4.
   2. Redirect, decompression, truncation, and timeout semantics get dedicated scenarios (the fetch-parity gaps KTD1
      names).
   3. Dogfood: `anc audit .` still passes with the new verb present (envelope pattern, safe probing,
@@ -935,8 +1113,9 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   4. Size gate: CI asserts the release binary stays under the ceiling U1 recorded (~5MB over the pre-U1 binary).
 - **Test scenarios:**
   - Happy path: full corpus green. Covers AE4.
-  - Edge: a deliberately mutated golden file fails (the suite binds); a corpus scenario the Rust engine cannot yet
-    reproduce is an explicit, named skip with an issue reference, never a silent pass.
+  - Edge: a deliberately mutated golden file fails (the suite binds).
+  - Happy path: every scenario's distinct sent requests equal its `requests.json`, and a repeat appears only where KTD16
+    allows one. Covers AE10.
   - Edge: every bare-invocation form in the existing argv test suite still routes as it did before the sniffing change.
   - Integration: dogfood run green; size assertion green.
 - **Verification:** All CI jobs green including drift, conformance, dogfood, and size.
@@ -944,7 +1123,7 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 ### U11. Skill coverage diff
 
 - **Goal:** The R11 evidence: a check-by-check diff of the agent-web-audit skill's 32-check registry against the site's
-  65, with each gap closed or accepted.
+  registry at the pin, with each gap closed or accepted.
 - **Requirements:** R11. Implements KD7's verification (cites R11).
 - **Dependencies:** U7.
 - **Files:** `docs/web-audit-skill-coverage.md`.
@@ -999,13 +1178,14 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   1. Staleness note per KTD9: fetched only for targets the locality classifier labels public, bounded timeout, silent
      skip on any failure; inline in text mode, on stderr in JSON mode (AE9); `--help` discloses the public-target
      version fetch.
-  2. Scheduled weekly `web-audit-bump.yml` diffs site `dev` HEAD against `WEB_AUDIT_SITE_SHA` and opens a bump PR
+  2. Scheduled weekly `web-audit-bump.yml` diffs site `main` HEAD against `WEB_AUDIT_SITE_SHA` and opens a bump PR
      listing registry changes and any unported handler or eval kinds.
   3. Add the new version literals to the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
 - **Test scenarios:**
-  - Edge: staleness note renders when vendored version < signal version — stderr in JSON mode (Covers AE9), inline in
-    text; absent when equal, when the target is local (no fetch attempted), or when the signal fetch fails.
+  - Edge: staleness note renders when the vendored fingerprint differs from the signal's — stderr in JSON mode (Covers
+    AE9), inline in text; absent when equal, when the target is local (no fetch attempted), or when the signal fetch
+    fails.
   - Integration: `--help` and `--version` still make zero network calls.
 - **Verification:** Integration tests green; the bump workflow opens a PR against a deliberately stale pin in a dry run.
 
@@ -1014,10 +1194,10 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - **Goal:** A dev whose MCP endpoint requires sign-in gets the rows anc.dev reports as not evaluated, by presenting a
   token, and every local scorecard says where it was run from.
 - **Requirements:** R18, R19, R4, R5, R7. Implements KD9.
-- **Dependencies:** U6, U7, and a vendor bump that carries the site's sign-in checks, `vantage` field, and
-  access-scoring rules (`agentnative-site` plan U3, KTD24, KTD25).
+- **Dependencies:** U6, U7, and U16 (the re-pin that carries the site's sign-in checks, `vantage` field, and
+  access-scoring rules, `agentnative-site` plan U3, KTD24, KTD25).
 - **Files:** `src/web_audit/handlers/mcp/session.rs`, `src/web_audit/handlers/protected_resource.rs`,
-  `src/web_audit/scorecard.rs`, `src/cli.rs`, `tests/web_audit_mcp.rs`, `tests/integration.rs`.
+  `src/web_audit/scorecard.rs`, `src/cli.rs`, `src/runner/mod.rs`, `tests/web_audit_mcp.rs`, `tests/integration.rs`.
 - **Approach:**
   1. Read the token from `ANC_WEB_TOKEN` or `--token-stdin` (R18); reject an empty value with the structured error
      contract; never echo it, and redact it from every error and debug path.
@@ -1029,14 +1209,152 @@ cmake needs no provisioning, since every hosted runner image already carries it)
      protected server can reach 100 global locally while its anc.dev score keeps those rows in the global maximum.
   4. Port the site's vantage-relative sign-in server rule (R19) and its outcome pricing exactly as the vendored corpus
      pins it.
+  5. Remove `ANC_WEB_TOKEN` from the environment of every process anc spawns (each audited binary in
+     `src/runner/mod.rs`, the skill-install git calls), so an exported token never reaches a third-party binary;
+     `--help` recommends scoping the variable to one invocation or using `--token-stdin`.
 - **Test scenarios:**
   - Happy path: a mock protected MCP server with a valid token yields evaluated session rows, passing sign-in checks,
     and `vantage.credentialed` true.
   - Security: the token never reaches a followed host, a metadata URL, a sign-in server, or the enforcement probe
     (asserted on the mock's request log), and never appears in JSON, text, or error output.
+  - Security: a credentialed handshake answered by a 307 or a 308 to another public origin sends no request carrying
+    the token to that origin (KTD1).
+  - Security: an audited fixture binary that prints its environment shows no `ANC_WEB_TOKEN`.
   - Edge: without a token the same server reads auth-required rows matching the site corpus; an intranet endpoint naming
     an intranet sign-in server passes the sign-in server check.
 - **Verification:** the U10 conformance suite stays green; the credentialed and private-endpoint tests pass.
+
+### U15. Vendoring contract (site repo)
+
+- **Goal:** One site directory holds every input the CLI vendors, as data the site generates and checks, with each
+  conformance scenario's request set recorded.
+- **Requirements:** R9, R10, R20. Implements KTD14 (session-settled via KD10; cites R9, R10, R20).
+- **Dependencies:** U8 (the corpus generator it extends).
+- **Files (agentnative-site):** `src/data/web-audit/contract/` (`README.md`, `build/`, `test/`),
+  `scripts/web-audit/gen-fixtures.ts`, `scripts/web-audit/conformance-corpus.ts`,
+  `scripts/web-audit/conformance-scenarios.ts`, `src/build/build.mjs`, `src/worker/audit-web/request-hop.ts` and the
+  engine modules whose settings and vocabularies the contract reads (exports only), `scripts/scoring/score_model.py`
+  (fixture path), `biome.json`, `.gitattributes`, `scripts/SYNCS.md`, the tests that read the moved paths,
+  `tests/web-audit-contract.test.ts`.
+- **Approach:**
+  1. Export the request memo's identity key from `request-hop.ts` and use it in the memo, the generator and
+     `tests/web-audit-request-memo.test.ts`, so one function decides what counts as the same request.
+  2. Export each engine setting `constants.json` carries from its owning module (KTD14), and add one module that owns
+     every contract path, so no test re-derives a path by hand.
+  3. Move the corpus and the score-parity fixture under `contract/test/` as renames, and repoint every reader and
+     writer: `CORPUS_DIR`, the corpus README template's path prose, the scoring script's fixture argument, and the
+     docs that name the old paths.
+  4. Extend `gen-fixtures.ts` to write `contract/build/` and each scenario's `requests.json`. It records requests at
+     `stubFetchFor` before matching, sorts them by the identity key, and throws when a scenario sends one twice. It
+     also runs each scenario at concurrency 1 and fails when the scorecard or the request set differs from the default
+     run.
+  5. Move the Biome exclusion to the contract directory and add a `-text` line for it in `.gitattributes`, so tooling
+     never rewrites generated bytes.
+  6. Add the contract test. The committed `build/` files equal a fresh generation, `build/registry.json` and
+     `build/remediation.json` equal the build's `dist/_internal/` projections, and the listings of the contract root,
+     `build/` and `test/` match one pinned list; the corpus subtree stays under the corpus test's set equality.
+  7. Write the contract README (its consumers, the one regenerate command, and the rule that a registry, request or
+     setting change regenerates the contract in the same PR), and add the contract row to `scripts/SYNCS.md`.
+- **Execution note:** Land the move first as pure renames and prove it: `git diff -M` shows only renames for the
+  existing corpus files, every site test passes, and the registry fingerprint is unchanged, so the web board does not
+  reflow. Add the generated files after.
+- **Patterns to follow:** `src/build/00-spec-version-gen.mjs` with `tests/spec-version-gen.test.ts` (a committed derived
+  file checked against a fresh render); `VENDORED_CARD_SCHEMA_PATH` in `src/build/web-audit-card-schema.mjs` (one owner
+  for a path); `docs/solutions/architecture-patterns/evict-test-only-files-from-a-drift-guarded-vendored-surface.md`;
+  `docs/solutions/best-practices/repoint-every-generator-that-writes-to-a-relocated-files-old-path.md`;
+  `docs/solutions/tooling-decisions/mirror-a-subtree-exclusion-to-every-formatter-in-the-chain.md`.
+- **Test scenarios:**
+  - Happy path: a fresh generation equals the committed contract byte for byte, and two generations produce identical
+    bytes.
+  - Happy path: `run-healthy`'s `requests.json` lists every request its audit sent, sorted, each once.
+  - Edge: a constant edited at its owning module without regenerating fails the contract test, naming the stale file.
+  - Edge: a file added to `build/` or `test/` without updating the pinned listing fails the listing test.
+  - Error: a scenario whose audit sends a request twice fails generation, naming the scenario and the request.
+  - Error: a scenario whose scorecard or request set differs between concurrency 1 and the default fails generation
+    (the Goal Capsule stop condition).
+  - Integration: after the move, the generator in write mode recreates nothing under `tests/fixtures/`.
+- **Verification:** The contract PR merges to site `dev` with `bun test`, `bun run lint` and the generator's check
+  green, the registry fingerprint unchanged, and the corpus files moved as renames; `bun run lint` leaves every
+  generated contract file unchanged.
+
+### U16. Re-pin to the contract and catch up
+
+- **Goal:** The CLI vendors the contract at a site `main` commit that carries it, reads only data, and its vendoring,
+  scorecard and scoring code (U2, U3) passes against that pin.
+- **Requirements:** R5, R7, R9, R14. Implements KTD3, KTD4 and KTD14 on the CLI side (cites R5, R7, R9).
+- **Dependencies:** U2, U3, and U15 released to site `main`.
+- **Files:** `src/web_audit/vendored/SITE_SHA`, `src/web_audit/vendored/contract/`, `scripts/sync-web-audit.sh`,
+  `.github/workflows/web-audit-drift.yml`, `build.rs`, `build_support/web_registry.rs`, `build_support/ts_consts.rs`
+  (deleted), `src/web_audit/registry.rs`, `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`,
+  `schema/web-scorecard.schema.json`, `tests/build_registry.rs`, `tests/sync_web_audit.rs`,
+  `tests/web_audit_score_parity.rs`, `tests/fixtures/web-audit-contract/`, `.markdownlint-cli2.yaml`,
+  `scripts/prose-check.sh`, `scripts/SYNCS.md`.
+- **Approach:**
+  1. Pin `SITE_SHA` to the first site `main` commit whose contract this unit catches up to (KTD3), and map the
+     contract's two directories whole in `sync-web-audit.sh`; `--check` compares both listings as well as the bytes.
+  2. Delete the legacy vendored copies (`registry.yaml`, `remediation.yaml`, the three TypeScript modules, the old
+     corpus and parity-fixture paths) and `build_support/ts_consts.rs`, and drop the normalizer mirror from
+     `build_support/web_registry.rs`, keeping the regex translation and the table emission (KTD3).
+  3. Catch the mirrors up to the pin: the web scorecard mirror moves to the site's current schema version (row
+     `hosts`, top-level `declared_hosts` and `vantage`, the `mcp_discovery` shape), the score-parity reader takes the
+     fixture's `cases[]`, and the counter tests take the pin's counts.
+  4. Start KTD3's unported list at every handler kind and eval rule, replacing the tests that assert every vendored
+     binding is ported.
+  5. Ignore `tests/fixtures/web-audit-contract/` in markdownlint and the prose check, so a vendored README is never
+     rewritten.
+  6. List in the PR body, by feature rather than by commit, the site engine changes since the old pin and the unit that
+     ports each (U1, U4, U5, U6, U14 or U17), so no engine change lands without an owner.
+- **Execution note:** The pin moves about seventy site commits in the same step, so a before-and-after fingerprint of
+  the generated registry cannot prove the format switch neutral. The proof is the corpus round-trip and the scoring
+  parity suite green at the new pin, plus the test that the emitted tables equal `registry.json` row for row.
+- **Patterns to follow:** the current `scripts/sync-web-audit.sh` (hardened fetch by SHA, `--check`);
+  `build.rs::emit_skill_hosts` (loud, path-naming reads of committed JSON);
+  `docs/solutions/architecture-patterns/cross-repo-artifact-sync-commit-over-fetch-20260420.md`.
+- **Test scenarios:**
+  - Happy path: `sync-web-audit.sh --check` exits 0 at the new pin, and every corpus golden round-trips through the
+    strict scorecard mirror byte for byte.
+  - Happy path: every case in the vendored `score-parity.json` reproduces its expected scores.
+  - Edge: a file present in the site contract but absent locally, or the reverse, fails `--check` naming the path.
+  - Error: a `constants.json` missing a key the codegen reads fails the build naming the key and the sync script.
+  - Integration: `cargo package --list` includes the `build/` copies and excludes the corpus.
+- **Verification:** CI green with the drift, build-registry, scoring-parity and corpus round-trip tests at the new pin,
+  and nothing under `src/web_audit/vendored/` besides `SITE_SHA` and `contract/`.
+
+### U17. Request memo
+
+- **Goal:** One local audit sends each distinct request once, reusing an answer it already has whenever that answer
+  serves the caller, as the site engine does.
+- **Requirements:** R20. Implements KTD15 (cites R20).
+- **Dependencies:** U1 (the fetch layer it sits in), U16 (the memo caps in `constants.json`).
+- **Files:** `src/web_audit/fetch/memo.rs`, `src/web_audit/fetch/redirect.rs`, `tests/web_audit_memo.rs`.
+- **Approach:**
+  1. Key, stages, reuse rule, better-of retention and the two byte caps per KTD15, consulted once per redirect hop
+     inside the redirect loop, so a memo-held redirect is still checked by the guard before a caller follows it.
+  2. The memo-owned body read runs on a detached reader thread per KTD15, with the movable deadline checked between
+     chunks; without a memo, a status-only read cancels the body.
+  3. The memo lives for one audit and never reaches the scorecard or the report.
+- **Execution note:** Port `agentnative-site:tests/web-audit-request-memo.test.ts` case by case first, against the mock
+  transport, so the memo is proven before U4 exists; the corpus request sets gate it later through U10.
+- **Patterns to follow:** `agentnative-site:src/worker/audit-web/request-hop.ts` (the semantics) and its test file (the
+  cases).
+- **Test scenarios:**
+  - Happy path: an identical request reads the recorded answer as its own copy, and requests that differ in method, a
+    header or the body each reach the target.
+  - Happy path: concurrent identical requests share one request.
+  - Edge: a status-only probe and a body reader share one request in either order, and the probe returns at the headers
+    while the body is still arriving.
+  - Edge: a body cut at a smaller cap than the next caller reads is asked for again.
+  - Edge: a body past the per-body cap reaches its reader and is not kept, and once an audit holds the total cap, later
+    bodies are not kept.
+  - Edge: a recorded timeout answers only a caller whose budget is no longer, and an answer that took longer than the
+    next caller allows is asked for again.
+  - Edge: a later waiter pushes the memo's body read back to its own deadline, and a status-only caller never waits on
+    another caller's stalled body.
+  - Error: a body read that fails after the headers still answers a status-only caller.
+  - Integration: a memo-held redirect to a metadata address is refused for the caller that would follow it, and a
+    cross-origin redirect one caller kept is refused for a caller that refuses cross-origin hops.
+- **Verification:** The ported memo cases pass against the mock transport, and a stalled capture never holds a caller
+  past its own deadline.
 
 ---
 
@@ -1045,12 +1363,12 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 | Gate             | Command                                                                                 | Proves                                                              |
 | ---------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | Format/lint      | `cargo fmt --check`, `cargo clippy -- -Dwarnings`                                       | Repo conventions (pre-push hook parity)                             |
-| Tests            | `cargo test`                                                                            | Units U1–U7, U10, U11 scenarios                                     |
+| Tests            | `cargo test`                                                                            | Units U1–U7, U10, U11, U14, U16, U17 scenarios                      |
 | Supply chain     | `cargo deny check`                                                                      | KTD1's license clearance incl. the CDLA allow-list addition (U1)    |
 | Windows          | CI `check-windows` (native runner) + pre-push hook step 7 (`x86_64-pc-windows-gnu`)     | New networking code and the aws-lc-sys toolchain are cross-platform |
-| Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)                         | R9's sync mechanism against the pinned SHA, both vendored roots     |
+| Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)                         | R9's sync against the pinned SHA, both contract directories         |
 | Vendor freshness | phase 2: scheduled `web-audit-bump.yml` opens bump PRs                                  | KTD3's pin moves deliberately, staleness is calendar-visible        |
-| Conformance      | `cargo test --test web_audit_conformance`                                               | R5 parity against the U8 corpus, including the regex-parity fixture |
+| Conformance      | `cargo test --test web_audit_conformance`                                               | R5 and R20 parity against the vendored corpus (KTD16)               |
 | Size             | CI release-binary size assertion vs the U1 ceiling (~5MB delta)                         | R3 / KD2's size bet                                                 |
 | Dogfood          | `anc audit .` green + bare-invocation regression corpus                                 | New verb regresses neither anc's audit nor existing routing         |
 | Exit codes       | `cargo test --test integration exit_code`                                               | KTD12's single table across both verbs, including could-not-check   |
@@ -1058,13 +1376,13 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 | Failure paths    | `cargo test --test web_audit_failures`                                                  | Each scorecard-less path emits the envelope and a next action (R16) |
 | Rustdoc          | `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`                                        | The `xurl-rs` docs standard holds; no broken intra-doc links (U13)  |
 | TTHW             | CI smoke: install the release artifact, audit a local fixture server, assert wall clock | The under-2-minute first-run promise (DX review D3)                 |
-| Site side        | `bun test`, `bun run build`, corpus-completeness gate in `agentnative-site`             | U8 corpus validity and coverage, U9 endpoint                        |
+| Site side        | `bun test`, `bun run build`, corpus-completeness gate in `agentnative-site`             | U8 corpus, U9 endpoint, U15 contract regeneration and listings      |
 
 ## Definition of Done
 
-- Phase 1: U1–U8, U10, U11, U13 landed; every phase-1 gate in the Verification Contract green in CI, both repos. Phase
-  2: U9 and U12 landed with the vendor-freshness gate green.
-- AE1–AE9 each enforced by a named test (the `Covers` links in unit test scenarios).
+- Phase 1: U1–U8, U10, U11, U13–U17 landed; every phase-1 gate in the Verification Contract green in CI, both repos.
+  Phase 2: U9 and U12 landed with the vendor-freshness gate green.
+- AE1–AE10 each enforced by a named test (the `Covers` links in unit test scenarios).
 - **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, the site's
   refusal points a local target at the local command, and this crate meets the `xurl-rs` docs standard: every public
   item documented under `#![deny(missing_docs)]`, the README wired in as the rustdoc landing page, the docs.rs metadata
@@ -1075,6 +1393,9 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - Every path that ends without a scorecard emits the structured envelope in JSON mode and a problem-cause-next-action
   message in text mode (R16).
 - One exit-code table across both verbs and the site runner, named in each run's output and pinned by a test (R17).
+- The first release that lists `anc web` in `--help` and routes bare URL-ish tokens to it meets this Definition of Done
+  (KTD16).
+- The site contract is regenerated by the site PR that changes its inputs, and its check is green on site `dev` (U15).
 - The U1 size ceiling is recorded and CI-enforced; the release binary is under it.
 - `docs/web-audit-skill-coverage.md` exists with all 32 skill checks dispositioned (R11).
 - The release checklist carries the webpki-roots and registry-pin bump disciplines (Risks & Mitigations); in phase 2 the
@@ -1105,6 +1426,13 @@ Considered during engineering review and explicitly deferred or rejected, one li
 - A native-Windows CI runner change: CI's `check-windows` already runs on `windows-latest`; only the toolchain input is
   needed.
 - A JS-compatible custom number serializer: not needed; every scorecard number is integral and typed as an integer.
+- A TypeScript package for the site engine: rejected (KD10); the CLI cannot consume TypeScript, and the contract
+  carries the data it needs.
+- Vendoring `registry.yaml` with its normalizer inputs (the server-card schema, the retained-document keys): rejected
+  for the registry projection (KTD14), which deletes the Rust normalizer copy instead of growing it.
+- Plaintext http for local targets: rejected (KD11).
+- A domain budget for local runs: not built; a local run is one user's single audit, so the engine runs with an
+  always-admit budget (U4). Local runs driven in bulk against third-party hosts would change the call.
 - Authenticated targets, a trust-store flag for private CAs, rewiring the agent-web-audit skill, and runtime registry
   refresh: deferred in Scope Boundaries above.
 
@@ -1120,9 +1448,9 @@ Existing code that partially solves a sub-problem, and whether the plan reuses i
   injector. Reused; U10's bare-invocation corpus guards it.
 - `src/output.rs`, `src/color.rs`: the render leaves. Reused.
 - `schema/scorecard.schema.json` and `anc emit schema`: the self-describing-schema convention. Reused for
-  `web-scorecard.schema.json` (U3); the emit command is U12.
-- `serde_yaml` (pinned build-dependency, deprecated upstream): reused by U2's codegen; re-evaluate if cargo-deny flags
-  it.
+  `web-scorecard.schema.json` (U3); the emit command is U7.
+- `serde_yaml` (pinned build-dependency, deprecated upstream): the web codegen stops needing it once it reads the
+  contract's JSON (KTD3); re-evaluate it if cargo-deny flags it.
 - Shared reusable workflows `rust-ci.yml` (native `windows-latest` check) and `rust-release.yml` (seven targets, three
   via `cross`) in `brettdavies/.github`: extended with an opt-in NASM input in U1, not duplicated. Their runner images
   already carry cmake, so only NASM and the `cross` containers need anything.
@@ -1130,7 +1458,12 @@ Existing code that partially solves a sub-problem, and whether the plan reuses i
   (KTD6), correctly.
 - Site-side, mirrored rather than rebuilt: `ssrf.ts` and `tests/web-audit-ssrf.test.ts` (locality classifier and its
   table, U4), `score.ts` and `tests/fixtures/web-audit-score-parity.json` (U3), `assert.ts` regex flags (U2/U5),
-  `engine.ts` constants (U4), `handlers/*` and their tests (U5/U6), `scripts/web-audit/audit.ts` `STATUS_EXIT` (U7).
+  `engine.ts` constants (U4), `handlers/*` and their tests (U5/U6), `scripts/web-audit/audit.ts` (the exit table KTD12
+  replaces, U7).
+- `agentnative-site` `src/build/13-web-audit-registry.mjs` (`emitWebAuditRegistry`, `emitWebRemediation`): the
+  projections the contract commits (KTD14), already the Worker's runtime input.
+- `agentnative-site` `scripts/web-audit/conformance-corpus.ts` (`stubFetchFor`) and
+  `tests/web-audit-request-memo.test.ts`: the seam U15 records request sets at, and the memo cases U17 ports.
 - No HTTP client exists in the CLI today (zero network crates), so U1 is greenfield by necessity.
 
 Developer-facing surfaces the DX review found already built, which U7 and U13 reuse rather than invent:
@@ -1168,7 +1501,7 @@ CODE PATHS (planned)                                          USER FLOWS
 [+] src/web_audit/locality.rs                                  [+] Skill as consumer (F3)
   \- classify()   [***] site ssrf test table verbatim (D8)     |- [**]  coverage doc constructibility walkthrough (U11)
 [+] src/web_audit/engine/                                      [+] Error states
-  |- pool.rs      [***] never-responds + slow-trickle tarpit,   |- [***] unreachable root -> unreachable report, exit 1
+  |- pool.rs      [***] never-responds + slow-trickle tarpit,   |- [***] unreachable root -> unreachable report, exit 3
   |               timeout_global from remaining budget (D3)    |- [***] unported handler -> skip + non-comparable flag
   |- waves.rs     [***] antecedent-unmet, optional-absent      |- [***] DoH resolver unreachable -> error, not absent
   \- antecedents  [***] site-type filter, --check single id    |- [***] bad bare token -> audit error + did-you-mean
@@ -1177,7 +1510,7 @@ CODE PATHS (planned)                                          USER FLOWS
   |               integer types, no ".0" golden (D7)           |- [***] body over cap truncates, evaluated not errored
   \- score        [***] parity fixture, perturbed weight fails [+] Regression (IRON RULE, already in plan)
 [+] src/web_audit/handlers/*.rs                                |- [***] bare-invocation corpus still routes to audit (U10)
-  |- 10 kinds+eval [***] corpus slices, JS-vs-Rust regex        |- [***] anc audit . unchanged with the new verb (U10)
+  |- kinds + evals [***] corpus slices, JS-vs-Rust regex        |- [***] anc audit . unchanged with the new verb (U10)
   |               parity fixture (D10)
   \- mcp/         [***] modern/legacy lanes, error codes,
                   open-stream server -> timeout status (D5)
@@ -1186,13 +1519,18 @@ CODE PATHS (planned)                                          USER FLOWS
   |- render       [***] JSON verbatim, text every row, exit-code table
   \- --help       [***] zero network calls (transport panics on use)
 [+] build.rs::emit_web_registry
-  \- codegen      [***] counters 65/6/11/2, hand-authored keyword, unknown UA token, literal UA, lookaround,
-                  backreference each fail naming the id; unknown handler/eval binds to unsupported placeholder
+  \- codegen      [***] counters at the pin; unknown enum value, lookaround, backreference, unknown contract
+                  file each fail naming it; unported value binds to unsupported placeholder
 [+] site: gen-fixtures.ts (U8)
   \- generator    [***] determinism (run twice byte-identical), completeness gate, Vary rewrite equivalence
+[+] site: contract generator (U15)
+  \- contract     [***] fresh generation equals committed bytes, listing pin, repeat request fails,
+                  concurrency 1 vs default
+[+] src/web_audit/fetch/memo.rs (U17)
+  \- memo         [***] site memo cases ported: reuse, caps, timeouts, capture deadline, guard on held redirects
 
-COVERAGE: 40/40 planned paths have a named test (100%)  |  Code paths: 28/28  |  User flows: 12/12
-QUALITY: ***:39  **:1  *:0  |  GAPS: 0 after review (7 closed by D3, D5, D7, D8, D10, D11, D13)
+COVERAGE: 42/42 planned paths have a named test (100%)  |  Code paths: 30/30  |  User flows: 12/12
+QUALITY: ***:41  **:1  *:0  |  GAPS: 0 after review (7 closed by D3, D5, D7, D8, D10, D11, D13)
 ```
 
 Legend: `***` behavior + edge + error, `**` happy path, `*` smoke. No E2E beyond the corpus suite is warranted: the
@@ -1216,7 +1554,7 @@ user sees. No critical gaps remain (a critical gap is no test, no handling, and 
 | TLS evidence        | private CA / self-signed target                        | yes  | classify | "chain rejected by bundled roots" (AE5)              |
 | `locality.rs`       | IPv4-mapped IPv6 intranet literal                      | yes  | local    | DNS checks n_a "needs public DNS", no egress         |
 | `engine/pool.rs`    | tarpit or slow-loris on wave 1                         | yes  | deadline | partial report inside 25s, skip("deadline") rows     |
-| `engine/waves.rs`   | root fetch dead                                        | yes  | degrade  | unreachable report, exit 1                           |
+| `engine/waves.rs`   | root fetch dead                                        | yes  | degrade  | unreachable report, exit 3                           |
 | `handlers/dns-doh`  | corporate egress blocks the DoH resolver               | yes  | error    | error with transport reason, never a false "absent"  |
 | `handlers/mcp/`     | server answers initialize, never closes the SSE stream | yes  | timeout  | the same timeout status anc.dev records              |
 | `handlers/*` regex  | body with `\r\n` endings or non-ASCII digits           | yes  | parity   | same verdict as anc.dev (regex-parity fixture)       |
@@ -1225,40 +1563,51 @@ user sees. No critical gaps remain (a critical gap is no test, no handling, and 
 | `argv.rs` sniff     | dot-bearing filename typo (`anc report.json`)          | yes  | offline  | today's audit error plus a did-you-mean hint (AE8)   |
 | Sync script         | pinned SHA unreachable                                 | yes  | fail     | script exits naming the SHA; nothing vendored        |
 | Release matrix      | `cross` row lacks cmake                                | yes  | CI       | red release build before any engine code (U1 step 5) |
+| `fetch/memo.rs`     | a skipped body stalls after the headers                | yes  | capture  | probe answers at headers; readers keep own deadlines |
+| `fetch/redirect.rs` | target or redirect hop leads to `http`                 | yes  | refuse   | unreachable, no-plaintext reason, exit 3             |
+| site contract gen   | engine setting changed, contract not regenerated       | yes  | fail     | the site PR fails `bun test`, naming the stale file  |
 
 ## Worktree parallelization strategy
 
 | Step | Modules touched                                                                                                           | Depends on     |
 | ---- | ------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | U1   | `src/web_audit/{transport,fetch}/`, `Cargo.toml`, `deny.toml`, `Cross.toml`, `tests/fixtures/tls/`, shared workflows      | —              |
-| U2   | `scripts/`, `.github/workflows/`, `build.rs`, `src/web_audit/` (vendored inputs), `tests/fixtures/web-audit-conformance/` | —              |
+| U2   | `scripts/`, `.github/workflows/`, `build.rs`, `src/web_audit/` (vendored inputs), `tests/fixtures/web-audit-contract/`    | —              |
 | U3   | `src/web_audit/{scorecard,score}.rs`, `schema/`                                                                           | U2             |
-| U4   | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3         |
+| U4   | `src/web_audit/engine/`, `src/web_audit/locality.rs`                                                                      | U1, U3, U16–17 |
 | U5   | `src/web_audit/handlers/` (stateless files)                                                                               | U4             |
 | U6   | `src/web_audit/handlers/mcp/`                                                                                             | U4             |
 | U7   | `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`                                                     | U4             |
 | U8   | site: `scripts/web-audit/`, `tests/fixtures/`, `src/data/web-audit/`                                                      | —              |
-| U10  | `tests/`                                                                                                                  | U5, U6, U7, U8 |
+| U10  | `tests/`                                                                                                                  | U5–8, U14, U17 |
 | U11  | `docs/`                                                                                                                   | U7             |
+| U15  | site: `src/data/web-audit/contract/`, `scripts/web-audit/`, engine-module exports, tests                                  | U8             |
+| U16  | `scripts/`, `.github/workflows/`, `build.rs`, `build_support/`, `src/web_audit/`, `tests/`                                | U2, U3, U15    |
+| U17  | `src/web_audit/fetch/memo.rs`, `src/web_audit/fetch/redirect.rs`, `tests/web_audit_memo.rs`                               | U1, U16        |
+| U14  | `src/web_audit/handlers/mcp/`, `src/web_audit/handlers/protected_resource.rs`, `src/runner/mod.rs`, `src/cli.rs`          | U6, U7, U16    |
 | U9   | site: worker route, build step (phase 2)                                                                                  | —              |
 | U12  | `src/web_audit/render.rs`, `src/cli.rs`, `.github/workflows/` (phase 2)                                                   | U7, U9         |
 
 Lanes:
 
-- Lane A: U1 → U4 → U5 (sequential, shared `src/web_audit/`).
-- Lane B: U2 → U3 (sequential, shared vendored inputs and `build.rs`).
-- Lane C: U8 (independent, site repo).
+- Lane A: U1 → U17 → U4 → U5 (sequential, shared `src/web_audit/`; U17 also waits for U16).
+- Lane B: U2 → U3 → U16 (sequential, shared vendored inputs and `build.rs`; U16 waits for U15 on site `main`).
+- Lane C: U8 → U15 (site repo).
 - Lane D: U6 (after U4; parallel to U5, separate `handlers/mcp/` directory).
 - Lane E: U7 (after U4; parallel to U5 and U6, touches `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `render.rs`).
-- Lane F: U10 then U11 (after A, B, C, D, E).
+- Lane G: U14 (after U6, U7 and U16; touches `handlers/mcp/session.rs`, `handlers/protected_resource.rs`,
+  `src/runner/mod.rs`).
+- Lane F: U10 then U11 (after lanes A through E and G).
 - Phase 2: U9 (site) then U12.
 
-Execution order: launch A (U1, with the shared-workflow PR first), B (U2), and C (U8) in parallel worktrees. Merge U1
-and U2, then U3 (B) and U4 (A). Then U5, U6, U7 in parallel. Then U10, then U11.
+Execution order: launch A (U1, with the shared-workflow PR first), B (U2, then U3), and C (U8, then U15) in parallel
+worktrees. U16 follows U3 and U15's release to site `main`; U17 follows U1 and U16; U4 follows U16 and U17. Then U5, U6,
+U7 in parallel, then U14. Then U10, then U11.
 
 Conflict flags: U1 and U2 both touch `Cargo.toml` (runtime vs build dependencies) and `src/web_audit/mod.rs`; land U1
 first and rebase U2. U5 and U6 both register in `src/web_audit/handlers/mod.rs`; separate files otherwise, so a one-line
-merge. U7 and U12 both touch `render.rs` and `src/cli.rs`; U12 waits for U7 by dependency.
+merge. U7 and U12 both touch `render.rs` and `src/cli.rs`; U12 waits for U7 by dependency. U16 and U17 both touch
+`src/web_audit/`; U17 waits for U16 by dependency.
 
 ## Implementation Tasks
 
@@ -1335,7 +1684,7 @@ checkbox as you ship.
   - Surfaced by: DX review D4 — the site's `remediation.yaml` is 1:1 with the registry and the plan vendored only the
     registry, so a local run named every failure and no fix.
   - Files: `scripts/sync-web-audit.sh`, `build.rs`, `src/web_audit/render.rs`, `src/cli.rs`.
-  - Verify: a failing row prints goal, fix and links; `anc emit web-remediation` round-trips all 65 entries offline; the
+  - Verify: a failing row prints goal, fix and links; `anc emit web-remediation` round-trips every entry offline; the
     scorecard object is unchanged byte for byte.
 - [x] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
   - Surfaced by: DX review D8 — the same binary returned 1 for "warnings, proceed" and for "checks failed".
@@ -1356,7 +1705,7 @@ checkbox as you ship.
   - Files: `README.md`, `Cargo.toml`, `src/main.rs`, `agentnative-site` refusal message.
   - Verify: `cargo doc --no-deps` clean under `RUSTDOCFLAGS="-D warnings"`; the README exit table matches T14's test.
 - [x] **T18 (P2, human: ~4 h / CC: ~20 min)** — U7 readers — Move the emit family into phase 1.
-  - Surfaced by: DX review D9 — `--check <id>` shipped in phase 1 with no way to discover the 65 ids.
+  - Surfaced by: DX review D9 — `--check <id>` shipped in phase 1 with no way to discover the check ids.
   - Files: `src/cli.rs`, `src/main.rs`, `tests/integration.rs`.
   - Verify: `anc emit web-checks` lists every id and round-trips; `anc emit web-schema` validates a real scorecard.
 - [x] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate.
@@ -1519,4 +1868,4 @@ docs item, on a plan that also changes the README's published exit-code table.
   terminal opt-out. The 2026-04-30 record is a native Claude subagent run, older than the 7-day window.
 - **VERDICT:** ENG + DX CLEARED — ready to implement. CEO review not run (optional for a feature this size).
 
-NO UNRESOLVED DECISIONS
+ONE UNRESOLVED DECISION: Q1 (local TLS trust under HTTPS only), recorded in Open Questions.

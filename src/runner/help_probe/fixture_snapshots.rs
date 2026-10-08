@@ -61,6 +61,11 @@ fn read_capture(path: &Path) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
+/// The text of the capture named `file` in `tests/fixtures/help/`.
+pub(crate) fn fixture(file: &str) -> String {
+    read_capture(&fixtures_dir().join(file))
+}
+
 fn capture_stem(file: &str) -> &str {
     file.strip_suffix(".txt")
         .unwrap_or_else(|| panic!("capture {file} is not named *.txt"))

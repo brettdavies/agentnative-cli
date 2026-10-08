@@ -1,13 +1,10 @@
-use std::ffi::OsString;
-
-use crate::anc_toml::{JSON_PROBE_KEY, Sourced};
+use crate::anc_toml::JSON_PROBE_KEY;
 use crate::audit::Audit;
+use crate::audits::behavioral::declared_probe::audit_declared_probe;
 use crate::audits::behavioral::subcommand_help::{dash_rule_notes, should_skip};
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
-use crate::types::{
-    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict,
-};
+use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Verdict};
 
 /// The flags that let a caller choose the output format.
 const OUTPUT_FLAGS: &[&str] = &["--output", "--format"];
@@ -117,72 +114,13 @@ fn declared_output_flags(help: &HelpOutput) -> Vec<String> {
         .collect()
 }
 
-/// Run the declared probe: Pass when it exits 0 with JSON on stdout, naming
-/// the probe and the file that declared it; Fail otherwise, saying what it
-/// did instead.
-fn audit_declared_probe(runner: &BinaryRunner, probe: &Sourced<Vec<String>>) -> Verdict {
-    let shown = probe_invocation(runner, &probe.value);
-    let cited = probe.cite(JSON_PROBE_KEY);
-    match run_declared_probe(runner, &probe.value) {
-        Ok(()) => Verdict {
-            status: AuditStatus::Pass,
-            mitigation: Some(Mitigation::Config(format!(
-                "`{shown}` printed JSON; probe declared via {cited}"
-            ))),
-        },
-        Err(why) => AuditStatus::Fail(format!(
-            "`{shown}`, the probe declared via {cited}, {why}. The declared probe must exit 0 \
-             and print JSON on stdout."
-        ))
-        .into(),
-    }
-}
-
-/// Run `args` exactly as declared: no shell, with the runner's timeout,
-/// closed stdin, and `NO_COLOR=1`. `Ok` when the call exits 0 and its stdout
-/// parses as JSON; otherwise what it did instead.
-pub(crate) fn run_declared_probe(runner: &BinaryRunner, args: &[String]) -> Result<(), String> {
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let result = runner.run(&args, &[]);
-    match result.status {
-        RunStatus::Ok => {}
-        RunStatus::Timeout => return Err("timed out".into()),
-        RunStatus::Crash { signal } => return Err(format!("was killed by signal {signal}")),
-        RunStatus::NotFound | RunStatus::PermissionDenied | RunStatus::Error(_) => {
-            return Err("could not be run".into());
-        }
-    }
-    match result.exit_code {
-        Some(0) => {}
-        Some(code) => return Err(format!("exited {code}")),
-        None => return Err("exited without an exit code".into()),
-    }
-    let stdout = result.stdout.trim();
-    if stdout.is_empty() || serde_json::from_str::<serde_json::Value>(stdout).is_err() {
-        return Err("printed no JSON on stdout".into());
-    }
-    Ok(())
-}
-
-/// The declared call as evidence shows it: the binary's name, then the
-/// arguments, quoted where a shell would need it.
-pub(crate) fn probe_invocation(runner: &BinaryRunner, args: &[String]) -> String {
-    let argv: Vec<OsString> = runner
-        .binary_stem()
-        .into_iter()
-        .map(OsString::from)
-        .chain(args.iter().map(OsString::from))
-        .collect();
-    crate::argv::format_invocation(&argv)
-}
-
 /// Probe each top-level subcommand from the shared help parse for --output/--format.
 ///
 /// Most CLI frameworks (clap, cobra, argparse) list subcommands under a "Commands:"
 /// or "Subcommands:" section, and hand-written help under `... commands:`; the
 /// shared parser reads all of them.
 fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
-    let subcommands = subcommands_to_probe(Some(help));
+    let subcommands = subcommands_to_probe(help);
     if subcommands.is_empty() {
         return Detected::Settled(AuditStatus::OptOut(help.noting_dash_rule(
             OUTPUT_FLAGS,
@@ -228,9 +166,8 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
 /// parser's names minus the built-ins (`help`, shell completions) that the
 /// subcommand-help helper skips. `help` in particular echoes top-level help,
 /// so probing it could move this row on a tool that has no output flag.
-fn subcommands_to_probe(help: Option<&HelpOutput>) -> Vec<&str> {
-    help.map(HelpOutput::subcommands)
-        .unwrap_or_default()
+fn subcommands_to_probe(help: &HelpOutput) -> Vec<&str> {
+    help.subcommands()
         .iter()
         .map(String::as_str)
         .filter(|name| !should_skip(name))
@@ -254,7 +191,6 @@ fn validate_json_output(runner: &BinaryRunner, prefix: &[&str], flags: &[String]
     // terraform plan), and for agentnative itself it caused fork bombs.
     const SAFE_SUFFIXES: &[&str] = &["--help", "--version"];
 
-    // Space-separated first (`flag json`), then `flag=json`.
     let spaced = flags.iter().map(|flag| vec![flag.clone(), "json".into()]);
     let joined = flags.iter().map(|flag| vec![format!("{flag}=json")]);
     for value in spaced.chain(joined) {
@@ -317,8 +253,9 @@ fn try_json_probe(runner: &BinaryRunner, args: &[&str]) -> Option<AuditStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::anc_toml::Sourced;
     use crate::audits::behavioral::tests::test_project_with_sh_script;
-    use crate::types::AuditStatus;
+    use crate::types::Mitigation;
 
     /// Run the audit on `script` with `probe` declared in `.anc.toml`.
     fn run_with_probe(script: &str, probe: &[&str]) -> AuditResult {
@@ -798,15 +735,14 @@ esac
         let help = HelpOutput::from_raw(
             "Usage: mycli [COMMAND]\n\nCommands:\n  audit   Run audits\n  list    List items\n  help    Print help\n\nOptions:\n  -h, --help  Print help\n",
         );
-        assert_eq!(subcommands_to_probe(Some(&help)), ["audit", "list"]);
+        assert_eq!(subcommands_to_probe(&help), ["audit", "list"]);
     }
 
     #[test]
-    fn subcommands_to_probe_empty_without_block_or_probe() {
+    fn subcommands_to_probe_empty_without_a_command_block() {
         let help =
             HelpOutput::from_raw("Usage: mycli [OPTIONS]\n\nOptions:\n  -h, --help  Print help\n");
-        assert!(subcommands_to_probe(Some(&help)).is_empty());
-        assert!(subcommands_to_probe(None).is_empty());
+        assert!(subcommands_to_probe(&help).is_empty());
     }
 
     #[test]
@@ -814,6 +750,6 @@ esac
         let help = HelpOutput::from_raw(
             "Usage: tool [options]\n\nCommon commands:\n  tool          Launch\n  tool run      Execute\n  tool build    Compile\n  tool completion zsh  Shell completions\n",
         );
-        assert_eq!(subcommands_to_probe(Some(&help)), ["run", "build"]);
+        assert_eq!(subcommands_to_probe(&help), ["run", "build"]);
     }
 }

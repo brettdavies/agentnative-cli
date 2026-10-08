@@ -36,7 +36,7 @@ use super::{BinaryRunner, RunStatus};
 
 mod env_hints_bash;
 #[cfg(test)]
-mod fixture_snapshots;
+pub(crate) mod fixture_snapshots;
 mod flags;
 
 pub use flags::{Flag, FlagMatch};

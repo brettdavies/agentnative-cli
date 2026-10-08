@@ -39,16 +39,19 @@ pub(super) struct Piece<'a> {
     pub text: &'a str,
     /// Byte offset of the piece in its line.
     pub start: usize,
-    /// Two or more spaces, or a TAB, sit between the previous piece and this
-    /// one: the gap that sets off a column or a description.
+    /// Two or more spaces sit between the previous piece and this one: the
+    /// gap that sets off a column or a description.
     pub after_gap: bool,
     /// A comma or pipe sits between the previous piece and this one.
     after_join: bool,
-    /// That comma or pipe touches this piece, as inside a value list
-    /// (`check1,check2..`).
-    touches_join: bool,
-    /// A comma or pipe sits between this piece and the next.
-    before_join: bool,
+    /// A comma or pipe follows this piece, or touches it from the left as
+    /// inside a value list (`check1,check2..`).
+    beside_join: bool,
+}
+
+/// The column a byte offset of `line` sits at, counted in characters.
+pub(super) fn column_of(line: &str, byte: usize) -> usize {
+    line[..byte].chars().count()
 }
 
 /// What a piece of a header is.
@@ -143,8 +146,7 @@ impl<'a> Piece<'a> {
             || (text.starts_with('=') && text.len() > 1)
             || is_all_capitals(head)
             || TYPE_WORDS.contains(&text)
-            || self.before_join
-            || self.touches_join
+            || self.beside_join
     }
 }
 
@@ -156,15 +158,13 @@ pub(super) fn pieces<'a>(line: &'a str) -> Vec<Piece<'a>> {
     let mut start: Option<usize> = None;
     let mut join_pending = false;
     let mut spaces = 0usize;
-    let mut tab = false;
     let push = |out: &mut Vec<Piece<'a>>, s: usize, end: usize, join: bool, gap: bool| {
         out.push(Piece {
             text: &line[s..end],
             start: s,
             after_gap: gap,
             after_join: join,
-            touches_join: join && line[..s].ends_with([',', '|']),
-            before_join: false,
+            beside_join: join && line[..s].ends_with([',', '|']),
         });
     };
     for (i, c) in line.char_indices() {
@@ -176,24 +176,23 @@ pub(super) fn pieces<'a>(line: &'a str) -> Vec<Piece<'a>> {
         let is_join = depth == 0 && (c == ',' || c == '|');
         if depth == 0 && (c.is_whitespace() || is_join) {
             if let Some(s) = start.take() {
-                push(&mut out, s, i, join_pending, spaces >= 2 || tab);
-                (join_pending, spaces, tab) = (false, 0, false);
+                push(&mut out, s, i, join_pending, spaces >= 2);
+                (join_pending, spaces) = (false, 0);
             }
             if is_join {
                 join_pending = true;
                 if let Some(last) = out.last_mut() {
-                    last.before_join = true;
+                    last.beside_join = true;
                 }
             } else {
                 spaces += 1;
-                tab |= c == '\t';
             }
         } else if start.is_none() {
             start = Some(i);
         }
     }
     if let Some(s) = start {
-        push(&mut out, s, line.len(), join_pending, spaces >= 2 || tab);
+        push(&mut out, s, line.len(), join_pending, spaces >= 2);
     }
     out
 }

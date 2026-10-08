@@ -6,7 +6,7 @@
 //! column     := group (sep group)* | placeholder+
 //! group      := name placeholder*
 //! sep        := "," | " " | "|" | punctuation
-//! gap        := 2+ spaces | TAB
+//! gap        := 2+ spaces
 //! ```
 //!
 //! Every name is kept whole and in the order printed. A name ends where its
@@ -17,8 +17,7 @@
 //! next gap, or at the prose itself when the line has no later gap.
 
 use super::FlagName;
-use super::classify::column_of;
-use super::pieces::{Kind, Piece, pieces};
+use super::pieces::{Kind, Piece, column_of, pieces};
 
 /// Punctuation that sets a description off from its header: Thor's `#`,
 /// cmake's `=`, ffmpeg's `--`, qmd's `-`.
@@ -475,11 +474,6 @@ mod tests {
             "-T reads null-terminated names; implies",
         ),
         // Description markers.
-        (
-            "Go flag 1.27.1",
-            "-f\tskip confirmation prompts",
-            "skip confirmation prompts",
-        ),
         (
             "cmake 4.4.4",
             "-S <path-to-source>          = Explicitly specify a source directory.",

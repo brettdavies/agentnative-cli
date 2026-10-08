@@ -56,7 +56,7 @@ impl Audit for ExamplesSubcommandAudit {
 }
 
 pub(crate) fn audit_examples_subcommand(help: &HelpOutput) -> AuditStatus {
-    let has_flag = help.flags().iter().any(|f| f.matches("--examples"));
+    let has_flag = help.find_flag(&["--examples"]).is_some();
     if has_flag {
         return AuditStatus::Pass;
     }

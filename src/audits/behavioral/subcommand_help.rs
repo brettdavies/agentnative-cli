@@ -135,7 +135,7 @@ pub(crate) fn first_flag(help: &HelpOutput, wanted: impl Fn(&Flag) -> bool) -> O
     help.flags()
         .iter()
         .find(|f| wanted(f))
-        .and_then(|f| f.long.clone().or_else(|| f.short.clone()))
+        .map(|f| f.name().to_string())
 }
 
 #[cfg(test)]

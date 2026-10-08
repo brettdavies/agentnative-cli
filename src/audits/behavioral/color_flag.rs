@@ -56,7 +56,7 @@ impl Audit for ColorFlagAudit {
 }
 
 pub(crate) fn audit_color_flag(help: &HelpOutput) -> AuditStatus {
-    if help.flags().iter().any(|f| f.matches("--color")) {
+    if help.find_flag(&["--color"]).is_some() {
         AuditStatus::Pass
     } else {
         AuditStatus::Warn(

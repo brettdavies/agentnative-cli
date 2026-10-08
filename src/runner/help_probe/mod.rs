@@ -34,37 +34,12 @@ use anyhow::Result;
 
 use super::{BinaryRunner, RunStatus};
 
-/// A flag discovered in `--help` output. `short` is the single-character
-/// variant (e.g., `-q`); `long` is the GNU-style variant (e.g., `--quiet`).
-/// At least one of the two is always set. `description` is the text after
-/// the description gap on the flag's own line, empty when the help puts the
-/// description on a later line or gives none.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Flag {
-    pub short: Option<String>,
-    pub long: Option<String>,
-    pub description: String,
-}
-
-impl Flag {
-    /// Whether this flag exposes `name` under either its short or long form.
-    /// Accepts `-s`, `--long`, or even `long` / `s` (without dashes).
-    pub fn matches(&self, name: &str) -> bool {
-        let with_dash_long = if name.starts_with('-') {
-            name.to_string()
-        } else if name.len() == 1 {
-            format!("-{name}")
-        } else {
-            format!("--{name}")
-        };
-        self.short.as_deref() == Some(with_dash_long.as_str())
-            || self.long.as_deref() == Some(with_dash_long.as_str())
-    }
-}
-
 mod env_hints_bash;
 #[cfg(test)]
 mod fixture_snapshots;
+mod flags;
+
+pub use flags::{Flag, FlagMatch};
 
 /// Which detection pattern surfaced an [`EnvHint`]. Agents debugging a
 /// false positive need to know whether a hint came from a clap
@@ -215,7 +190,16 @@ impl HelpOutput {
 
     /// Flags parsed out of the help surface. Lazy + cached on first call.
     pub fn flags(&self) -> &[Flag] {
-        self.flags.get_or_init(|| parse_flags(&self.raw))
+        self.flags.get_or_init(|| flags::parse(&self.raw))
+    }
+
+    /// The first flag, in help order, that declares any of `names`, with the
+    /// name it answered with as the help spells it. A single letter answers
+    /// only the same letter. A word answers the same word with the same dash
+    /// count, and in a help that declares no double-dash name a single-dash
+    /// word also answers its double-dash spelling.
+    pub fn find_flag(&self, names: &[&str]) -> Option<FlagMatch<'_>> {
+        flags::find(self.flags(), names)
     }
 
     /// Whether the help lists `name` as a flag. A `--long` or `-s` name
@@ -230,7 +214,7 @@ impl HelpOutput {
                 .lines()
                 .any(|line| flag_line_names(line).any(|n| n == name));
         }
-        self.flags().iter().any(|flag| flag.matches(name))
+        self.find_flag(&[name]).is_some()
     }
 
     /// `[env: FOO]` hints parsed out of the help surface. Lazy + cached.
@@ -281,66 +265,6 @@ impl HelpOutput {
     }
 }
 
-/// Parse flag declarations from clap-style help text.
-fn parse_flags(raw: &str) -> Vec<Flag> {
-    parse_numbered_flags(raw)
-        .into_iter()
-        .map(|(_, flag)| flag)
-        .collect()
-}
-
-/// Every flag line of `raw`, as its 1-based line number and the flag read
-/// from it.
-///
-/// A "flag line" is a line that starts with whitespace and then a dash. The
-/// header portion (before the description) is split from the description by
-/// two or more spaces — clap's canonical shape. We tokenize the header on
-/// commas and whitespace, then classify each token as short (`-s`) or long
-/// (`--long`).
-fn parse_numbered_flags(raw: &str) -> Vec<(usize, Flag)> {
-    let mut flags = Vec::new();
-    for (index, line) in raw.lines().enumerate() {
-        if !line.starts_with(' ') {
-            continue;
-        }
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with('-') {
-            continue;
-        }
-        // Separator / heading lines like `---` are not flags.
-        if trimmed.starts_with("---") {
-            continue;
-        }
-        let header = before_description_gap(trimmed);
-
-        let mut short: Option<String> = None;
-        let mut long: Option<String> = None;
-        for piece in header.split(',') {
-            let candidate = piece.split_whitespace().next().unwrap_or(piece.trim());
-            if candidate.is_empty() {
-                continue;
-            }
-            if let Some(long_name) = parse_long_flag(candidate) {
-                long = Some(long_name);
-            } else if let Some(short_name) = parse_short_flag(candidate) {
-                short = Some(short_name);
-            }
-        }
-        if short.is_some() || long.is_some() {
-            let description = trimmed[header.len()..].trim().to_string();
-            flags.push((
-                index + 1,
-                Flag {
-                    short,
-                    long,
-                    description,
-                },
-            ));
-        }
-    }
-    flags
-}
-
 /// The flag names a flag line declares, as written (`-auto-approve` from
 /// `-auto-approve  Skip approval`, `-lock` from `-lock=false`). Empty for a
 /// line that is not a flag line.
@@ -365,39 +289,6 @@ fn flag_line_names(line: &str) -> impl Iterator<Item = &str> {
 /// is no description on it.
 fn before_description_gap(line: &str) -> &str {
     line.split("  ").next().unwrap_or(line)
-}
-
-/// Extract a `--long` flag name from a token like `--long`, `--long=<VAL>`,
-/// `--long[=<VAL>]`, or `--long <VAL>`. Returns `None` when `candidate` is
-/// not a long flag.
-fn parse_long_flag(candidate: &str) -> Option<String> {
-    if !candidate.starts_with("--") || candidate.len() <= 2 {
-        return None;
-    }
-    // Walk the name chars: letters, digits, dashes, underscores.
-    let end = candidate[2..]
-        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
-        .map(|i| i + 2)
-        .unwrap_or(candidate.len());
-    if end <= 2 {
-        return None;
-    }
-    Some(candidate[..end].to_string())
-}
-
-/// Extract a `-s` short flag from a token like `-s`, `-s<VAL>`, or `-s,`.
-fn parse_short_flag(candidate: &str) -> Option<String> {
-    let bytes = candidate.as_bytes();
-    if bytes.len() < 2 || bytes[0] != b'-' {
-        return None;
-    }
-    // Second char must be a flag character (letter, digit, or `?`).
-    let c = bytes[1] as char;
-    if c.is_ascii_alphanumeric() || c == '?' {
-        Some(format!("-{c}"))
-    } else {
-        None
-    }
 }
 
 /// Parse env-var bindings from help text using two complementary patterns.
@@ -699,27 +590,20 @@ Options:
 "#;
 
     #[test]
-    fn parse_flags_extracts_short_and_long() {
-        let flags = parse_flags(RIPGREP_HELP);
-        assert!(flags.iter().any(|f| f.short.as_deref() == Some("-q")));
-        assert!(flags.iter().any(|f| f.long.as_deref() == Some("--quiet")));
-        assert!(
-            flags
-                .iter()
-                .any(|f| f.long.as_deref() == Some("--no-messages"))
-        );
-        assert!(flags.iter().any(|f| f.long.as_deref() == Some("--null")));
+    fn flags_are_found_by_short_and_long_name() {
+        let help = HelpOutput::from_raw(RIPGREP_HELP);
+        for name in ["-q", "--quiet", "--no-messages", "--null"] {
+            let hit = help.find_flag(&[name]).expect(name);
+            assert_eq!(hit.spelling, name);
+        }
+        assert!(help.find_flag(&["--verbose"]).is_none());
     }
 
     #[test]
-    fn parse_flags_handles_equals_and_values() {
-        let flags = parse_flags(RIPGREP_HELP);
-        // --regexp=PATTERN — the value shape must not leak into the long name.
-        let regexp = flags
-            .iter()
-            .find(|f| f.long.as_deref() == Some("--regexp"))
-            .expect("regexp flag parsed");
-        assert_eq!(regexp.short.as_deref(), Some("-e"));
+    fn a_value_shape_stays_out_of_the_long_name() {
+        let help = HelpOutput::from_raw(RIPGREP_HELP);
+        let regexp = help.find_flag(&["--regexp"]).expect("regexp flag parsed");
+        assert_eq!(regexp.flag.declares("-e"), Some("-e"));
     }
 
     #[test]
@@ -734,12 +618,12 @@ Options:
     }
 
     #[test]
-    fn parse_flags_ignores_prose_dashes() {
+    fn a_dash_rule_is_not_a_flag() {
         // A line starting with '---' (separator) must not become a flag.
         let src = "Usage: foo [OPTIONS]\n\n-------\n\nOptions:\n  -q, --quiet    Quiet mode.\n";
-        let flags = parse_flags(src);
-        assert_eq!(flags.len(), 1);
-        assert_eq!(flags[0].short.as_deref(), Some("-q"));
+        let help = HelpOutput::from_raw(src);
+        assert_eq!(help.flags().len(), 1);
+        assert_eq!(help.flags()[0].declares("-q"), Some("-q"));
     }
 
     #[test]
@@ -1055,13 +939,12 @@ Options:
     fn parse_non_english_help_degrades_cleanly() {
         // English-only parsers: no flags advertised via English conventions,
         // no `Commands:` header, no `[env: ...]` hint — all parsers return empty.
-        let flags = parse_flags(NON_ENGLISH_HELP);
         // The Chinese options block still uses `-H, --header` syntax so we may
         // detect the flags themselves — the non-English text is in the
         // descriptions, not the flag names. The check is that parsing doesn't
         // panic and returns sane structured data.
-        for f in &flags {
-            assert!(f.short.is_some() || f.long.is_some());
+        for flag in HelpOutput::from_raw(NON_ENGLISH_HELP).flags() {
+            assert!(!flag.name().is_empty());
         }
         assert!(parse_env_hints(NON_ENGLISH_HELP).is_empty());
         assert!(
@@ -1083,20 +966,6 @@ Options:
     }
 
     #[test]
-    fn flag_matches_accepts_various_spellings() {
-        let f = Flag {
-            short: Some("-q".into()),
-            long: Some("--quiet".into()),
-            description: String::new(),
-        };
-        assert!(f.matches("-q"));
-        assert!(f.matches("--quiet"));
-        assert!(f.matches("quiet"));
-        assert!(f.matches("q"));
-        assert!(!f.matches("--verbose"));
-    }
-
-    #[test]
     fn is_env_var_name_edges() {
         assert!(is_env_var_name("FOO"));
         assert!(is_env_var_name("FOO_BAR"));
@@ -1105,15 +974,5 @@ Options:
         assert!(!is_env_var_name("lower"));
         assert!(!is_env_var_name("1LEADING"));
         assert!(!is_env_var_name("foo-bar"));
-    }
-
-    #[test]
-    fn parse_short_flag_accepts_digits_and_question() {
-        assert_eq!(parse_short_flag("-q"), Some("-q".into()));
-        assert_eq!(parse_short_flag("-1"), Some("-1".into()));
-        assert_eq!(parse_short_flag("-?"), Some("-?".into()));
-        assert_eq!(parse_short_flag("--long"), None);
-        assert_eq!(parse_short_flag("-"), None);
-        assert_eq!(parse_short_flag("-,"), None);
     }
 }

@@ -8,7 +8,7 @@ input_file: tests/fixtures/help/files-to-prompt__--help.txt
   38 | --ignore-gitignore | Ignore .gitignore files and include all files
   39 | --ignore | List of patterns to ignore
   40 | -o, --output | Output to a file instead of stdout
-  41 | -c, --cxml | Output in XML-ish format suitable for Claude's long
+  41 | -c, --cxml | Output in XML-ish format suitable for Claude's long context 
   43 | -m, --markdown | Output Markdown with fenced code blocks
   44 | -n, --line-numbers | Add line numbers to the output
   45 | -0, --null | Use NUL character as separator when reading from stdin

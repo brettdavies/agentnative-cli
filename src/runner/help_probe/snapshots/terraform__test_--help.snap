@@ -2,13 +2,13 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__test_--help.txt
 ---
-  17 | -cloud-run | If specified, Terraform will execute this test run
-  25 | -filter | If specified, Terraform will only execute the test files
-  29 | -json | If specified, machine readable output will be printed in
-  32 | -junit-xml | Saves a test report in JUnit XML format to the specified
+  17 | -cloud-run | If specified, Terraform will execute this test run remotely 
+  25 | -filter | If specified, Terraform will only execute the test files spe
+  29 | -json | If specified, machine readable output will be printed in JSO
+  32 | -junit-xml | Saves a test report in JUnit XML format to the specified fil
   37 | -no-color | If specified, output won't contain any color.
-  39 | -parallelism | Limit the number of concurrent operations within the
+  39 | -parallelism | Limit the number of concurrent operations within the plan/ap
   42 | -test-directory | Set the Terraform test directory, defaults to "tests".
-  44 | -var | Set a value for one of the input variables in the root
-  48 | -var-file | Load variable values from the given file, in addition
-  53 | -verbose | Print the plan or state for each test run block as it
+  44 | -var | Set a value for one of the input variables in the root modul
+  48 | -var-file | Load variable values from the given file, in addition to the
+  53 | -verbose | Print the plan or state for each test run block as it execut

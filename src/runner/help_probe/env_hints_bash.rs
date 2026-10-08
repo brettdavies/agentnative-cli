@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use super::flags::{is_definition_line, is_section_heading};
+use super::flags::{definition_lines, is_section_heading};
 use super::{EnvHint, EnvHintSource};
 
 /// Shell/system env vars we never want to flag as flag-bound. Tools
@@ -50,11 +50,7 @@ const PATTERN2_WINDOW: usize = 4;
 pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     let stripped = strip_clap_env_annotations(raw);
     let lines: Vec<&str> = stripped.lines().collect();
-    let flag_line_indices: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter_map(|(i, l)| is_definition_line(l).then_some(i))
-        .collect();
+    let flag_line_indices = definition_lines(&stripped);
     let env_section_range = find_env_section(&lines);
 
     // Track each line's matching source. ENV-section wins over

@@ -1,0 +1,9 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__stacks_--help.txt
+---
+  24 | -c | Switch to a different working directory before executing the
+  26 | -p | Override the default directory where the stack plugin binary
+  27 | -s | An alias for the "version" subcommand.
+  28 | -n | Disable color output. Must be explicitly set to true or fals
+  31 | -u | Show this usage output or the usage for a specified subcomma

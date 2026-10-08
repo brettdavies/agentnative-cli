@@ -1,0 +1,11 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-yargs__--help.txt
+---
+   7 | --version | Show version number                    [boolean]
+   8 | -f, --force | skip confirmation prompts              [boolean]
+   9 | -n, --limit | maximum number of results to return, a
+  12 | --dry-run | print what would change                [boolean]
+  13 | -o, --out | write output here                       [string]
+  14 | --cd | multi-letter alias                     [boolean]
+  15 | --help | Show help                              [boolean]

@@ -1,0 +1,26 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/git__commit_-h.txt
+---
+  10 | -q | suppress summary after successful commit
+  11 | -v | show diff in commit message template
+  14 | -F | 
+  19 | -m | 
+  21 | -c | 
+  23 | -C | 
+  32 | -s | add a Signed-off-by trailer
+  33 | -t | 
+  35 | -e | force edit of commit
+  38 | -S | 
+  42 | -a | commit all changed files
+  43 | -i | add specified files to index for commit
+  45 | -p | interactively add changes
+  46 | -U, --unified | generate diffs with <n> lines context
+  47 | --inter-hunk-context | 
+  49 | -o | commit only specified files
+  50 | -n, --no-verify | bypass pre-commit and commit-msg hooks
+  51 | --verify | opposite of --no-verify
+  58 | -z | terminate entries with NUL
+  60 | --no-post-rewrite | bypass post-rewrite hook
+  61 | --post-rewrite | opposite of --no-post-rewrite
+  62 | -u |

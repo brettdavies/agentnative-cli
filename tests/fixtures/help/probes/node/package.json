@@ -1,0 +1,18 @@
+{
+  "name": "probe",
+  "version": "1.0.0",
+  "private": true,
+  "oclif": {
+    "bin": "probe",
+    "commands": {
+      "strategy": "explicit",
+      "target": "./oclif-commands.mjs",
+      "identifier": "COMMANDS"
+    }
+  },
+  "dependencies": {
+    "@oclif/core": "5.1.2",
+    "commander": "15.0.0",
+    "yargs": "18.2.0"
+  }
+}

@@ -1,0 +1,13 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-click__--help.txt
+---
+   7 | -f, --force | skip confirmation prompts
+   8 | -n, --limit | maximum number of results to return, a deliberately
+  11 | --dry-run | print what would change
+  12 | -v, --verbose | increase verbosity
+  13 | -o, --output | write output here
+  14 | -c, --print-config-dir | multi-letter single-dash alias
+  15 | -n | single-dash word option
+  16 | --color | boolean pair
+  17 | --help | Show this message and exit.

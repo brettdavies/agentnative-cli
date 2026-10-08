@@ -1,0 +1,11 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-commander__--help.txt
+---
+   6 | -f, --force | skip confirmation prompts
+   7 | -n, --limit | maximum number of results to return, a deliberately long
+  10 | --dry-run | print what would change
+  11 | -v, --verbose | increase verbosity
+  12 | -o, --output | write output here (optional value)
+  13 | --no-color | disable color
+  14 | -h, --help | display help for command

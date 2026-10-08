@@ -1,0 +1,5 @@
+click==8.5.0
+docopt-ng==0.9.0
+rich==15.0.0
+rich-click==1.9.9
+typer==0.27.2

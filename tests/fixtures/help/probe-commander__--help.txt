@@ -1,0 +1,18 @@
+Usage: probe [options] [command]
+
+commander probe
+
+Options:
+  -f, --force          skip confirmation prompts
+  -n, --limit <n>      maximum number of results to return, a deliberately long
+                       description so commander has to wrap it onto continuation
+                       lines
+  --dry-run            print what would change
+  -v, --verbose        increase verbosity
+  -o, --output [file]  write output here (optional value)
+  --no-color           disable color
+  -h, --help           display help for command
+
+Commands:
+  sub                  a subcommand
+  help [command]       display help for command

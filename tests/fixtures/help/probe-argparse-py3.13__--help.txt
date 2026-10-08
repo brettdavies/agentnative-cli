@@ -1,0 +1,23 @@
+usage: probe [-h] [-f] [-n N] [--dry-run] [-v] [-o OUTPUT] [-cd] [-no-color]
+             [--color {auto,always,never}]
+             [path]
+
+argparse probe
+
+positional arguments:
+  path                  positional
+
+options:
+  -h, --help            show this help message and exit
+  -f, --force           skip confirmation prompts
+  -n, --limit N         maximum number of results to return, a deliberately
+                        long description so that argparse has to wrap it onto
+                        continuation lines
+  --dry-run             print what would change
+  -v, --verbose         increase verbosity
+  -o, --output OUTPUT   write output to OUTPUT
+  -cd, --print-config-dir
+                        multi-letter single-dash alias
+  -no-color             single-dash word option
+  --color {auto,always,never}
+                        choices placeholder

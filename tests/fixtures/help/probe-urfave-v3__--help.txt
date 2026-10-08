@@ -1,0 +1,13 @@
+NAME:
+   probe - urfave/cli v3 probe
+
+USAGE:
+   probe [global options]
+
+GLOBAL OPTIONS:
+   --force, -f               skip confirmation prompts
+   --limit int, -n int       maximum number of results to return, a deliberately long description (default: 0)
+   --dry-run                 print what would change
+   --output FILE, -o FILE    write output to FILE
+   --print-config-dir, --cd  multi-letter alias
+   --help, -h                show help

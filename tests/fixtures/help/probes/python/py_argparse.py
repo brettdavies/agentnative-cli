@@ -1,0 +1,12 @@
+import argparse, sys
+p = argparse.ArgumentParser(prog="probe", description="argparse probe")
+p.add_argument("-f", "--force", action="store_true", help="skip confirmation prompts")
+p.add_argument("-n", "--limit", type=int, metavar="N", help="maximum number of results to return, a deliberately long description so that argparse has to wrap it onto continuation lines")
+p.add_argument("--dry-run", action="store_true", help="print what would change")
+p.add_argument("-v", "--verbose", action="count", default=0, help="increase verbosity")
+p.add_argument("-o", "--output", help="write output to OUTPUT")
+p.add_argument("-cd", "--print-config-dir", action="store_true", help="multi-letter single-dash alias")
+p.add_argument("-no-color", action="store_true", help="single-dash word option")
+p.add_argument("--color", choices=["auto","always","never"], help="choices placeholder")
+p.add_argument("path", nargs="?", help="positional")
+p.parse_args()

@@ -1,0 +1,19 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/sed__--help.txt
+---
+   3 | -n, --silent | 
+   5 | --debug | 
+   7 | -e, --expression | 
+   9 | -f, --file | 
+  11 | --follow-symlinks | 
+  13 | -i, --in-place | 
+  15 | -l, --line-length | 
+  17 | --posix | 
+  19 | -r, --regexp-extended | 
+  22 | -s, --separate | 
+  25 | --sandbox | 
+  27 | -u, --unbuffered | 
+  30 | -z, --null-data | 
+  32 | --help | display this help and exit
+  33 | --version | output version information and exit

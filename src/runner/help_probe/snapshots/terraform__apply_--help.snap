@@ -1,0 +1,18 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__apply_--help.txt
+---
+  14 | -a | Skip interactive approval of plan before applying.
+  16 | -b | Path to backup the existing state file before
+  20 | -c | If Terraform produces any warnings that are not
+  24 | -d | Destroy Terraform-managed infrastructure.
+  28 | -l | Don't hold a state lock during the operation. This is
+  32 | -l | Duration to retry a state lock.
+  34 | -i | Ask for input for variables if not directly set.
+  36 | -n | If specified, output won't contain any color.
+  38 | -p | Limit the number of parallel resource operations.
+  41 | -r | Terraform will plan to replace this resource instance
+  44 | -s | Path to read and save state (unless state-out
+  49 | -s | Path to write state to that is different than
+  56 | -v | Set a value for one of the input variables in the root
+  60 | -v | Load variable values from the given file, in addition

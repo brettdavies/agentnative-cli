@@ -1,0 +1,9 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__console_--help.txt
+---
+  15 | -s | Legacy option for the local backend only. See the local
+  18 | -p | Create a new plan (as if running "terraform plan") and
+  24 | -s | Provide a module instance address which declares the scope t
+  34 | -v | Set a variable in the Terraform configuration. This
+  37 | -v | Set variables in the Terraform configuration from

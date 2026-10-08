@@ -40,7 +40,7 @@ R9 (fixtures are authored site-side then vendored — no corpus exists today), R
 this plan's units), R6 (JSON-mode staleness note surfaces on stderr), AE6 (reworded to the deliverable DNS property).
 Added: R12–R14, KD8, AE6–AE9. Dependencies updated (site-side work moved from external dependencies into U8/U9).
 Outstanding Questions resolved into the Planning Contract. Vendoring contract and HTTPS only: changed R1, R9, R10, R11
-(count dropped), F1, AE2; added KD10, KD11, R20, R21, AE10, and one open question.
+(count dropped), F1, AE2; added KD10, KD11, R20, R21, AE10. Local trust: changed R3 and AE5; added KD12 and R22.
 
 ### Summary
 
@@ -94,6 +94,10 @@ audience that most needs local auditing is exactly the audience that can't assem
 - KD11. **Every run sends HTTPS only.** (session-settled: user-directed, 2026-10-08 — chosen over allowing http to a
   local target's own origin: the local engine keeps the site engine's no-plaintext rule at every vantage.) Governs R1,
   R21.
+- KD12. **Local and private targets also trust the OS trust store, and `--ca-cert` adds roots for any target.**
+  (session-settled: user-directed, 2026-10-08 — chosen over a `--ca-cert` flag alone and over requiring publicly
+  trusted certificates: localhost and internal CAs must work with no flags, while public targets keep anc.dev parity.)
+  Governs R3, R22.
 
 ```mermaid
 flowchart TB
@@ -119,7 +123,9 @@ flowchart TB
   internal, or public.
 - R2. A bare URL-ish first argument routes to the web audit; an existing path or discoverable binary of the same name
   wins the tie, and a token that fails the hostname grammar keeps today's fast offline audit-path error.
-- R3. The audit needs nothing from the host system — no dig, curl, node, or bun; TLS trust roots ship in the binary.
+- R3. The audit needs nothing from the host system — no dig, curl, node, or bun; TLS trust roots ship in the binary. A
+  target the locality classifier labels local or private also trusts the operating system's trust store; a public
+  target trusts only the bundled roots.
 
 **Audit behavior**
 
@@ -139,6 +145,8 @@ flowchart TB
   request once, as the site's per-audit request memo does.
 - R21. A run sends no plaintext request: an `http` target ends the run unreachable before any request goes out, and a
   root or redirect hop that leads to `http` is refused as the site engine refuses it.
+- R22. `--ca-cert <file>` adds the PEM roots in that file to the trust set for any target, and may be repeated;
+  certificate chain and hostname verification always run, and no option skips them.
 
 **Output**
 
@@ -212,9 +220,9 @@ flowchart TB
   completes normally with no staleness note and no error.
 - AE4. **Covers R5.** Given a public target and a current vendored registry, when audited locally and via anc.dev, then
   verdicts and scores are identical.
-- AE5. **Covers R3, R4.** Given an internal HTTPS target signed by a private CA, when audited, then TLS-dependent checks
-  report what the bundled trust roots observed — a failure, honestly labeled — with no trust-store override available in
-  v1.
+- AE5. **Covers R3, R22.** Given an internal HTTPS target signed by a private CA that is in the machine's OS trust store
+  or passed with `--ca-cert`, when audited, then TLS succeeds and every check runs; given the same target with its CA in
+  neither, then the run ends unreachable, naming the chain rejection and the trust set that rejected it, and exits 3.
 - AE6. **Covers R12.** Given target `https://intranet.corp.internal`, when audited without flags, then no query reaches
   a third-party DoH resolver — the hostname touches only the machine's own configured resolver — and DNS checks report
   n_a ("needs public DNS — verified on anc.dev"); when audited with `--external-dns`, the DoH queries fire.
@@ -243,7 +251,6 @@ flowchart TB
 
 - Authenticated targets beyond a bearer token for the MCP endpoint (R18): custom headers, cookies, and mTLS, and
   credentials for any other check.
-- A trust-store flag for private-CA HTTPS targets.
 - Rewiring the agent-web-audit skill to shell out to `anc web` (its own change, in its own repo; R11 only guarantees it
   can).
 - Runtime registry refresh between anc releases.
@@ -281,16 +288,6 @@ planned here, with no separate site plan).
 - Internal targets are reachable unauthenticated from the machine running `anc`.
 - U16 can pin a contract only after it reaches site `main`: site PRs squash-merge to `dev`, and `dev` reaches `main`
   through a release.
-
-### Open Questions
-
-- Q1 (deferred; decide before U7 and U13). With HTTPS only (KD11), bundled trust roots (R3) and no trust-store flag
-  (Scope Boundaries), a localhost or self-signed development server cannot complete a run, and neither can the TTHW
-  smoke (T19) against a local fixture server; an internal host with a publicly trusted certificate can. Either the
-  deferred trust-store flag joins phase 1, or the docs name a publicly trusted certificate as the requirement for a
-  local target and the smoke test gets a target the bundled roots trust. The certificate branch publishes each internal
-  hostname to Certificate Transparency logs and cannot cover `.internal`, `localhost` or private-IP targets; a
-  trust-store flag, if chosen, adds roots only and keeps chain and hostname verification, with no skip-verify mode.
 
 ### Sources
 
@@ -344,11 +341,11 @@ planned here, with no separate site plan).
 - `docs/solutions/best-practices/agentnative-version-model-2026-05-01.md` — the ecosystem version-literal table KTD9
   slots into.
 - External: ureq 3.x (no HTTP/2 — acceptable; body exposes `std::io::Read` for SSE; proxy support requires explicit
-  `Proxy::try_from_env()` wiring; redirects disabled at the agent per KTD1), rustls `aws-lc-rs` backend (rustls's
-  default; requires a C toolchain — and CMake or nasm on some targets — which U1 must prove out on the
-  `x86_64-pc-windows-gnu` cross-compile check and the native `windows-latest` CI job), webpki-roots (bundled Mozilla CA
-  set, CDLA-Permissive-2.0), regex (linear-time engine; the registry carries no lookaround once U8 rewrites the
-  Vary-header pattern).
+  `Proxy::try_from_env()` wiring; redirects disabled at the agent per KTD1; the `platform-verifier` feature can supply
+  the OS trust store for KD12), rustls `aws-lc-rs` backend (rustls's default; requires a C toolchain — and CMake or nasm
+  on some targets — which U1 must prove out on the `x86_64-pc-windows-gnu` cross-compile check and the native
+  `windows-latest` CI job), webpki-roots (bundled Mozilla CA set, CDLA-Permissive-2.0), regex (linear-time engine; the
+  registry carries no lookaround once U8 rewrites the Vary-header pattern).
 
 ---
 
@@ -363,8 +360,11 @@ planned here, with no separate site plan).
   the rustls team since 2025-02 (RUSTSEC-2025-0007, withdrawn once that arrangement was in place) and rustls recommends
   aws-lc-rs, accepting the aws-lc-sys C-toolchain requirement (cmake on every target, NASM on Windows) into CI, the
   release matrix, and the local Windows cross-compile check. The measured aws-lc-rs cost is ~4MB, so U1's size ceiling
-  is ~5MB and the plain build ships.) The trust store stays webpki-roots — bundled roots are the parity requirement (R3,
-  AE5), separable from the provider choice. Contract details:
+  is ~5MB and the plain build ships.) Trust follows KD12, separable from the provider choice: a public target trusts
+  only webpki-roots, the parity requirement (R3); a local or private target also trusts the OS trust store; and
+  `--ca-cert` roots join the trust set for any target (R22). The fetch layer holds one agent per trust class and picks it
+  from the locality class of each hop, and U1 chooses how the OS store is loaded (ureq's `platform-verifier` feature,
+  or OS roots loaded beside the `--ca-cert` roots). Contract details:
   - The Transport is **single-hop**: the ureq agent has redirects disabled, and a call returns the response head with
     the body still unread, so the body caps apply above the seam, where the site's request memo reads too (KTD15). A
     `src/web_audit/fetch.rs` layer above it ports `guardedFetch` — the manual redirect loop, the 4-hop cap, per-call
@@ -393,10 +393,11 @@ planned here, with no separate site plan).
     differences are measured by the U8 regex-parity fixture through the U5 test, and any the flags cannot close are
     named here.
   - gzip decoding on by default, brotli feature enabled for fetch parity. TLS failures carry evidence distinguishing
-    "chain rejected by bundled roots" from other TLS errors, so a stale-root false negative is self-diagnosable: the
-    fetch layer matches `ureq::Error::Rustls(rustls::Error::InvalidCertificate(CertificateError::UnknownIssuer))`, which
-    needs `rustls` as a direct dependency at the exact version ureq resolves (ureq does not treat the wrapped error as
-    API), and the U1 self-signed-server test pins that coupling. Governs R3.
+    "chain rejected by the trust roots in use", naming that trust set, from other TLS errors, so a stale-root false
+    negative is self-diagnosable: the fetch layer matches
+    `ureq::Error::Rustls(rustls::Error::InvalidCertificate(CertificateError::UnknownIssuer))`, which needs `rustls` as a
+    direct dependency at the exact version ureq resolves (ureq does not treat the wrapped error as API), and the U1
+    self-signed-server test pins that coupling. Governs R3.
 - KTD2. **Concurrency and deadlines port as a thread pool, not async, and the deadline is enforced at request issue
   time.** A pool of 6 worker threads mirrors the engine's `DEFAULT_CONCURRENCY`; one shared deadline instant mirrors the
   25s per-audit budget; a dead root fetch drops per-check timeouts to the degraded 2s mode. All three numbers come from
@@ -670,8 +671,8 @@ stateDiagram-v2
   kinds so the gap is a visible, scheduled decision.
 - **webpki-roots staleness.** A public target on a newly issued root can pass on anc.dev and fail locally — a parity
   break masquerading as a target defect. Mitigation: bump webpki-roots on every release (release-checklist item, same
-  discipline as the toolchain pin), and KTD1's evidence distinguishes bundled-root rejection so an affected user
-  self-diagnoses ("try a newer anc release") without the deferred trust-store flag.
+  discipline as the toolchain pin), and KTD1's evidence names the trust set that rejected the chain, so an affected
+  user self-diagnoses ("try a newer anc release", or `--ca-cert` for a root they trust).
 - **Corpus lagging the registry.** A site PR adding a check without regenerating the U8 corpus leaves the newest check
   conformance-untested — no build failure, just an invisible gap. Mitigation: U8 includes a site-side CI gate asserting
   every registry check id has at least one corpus scenario before a registry-touching PR merges to `dev`.
@@ -722,24 +723,25 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 
 - **Goal:** Land the ureq/rustls/webpki-roots stack behind the single-hop `Transport` trait plus the guarded-fetch
   layer, and prove the size and license bets before anything builds on them.
-- **Requirements:** R3, R21. Implements KTD1 (session-settled; cites R3).
+- **Requirements:** R3, R21, R22. Implements KTD1 (session-settled; cites R3) and KD12.
 - **Dependencies:** None.
 - **Files:** `Cargo.toml`, `deny.toml`, `Cross.toml`, `src/web_audit/mod.rs`, `src/web_audit/transport.rs`,
-  `src/web_audit/fetch/{mod,redirect,body,proxy}.rs`, `tests/web_audit_transport.rs`, `tests/fixtures/tls/` (self-signed
+  `src/web_audit/fetch/{mod,redirect,body,proxy,trust}.rs`, `tests/web_audit_transport.rs`, `tests/fixtures/tls/` (self-signed
   cert and key), and in `brettdavies/.github`: `rust-ci.yml`, `rust-release.yml` (opt-in NASM input, Windows jobs only).
 - **Approach:**
-  1. Add ureq (rustls/aws-lc-rs/webpki-roots feature selection per KTD1, redirects disabled at the agent, exact-pin any
-     pre-1.0 crate per repo convention), gzip + brotli features, `rustls` as a direct dependency at ureq's resolved
-     version (for the TLS evidence match), and `regex` (first used in U5; added here so the size and license gates
-     measure the full v1 dependency set).
+  1. Add ureq (rustls/aws-lc-rs/webpki-roots feature selection per KTD1, plus OS trust-store support per KD12, redirects
+     disabled at the agent, exact-pin any pre-1.0 crate per repo convention), gzip + brotli features, `rustls` as a
+     direct dependency at ureq's resolved version (for the TLS evidence match), and `regex` (first used in U5; added
+     here so the size and license gates measure the full v1 dependency set).
   2. Define the single-hop `Transport` trait (request in, response head plus an unread body stream out; `fetch/body.rs`
      applies the caps above it) with a ureq-backed impl and a test mock; UA constant sourced from the vendored
      user-agents module per KTD8.
   3. Build the `fetch/` modules per KTD1, one responsibility each: `redirect.rs` (4-hop loop, per-call follow flag,
      per-hop locality/metadata gating via KTD10, and the site guard's refusal of any `http` hop per R21), `proxy.rs`
      (per-request selection with local-target bypass and `NO_PROXY`), `body.rs` (the skip, capped truncate-and-continue
-     and 16 MiB root-ceiling regimes, on decompressed bytes, with the truncation flag), and never-throws error results
-     with TLS evidence distinguishing bundled-root rejection.
+     and 16 MiB root-ceiling regimes, on decompressed bytes, with the truncation flag), `trust.rs` (the KD12 trust set
+     per locality class, and `--ca-cert` loading that fails before any request on a missing or non-PEM file), and
+     never-throws error results with TLS evidence naming the trust set that rejected a chain.
   4. Measure `target/release/anc` before/after with the full dependency set; run `cargo deny check`; add
      `CDLA-Permissive-2.0` (webpki-roots) to the `deny.toml` allow list as a recorded licensing decision and validate
      the aws-lc-rs tree's licensing the same way.
@@ -770,8 +772,12 @@ cmake needs no provisioning, since every hosted runner image already carries it)
     with the site guard's insecure-scheme result. Covers AE2.
   - Error: connect timeout and total deadline each surface as distinct, matchable errors.
   - Error: an in-test rustls server presenting the checked-in self-signed certificate (`tests/fixtures/tls/`, expiry far
-    out, regeneration command documented) yields the bundled-root rejection evidence class, not a generic TLS error; the
+    out, regeneration command documented) yields the trust-root rejection evidence class, not a generic TLS error; the
     test pins the ureq-to-rustls error coupling. Covers AE5.
+  - Edge: the same in-test server, signed by a test CA passed with `--ca-cert`, completes TLS and answers. Covers AE5.
+  - Edge: a public target never consults the OS trust store, asserted through an injected trust provider that fails the
+    test if called; a local target consults it.
+  - Error: `--ca-cert` naming a missing or non-PEM file fails before any request with the structured error envelope.
   - Edge: a body over the 16 MiB root ceiling, and a gzip body that inflates past it, truncate with the flag set and no
     allocation beyond the cap.
   - Integration: HTTPS GET against a real public endpoint verifies bundled roots work with no system cert store
@@ -943,8 +949,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
     over-cap body evaluates as the site evaluates it.
   - Edge: dns-doh with an unreachable resolver reports error with a transport reason, not a failing verdict; with a
     reachable resolver and no record, it fails as the site engine does.
-  - Edge: a private-CA HTTPS target yields the bundled-root TLS failure evidence on TLS-dependent checks, honestly
-    labeled. Covers AE5.
+  - Edge: a private-CA HTTPS target whose CA is in neither trust set ends unreachable with the trust-root rejection
+    evidence, honestly labeled. Covers AE5.
   - Error: transport failure mid-check yields error status with evidence, not a panic.
 - **Verification:** Per-handler corpus slices green; KTD3's unported list no longer names any kind or rule this unit
   ports.
@@ -990,8 +996,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - **Files:** `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`, `tests/integration.rs`.
 - **Approach:**
   1. `Commands::Web` as a flat top-level variant (the `Audit` shape, not the nested `Skill` shape), routed to a
-     `run_web` helper; flags per KTD11 (`--site-type content|api`, `--check <id>`) plus `--external-dns` (KD8) and the
-     standard `--output` pair.
+     `run_web` helper; flags per KTD11 (`--site-type content|api`, `--check <id>`) plus `--external-dns` (KD8), the
+     repeatable `--ca-cert <file>` (R22), and the standard `--output` pair.
   2. URL-ish pre-dispatch sniff per KTD7's grammar; path/binary existence wins; scheme-less targets default https for
      every target (R21); grammar misses fall through to today's behavior unchanged. 3a. Render
      contract (DX review D6). Progress goes to stderr, emitted only when stdout is a terminal and silenced by `--quiet`,
@@ -1433,8 +1439,8 @@ Considered during engineering review and explicitly deferred or rejected, one li
 - Plaintext http for local targets: rejected (KD11).
 - A domain budget for local runs: not built; a local run is one user's single audit, so the engine runs with an
   always-admit budget (U4). Local runs driven in bulk against third-party hosts would change the call.
-- Authenticated targets, a trust-store flag for private CAs, rewiring the agent-web-audit skill, and runtime registry
-  refresh: deferred in Scope Boundaries above.
+- Authenticated targets, rewiring the agent-web-audit skill, and runtime registry refresh: deferred in Scope Boundaries
+  above.
 
 ## What already exists
 
@@ -1492,11 +1498,11 @@ CODE PATHS (planned)                                          USER FLOWS
 [+] src/web_audit/fetch/                                      [+] Local pre-flight (F1)
   |- redirect.rs  [***] 2-hop chain, 4-hop cap, metadata       |- [***] anc web localhost:8787 -> report, exit code
   |               refusal, class-crossing refusal (U1)         |- [***] no route to anc.dev, no note, no error (AE3)
-  |- body.rs      [***] skip / 64 KiB truncate / 16 MiB root   |- [***] private-CA target, honest TLS label (AE5)
+  |- body.rs      [***] skip / 64 KiB truncate / 16 MiB root   |- [***] private-CA target: OS store or --ca-cert (AE5)
   |               ceiling + gzip bomb (U1, D13)                |- [***] intranet host, no DoH, --external-dns fires (AE6)
   |- proxy.rs     [***] HTTPS_PROXY public, loopback direct,   |- [***] tarpit completes inside deadline (AE7, D3)
   |               NO_PROXY (U1)                                |- [***] anc report.json fails fast offline (AE8)
-  \- TLS evidence [***] self-signed server -> bundled-root     [+] Pre-flight to official (F2)
+  \- TLS evidence [***] self-signed server -> trust-root       [+] Pre-flight to official (F2)
                   class, pins ureq->rustls (U1, D11)           |- [***] corpus byte-parity, both engines (AE4, U10)
 [+] src/web_audit/locality.rs                                  [+] Skill as consumer (F3)
   \- classify()   [***] site ssrf test table verbatim (D8)     |- [**]  coverage doc constructibility walkthrough (U11)
@@ -1551,7 +1557,7 @@ user sees. No critical gaps remain (a critical gap is no test, no handling, and 
 | `fetch/redirect.rs` | Target 302s to `169.254.169.254` or crosses locality   | yes  | refuse   | `blocked:` evidence on the affected check            |
 | `fetch/body.rs`     | gzip bomb inflating past 16 MiB                        | yes  | truncate | truncation note on root-derived checks               |
 | `fetch/proxy.rs`    | `HTTPS_PROXY` set, proxy down, public target           | yes  | error    | error status with transport reason                   |
-| TLS evidence        | private CA / self-signed target                        | yes  | classify | "chain rejected by bundled roots" (AE5)              |
+| TLS evidence        | private CA / self-signed target                        | yes  | classify | "chain rejected" naming the trust set (AE5)          |
 | `locality.rs`       | IPv4-mapped IPv6 intranet literal                      | yes  | local    | DNS checks n_a "needs public DNS", no egress         |
 | `engine/pool.rs`    | tarpit or slow-loris on wave 1                         | yes  | deadline | partial report inside 25s, skip("deadline") rows     |
 | `engine/waves.rs`   | root fetch dead                                        | yes  | degrade  | unreachable report, exit 3                           |
@@ -1659,7 +1665,7 @@ checkbox as you ship.
   `rustls` dependency at ureq's version.
   - Surfaced by: Test review — Gap G10 (D11, option A).
   - Files: `tests/fixtures/tls/`, `tests/web_audit_transport.rs`, `Cargo.toml`.
-  - Verify: bundled-root rejection evidence class asserted offline in every CI job.
+  - Verify: trust-root rejection evidence class asserted offline in every CI job.
 - [x] **T10 (P2, human: ~3 h / CC: ~20 min)** — Regex engine — Rewrite the Vary-header pattern site-side, compile with
   the `regex` crate only, reject lookaround at build time.
   - Surfaced by: TODO step (D14, option C), superseding Performance Issue 8 (D12).
@@ -1711,7 +1717,8 @@ checkbox as you ship.
 - [x] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate.
   - Surfaced by: DX review D3 — the under-2-minute promise was unmeasured.
   - Files: `.github/workflows/ci.yml`, `tests/`.
-  - Verify: the job installs the release artifact, audits a local fixture server and asserts the wall clock.
+  - Verify: the job installs the release artifact, audits a local fixture server whose certificate comes from a CA the
+    job generates and passes with `--ca-cert`, and asserts the wall clock.
 
 ## Developer Experience
 
@@ -1868,4 +1875,4 @@ docs item, on a plan that also changes the README's published exit-code table.
   terminal opt-out. The 2026-04-30 record is a native Claude subagent run, older than the 7-day window.
 - **VERDICT:** ENG + DX CLEARED — ready to implement. CEO review not run (optional for a feature this size).
 
-ONE UNRESOLVED DECISION: Q1 (local TLS trust under HTTPS only), recorded in Open Questions.
+NO UNRESOLVED DECISIONS

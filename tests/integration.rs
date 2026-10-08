@@ -533,6 +533,9 @@ fn test_macro_interiors_fixture_reports_only_genuine_calls() {
     //   - 20:9  v.unwrap()      multi-line write!, call after the interior's first newline
     //   - 26:37 v.unwrap()      nested write!/format!, reported once
     //   - 30:28 load().unwrap() thread_local!, an item-position macro body
+    //   - 95:39 v.unwrap()      json! key-value pair, read through the colon
+    //   - 101:35 v.unwrap()     three nesting levels, recovered in one pass
+    //   - 107:23 a.unwrap().unwrap()  a chain, keyed to one row by position
     // Clean (must NOT appear):
     //   - 34 string literal, 38 raw string, 43 comment,
     //   - 50-53 unwrap_or / unwrap_or_else / unwrap_err / expect,
@@ -548,6 +551,9 @@ fn test_macro_interiors_fixture_reports_only_genuine_calls() {
         ("/lib.rs:20:9", "v.unwrap()"),
         ("/lib.rs:26:37", "v.unwrap()"),
         ("/lib.rs:30:28", "load().unwrap()"),
+        ("/lib.rs:95:39", "v.unwrap()"),
+        ("/lib.rs:101:35", "v.unwrap()"),
+        ("/lib.rs:107:23", "a.unwrap().unwrap()"),
     ];
     assert_eq!(
         evidence.len(),
@@ -584,7 +590,7 @@ fn test_macro_interiors_fixture_include_tests_lifts_the_gate() {
 
     assert_eq!(
         evidence.len(),
-        5,
+        8,
         "--include-tests must add the cfg(test)-gated assert_eq!: {evidence:#?}",
     );
     assert!(

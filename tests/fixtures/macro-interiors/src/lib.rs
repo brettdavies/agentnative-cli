@@ -88,3 +88,21 @@ cfg_if! {
         }
     }
 }
+
+// A DSL that writes `key: value` puts the call where no Rust expression context
+// accepts it. Reported at the call's own column.
+pub fn key_value_interior(v: Option<u8>) {
+    let _ = serde_json::json!({ "id": v.unwrap(), "name": "x" });
+}
+
+// Nesting is read in one pass, so the call reports once at its own position
+// rather than once per enclosing level.
+pub fn deeply_nested(v: Option<u8>) {
+    let _ = outer!(middle!(inner!(v.unwrap())));
+}
+
+// Both calls in the chain end with `.unwrap()` and share a start, so position
+// keys them to a single row.
+pub fn chained_unwraps(out: &mut String, a: Option<Option<u8>>) {
+    write!(out, "{}", a.unwrap().unwrap()).ok();
+}

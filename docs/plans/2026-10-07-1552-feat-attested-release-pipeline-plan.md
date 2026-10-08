@@ -448,6 +448,10 @@ sequenceDiagram
   2. Pass `advisories_blocking: true` in `ci.yml`.
   3. Update the lists in the runbook's branch-protection section.
   4. After the PR merges, apply both rulesets live on the maintainer's instruction and read them back (KTD6).
+- **Live apply state:** `protect-dev` was applied on 2026-10-08 and reads back equal to its committed file.
+  `protect-main` is **not** applied: the live ruleset is missing `ci / Security audit (advisories)`, `ci / Shellcheck`
+  and `ci / Windows check`. Its apply is sequenced into U11 step 7, after the tag publishes, because a required check
+  that fails to report on the release PR blocks the release itself, and `main` is the branch the release moves through.
 - **Execution note:** The live apply is a separate, maintainer-gated step. Do not apply from an unmerged branch.
 - **Patterns to follow:** `xurl-rs`'s `.github/rulesets/`; `github-repo-setup/references/branch-protection.md` for the
   exclusions.
@@ -501,7 +505,8 @@ sequenceDiagram
 
 - **Goal:** The first attested `anc` release ships and every claim in R9 is observed.
 - **Requirements:** R1, R2, R3, R9
-- **Dependencies:** U5, U6, U7, U8, U9
+- **Dependencies:** U5, U6, U7, U8, U9. U8's `protect-main` live apply is the one part sequenced after this unit rather
+  than before it, as step 7 below.
 - **Repo:** `agentnative-cli`
 - **Files:** `Cargo.toml`, `Cargo.lock`, `CHANGELOG.md` (through the cut script)
 - **Approach:**
@@ -511,6 +516,10 @@ sequenceDiagram
   4. The maintainer merges and pushes the tag. Follow `release.yml`, the tap's bump and bottle runs, and
      `finalize-release` to the end.
   5. Run postflight, then the two verification commands in R9, then the sync back to `dev`.
+  6. Confirm each of `ci / Security audit (advisories)`, `ci / Shellcheck` and `ci / Windows check` reported on the
+     release PR, character for character, so requiring them cannot block a later release.
+  7. Apply `protect-main` live from `.github/rulesets/protect-main.json` and read it back, which completes U8. Carry the
+     live ruleset to a backup file first. This is the step U8 deferred to here; U11 is not done without it.
 - **Execution note:** Every merge and the tag push are the maintainer's. Stop at the first red run and diagnose; do not
   re-run a publish step or edit the formula by hand.
 - **Patterns to follow:** The `xurl-rs` v4.3.0 release, which ran this chain on 2026-10-07.
@@ -550,7 +559,8 @@ A CI run counts as green only when every check's conclusion is read from the rol
 
 - R9 holds on the published proving release.
 - Every PR in U1 through U10 is merged by the maintainer, and each repo's CI is green on the merge.
-- The live rulesets on `agentnative-cli` equal the committed JSON.
+- The live rulesets on `agentnative-cli` equal the committed JSON. `protect-dev` holds as of 2026-10-08;
+  `protect-main` is applied in U11 step 7 and is the last piece of this clause.
 - `agentnative-cli`'s `dev` is synced with the release, and its postflight passes.
 - The skills changes are on `agent-skills` `main`, and the live skills checkout is fast-forwarded to that commit on the
   maintainer's go-ahead, since that working tree is what every session loads.

@@ -1,0 +1,21 @@
+#!/bin/sh
+# Hand-written help that shows `-q` in its usage line and defines no quiet
+# flag under `Options:`.
+case "$1" in
+  --help|-h)
+    cat <<'HELP'
+quill - copy a document into another format
+
+Usage: quill [-q] [-o FILE] <input>
+
+Options:
+  -o, --out FILE    Write the result here instead of stdout
+  -h, --help        Show this help
+  -V, --version     Print version and exit
+HELP
+    exit 0 ;;
+  --version|-V) echo "quill 0.1.0"; exit 0 ;;
+  -*) echo "error: unknown flag '$1'" >&2; exit 2 ;;
+  "") echo "Usage: quill [-q] [-o FILE] <input>" >&2; exit 2 ;;
+  *) echo "quill: cannot read '$1'" >&2; exit 1 ;;
+esac

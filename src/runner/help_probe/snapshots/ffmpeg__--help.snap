@@ -2,7 +2,7 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/ffmpeg__--help.txt
 ---
-   5 | -h | -- print basic options
-   6 | -h | 
-   7 | -h | 
-   8 | -h |
+   5 | -h | print basic options
+   6 | -h | long -- print more options
+   7 | -h | full -- print all options (including all format and codec sp
+   8 | -h | type=name -- print all options for the named decoder/encoder

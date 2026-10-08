@@ -23,4 +23,4 @@ input_file: tests/fixtures/help/terraform__init_--help.txt
   89 | -var-file | Load variable values from the given file, in addition
   94 | -enable-pluggable-state-storage-experiment | 
   98 | -state-provider-lock-file | 
- 103 | -enable-pluggable-state-storage-experiment |
+ 103 | -enable-pluggable-state-storage-experiment | flag present.

@@ -23,7 +23,7 @@ input_file: tests/fixtures/help/jq__--help.txt
   45 | -L, --library-path | search modules from the directory;
   46 | --arg | set $name to the string value;
   47 | --argjson | set $name to the JSON value;
-  48 | --slurpfile | 
+  48 | --slurpfile | name file set $name to an array of JSON values read
   50 | --rawfile | set $name to string contents of file;
   51 | --args | consume remaining arguments as positional
   53 | --jsonargs | consume remaining arguments as positional

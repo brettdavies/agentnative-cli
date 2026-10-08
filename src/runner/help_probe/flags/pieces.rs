@@ -33,11 +33,19 @@ const TYPE_WORDS: &[&str] = &[
 /// Punctuation a single-dash short name may be (`-?`, `-.`, `-#`, `-@`).
 const PUNCTUATION_SHORTS: &[char] = &['?', '.', '#', '@'];
 
-/// One whitespace-, comma- or pipe-separated part of a header.
+/// One whitespace-, comma- or pipe-separated part of a definition line.
 pub(super) struct Piece<'a> {
     pub text: &'a str,
+    /// Byte offset of the piece in its line.
+    pub start: usize,
+    /// Two or more spaces, or a TAB, sit between the previous piece and this
+    /// one: the gap that sets off a column or a description.
+    pub after_gap: bool,
     /// A comma or pipe sits between the previous piece and this one.
     after_join: bool,
+    /// That comma or pipe touches this piece, as inside a value list
+    /// (`check1,check2..`).
+    touches_join: bool,
     /// A comma or pipe sits between this piece and the next.
     before_join: bool,
 }
@@ -108,26 +116,41 @@ impl<'a> Piece<'a> {
 
     /// Bracketed, quoted, `=`-led or path-like text, a word in capitals up to
     /// any bracket it carries (`FILE`, `KEY=VALUE`, `N[bcwkMG]`), a type
-    /// word, or any word a comma or pipe follows (sed's
-    /// `-e script, --expression=script`).
+    /// word, any word a comma or pipe follows (sed's
+    /// `-e script, --expression=script`), or one that touches the comma
+    /// before it (shellcheck's `check1,check2..`).
     fn is_placeholder(&self) -> bool {
         let text = self.text;
         let head = text.split(['[', '<', '{', '(']).next().unwrap_or(text);
-        text.starts_with(['<', '[', '{', '(', '\'', '"', '=', '/'])
+        text.starts_with(['<', '[', '{', '(', '\'', '"', '/'])
+            || (text.starts_with('=') && text.len() > 1)
             || is_all_capitals(head)
             || TYPE_WORDS.contains(&text)
             || self.before_join
+            || self.touches_join
     }
 }
 
-/// Split a header on whitespace, commas and pipes, keeping a bracketed group
+/// Split a line on whitespace, commas and pipes, keeping a bracketed group
 /// whole so `<module path>` and `{auto,always,never}` stay one piece.
-pub(super) fn pieces(header: &str) -> Vec<Piece<'_>> {
+pub(super) fn pieces<'a>(line: &'a str) -> Vec<Piece<'a>> {
     let mut out: Vec<Piece<'_>> = Vec::new();
     let mut depth = 0usize;
     let mut start: Option<usize> = None;
     let mut join_pending = false;
-    for (i, c) in header.char_indices() {
+    let mut spaces = 0usize;
+    let mut tab = false;
+    let push = |out: &mut Vec<Piece<'a>>, s: usize, end: usize, join: bool, gap: bool| {
+        out.push(Piece {
+            text: &line[s..end],
+            start: s,
+            after_gap: gap,
+            after_join: join,
+            touches_join: join && line[..s].ends_with([',', '|']),
+            before_join: false,
+        });
+    };
+    for (i, c) in line.char_indices() {
         match c {
             '<' | '[' | '{' | '(' => depth += 1,
             '>' | ']' | '}' | ')' => depth = depth.saturating_sub(1),
@@ -136,29 +159,24 @@ pub(super) fn pieces(header: &str) -> Vec<Piece<'_>> {
         let is_join = depth == 0 && (c == ',' || c == '|');
         if depth == 0 && (c.is_whitespace() || is_join) {
             if let Some(s) = start.take() {
-                out.push(Piece {
-                    text: &header[s..i],
-                    after_join: join_pending,
-                    before_join: false,
-                });
-                join_pending = false;
+                push(&mut out, s, i, join_pending, spaces >= 2 || tab);
+                (join_pending, spaces, tab) = (false, 0, false);
             }
             if is_join {
                 join_pending = true;
                 if let Some(last) = out.last_mut() {
                     last.before_join = true;
                 }
+            } else {
+                spaces += 1;
+                tab |= c == '\t';
             }
         } else if start.is_none() {
             start = Some(i);
         }
     }
     if let Some(s) = start {
-        out.push(Piece {
-            text: &header[s..],
-            after_join: join_pending,
-            before_join: false,
-        });
+        push(&mut out, s, line.len(), join_pending, spaces >= 2 || tab);
     }
     out
 }

@@ -2,17 +2,17 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/lazygit__--help.txt
 ---
-  14 | -h | --help               Displays help with available flag, subc
-  15 | -p | --path               Path of git repo. (equivalent to --work
-  16 | -f | --filter             Path to filter on in `git log -- <path>
-  17 | -v | --version            Print the current version
-  18 | -d | --debug              Run in debug mode with logging (see --l
-  19 | -l | --logs               Tail lazygit logs (intended to be used 
+  14 | -h, --help | Displays help with available flag, subcommand, and positiona
+  15 | -p, --path | Path of git repo. (equivalent to --work-tree=<path> --git-di
+  16 | -f, --filter | Path to filter on in `git log -- <path>`. When in filter mod
+  17 | -v, --version | Print the current version
+  18 | -d, --debug | Run in debug mode with logging (see --logs flag below). Use 
+  19 | -l, --logs | Tail lazygit logs (intended to be used when `lazygit --debug
   20 | --profile | Start the profiler and serve it on http port 6060. See CONTR
-  21 | -c | --config             Print the default config
-  22 | -cd | --print-config-dir   Print the config directory
-  23 | -ucd | --use-config-dir     override default config directory with 
-  24 | -w | --work-tree          equivalent of the --work-tree git argum
-  25 | -g | --git-dir            equivalent of the --git-dir git argumen
-  26 | -ucf | --use-config-file    Comma separated list to custom config f
-  27 | -sm | --screen-mode        The initial screen-mode, which determin
+  21 | -c, --config | Print the default config
+  22 | -cd, --print-config-dir | Print the config directory
+  23 | -ucd, --use-config-dir | override default config directory with provided directory
+  24 | -w, --work-tree | equivalent of the --work-tree git argument
+  25 | -g, --git-dir | equivalent of the --git-dir git argument
+  26 | -ucf, --use-config-file | Comma separated list to custom config file(s)
+  27 | -sm, --screen-mode | The initial screen-mode, which determines the size of the fo

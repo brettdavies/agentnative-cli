@@ -2,20 +2,20 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/shellcheck__--help.txt
 ---
-   2 | -a | --check-sourced            Include warnings from sourced fil
-   3 | -C | --color[=WHEN]             Use color (auto, always, never)
-   4 | -i | --include=CODE1,CODE2..    Consider only given types of warn
-   5 | -e | --exclude=CODE1,CODE2..    Exclude types of warnings
+   2 | -a, --check-sourced | Include warnings from sourced files
+   3 | -C, --color | Use color (auto, always, never)
+   4 | -i, --include | Consider only given types of warnings
+   5 | -e, --exclude | Exclude types of warnings
    6 | --extended-analysis | Perform dataflow analysis (default true)
-   7 | -f | --format=FORMAT            Output format (checkstyle, diff, 
+   7 | -f, --format | Output format (checkstyle, diff, gcc, json, json1, quiet, tt
    8 | --list-optional | List checks disabled by default
    9 | --norc | Don't look for .shellcheckrc files
   10 | --rcfile | Prefer the specified configuration file over searching for o
-  11 | -o | --enable=check1,check2..   List of optional checks to enable
-  12 | -P | --source-path=SOURCEPATHS  Specify path when looking for sou
-  13 | -s | --shell=SHELLNAME          Specify dialect (sh, bash, dash, 
-  14 | -S | --severity=SEVERITY        Minimum severity of errors to con
-  15 | -V | --version                  Print version information
-  16 | -W | --wiki-link-count=NUM      The number of wiki links to show,
-  17 | -x | --external-sources         Allow 'source' outside of FILES
+  11 | -o, --enable | List of optional checks to enable (or 'all')
+  12 | -P, --source-path | Specify path when looking for sourced files ("SCRIPTDIR" for
+  13 | -s, --shell | Specify dialect (sh, bash, dash, ksh, busybox)
+  14 | -S, --severity | Minimum severity of errors to consider (error, warning, info
+  15 | -V, --version | Print version information
+  16 | -W, --wiki-link-count | The number of wiki links to show, when applicable
+  17 | -x, --external-sources | Allow 'source' outside of FILES
   18 | --help | Show this usage summary and exit

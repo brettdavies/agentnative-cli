@@ -2,16 +2,16 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/actionlint__--help.txt
 ---
-  31 | -color | 
-  33 | -config-file | 
-  35 | -debug | 
-  37 | -format | 
-  39 | -ignore | 
-  41 | -init-config | 
-  43 | -no-color | 
-  45 | -oneline | 
-  47 | -pyflakes | 
-  49 | -shellcheck | 
-  51 | -stdin-filename | 
-  53 | -verbose | 
-  55 | -version |
+  31 | -color | Always enable colorful output. This is useful to force color
+  33 | -config-file | File path to config file
+  35 | -debug | Enable debug output (for development)
+  37 | -format | Custom template to format error messages in Go template synt
+  39 | -ignore | Regular expression matching to error messages you want to ig
+  41 | -init-config | Generate default config file at .github/actionlint.yaml in c
+  43 | -no-color | Disable colorful output
+  45 | -oneline | Use one line per one error. Useful for reading error message
+  47 | -pyflakes | Command name or file path of "pyflakes" external command. If
+  49 | -shellcheck | Command name or file path of "shellcheck" external command. 
+  51 | -stdin-filename | File name when reading input from stdin (default "<stdin>")
+  53 | -verbose | Enable verbose output
+  55 | -version | Show version and how this binary was installed

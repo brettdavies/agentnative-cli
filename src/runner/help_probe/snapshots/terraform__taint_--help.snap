@@ -2,10 +2,10 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__taint_--help.txt
 ---
-  26 | -allow-missing | If specified, the command will succeed (exit code 0)
-  29 | -lock | Don't hold a state lock during the operation. This is
+  26 | -allow-missing | If specified, the command will succeed (exit code 0) even if
+  29 | -lock | Don't hold a state lock during the operation. This is danger
   33 | -lock-timeout | Duration to retry a state lock.
-  35 | -ignore-remote-version | A rare option used for the remote backend only. See
-  38 | -var | Set a value for one of the input variables in the root
-  42 | -var-file | Load variable values from the given file, in addition
+  35 | -ignore-remote-version | A rare option used for the remote backend only. See the remo
+  38 | -var | Set a value for one of the input variables in the root modul
+  42 | -var-file | Load variable values from the given file, in addition to the
   47 | -state | and -backup are legacy options supported for the local

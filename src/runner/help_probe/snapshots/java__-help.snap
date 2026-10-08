@@ -5,37 +5,37 @@ input_file: tests/fixtures/help/java__-help.txt
   12 | -m | or --module <module>/<mainclass> are passed as the arguments
   17 | -cp | 
   18 | -classpath | 
-  19 | --class-path | 
+  19 | --class-path | A : separated list of directories, JAR archives, and ZIP arc
   22 | -p | 
-  23 | --module-path | 
-  27 | --upgrade-module-path | 
-  32 | --add-modules | 
-  36 | --enable-native-access | 
-  39 | --list-modules | 
+  23 | --module-path | A : separated list of elements, each element is a file path 
+  27 | --upgrade-module-path | A : separated list of elements, each element is a file path 
+  32 | --add-modules | root modules to resolve in addition to the initial module. <
+  36 | --enable-native-access | modules that are permitted to perform restricted native oper
+  39 | --list-modules | list observable modules and exit
   41 | -d | 
-  42 | --describe-module | 
+  42 | --describe-module | describe a module and exit
   44 | --dry-run | create VM and load main class but do not execute main method
-  47 | --validate-modules | 
-  51 | -D | 
-  53 | -verbose | 
+  47 | --validate-modules | validate all modules and exit The --validate-modules option 
+  51 | -D | set a system property
+  53 | -verbose | enable verbose output for the given subsystem
   55 | -version | print product version to the error stream and exit
   56 | --version | print product version to the output stream and exit
   57 | -showversion | print product version to the error stream and continue
-  58 | --show-version | 
-  60 | --show-module-resolution | 
-  62 | -?, -h, -help | 
+  58 | --show-version | print product version to the output stream and continue
+  60 | --show-module-resolution | show module resolution output during startup
+  62 | -?, -h, -help | print this help message to the error stream
   64 | --help | print this help message to the output stream
   65 | -X | print help on extra options to the error stream
   66 | --help-extra | print help on extra options to the output stream
   67 | -ea | 
-  68 | -enableassertions | 
+  68 | -enableassertions | enable assertions with specified granularity
   70 | -da | 
-  71 | -disableassertions | 
-  73 | -esa, -enablesystemassertions | 
-  75 | -dsa, -disablesystemassertions | 
-  77 | -agentlib | 
-  80 | -agentpath | 
-  82 | -javaagent | 
-  84 | -splash | 
-  94 | --disable-@files | 
-  96 | --enable-preview |
+  71 | -disableassertions | disable assertions with specified granularity
+  73 | -esa, -enablesystemassertions | enable system assertions
+  75 | -dsa, -disablesystemassertions | disable system assertions
+  77 | -agentlib | load native agent library <libname>, e.g. -agentlib:jdwp see
+  80 | -agentpath | load native agent library by full pathname
+  82 | -javaagent | load Java programming language agent, see java.lang.instrume
+  84 | -splash | show splash screen with specified image HiDPI scaled images 
+  94 | --disable-@files | prevent further argument file expansion
+  96 | --enable-preview | allow classes to depend on preview features of this release

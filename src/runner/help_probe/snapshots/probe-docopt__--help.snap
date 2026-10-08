@@ -4,7 +4,7 @@ input_file: tests/fixtures/help/probe-docopt__--help.txt
 ---
    8 | -h, --help | Show this screen.
    9 | -f, --force | Skip confirmation prompts.
-  10 | -n, --limit | Maximum number of results to return, a long description
+  10 | -n, --limit | Maximum number of results to return, a long description that
   12 | --dry-run | Print what would change.
   13 | -v, --verbose | Increase verbosity.
   14 | -o, --output | Write output here.

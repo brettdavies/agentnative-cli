@@ -104,8 +104,6 @@ flowchart TB
   template for the crate the macro generates, where that crate's own audit is the one that should report it.
 - R10. A `.unwrap()` in a `macro_rules!` transcriber is not reported, whether the definition sits at item position or
   nested inside another macro's arguments. A transcriber is a token template rather than code this crate runs.
-- R11. A comment between `#[cfg(test)]` and the item it decorates does not drop the exemption for that item's body. A
-  doc comment on a test-only item is idiomatic, so consuming the gate on it would report test code as production.
 
 **Test-code exemption**
 
@@ -247,6 +245,10 @@ requirements with their acceptance examples fix the paths a planner would otherw
 
 ### Dependencies / Assumptions
 
+- R3 depends on the walker's one-shot `#[cfg(test)]` flag reaching the item it gates, and a comment sibling consumed it,
+  so a doc comment before a gated macro defeated the gate R3 asks for. Fixed as part of this work and recorded here
+  rather than as a requirement, because the effect is wider than macro interiors: it restores the exemption for any
+  commented `#[cfg(test)]` item, which is pre-existing behavior this plan does not otherwise own.
 - The node shape is verified, not inferred. A scratch crate built against the pinned `=0.42.3` crates confirmed that a
   macro's arguments parse as a `token_tree` of flat tokens with no `call_expression` inside, that a call appears as
   `identifier "." identifier token_tree("()")`, and that string literals and comments are already distinct node kinds.
@@ -463,7 +465,7 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
 
 - **Goal:** test code stays exempt by default inside macro interiors, including item-position macro invocations, and
   `--include-tests` lifts that exemption on the same terms as elsewhere.
-- **Requirements:** R3, R4, R11. Instantiates KTD4.
+- **Requirements:** R3, R4. Instantiates KTD4.
 - **Dependencies:** U1.
 - **Files:** `src/audits/source/rust/unwrap.rs`
 - **Approach:**
@@ -472,7 +474,8 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
   2. Treat a `#[cfg(test)]`-preceded macro invocation as gating its interior, by adding `macro_invocation` to the
      item-kind list.
   3. Step the one-shot gate over a comment sibling, so a comment or doc comment between the attribute and the item does
-     not consume it (R11). Without this the item-kind entry above is defeated by an idiomatic doc comment.
+     not consume it. Without this the item-kind entry above is defeated by an idiomatic doc comment, which is the
+     dependency recorded under Dependencies / Assumptions rather than a requirement of this plan.
   4. Read a `cfg(test)` the interior declares of its own from the owning invocation's text rather than its parse tree:
      a `thread_local!` interior recovers an `attribute_item` while a `cfg_if!` interior recovers an error node plus an
      array expression, and the predicate text is the one form both shapes share. The polarity helper is the walker's own,
@@ -525,7 +528,7 @@ exists. U3 depends on both, since it proves their precision. U4 depends on U3 fo
 
 - **Goal:** the behavior holds end to end through the real CLI, and this repository's own audit result is known rather
   than assumed.
-- **Requirements:** R1 through R11, and the first two success criteria.
+- **Requirements:** R1 through R10, and the first two success criteria.
 - **Dependencies:** U3.
 - **Files:** `tests/integration.rs`, `tests/fixtures/` (a new fixture directory for macro interiors)
 - **Approach:**
@@ -577,7 +580,7 @@ the gate stops with `binary-ambiguous` and exit 2, and the fix is to pass `--bin
 
 ## Definition of Done
 
-- Every requirement R1 through R11 is exercised by at least one passing test, and every acceptance example AE1 through
+- Every requirement R1 through R10 is exercised by at least one passing test, and every acceptance example AE1 through
   AE13 is covered by a named scenario.
 - The red was observed before the green: the AE1 fixture went unreported against the call-expression-only matcher, on a
   fresh build.

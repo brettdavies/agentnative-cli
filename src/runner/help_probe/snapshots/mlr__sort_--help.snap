@@ -2,4 +2,14 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/mlr__sort_--help.txt
 ---
-
+   9 | -f | Lexical ascending sort on the specified field names.
+  10 | -r | Lexical descending sort on the specified field names.
+  11 | -c | Case-folded lexical ascending sort on the specified field na
+  12 | -cr | Case-folded lexical descending sort on the specified field n
+  14 | -n | Numerical ascending sort on the specified field names; nulls
+  16 | -nf | Same as -n.
+  17 | -nr | Numerical descending sort on the specified field names; null
+  19 | -t | Natural ascending sort on the specified field names.
+  20 | -b | Move sort fields to start of record, as in reorder -b.
+  21 | -tr, -rt | Natural descending sort on the specified field names.
+  22 | -h, --help | Show this message.

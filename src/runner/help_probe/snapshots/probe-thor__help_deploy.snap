@@ -2,7 +2,10 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/probe-thor__help_deploy.txt
 ---
-   5 | -f | [--force]                                                   
-   6 | -n | [--limit=N]                                                 
-   8 | -o, --out | write output here
-   9 | -cd | [--print-config-dir], [--no-print-config-dir], [--skip-print
+   5 | -f, --force | skip confirmation prompts
+   6 | -n, --limit | maximum number of results to return, a deliberately long des
+   7 | --dry-run, --no-dry-run, --skip-dry-run | print what would change
+   8 | -o, --out, --output | write output here
+   9 | -cd, --print-config-dir, --no-print-config-dir, --skip-print-config-dir | multi-letter alias
+  10 | -c, --no-c, --skip-c | single c
+  11 | -d, --no-d, --skip-d | single d

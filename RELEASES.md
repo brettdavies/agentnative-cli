@@ -266,11 +266,11 @@ Always use annotated tags (`-a -m`). The tag push triggers `.github/workflows/re
 The tap's formula installs this release's archives. Its `update-formula` workflow downloads the four it names (the two
 `apple-darwin` and the two `linux-musl` archives), verifies each against the attestation `attest` made, and pins its
 checksum; an archive with no attestation stops the bump, so `attest: true` in `release.yml` is what lets a release reach
-Homebrew. The tap then builds bottles from those archives, signs them in its own `publish.yml`, and uploads them to this
-repo's release assets.
+Homebrew. The tap then installs and tests the formula from those archives on four platforms and lands the bump on its
+`main`. It builds no bottle: the binaries are compiled once, by `release.yml`, and `brew install` downloads the archive.
 
-After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
-this repo, which idempotently flips `make_latest: true`.
+After the homebrew-tap workflow lands the formula bump, it dispatches `finalize-release` back to this repo, which
+idempotently flips `make_latest: true`.
 
 → Rationale (`make_latest` flow, musl hard-block, annotated-tag gotcha):
 [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
@@ -504,9 +504,10 @@ cargo yank --version "${BAD#v}" agentnative
 gh release edit "$PREV" --latest
 gh release edit "$BAD" --prerelease
 
-# Homebrew: revert the formula bump on the tap so `brew install` resolves the last-good bottle.
+# Homebrew: revert the formula bump on the tap so `brew install` resolves the last-good version.
 gh api repos/brettdavies/homebrew-tap/commits --jq '.[0:5][] | .sha[0:7] + " " + .commit.message'
-# then revert the `agentnative: add <version> bottle.` and formula-bump commits via a PR to the tap's main.
+# then revert the formula-bump commit via a PR to the tap's main. A release the tap published with a
+# bottle (0.6.0 and earlier) also has an `agentnative: add <version> bottle.` commit to revert first.
 ```
 
 Un-yank with `cargo yank --undo --version <version> agentnative` if the yank was wrong. A yanked crate version cannot be

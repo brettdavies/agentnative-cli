@@ -454,31 +454,8 @@ fn test_cfg_test_edge_cases_fixture_flags_only_production_unwraps() {
     // Exempted (must NOT appear in evidence):
     //   - line 30: test_only_helper()             (#[cfg(test)])
     //   - line 37: tests::unit()                  (inside #[cfg(test)] mod)
-    let path = fixture_path("cfg-test-edge-cases");
-
-    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
-    let output = assert.get_output().stdout.clone();
-    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json_str).expect("output should be valid JSON");
-
-    let code_unwrap = parsed["results"]
-        .as_array()
-        .expect("results should be an array")
-        .iter()
-        .find(|r| r["id"].as_str() == Some("code-unwrap"))
-        .expect("results should include a code-unwrap row");
-
-    assert_eq!(
-        code_unwrap["status"].as_str(),
-        Some("fail"),
-        "code-unwrap must fail on the fixture (two production unwraps): {code_unwrap}",
-    );
-
-    let evidence = code_unwrap["evidence"]
-        .as_str()
-        .expect("code-unwrap fail must carry an evidence string");
-    let lines: Vec<&str> = evidence.lines().collect();
+    let lines = code_unwrap_evidence("cfg-test-edge-cases", &[]);
+    let evidence = lines.join("\n");
     assert_eq!(
         lines.len(),
         2,
@@ -506,6 +483,124 @@ fn test_cfg_test_edge_cases_fixture_flags_only_production_unwraps() {
         assert!(
             !evidence.contains(forbidden),
             "cfg(test)-exempt line {forbidden} leaked into evidence: {evidence}",
+        );
+    }
+}
+
+/// `code-unwrap` evidence lines for a fixture, through the real CLI.
+fn code_unwrap_evidence(fixture: &str, extra_args: &[&str]) -> Vec<String> {
+    let path = fixture_path(fixture);
+    let mut args = vec!["audit", &path, "--output", "json"];
+    args.extend_from_slice(extra_args);
+
+    let assert = cmd().args(&args).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let code_unwrap = parsed["results"]
+        .as_array()
+        .expect("results should be an array")
+        .iter()
+        .find(|r| r["id"].as_str() == Some("code-unwrap"))
+        .expect("results should include a code-unwrap row")
+        .clone();
+
+    assert_eq!(
+        code_unwrap["status"].as_str(),
+        Some("fail"),
+        "code-unwrap must fail on the {fixture} fixture: {code_unwrap}",
+    );
+
+    code_unwrap["evidence"]
+        .as_str()
+        .expect("code-unwrap fail must carry an evidence string")
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn test_macro_interiors_fixture_reports_only_genuine_calls() {
+    // End-to-end coverage of the macro-interior matcher through the full
+    // parse -> walk -> re-parse -> AuditResult -> scorecard pipeline. Unit tests
+    // in src/audits/source/rust/macro_interior.rs cover the re-parse in
+    // isolation; this drives a real project on disk.
+    //
+    // Pinned to tests/fixtures/macro-interiors/src/lib.rs. Reported:
+    //   -  9:23 v.unwrap()      single-line write!, call on the interior's first line
+    //   - 20:9  v.unwrap()      multi-line write!, call after the interior's first newline
+    //   - 26:37 v.unwrap()      nested write!/format!, reported once
+    //   - 30:28 load().unwrap() thread_local!, an item-position macro body
+    // Clean (must NOT appear):
+    //   - 34 string literal, 38 raw string, 43 comment,
+    //   - 50-53 unwrap_or / unwrap_or_else / unwrap_err / expect,
+    //   - 58 macro_rules! fragment,
+    //   - 78-79 stringify! / concat!, whose arguments are tokens,
+    //   - 87 a macro_rules! transcriber nested in cfg_if!
+    // Gated by #[cfg(test)], so default-exempt:
+    //   - 67 assert_eq!(v.unwrap(), 1)
+    let evidence = code_unwrap_evidence("macro-interiors", &[]);
+
+    let reported: Vec<(&str, &str)> = vec![
+        ("/lib.rs:9:23", "v.unwrap()"),
+        ("/lib.rs:20:9", "v.unwrap()"),
+        ("/lib.rs:26:37", "v.unwrap()"),
+        ("/lib.rs:30:28", "load().unwrap()"),
+    ];
+    assert_eq!(
+        evidence.len(),
+        reported.len(),
+        "unexpected finding count: {evidence:#?}",
+    );
+    for (location, text) in &reported {
+        assert!(
+            evidence
+                .iter()
+                .any(|l| l.contains(location) && l.ends_with(text)),
+            "evidence must flag {location} as {text}: {evidence:#?}",
+        );
+    }
+
+    // A column is as load-bearing as a line here: the interior's start column
+    // applies to its own first line and nothing after the first newline, so an
+    // inverted rule reports the wrong character on exactly the multi-line
+    // macros this matcher exists to catch.
+    for forbidden in [
+        ":34:", ":38:", ":43:", ":50:", ":51:", ":52:", ":53:", ":58:", ":67:", ":78:", ":79:",
+        ":87:",
+    ] {
+        assert!(
+            !evidence.iter().any(|l| l.contains(forbidden)),
+            "line {forbidden} must stay unreported: {evidence:#?}",
+        );
+    }
+}
+
+#[test]
+fn test_macro_interiors_fixture_include_tests_lifts_the_gate() {
+    let evidence = code_unwrap_evidence("macro-interiors", &["--include-tests"]);
+
+    assert_eq!(
+        evidence.len(),
+        5,
+        "--include-tests must add the cfg(test)-gated assert_eq!: {evidence:#?}",
+    );
+    assert!(
+        evidence
+            .iter()
+            .any(|l| l.contains("/lib.rs:67:20") && l.ends_with("v.unwrap()")),
+        "the gated macro argument at lib.rs:67 must appear with --include-tests: {evidence:#?}",
+    );
+    // Lifting the gate must not relax the matcher: the literals and the
+    // sibling method names stay clean.
+    for forbidden in [
+        ":34:", ":38:", ":43:", ":50:", ":52:", ":58:", ":78:", ":87:",
+    ] {
+        assert!(
+            !evidence.iter().any(|l| l.contains(forbidden)),
+            "line {forbidden} must stay unreported under --include-tests: {evidence:#?}",
         );
     }
 }

@@ -14,16 +14,16 @@ input_file: tests/fixtures/help/cmake__--help.txt
   24 | --install-prefix | 
   26 | --project-file | 
   28 | -W | = Enable the specified category of warnings.
-  29 | -W | = Suppress the specified category of warnings.
-  30 | -W | = Make the specified category of warnings
-  32 | -W | = Make the specified category of warnings not
+  29 | -Wno | = Suppress the specified category of warnings.
+  30 | -Werror | = Make the specified category of warnings
+  32 | -Wno-error | = Make the specified category of warnings not
   34 | --preset | 
   36 | --presets-file | 
   38 | --list-presets | = List available presets.
   39 | --workflow | = Run a workflow preset.
   40 | -E | = CMake command mode.  Run "cmake -E" for a
   42 | -L | = List non-advanced cached variables.
-  43 | -L | = Show cached variables that match the regex.
+  43 | -LR | = Show cached variables that match the regex.
   44 | --fresh | = Configure a fresh build tree, removing any
   46 | --build | = Build a CMake-generated project binary tree.
   49 | --install | = Install a CMake-generated project binary
@@ -51,8 +51,8 @@ input_file: tests/fixtures/help/cmake__--help.txt
   90 | --link-no-warning-as-error | = Ignore LINK_WARNING_AS_ERROR property and
   92 | --profiling-format | = Output data for profiling CMake scripts.
   94 | --profiling-output | = Select an output path for the profiling data
-  96 | -u, --help | 
-  97 | -v, --version | 
+  96 | -h, -H, --help, -help, -usage, /? | 
+  97 | --version, -version, /V, /version | 
   99 | --help | = Print help for one keyword and exit.
  100 | --help-full | = Print all help manuals and exit.
  101 | --help-manual | 

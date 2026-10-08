@@ -269,6 +269,31 @@ fn test_binary_only_fixture() {
     );
 }
 
+/// Go `flag`-style help end to end: every name printed with one dash and no
+/// double-dash name. `destroy` lists `-force`, which confirms as `--force`
+/// does; the top level lists `-version` and no verbose flag, and `-version`
+/// is not `-v`.
+#[test]
+#[cfg(unix)]
+fn test_go_flag_help_fixture_reads_single_dash_words_whole() {
+    let path = fixture_path("go-flag-help/depot");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    let row = |id: &str| {
+        results
+            .iter()
+            .find(|r| r["audit_id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"))
+    };
+
+    let force_yes = row("p5-force-yes");
+    assert_eq!(force_yes["status"], "pass", "{force_yes}");
+    let verbose = row("p7-verbose");
+    assert_eq!(verbose["status"], "warn", "{verbose}");
+}
+
 /// A hand-written `Common commands:` block whose entries all lead with the
 /// tool name is graded on its real subcommands: the example audit names
 /// them, the naming audit evaluates them, and `format` is not mistaken for

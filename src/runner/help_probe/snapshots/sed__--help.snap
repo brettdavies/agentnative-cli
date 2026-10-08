@@ -2,7 +2,7 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/sed__--help.txt
 ---
-   3 | -n, --silent | 
+   3 | -n, --quiet, --silent | 
    5 | --debug | 
    7 | -e, --expression | 
    9 | -f, --file | 
@@ -10,7 +10,7 @@ input_file: tests/fixtures/help/sed__--help.txt
   13 | -i, --in-place | 
   15 | -l, --line-length | 
   17 | --posix | 
-  19 | -r, --regexp-extended | 
+  19 | -E, -r, --regexp-extended | 
   22 | -s, --separate | 
   25 | --sandbox | 
   27 | -u, --unbuffered | 

@@ -2,10 +2,10 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__validate_--help.txt
 ---
-  27 | -j | Produce output in a machine-readable JSON format,
-  31 | -n | If specified, output won't contain any color.
-  33 | -n | If specified, Terraform will not validate test files.
-  35 | -t | Set the Terraform test directory, defaults to "tests".
-  37 | -q | If specified, the command will also validate .tfquery.hcl fi
-  39 | -v | Set a value for one of the input variables in the root
-  43 | -v | Load variable values from the given file, in addition
+  27 | -json | Produce output in a machine-readable JSON format,
+  31 | -no-color | If specified, output won't contain any color.
+  33 | -no-tests | If specified, Terraform will not validate test files.
+  35 | -test-directory | Set the Terraform test directory, defaults to "tests".
+  37 | -query | If specified, the command will also validate .tfquery.hcl fi
+  39 | -var | Set a value for one of the input variables in the root
+  43 | -var-file | Load variable values from the given file, in addition

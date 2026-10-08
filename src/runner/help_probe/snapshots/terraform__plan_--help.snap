@@ -2,20 +2,20 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__plan_--help.txt
 ---
-  16 | -d | Select the "destroy" planning mode, which creates a plan
-  20 | -r | Select the "refresh only" planning mode, which checks
-  25 | -r | Skip checking for external changes to remote objects
-  30 | -r | Force replacement of a particular resource instance using
-  36 | -t | Limit the planning operation to only the given module,
-  42 | -v | Set a value for one of the input variables in the root
-  46 | -v | Load variable values from the given file, in addition
-  53 | -c | If Terraform produces any warnings that are not
-  57 | -d | Return detailed exit codes when the command exits.
-  63 | -g | (Experimental) If import blocks are present in
-  70 | -i | Ask for input for variables if not directly set.
-  72 | -l | Don't hold a state lock during the operation. This
-  76 | -l | Duration to retry a state lock.
-  78 | -n | If specified, output won't contain any color.
-  80 | -o | Write a plan file to the given path. This can be
-  83 | -p | Limit the number of concurrent operations. Defaults
-  86 | -s | A legacy option used for the local backend only.
+  16 | -destroy | Select the "destroy" planning mode, which creates a plan
+  20 | -refresh-only | Select the "refresh only" planning mode, which checks
+  25 | -refresh | Skip checking for external changes to remote objects
+  30 | -replace | Force replacement of a particular resource instance using
+  36 | -target | Limit the planning operation to only the given module,
+  42 | -var | Set a value for one of the input variables in the root
+  46 | -var-file | Load variable values from the given file, in addition
+  53 | -compact-warnings | If Terraform produces any warnings that are not
+  57 | -detailed-exitcode | Return detailed exit codes when the command exits.
+  63 | -generate-config-out | (Experimental) If import blocks are present in
+  70 | -input | Ask for input for variables if not directly set.
+  72 | -lock | Don't hold a state lock during the operation. This
+  76 | -lock-timeout | Duration to retry a state lock.
+  78 | -no-color | If specified, output won't contain any color.
+  80 | -out | Write a plan file to the given path. This can be
+  83 | -parallelism | Limit the number of concurrent operations. Defaults
+  86 | -state | A legacy option used for the local backend only.

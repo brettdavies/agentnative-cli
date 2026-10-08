@@ -2,8 +2,8 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/pandoc__--help.txt
 ---
-   2 | -r | --from=FORMAT, --read=FORMAT
-   3 | -w | --to=FORMAT, --write=FORMAT
+   2 | -f, -r | --from=FORMAT, --read=FORMAT
+   3 | -t, -w | --to=FORMAT, --write=FORMAT
    4 | -o | --output=FILE
    5 | --data-dir | 
    6 | -M | --metadata=KEY[=VALUE]
@@ -17,10 +17,10 @@ input_file: tests/fixtures/help/pandoc__--help.txt
   14 | --variable-json | 
   15 | --wrap | 
   16 | --ascii | 
-  17 | --table-of-contents | 
+  17 | --toc, --table-of-contents | 
   18 | --toc-depth | 
-  19 | --list-of-figures | 
-  20 | --list-of-tables | 
+  19 | --lof, --list-of-figures | 
+  20 | --lot, --list-of-tables | 
   21 | -N | --number-sections[=true|false]
   22 | --number-offset | 
   23 | --top-level-division | 

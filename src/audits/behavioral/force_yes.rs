@@ -15,7 +15,7 @@
 use crate::anc_toml::{CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::destructive_subcommands;
-use crate::audits::behavioral::subcommand_help::probe_subcommands;
+use crate::audits::behavioral::subcommand_help::{dash_rule_notes, probe_subcommands};
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{
@@ -143,12 +143,18 @@ pub(crate) fn audit_force_yes(
                 .then(|| Mitigation::Config(confirmed_by_declaration.join("; "))),
         };
     }
+    let wanted: Vec<&str> = CONFIRM_FLAGS
+        .iter()
+        .copied()
+        .chain(declared_flags.iter().map(|flag| flag.value.as_str()))
+        .collect();
     AuditStatus::Fail(format!(
         "destructive subcommand(s) whose --help lists no confirmation flag: {}. \
          Accepted flags: {}. Irreversible operations must require explicit \
-         confirmation so they can't be invoked accidentally.",
+         confirmation so they can't be invoked accidentally.{}",
         missing.join(", "),
         accepted_flags(declared_flags),
+        dash_rule_notes(&missing, subhelp, &wanted),
     ))
     .into()
 }
@@ -211,11 +217,16 @@ mod tests {
         }
     }
 
-    const GO_STYLE_DESTROY_HELP: &str = "Usage: tool destroy [options]\n\nOptions:\n\n  -auto-approve          Skip interactive approval.\n\n  -lock=false            Don't hold a lock.\n";
+    // Modeled on pacman's `--noconfirm`, a confirmation flag outside the
+    // built-in names.
+    const NOCONFIRM_DESTROY_HELP: &str = "Usage: tool destroy [options]\n\nOptions:\n      --noconfirm        Do not ask for any confirmation.\n      --dbonly           Only modify database entries.\n";
+
+    // terraform 1.16.4's `terraform force-unlock --help`.
+    const TERRAFORM_FORCE_UNLOCK_HELP: &str = "Usage: terraform [global options] force-unlock LOCK_ID\n\n  Manually unlock the state for the defined configuration.\n\nOptions:\n\n  -force                 Don't ask for input for unlock confirmation.\n";
 
     #[test]
     fn a_declared_flag_confirms_where_the_builtins_do_not() {
-        let subhelp = vec![("destroy".to_string(), hp(GO_STYLE_DESTROY_HELP))];
+        let subhelp = vec![("destroy".to_string(), hp(NOCONFIRM_DESTROY_HELP))];
         let destructive = ["destroy".to_string()];
 
         assert!(matches!(
@@ -226,13 +237,13 @@ mod tests {
         let verdict = audit_force_yes(
             &destructive,
             &subhelp,
-            &[declared("-auto-approve", ".anc.toml")],
+            &[declared("--noconfirm", ".anc.toml")],
         );
         assert_eq!(verdict.status, AuditStatus::Pass);
         assert_eq!(
             verdict.mitigation,
             Some(Mitigation::Config(
-                "destroy accepts -auto-approve via .anc.toml [p5].confirm_flags".into()
+                "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags".into()
             ))
         );
     }
@@ -242,23 +253,76 @@ mod tests {
         let subhelp = vec![
             (
                 "delete".to_string(),
-                hp("Options:\n  -auto-approve  Skip approval.\n  --force        Skip approval.\n"),
+                hp("Options:\n  --noconfirm  Skip approval.\n  --force      Skip approval.\n"),
             ),
-            ("destroy".to_string(), hp(GO_STYLE_DESTROY_HELP)),
+            ("destroy".to_string(), hp(NOCONFIRM_DESTROY_HELP)),
         ];
         let destructive = ["delete".to_string(), "destroy".to_string()];
 
         let verdict = audit_force_yes(
             &destructive,
             &subhelp,
-            &[declared("-auto-approve", "~/.anc.toml")],
+            &[declared("--noconfirm", "~/.anc.toml")],
         );
 
         assert_eq!(verdict.status, AuditStatus::Pass);
         assert_eq!(
             verdict.mitigation,
             Some(Mitigation::Config(
-                "destroy accepts -auto-approve via ~/.anc.toml [p5].confirm_flags".into()
+                "destroy accepts --noconfirm via ~/.anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_single_dash_word_confirms_in_a_help_without_double_dash_names() {
+        let subhelp = vec![("force-unlock".to_string(), hp(TERRAFORM_FORCE_UNLOCK_HELP))];
+
+        let verdict = audit_force_yes(&["force-unlock".to_string()], &subhelp, &[]);
+
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(verdict.mitigation, None);
+    }
+
+    #[test]
+    fn a_single_dash_word_does_not_confirm_beside_double_dash_names() {
+        let subhelp = vec![(
+            "destroy".to_string(),
+            hp("Options:\n  -force       Skip the prompt.\n  --help       Show help.\n"),
+        )];
+
+        match audit_force_yes(&["destroy".to_string()], &subhelp, &[]).status {
+            AuditStatus::Fail(msg) => assert!(
+                msg.ends_with(
+                    "In `destroy`, `-force` is declared, but this help also declares \
+                     double-dash names, so it does not count as `--force`."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declared_double_dash_name_reaches_its_single_dash_spelling() {
+        let subhelp = vec![(
+            "destroy".to_string(),
+            hp(
+                "Usage: tool destroy [options]\n\nOptions:\n\n  -noconfirm             Skip interactive approval.\n\n  -lock=false            Don't hold a lock.\n",
+            ),
+        )];
+
+        let verdict = audit_force_yes(
+            &["destroy".to_string()],
+            &subhelp,
+            &[declared("--noconfirm", ".anc.toml")],
+        );
+
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(
+            verdict.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags".into()
             ))
         );
     }

@@ -3,8 +3,8 @@ source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/java__-help.txt
 ---
   12 | -m | 
-  17 | -c | 
-  18 | -c | 
+  17 | -cp | 
+  18 | -classpath | 
   19 | --class-path | 
   22 | -p | 
   23 | --module-path | 
@@ -17,25 +17,25 @@ input_file: tests/fixtures/help/java__-help.txt
   44 | --dry-run | create VM and load main class but do not execute main method
   47 | --validate-modules | 
   51 | -D | 
-  53 | -v | 
-  55 | -v | print product version to the error stream and exit
+  53 | -verbose | 
+  55 | -version | print product version to the error stream and exit
   56 | --version | print product version to the output stream and exit
-  57 | -s | print product version to the error stream and continue
+  57 | -showversion | print product version to the error stream and continue
   58 | --show-version | 
   60 | --show-module-resolution | 
-  62 | -? | 
+  62 | -?, -h, -help | 
   64 | --help | print this help message to the output stream
   65 | -X | print help on extra options to the error stream
   66 | --help-extra | print help on extra options to the output stream
-  67 | -e | 
-  68 | -e | 
-  70 | -d | 
-  71 | -d | 
-  73 | -e | 
-  75 | -d | 
-  77 | -a | 
-  80 | -a | 
-  82 | -j | 
-  84 | -s | 
-  94 | --disable- | 
+  67 | -ea | 
+  68 | -enableassertions | 
+  70 | -da | 
+  71 | -disableassertions | 
+  73 | -esa, -enablesystemassertions | 
+  75 | -dsa, -disablesystemassertions | 
+  77 | -agentlib | 
+  80 | -agentpath | 
+  82 | -javaagent | 
+  84 | -splash | 
+  94 | --disable-@files | 
   96 | --enable-preview |

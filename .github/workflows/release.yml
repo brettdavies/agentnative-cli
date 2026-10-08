@@ -3,9 +3,13 @@
 # crate: agentnative (crates.io name) | bin: anc (installed executable)
 #
 # Pipeline: check-version -> build (7 targets) -> attest (build provenance, and a
-# CycloneDX SBOM of the binary) -> crates.io -> release (non-draft) -> verify the
-# published files against their attestations -> homebrew bottle build -> bottles
-# upload back to release assets -> finalize-release marks the release final.
+# CycloneDX SBOM of the binary) -> crates.io -> release (visible, not latest) ->
+# verify the published files against their attestations -> homebrew-tap tests the
+# formula bump from the archives and lands it -> finalize-release marks the
+# release latest.
+#
+# The `build` job is the only place a release compiles its binaries. The tap
+# installs the published archives and builds no bottle.
 name: Release
 
 on:

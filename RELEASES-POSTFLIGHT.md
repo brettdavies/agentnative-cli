@@ -30,7 +30,7 @@ Sub-commands let you re-run one verification in isolation:
 | Sub-command   | What it checks                                                                                               | Source of truth                           |
 | ------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
 | `release`     | `release.yml` on the tag push: `gh run view ... --json conclusion` is `"success"`                            | `gh run view`                             |
-| `tap`         | `brettdavies/homebrew-tap` `update-formula` (repository_dispatch) + `Publish bottles` (workflow_run) SUCCESS | `gh run list -R brettdavies/homebrew-tap` |
+| `tap`         | `brettdavies/homebrew-tap` `update-formula` (repository_dispatch) + `Publish formula` (workflow_run) SUCCESS | `gh run list -R brettdavies/homebrew-tap` |
 | `finalize`    | `finalize-release.yml` callback ran in this repo (cross-repo dispatch loop closed)                           | `gh run list -e repository_dispatch`      |
 | `make-latest` | GitHub Release `vX.Y.Z` is non-draft, non-prerelease, and `releases/latest` resolves to it                   | `gh api /releases/latest`                 |
 | `crates`      | `crates.io` shows `agentnative vX.Y.Z` published                                                             | `crates.io` index API                     |
@@ -56,10 +56,10 @@ Run immediately after the tag push triggers `release.yml`.
   Trusted Publishing, and dispatches `update-formula` into the homebrew-tap. Run `scripts/release/postflight.sh release`
   for the automated check.
 - [ ] **Homebrew-tap dispatch landed.** `gh run list -R brettdavies/homebrew-tap --limit 5` should show a recent
-  `update-formula` (event=repository_dispatch) and a `Publish bottles` (event=workflow_run) both SUCCESS. The bottles
-  workflow auto-merges the formula bump PR and pushes an `agentnative: add <version> bottle.` commit to tap `main`. Run
-  `scripts/release/postflight.sh tap` for the automated check.
-- [ ] **`finalize-release.yml` callback ran.** After the bottles publish, the tap dispatches back to this repo and the
+  `update-formula` (event=repository_dispatch) and a `Publish formula` (event=workflow_run) both SUCCESS. The publish
+  workflow pushes the formula bump to tap `main` as one `chore(agentnative): bump to v<version>` commit, with no bottle:
+  the formula installs this release's archives. Run `scripts/release/postflight.sh tap` for the automated check.
+- [ ] **`finalize-release.yml` callback ran.** After the formula lands, the tap dispatches back to this repo and the
   callback flips the GitHub Release `make_latest: true`. Check `gh run list -e repository_dispatch --limit 3`; expect a
   `finalize-release` SUCCESS. Run `scripts/release/postflight.sh finalize` for the automated check.
 - [ ] **GitHub Release marked latest.** `gh api repos/brettdavies/agentnative-cli/releases/latest --jq .tag_name`
@@ -70,14 +70,11 @@ Run immediately after the tag push triggers `release.yml`.
 - [ ] **`cargo install agentnative --version <new>` on a clean environment** resolves and runs. Drive on a fresh
   container or a sibling machine so the local `~/.cargo/bin` isn't polluted. Confirms the publish landed all package
   data and the installer can reconstruct `anc` from source.
-- [ ] **`brew update && brew install brettdavies/tap/agentnative`** on a fresh prefix resolves the new bottle and
-  `anc --version` reports the new tag. Drive on a throwaway prefix (`HOMEBREW_PREFIX=/tmp/brew-postflight-X brew ...`).
-  Confirms the homebrew-tap end of the cross-repo dispatch chain landed cleanly and the published bottle SHA matches the
-  formula.
-- [ ] **Every Homebrew bottle verifies against its attestation.**
-  `brew verify --os=all --arch=all brettdavies/tap/agentnative` reports `has a valid attestation` for each bottle. The
-  tap signs the bottles in its `publish.yml`; this is the check Homebrew runs for a user who sets
-  `HOMEBREW_VERIFY_ATTESTATIONS`, and a failure means that user cannot install the formula.
+- [ ] **`brew update && brew install brettdavies/tap/agentnative`** on a fresh prefix downloads this release's archive
+  for the platform and `anc --version` reports the new tag. Drive on a throwaway prefix
+  (`HOMEBREW_PREFIX=/tmp/brew-postflight-X brew ...`). Confirms the homebrew-tap end of the cross-repo dispatch chain
+  landed cleanly and the archive matches the checksum the formula pins. The install compiles nothing and pours no
+  bottle; the tap verified each archive against this release's attestation before it pinned the checksum.
 - [ ] **`cargo binstall agentnative`** (without `--version`) resolves to the new tag and installs the matching prebuilt
   binary. Confirms the GitHub Release asset layout (binary + completions + licenses, expected archive naming) matches
   binstall's asset-resolution rules and the `[package.metadata.binstall]` overrides in `Cargo.toml`. Drive on a clean

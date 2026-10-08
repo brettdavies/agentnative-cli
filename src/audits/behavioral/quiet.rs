@@ -1,7 +1,7 @@
 use crate::audit::Audit;
 use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
-use crate::runner::HelpOutput;
+use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 const QUIET_FLAGS: &[&str] = &["--quiet", "-q"];
@@ -34,9 +34,10 @@ impl Audit for QuietAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let status = match project.help_output() {
-            None => AuditStatus::Warn("could not run --help to detect quiet flag".into()),
-            Some(help) => audit_quiet(help),
+        let ran = project.runner_ref().run(&["--help"], &[]).status;
+        let status = match (ran, project.help_output()) {
+            (RunStatus::Ok, Some(help)) => audit_quiet(help),
+            _ => AuditStatus::Warn("could not run --help to detect quiet flag".into()),
         };
 
         Ok(AuditResult {
@@ -79,6 +80,18 @@ mod tests {
         let project = test_project_with_sh_script("echo 'no quiet here'");
         let result = QuietAudit.run(&project).expect("audit should run");
         assert!(matches!(result.status, AuditStatus::Warn(_)));
+    }
+
+    #[test]
+    fn a_help_that_crashes_is_not_searched() {
+        // Prints a quiet flag, then dies on a signal.
+        let project =
+            test_project_with_sh_script("echo '  -q, --quiet  Suppress output'\nkill -11 $$");
+        let result = QuietAudit.run(&project).expect("audit should run");
+        assert_eq!(
+            result.status,
+            AuditStatus::Warn("could not run --help to detect quiet flag".into())
+        );
     }
 
     /// One definition line per tool whose help carries `-q` inside another

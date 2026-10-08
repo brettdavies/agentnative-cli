@@ -84,9 +84,9 @@ input_file: tests/fixtures/help/curl__--help_all.txt
   80 | --hostpubmd5 | Acceptable MD5 hash of host public key
   81 | --hostpubsha256 | Acceptable SHA256 hash of host public key
   82 | --hsts | Enable HSTS with this cache file
-  83 | --http0 | Allow HTTP/0.9 responses
-  84 | -0, --http1 | Use HTTP/1.0
-  85 | --http1 | Use HTTP/1.1
+  83 | --http0.9 | Allow HTTP/0.9 responses
+  84 | -0, --http1.0 | Use HTTP/1.0
+  85 | --http1.1 | Use HTTP/1.1
   86 | --http2 | Use HTTP/2
   87 | --http2-prior-knowledge | Use HTTP/2 without HTTP/1.1 Upgrade
   88 | --http3 | Use HTTP/3
@@ -153,7 +153,7 @@ input_file: tests/fixtures/help/curl__--help_all.txt
  149 | --post302 | Do not switch to GET after a 302 redirect
  150 | --post303 | Do not switch to GET after a 303 redirect
  151 | --preproxy | Use this proxy first
- 152 | --progress-bar | Display transfer progress as a bar
+ 152 | -#, --progress-bar | Display transfer progress as a bar
  153 | --proto | Enable/disable PROTOCOLS
  154 | --proto-default | Use PROTOCOL for any URL missing a scheme
  155 | --proto-redir | Enable/disable PROTOCOLS on redirect
@@ -187,7 +187,7 @@ input_file: tests/fixtures/help/curl__--help_all.txt
  183 | --proxy-tlsuser | TLS username for HTTPS proxy
  184 | --proxy-tlsv1 | TLSv1 for HTTPS proxy
  185 | -U, --proxy-user | Proxy user and password
- 186 | --proxy1 | Use HTTP/1.0 proxy on given port
+ 186 | --proxy1.0 | Use HTTP/1.0 proxy on given port
  187 | -p, --proxytunnel | HTTP proxy tunnel (using CONNECT)
  188 | --pubkey | SSH Public key filename
  189 | -Q, --quote | Send command(s) to server before transfer
@@ -252,10 +252,10 @@ input_file: tests/fixtures/help/curl__--help_all.txt
  248 | --tlspassword | TLS password
  249 | --tlsuser | TLS username
  250 | -1, --tlsv1 | TLSv1.0 or greater
- 251 | --tlsv1 | TLSv1.0 or greater
- 252 | --tlsv1 | TLSv1.1 or greater
- 253 | --tlsv1 | TLSv1.2 or greater
- 254 | --tlsv1 | TLSv1.3 or greater
+ 251 | --tlsv1.0 | TLSv1.0 or greater
+ 252 | --tlsv1.1 | TLSv1.1 or greater
+ 253 | --tlsv1.2 | TLSv1.2 or greater
+ 254 | --tlsv1.3 | TLSv1.3 or greater
  255 | --tr-encoding | Request compressed transfer encoding
  256 | --trace | Write a debug trace to FILE
  257 | --trace-ascii | Like --trace, but without hex output

@@ -76,11 +76,11 @@ pub(crate) fn audit_examples_subcommand(help: &HelpOutput) -> AuditStatus {
         return AuditStatus::Pass;
     }
 
-    AuditStatus::Warn(
+    AuditStatus::Warn(help.noting_dash_rule(
+        &["--examples"],
         "no `examples` subcommand or `--examples` flag found. MAY-tier — \
-         a curated usage block keeps agents from hunting through long help text."
-            .into(),
-    )
+         a curated usage block keeps agents from hunting through long help text.",
+    ))
 }
 
 #[cfg(test)]

@@ -2,4 +2,4 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__version_--help.txt
 ---
-   7 | -j | Output the version information as a JSON object.
+   7 | -json | Output the version information as a JSON object.

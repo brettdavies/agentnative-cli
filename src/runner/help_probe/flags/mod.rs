@@ -10,6 +10,7 @@
 
 mod classify;
 mod header;
+mod pieces;
 
 pub(super) use classify::{is_definition_line, is_section_heading};
 
@@ -79,6 +80,9 @@ impl FlagName {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Flag {
     names: Vec<FlagName>,
+    /// The first value placeholder on the definition line, as written
+    /// (`<FILE>`, `=false`, `N`).
+    placeholder: Option<String>,
     description: String,
     /// 1-based line of the definition in the help text.
     line: usize,
@@ -142,6 +146,21 @@ pub(super) fn find<'a>(flags: &'a [Flag], names: &[&str]) -> Option<FlagMatch<'a
     })
 }
 
+/// The declared single-dash word that would answer one of `names` in a help
+/// with no double-dash names, and the name it is kept apart from.
+pub(super) fn kept_apart<'a>(flags: &'a [Flag], names: &[&'a str]) -> Option<(&'a str, &'a str)> {
+    flags
+        .iter()
+        .flat_map(|flag| &flag.names)
+        .filter(|name| name.form == NameForm::DashWord && !name.stands_for_double_dash)
+        .find_map(|name| {
+            names
+                .iter()
+                .find(|wanted| wanted.strip_prefix("--") == Some(name.word()))
+                .map(|wanted| (name.spelling.as_str(), *wanted))
+        })
+}
+
 /// Read every flag definition in `raw`.
 pub(super) fn parse(raw: &str) -> Vec<Flag> {
     let mut flags = Vec::new();
@@ -154,12 +173,13 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
         if !is_definition_line(line) {
             continue;
         }
-        let Some((names, description)) = header::tokenize(line.trim_start()) else {
+        let Some(header) = header::tokenize(line.trim_start()) else {
             continue;
         };
         flags.push(Flag {
-            names,
-            description: description.to_string(),
+            names: header.names,
+            placeholder: header.placeholder.map(str::to_string),
+            description: header.description.to_string(),
             line: index + 1,
             section: section.clone(),
         });
@@ -210,6 +230,7 @@ mod tests {
             .enumerate()
             .map(|(index, names)| Flag {
                 names: names.iter().map(|name| FlagName::new(*name)).collect(),
+                placeholder: None,
                 description: String::new(),
                 line: index + 1,
                 section: None,
@@ -290,6 +311,132 @@ mod tests {
         assert_eq!(flags[1].long_names().count(), 0);
     }
 
+    // Definition lines from terraform 1.16.4 (`--help`, `init --help`),
+    // lazygit 0.65.1 and cmake 4.4.4, each with the letter an audit asks for
+    // that its single-dash word starts with.
+    const FIRST_LETTER_TRAPS: &[(&str, &str)] = &[
+        (
+            "  -force-copy             Suppress prompts about copying state data when",
+            "-f",
+        ),
+        (
+            "  -no-color               If specified, output won't contain any color.",
+            "-n",
+        ),
+        (
+            "  -version      An alias for the \"version\" subcommand.",
+            "-v",
+        ),
+        (
+            "    -cd   --print-config-dir   Print the config directory",
+            "-c",
+        ),
+        (
+            "  -LR[A][H] <regex>            = Show cached variables that match the regex.",
+            "-L",
+        ),
+        (
+            "  -Werror=<category>           = Make the specified category of warnings",
+            "-W",
+        ),
+    ];
+
+    #[test]
+    fn a_single_dash_word_does_not_answer_its_first_letter() {
+        let answered: Vec<String> = FIRST_LETTER_TRAPS
+            .iter()
+            .filter(|(line, letter)| found(&parse(line), letter).is_some())
+            .map(|(line, letter)| format!("{letter} answered by `{}`", line.trim()))
+            .collect();
+        assert!(answered.is_empty(), "{answered:#?}");
+    }
+
+    #[test]
+    fn a_single_dash_word_answers_its_whole_name() {
+        let whole = [
+            "-force-copy",
+            "-no-color",
+            "-version",
+            "-cd",
+            "-LR",
+            "-Werror",
+        ];
+        let unanswered: Vec<String> = FIRST_LETTER_TRAPS
+            .iter()
+            .zip(whole)
+            .filter(|((line, _), name)| found(&parse(line), name) != Some(*name))
+            .map(|((line, _), name)| format!("{name} not answered by `{}`", line.trim()))
+            .collect();
+        assert!(unanswered.is_empty(), "{unanswered:#?}");
+    }
+
+    // Excerpt of terraform 1.16.4's `terraform init --help`.
+    const TERRAFORM_INIT_HELP: &str = "\
+Usage: terraform [global options] init [options]
+
+Options:
+
+  -backend=false          Disable backend or HCP Terraform initialization
+                          for this configuration and use what was previously
+                          initialized instead.
+
+  -force-copy             Suppress prompts about copying state data when
+                          initializating a new state backend. This is
+                          equivalent to providing a \"yes\" to all confirmation
+                          prompts.
+
+  -no-color               If specified, output won't contain any color.
+
+  -var 'foo=bar'          Set a value for one of the input variables in the root
+                          module of the configuration. Use this option more than
+                          once to set more than one variable.
+";
+
+    // Excerpt of GNU findutils 4.10.0's `find --help`.
+    const FIND_HELP: &str = "\
+Actions:
+      -delete -print0 -printf FORMAT -fprintf FILE FORMAT -print 
+      -fprint0 FILE -fprint FILE -ls -fls FILE -prune -quit
+
+Other common options:
+      --help                   display this help and exit
+      --version                output version information and exit
+";
+
+    #[test]
+    fn a_go_flag_help_declares_whole_words_that_answer_double_dash_lookups() {
+        let flags = parse(TERRAFORM_INIT_HELP);
+        for name in ["-backend", "-force-copy", "-no-color", "-var"] {
+            assert_eq!(found(&flags, name), Some(name));
+        }
+        assert_eq!(found(&flags, "-f"), None);
+        assert_eq!(found(&flags, "-n"), None);
+        assert_eq!(found(&flags, "--no-color"), Some("-no-color"));
+        assert_eq!(found(&flags, "--force-copy"), Some("-force-copy"));
+        assert_eq!(flags[0].placeholder.as_deref(), Some("=false"));
+    }
+
+    #[test]
+    fn a_find_style_help_keeps_single_dash_words_apart_from_double_dash_names() {
+        let flags = parse(FIND_HELP);
+        assert_eq!(found(&flags, "-print"), Some("-print"));
+        assert_eq!(found(&flags, "--print"), None);
+        assert_eq!(found(&flags, "--help"), Some("--help"));
+    }
+
+    #[test]
+    fn a_single_dash_word_kept_apart_from_its_double_dash_spelling_is_reported() {
+        let mixed = help_declaring(&[&["-verbose"], &["--help"]]);
+        assert_eq!(
+            kept_apart(&mixed, &["--verbose", "-v"]),
+            Some(("-verbose", "--verbose"))
+        );
+        assert_eq!(kept_apart(&mixed, &["--quiet"]), None);
+
+        let single_dash_only = help_declaring(&[&["-verbose"], &["-h"]]);
+        assert_eq!(kept_apart(&single_dash_only, &["--verbose"]), None);
+    }
+
     #[test]
     fn a_definition_records_its_line_and_section() {
         let flags = parse("tool 1.0\n\nOptions:\n  -q, --quiet    Say less.\n");
@@ -297,5 +444,6 @@ mod tests {
         assert_eq!(flags[0].line, 4);
         assert_eq!(flags[0].section.as_deref(), Some("Options:"));
         assert_eq!(flags[0].description(), "Say less.");
+        assert_eq!(flags[0].placeholder, None);
     }
 }

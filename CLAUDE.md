@@ -232,7 +232,7 @@ Existing field semantics:
     than the built-in `STANDARD_VERBS` list), with the bifurcated match counts and the first
     `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb names in encounter order.
   - `Config(String)`: every other setting. The prose names the setting, what it contributed, and the file that supplied
-    it, cited through `anc_toml::Sourced::cite` (`destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`). An
+    it, cited through `anc_toml::Sourced::cite` (`destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`). An
     audit that credits a setting returns a `types::Verdict { status, mitigation }` from its core helper.
 - `AuditResultView` surfaces two top-level fields from the `DomainVerbs` variant: `using_domain_verbs: Option<bool>` and
   `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from every

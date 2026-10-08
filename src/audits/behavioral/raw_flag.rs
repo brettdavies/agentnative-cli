@@ -59,11 +59,11 @@ pub(crate) fn audit_raw_flag(help: &HelpOutput) -> AuditStatus {
     if help.find_flag(&["--raw"]).is_some() {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
+        AuditStatus::Warn(help.noting_dash_rule(
+            &["--raw"],
             "no `--raw` flag advertised. MAY-tier — useful for pipelines that \
-             want to strip formatting before piping to other tools."
-                .into(),
-        )
+             want to strip formatting before piping to other tools.",
+        ))
     }
 }
 

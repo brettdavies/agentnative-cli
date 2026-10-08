@@ -2,9 +2,9 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/probe-urfave-v3__--help.txt
 ---
-   8 | -f, --force | skip confirmation prompts
-   9 | -n, --limit | maximum number of results to return, a deliberately long des
+   8 | --force, -f | skip confirmation prompts
+   9 | --limit, -n | maximum number of results to return, a deliberately long des
   10 | --dry-run | print what would change
-  11 | -o, --output | write output to FILE
-  12 | --cd | multi-letter alias
-  13 | -h, --help | show help
+  11 | --output, -o | write output to FILE
+  12 | --print-config-dir, --cd | multi-letter alias
+  13 | --help, -h | show help

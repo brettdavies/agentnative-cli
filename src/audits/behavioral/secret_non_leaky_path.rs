@@ -153,6 +153,27 @@ fn is_secret_flag(long: &str) -> bool {
 mod tests {
     use super::*;
 
+    const GO_STYLE_TOKEN_HELP: &str = "Usage of tool:\n  -addr string\n    \tServer address\n  -token string\n    \tAPI token used for authentication\n";
+
+    const JAVA_STYLE_PASSWORD_HELP: &str = "Options:\n    -password <pass>   Keystore password\n    --help             Print this help message\n";
+
+    #[test]
+    fn a_single_dash_secret_word_is_scanned_in_a_help_without_double_dash_names() {
+        let help = HelpOutput::from_raw(GO_STYLE_TOKEN_HELP);
+        match audit_secret_non_leaky_path(&help) {
+            AuditStatus::Fail(msg) => {
+                assert!(msg.contains("companion or stdin path: -token."), "{msg}")
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_secret_word_beside_double_dash_names_is_left_out() {
+        let help = HelpOutput::from_raw(JAVA_STYLE_PASSWORD_HELP);
+        assert_eq!(audit_secret_non_leaky_path(&help), AuditStatus::Pass);
+    }
+
     const HELP_TOKEN_WITH_FILE: &str = r#"Usage: tool [OPTIONS]
 
 Options:

@@ -2,8 +2,8 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__untaint_--help.txt
 ---
-  17 | -a | If specified, the command will succeed (exit code 0)
-  20 | -l | Don't hold a state lock during the operation. This is
-  24 | -l | Duration to retry a state lock.
-  26 | -i | A rare option used for the remote backend only. See
-  29 | -s |
+  17 | -allow-missing | If specified, the command will succeed (exit code 0)
+  20 | -lock | Don't hold a state lock during the operation. This is
+  24 | -lock-timeout | Duration to retry a state lock.
+  26 | -ignore-remote-version | A rare option used for the remote backend only. See
+  29 | -state |

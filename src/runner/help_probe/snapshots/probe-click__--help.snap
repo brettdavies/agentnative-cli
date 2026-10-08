@@ -7,7 +7,7 @@ input_file: tests/fixtures/help/probe-click__--help.txt
   11 | --dry-run | print what would change
   12 | -v, --verbose | increase verbosity
   13 | -o, --output | write output here
-  14 | -c, --print-config-dir | multi-letter single-dash alias
-  15 | -n | single-dash word option
-  16 | --color | boolean pair
+  14 | -cd, --print-config-dir | multi-letter single-dash alias
+  15 | -no-color | single-dash word option
+  16 | --color, --no-color2 | boolean pair
   17 | --help | Show this message and exit.

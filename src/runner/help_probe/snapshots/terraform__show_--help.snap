@@ -2,5 +2,5 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__show_--help.txt
 ---
-   8 | -n | If specified, output won't contain any color.
-   9 | -j | If specified, output the Terraform plan or state in
+   8 | -no-color | If specified, output won't contain any color.
+   9 | -json | If specified, output the Terraform plan or state in

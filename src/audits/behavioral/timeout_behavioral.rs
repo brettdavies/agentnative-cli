@@ -17,7 +17,9 @@
 //! CLI; they verify different requirements.
 
 use crate::audit::Audit;
-use crate::audits::behavioral::subcommand_help::{coverage, first_flag, probe_named};
+use crate::audits::behavioral::subcommand_help::{
+    coverage, dash_rule_notes, first_flag, probe_named,
+};
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -132,9 +134,10 @@ pub(crate) fn audit_timeout_behavioral(
         AuditStatus::Warn(format!(
             "no long-running subcommand advertises a timeout flag in its --help: {} \
              (looked for {}). SHOULD-tier: without a bound, agents that hit a hung \
-             operation have to enforce timeouts externally.",
+             operation have to enforce timeouts externally.{}",
             cov.without_list(),
             TIMEOUT_FLAGS.join(", "),
+            dash_rule_notes(&cov.without, subhelp, TIMEOUT_FLAGS),
         )),
         None,
     )

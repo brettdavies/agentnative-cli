@@ -186,8 +186,8 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
     if subcommands.is_empty() {
         return Detected::Settled(AuditStatus::OptOut(help.noting_dash_rule(
             OUTPUT_FLAGS,
-            "no option definition in --help declares --output or --format; usage lines are not \
-             read. The tool is scored as shipping no structured output, and the \
+            "no option definition in --help declares --output or --format, the flags this \
+             requirement accepts; usage lines are not read. The row is opt_out, and the \
              schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
              collapse to n/a via antecedent propagation.",
         )));
@@ -211,8 +211,8 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
         OUTPUT_FLAGS,
         &format!(
             "no option definition in --help, or in the --help of the {} subcommand{} read, \
-             declares --output or --format; usage lines are not read. The tool is scored as \
-             shipping no structured output.",
+             declares --output or --format, the flags this requirement accepts; usage lines \
+             are not read.",
             read.len(),
             if read.len() == 1 { "" } else { "s" },
         ),
@@ -500,8 +500,8 @@ esac
         assert_eq!(
             result.status,
             AuditStatus::OptOut(
-                "no option definition in --help declares --output or --format; usage lines are \
-                 not read. The tool is scored as shipping no structured output, and the \
+                "no option definition in --help declares --output or --format, the flags this \
+                 requirement accepts; usage lines are not read. The row is opt_out, and the \
                  schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
                  collapse to n/a via antecedent propagation."
                     .into()
@@ -565,9 +565,9 @@ esac
             result.status,
             AuditStatus::OptOut(
                 "no option definition in --help, or in the --help of the 2 subcommands read, \
-                 declares --output or --format; usage lines are not read. The tool is scored as \
-                 shipping no structured output. In `list`, `-format` is declared, but this help \
-                 also declares double-dash names, so it does not count as `--format`."
+                 declares --output or --format, the flags this requirement accepts; usage lines \
+                 are not read. In `list`, `-format` is declared, but this help also declares \
+                 double-dash names, so it does not count as `--format`."
                     .into()
             )
         );

@@ -196,9 +196,12 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
   or revert it before tagging.
 - [ ] No unmerged dependency advisories from `cargo deny check advisories`. The full local pre-push check
   (`scripts/hooks/pre-push`) mirrors CI; run it explicitly before pushing the release branch.
-- [ ] Every row of the `Release matrix check` run on the release branch is green. It is the only build of the
-  cross-compiled targets before the tag, and no ruleset can require it: the check is path-filtered on PRs, and a
-  required context that never reports leaves a PR pending.
+- [ ] The latest `Release matrix check` run on a PR to `dev` is green (`gh run list --workflow
+  release-matrix-check.yml --event pull_request --limit 5`). The tag's build is the release's one build of the
+  cross-compiled targets, and nothing builds them for the release branch. No ruleset can require the check: it is
+  path-filtered on PRs, and a required context that never reports leaves a PR pending, so a dependency or toolchain PR
+  can merge with it red. `gh workflow run release-matrix-check.yml --ref release/v<version>` rehearses the matrix on
+  the release branch when the release wants one.
 - [ ] `scripts/release/cut-release-branch.sh` exited 0, so its check A held: the staged tree equals `origin/dev`'s apart
   from the version carriers and the guarded paths. A cherry-pick release runs the triple diff in `RELEASES.md` §
   Exception: cherry-pick instead, with `HEAD..origin/dev` filtered by the guarded set (not all of `docs/`, since a

@@ -1,0 +1,828 @@
+{
+  "probe_env": {"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "80", "PAGER": "cat"},
+  "images": {
+    "scorer": {"id": "sha256:05db16cf226cd14a93a2682aea41b72d3e6b4d240cadba006f2881d3ffa996b3", "dockerfile": "agentnative-site:docker/score/Dockerfile"},
+    "probes": {"id": "sha256:f1626f912f98f5152d1c34dc6ece1765025ccd4ee331ab479b34580b323fd327", "dockerfile": "probes/Dockerfile"}
+  },
+  "fixtures": [
+    {
+      "file": "actionlint__--help.txt",
+      "tool": "actionlint",
+      "version": "1.7.12",
+      "image": "scorer",
+      "argv": ["actionlint", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__init_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "init", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__validate_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "validate", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__plan_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "plan", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__apply_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "apply", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__destroy_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "destroy", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__console_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "console", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__fmt_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "fmt", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__force-unlock_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "force-unlock", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__get_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "get", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__graph_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "graph", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__import_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "import", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__login_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "login", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__logout_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "logout", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__metadata_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "metadata", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__modules_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "modules", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__output_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "output", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__providers_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "providers", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__query_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "query", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__refresh_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "refresh", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__show_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "show", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__stacks_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "stacks", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "note": "Printed by the Terraform Stacks plugin v1.4.0, which terraform downloads when the subcommand runs."
+    },
+    {
+      "file": "terraform__state_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "state", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__taint_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "taint", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__test_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "test", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__untaint_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "untaint", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__version_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "version", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "terraform__workspace_--help.txt",
+      "tool": "terraform",
+      "version": "1.16.4",
+      "image": "scorer",
+      "argv": ["terraform", "workspace", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "lazygit__--help.txt",
+      "tool": "lazygit",
+      "version": "0.65.1",
+      "image": "scorer",
+      "argv": ["lazygit", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "mlr__sort_--help.txt",
+      "tool": "mlr",
+      "version": "6.22.0",
+      "image": "scorer",
+      "argv": ["mlr", "sort", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "cmake__--help.txt",
+      "tool": "cmake",
+      "version": "4.4.4",
+      "image": "scorer",
+      "argv": ["cmake", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "pandoc__--help.txt",
+      "tool": "pandoc",
+      "version": "3.12",
+      "image": "scorer",
+      "argv": ["pandoc", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "shellcheck__--help.txt",
+      "tool": "shellcheck",
+      "version": "0.11.0",
+      "image": "scorer",
+      "argv": ["shellcheck", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "rsync__--help.txt",
+      "tool": "rsync",
+      "version": "3.5.1",
+      "image": "scorer",
+      "argv": ["rsync", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "ffmpeg__--help.txt",
+      "tool": "ffmpeg",
+      "version": "9.0.2",
+      "image": "scorer",
+      "argv": ["ffmpeg", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "ffmpeg__-h_long.txt",
+      "tool": "ffmpeg",
+      "version": "9.0.2",
+      "image": "scorer",
+      "argv": ["ffmpeg", "-h", "long"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "broot__--help.txt",
+      "tool": "broot",
+      "version": "1.61.0",
+      "image": "scorer",
+      "argv": ["broot", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "git__commit_-h.txt",
+      "tool": "git",
+      "version": "2.56.0",
+      "image": "scorer",
+      "argv": ["git", "commit", "-h"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "sed__--help.txt",
+      "tool": "sed",
+      "version": "4.9",
+      "image": "scorer",
+      "argv": ["sed", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "curl__--help_all.txt",
+      "tool": "curl",
+      "version": "8.22.0",
+      "image": "scorer",
+      "argv": ["curl", "--help", "all"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "pixi__--help.txt",
+      "tool": "pixi",
+      "version": "0.81.0",
+      "image": "scorer",
+      "argv": ["pixi", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "docker__run_--help.txt",
+      "tool": "docker",
+      "version": "29.8.2",
+      "image": "scorer",
+      "argv": ["docker", "run", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "claude__--help.txt",
+      "tool": "claude",
+      "version": "2.1.289",
+      "image": "scorer",
+      "argv": ["claude", "--help"],
+      "exit_code": 0,
+      "trimmed": true,
+      "kept": "Every line through the `Options:` heading. In the options block: each line indented 2 (a definition line), each line indented 6 (a description that starts on the line after its definition), and each line indented 40 that starts with `-`, with the indent-40 line before it and after it. Every other wrapped description line and the `Commands:` section are dropped."
+    },
+    {
+      "file": "find__--help.txt",
+      "tool": "find",
+      "version": "4.10.0",
+      "image": "scorer",
+      "argv": ["find", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "aws__s3_ls_help.txt",
+      "tool": "aws",
+      "version": "2.37.9",
+      "image": "scorer",
+      "argv": ["aws", "s3", "ls", "help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "jq__--help.txt",
+      "tool": "jq",
+      "version": "1.8.2",
+      "image": "scorer",
+      "argv": ["jq", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "files-to-prompt__--help.txt",
+      "tool": "files-to-prompt",
+      "version": "0.6",
+      "image": "scorer",
+      "argv": ["files-to-prompt", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "tar__--help.txt",
+      "tool": "tar",
+      "version": "1.35",
+      "image": "scorer",
+      "argv": ["tar", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "tmux__-h.txt",
+      "tool": "tmux",
+      "version": "3.7c",
+      "image": "scorer",
+      "argv": ["tmux", "-h"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "anc__--help.txt",
+      "tool": "anc",
+      "version": "0.6.0",
+      "image": "scorer",
+      "argv": ["anc", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "anc__audit_--help.txt",
+      "tool": "anc",
+      "version": "0.6.0",
+      "image": "scorer",
+      "argv": ["anc", "audit", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "gh__--help.txt",
+      "tool": "gh",
+      "version": "2.102.0",
+      "image": "scorer",
+      "argv": ["gh", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "kubectl__--help.txt",
+      "tool": "kubectl",
+      "version": "1.37.1",
+      "image": "scorer",
+      "argv": ["kubectl", "--help"],
+      "exit_code": 0,
+      "trimmed": false
+    },
+    {
+      "file": "probe-go-flag__--help.txt",
+      "tool": "probe-go-flag",
+      "version": "go1.27.1",
+      "image": "probes",
+      "argv": ["probe-go-flag", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "Go flag",
+      "framework_version": "go1.27.1",
+      "probe_source": "probes/go/stdflag/main.go",
+      "declared": [
+        ["-f"],
+        ["-force"],
+        ["-n"],
+        ["-no-color"],
+        ["-auto-approve"],
+        ["-chdir"],
+        ["-v"]
+      ]
+    },
+    {
+      "file": "probe-kingpin__--help.txt",
+      "tool": "probe-kingpin",
+      "version": "go1.27.1",
+      "image": "probes",
+      "argv": ["probe-kingpin", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "kingpin",
+      "framework_version": "2.4.0",
+      "probe_source": "probes/go/kingpin/main.go",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o"],
+        ["--color"]
+      ]
+    },
+    {
+      "file": "probe-kong__--help.txt",
+      "tool": "probe-kong",
+      "version": "go1.27.1",
+      "image": "probes",
+      "argv": ["probe-kong", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "kong",
+      "framework_version": "1.16.1",
+      "probe_source": "probes/go/kong/main.go",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o"],
+        ["--color"],
+        ["--verbose", "-v"]
+      ]
+    },
+    {
+      "file": "probe-urfave-v2__--help.txt",
+      "tool": "probe-urfave-v2",
+      "version": "go1.27.1",
+      "image": "probes",
+      "argv": ["probe-urfave-v2", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "urfave/cli",
+      "framework_version": "2.27.7",
+      "probe_source": "probes/go/urfave2/main.go",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o"],
+        ["--print-config-dir", "--cd"]
+      ]
+    },
+    {
+      "file": "probe-urfave-v3__--help.txt",
+      "tool": "probe-urfave-v3",
+      "version": "go1.27.1",
+      "image": "probes",
+      "argv": ["probe-urfave-v3", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "urfave/cli",
+      "framework_version": "3.14.0",
+      "probe_source": "probes/go/urfave3/main.go",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o"],
+        ["--print-config-dir", "--cd"]
+      ]
+    },
+    {
+      "file": "probe-argparse-py3.12__--help.txt",
+      "tool": "probe-argparse-py3.12",
+      "version": "CPython 3.12.15",
+      "image": "probes",
+      "argv": ["probe-argparse-py3.12", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "argparse",
+      "framework_version": "CPython 3.12.15",
+      "probe_source": "probes/python/py_argparse.py",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-v", "--verbose"],
+        ["-o", "--output"],
+        ["-cd", "--print-config-dir"],
+        ["-no-color"],
+        ["--color"]
+      ]
+    },
+    {
+      "file": "probe-argparse-py3.13__--help.txt",
+      "tool": "probe-argparse-py3.13",
+      "version": "CPython 3.13.13",
+      "image": "probes",
+      "argv": ["probe-argparse-py3.13", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "argparse",
+      "framework_version": "CPython 3.13.13",
+      "probe_source": "probes/python/py_argparse.py",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-v", "--verbose"],
+        ["-o", "--output"],
+        ["-cd", "--print-config-dir"],
+        ["-no-color"],
+        ["--color"]
+      ]
+    },
+    {
+      "file": "probe-click__--help.txt",
+      "tool": "probe-click",
+      "version": "CPython 3.13.13",
+      "image": "probes",
+      "argv": ["probe-click", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "click",
+      "framework_version": "8.5.0",
+      "probe_source": "probes/python/py_click.py",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-v", "--verbose"],
+        ["-o", "--output"],
+        ["-cd", "--print-config-dir"],
+        ["-no-color"],
+        ["--color", "--no-color2"]
+      ]
+    },
+    {
+      "file": "probe-docopt__--help.txt",
+      "tool": "probe-docopt",
+      "version": "CPython 3.13.13",
+      "image": "probes",
+      "argv": ["probe-docopt", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "docopt",
+      "framework_version": "docopt-ng 0.9.0",
+      "probe_source": "probes/python/py_docopt.py",
+      "declared": [
+        ["-h", "--help"],
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-v", "--verbose"],
+        ["-o", "--output"]
+      ]
+    },
+    {
+      "file": "probe-rich-click__--help.txt",
+      "tool": "probe-rich-click",
+      "version": "CPython 3.13.13",
+      "image": "probes",
+      "argv": ["probe-rich-click", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "rich-click",
+      "framework_version": "1.9.9",
+      "probe_source": "probes/python/py_richclick.py",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-cd", "--print-config-dir"]
+      ]
+    },
+    {
+      "file": "probe-typer__--help.txt",
+      "tool": "probe-typer",
+      "version": "CPython 3.13.13",
+      "image": "probes",
+      "argv": ["probe-typer", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "typer",
+      "framework_version": "typer 0.27.2, rich 15.0.0",
+      "probe_source": "probes/python/py_typer.py",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-cd", "--print-config-dir"],
+        ["-o", "--output"]
+      ]
+    },
+    {
+      "file": "probe-commander__--help.txt",
+      "tool": "probe-commander",
+      "version": "Node.js 26.10.0",
+      "image": "probes",
+      "argv": ["probe-commander", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "commander",
+      "framework_version": "15.0.0",
+      "probe_source": "probes/node/commander.js",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-v", "--verbose"],
+        ["-o", "--output"],
+        ["--no-color"]
+      ]
+    },
+    {
+      "file": "probe-yargs__--help.txt",
+      "tool": "probe-yargs",
+      "version": "Node.js 26.10.0",
+      "image": "probes",
+      "argv": ["probe-yargs", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "yargs",
+      "framework_version": "18.2.0",
+      "probe_source": "probes/node/yargs.js",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o", "--out"],
+        ["--print-config-dir", "--cd"]
+      ]
+    },
+    {
+      "file": "probe-oclif__deploy_--help.txt",
+      "tool": "probe-oclif",
+      "version": "Node.js 26.10.0",
+      "image": "probes",
+      "argv": ["probe-oclif", "deploy", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "oclif",
+      "framework_version": "@oclif/core 5.1.2",
+      "probe_source": "probes/node/oclif-commands.mjs",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o", "--out", "-O"],
+        ["--color"]
+      ]
+    },
+    {
+      "file": "probe-thor__help_deploy.txt",
+      "tool": "probe-thor",
+      "version": "ruby 4.0.7",
+      "image": "probes",
+      "argv": ["probe-thor", "help", "deploy"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "Thor",
+      "framework_version": "1.5.0",
+      "probe_source": "probes/ruby/thor-probe.rb",
+      "declared": [
+        ["--force", "-f"],
+        ["--limit", "-n"],
+        ["--dry-run"],
+        ["--output", "-o", "--out"],
+        ["--print-config-dir", "-cd"],
+        ["-c"],
+        ["-d"]
+      ]
+    },
+    {
+      "file": "probe-picocli__--help.txt",
+      "tool": "probe-picocli",
+      "version": "OpenJDK 21.0.12.1",
+      "image": "probes",
+      "argv": ["probe-picocli", "--help"],
+      "exit_code": 0,
+      "trimmed": false,
+      "framework": "picocli",
+      "framework_version": "4.7.7",
+      "probe_source": "probes/java/Probe.java",
+      "declared": [
+        ["-f", "--force"],
+        ["-n", "--limit"],
+        ["--dry-run"],
+        ["-cp", "--classpath"],
+        ["-version-json"],
+        ["-c"],
+        ["-p"],
+        ["-o", "--output", "/out"]
+      ]
+    },
+    {
+      "file": "java__-help.txt",
+      "tool": "java",
+      "version": "21.0.12.1",
+      "image": "probes",
+      "argv": ["java", "-help"],
+      "exit_code": 0,
+      "trimmed": false
+    }
+  ]
+}

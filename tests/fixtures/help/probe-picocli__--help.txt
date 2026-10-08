@@ -1,0 +1,16 @@
+Usage: probe [-cfhpV] [--dry-run] [-version-json] [-cp=<cp>] [-n=N] [-o=<out>]
+             [PATH]
+picocli probe
+      [PATH]                 positional
+  -c                         single c
+      -cp, --classpath=<cp>  multi-letter single-dash name
+      --dry-run              print what would change
+  -f, --force                skip confirmation prompts
+  -h, --help                 Show this help message and exit.
+  -n, --limit=N              maximum number of results to return, a
+                               deliberately long description so picocli has to
+                               wrap it onto continuation lines
+  -o, /out, --output=<out>   three names
+  -p                         single p
+  -V, --version              Print version information and exit.
+      -version-json          single-dash word option

@@ -28,17 +28,18 @@ pub(crate) fn takes_own_arguments(name: &str, help: &HelpOutput, global_flags: &
 }
 
 fn is_help_flag(flag: &Flag) -> bool {
-    match flag.long.as_deref() {
-        Some(long) => long == "--help",
-        None => flag.short.as_deref() == Some("-h"),
+    if flag.long_names().next().is_some() {
+        flag.declares("--help").is_some()
+    } else {
+        flag.declares("-h").is_some()
     }
 }
 
+/// Whether the top-level help declares the name that identifies `flag`.
 fn is_global(flag: &Flag, global_flags: &[Flag]) -> bool {
-    global_flags.iter().any(|global| match &flag.long {
-        Some(long) => global.long.as_ref() == Some(long),
-        None => flag.short.is_some() && global.short == flag.short,
-    })
+    global_flags
+        .iter()
+        .any(|global| global.declares(flag.name()).is_some())
 }
 
 /// True when a usage form naming `name` shows an operand after it, or when

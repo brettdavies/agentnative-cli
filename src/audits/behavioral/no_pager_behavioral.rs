@@ -67,7 +67,7 @@ impl Audit for NoPagerBehavioralAudit {
 /// Core unit for tests. Takes a prepared `HelpOutput` and returns the
 /// `AuditStatus` that summarizes it.
 fn audit_no_pager(help: &HelpOutput) -> AuditStatus {
-    let has_no_pager_flag = help.flags().iter().any(|f| f.matches("--no-pager"));
+    let has_no_pager_flag = help.find_flag(&["--no-pager"]).is_some();
     if has_no_pager_flag {
         return AuditStatus::Pass;
     }
@@ -151,8 +151,6 @@ Options:
 
     #[test]
     fn detects_no_pager_with_mixed_casing() {
-        // Ensure we match `--no-pager` as a long flag regardless of how the
-        // `Flag::matches` helper receives the query.
         let help = HelpOutput::from_raw("  --no-pager   Disable paging.\n");
         assert_eq!(audit_no_pager(&help), AuditStatus::Pass);
     }

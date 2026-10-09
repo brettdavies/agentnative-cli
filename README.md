@@ -164,8 +164,9 @@ The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assu
 flag counts beside them, and only where the subcommand's `--help` lists it, so a declaration names the flag and cannot
 stand in for one. Built-in and declared names match whole: `-f` does not match `-force-copy`. In a help that declares no
 double-dash name, a single-dash name matches its double-dash spelling, so terraform's `-auto-approve` meets the built-in
-`--auto-approve` without a declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. A pass that needed a
-declared flag says so in the row's evidence, naming the subcommand, the flag, and the file:
+`--auto-approve` without a declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. An entry written
+without dashes is read as a flag: `noconfirm` is `--noconfirm`, and `y` is `-y`. A pass that needed a declared flag says
+so in the row's evidence, naming the subcommand, the flag, and the file:
 `destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`.
 
 `not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`, `clean`,

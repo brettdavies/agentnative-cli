@@ -12,6 +12,8 @@
 //! subcommand lists none. Vacuous Skip when the binary has no destructive
 //! subcommands.
 
+use std::borrow::Cow;
+
 use crate::anc_toml::{CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::destructive_subcommands;
@@ -105,6 +107,19 @@ impl Audit for ForceYesAudit {
     }
 }
 
+/// A declared flag as the lookup spells it. An entry written as a bare word
+/// is a flag all the same: `noconfirm` is `--noconfirm`, and `y` is `-y`. An
+/// entry that leads with `-`, `+` or `/` is a name as written.
+fn as_flag_name(value: &str) -> Cow<'_, str> {
+    if !value.starts_with(char::is_alphanumeric) {
+        Cow::Borrowed(value)
+    } else if value.chars().count() == 1 {
+        Cow::Owned(format!("-{value}"))
+    } else {
+        Cow::Owned(format!("--{value}"))
+    }
+}
+
 /// Pass when every destructive subcommand's `--help` lists a built-in
 /// confirmation flag or one of `declared_flags`. A built-in match takes
 /// priority; a Pass that needed a declared flag names the subcommand, the
@@ -126,7 +141,7 @@ pub(crate) fn audit_force_yes(
         }
         match declared_flags
             .iter()
-            .find(|flag| help.find_flag(&[&flag.value]).is_some())
+            .find(|flag| help.find_flag(&[&as_flag_name(&flag.value)]).is_some())
         {
             Some(flag) => confirmed_by_declaration.push(format!(
                 "{verb} accepts {} via {}",
@@ -143,10 +158,14 @@ pub(crate) fn audit_force_yes(
                 .then(|| Mitigation::Config(confirmed_by_declaration.join("; "))),
         };
     }
+    let declared_names: Vec<Cow<'_, str>> = declared_flags
+        .iter()
+        .map(|flag| as_flag_name(&flag.value))
+        .collect();
     let wanted: Vec<&str> = CONFIRM_FLAGS
         .iter()
         .copied()
-        .chain(declared_flags.iter().map(|flag| flag.value.as_str()))
+        .chain(declared_names.iter().map(AsRef::as_ref))
         .collect();
     AuditStatus::Fail(format!(
         "destructive subcommand(s) whose --help lists no confirmation flag: {}. \
@@ -386,6 +405,36 @@ mod tests {
                 "destroy accepts -noconfirm via .anc.toml [p5].confirm_flags".into()
             ))
         );
+    }
+
+    #[test]
+    fn a_declared_flag_written_without_dashes_is_a_flag() {
+        let long = confirms(
+            "Options:\n      --noconfirm    Do not ask.\n  -h, --help         Show help.\n",
+            "noconfirm",
+        );
+        assert_eq!(long.status, AuditStatus::Pass);
+        assert_eq!(
+            long.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts noconfirm via .anc.toml [p5].confirm_flags".into()
+            ))
+        );
+
+        let short = confirms(
+            "Options:\n  -k             Do not ask.\n  -h, --help     Show help.\n",
+            "k",
+        );
+        assert_eq!(short.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_declared_flag_that_leads_with_a_plus_is_matched_as_written() {
+        let plus = confirms(
+            "Options:\n  +n, --no-ask   Do not ask.\n  -h, --help     Show help.\n",
+            "+n",
+        );
+        assert_eq!(plus.status, AuditStatus::Pass);
     }
 
     #[test]

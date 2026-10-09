@@ -62,10 +62,7 @@ impl Audit for MoreFormatsAudit {
 }
 
 pub(crate) fn audit_more_formats(help: &HelpOutput) -> AuditStatus {
-    let has_output_flag = help
-        .flags()
-        .iter()
-        .any(|f| f.matches("--output") || f.matches("--format"));
+    let has_output_flag = help.find_flag(&["--output", "--format"]).is_some();
     if !has_output_flag {
         return AuditStatus::Skip(
             "no `--output` or `--format` flag advertised; vacuous skip for MAY-tier extra formats."

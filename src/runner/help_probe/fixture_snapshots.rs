@@ -4,7 +4,7 @@
 //! `index.json` lists every capture with where it came from. Each capture has
 //! a snapshot in `snapshots/` with one line per definition the parser reads:
 //! `{line:>4} | {names} | {description}`, the 1-based line in the capture, the
-//! names as the parser spells them, and the start of the description.
+//! names as the help spells them, and the start of the description.
 //!
 //! `INSTA_UPDATE=always cargo test fixture_snapshots` rewrites the snapshots.
 
@@ -15,10 +15,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{HelpOutput, parse_numbered_flags};
+use super::HelpOutput;
 
 const INDEX_FILE: &str = "index.json";
-const DESCRIPTION_CHARS: usize = 60;
 
 #[derive(Deserialize)]
 struct Index {
@@ -69,14 +68,8 @@ fn capture_stem(file: &str) -> &str {
 
 fn render_definitions(raw: &str) -> String {
     let mut out = String::new();
-    for (line, flag) in parse_numbered_flags(raw) {
-        let names = [flag.short.as_deref(), flag.long.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            .join(", ");
-        let description: String = flag.description.chars().take(DESCRIPTION_CHARS).collect();
-        writeln!(out, "{line:>4} | {names} | {description}").expect("writing to a String");
+    for flag in HelpOutput::from_raw(raw).flags() {
+        writeln!(out, "{}", flag.snapshot_line()).expect("writing to a String");
     }
     out
 }

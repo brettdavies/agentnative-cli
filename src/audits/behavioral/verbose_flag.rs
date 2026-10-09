@@ -8,6 +8,8 @@ use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
+const VERBOSE_FLAGS: &[&str] = &["--verbose", "-v", "-vv"];
+
 pub struct VerboseFlagAudit;
 
 impl Audit for VerboseFlagAudit {
@@ -56,14 +58,7 @@ impl Audit for VerboseFlagAudit {
 }
 
 pub(crate) fn audit_verbose_flag(help: &HelpOutput) -> AuditStatus {
-    let has_verbose = help.flags().iter().any(|f| {
-        f.matches("--verbose")
-            || f.matches("-v")
-            // Some tools advertise the stacked short form as `-vv` in help text;
-            // the parsed `Flag` will still expose `-v` as the short form, but
-            // a CLI that ONLY exposes `-vv` (no long `--verbose`) is rare.
-            || f.matches("-vv")
-    });
+    let has_verbose = help.find_flag(VERBOSE_FLAGS).is_some();
     if has_verbose {
         AuditStatus::Pass
     } else {

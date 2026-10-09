@@ -6,3 +6,45 @@ input_file: tests/fixtures/help/ffmpeg__--help.txt
    6 | -h | long -- print more options
    7 | -h | full -- print all options (including all format and codec sp
    8 | -h | type=name -- print all options for the named decoder/encoder
+  14 | -L | show license
+  15 | -license | show license
+  16 | -h | show help
+  17 | -version | show version
+  18 | -muxers | show available muxers
+  19 | -demuxers | show available demuxers
+  20 | -devices | show available devices
+  21 | -decoders | show available decoders
+  22 | -encoders | show available encoders
+  23 | -filters | show available filters
+  24 | -pix_fmts | show available pixel formats
+  25 | -layouts | show standard channel layouts
+  26 | -sample_fmts | show available audio sample formats
+  29 | -v | set logging level
+  30 | -y | overwrite output files
+  31 | -n | never overwrite output files
+  32 | -print_graphs | print execution graph data to stderr
+  33 | -print_graphs_file | write execution graph data to the specified file
+  34 | -print_graphs_format | set the output printing format (available formats are: defau
+  35 | -stats | print progress report during encoding
+  38 | -f | force container format (auto-detected otherwise)
+  39 | -t | stop transcoding after specified duration
+  40 | -to | stop transcoding after specified time is reached
+  41 | -ss | start transcoding at specified time
+  45 | -metadata | add metadata
+  48 | -c | select encoder/decoder ('copy' to copy stream without reenco
+  49 | -filter | apply specified filters to audio/video
+  52 | -r | override input framerate/convert to given output framerate (
+  53 | -aspect | set aspect ratio (4:3, 16:9 or 1.3333, 1.7777)
+  54 | -vn | disable video
+  55 | -vcodec | alias for -c:v (select encoder/decoder for video streams)
+  56 | -vf | alias for -filter:v (apply filters to video streams)
+  57 | -b | video bitrate (please use -b:v)
+  60 | -aq | set audio quality (codec-specific)
+  61 | -ar | set audio sampling rate (in Hz)
+  62 | -ac | set number of audio channels
+  63 | -an | disable audio
+  64 | -acodec | alias for -c:a (select encoder/decoder for audio streams)
+  65 | -ab | alias for -b:a (select bitrate for audio streams)
+  66 | -af | alias for -filter:a (apply filters to audio streams)
+  69 | -sn | disable subtitle
+  70 | -scodec | alias for -c:s (select encoder/decoder for subtitle streams)

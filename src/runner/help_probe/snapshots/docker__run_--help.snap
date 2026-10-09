@@ -76,7 +76,7 @@ input_file: tests/fixtures/help/docker__run_--help.txt
  133 | --oom-score-adj | Tune host's OOM preferences
  135 | --pid | PID namespace to use
  136 | --pids-limit | Tune container pids limit (set
- 137 | -1 | 
+ 137 | -1 | for unlimited)
  138 | --platform | Set platform if server is
  140 | --privileged | Give extended privileges to this
  142 | -p, --publish | Publish a container's port(s) to

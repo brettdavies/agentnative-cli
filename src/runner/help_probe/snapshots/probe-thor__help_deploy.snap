@@ -4,5 +4,5 @@ input_file: tests/fixtures/help/probe-thor__help_deploy.txt
 ---
    5 | -f | [--force]                                                   
    6 | -n | [--limit=N]                                                 
-   8 | -o, --out | # write output here
+   8 | -o, --out | write output here
    9 | -cd | [--print-config-dir], [--no-print-config-dir], [--skip-print

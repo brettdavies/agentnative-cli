@@ -23,11 +23,14 @@
 //! off from it, or its description starts at the column the definition above
 //! it uses.
 //!
-//! Three more dash-led shapes are not definitions at any indent: a line
-//! under one that ends in a backslash (an example command carries on), a
-//! line indented to the arguments of the usage line above it (the synopsis
-//! wraps), and a line that reads on as a sentence directly under prose at
-//! the same indent.
+//! Three more dash-led shapes are not definitions at any indent:
+//!
+//! - a line under one that ends in a backslash, while no description is
+//!   being read (an example command carries on);
+//! - a line indented to the arguments of the usage line above it, with no
+//!   gap before a description of its own (the synopsis wraps);
+//! - a line that reads on as a sentence, directly under prose at the same
+//!   indent that does not end its sentence.
 
 use super::NameForm;
 use super::header::{self, Header};
@@ -62,13 +65,15 @@ struct Layout {
     description: Description,
     /// Columns a name starts at, in every definition under this heading.
     name_columns: Vec<usize>,
-    /// The line above ends in a backslash: a shell command in an example
-    /// carries on.
+    /// The line above ends in a backslash. Outside a description, that is a
+    /// shell command in an example carrying on.
     after_backslash: bool,
     /// Column the arguments of the usage line being read start at. A line
-    /// indented that far carries the synopsis on.
+    /// indented that far carries the synopsis on, unless a gap sets off a
+    /// description of its own.
     synopsis: Option<usize>,
-    /// Indent of the line above, when it is prose.
+    /// Indent of the line above, when it is prose that does not end its
+    /// sentence.
     prose: Option<usize>,
 }
 
@@ -103,10 +108,17 @@ impl Layout {
         if !in_synopsis {
             self.synopsis = synopsis_column(line);
         }
-        let shaped = is_definition_shaped(trimmed) && !continued && !in_synopsis;
+        let carries_a_command = continued && matches!(self.description, Description::None);
+        let shaped = is_definition_shaped(trimmed) && !carries_a_command;
         let header = if shaped { header::tokenize(line) } else { None };
-        let set_off = header.as_ref().is_some_and(|header| header.set_off);
-        if self.continues(indent, shaped, set_off) {
+        let wraps_the_synopsis =
+            in_synopsis && !header.as_ref().is_some_and(|header| header.set_off);
+        let (shaped, header) = if wraps_the_synopsis {
+            (false, None)
+        } else {
+            (shaped, header)
+        };
+        if self.continues(indent, header.is_some()) {
             if let Description::Awaited(_) = self.description {
                 self.description = Description::At(indent);
             }
@@ -120,18 +132,19 @@ impl Layout {
             self.name_columns.clear();
         }
         let needs_gap = indent == 0 || trimmed.starts_with("[-");
+        let runs_on = !trimmed.trim_end().ends_with(['.', ':', '!', '?']);
         let Some(header) = header else {
             if shaped && !needs_gap {
                 return Line::Unnamed;
             }
-            self.prose = Some(indent);
+            self.prose = runs_on.then_some(indent);
             return Line::Other;
         };
         let aligned = indent == 0 && above.is_some() && header.description_column == above;
         let wraps_a_sentence =
             above_prose == Some(indent) && !header.set_off && !header.description.is_empty();
         if (needs_gap && !header.set_off && !aligned) || wraps_a_sentence {
-            self.prose = Some(indent);
+            self.prose = runs_on.then_some(indent);
             return Line::Other;
         }
         self.description = match header.description_column {
@@ -149,16 +162,16 @@ impl Layout {
 
     /// Whether a line at `indent` carries on the current definition's
     /// description: it sits at or past the description column, or it is the
-    /// first line under a definition that has no description yet. A line
-    /// shaped like a definition, at a column where names start, is a
-    /// definition instead: under a definition with no description always (a
-    /// long-only row sits at the long column of the rows around it), and at
-    /// the description column when a gap sets off a description of its own.
-    fn continues(&self, indent: usize, shaped: bool, set_off: bool) -> bool {
-        let at_name_column = shaped && self.name_columns.contains(&indent);
+    /// first line under a definition that has no description yet. Under such
+    /// a definition, a line that declares a name at a column where names
+    /// start is a definition instead: a long-only row sits at the long
+    /// column of the rows around it.
+    fn continues(&self, indent: usize, named: bool) -> bool {
         match self.description {
-            Description::At(column) => indent >= column && !(at_name_column && set_off),
-            Description::Awaited(definition) => indent > definition && !at_name_column,
+            Description::At(column) => indent >= column,
+            Description::Awaited(definition) => {
+                indent > definition && !(named && self.name_columns.contains(&indent))
+            }
             Description::None => false,
         }
     }
@@ -620,6 +633,36 @@ Advanced:
             &[&["-c"], &["--json"], &["-h", "--help"]],
         ),
         (
+            "BIND host 9.18.39: one-space descriptions under a wrapped usage line",
+            "Usage: host [-aCdilrTvVw] [-c class] [-N ndots] [-t type] [-W time]\n            [-R number] [-m flag] [-p port] hostname [server]\n       -a is equivalent to -v -t ANY\n       -A is like -a but omits RRSIG, NSEC, NSEC3\n",
+            &[&["-a"], &["-A"]],
+        ),
+        (
+            "BIND dig 9.18.39: rows deeper than the usage line's arguments, after `Where:`",
+            "Usage:  dig [@global-server] [domain] [q-type] [q-class] {q-opt}\n            {global-d-opt} host [@local-server] {local-d-opt}\nWhere:  domain\t  is in the Domain Name System\n        q-opt    is one of:\n                 -4                  (use IPv4 query transport only)\n                 -b address[#port]   (bind to source address/port)\n",
+            &[&["-4"], &["-b"]],
+        ),
+        (
+            "rows with a description of their own, in one block with the usage line",
+            "usage: nc [-46bCDdhklnrStUuvZz] [-i interval] [destination] [port]\n\t\t-4\t\tUse IPv4\n\t\t-6\t\tUse IPv6\n\t\t-q secs\t\tquit after EOF\n",
+            &[&["-4"], &["-6"], &["-q"]],
+        ),
+        (
+            "colon-described rows under an indented label that ends in a colon",
+            "    Usage: backup [options] <src> <dest>\n\n    Options:\n    -h, --help: show this help\n    -q, --quiet: suppress progress output\n",
+            &[&["-h", "--help"], &["-q", "--quiet"]],
+        ),
+        (
+            "one-space rows whose descriptions wrap back to the name indent and end a sentence",
+            "OPTIONS\n       --recursive (boolean) Command is performed on all files or objects under\n       the specified directory or prefix.\n       --page-size (integer) The number of results to return in each response\n       to a list operation.\n       --quiet (boolean) Does not display the operations performed.\n",
+            &[&["--recursive"], &["--page-size"], &["--quiet"]],
+        ),
+        (
+            "a definition after a description that ends in a backslash",
+            "Options:\n  -d, --delimiter <CHAR>   Field delimiter, default \\\n  -q, --quiet              Suppress output\n",
+            &[&["-d", "--delimiter"], &["-q", "--quiet"]],
+        ),
+        (
             "a definition after an example block that ended with a blank line",
             "Examples:\n  tool sync \\\n    --all\n\nOptions:\n  -a, --all    Sync everything\n",
             &[&["-a", "--all"]],
@@ -627,14 +670,25 @@ Advanced:
     ];
 
     #[test]
-    fn a_long_only_row_under_a_short_is_read_wherever_the_description_sits() {
-        let undescribed = "Options:\n  -x\n      --format <FORMAT>\n      --quiet            Say less\n  -h, --help             Print help\n";
-        assert_eq!(definition_lines(undescribed), [2, 3, 4, 5]);
+    fn a_long_only_row_under_an_undescribed_short_is_a_definition() {
+        let help = "Options:\n  -x\n      --format <FORMAT>\n      --quiet            Say less\n  -h, --help             Print help\n";
+        assert_eq!(definition_lines(help), [2, 3, 4, 5]);
+    }
 
-        let description_at_the_long_column = "Options:\n  -h  Show help\n  -V  Show version\n      --json   Emit JSON\n      --quiet  Say less\n";
+    #[test]
+    fn a_wrapped_description_at_the_long_column_stays_a_description() {
+        let help = "Options:\n  -n  Number of results to return.\n      -1  means no limit.\n  -v  Print more detail. Same as\n      --verbose.  Off by default.\n";
+        assert_eq!(definition_lines(help), [2, 4]);
         assert_eq!(
-            definition_lines(description_at_the_long_column),
-            [2, 3, 4, 5]
+            description_of(help, "-n"),
+            "Number of results to return. -1  means no limit."
+        );
+
+        let bullets = "Options:\n  -m MODE\n      - fast: skip verification\n      - safe: verify every block\n";
+        assert_eq!(definition_lines(bullets), [2]);
+        assert_eq!(
+            description_of(bullets, "-m"),
+            "- fast: skip verification - safe: verify every block"
         );
     }
 

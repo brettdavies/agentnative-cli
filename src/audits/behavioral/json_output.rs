@@ -511,6 +511,32 @@ esac
     }
 
     #[test]
+    fn no_probe_is_sent_without_a_help_or_version_suffix() {
+        // Prints JSON for any call that carries the output flag and neither
+        // safe suffix, at the top level and under the subcommand. Only such
+        // a call can make this row pass.
+        let script = r#"
+case "$*" in
+  *--help*|*--version*)
+    case "$*" in
+      *export*) printf 'Usage: tool export [OPTIONS]\n\nOptions:\n      --format <FORMAT>    Output format\n';;
+      *) printf 'Usage: tool [COMMAND]\n\nCommands:\n  export    Export items\n\nOptions:\n  -h, --help    Show help\n';;
+    esac;;
+  *--format*) echo '{"unsafe":"ran without a safe suffix"}';;
+  *) echo "hello";;
+esac
+"#;
+        let result = JsonOutputAudit
+            .run(&test_project_with_sh_script(script))
+            .expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
     fn json_output_pass_with_valid_json() {
         let script = r#"
 case "$*" in

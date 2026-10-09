@@ -464,4 +464,18 @@ esac"#;
             other => panic!("expected Fail, got {other:?}"),
         }
     }
+
+    #[test]
+    fn a_single_dash_schema_beside_double_dash_names_fails_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n      --output <FORMAT>    Output format: text or json.\n  -schema                  Print the output schema.\n",
+        );
+        match audit_schema_print(&help, false) {
+            AuditStatus::Fail(msg) => assert!(
+                msg.ends_with("`-schema` is declared, but this help also declares double-dash names, so it does not count as `--schema`."),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
 }

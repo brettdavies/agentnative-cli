@@ -3,5 +3,5 @@ source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__providers_--help.txt
 ---
   13 | -test-directory | Set the Terraform test directory, defaults to "tests".
-  15 | -var | Set a value for one of the input variables in the root
-  19 | -var-file | Load variable values from the given file, in addition
+  15 | -var | Set a value for one of the input variables in the root modul
+  19 | -var-file | Load variable values from the given file, in addition to the

@@ -2,8 +2,8 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__get_--help.txt
 ---
-  17 | -update | Check already-downloaded modules for available updates
+  17 | -update | Check already-downloaded modules for available updates and i
   20 | -no-color | Disable text coloring in the output.
   22 | -test-directory | Set the Terraform test directory, defaults to "tests".
-  24 | -var | Set a value for one of the input variables in the root
-  28 | -var-file | Load variable values from the given file, in addition
+  24 | -var | Set a value for one of the input variables in the root modul
+  28 | -var-file | Load variable values from the given file, in addition to the

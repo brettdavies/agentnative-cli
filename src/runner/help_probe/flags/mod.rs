@@ -12,7 +12,8 @@ mod classify;
 mod header;
 mod pieces;
 
-pub(super) use classify::{is_definition_line, is_section_heading};
+use classify::Line;
+pub(super) use classify::is_section_heading;
 
 /// How a help spells one flag name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,8 +124,8 @@ impl Flag {
             .unwrap_or_default()
     }
 
-    /// The text after the description gap on the flag's own line, empty when
-    /// the help puts the description on a later line or gives none.
+    /// What the help says about the flag: the text after the header on its
+    /// own line, joined with the wrapped and next-line text under it.
     pub fn description(&self) -> &str {
         &self.description
     }
@@ -163,29 +164,42 @@ pub(super) fn kept_apart<'a>(flags: &'a [Flag], names: &[&'a str]) -> Option<(&'
 
 /// Read every flag definition in `raw`.
 pub(super) fn parse(raw: &str) -> Vec<Flag> {
-    let mut flags = Vec::new();
+    let mut flags: Vec<Flag> = Vec::new();
     let mut section: Option<String> = None;
-    for (index, line) in raw.lines().enumerate() {
-        if is_section_heading(line) {
-            section = Some(line.trim().to_string());
-            continue;
+    for (index, line) in classify::lines(raw).into_iter().enumerate() {
+        match line {
+            Line::Heading(heading) => section = Some(heading.to_string()),
+            Line::Definition(header) => flags.push(Flag {
+                names: header.names,
+                placeholder: header.placeholder.map(str::to_string),
+                description: header.description.to_string(),
+                line: index + 1,
+                section: section.clone(),
+            }),
+            Line::Continuation(text) => {
+                if let Some(flag) = flags.last_mut() {
+                    if !flag.description.is_empty() {
+                        flag.description.push(' ');
+                    }
+                    flag.description.push_str(text);
+                }
+            }
+            Line::Unnamed | Line::Other => {}
         }
-        if !is_definition_line(line) {
-            continue;
-        }
-        let Some(header) = header::tokenize(line) else {
-            continue;
-        };
-        flags.push(Flag {
-            names: header.names,
-            placeholder: header.placeholder.map(str::to_string),
-            description: header.description.to_string(),
-            line: index + 1,
-            section: section.clone(),
-        });
     }
     resolve_dash_forms(&mut flags);
     flags
+}
+
+/// The index of every line of `raw` shaped like a definition, whether or not
+/// it declares a name.
+pub(super) fn definition_lines(raw: &str) -> Vec<usize> {
+    classify::lines(raw)
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| matches!(line, Line::Definition(_) | Line::Unnamed))
+        .map(|(index, _)| index)
+        .collect()
 }
 
 /// In a help that declares no double-dash name, every single-dash word

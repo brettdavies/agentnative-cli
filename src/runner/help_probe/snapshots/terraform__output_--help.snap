@@ -2,7 +2,7 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__output_--help.txt
 ---
-  10 | -state | Path to the state file to read. Defaults to
+  10 | -state | Path to the state file to read. Defaults to "terraform.tfsta
   16 | -no-color | If specified, output won't contain any color.
-  18 | -json | If specified, machine readable output will be
-  21 | -raw | For value types that can be automatically
+  18 | -json | If specified, machine readable output will be printed in JSO
+  21 | -raw | For value types that can be automatically converted to a str

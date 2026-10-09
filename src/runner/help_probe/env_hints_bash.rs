@@ -14,6 +14,7 @@
 //! See [`super::EnvHint`] for the emitted shape and
 //! [`super::EnvHintSource`] for the provenance tag each pattern attaches.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use super::flags::{definition_lines, is_section_heading};
@@ -39,6 +40,9 @@ const PATTERN2_WINDOW: usize = 4;
 /// shell-environment blacklist and requires tool-scoped shape (uppercase,
 /// digits, underscores; length ≥ 3).
 ///
+/// A definition's own names and placeholders are not scanned:
+/// `--iconv=CONVERT_SPEC` names a value, not a variable the tool reads.
+///
 /// Strips `[env: ...]` annotations before scanning — those belong to
 /// Pattern 1. Salvaging tokens from rejected annotations (e.g.,
 /// `[env: 1ABC]` contributing `ABC`) would undermine Pattern 1's
@@ -50,7 +54,7 @@ const PATTERN2_WINDOW: usize = 4;
 pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     let stripped = strip_clap_env_annotations(raw);
     let lines: Vec<&str> = stripped.lines().collect();
-    let flag_line_indices = definition_lines(&stripped);
+    let definitions = definition_lines(&stripped);
     let env_section_range = find_env_section(&lines);
 
     // Track each line's matching source. ENV-section wins over
@@ -59,9 +63,9 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     // weaker (just "the token showed up near a flag line"). Apply
     // Proximity first, then overwrite with EnvSection where it applies.
     let mut line_source: Vec<Option<EnvHintSource>> = vec![None; lines.len()];
-    for &idx in &flag_line_indices {
-        let lo = idx.saturating_sub(PATTERN2_WINDOW);
-        let hi = (idx + PATTERN2_WINDOW + 1).min(lines.len());
+    for definition in &definitions {
+        let lo = definition.index.saturating_sub(PATTERN2_WINDOW);
+        let hi = (definition.index + PATTERN2_WINDOW + 1).min(lines.len());
         for slot in line_source[lo..hi].iter_mut() {
             *slot = Some(EnvHintSource::Proximity);
         }
@@ -78,7 +82,11 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
         let Some(source) = line_source[i] else {
             continue;
         };
-        for token in extract_env_tokens(line) {
+        let header_len = definitions
+            .iter()
+            .find(|definition| definition.index == i)
+            .and_then(|definition| definition.header_len);
+        for token in extract_env_tokens(&without_header(line, header_len)) {
             if SHELL_ENV_BLACKLIST.contains(&token.as_str()) {
                 continue;
             }
@@ -88,6 +96,16 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
         }
     }
     hints
+}
+
+/// `line` with the names and placeholders of a definition blanked, so a
+/// value placeholder (`--iconv=CONVERT_SPEC`) is not read as a variable the
+/// tool reads. A variable named in the description after them still counts.
+fn without_header(line: &str, header_len: Option<usize>) -> Cow<'_, str> {
+    match header_len {
+        Some(len) => Cow::Owned(format!("{}{}", " ".repeat(len), &line[len..])),
+        None => Cow::Borrowed(line),
+    }
 }
 
 /// Replace `[env: ...]` annotations with spaces so Pattern 2 doesn't
@@ -258,6 +276,44 @@ OPTIONS:
           is read from $RIPGREP_CONFIG_PATH. Respects RIPGREP_COLOR env
           variable when rendering output.
 ";
+
+    fn names(raw: &str) -> Vec<String> {
+        parse_env_hints_bash_style(raw)
+            .into_iter()
+            .map(|hint| hint.var)
+            .collect()
+    }
+
+    #[test]
+    fn a_flag_s_own_placeholder_is_not_an_environment_variable() {
+        // rsync 3.5.1, and a bare placeholder after a short name.
+        for help in [
+            "Options\n--iconv=CONVERT_SPEC     request charset conversion of filenames\n--checksum-seed=NUM      set block/file checksum seed (advanced)\n",
+            "Options:\n  -o OUTPUT_FILE    Write the result here\n  -h, --help        Show help\n",
+        ] {
+            assert_eq!(names(help), Vec::<String>::new(), "{help}");
+        }
+        assert_eq!(
+            names(&crate::runner::help_probe::fixture_snapshots::fixture(
+                "rsync__--help.txt"
+            )),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_variable_named_in_a_description_still_counts() {
+        assert_eq!(
+            names(
+                "Options:\n      --config FILE    Config file (default: TOOL_CONFIG, then $XDG_CONFIG_HOME)\n"
+            ),
+            ["TOOL_CONFIG", "XDG_CONFIG_HOME"]
+        );
+        assert_eq!(
+            names("Options:\n      --token GITHUB_TOKEN    Token; also read from GITHUB_TOKEN\n"),
+            ["GITHUB_TOKEN"]
+        );
+    }
 
     #[test]
     fn pattern2_captures_gh_environment_section() {

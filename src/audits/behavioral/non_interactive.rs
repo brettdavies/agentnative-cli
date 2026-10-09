@@ -99,22 +99,31 @@ pub(crate) fn audit_non_interactive(
         RunStatus::Crash { signal } => {
             format!("binary crashed on bare invocation (signal {signal})")
         }
-        _ if matches_any(bare_output, HELP_ON_BARE_MARKERS) => return AuditStatus::Pass,
+        _ if prints_usage(bare_output) => return AuditStatus::Pass,
         _ => "bare invocation gave no help-on-bare or clean-exit signal".to_string(),
     };
-    let message = format!(
-        "{cause}, and no option definition in --help declares a non-interactive flag (one of: \
-         {}); usage lines are not read.",
-        AGENTIC_FLAGS.join(", ")
-    );
+    let message = format!("{cause}, and {}", no_flag_declared(AGENTIC_FLAGS));
     AuditStatus::Warn(match help {
         Some(help) => help.noting_dash_rule(AGENTIC_FLAGS, &message),
         None => message,
     })
 }
 
-fn matches_any(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|n| haystack.contains(n))
+/// Whether a bare invocation's output is the tool's usage.
+pub(super) fn prints_usage(bare_output: &str) -> bool {
+    HELP_ON_BARE_MARKERS
+        .iter()
+        .any(|marker| bare_output.contains(marker))
+}
+
+/// What a deny says when no definition declares any of `flags`, the
+/// non-interactive flags an audit accepts.
+pub(super) fn no_flag_declared(flags: &[&str]) -> String {
+    format!(
+        "no option definition in --help declares a non-interactive flag (one of: {}); usage \
+         lines are not read.",
+        flags.join(", ")
+    )
 }
 
 #[cfg(test)]

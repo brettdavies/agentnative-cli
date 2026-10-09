@@ -4,6 +4,7 @@
 //! agents need to debug failures. SHOULD-tier; counterpart to `p7-must-quiet`.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -58,16 +59,12 @@ impl Audit for VerboseFlagAudit {
 }
 
 pub(crate) fn audit_verbose_flag(help: &HelpOutput) -> AuditStatus {
-    let has_verbose = help.find_flag(VERBOSE_FLAGS).is_some();
-    if has_verbose {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(help.noting_dash_rule(
-            VERBOSE_FLAGS,
-            "no `--verbose` / `-v` flag advertised. SHOULD-tier — agents \
-             debugging failures need a way to escalate diagnostic detail.",
-        ))
-    }
+    pass_or_warn(
+        help,
+        VERBOSE_FLAGS,
+        "no `--verbose` / `-v` flag advertised. SHOULD-tier — agents \
+         debugging failures need a way to escalate diagnostic detail.",
+    )
 }
 
 #[cfg(test)]

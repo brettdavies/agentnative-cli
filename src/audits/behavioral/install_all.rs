@@ -10,6 +10,7 @@
 //! subcommand existing on the binary's help surface.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::audits::project::bundle_exists::find_bundle;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
@@ -104,15 +105,13 @@ pub(crate) fn audit_install_all(runner: &BinaryRunner) -> AuditStatus {
 
 /// Core unit. Whether the help of `skill install` declares `--all`.
 pub(crate) fn audit_install_help(help: &HelpOutput) -> AuditStatus {
-    if help.find_flag(ALL_FLAG).is_some() {
-        return AuditStatus::Pass;
-    }
-    AuditStatus::Warn(help.noting_dash_rule(
+    pass_or_warn(
+        help,
         ALL_FLAG,
         "no option definition in `skill install --help` declares `--all`; usage lines are not \
          read. MAY-tier — a single `skill install --all` invocation across detected runtimes \
          is convenient for multi-agent setups.",
-    ))
+    )
 }
 
 #[cfg(test)]

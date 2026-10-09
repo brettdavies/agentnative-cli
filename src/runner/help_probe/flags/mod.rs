@@ -237,6 +237,7 @@ impl Flag {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::help_probe::fixture_snapshots::fixture;
 
     /// A help's flags built from name lists, one flag per list, with the
     /// dash forms resolved as `parse` resolves them.
@@ -438,13 +439,6 @@ Other common options:
         assert_eq!(found(&flags, "-print"), Some("-print"));
         assert_eq!(found(&flags, "--print"), None);
         assert_eq!(found(&flags, "--help"), Some("--help"));
-    }
-
-    fn fixture(name: &str) -> String {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/help")
-            .join(name);
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
     }
 
     #[test]

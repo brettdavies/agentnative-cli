@@ -205,6 +205,7 @@ fn accepted_flags(declared_flags: &[Sourced<String>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::help_probe::fixture_snapshots::fixture;
 
     fn hp(raw: &str) -> HelpOutput {
         HelpOutput::from_raw(raw)
@@ -325,13 +326,6 @@ mod tests {
                 "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags".into()
             ))
         );
-    }
-
-    fn fixture(name: &str) -> String {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/help")
-            .join(name);
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
     }
 
     fn confirms(help: &str, flag: &str) -> Verdict {

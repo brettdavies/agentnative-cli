@@ -19,18 +19,20 @@
 //!
 //! A definition can sit at any indent and can lead with `-`, `+x` or a
 //! bracketed `[--name]`. Dash-led text at column 0, and any line that leads
-//! with a bracket, is a usage wrap or prose unless a gap sets a description
-//! off from it, or its description starts at the column the definition above
-//! it uses.
+//! with a bracket, is a usage wrap or prose unless a gap or a marker sets a
+//! description off from it, or its description starts at the column the
+//! definition above it uses.
 //!
 //! Three more dash-led shapes are not definitions at any indent:
 //!
 //! - a line under one that ends in a backslash, while no description is
 //!   being read (an example command carries on);
 //! - a line indented to the arguments of the usage line above it, with no
-//!   gap before a description of its own (the synopsis wraps);
-//! - a line that reads on as a sentence, directly under prose at the same
-//!   indent that does not end its sentence.
+//!   description of its own set off by a gap or a marker (the synopsis
+//!   wraps);
+//! - a line whose description no gap or marker sets off, directly under
+//!   prose at the same indent that does not end its sentence (the sentence
+//!   wraps).
 
 use super::NameForm;
 use super::header::{self, Header};
@@ -69,8 +71,8 @@ struct Layout {
     /// shell command in an example carrying on.
     after_backslash: bool,
     /// Column the arguments of the usage line being read start at. A line
-    /// indented that far carries the synopsis on, unless a gap sets off a
-    /// description of its own.
+    /// indented that far carries the synopsis on, unless a gap or a marker
+    /// sets off a description of its own.
     synopsis: Option<usize>,
     /// Indent of the line above, when it is prose that does not end its
     /// sentence.
@@ -594,6 +596,10 @@ Advanced:
             " Arguments following the main class, source file, -jar <jarfile>,\n -m or --module <module>/<mainclass> are passed as the arguments to\n main class.\n",
         ),
         (
+            "a sentence that wraps onto two flag-led lines",
+            "  The sizes are printed in bytes unless you pass\n  --human-readable or the shorter\n  -h spelling, which prints sizes in MiB.\n",
+        ),
+        (
             "argparse (Python 3.14.8): a usage line that wraps onto required options",
             "usage: prog [-h] [--verbose] --input INPUT --mode {fast,slow}\n            --output OUTPUT --format FORMAT\n",
         ),
@@ -626,6 +632,16 @@ Advanced:
             "a name alone on its line, under a sentence at the same indent",
             "Options:\n  These options control what is printed.\n  --null\n      Print a NUL byte after each name.\n",
             &[&["--null"]],
+        ),
+        (
+            "Nmap 7.991SVN: colon-described rows under an example line that does not end its sentence",
+            "TARGET SPECIFICATION:\n  Can pass hostnames, IP addresses, networks, etc.\n  Ex: scanme.nmap.org, microsoft.com/24, 192.168.0.1; 10.0.0-255.1-254\n  -iL <inputfilename>: Input from list of hosts/networks\n  -iR <num hosts>: Choose random targets\n  --exclude <host1[,host2][,host3],...>: Exclude hosts/networks\n  --excludefile <exclude_file>: Exclude list from file\n",
+            &[&["-iL"], &["-iR"], &["--exclude"], &["--excludefile"]],
+        ),
+        (
+            "Python 3.14.8: column-0 rows described after a colon",
+            "Options (and corresponding environment variables):\n--help-env: print help about Python environment variables and exit\n--help-xoptions: print help about implementation-specific -X options and exit\n--help-all: print complete help information and exit\n",
+            &[&["--help-env"], &["--help-xoptions"], &["--help-all"]],
         ),
         (
             "a described long-only row under a short-only row with no description",

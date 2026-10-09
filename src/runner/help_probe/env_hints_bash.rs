@@ -41,7 +41,8 @@ const PATTERN2_WINDOW: usize = 4;
 /// digits, underscores; length ≥ 3).
 ///
 /// A definition's own names and placeholders are not scanned:
-/// `--iconv=CONVERT_SPEC` names a value, not a variable the tool reads.
+/// `--iconv=CONVERT_SPEC` names a value, not a variable the tool reads. A
+/// `$NAME` among them is.
 ///
 /// Strips `[env: ...]` annotations before scanning — those belong to
 /// Pattern 1. Salvaging tokens from rejected annotations (e.g.,
@@ -100,12 +101,24 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
 
 /// `line` with the names and placeholders of a definition blanked, so a
 /// value placeholder (`--iconv=CONVERT_SPEC`) is not read as a variable the
-/// tool reads. A variable named in the description after them still counts.
+/// tool reads. A `$NAME` among them stays (`--token=$GITHUB_TOKEN`), and so
+/// does a variable named in the description after them.
 fn without_header(line: &str, header_len: Option<usize>) -> Cow<'_, str> {
-    match header_len {
-        Some(len) => Cow::Owned(format!("{}{}", " ".repeat(len), &line[len..])),
-        None => Cow::Borrowed(line),
+    let Some(len) = header_len else {
+        return Cow::Borrowed(line);
+    };
+    let mut out = String::with_capacity(line.len());
+    let mut in_variable = false;
+    for c in line[..len].chars() {
+        in_variable = c == '$' || (in_variable && is_variable_char(c));
+        out.push(if in_variable { c } else { ' ' });
     }
+    out.push_str(&line[len..]);
+    Cow::Owned(out)
+}
+
+fn is_variable_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '{' | '}')
 }
 
 /// Replace `[env: ...]` annotations with spaces so Pattern 2 doesn't
@@ -298,6 +311,33 @@ OPTIONS:
                 "rsync__--help.txt"
             )),
             Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_variable_beside_the_names_still_counts() {
+        assert_eq!(
+            names("Options:\n      --token=$GITHUB_TOKEN   API token\n"),
+            ["GITHUB_TOKEN"]
+        );
+        assert_eq!(
+            names("Options:\n      --token ${GITHUB_TOKEN}   API token\n"),
+            ["GITHUB_TOKEN"]
+        );
+    }
+
+    #[test]
+    fn a_placeholder_in_a_column_of_its_own_is_not_a_variable() {
+        assert!(
+            names("Options:\n  --config-file  -c  CONFIG_FILE  Path to the config\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_tab_indented_line_keeps_the_variable_its_description_names() {
+        assert_eq!(
+            names("Options:\n\t-t TOKEN  reads API_TOKEN\n"),
+            ["API_TOKEN"]
         );
     }
 

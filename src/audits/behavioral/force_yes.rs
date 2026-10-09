@@ -107,10 +107,11 @@ impl Audit for ForceYesAudit {
     }
 }
 
-/// A declared flag as the lookup spells it. An entry written without dashes
-/// is a flag all the same: `noconfirm` is `--noconfirm`, and `y` is `-y`.
+/// A declared flag as the lookup spells it. An entry written as a bare word
+/// is a flag all the same: `noconfirm` is `--noconfirm`, and `y` is `-y`. An
+/// entry that leads with `-`, `+` or `/` is a name as written.
 fn as_flag_name(value: &str) -> Cow<'_, str> {
-    if value.starts_with('-') {
+    if !value.starts_with(char::is_alphanumeric) {
         Cow::Borrowed(value)
     } else if value.chars().count() == 1 {
         Cow::Owned(format!("-{value}"))
@@ -425,6 +426,15 @@ mod tests {
             "k",
         );
         assert_eq!(short.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_declared_flag_that_leads_with_a_plus_is_matched_as_written() {
+        let plus = confirms(
+            "Options:\n  +n, --no-ask   Do not ask.\n  -h, --help     Show help.\n",
+            "+n",
+        );
+        assert_eq!(plus.status, AuditStatus::Pass);
     }
 
     #[test]

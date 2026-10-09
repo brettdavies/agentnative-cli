@@ -137,17 +137,18 @@ domain_verbs = ["post", "like", "repost", "timeline"]
 
 ### The settings
 
-`json_probe`: when a tool's help shows an `--output` or `--format` flag, `p2-must-output-flag` checks it by passing
-`json` to the flag beside `--help` and `--version`, the only calls `anc` makes unprompted. Most tools answer those in
-text, and then the row is `skip`: `anc` could not check, so the row is not scored. A declared probe is the call `anc`
-runs instead, exactly as written: no shell, with the timeout, closed stdin, and `NO_COLOR=1` of every other probe. The
-row passes when the call exits 0 and its stdout parses as JSON, and fails otherwise, with evidence naming the call and
-the file: `` `kubectl version --client -o json` printed JSON; probe declared via .anc.toml [p2].json_probe ``. Declare a
+`json_probe`: when a tool's help declares `--output` or `--format`, `p2-must-output-flag` checks it by passing `json` to
+the flag, spelled as the help prints it, beside `--help` and `--version`, the only calls `anc` makes unprompted. A
+longer flag such as `--output-format` is a different name and does not count. Most tools answer those calls in text, and
+then the row is `skip`: `anc` could not check, so the row is not scored. A declared probe is the call `anc` runs
+instead, exactly as written: no shell, with the timeout, closed stdin, and `NO_COLOR=1` of every other probe. The row
+passes when the call exits 0 and its stdout parses as JSON, and fails otherwise, with evidence naming the call and the
+file: `` `kubectl version --client -o json` printed JSON; probe declared via .anc.toml [p2].json_probe ``. Declare a
 call that only reads and exits on its own; `kubectl version -o json` contacts a cluster and exits 1 without one, while
 `version --client` stays local. A probe that prints JSON also shows `p2-must-schema-print` that the tool emits
-structured output when its help does not say so. The probe never stands in for the flag: with no `--output` or
-`--format` in the help, the row stays `opt_out`. The nearest file that declares `json_probe` supplies it, and an empty
-list declares nothing.
+structured output when its help does not say so. The probe never stands in for the flag: when no option definition in
+the help declares `--output` or `--format`, the row stays `opt_out`. The nearest file that declares `json_probe`
+supplies it, and an empty list declares nothing.
 
 `schema_command`: `p2-must-schema-print` looks for a `schema` subcommand or a `--schema` flag, at the top level and one
 level down. A tool whose schema surface has another name, such as kubectl's `explain`, declares the subcommand path, one

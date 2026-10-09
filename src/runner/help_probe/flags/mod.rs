@@ -197,10 +197,10 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
 pub(super) struct DefinitionLine {
     /// Index of the line in the text.
     pub index: usize,
-    /// How many bytes of the line its names and placeholders take, before
-    /// any description. `None` for a line that declares no name, and for one
-    /// the terminal cleanup rewrote, whose bytes no longer line up.
-    pub header_len: Option<usize>,
+    /// The line as a terminal shows it, and how many of its bytes the names
+    /// and placeholders take, before any description. `None` for a line that
+    /// declares no name.
+    pub header: Option<(String, usize)>,
 }
 
 /// Every line of `raw` shaped like a definition, whether or not it declares
@@ -209,17 +209,19 @@ pub(super) fn definition_lines(raw: &str) -> Vec<DefinitionLine> {
     let shown = normalize::normalize(raw);
     classify::lines(&shown)
         .iter()
-        .zip(shown.lines().zip(raw.lines()))
+        .zip(shown.lines())
         .enumerate()
-        .filter_map(|(index, (line, (shown, printed)))| match line {
+        .filter_map(|(index, (line, shown))| match line {
             Line::Definition(header) => Some(DefinitionLine {
                 index,
-                header_len: (shown == printed)
-                    .then(|| shown.trim_end().len() - header.description.len()),
+                header: Some((
+                    shown.to_string(),
+                    shown.trim_end().len() - header.description.len(),
+                )),
             }),
             Line::Unnamed => Some(DefinitionLine {
                 index,
-                header_len: None,
+                header: None,
             }),
             _ => None,
         })

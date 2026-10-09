@@ -40,9 +40,9 @@ const PATTERN2_WINDOW: usize = 4;
 /// shell-environment blacklist and requires tool-scoped shape (uppercase,
 /// digits, underscores; length ≥ 3).
 ///
-/// A definition's own names and placeholders are not scanned:
-/// `--iconv=CONVERT_SPEC` names a value, not a variable the tool reads. A
-/// `$NAME` among them is.
+/// A definition line is scanned as a terminal shows it, without its own
+/// names and placeholders: `--iconv=CONVERT_SPEC` names a value, not a
+/// variable the tool reads. A `$NAME` among them is.
 ///
 /// Strips `[env: ...]` annotations before scanning — those belong to
 /// Pattern 1. Salvaging tokens from rejected annotations (e.g.,
@@ -83,11 +83,15 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
         let Some(source) = line_source[i] else {
             continue;
         };
-        let header_len = definitions
+        let header = definitions
             .iter()
             .find(|definition| definition.index == i)
-            .and_then(|definition| definition.header_len);
-        for token in extract_env_tokens(&without_header(line, header_len)) {
+            .and_then(|definition| definition.header.as_ref());
+        let scanned = match header {
+            Some((shown, header_len)) => Cow::Owned(without_header(shown, *header_len)),
+            None => Cow::Borrowed(*line),
+        };
+        for token in extract_env_tokens(&scanned) {
             if SHELL_ENV_BLACKLIST.contains(&token.as_str()) {
                 continue;
             }
@@ -99,22 +103,20 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     hints
 }
 
-/// `line` with the names and placeholders of a definition blanked, so a
-/// value placeholder (`--iconv=CONVERT_SPEC`) is not read as a variable the
-/// tool reads. A `$NAME` among them stays (`--token=$GITHUB_TOKEN`), and so
-/// does a variable named in the description after them.
-fn without_header(line: &str, header_len: Option<usize>) -> Cow<'_, str> {
-    let Some(len) = header_len else {
-        return Cow::Borrowed(line);
-    };
+/// A definition line with its first `header_len` bytes, the names and
+/// placeholders, blanked, so a value placeholder (`--iconv=CONVERT_SPEC`) is
+/// not read as a variable the tool reads. A `$NAME` among them stays
+/// (`--token=$GITHUB_TOKEN`), and so does a variable named in the description
+/// after them.
+fn without_header(line: &str, header_len: usize) -> String {
     let mut out = String::with_capacity(line.len());
     let mut in_variable = false;
-    for c in line[..len].chars() {
+    for c in line[..header_len].chars() {
         in_variable = c == '$' || (in_variable && is_variable_char(c));
         out.push(if in_variable { c } else { ' ' });
     }
-    out.push_str(&line[len..]);
-    Cow::Owned(out)
+    out.push_str(&line[header_len..]);
+    out
 }
 
 fn is_variable_char(c: char) -> bool {
@@ -330,6 +332,22 @@ OPTIONS:
     fn a_placeholder_in_a_column_of_its_own_is_not_a_variable() {
         assert!(
             names("Options:\n  --config-file  -c  CONFIG_FILE  Path to the config\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_placeholder_on_a_tab_indented_line_is_not_a_variable() {
+        assert!(
+            names("Options:\n\t--iconv=CONVERT_SPEC     request charset conversion\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_placeholder_in_a_box_table_row_is_not_a_variable() {
+        assert!(names("│ --config-file  -c  CONFIG_FILE  Path to the config │\n").is_empty());
+        assert_eq!(
+            names("│ --token  -t  API_TOKEN  Token; also read from GH_TOKEN │\n"),
+            ["GH_TOKEN"]
         );
     }
 

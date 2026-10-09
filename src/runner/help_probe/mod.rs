@@ -202,6 +202,27 @@ impl HelpOutput {
         flags::find(self.flags(), names)
     }
 
+    /// When a lookup for `names` misses only because this help keeps a
+    /// single-dash word apart from its double-dash spelling: the declared
+    /// word, and why it does not count.
+    pub fn dash_rule_note(&self, names: &[&str]) -> Option<String> {
+        flags::kept_apart(self.flags(), names).map(|(declared, wanted)| {
+            format!(
+                "`{declared}` is declared, but this help also declares double-dash names, so \
+                 it does not count as `{wanted}`."
+            )
+        })
+    }
+
+    /// `message`, closed with [`HelpOutput::dash_rule_note`] when one
+    /// applies.
+    pub fn noting_dash_rule(&self, names: &[&str], message: &str) -> String {
+        match self.dash_rule_note(names) {
+            Some(note) => format!("{message} {note}"),
+            None => message.to_string(),
+        }
+    }
+
     /// Whether the help lists `name` as a flag. A `--long` or `-s` name
     /// matches a parsed flag. A single-dash name longer than one letter, the
     /// Go `flag` package's `-auto-approve`, matches a flag line that names

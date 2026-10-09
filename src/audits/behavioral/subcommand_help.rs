@@ -129,6 +129,25 @@ pub(crate) fn coverage<'a>(
     Coverage { with, without }
 }
 
+/// For each of `names` whose own help keeps a single-dash word apart from
+/// one of `wanted`, [`HelpOutput::dash_rule_note`] led by the subcommand's
+/// name. Empty when no help does; otherwise it starts with a space, ready to
+/// close a deny message.
+pub(crate) fn dash_rule_notes(
+    names: &[&str],
+    subhelp: &[(String, HelpOutput)],
+    wanted: &[&str],
+) -> String {
+    names
+        .iter()
+        .filter_map(|name| {
+            let (_, help) = subhelp.iter().find(|(sub, _)| sub == name)?;
+            let note = help.dash_rule_note(wanted)?;
+            Some(format!(" In `{name}`, {note}"))
+        })
+        .collect()
+}
+
 /// The first flag in `help` that `wanted` accepts, named by its long form
 /// when it has one (`--max`, else `-n`).
 pub(crate) fn first_flag(help: &HelpOutput, wanted: impl Fn(&Flag) -> bool) -> Option<String> {

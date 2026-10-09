@@ -6,15 +6,15 @@ input_file: tests/fixtures/help/claude__--help.txt
   11 | --agent | Agent for the current session. Overrides
   12 | --agents | JSON object defining custom agents, or
   13 | --allow-dangerously-skip-permissions | Enable bypassing all permission checks
-  14 | --allowed-tools | 
+  14 | --allowedTools, --allowed-tools | 
   17 | --append-system-prompt | Append a system prompt to the default
   18 | --autocompact | Auto-compact window size (auto, or
   19 | --ax-screen-reader | Render screen-reader friendly output
-  20 | --background | Start the session in the background and
+  20 | --bg, --background | Start the session in the background and
   22 | --resume | 
   24 | --bare | Minimal mode: skip hooks (those defined
-  26 | --add-dir | 
-  28 | --plugin-dir | 
+  26 | --append-system-prompt, --add-dir | 
+  28 | --settings, --agents, --plugin-dir | 
   29 | --betas | Beta headers to include in API requests
   30 | --brief | Enable SendUserMessage tool for
   31 | --chrome | Enable Claude in Chrome integration
@@ -26,7 +26,7 @@ input_file: tests/fixtures/help/claude__--help.txt
   37 | --desktop | Open in the Claude Desktop app instead
   39 | --resume | 
   40 | --disable-slash-commands | Disable all skills
-  41 | --disallowed-tools | 
+  41 | --disallowedTools, --disallowed-tools | 
   44 | --effort | Effort level for the current session
   45 | --environment | Create a new cloud session that runs on
   46 | --exclude-dynamic-system-prompt-sections | 

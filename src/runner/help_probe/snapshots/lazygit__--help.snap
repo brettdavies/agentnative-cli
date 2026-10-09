@@ -10,9 +10,9 @@ input_file: tests/fixtures/help/lazygit__--help.txt
   19 | -l | --logs               Tail lazygit logs (intended to be used 
   20 | --profile | Start the profiler and serve it on http port 6060. See CONTR
   21 | -c | --config             Print the default config
-  22 | -c | --print-config-dir   Print the config directory
-  23 | -u | --use-config-dir     override default config directory with 
+  22 | -cd | --print-config-dir   Print the config directory
+  23 | -ucd | --use-config-dir     override default config directory with 
   24 | -w | --work-tree          equivalent of the --work-tree git argum
   25 | -g | --git-dir            equivalent of the --git-dir git argumen
-  26 | -u | --use-config-file    Comma separated list to custom config f
-  27 | -s | --screen-mode        The initial screen-mode, which determin
+  26 | -ucf | --use-config-file    Comma separated list to custom config f
+  27 | -sm | --screen-mode        The initial screen-mode, which determin

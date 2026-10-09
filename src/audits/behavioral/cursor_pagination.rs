@@ -12,7 +12,9 @@
 
 use crate::audit::Audit;
 use crate::audits::behavioral::list_style::list_style_subcommands;
-use crate::audits::behavioral::subcommand_help::{coverage, first_flag, probe_named};
+use crate::audits::behavioral::subcommand_help::{
+    coverage, dash_rule_notes, first_flag, probe_named,
+};
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -108,9 +110,10 @@ pub(crate) fn audit_cursor_pagination(
         AuditStatus::Warn(format!(
             "no list-style subcommand advertises a cursor/page flag in its --help: {} \
              (looked for {}). MAY-tier: cursor pagination lets agents traverse large \
-             result sets without re-scanning earlier pages.",
+             result sets without re-scanning earlier pages.{}",
             cov.without_list(),
             CURSOR_FLAGS.join(", "),
+            dash_rule_notes(&cov.without, subhelp, CURSOR_FLAGS),
         )),
         None,
     )

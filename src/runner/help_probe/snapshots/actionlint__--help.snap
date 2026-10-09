@@ -2,16 +2,16 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/actionlint__--help.txt
 ---
-  31 | -c | 
-  33 | -c | 
-  35 | -d | 
-  37 | -f | 
-  39 | -i | 
-  41 | -i | 
-  43 | -n | 
-  45 | -o | 
-  47 | -p | 
-  49 | -s | 
-  51 | -s | 
-  53 | -v | 
-  55 | -v |
+  31 | -color | 
+  33 | -config-file | 
+  35 | -debug | 
+  37 | -format | 
+  39 | -ignore | 
+  41 | -init-config | 
+  43 | -no-color | 
+  45 | -oneline | 
+  47 | -pyflakes | 
+  49 | -shellcheck | 
+  51 | -stdin-filename | 
+  53 | -verbose | 
+  55 | -version |

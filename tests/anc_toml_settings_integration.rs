@@ -98,9 +98,9 @@ fn path_str(path: &Path) -> &str {
     path.to_str().expect("utf8 path")
 }
 
-/// A terraform-shaped CLI: `destroy` confirms by prompt, and its help lists
-/// the Go-style `-auto-approve` bypass.
-const DESTROY_CLI: &str = r#"  "destroy --help") printf 'Usage: tool destroy [options]\n\nOptions:\n\n  -auto-approve  Skip interactive approval.\n' ;;
+/// A pacman-shaped CLI: `destroy` confirms by prompt, and its help lists
+/// `--noconfirm`, a bypass outside the built-in names.
+const DESTROY_CLI: &str = r#"  "destroy --help") printf 'Usage: tool destroy [options]\n\nOptions:\n      --noconfirm  Do not ask for any confirmation.\n' ;;
   "--version") echo "tool 1.0.0" ;;
   *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  destroy  Destroy everything\n  list     List things\n' ;;"#;
 
@@ -111,12 +111,12 @@ fn confirm_flags_from_the_repo_file_pass_force_yes_and_name_the_file() {
     assert_eq!(without["status"], "fail", "row: {without}");
 
     let row = fixture
-        .repo_config("[p5]\nconfirm_flags = [\"-auto-approve\"]\n")
+        .repo_config("[p5]\nconfirm_flags = [\"--noconfirm\"]\n")
         .row("p5-must-force-yes");
 
     assert_eq!(row["status"], "pass", "row: {row}");
     assert_eq!(
-        row["evidence"], "destroy accepts -auto-approve via .anc.toml [p5].confirm_flags",
+        row["evidence"], "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags",
         "row: {row}"
     );
 }
@@ -124,20 +124,20 @@ fn confirm_flags_from_the_repo_file_pass_force_yes_and_name_the_file() {
 #[test]
 fn confirm_flags_in_both_files_credit_the_repo_file() {
     let fixture = Fixture::new(DESTROY_CLI);
-    fixture.home_config("[p5]\nconfirm_flags = [\"-auto-approve\"]\n");
+    fixture.home_config("[p5]\nconfirm_flags = [\"--noconfirm\"]\n");
     let home_only = fixture.row("p5-must-force-yes");
     assert_eq!(
         home_only["evidence"],
-        "destroy accepts -auto-approve via $AGENTNATIVE_HOME_CONFIG [p5].confirm_flags",
+        "destroy accepts --noconfirm via $AGENTNATIVE_HOME_CONFIG [p5].confirm_flags",
         "row: {home_only}"
     );
 
     let row = fixture
-        .repo_config("[p5]\nconfirm_flags = [\"-auto-approve\"]\n")
+        .repo_config("[p5]\nconfirm_flags = [\"--noconfirm\"]\n")
         .row("p5-must-force-yes");
 
     assert_eq!(
-        row["evidence"], "destroy accepts -auto-approve via .anc.toml [p5].confirm_flags",
+        row["evidence"], "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags",
         "row: {row}"
     );
 }

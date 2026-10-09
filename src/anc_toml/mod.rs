@@ -7,7 +7,7 @@
 //! schema_command = ["explain"]
 //!
 //! [p5]
-//! confirm_flags = ["-auto-approve"]
+//! confirm_flags = ["--noconfirm"]
 //! not_destructive = ["clean"]
 //!
 //! [p6]
@@ -24,7 +24,7 @@
 //! built-in standard-verb list consulted by the `p6-may-standard-names`
 //! audit. Built-ins stay conservative across all CLIs; a CLI whose
 //! vocabulary diverges from them (an X CLI shipping `post` / `like` /
-//! `repost`, terraform's `-auto-approve`) declares it here instead of being
+//! `repost`, pacman's `--noconfirm`) declares it here instead of being
 //! penalized for its native terminology. [`settings`] holds the shape.
 //!
 //! Loader contract ([`load_for_target`]):

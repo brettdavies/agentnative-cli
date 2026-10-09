@@ -444,9 +444,9 @@ column of the definition above it carries on that description, so docker's `-1 f
 declare nothing. The same holds for a description that starts on the line after its definition, as clap's long help, the
 Go `flag` package and kubectl print it, and it holds across blank lines, because a description can run over several
 paragraphs. A line left of the description column ends it. A flag that a help mentions only inside another flag's
-description is not declared. A long-only row is the exception: `-x, --long` puts the long name four columns right of the
-short, and a dash-led line at a column where names start is a definition, so `--format <FORMAT>` under an
-undescribed `-x` declares `--format`.
+description is not declared. Under a definition with no description, a line that declares a name at a column where names
+start is a definition, not that description: `-x, --long` puts the long name four columns right of the short, so
+`--format <FORMAT>` under an undescribed `-x` declares `--format`.
 
 A definition can sit at any indent. rsync, ffmpeg and Miller print theirs at column 0, typer and broot print them as
 rows of a box table with the short name in a cell of its own, Thor brackets its long names (`-f, [--force]`), and fzf
@@ -460,9 +460,9 @@ is a definition only with such a gap, so `[--recursive]` on a synopsis line of i
 
 Three more dash-led shapes are text, not definitions, at any indent. A line under one that ends in a backslash carries
 on an example command, so the `--recursive` under `aws s3 ls s3://amzn-s3-demo-bucket \` declares nothing. A line
-indented to the arguments of the `usage:` line above it carries on the synopsis, where argparse and git wrap a long one.
-A line that reads on as a sentence, directly under prose at the same indent, is the rest of that sentence:
-`--human-readable and --summarize options. ...`.
+indented to the arguments of the `usage:` line above it carries on the synopsis, where argparse and git wrap a long one,
+unless a gap sets off a description of its own. A line that reads on as a sentence, directly under prose at the same
+indent that has not ended its sentence, is the rest of that sentence: `--human-readable and --summarize options. ...`.
 
 One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
 double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:

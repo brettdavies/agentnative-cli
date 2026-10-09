@@ -35,10 +35,7 @@ impl Audit for QuietAudit {
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let ran = project.runner_ref().run(&["--help"], &[]).status;
-        let status = match (ran, project.help_output()) {
-            (RunStatus::Ok, Some(help)) => audit_quiet(help),
-            _ => AuditStatus::Warn("could not run --help to detect quiet flag".into()),
-        };
+        let status = status_after(&ran, project.help_output());
 
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -51,6 +48,16 @@ impl Audit for QuietAudit {
             config_hint: None,
             pass_evidence: None,
         })
+    }
+}
+
+/// The verdict for a `--help` run that ended with `ran`. A help that did not
+/// exit on its own is not searched: what it printed before it timed out or
+/// died may not be all of it.
+fn status_after(ran: &RunStatus, help: Option<&HelpOutput>) -> AuditStatus {
+    match (ran, help) {
+        (RunStatus::Ok, Some(help)) => audit_quiet(help),
+        _ => AuditStatus::Warn("could not run --help to detect quiet flag".into()),
     }
 }
 
@@ -90,6 +97,20 @@ mod tests {
         let result = QuietAudit.run(&project).expect("audit should run");
         assert_eq!(
             result.status,
+            AuditStatus::Warn("could not run --help to detect quiet flag".into())
+        );
+    }
+
+    #[test]
+    fn a_help_that_timed_out_is_not_searched() {
+        let help = HelpOutput::from_raw("  -q, --quiet  Suppress output");
+        assert_eq!(
+            status_after(&RunStatus::Timeout, Some(&help)),
+            AuditStatus::Warn("could not run --help to detect quiet flag".into())
+        );
+        assert_eq!(status_after(&RunStatus::Ok, Some(&help)), AuditStatus::Pass);
+        assert_eq!(
+            status_after(&RunStatus::Ok, None),
             AuditStatus::Warn("could not run --help to detect quiet flag".into())
         );
     }

@@ -6,4 +6,5 @@ input_file: tests/fixtures/help/probe-rich-click__--help.txt
    8 | --limit, -n | maximum number of results to return, a deliberately long des
   11 | --dry-run | print what would change
   12 | --print-config-dir, -cd | multi-letter single-dash alias
+  13 | --target, -t | where to deploy [required]
   14 | --help | Show this message and exit.

@@ -7,4 +7,5 @@ input_file: tests/fixtures/help/probe-typer__--help.txt
   11 | --dry-run | print what would change
   12 | --print-config-dir, -cd | multi-letter single-dash alias
   13 | --output, -o | write output here
+  14 | --target, -t | where to deploy [required]
   15 | --help | Show this message and exit.

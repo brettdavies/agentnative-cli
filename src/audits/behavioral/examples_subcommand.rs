@@ -113,4 +113,18 @@ mod tests {
             other => panic!("expected Warn, got {other:?}"),
         }
     }
+
+    #[test]
+    fn a_single_dash_examples_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -examples     Print usage examples.\n      --help    Show help.\n",
+        );
+        match audit_examples_subcommand(&help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-examples` is declared, but this help also declares double-dash names, so it does not count as `--examples`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
 }

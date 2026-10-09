@@ -649,6 +649,21 @@ Advanced:
             &[&["--help-env"], &["--help-xoptions"], &["--help-all"]],
         ),
         (
+            "a described row under a sentence at the same indent that does not end",
+            "Options:\n  These options control what is printed\n  --null    Print a NUL byte after each name.\n",
+            &[&["--null"]],
+        ),
+        (
+            "a name alone on its line, under a sentence at the same indent that does not end",
+            "Options:\n  These options control what is printed\n  --null\n      Print a NUL byte after each name.\n",
+            &[&["--null"]],
+        ),
+        (
+            "one-space rows under a usage line that names only the program",
+            "Usage: tool\n         -a is equivalent to -v\n         -v prints more detail\n",
+            &[&["-a"], &["-v"]],
+        ),
+        (
             "a described long-only row under a short-only row with no description",
             "Options:\n  -c <CONFIG>\n      --json     Output JSON\n  -h, --help     Print help\n",
             &[&["-c"], &["--json"], &["-h", "--help"]],

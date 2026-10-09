@@ -193,14 +193,38 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
     flags
 }
 
-/// The index of every line of `raw` shaped like a definition, whether or not
-/// it declares a name.
-pub(super) fn definition_lines(raw: &str) -> Vec<usize> {
-    classify::lines(&normalize::normalize(raw))
+/// A line of a help that is shaped like a definition.
+pub(super) struct DefinitionLine {
+    /// Index of the line in the text.
+    pub index: usize,
+    /// The line as a terminal shows it, and how many of its bytes the names
+    /// and placeholders take, before any description. `None` for a line that
+    /// declares no name.
+    pub header: Option<(String, usize)>,
+}
+
+/// Every line of `raw` shaped like a definition, whether or not it declares
+/// a name.
+pub(super) fn definition_lines(raw: &str) -> Vec<DefinitionLine> {
+    let shown = normalize::normalize(raw);
+    classify::lines(&shown)
         .iter()
+        .zip(shown.lines())
         .enumerate()
-        .filter(|(_, line)| matches!(line, Line::Definition(_) | Line::Unnamed))
-        .map(|(index, _)| index)
+        .filter_map(|(index, (line, shown))| match line {
+            Line::Definition(header) => Some(DefinitionLine {
+                index,
+                header: Some((
+                    shown.to_string(),
+                    shown.trim_end().len() - header.description.len(),
+                )),
+            }),
+            Line::Unnamed => Some(DefinitionLine {
+                index,
+                header: None,
+            }),
+            _ => None,
+        })
         .collect()
 }
 

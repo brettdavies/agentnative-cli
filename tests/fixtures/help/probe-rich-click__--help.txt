@@ -4,10 +4,12 @@
  rich-click probe                                                               
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --force             -f            skip confirmation prompts                  │
-│ --limit             -n   INTEGER  maximum number of results to return, a     │
-│                                   deliberately long description that wraps   │
-│ --dry-run                         print what would change                    │
-│ --print-config-dir  -cd           multi-letter single-dash alias             │
-│ --help                            Show this message and exit.                │
+│    --force             -f            skip confirmation prompts               │
+│    --limit             -n   INTEGER  maximum number of results to return, a  │
+│                                      deliberately long description that      │
+│                                      wraps                                   │
+│    --dry-run                         print what would change                 │
+│    --print-config-dir  -cd           multi-letter single-dash alias          │
+│ *  --target            -t   TEXT     where to deploy [required]              │
+│    --help                            Show this message and exit.             │
 ╰──────────────────────────────────────────────────────────────────────────────╯

@@ -2,7 +2,7 @@
   "probe_env": {"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "80", "PAGER": "cat"},
   "images": {
     "scorer": {"id": "sha256:05db16cf226cd14a93a2682aea41b72d3e6b4d240cadba006f2881d3ffa996b3", "dockerfile": "agentnative-site:docker/score/Dockerfile"},
-    "probes": {"id": "sha256:f1626f912f98f5152d1c34dc6ece1765025ccd4ee331ab479b34580b323fd327", "dockerfile": "probes/Dockerfile"}
+    "probes": {"id": "sha256:40f5b1b77bc4f747fb27d9ccba260ad7b7abdd27477be88eaa3eb2732c3e5b24", "dockerfile": "probes/Dockerfile"}
   },
   "fixtures": [
     {
@@ -692,7 +692,8 @@
         ["-f", "--force"],
         ["-n", "--limit"],
         ["--dry-run"],
-        ["-cd", "--print-config-dir"]
+        ["-cd", "--print-config-dir"],
+        ["-t", "--target"]
       ]
     },
     {
@@ -711,7 +712,8 @@
         ["-n", "--limit"],
         ["--dry-run"],
         ["-cd", "--print-config-dir"],
-        ["-o", "--output"]
+        ["-o", "--output"],
+        ["-t", "--target"]
       ]
     },
     {

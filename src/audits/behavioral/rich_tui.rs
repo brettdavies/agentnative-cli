@@ -127,4 +127,18 @@ mod tests {
             other => panic!("expected Warn, got {other:?}"),
         }
     }
+
+    #[test]
+    fn a_single_dash_ui_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -ui           Open the panel.\n      --help    Show help.\n",
+        );
+        match audit_rich_tui(&help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-ui` is declared, but this help also declares double-dash names, so it does not count as `--ui`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
 }

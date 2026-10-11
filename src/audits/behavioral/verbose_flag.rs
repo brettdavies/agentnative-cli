@@ -55,23 +55,47 @@ impl Audit for VerboseFlagAudit {
 }
 
 pub(crate) fn audit_verbose_flag(help: &HelpOutput) -> AuditStatus {
-    let has_verbose = help.flags().iter().any(|f| {
-        f.matches("--verbose")
-            || f.matches("-v")
-            // Some tools advertise the stacked short form as `-vv` in help text;
-            // the parsed `Flag` will still expose `-v` as the short form, but
-            // a CLI that ONLY exposes `-vv` (no long `--verbose`) is rare.
-            || f.matches("-vv")
-    });
-    if has_verbose {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(
-            "no `--verbose` / `-v` flag advertised. SHOULD-tier — agents \
-             debugging failures need a way to escalate diagnostic detail."
-                .into(),
-        )
+    // Check for --verbose or -vv first (unambiguous verbose flags)
+    let has_unambiguous_verbose = help
+        .flags()
+        .iter()
+        .any(|f| f.matches("--verbose") || f.matches("-vv"));
+    if has_unambiguous_verbose {
+        return AuditStatus::Pass;
     }
+
+    // Check for -v, but verify it's not -v for --version
+    let has_v_flag = help.flags().iter().any(|f| f.matches("-v"));
+    if has_v_flag {
+        // Check if -v is documented as version by looking for patterns like:
+        // "-v, --version" or lines with "-v" that contain "version"
+        let raw = help.raw();
+
+        // Look for lines containing -v and check if they mention version
+        for line in raw.lines() {
+            let line_lower = line.to_lowercase();
+            if line_lower.contains("-v") && !line_lower.contains("--verbose") {
+                // If this line mentions version, -v is for version, not verbose
+                if line_lower.contains("version") {
+                    return AuditStatus::Warn(
+                        "no `--verbose` flag advertised. Found `-v` but it appears to be for \
+                         version, not verbosity. SHOULD-tier — agents debugging failures need a \
+                         way to escalate diagnostic detail."
+                            .into(),
+                    );
+                }
+            }
+        }
+
+        // If -v exists but doesn't seem to be for version, accept it as verbose
+        return AuditStatus::Pass;
+    }
+
+    AuditStatus::Warn(
+        "no `--verbose` / `-v` flag advertised. SHOULD-tier — agents \
+         debugging failures need a way to escalate diagnostic detail."
+            .into(),
+    )
 }
 
 #[cfg(test)]
@@ -101,5 +125,27 @@ mod tests {
             AuditStatus::Warn(msg) => assert!(msg.contains("--verbose")),
             other => panic!("expected Warn, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn warn_when_v_is_version() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -v, --version    Show version.\n  -h, --help    Show help.\n",
+        );
+        match audit_verbose_flag(&help) {
+            AuditStatus::Warn(msg) => {
+                assert!(msg.contains("--verbose"));
+                assert!(msg.contains("version"));
+            }
+            other => panic!("expected Warn when -v is for version, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pass_when_v_is_verbose_not_version() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -v, --verbose    Increase verbosity.\n  -h, --help    Show help.\n",
+        );
+        assert_eq!(audit_verbose_flag(&help), AuditStatus::Pass);
     }
 }

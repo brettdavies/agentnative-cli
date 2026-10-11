@@ -60,13 +60,15 @@ impl Audit for InstallAllAudit {
 /// Resolve the audit's status without constructing a `AuditResult`. Per
 /// CLAUDE.md's Source Audit Convention, only `run()` constructs the result.
 fn compute_status(project: &Project) -> AuditStatus {
-    // Vacuous Pass when no bundle present.
+    // OptOut when no bundle present — the requirement is conditional.
     if find_bundle(&project.path).is_none() {
-        return AuditStatus::Pass;
+        return AuditStatus::OptOut(
+            "no skill bundle present; install command is not required".into(),
+        );
     }
 
-    // Vacuous Pass when no `skill` subcommand surface — `p8-bundle-install`
-    // already flags that case; this MAY audit should not stack-fail.
+    // OptOut when no `skill` subcommand surface — without the install command,
+    // the --all flag is not applicable.
     let Some(help) = project.help_output() else {
         return AuditStatus::Skip("could not probe --help".into());
     };
@@ -75,7 +77,9 @@ fn compute_status(project: &Project) -> AuditStatus {
         .iter()
         .any(|s| s.eq_ignore_ascii_case("skill"));
     if !has_skill {
-        return AuditStatus::Pass;
+        return AuditStatus::OptOut(
+            "no skill install command; --all flag is not applicable".into(),
+        );
     }
 
     let Some(runner) = project.runner.as_ref() else {

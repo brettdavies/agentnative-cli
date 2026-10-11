@@ -58,8 +58,11 @@ impl Audit for BundleUpdateAudit {
 /// Resolve the audit's status without constructing a `AuditResult`. Per
 /// CLAUDE.md's Source Audit Convention, only `run()` constructs the result.
 fn compute_status(project: &Project) -> AuditStatus {
+    // OptOut when no bundle present — the requirement is conditional.
     if find_bundle(&project.path).is_none() {
-        return AuditStatus::Pass;
+        return AuditStatus::OptOut(
+            "no skill bundle present; update command is not required".into(),
+        );
     }
 
     let Some(help) = project.help_output() else {
@@ -70,7 +73,7 @@ fn compute_status(project: &Project) -> AuditStatus {
         .iter()
         .any(|s| s.eq_ignore_ascii_case("skill"));
     if !has_skill {
-        return AuditStatus::Pass;
+        return AuditStatus::OptOut("no skill install command; update is not applicable".into());
     }
 
     let Some(runner) = project.runner.as_ref() else {

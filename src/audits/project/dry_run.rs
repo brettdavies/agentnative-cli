@@ -35,27 +35,32 @@ const WRITE_KEYWORDS: &[&str] = &[
     "\"push\"",
 ];
 
-/// Keywords that suggest remote side-effecting behavior.
-/// These indicate the CLI interacts with remote services and may perform
-/// writes by default (not just via explicit write flags).
-const REMOTE_WRITE_SIGNALS: &[&str] = &[
-    "api_key",
-    "apikey",
-    "api-key",
-    "endpoint",
-    "http",
-    "https",
-    "post(",
-    "put(",
-    "delete(",
-    "patch(",
-    ".post(",
+/// Patterns that indicate actual remote mutating HTTP calls.
+/// These are method calls on HTTP clients, not just URLs or API key declarations.
+/// Must be specific enough to avoid false positives from doc comments or manifests.
+const REMOTE_WRITE_PATTERNS: &[&str] = &[
+    // HTTP client method calls with mutating verbs
+    "client.post(",
+    "client.put(",
+    "client.patch(",
+    "client.delete(",
+    ".post(", // reqwest, axios, fetch
     ".put(",
-    ".delete(",
     ".patch(",
-    "client.create",
-    "client.update",
-    "client.delete",
+    ".delete(",
+    // Node/JS patterns
+    "fetch(url, { method: 'POST'",
+    "fetch(url, { method: 'PUT'",
+    "fetch(url, { method: 'PATCH'",
+    "fetch(url, { method: 'DELETE'",
+    "fetch(url, {method:'POST'",
+    "fetch(url, {method:'PUT'",
+    "fetch(url, {method:'PATCH'",
+    "fetch(url, {method:'DELETE'",
+    "method: \"POST\"",
+    "method: \"PUT\"",
+    "method: \"PATCH\"",
+    "method: \"DELETE\"",
 ];
 
 /// Patterns indicating a --dry-run flag exists.
@@ -105,7 +110,7 @@ impl Audit for DryRunAudit {
             let source = &parsed_file.source;
             if !has_write_commands {
                 has_write_commands = WRITE_KEYWORDS.iter().any(|kw| source.contains(kw))
-                    || REMOTE_WRITE_SIGNALS.iter().any(|sig| source.contains(sig));
+                    || REMOTE_WRITE_PATTERNS.iter().any(|pat| source.contains(pat));
             }
             if !has_dry_run {
                 has_dry_run = DRY_RUN_PATTERNS.iter().any(|pat| source.contains(pat));
@@ -115,13 +120,13 @@ impl Audit for DryRunAudit {
             }
         }
 
-        // Also audit the manifest for subcommand names that imply writes
+        // Also audit the manifest for subcommand names that imply writes,
+        // but NOT for remote patterns (manifests contain URLs in metadata).
         if !has_write_commands
             && let Some(manifest) = &project.manifest_path
             && let Ok(content) = fs::read_to_string(manifest)
         {
-            has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw))
-                || REMOTE_WRITE_SIGNALS.iter().any(|sig| content.contains(sig));
+            has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw));
         }
 
         let status = if !has_write_commands {
@@ -352,12 +357,10 @@ struct Cli {
 use reqwest;
 
 fn main() {
-    let api_key = std::env::var("API_KEY").unwrap();
     let client = reqwest::blocking::Client::new();
     
     // This CLI posts to a remote API by default
     let response = client.post("https://api.example.com/reports")
-        .bearer_auth(api_key)
         .json(&report_data())
         .send()
         .unwrap();
@@ -384,9 +387,6 @@ fn main() {
 #[derive(Parser)]
 struct Cli {
     #[arg(long)]
-    api_key: String,
-
-    #[arg(long)]
     dry_run: bool,
 }
 
@@ -396,7 +396,6 @@ fn main() {
     
     if !args.dry_run {
         client.post("https://api.example.com/reports")
-            .bearer_auth(&args.api_key)
             .send()
             .unwrap();
     }
@@ -411,13 +410,7 @@ fn main() {
     #[test]
     fn detects_various_remote_write_patterns() {
         // Test different patterns that indicate remote writes
-        for pattern in &[
-            "let api_key = env",
-            "endpoint = \"https://",
-            "client.post(",
-            ".delete(url)",
-            "http::post",
-        ] {
+        for pattern in &["client.post(", ".put(url)", "client.delete("] {
             let dir = temp_dir(&format!(
                 "remote-{}",
                 pattern
@@ -435,5 +428,95 @@ fn main() {
                 result.status
             );
         }
+    }
+
+    #[test]
+    fn skip_when_cargo_toml_has_homepage_url() {
+        // Negative test: Cargo.toml with homepage URL should not be flagged
+        let dir = temp_dir("homepage-url");
+        std::fs::create_dir_all(dir.join("src")).expect("create src dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            r#"[package]
+name = "test"
+version = "0.1.0"
+homepage = "https://example.com"
+repository = "https://github.com/user/repo"
+"#,
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(
+            dir.join("src/main.rs"),
+            r#"fn main() {
+    println!("Hello, world!");
+}
+"#,
+        )
+        .expect("write main.rs");
+
+        let project = Project::discover(&dir).expect("discover project");
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "Cargo.toml with homepage URL should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn skip_when_only_get_requests() {
+        // Negative test: read-only GET client should not be flagged
+        let dir = temp_dir("get-only");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+fn main() {
+    let client = reqwest::blocking::Client::new();
+    // Read-only GET request
+    let response = client.get("https://api.example.com/data")
+        .send()
+        .unwrap();
+    println!("{:?}", response);
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "read-only GET client should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn skip_when_doc_comment_has_url() {
+        // Negative test: doc comment with URL should not be flagged
+        let dir = temp_dir("doc-url");
+        let project = make_project(
+            &dir,
+            &[(
+                "lib.rs",
+                r#"
+/// This library interacts with the API at https://api.example.com
+/// 
+/// See the documentation for more details about the endpoint.
+/// API keys can be obtained from your account page.
+pub fn fetch_data() -> String {
+    "data".to_string()
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "doc comment with URL should Skip, got {:?}",
+            result.status
+        );
     }
 }

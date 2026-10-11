@@ -89,14 +89,15 @@ fn audit_no_pager(help: &HelpOutput) -> AuditStatus {
 /// Patterns that indicate the `more` pager command:
 /// - Backtick-quoted: `more`
 /// - Man page reference: more(1)
-/// - Command-like: "piped to more", "through more", "using more"
+/// - Explicitly piped: "piped to more" or "piped through more"
+///
+/// Note: "through more" and "using more" are excluded as they match common
+/// English phrases like "using more memory" or "go through more options".
 fn mentions_more_pager(text: &str) -> bool {
     text.contains("`more`")
         || text.contains("more(1)")
         || text.contains("piped to more")
         || text.contains("piped through more")
-        || text.contains("through more")
-        || text.contains("using more")
 }
 
 #[cfg(test)]
@@ -217,5 +218,21 @@ Options:
             AuditStatus::Warn(msg) => assert!(msg.contains("--no-pager")),
             other => panic!("expected Warn when more(1) is mentioned, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn skip_when_using_more_is_just_english() {
+        // Regression test: "using more memory" should not be detected as pager use
+        let help = HelpOutput::from_raw(
+            "Usage: tool [OPTIONS]\n\n\
+             This command may use more memory when processing large files.\n\
+             Go through more options with --help-verbose.\n\n\
+             Options:\n  -h, --help    Show help.\n",
+        );
+        let status = audit_no_pager(&help);
+        assert!(
+            matches!(status, AuditStatus::Skip(_)),
+            "expected Skip when 'using more' / 'through more' are English phrases, got {status:?}"
+        );
     }
 }

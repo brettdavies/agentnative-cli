@@ -15,7 +15,10 @@ use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const PAGER_SIGNALS: &[&str] = &["less", "more", "$PAGER", "--pager", "pager", "PAGER"];
+// Pager signal keywords. Note: "more" is excluded from this list because it
+// matches common English phrases like "for more information". Instead, we check
+// for it separately in a pager-specific context (e.g., "`more`" or "more(1)").
+const PAGER_SIGNALS: &[&str] = &["less", "$PAGER", "--pager", "pager", "PAGER"];
 
 pub struct NoPagerBehavioralAudit;
 
@@ -71,7 +74,8 @@ fn audit_no_pager(help: &HelpOutput) -> AuditStatus {
         return AuditStatus::Pass;
     }
     let raw = help.raw();
-    let mentions_pager = PAGER_SIGNALS.iter().any(|sig| raw.contains(sig));
+    let mentions_pager =
+        PAGER_SIGNALS.iter().any(|sig| raw.contains(sig)) || mentions_more_pager(raw);
     if !mentions_pager {
         AuditStatus::Skip("no pager signal (less/more/$PAGER/--pager) in --help".into())
     } else {
@@ -79,6 +83,20 @@ fn audit_no_pager(help: &HelpOutput) -> AuditStatus {
             "pager referenced in --help but no --no-pager escape hatch advertised".into(),
         )
     }
+}
+
+/// Check if "more" appears in a pager-specific context, not just as an English word.
+/// Patterns that indicate the `more` pager command:
+/// - Backtick-quoted: `more`
+/// - Man page reference: more(1)
+/// - Command-like: "piped to more", "through more", "using more"
+fn mentions_more_pager(text: &str) -> bool {
+    text.contains("`more`")
+        || text.contains("more(1)")
+        || text.contains("piped to more")
+        || text.contains("piped through more")
+        || text.contains("through more")
+        || text.contains("using more")
 }
 
 #[cfg(test)]
@@ -154,5 +172,50 @@ Options:
         // `Flag::matches` helper receives the query.
         let help = HelpOutput::from_raw("  --no-pager   Disable paging.\n");
         assert_eq!(audit_no_pager(&help), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn skip_when_more_is_just_english_word() {
+        // Regression test: "more information" should not be detected as the `more` pager
+        let help = HelpOutput::from_raw(
+            "Usage: tool [OPTIONS]\n\n\
+             For more information, visit our website.\n\n\
+             Options:\n  -h, --help    Show help.\n",
+        );
+        let status = audit_no_pager(&help);
+        assert!(
+            matches!(status, AuditStatus::Skip(_)),
+            "expected Skip when 'more' is just English, got {status:?}"
+        );
+    }
+
+    #[test]
+    fn warn_when_more_pager_in_backticks() {
+        // When "more" appears as `more` (backtick-quoted command), it's the pager
+        let help = HelpOutput::from_raw(
+            "Usage: tool [OPTIONS]\n\n\
+             Output is piped through `more` by default.\n\n\
+             Options:\n  -h, --help    Show help.\n",
+        );
+        let status = audit_no_pager(&help);
+        match status {
+            AuditStatus::Warn(msg) => assert!(msg.contains("--no-pager")),
+            other => panic!("expected Warn when `more` pager is mentioned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn warn_when_more_man_page_reference() {
+        // more(1) is a man page reference to the pager
+        let help = HelpOutput::from_raw(
+            "Usage: tool [OPTIONS]\n\n\
+             See more(1) for pager configuration.\n\n\
+             Options:\n  -h, --help    Show help.\n",
+        );
+        let status = audit_no_pager(&help);
+        match status {
+            AuditStatus::Warn(msg) => assert!(msg.contains("--no-pager")),
+            other => panic!("expected Warn when more(1) is mentioned, got {other:?}"),
+        }
     }
 }

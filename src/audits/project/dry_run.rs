@@ -35,6 +35,29 @@ const WRITE_KEYWORDS: &[&str] = &[
     "\"push\"",
 ];
 
+/// Keywords that suggest remote side-effecting behavior.
+/// These indicate the CLI interacts with remote services and may perform
+/// writes by default (not just via explicit write flags).
+const REMOTE_WRITE_SIGNALS: &[&str] = &[
+    "api_key",
+    "apikey",
+    "api-key",
+    "endpoint",
+    "http",
+    "https",
+    "post(",
+    "put(",
+    "delete(",
+    "patch(",
+    ".post(",
+    ".put(",
+    ".delete(",
+    ".patch(",
+    "client.create",
+    "client.update",
+    "client.delete",
+];
+
 /// Patterns indicating a --dry-run flag exists.
 const DRY_RUN_PATTERNS: &[&str] = &["dry-run", "dry_run", "dryrun"];
 
@@ -81,7 +104,8 @@ impl Audit for DryRunAudit {
         for (_path, parsed_file) in parsed.iter() {
             let source = &parsed_file.source;
             if !has_write_commands {
-                has_write_commands = WRITE_KEYWORDS.iter().any(|kw| source.contains(kw));
+                has_write_commands = WRITE_KEYWORDS.iter().any(|kw| source.contains(kw))
+                    || REMOTE_WRITE_SIGNALS.iter().any(|sig| source.contains(sig));
             }
             if !has_dry_run {
                 has_dry_run = DRY_RUN_PATTERNS.iter().any(|pat| source.contains(pat));
@@ -96,7 +120,8 @@ impl Audit for DryRunAudit {
             && let Some(manifest) = &project.manifest_path
             && let Ok(content) = fs::read_to_string(manifest)
         {
-            has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw));
+            has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw))
+                || REMOTE_WRITE_SIGNALS.iter().any(|sig| content.contains(sig));
         }
 
         let status = if !has_write_commands {
@@ -313,5 +338,102 @@ struct Cli {
         assert_eq!(audit.id(), "p5-dry-run");
         assert_eq!(audit.group(), AuditGroup::P5);
         assert_eq!(audit.layer(), AuditLayer::Project);
+    }
+
+    #[test]
+    fn warn_when_remote_api_write_without_dry_run() {
+        // Regression test: detect remote side-effecting CLIs that write by default
+        let dir = temp_dir("remote-api");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+fn main() {
+    let api_key = std::env::var("API_KEY").unwrap();
+    let client = reqwest::blocking::Client::new();
+    
+    // This CLI posts to a remote API by default
+    let response = client.post("https://api.example.com/reports")
+        .bearer_auth(api_key)
+        .json(&report_data())
+        .send()
+        .unwrap();
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Warn(_)),
+            "expected Warn for remote API writes without dry-run, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn pass_when_remote_api_has_dry_run() {
+        let dir = temp_dir("remote-api-dry");
+        let project = make_project(
+            &dir,
+            &[(
+                "cli.rs",
+                r#"
+#[derive(Parser)]
+struct Cli {
+    #[arg(long)]
+    api_key: String,
+
+    #[arg(long)]
+    dry_run: bool,
+}
+
+fn main() {
+    let args = Cli::parse();
+    let client = reqwest::blocking::Client::new();
+    
+    if !args.dry_run {
+        client.post("https://api.example.com/reports")
+            .bearer_auth(&args.api_key)
+            .send()
+            .unwrap();
+    }
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn detects_various_remote_write_patterns() {
+        // Test different patterns that indicate remote writes
+        for pattern in &[
+            "let api_key = env",
+            "endpoint = \"https://",
+            "client.post(",
+            ".delete(url)",
+            "http::post",
+        ] {
+            let dir = temp_dir(&format!(
+                "remote-{}",
+                pattern
+                    .chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .collect::<String>()
+            ));
+            let source = format!("fn main() {{ {} }}", pattern);
+            let project = make_project(&dir, &[("main.rs", &source)]);
+            let result = DryRunAudit.run(&project).expect("run audit");
+            assert!(
+                !matches!(result.status, AuditStatus::Skip(_)),
+                "pattern '{}' should detect remote writes, got {:?}",
+                pattern,
+                result.status
+            );
+        }
     }
 }

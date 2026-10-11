@@ -44,15 +44,18 @@ impl Audit for BundleInstallAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        // Vacuous Pass when no bundle is present — the requirement is gated
-        // on "if CLI ships an agent skill bundle".
+        // OptOut when no bundle is present — the requirement is gated
+        // on "if CLI ships an agent skill bundle". OptOut enables antecedent
+        // propagation to collapse this conditional MUST to n_a rather than Pass.
         if find_bundle(&project.path).is_none() {
             return Ok(AuditResult {
                 id: self.id().to_string(),
                 label: self.label().into(),
                 group: self.group(),
                 layer: self.layer(),
-                status: AuditStatus::Pass,
+                status: AuditStatus::OptOut(
+                    "no skill bundle present; install command is not required".into(),
+                ),
                 confidence: Confidence::High,
                 mitigation: None,
                 config_hint: None,
@@ -162,5 +165,53 @@ Options:
             AuditStatus::Fail(msg) => assert!(msg.contains("install")),
             other => panic!("expected Fail, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn opt_out_when_no_bundle_exists() {
+        use crate::project::Language;
+        use std::path::PathBuf;
+        use std::sync::OnceLock;
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "anc-bundle-install-nobundle-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create a minimal project with no AGENTS.md or SKILL.md
+        std::fs::write(temp_dir.join("README.md"), "# Test\n").unwrap();
+
+        let project = Project {
+            path: temp_dir.clone(),
+            language: Some(Language::Rust),
+            binary_paths: vec![],
+            manifest_path: None,
+            runner: crate::runner::BinaryRunner::new(
+                PathBuf::from("/bin/true"),
+                std::time::Duration::from_secs(2),
+            )
+            .ok(),
+            include_tests: false,
+            parsed_files: OnceLock::new(),
+            help_output: OnceLock::new(),
+            anc_config: Default::default(),
+            inventory: Default::default(),
+        };
+
+        let audit = BundleInstallAudit;
+        let result = audit.run(&project).unwrap();
+
+        match result.status {
+            AuditStatus::OptOut(msg) => {
+                assert!(msg.contains("no skill bundle") || msg.contains("not required"));
+            }
+            other => panic!("expected OptOut when no bundle exists, got {other:?}"),
+        }
+
+        std::fs::remove_dir_all(&temp_dir).ok();
     }
 }

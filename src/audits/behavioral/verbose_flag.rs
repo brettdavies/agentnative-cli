@@ -56,12 +56,25 @@ impl Audit for VerboseFlagAudit {
 
 pub(crate) fn audit_verbose_flag(help: &HelpOutput) -> AuditStatus {
     let has_verbose = help.flags().iter().any(|f| {
-        f.matches("--verbose")
-            || f.matches("-v")
-            // Some tools advertise the stacked short form as `-vv` in help text;
-            // the parsed `Flag` will still expose `-v` as the short form, but
-            // a CLI that ONLY exposes `-vv` (no long `--verbose`) is rare.
-            || f.matches("-vv")
+        // Accept explicit --verbose or -vv
+        if f.matches("--verbose") || f.matches("-vv") {
+            return true;
+        }
+
+        // For -v, check it's not paired with --version
+        // (common case: -v, --version is a version flag, not verbose)
+        if f.matches("-v") {
+            // If the flag has a long form that is --version, reject it
+            if let Some(long) = &f.long
+                && long.contains("version")
+            {
+                return false;
+            }
+            // Otherwise, accept -v as verbosity
+            return true;
+        }
+
+        false
     });
     if has_verbose {
         AuditStatus::Pass
@@ -101,5 +114,25 @@ mod tests {
             AuditStatus::Warn(msg) => assert!(msg.contains("--verbose")),
             other => panic!("expected Warn, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn warn_when_v_is_version_not_verbose() {
+        // Regression test: -v paired with --version should not count as verbose
+        let help = HelpOutput::from_raw(
+            "Options:\n  -v, --version    Show version.\n  -h, --help    Show help.\n",
+        );
+        match audit_verbose_flag(&help) {
+            AuditStatus::Warn(msg) => assert!(msg.contains("--verbose")),
+            other => panic!("expected Warn when -v is for version, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pass_with_v_not_paired_with_version() {
+        // -v without a long form, or paired with something other than --version
+        let help =
+            HelpOutput::from_raw("Options:\n  -v    Verbose output.\n  -h, --help    Show help.\n");
+        assert_eq!(audit_verbose_flag(&help), AuditStatus::Pass);
     }
 }

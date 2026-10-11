@@ -35,6 +35,36 @@ const WRITE_KEYWORDS: &[&str] = &[
     "\"push\"",
 ];
 
+/// HTTP client library import/usage patterns that indicate remote operations.
+/// Used to gate the more specific method detection.
+const HTTP_CLIENT_SIGNALS: &[&str] = &[
+    "reqwest::",
+    "use reqwest",
+    "axios",
+    "node-fetch",
+    "got(",
+    "undici",
+    "fetch(",
+    "hyper::",
+    "ureq::",
+];
+
+/// HTTP mutating method names. When these appear as method calls on an HTTP client,
+/// they indicate remote write operations.
+const HTTP_MUTATING_METHODS: &[&str] = &["post", "put", "patch", "delete"];
+
+/// Method string literals in fetch/axios options that indicate mutating operations.
+const HTTP_METHOD_LITERALS: &[&str] = &[
+    "\"POST\"",
+    "\"PUT\"",
+    "\"PATCH\"",
+    "\"DELETE\"",
+    "'POST'",
+    "'PUT'",
+    "'PATCH'",
+    "'DELETE'",
+];
+
 /// Patterns indicating a --dry-run flag exists.
 const DRY_RUN_PATTERNS: &[&str] = &["dry-run", "dry_run", "dryrun"];
 
@@ -81,7 +111,8 @@ impl Audit for DryRunAudit {
         for (_path, parsed_file) in parsed.iter() {
             let source = &parsed_file.source;
             if !has_write_commands {
-                has_write_commands = WRITE_KEYWORDS.iter().any(|kw| source.contains(kw));
+                has_write_commands = WRITE_KEYWORDS.iter().any(|kw| source.contains(kw))
+                    || has_remote_write_calls(source);
             }
             if !has_dry_run {
                 has_dry_run = DRY_RUN_PATTERNS.iter().any(|pat| source.contains(pat));
@@ -91,7 +122,8 @@ impl Audit for DryRunAudit {
             }
         }
 
-        // Also audit the manifest for subcommand names that imply writes
+        // Also audit the manifest for subcommand names that imply writes,
+        // but NOT for remote patterns (manifests contain URLs in metadata).
         if !has_write_commands
             && let Some(manifest) = &project.manifest_path
             && let Ok(content) = fs::read_to_string(manifest)
@@ -118,6 +150,51 @@ impl Audit for DryRunAudit {
             config_hint: None,
         })
     }
+}
+
+/// Check if source contains remote HTTP write calls.
+/// More robust than substring matching: gates method detection on HTTP client presence
+/// and looks for method calls in context.
+fn has_remote_write_calls(source: &str) -> bool {
+    // First, check if an HTTP client is present
+    let has_http_client = HTTP_CLIENT_SIGNALS.iter().any(|sig| source.contains(sig));
+    if !has_http_client {
+        return false;
+    }
+
+    // Check for HTTP method string literals (in fetch/axios options)
+    if HTTP_METHOD_LITERALS.iter().any(|lit| source.contains(lit)) {
+        return true;
+    }
+
+    // Check for HTTP mutating method calls.
+    // To avoid false positives from Map.delete(), Set.delete(), cache.put(), etc.,
+    // we look for patterns that suggest HTTP client method calls:
+    // - Explicitly named clients: client.post(, http.delete(, api.put(
+    // - Chain after await/response: .then(...).post(, response.delete(
+    // - Common HTTP client variables: req.post(, request.put(
+    for method in HTTP_MUTATING_METHODS {
+        let patterns = [
+            format!("client.{}(", method),
+            format!("http.{}(", method),
+            format!("api.{}(", method),
+            format!("req.{}(", method),
+            format!("request.{}(", method),
+            format!("response.{}(", method),
+            // Rust: Client::new().post(...), Client::builder().delete(...)
+            format!("Client::new().{}(", method),
+            format!("Client::builder().{}(", method),
+            // Method chaining after await: .await?.post(, .await.delete(
+            format!(".await.{}(", method),
+            format!(".await?.{}(", method),
+        ];
+
+        if patterns.iter().any(|pat| source.contains(pat)) {
+            return true;
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -313,5 +390,286 @@ struct Cli {
         assert_eq!(audit.id(), "p5-dry-run");
         assert_eq!(audit.group(), AuditGroup::P5);
         assert_eq!(audit.layer(), AuditLayer::Project);
+    }
+
+    #[test]
+    fn warn_when_remote_api_write_without_dry_run() {
+        // Regression test: detect remote side-effecting CLIs that write by default
+        let dir = temp_dir("remote-api");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+fn main() {
+    let client = reqwest::blocking::Client::new();
+    
+    // This CLI posts to a remote API by default
+    let response = client.post("https://api.example.com/reports")
+        .json(&report_data())
+        .send()
+        .unwrap();
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Warn(_)),
+            "expected Warn for remote API writes without dry-run, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn pass_when_remote_api_has_dry_run() {
+        let dir = temp_dir("remote-api-dry");
+        let project = make_project(
+            &dir,
+            &[(
+                "cli.rs",
+                r#"
+#[derive(Parser)]
+struct Cli {
+    #[arg(long)]
+    dry_run: bool,
+}
+
+fn main() {
+    let args = Cli::parse();
+    let client = reqwest::blocking::Client::new();
+    
+    if !args.dry_run {
+        client.post("https://api.example.com/reports")
+            .send()
+            .unwrap();
+    }
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn detects_various_remote_write_patterns() {
+        // Test different patterns that indicate remote writes
+        // Each needs HTTP client context to avoid false positives
+        let test_cases = vec![
+            (
+                "reqwest-post",
+                "use reqwest; fn main() { let client = reqwest::Client::new(); client.post(url).send(); }",
+            ),
+            (
+                "reqwest-delete",
+                "use reqwest; fn main() { let http = reqwest::Client::new(); http.delete(url).send(); }",
+            ),
+            (
+                "fetch-post",
+                "use reqwest; async fn main() { let resp = fetch(url).await?.post(url); }",
+            ),
+        ];
+
+        for (name, source) in test_cases {
+            let dir = temp_dir(&format!("remote-{}", name));
+            let project = make_project(&dir, &[("main.rs", source)]);
+            let result = DryRunAudit.run(&project).expect("run audit");
+            assert!(
+                !matches!(result.status, AuditStatus::Skip(_)),
+                "pattern '{}' should detect remote writes, got {:?}",
+                name,
+                result.status
+            );
+        }
+    }
+
+    #[test]
+    fn skip_when_cargo_toml_has_homepage_url() {
+        // Negative test: Cargo.toml with homepage URL should not be flagged
+        let dir = temp_dir("homepage-url");
+        std::fs::create_dir_all(dir.join("src")).expect("create src dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            r#"[package]
+name = "test"
+version = "0.1.0"
+homepage = "https://example.com"
+repository = "https://github.com/user/repo"
+"#,
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(
+            dir.join("src/main.rs"),
+            r#"fn main() {
+    println!("Hello, world!");
+}
+"#,
+        )
+        .expect("write main.rs");
+
+        let project = Project::discover(&dir).expect("discover project");
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "Cargo.toml with homepage URL should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn skip_when_only_get_requests() {
+        // Negative test: read-only GET client should not be flagged
+        let dir = temp_dir("get-only");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+fn main() {
+    let client = reqwest::blocking::Client::new();
+    // Read-only GET request
+    let response = client.get("https://api.example.com/data")
+        .send()
+        .unwrap();
+    println!("{:?}", response);
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "read-only GET client should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn skip_when_doc_comment_has_url() {
+        // Negative test: doc comment with URL should not be flagged
+        let dir = temp_dir("doc-url");
+        let project = make_project(
+            &dir,
+            &[(
+                "lib.rs",
+                r#"
+/// This library interacts with the API at https://api.example.com
+/// 
+/// See the documentation for more details about the endpoint.
+/// API keys can be obtained from your account page.
+pub fn fetch_data() -> String {
+    "data".to_string()
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "doc comment with URL should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn skip_when_map_delete_is_collection_method() {
+        // Negative test: Map.delete(), Set.delete() should not trigger remote write detection
+        let dir = temp_dir("map-delete");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use std::collections::HashMap;
+
+fn main() {
+    let mut map = HashMap::new();
+    map.insert("key", "value");
+    
+    // This is a collection delete, not an HTTP delete
+    map.delete(&"key");
+    
+    let mut set = std::collections::HashSet::new();
+    set.insert("item");
+    set.delete(&"item");
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "Map.delete()/Set.delete() should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn skip_when_cache_put_is_collection_method() {
+        // Negative test: cache.put() should not trigger remote write detection
+        let dir = temp_dir("cache-put");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+struct Cache {
+    items: Vec<String>,
+}
+
+impl Cache {
+    fn put(&mut self, item: String) {
+        self.items.push(item);
+    }
+}
+
+fn main() {
+    let mut cache = Cache { items: vec![] };
+    // This is a local cache operation, not an HTTP PUT
+    cache.put("data".to_string());
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Skip(_)),
+            "cache.put() should Skip, got {:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn warn_when_reqwest_client_post_without_dry_run() {
+        // Positive test: actual HTTP client.post() should be detected
+        let dir = temp_dir("reqwest-post");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+fn main() {
+    let client = reqwest::blocking::Client::new();
+    let response = client.post("https://api.example.com/data")
+        .json(&data())
+        .send()
+        .unwrap();
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(
+            matches!(result.status, AuditStatus::Warn(_)),
+            "reqwest client.post() without dry-run should Warn, got {:?}",
+            result.status
+        );
     }
 }

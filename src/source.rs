@@ -4,7 +4,7 @@
 
 use ast_grep_core::Pattern;
 use ast_grep_core::tree_sitter::LanguageExt;
-use ast_grep_language::{Python, Rust};
+use ast_grep_language::{JavaScript, Python, Rust, TypeScript};
 
 use crate::project::Language;
 use crate::types::SourceLocation;
@@ -24,7 +24,9 @@ pub fn has_pattern_in(source: &str, pattern_str: &str, lang: Language) -> bool {
     match lang {
         Language::Rust => has_pattern_with(source, pattern_str, Rust),
         Language::Python => has_pattern_with(source, pattern_str, Python),
-        _ => false,
+        Language::Node => has_pattern_with(source, pattern_str, JavaScript),
+        Language::TypeScript => has_pattern_with(source, pattern_str, TypeScript),
+        Language::Go => false,
     }
 }
 
@@ -41,7 +43,9 @@ pub fn find_pattern_matches_in(
     match lang {
         Language::Rust => find_pattern_matches_with(source, pattern_str, Rust),
         Language::Python => find_pattern_matches_with(source, pattern_str, Python),
-        _ => vec![],
+        Language::Node => find_pattern_matches_with(source, pattern_str, JavaScript),
+        Language::TypeScript => find_pattern_matches_with(source, pattern_str, TypeScript),
+        Language::Go => vec![],
     }
 }
 
@@ -266,7 +270,24 @@ fn main() {
     fn test_unsupported_language_returns_empty() {
         let source = "package main\nfunc main() {}";
         assert!(find_pattern_matches_in(source, "anything", Language::Go).is_empty());
-        assert!(!has_pattern_in(source, "anything", Language::Node));
+        assert!(!has_pattern_in(source, "anything", Language::Go));
+    }
+
+    #[test]
+    fn test_javascript_pattern_matches() {
+        let source = "const client = axios.post('https://example.com', data);";
+        assert!(has_pattern_in(source, "$VAR.post($$$ARGS)", Language::Node));
+    }
+
+    #[test]
+    fn test_typescript_pattern_matches() {
+        let source =
+            "async function main() {\n  const response = await fetch(url, { method: 'POST' });\n}";
+        assert!(has_pattern_in(
+            source,
+            "await fetch($$$ARGS)",
+            Language::TypeScript
+        ));
     }
 
     #[test]

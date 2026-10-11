@@ -35,6 +35,8 @@ ast-grep-core = { version = "=0.42.0" }
 ast-grep-language = { version = "=0.42.0", default-features = false, features = [
     "tree-sitter-rust",
     "tree-sitter-python",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
 ] }
 
 # CLI framework

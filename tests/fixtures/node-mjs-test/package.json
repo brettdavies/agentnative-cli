@@ -1,0 +1,8 @@
+{
+  "name": "node-mjs-test",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "node-mjs-test": "src/cli.mjs"
+  }
+}

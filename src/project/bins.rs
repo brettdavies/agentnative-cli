@@ -41,7 +41,7 @@ pub fn candidates(root: &Path, packages: &mut [Package]) -> Bins {
         let manifest = fs::read_to_string(&pkg.manifest).unwrap_or_default();
         let declared = match pkg.language {
             Language::Rust => rust(root, pkg, &manifest),
-            Language::Node => node(root, pkg, &manifest),
+            Language::Node | Language::TypeScript => node(root, pkg, &manifest),
             Language::Python => python(root, pkg, &manifest),
             Language::Go => go(pkg, &manifest),
         };

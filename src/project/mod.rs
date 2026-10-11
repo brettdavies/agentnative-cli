@@ -33,15 +33,17 @@ pub enum Language {
     Python,
     Go,
     Node,
+    TypeScript,
 }
 
 impl Language {
     /// Every language anc recognizes.
-    pub const ALL: [Language; 4] = [
+    pub const ALL: [Language; 5] = [
         Language::Rust,
         Language::Python,
         Language::Go,
         Language::Node,
+        Language::TypeScript,
     ];
 
     /// The manifest file that makes a directory a package of this language.
@@ -51,6 +53,7 @@ impl Language {
             Language::Python => "pyproject.toml",
             Language::Go => "go.mod",
             Language::Node => "package.json",
+            Language::TypeScript => "package.json",
         }
     }
 
@@ -68,6 +71,12 @@ impl Language {
             ("py", Language::Python),
             ("go", Language::Go),
             ("js", Language::Node),
+            ("mjs", Language::Node),
+            ("cjs", Language::Node),
+            ("ts", Language::TypeScript),
+            ("mts", Language::TypeScript),
+            ("cts", Language::TypeScript),
+            ("tsx", Language::TypeScript),
         ]
         .into_iter()
         .find_map(|(known, lang)| (ext == known).then_some(lang))

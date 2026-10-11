@@ -15,7 +15,19 @@ use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const PAGER_SIGNALS: &[&str] = &["less", "more", "$PAGER", "--pager", "pager", "PAGER"];
+const PAGER_SIGNALS: &[&str] = &["less", "$PAGER", "--pager", "pager", "PAGER"];
+
+/// Additional context patterns that indicate actual pager usage, not ordinary English.
+/// Used when checking for "more" to avoid false positives.
+const PAGER_CONTEXT_PATTERNS: &[&str] = &[
+    "piped to more",
+    "piped through more",
+    "uses more",
+    "use more",
+    "more pager",
+    "more(1)",
+    "more command",
+];
 
 pub struct NoPagerBehavioralAudit;
 
@@ -71,7 +83,19 @@ fn audit_no_pager(help: &HelpOutput) -> AuditStatus {
         return AuditStatus::Pass;
     }
     let raw = help.raw();
-    let mentions_pager = PAGER_SIGNALS.iter().any(|sig| raw.contains(sig));
+    let raw_lower = raw.to_lowercase();
+
+    // Check for unambiguous pager signals (everything except "more")
+    let has_pager_signal = PAGER_SIGNALS.iter().any(|sig| raw.contains(sig));
+
+    // Check for "more" only in pager-specific contexts to avoid false positives
+    // on ordinary English like "for more information"
+    let has_more_pager = PAGER_CONTEXT_PATTERNS
+        .iter()
+        .any(|pattern| raw_lower.contains(pattern));
+
+    let mentions_pager = has_pager_signal || has_more_pager;
+
     if !mentions_pager {
         AuditStatus::Skip("no pager signal (less/more/$PAGER/--pager) in --help".into())
     } else {
@@ -154,5 +178,35 @@ Options:
         // `Flag::matches` helper receives the query.
         let help = HelpOutput::from_raw("  --no-pager   Disable paging.\n");
         assert_eq!(audit_no_pager(&help), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn skip_when_more_is_ordinary_english() {
+        // "for more information" should not trigger pager detection
+        let help = HelpOutput::from_raw(
+            "Usage: tool [OPTIONS]\n\nFor more information, visit our website.\n\nOptions:\n  -h, --help    Show help.\n",
+        );
+        let status = audit_no_pager(&help);
+        assert!(
+            matches!(status, AuditStatus::Skip(_)),
+            "ordinary English 'more' should not trigger pager detection, got: {status:?}"
+        );
+    }
+
+    #[test]
+    fn warn_when_more_pager_mentioned_in_context() {
+        // "piped through more" should trigger pager detection
+        let help = HelpOutput::from_raw(
+            "Usage: tool [OPTIONS]\n\nLong output is piped through more by default.\n\nOptions:\n  -h, --help    Show help.\n",
+        );
+        let status = audit_no_pager(&help);
+        match status {
+            AuditStatus::Warn(msg) => {
+                assert!(msg.contains("--no-pager"));
+            }
+            other => {
+                panic!("expected Warn when 'more' pager is mentioned in context, got {other:?}")
+            }
+        }
     }
 }

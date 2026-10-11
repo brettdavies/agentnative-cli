@@ -7,7 +7,6 @@
 //! Gates on bundle presence and `skill` subcommand existence.
 
 use crate::audit::Audit;
-use crate::audits::project::bundle_exists::find_bundle;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -58,9 +57,8 @@ impl Audit for BundleUpdateAudit {
 /// Resolve the audit's status without constructing a `AuditResult`. Per
 /// CLAUDE.md's Source Audit Convention, only `run()` constructs the result.
 fn compute_status(project: &Project) -> AuditStatus {
-    if find_bundle(&project.path).is_none() {
-        return AuditStatus::Pass;
-    }
+    // This requirement is conditional on p8-bundle-exists; antecedent
+    // propagation collapses this to n_a when no bundle is present.
 
     let Some(help) = project.help_output() else {
         return AuditStatus::Skip("could not probe --help".into());
@@ -70,7 +68,12 @@ fn compute_status(project: &Project) -> AuditStatus {
         .iter()
         .any(|s| s.eq_ignore_ascii_case("skill"));
     if !has_skill {
-        return AuditStatus::Pass;
+        return AuditStatus::Warn(
+            "no `skill` subcommand found. The canonical install path is \
+             `tool skill install [<host>]`. Without it, the bundle's \
+             discovery and install surface remain out of scope for automation."
+                .into(),
+        );
     }
 
     let Some(runner) = project.runner.as_ref() else {

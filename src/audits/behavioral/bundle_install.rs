@@ -11,7 +11,6 @@
 //! the requirement is vacuously satisfied.
 
 use crate::audit::Audit;
-use crate::audits::project::bundle_exists::find_bundle;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -44,21 +43,10 @@ impl Audit for BundleInstallAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        // Vacuous Pass when no bundle is present — the requirement is gated
-        // on "if CLI ships an agent skill bundle".
-        if find_bundle(&project.path).is_none() {
-            return Ok(AuditResult {
-                id: self.id().to_string(),
-                label: self.label().into(),
-                group: self.group(),
-                layer: self.layer(),
-                status: AuditStatus::Pass,
-                confidence: Confidence::High,
-                mitigation: None,
-                config_hint: None,
-            });
-        }
-
+        // This requirement is conditional on p8-bundle-exists; antecedent
+        // propagation collapses this to n_a when no bundle is present.
+        // We no longer return Pass here — let the audit run and let
+        // propagation handle the conditional applicability.
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
             Some(help) => audit_bundle_install(help),

@@ -35,6 +35,27 @@ const WRITE_KEYWORDS: &[&str] = &[
     "\"push\"",
 ];
 
+/// Keywords that indicate remote/network write operations.
+const REMOTE_WRITE_KEYWORDS: &[&str] = &[
+    "fetch(",
+    "axios",
+    ".post(",
+    ".put(",
+    ".patch(",
+    ".delete(",
+    "http.request",
+    "https.request",
+    "request(",
+    "upload",
+    "publish",
+    "send",
+];
+
+/// Patterns in package manifests that suggest remote writes by default.
+const MANIFEST_REMOTE_PATTERNS: &[&str] = &[
+    "upload", "publish", "post", "report", "send", "api", "remote",
+];
+
 /// Patterns indicating a --dry-run flag exists.
 const DRY_RUN_PATTERNS: &[&str] = &["dry-run", "dry_run", "dryrun"];
 
@@ -76,6 +97,7 @@ impl Audit for DryRunAudit {
         let parsed = project.parsed_files(language);
 
         let mut has_write_commands = false;
+        let mut has_remote_writes = false;
         let mut has_dry_run = false;
 
         for (_path, parsed_file) in parsed.iter() {
@@ -83,28 +105,45 @@ impl Audit for DryRunAudit {
             if !has_write_commands {
                 has_write_commands = WRITE_KEYWORDS.iter().any(|kw| source.contains(kw));
             }
+            if !has_remote_writes {
+                has_remote_writes = REMOTE_WRITE_KEYWORDS.iter().any(|kw| source.contains(kw));
+            }
             if !has_dry_run {
                 has_dry_run = DRY_RUN_PATTERNS.iter().any(|pat| source.contains(pat));
             }
-            if has_write_commands && has_dry_run {
+            if has_write_commands && has_remote_writes && has_dry_run {
                 break;
             }
         }
 
-        // Also audit the manifest for subcommand names that imply writes
-        if !has_write_commands
-            && let Some(manifest) = &project.manifest_path
+        // Also audit the manifest for keywords that imply writes or remote operations
+        if let Some(manifest) = &project.manifest_path
             && let Ok(content) = fs::read_to_string(manifest)
         {
-            has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw));
+            if !has_write_commands {
+                has_write_commands = WRITE_KEYWORDS.iter().any(|kw| content.contains(kw));
+            }
+            if !has_remote_writes {
+                has_remote_writes = MANIFEST_REMOTE_PATTERNS
+                    .iter()
+                    .any(|kw| content.to_lowercase().contains(kw));
+            }
         }
 
-        let status = if !has_write_commands {
-            AuditStatus::Skip("No write/mutate commands detected".into())
+        let has_any_writes = has_write_commands || has_remote_writes;
+
+        let status = if !has_any_writes {
+            AuditStatus::Skip("No write/mutate commands or remote operations detected".into())
         } else if has_dry_run {
             AuditStatus::Pass
         } else {
-            AuditStatus::Warn("Write/mutate commands detected but no --dry-run flag found".into())
+            let evidence = if has_remote_writes {
+                "Write/mutate commands or remote operations detected but no --dry-run flag found. \
+                 Remote writes should always offer a dry-run mode so agents can preview changes."
+            } else {
+                "Write/mutate commands detected but no --dry-run flag found"
+            };
+            AuditStatus::Warn(evidence.into())
         };
 
         Ok(AuditResult {
@@ -313,5 +352,90 @@ struct Cli {
         assert_eq!(audit.id(), "p5-dry-run");
         assert_eq!(audit.group(), AuditGroup::P5);
         assert_eq!(audit.layer(), AuditLayer::Project);
+    }
+
+    #[test]
+    fn warn_when_remote_write_without_dry_run() {
+        let dir = temp_dir("remote-write");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+async fn main() {
+    let client = reqwest::Client::new();
+    let res = client.post("https://api.example.com/reports")
+        .json(&data)
+        .send()
+        .await;
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(matches!(result.status, AuditStatus::Warn(_)));
+        if let AuditStatus::Warn(evidence) = &result.status {
+            assert!(evidence.contains("remote"));
+        }
+    }
+
+    #[test]
+    fn pass_when_remote_write_with_dry_run() {
+        let dir = temp_dir("remote-with-dry-run");
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+use reqwest;
+
+#[derive(Parser)]
+struct Cli {
+    #[arg(long)]
+    dry_run: bool,
+}
+
+async fn main() {
+    let args = Cli::parse();
+    let client = reqwest::Client::new();
+    if !args.dry_run {
+        client.post("https://api.example.com/reports").send().await;
+    }
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn detects_remote_write_from_manifest() {
+        let dir = temp_dir("manifest-remote");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            r#"[package]
+name = "test"
+version = "0.1.0"
+description = "A tool that uploads reports to a remote service"
+"#,
+        )
+        .expect("write Cargo.toml");
+
+        let project = make_project(
+            &dir,
+            &[(
+                "main.rs",
+                r#"
+fn main() {
+    println!("Starting report upload");
+}
+"#,
+            )],
+        );
+        let result = DryRunAudit.run(&project).expect("run audit");
+        assert!(matches!(result.status, AuditStatus::Warn(_)));
     }
 }

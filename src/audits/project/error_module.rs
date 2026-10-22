@@ -1,13 +1,27 @@
 //! Audit: Detect a dedicated error module in the project source tree.
 //!
 //! Principle: P4 (Actionable Errors) — Projects should have a centralized error
-//! module (e.g., src/error.rs, src/errors.rs) for consistent error handling.
+//! module (e.g., src/error.rs, src/errors.rs, or a src/error/ directory module)
+//! for consistent error handling.
 
 use std::fs;
 
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+/// Paths, relative to a source directory, that hold an error module: a file
+/// module, or a directory module (Rust `mod.rs`, a Python package).
+const MODULE_PATHS: &[&str] = &[
+    "error.rs",
+    "errors.rs",
+    "error/mod.rs",
+    "errors/mod.rs",
+    "error.py",
+    "errors.py",
+    "error/__init__.py",
+    "errors/__init__.py",
+];
 
 pub struct ErrorModuleAudit;
 
@@ -44,48 +58,28 @@ impl Audit for ErrorModuleAudit {
             .unwrap_or(&project.path);
         let src_dir = package_root.join("src");
 
-        // Audit direct files: src/error.rs, src/errors.rs
-        let direct_candidates = ["error.rs", "errors.rs", "error.py", "errors.py"];
-        for candidate in &direct_candidates {
-            if src_dir.join(candidate).exists() {
-                return Ok(AuditResult {
-                    id: self.id().to_string(),
-                    label: self.label().into(),
-                    group: self.group(),
-                    layer: self.layer(),
-                    status: AuditStatus::Pass,
-                    confidence: Confidence::High,
-                    mitigation: None,
-                    config_hint: None,
-                    pass_evidence: None,
-                });
-            }
-        }
+        let has_module = |dir: &std::path::Path| MODULE_PATHS.iter().any(|p| dir.join(p).exists());
 
-        // Audit subdirectories: src/*/error.rs, src/*/errors.rs
-        if src_dir.is_dir()
-            && let Ok(entries) = fs::read_dir(&src_dir)
-        {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    for name in &["error.rs", "errors.rs", "error.py", "errors.py"] {
-                        if path.join(name).exists() {
-                            return Ok(AuditResult {
-                                id: self.id().to_string(),
-                                label: self.label().into(),
-                                group: self.group(),
-                                layer: self.layer(),
-                                status: AuditStatus::Pass,
-                                confidence: Confidence::High,
-                                mitigation: None,
-                                config_hint: None,
-                                pass_evidence: None,
-                            });
-                        }
-                    }
-                }
-            }
+        let found = has_module(&src_dir)
+            || (src_dir.is_dir()
+                && fs::read_dir(&src_dir).is_ok_and(|entries| {
+                    entries
+                        .flatten()
+                        .map(|entry| entry.path())
+                        .any(|path| path.is_dir() && has_module(&path))
+                }));
+        if found {
+            return Ok(AuditResult {
+                id: self.id().to_string(),
+                label: self.label().into(),
+                group: self.group(),
+                layer: self.layer(),
+                status: AuditStatus::Pass,
+                confidence: Confidence::High,
+                mitigation: None,
+                config_hint: None,
+                pass_evidence: None,
+            });
         }
 
         Ok(AuditResult {
@@ -94,7 +88,7 @@ impl Audit for ErrorModuleAudit {
             group: self.group(),
             layer: self.layer(),
             status: AuditStatus::Warn(
-                "No dedicated error module found (expected src/error.rs or src/errors.rs)".into(),
+                "No dedicated error module found (expected src/error.rs, src/errors.rs, or src/error/mod.rs)".into(),
             ),
             confidence: Confidence::High,
             mitigation: None,
@@ -184,6 +178,42 @@ mod tests {
         let submod = dir.join("src").join("core");
         fs::create_dir_all(&submod).expect("create submod dir");
         fs::write(submod.join("error.rs"), "pub enum CoreError {}").expect("write error.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+        let result = ErrorModuleAudit.run(&project).expect("run audit");
+        assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn pass_with_error_directory_module() {
+        let dir = temp_dir("error-dir");
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write Cargo.toml");
+        let module = dir.join("src").join("error");
+        fs::create_dir_all(&module).expect("create src/error dir");
+        fs::write(module.join("mod.rs"), "pub enum AppError {}").expect("write mod.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+        let result = ErrorModuleAudit.run(&project).expect("run audit");
+        assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn pass_with_errors_python_package() {
+        let dir = temp_dir("errors-pkg");
+        fs::write(
+            dir.join("pyproject.toml"),
+            "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write pyproject.toml");
+        let package = dir.join("src").join("errors");
+        fs::create_dir_all(&package).expect("create src/errors dir");
+        fs::write(
+            package.join("__init__.py"),
+            "class AppError(Exception): ...",
+        )
+        .expect("write __init__.py");
         let project = Project::discover(&dir).expect("discover test project");
         let result = ErrorModuleAudit.run(&project).expect("run audit");
         assert_eq!(result.status, AuditStatus::Pass);

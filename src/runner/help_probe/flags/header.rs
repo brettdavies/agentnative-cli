@@ -17,6 +17,7 @@
 //! next gap, or at the prose itself when the line has no later gap.
 
 use super::FlagName;
+use super::classify::column_of;
 use super::pieces::{Kind, Piece, pieces};
 
 /// Punctuation that sets a description off from its header: Thor's `#`,
@@ -29,6 +30,10 @@ pub(super) struct Header<'a> {
     /// The first value placeholder on the line, as written.
     pub placeholder: Option<&'a str>,
     pub description: &'a str,
+    /// The column the description starts at, when the line carries one.
+    pub description_column: Option<usize>,
+    /// The column each name starts at.
+    pub name_columns: Vec<usize>,
 }
 
 /// Read a definition line. `None` when the line declares no name.
@@ -36,6 +41,7 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
     let all = pieces(line);
     let mut names: Vec<FlagName> = Vec::new();
     let mut placeholder: Option<&str> = None;
+    let mut name_columns: Vec<usize> = Vec::new();
     let mut prose: Option<usize> = None;
     let mut after_gap: Option<usize> = None;
     for (i, piece) in all.iter().enumerate() {
@@ -48,6 +54,7 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
         }
         match piece.kind(names.is_empty()) {
             Kind::Names(declared, attached) => {
+                name_columns.push(column_of(line, piece.start));
                 for name in declared {
                     if !names.iter().any(|seen| seen.spelling == name) {
                         names.push(FlagName::new(name));
@@ -67,7 +74,7 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
     if names.is_empty() {
         return None;
     }
-    let description = after_gap
+    let described = after_gap
         .or(prose)
         .map(|i| {
             if MARKERS.contains(&all[i].text) {
@@ -76,12 +83,13 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
                 i
             }
         })
-        .and_then(|i| all.get(i))
-        .map_or("", |first| line[first.start..].trim_end());
+        .and_then(|i| all.get(i));
     Some(Header {
         names,
         placeholder,
-        description,
+        description: described.map_or("", |first| line[first.start..].trim_end()),
+        description_column: described.map(|first| column_of(line, first.start)),
+        name_columns,
     })
 }
 

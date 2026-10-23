@@ -2,11 +2,11 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/anc__--help.txt
 ---
-  19 | -q, --quiet | 
-  24 | -v, --verbose | 
-  29 | --examples | 
-  32 | --json | 
-  35 | --color | 
-  42 | --raw | 
-  45 | -h, --help | 
-  48 | -V, --version |
+  19 | -q, --quiet | Suppress non-essential output. Default: false (warnings and 
+  24 | -v, --verbose | Escalate diagnostic detail. `-v` is shorthand for `--verbose
+  29 | --examples | Print a curated examples block and exit. Pairs with `--outpu
+  32 | --json | Emit JSON output. Short alias for `--output json` on subcomm
+  35 | --color | Color control for text output. `auto` (default) emits ANSI s
+  42 | --raw | Strip section headers, evidence lines, summary line, and bad
+  45 | -h, --help | Print help (see a summary with '-h')
+  48 | -V, --version | Print version

@@ -2,18 +2,18 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/sed__--help.txt
 ---
-   3 | -n, --quiet, --silent | 
-   5 | --debug | 
-   7 | -e, --expression | 
-   9 | -f, --file | 
-  11 | --follow-symlinks | 
-  13 | -i, --in-place | 
-  15 | -l, --line-length | 
-  17 | --posix | 
-  19 | -E, -r, --regexp-extended | 
-  22 | -s, --separate | 
-  25 | --sandbox | 
-  27 | -u, --unbuffered | 
-  30 | -z, --null-data | 
+   3 | -n, --quiet, --silent | suppress automatic printing of pattern space
+   5 | --debug | annotate program execution
+   7 | -e, --expression | add the script to the commands to be executed
+   9 | -f, --file | add the contents of script-file to the commands to be execut
+  11 | --follow-symlinks | follow symlinks when processing in place
+  13 | -i, --in-place | edit files in place (makes backup if SUFFIX supplied)
+  15 | -l, --line-length | specify the desired line-wrap length for the `l' command
+  17 | --posix | disable all GNU extensions.
+  19 | -E, -r, --regexp-extended | use extended regular expressions in the script (for portabil
+  22 | -s, --separate | consider files as separate rather than as a single, continuo
+  25 | --sandbox | operate in sandbox mode (disable e/r/w commands).
+  27 | -u, --unbuffered | load minimal amounts of data from the input files and flush 
+  30 | -z, --null-data | separate lines by NUL characters
   32 | --help | display this help and exit
   33 | --version | output version information and exit

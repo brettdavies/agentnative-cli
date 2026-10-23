@@ -6,15 +6,12 @@ input_file: tests/fixtures/help/claude__--help.txt
   11 | --agent | Agent for the current session. Overrides
   12 | --agents | JSON object defining custom agents, or
   13 | --allow-dangerously-skip-permissions | Enable bypassing all permission checks
-  14 | --allowedTools, --allowed-tools | 
+  14 | --allowedTools, --allowed-tools | Comma or space-separated list of tool names to allow (e.g. "
   17 | --append-system-prompt | Append a system prompt to the default
   18 | --autocompact | Auto-compact window size (auto, or
   19 | --ax-screen-reader | Render screen-reader friendly output
-  20 | --bg, --background | Start the session in the background and
-  22 | --resume | continues that
-  24 | --bare | Minimal mode: skip hooks (those defined
-  26 | --append-system-prompt, --add-dir | 
-  28 | --settings, --agents, --plugin-dir | 
+  20 | --bg, --background | Start the session in the background and take; `claude agents
+  24 | --bare | Minimal mode: skip hooks (those defined via: --system-prompt
   29 | --betas | Beta headers to include in API requests
   30 | --brief | Enable SendUserMessage tool for
   31 | --chrome | Enable Claude in Chrome integration
@@ -23,26 +20,21 @@ input_file: tests/fixtures/help/claude__--help.txt
   34 | --dangerously-skip-permissions | Bypass all permission checks.
   35 | -d, --debug | Enable debug mode with optional category
   36 | --debug-file | Write debug logs to a specific file path
-  37 | --desktop | Open in the Claude Desktop app instead
-  39 | --resume | to pick the session)
+  37 | --desktop | Open in the Claude Desktop app instead of the terminal (with
   40 | --disable-slash-commands | Disable all skills
-  41 | --disallowedTools, --disallowed-tools | 
+  41 | --disallowedTools, --disallowed-tools | Comma or space-separated list of tool names to deny (e.g. "B
   44 | --effort | Effort level for the current session
   45 | --environment | Create a new cloud session that runs on
-  46 | --exclude-dynamic-system-prompt-sections | 
+  46 | --exclude-dynamic-system-prompt-sections | Move per-machine sections (cwd, env info, memory paths, git 
   51 | --fallback-model | Enable automatic fallback to specified
-  52 | --file | File resources to download at startup.
-  54 | --file | file_abc:doc.txt
+  52 | --file | File resources to download at startup. Format: file_id:relat
   56 | --fork-session | When resuming, create a new session ID
-  57 | --forward-subagent-text | Forward subagent text and thinking
-  59 | --print | and --output-format=stream-json)
+  57 | --forward-subagent-text | Forward subagent text and thinking parent_tool_use_id set (o
   60 | --from-pr | Resume a session linked to a PR by PR
   61 | -h, --help | Display help for command
   62 | --ide | Automatically connect to IDE on startup
-  63 | --include-hook-events | Include all hook lifecycle events in the
-  65 | --output-format | 
-  66 | --include-partial-messages | Include partial message chunks as they
-  68 | --output-format | 
+  63 | --include-hook-events | Include all hook lifecycle events in the output stream (only
+  66 | --include-partial-messages | Include partial message chunks as they arrive (only works wi
   69 | --input-format | Input format (only works with --print):
   70 | --json-schema | JSON Schema for structured output
   71 | --max-budget-usd | Maximum dollar amount to spend on API
@@ -53,21 +45,15 @@ input_file: tests/fixtures/help/claude__--help.txt
   76 | --no-session-persistence | Disable session persistence - sessions
   77 | --output-format | Output format (only works with --print):
   78 | --permission-mode | Permission mode to use for the session
-  79 | --permission-prompts | Who answers permission prompts with
-  80 | --print | 
-  81 | --permission-prompt-tool | or "none"
-  83 | --plugin-dir | Load a plugin from a directory or .zip
-  85 | --plugin-dir | B.zip)
-  87 | --plugin-url | Fetch a plugin .zip from a URL for this
-  89 | --plugin-url | 
+  79 | --permission-prompts | Who answers permission prompts with --print: "host" (the SDK
+  83 | --plugin-dir | Load a plugin from a directory or .zip plugins loads each ch
+  87 | --plugin-url | Fetch a plugin .zip from a URL for this session only (repeat
   90 | -p, --print | Print response and exit (useful for
   91 | --prompt-suggestions | Enable prompt suggestions. In print/SDK
   92 | --remote-control | Start an interactive session with Remote
-  93 | --remote-control-session-name-prefix | 
-  95 | --replay-user-messages | Re-emit user messages from stdin back on
-  97 | --output-format | 
-  98 | --restricted | Restricted mode: removes the built-in
- 100 | --tools | names them, and ignores user,
+  93 | --remote-control-session-name-prefix | Prefix for auto-generated Remote Control session names (defa
+  95 | --replay-user-messages | Re-emit user messages from stdin back on with --input-format
+  98 | --restricted | Restricted mode: removes the built-in code-running tools) an
  102 | -r, --resume | Resume a conversation by session ID, or
  103 | --safe-mode | Start with all customizations
  104 | --session-id | Use a specific session ID for the
@@ -75,12 +61,9 @@ input_file: tests/fixtures/help/claude__--help.txt
  106 | --settings | Path to a settings JSON file or a JSON
  107 | --strict-mcp-config | Only use MCP servers from --mcp-config,
  108 | --system-prompt | System prompt to use for the session
- 109 | --system-prompt-snapshot | Record the system prompt once per
- 111 | --system-prompt | or
- 112 | --append-system-prompt | included — sent,
+ 109 | --system-prompt-snapshot | Record the system prompt once per conversation's first reque
  114 | --teleport | Resume a teleport session, optionally
- 115 | --tmux | Create a tmux session for the worktree
- 117 | --tmux | for traditional tmux.
+ 115 | --tmux | Create a tmux session for the worktree native panes when ava
  118 | --tools | Specify the list of available tools from
  119 | --verbose | Override verbose mode setting from
  120 | -v, --version | Output the version number

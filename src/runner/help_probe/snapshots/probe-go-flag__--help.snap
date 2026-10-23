@@ -2,10 +2,10 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/probe-go-flag__--help.txt
 ---
-   2 | -auto-approve | 
-   5 | -chdir | 
+   2 | -auto-approve | skip interactive approval, a deliberately long description t
+   5 | -chdir | switch to DIR before running
    7 | -f | skip confirmation prompts
-   8 | -force | 
-  10 | -n | 
-  12 | -no-color | 
+   8 | -force | skip confirmation prompts (long spelling)
+  10 | -n | maximum count of results
+  12 | -no-color | disable color
   14 | -v | verbose

@@ -4,8 +4,8 @@ input_file: tests/fixtures/help/pixi__--help.txt
 ---
   66 | -V, --version | Print version
   69 | -h, --help | Display help information
-  70 | -v, --verbose | Increase logging verbosity (-v for warnings, -vv for
+  70 | -v, --verbose | Increase logging verbosity (-v for warnings, -vv for info, -
   72 | -q, --quiet | Decrease logging verbosity (quiet mode)
-  73 | --color | Whether the log needs to be colored [env: PIXI_COLOR=]
-  75 | --no-progress | Hide all progress bars, always turned on if stderr is not
+  73 | --color | Whether the log needs to be colored [env: PIXI_COLOR=] [defa
+  75 | --no-progress | Hide all progress bars, always turned on if stderr is not a 
   77 | --list | List all installed commands (built-in and extensions)

@@ -2,9 +2,9 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/terraform__fmt_--help.txt
 ---
-  19 | -list | Don't list files whose formatting differs
-  22 | -write | Don't write to source files
+  19 | -list | Don't list files whose formatting differs (always disabled i
+  22 | -write | Don't write to source files (always disabled if using STDIN 
   25 | -diff | Display diffs of formatting changes
   27 | -check | Check if the input is formatted. Exit status will be 0 if al
   30 | -no-color | If specified, output won't contain any color.
-  32 | -recursive | Also process files in subdirectories. By default, only the
+  32 | -recursive | Also process files in subdirectories. By default, only the g

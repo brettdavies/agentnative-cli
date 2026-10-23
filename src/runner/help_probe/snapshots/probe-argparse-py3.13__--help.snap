@@ -4,10 +4,10 @@ input_file: tests/fixtures/help/probe-argparse-py3.13__--help.txt
 ---
   11 | -h, --help | show this help message and exit
   12 | -f, --force | skip confirmation prompts
-  13 | -n, --limit | maximum number of results to return, a deliberately
+  13 | -n, --limit | maximum number of results to return, a deliberately long des
   16 | --dry-run | print what would change
   17 | -v, --verbose | increase verbosity
   18 | -o, --output | write output to OUTPUT
-  19 | -cd, --print-config-dir | 
+  19 | -cd, --print-config-dir | multi-letter single-dash alias
   21 | -no-color | single-dash word option
-  22 | --color |
+  22 | --color | choices placeholder

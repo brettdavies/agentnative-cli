@@ -8,7 +8,7 @@ input_file: tests/fixtures/help/terraform__test_--help.txt
   32 | -junit-xml | Saves a test report in JUnit XML format to the specified
   37 | -no-color | If specified, output won't contain any color.
   39 | -parallelism | Limit the number of concurrent operations within the
-  42 | -test-directory | 
+  42 | -test-directory | Set the Terraform test directory, defaults to "tests".
   44 | -var | Set a value for one of the input variables in the root
   48 | -var-file | Load variable values from the given file, in addition
   53 | -verbose | Print the plan or state for each test run block as it

@@ -12,6 +12,8 @@
 //! tools don't need an advertised flag to be agent-safe.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
+use crate::audits::behavioral::non_interactive::{no_flag_declared, prints_usage};
 use crate::project::Project;
 use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -32,8 +34,6 @@ const GATE_FLAGS: &[&str] = &[
     "--yes",
     "--assume-yes",
 ];
-
-const HELP_ON_BARE_MARKERS: &[&str] = &["Usage:", "USAGE:", "usage:"];
 
 pub struct FlagExistenceAudit;
 
@@ -97,7 +97,7 @@ impl Audit for FlagExistenceAudit {
 /// Whether the bare invocation already shows the target is safe to call
 /// without a terminal: it printed usage, or it exited on its own.
 fn has_alternative_gate(bare_output: &str, bare_exited: bool) -> bool {
-    bare_exited || HELP_ON_BARE_MARKERS.iter().any(|m| bare_output.contains(m))
+    bare_exited || prints_usage(bare_output)
 }
 
 /// Core unit. Whether the help declares one of [`GATE_FLAGS`].
@@ -107,17 +107,7 @@ pub(crate) fn audit_flag_existence(help: &HelpOutput) -> AuditStatus {
             "--help produced no output (likely non-English or unsupported)".into(),
         );
     }
-    if help.find_flag(GATE_FLAGS).is_some() {
-        return AuditStatus::Pass;
-    }
-    AuditStatus::Warn(help.noting_dash_rule(
-        GATE_FLAGS,
-        &format!(
-            "no option definition in --help declares a non-interactive flag (one of: {}); usage \
-             lines are not read.",
-            GATE_FLAGS.join(", ")
-        ),
-    ))
+    pass_or_warn(help, GATE_FLAGS, &no_flag_declared(GATE_FLAGS))
 }
 
 #[cfg(test)]

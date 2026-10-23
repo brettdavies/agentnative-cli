@@ -15,7 +15,7 @@
 
 use crate::anc_toml::{JSON_PROBE_KEY, SCHEMA_COMMAND_KEY, Sourced};
 use crate::audit::Audit;
-use crate::audits::behavioral::json_output::{probe_invocation, run_declared_probe};
+use crate::audits::behavioral::declared_probe::{probe_invocation, run_declared_probe};
 use crate::audits::behavioral::subcommand_help::{probe_help, probe_subcommands};
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput};

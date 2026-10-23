@@ -1,0 +1,17 @@
+"""Docopt probe.
+
+Usage:
+  probe [-fv] [-n N] [--dry-run] [-o FILE] [PATH]
+  probe (-h | --help)
+
+Options:
+  -h --help          Show this screen.
+  -f --force         Skip confirmation prompts.
+  -n N, --limit=N    Maximum number of results to return, a long description
+                     that continues on the next line [default: 10].
+  --dry-run          Print what would change.
+  -v --verbose       Increase verbosity.
+  -o FILE --output=FILE  Write output here.
+"""
+from docopt import docopt
+print(docopt(__doc__))

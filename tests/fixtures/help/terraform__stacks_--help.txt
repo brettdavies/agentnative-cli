@@ -1,0 +1,33 @@
+Usage: terraform stacks [global options] <command> [args]
+
+The available commands for execution are listed below.
+
+Primary Commands:
+  init              Prepare the configuration directory for further commands
+  providers-lock    Write out dependency locks for the configured providers
+  validate          Check whether the configuration is valid
+  create            Create a stack
+  list              List stacks for a given organization and/or project.
+  version           Show the current Stacks Plugin version
+  fmt               Reformat your Terraform Stacks configuration to a canonical format
+
+
+Sub-commands:
+  configuration     Manage stack configuration
+  deployment-group  Manage deployment groups
+  deployment-run    Manage deployment runs
+  deployment-step   Manage deployment steps
+  diagnostics       Show diagnostics for a stack configuration or deployment step
+
+
+Global options (use these before the subcommand, if any):
+  -chdir=DIR              Switch to a different working directory before executing the
+                          given subcommand.
+  -plugin-cache-dir=DIR   Override the default directory where the stack plugin binary is cached.
+  -stacks-version      	  An alias for the "version" subcommand.
+  -no-color=BOOL          Disable color output. Must be explicitly set to true or false.
+
+Usage help:
+  -usage                  Show this usage output or the usage for a specified subcommand.
+                          Use after the command: terraform stacks <command> -usage
+

@@ -1,0 +1,7 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__--help.txt
+---
+  39 | -c | Switch to a different working directory before executing the
+  41 | -h | Show this help output or the help for a specified subcommand
+  42 | -v | An alias for the "version" subcommand.

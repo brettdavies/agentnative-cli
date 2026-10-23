@@ -1,0 +1,9 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__query_--help.txt
+---
+  15 | -v | Set a value for one of the input variables in the query
+  19 | -v | Load variable values from the given file, in addition
+  26 | -g | Instructs Terraform to generate import and resource
+  34 | -j | If specified, machine readable output will be
+  37 | -n | If specified, output won't contain any color.

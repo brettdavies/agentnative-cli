@@ -1,0 +1,12 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/anc__--help.txt
+---
+  19 | -q, --quiet | 
+  24 | -v, --verbose | 
+  29 | --examples | 
+  32 | --json | 
+  35 | --color | 
+  42 | --raw | 
+  45 | -h, --help | 
+  48 | -V, --version |

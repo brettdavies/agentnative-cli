@@ -1,0 +1,41 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/java__-help.txt
+---
+  12 | -m | 
+  17 | -c | 
+  18 | -c | 
+  19 | --class-path | 
+  22 | -p | 
+  23 | --module-path | 
+  27 | --upgrade-module-path | 
+  32 | --add-modules | 
+  36 | --enable-native-access | 
+  39 | --list-modules | 
+  41 | -d | 
+  42 | --describe-module | 
+  44 | --dry-run | create VM and load main class but do not execute main method
+  47 | --validate-modules | 
+  51 | -D | 
+  53 | -v | 
+  55 | -v | print product version to the error stream and exit
+  56 | --version | print product version to the output stream and exit
+  57 | -s | print product version to the error stream and continue
+  58 | --show-version | 
+  60 | --show-module-resolution | 
+  62 | -? | 
+  64 | --help | print this help message to the output stream
+  65 | -X | print help on extra options to the error stream
+  66 | --help-extra | print help on extra options to the output stream
+  67 | -e | 
+  68 | -e | 
+  70 | -d | 
+  71 | -d | 
+  73 | -e | 
+  75 | -d | 
+  77 | -a | 
+  80 | -a | 
+  82 | -j | 
+  84 | -s | 
+  94 | --disable- | 
+  96 | --enable-preview |

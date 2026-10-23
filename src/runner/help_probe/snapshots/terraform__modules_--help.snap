@@ -1,0 +1,7 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__modules_--help.txt
+---
+   9 | -j | If specified, output declared Terraform modules and
+  12 | -v | Set a value for one of the input variables in the root
+  16 | -v | Load variable values from the given file, in addition

@@ -1,0 +1,15 @@
+                                                                                
+ Usage: py_typer.py [OPTIONS]                                                   
+                                                                                
+ typer probe                                                                    
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --force             -f              skip confirmation prompts                │
+│ --limit             -n       <int>  maximum number of results to return, a   │
+│                                     deliberately long description that wraps │
+│ --dry-run                           print what would change                  │
+│ --print-config-dir  -cd             multi-letter single-dash alias           │
+│ --output            -o       <str>  write output here                        │
+│ --help                              Show this message and exit.              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

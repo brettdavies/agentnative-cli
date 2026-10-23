@@ -1,0 +1,11 @@
+Usage: probe-kong [flags]
+
+Flags:
+  -h, --help           Show context-sensitive help.
+  -f, --force          skip confirmation prompts
+  -n, --limit=INT      maximum number of results to return, a deliberately long
+                       description so kong wraps it
+      --dry-run        print what would change
+  -o, --output=FILE    write output here
+      --[no-]color     colorize
+  -v, --verbose        increase verbosity

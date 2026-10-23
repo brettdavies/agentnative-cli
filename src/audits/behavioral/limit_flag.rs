@@ -143,15 +143,15 @@ fn find_limit_flag(help: &HelpOutput) -> Option<String> {
 }
 
 fn is_limit_flag(flag: &Flag) -> bool {
-    LIMIT_FLAGS.iter().any(|name| flag.matches(name))
-        || (flag.matches("-n") && bounds_a_count(flag))
+    flag.declares_any(LIMIT_FLAGS).is_some()
+        || (flag.declares("-n").is_some() && bounds_a_count(flag))
 }
 
 fn bounds_a_count(flag: &Flag) -> bool {
-    if COUNT_LONG_FORMS.iter().any(|name| flag.matches(name)) {
+    if flag.declares_any(COUNT_LONG_FORMS).is_some() {
         return true;
     }
-    let description = flag.description.to_lowercase();
+    let description = flag.description().to_lowercase();
     description.contains(COUNT_PHRASE)
         || description
             .split(|c: char| !c.is_ascii_alphanumeric())

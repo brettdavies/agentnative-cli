@@ -179,10 +179,7 @@ fn credit_the_probe(
 /// Whether the help names a structured-output flag or format.
 fn has_structured_output_indicator(help: &HelpOutput) -> bool {
     let raw_lower = help.raw().to_lowercase();
-    let has_structured_flag = help
-        .flags()
-        .iter()
-        .any(|f| STRUCTURED_OUTPUT_FLAG_NAMES.iter().any(|n| f.matches(n)));
+    let has_structured_flag = help.find_flag(STRUCTURED_OUTPUT_FLAG_NAMES).is_some();
     has_structured_flag
         || STRUCTURED_OUTPUT_TOKENS
             .iter()
@@ -201,7 +198,7 @@ pub(crate) fn audit_schema_print(help: &HelpOutput, json_shown: bool) -> AuditSt
         );
     }
 
-    let has_schema_flag = help.flags().iter().any(|f| f.matches("--schema"));
+    let has_schema_flag = help.find_flag(&["--schema"]).is_some();
     if has_schema_flag {
         return AuditStatus::Pass;
     }
@@ -245,7 +242,7 @@ pub(crate) fn audit_schema_print_with_subhelp(
     }
 
     for (_name, help) in subhelp {
-        let has_schema_flag = help.flags().iter().any(|f| f.matches("--schema"));
+        let has_schema_flag = help.find_flag(&["--schema"]).is_some();
         if has_schema_flag {
             return AuditStatus::Pass;
         }

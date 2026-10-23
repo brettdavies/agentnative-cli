@@ -13,6 +13,7 @@
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::HelpOutput;
+use crate::runner::help_probe::Flag;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Verb fragments that, when used as the long form of a top-level flag,
@@ -94,7 +95,7 @@ pub(crate) fn audit_subcommand_operations(help: &HelpOutput) -> AuditStatus {
     let verb_flags: Vec<&str> = help
         .flags()
         .iter()
-        .filter_map(|f| f.long.as_deref())
+        .flat_map(Flag::long_names)
         .filter(|long| VERB_FLAGS.iter().any(|v| long.eq_ignore_ascii_case(v)))
         .collect();
 

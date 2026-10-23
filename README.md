@@ -405,8 +405,8 @@ release-gate against the compiled artifact). Without either flag, all three laye
 ### How behavioral audits read `--help`
 
 Several behavioral audits ask whether a help declares a flag (`--quiet`, `--force`, `--output`). `anc` answers from
-definition lines: indented lines that start with a flag name and, usually, describe it. A usage synopsis, an example, or
-a sentence that mentions a flag mid-line declares nothing, so a flag that appears only in `usage: tool [-q]` does not
+definition lines: lines that start with a flag name and, usually, describe it. A usage synopsis, an example, or a
+sentence that mentions a flag mid-line declares nothing, so a flag that appears only in `usage: tool [-q]` does not
 count.
 
 Every name on a definition line is kept whole and spelled as the help prints it, and a row that names a flag quotes that
@@ -444,6 +444,16 @@ declare nothing. The same holds for a description that starts on the line after 
 Go `flag` package and kubectl print it, and it holds across blank lines, because a description can run over several
 paragraphs. A line left of the description column ends it. A flag that a help mentions only inside another flag's
 description is not declared.
+
+A definition can sit at any indent. rsync, ffmpeg and Miller print theirs at column 0, typer and broot print them as
+rows of a box table with the short name in a cell of its own, Thor brackets its long names (`-f, [--force]`), and fzf
+has shorts that start with a plus (`+x, --no-extended`). Text is read as a terminal shows it: without ANSI escapes, with
+groff's overstruck bold collapsed, and with TABs expanded.
+
+Two shapes need more than a leading dash, because usage lines wrap into them. Dash-led text at column 0 is a definition
+only when a gap sets a description off from its names, or its description starts at the column the definition above it
+uses; `--hide-secret flag. Please carefully consider ...` at column 0 is prose. A line that starts with a bracketed flag
+is a definition only with such a gap, so `[--recursive]` on a synopsis line of its own declares nothing.
 
 One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
 double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:

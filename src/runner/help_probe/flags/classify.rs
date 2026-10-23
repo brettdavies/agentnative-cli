@@ -16,10 +16,14 @@
 //!
 //! A blank line changes nothing, because a description can run over several
 //! paragraphs. A line left of the description column ends the description.
+//!
+//! A definition can sit at any indent and can lead with `-`, `+x` or a
+//! bracketed `[--name]`. Dash-led text at column 0, and any line that leads
+//! with a bracket, is a usage wrap or prose unless a gap sets a description
+//! off from it, or its description starts at the column the definition above
+//! it uses.
 
 use super::header::{self, Header};
-
-const TAB_STOP: usize = 8;
 
 /// One line of a help text.
 pub(super) enum Line<'a> {
@@ -39,12 +43,9 @@ pub(super) fn lines(raw: &str) -> Vec<Line<'_>> {
     raw.lines().map(|line| layout.read(line)).collect()
 }
 
-/// The column a byte offset of `line` sits at. A TAB runs to the next stop.
+/// The column a byte offset of `line` sits at, counted in characters.
 pub(super) fn column_of(line: &str, byte: usize) -> usize {
-    line[..byte].chars().fold(0, |column, c| match c {
-        '\t' => (column / TAB_STOP + 1) * TAB_STOP,
-        _ => column + 1,
-    })
+    line[..byte].chars().count()
 }
 
 /// Where the definition being read keeps its description, and where the
@@ -69,23 +70,32 @@ impl Layout {
             return Line::Heading(line.trim());
         }
         let indent = column_of(line, line.len() - line.trim_start().len());
-        let dash_led = is_definition_line(line);
-        if self.continues(indent, dash_led) {
+        let lead = Lead::of(line.trim_start());
+        if self.continues(indent, lead.is_some()) {
             self.description.get_or_insert(indent);
             self.undescribed = None;
             return Line::Continuation(line.trim());
         }
-        self.description = None;
+        let above = self.description.take();
         self.undescribed = None;
         if indent == 0 {
             self.name_columns.clear();
         }
-        if !dash_led {
+        let Some(lead) = lead else {
+            return Line::Other;
+        };
+        let needs_gap = indent == 0 || lead == Lead::Bracket;
+        let Some(header) = header::tokenize(line) else {
+            return if needs_gap {
+                Line::Other
+            } else {
+                Line::Unnamed
+            };
+        };
+        let aligned = indent == 0 && above.is_some() && header.description_column == above;
+        if needs_gap && !header.set_off && !aligned {
             return Line::Other;
         }
-        let Some(header) = header::tokenize(line) else {
-            return Line::Unnamed;
-        };
         self.description = header.description_column;
         self.undescribed = header.description_column.is_none().then_some(indent);
         self.name_columns.extend(&header.name_columns);
@@ -107,14 +117,32 @@ impl Layout {
     }
 }
 
-/// A line shaped like a definition: indented with a space, then a dash. A
-/// `---` rule is not one.
-fn is_definition_line(line: &str) -> bool {
-    if !line.starts_with(' ') {
-        return false;
+/// What a line shaped like a definition leads with.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lead {
+    /// `-x`, `-word` or `--word`.
+    Dash,
+    /// fzf's `+x`.
+    Plus,
+    /// Thor's `[--name]`.
+    Bracket,
+}
+
+impl Lead {
+    /// `None` for text that is not shaped like a definition. A `---` rule is
+    /// not one.
+    fn of(trimmed: &str) -> Option<Self> {
+        let second = trimmed.chars().nth(1);
+        if trimmed.starts_with("[-") {
+            Some(Self::Bracket)
+        } else if trimmed.starts_with('+') && second.is_some_and(|c| c.is_ascii_alphabetic()) {
+            Some(Self::Plus)
+        } else if trimmed.starts_with('-') && !trimmed.starts_with("---") {
+            Some(Self::Dash)
+        } else {
+            None
+        }
     }
-    let trimmed = line.trim_start();
-    trimmed.starts_with('-') && !trimmed.starts_with("---")
 }
 
 /// A top-level section heading: not indented, ends in `:`, and carries an
@@ -339,15 +367,181 @@ Advanced:
         );
     }
 
+    /// The names each definition of `raw` declares, in help order.
+    fn declared(raw: &str) -> Vec<Vec<String>> {
+        parse(raw)
+            .iter()
+            .map(|flag| {
+                flag.names
+                    .iter()
+                    .map(|name| name.spelling.clone())
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn fixture(name: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/help")
+            .join(name);
+        String::from_utf8_lossy(
+            &std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
+        )
+        .into_owned()
+    }
+
+    /// Definition lines in layouts that do not indent with spaces, with the
+    /// names each line declares. Each row names the tool and version.
+    const LAYOUTS: &[(&str, &str, &[&[&str]])] = &[
+        (
+            "rsync 3.5.1: column 0, long name first",
+            "Options\n--verbose, -v            increase verbosity\n--info=FLAGS             fine-grained informational verbosity\n",
+            &[&["--verbose", "-v"], &["--info"]],
+        ),
+        (
+            "ffmpeg 9.0.2: column 0, single-dash words",
+            "Global options (affect whole program instead of just one file):\n-v <loglevel>       set logging level\n-y                  overwrite output files\n-n                  never overwrite output files\n-print_graphs_file <filename>  write execution graph data to the specified file\n",
+            &[&["-v"], &["-y"], &["-n"], &["-print_graphs_file"]],
+        ),
+        (
+            "ffmpeg before its placeholders gained brackets: a bare value word, then the gap",
+            "Global options (affect whole program instead of just one file):\n-loglevel loglevel  set logging level\n-report            generate a report\n",
+            &[&["-loglevel"], &["-report"]],
+        ),
+        (
+            "Miller 6.22.0 sort: column 0, a description after one space at the shared column",
+            "Options:\n-nr {a,b,c}     Numerical descending sort on the specified field names; nulls\n                sort first.\n-t {a,b,c}      Natural ascending sort on the specified field names.\n-tr|-rt {a,b,c} Natural descending sort on the specified field names.\n-h|--help       Show this message.\n",
+            &[&["-nr"], &["-t"], &["-tr", "-rt"], &["-h", "--help"]],
+        ),
+        (
+            "Thor 1.5.0: bracketed long names, and rows that start with one",
+            "Options:\n  -f,        [--force]                                      # skip confirmation prompts\n  -n,        [--limit=N]                                    # maximum number of results\n             [--dry-run], [--no-dry-run], [--skip-dry-run]  # print what would change\n  -o, --out, [--output=FILE]                                # write output here\n",
+            &[
+                &["-f", "--force"],
+                &["-n", "--limit"],
+                &["--dry-run", "--no-dry-run", "--skip-dry-run"],
+                &["-o", "--out", "--output"],
+            ],
+        ),
+        (
+            "typer 0.27.2: a box table, long name first and the short in its own cell",
+            "╭─ Options ────────────────────────────────────────────╮\n│ --force             -f              skip confirmation prompts                │\n│ --limit             -n       <int>  maximum number of results to return, a   │\n│                                     deliberately long description that wraps │\n│ --dry-run                           print what would change                  │\n╰──────────────────────────────────────────────────────╯\n",
+            &[&["--force", "-f"], &["--limit", "-n"], &["--dry-run"]],
+        ),
+        (
+            "broot 1.56: a box table whose cells touch their edges",
+            "│  -d    │--dates                      │Show the last modified date of files   │\n│        │--conf <paths>               │Semicolon separated paths to specific  │\n│        │                             │config files                           │\n",
+            &[&["-d", "--dates"], &["--conf"]],
+        ),
+        (
+            "fzf 0.74.4: a plus-prefixed short",
+            "    -x, --extended           Extended-search mode\n    +x, --no-extended        Disable extended-search mode\n",
+            &[&["-x", "--extended"], &["+x", "--no-extended"]],
+        ),
+        (
+            "Go flag 1.27.1, indented with a TAB",
+            "Usage of tool:\n\t-force\n\t\tskip confirmation prompts\n\t-n count\n\t\tmaximum number of results (default 10)\n",
+            &[&["-force"], &["-n"]],
+        ),
+        (
+            "aws-cli 2: groff overstrike",
+            "       -\u{8}--\u{8}-r\u{8}re\u{8}ec\u{8}cu\u{8}ur\u{8}rs\u{8}si\u{8}iv\u{8}ve\u{8}e (boolean) Command is performed on all files or objects\n",
+            &[&["--recursive"]],
+        ),
+        (
+            "broot 1.56: ANSI escapes despite NO_COLOR",
+            "\u{1b}[m│\u{1b}[m  -d \u{1b}[3m\u{1b}[0m   \u{1b}[m│\u{1b}[m--dates \u{1b}[3m\u{1b}[0m                     \u{1b}[m│\u{1b}[mShow the last modified date of files   \u{1b}[m│\u{1b}[m\n",
+            &[&["-d", "--dates"]],
+        ),
+    ];
+
     #[test]
-    fn a_definition_line_is_space_led_and_dash_led() {
-        assert!(is_definition_line("  -q, --quiet    Say less."));
-        assert!(is_definition_line("      --null"));
-        assert!(!is_definition_line("-q, --quiet    Say less."));
-        assert!(!is_definition_line("\t-q, --quiet    Say less."));
-        assert!(!is_definition_line("  quiet mode"));
-        assert!(!is_definition_line("  ---"));
-        assert!(!is_definition_line(""));
+    fn a_definition_is_found_wherever_a_layout_prints_one() {
+        let wrong: Vec<String> = LAYOUTS
+            .iter()
+            .filter(|(_, raw, expected)| {
+                let read = declared(raw);
+                read.len() != expected.len()
+                    || read
+                        .iter()
+                        .zip(expected.iter())
+                        .any(|(a, b)| a.as_slice() != *b)
+            })
+            .map(|(what, raw, expected)| {
+                format!("{what}: read {:?}, declares {expected:?}", declared(raw))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Dash-led text that declares nothing. Each row names its source.
+    const NOT_DEFINITIONS: &[(&str, &str)] = &[
+        (
+            "biome 2: a usage line that wraps to column 0",
+            "Usage: biome check [--write] [--unsafe] [--staged] [--changed] [--since=REF] [\n--watch] [PATH]...\n",
+        ),
+        (
+            "helm 4.3.0 install: prose at column 0",
+            "the --dry-run flag will output all generated chart manifests, including Secrets\n--hide-secret flag. Please carefully consider how and when these flags are used.\n",
+        ),
+        (
+            "GNU tar 1.35: its defaults, at column 0",
+            "*This* tar defaults to:\n--format=gnu -f- -b20 --quoting-style=escape --rmt-command=/usr/sbin/rmt\n--rsh-command=/usr/bin/rsh\n",
+        ),
+        (
+            "tmux 3.7c: a synopsis and nothing else",
+            "usage: tmux [-2CDhlNuVv] [-c shell-command] [-f file] [-L socket-name]\n            [-S socket-path] [-T features] [command [flags]]\n",
+        ),
+        (
+            "aws-cli 2 s3 ls: a synopsis that lists one bracketed flag per line",
+            "SYNOPSIS\n            ls\n          <S3Uri> or NONE\n          [--recursive]\n          [--page-size <value>]\n          [--human-readable]\n",
+        ),
+        (
+            "git 2.56.0 commit -h: a usage line that wraps onto bracketed flags",
+            "usage: git commit [-a | --interactive | --patch] [-s] [-v] [-u[<mode>]] [--amend]\n                  [--dry-run] [(-c | -C | --squash) <commit> | --fixup [(amend|reword):]<commit>]\n                  [-F <file> | -m <msg>] [--reset-author] [--allow-empty]\n",
+        ),
+        (
+            "rclone 1.75 mount: `ls -l` output in a console example",
+            "$ ls -l /mnt/\ntotal 1048577\n-rw-rw-r-- 1 user user 1073741824 Mar  3 16:03 1G\n-rw-rw-r-- 1 user user        185 Mar  3 16:03 1G.metadata\n",
+        ),
+        (
+            "pixi 0.81.0 add: a bullet list at column 0",
+            "- `pixi add python=3.9`: This will select the latest minor version that\n  complies with 3.9.*, i.e., python version 3.9.0, 3.9.1, 3.9.2, etc.\n",
+        ),
+    ];
+
+    #[test]
+    fn dash_led_text_that_is_not_a_definition_declares_nothing() {
+        let wrong: Vec<String> = NOT_DEFINITIONS
+            .iter()
+            .filter(|(_, raw)| !declared(raw).is_empty())
+            .map(|(what, raw)| format!("{what}: read {:?}", declared(raw)))
+            .collect();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    #[test]
+    fn column_0_and_box_table_fixtures_yield_their_definitions() {
+        let rsync = parse(&fixture("rsync__--help.txt"));
+        assert_eq!(rsync.len(), 154);
+        assert_eq!(rsync[0].declares("-v"), Some("-v"));
+
+        let mlr = declared(&fixture("mlr__sort_--help.txt"));
+        assert_eq!(mlr.len(), 11);
+        assert!(mlr.contains(&vec!["-tr".to_string(), "-rt".to_string()]));
+
+        let broot = parse(&fixture("broot__--help.txt"));
+        assert_eq!(broot.len(), 46);
+        assert!(
+            broot
+                .iter()
+                .any(|flag| flag.declares("--dates") == Some("--dates"))
+        );
+
+        assert!(parse(&fixture("tmux__-h.txt")).is_empty());
+
+        let typer = declared(&fixture("probe-typer__--help.txt"));
+        assert!(typer.contains(&vec!["--limit".to_string(), "-n".to_string()]));
     }
 
     #[test]

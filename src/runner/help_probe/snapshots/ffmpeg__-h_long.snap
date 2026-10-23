@@ -6,3 +6,197 @@ input_file: tests/fixtures/help/ffmpeg__-h_long.txt
    6 | -h | long -- print more options
    7 | -h | full -- print all options (including all format and codec sp
    8 | -h | type=name -- print all options for the named decoder/encoder
+  14 | -L | show license
+  15 | -license | show license
+  16 | -h | show help
+  17 | -version | show version
+  18 | -muxers | show available muxers
+  19 | -demuxers | show available demuxers
+  20 | -devices | show available devices
+  21 | -decoders | show available decoders
+  22 | -encoders | show available encoders
+  23 | -filters | show available filters
+  24 | -pix_fmts | show available pixel formats
+  25 | -layouts | show standard channel layouts
+  26 | -sample_fmts | show available audio sample formats
+  29 | -? | show help
+  30 | -help | show help
+  31 | --help | show help
+  32 | -buildconf | show build configuration
+  33 | -formats | show available formats
+  34 | -codecs | show available codecs
+  35 | -bsfs | show available bit stream filters
+  36 | -protocols | show available protocols
+  37 | -dispositions | show available stream dispositions
+  38 | -colors | show available color names
+  39 | -sources | list sources of the input device
+  40 | -sinks | list sinks of the output device
+  41 | -hwaccels | show available HW acceleration methods
+  44 | -v | set logging level
+  45 | -y | overwrite output files
+  46 | -n | never overwrite output files
+  47 | -print_graphs | print execution graph data to stderr
+  48 | -print_graphs_file | write execution graph data to the specified file
+  49 | -print_graphs_format | set the output printing format (available formats are: defau
+  50 | -stats | print progress report during encoding
+  53 | -loglevel | set logging level
+  54 | -report | generate a report
+  55 | -max_alloc | set maximum size of a single allocated block
+  56 | -cpuflags | force specific cpu flags
+  57 | -cpucount | force specific cpu count
+  58 | -hide_banner | do not show program banner
+  59 | -ignore_unknown | Ignore unknown stream types
+  60 | -copy_unknown | Copy unknown stream types
+  61 | -recast_media | allow recasting stream type in order to force a decoder of d
+  62 | -benchmark | add timings for benchmarking
+  63 | -benchmark_all | add timings for each task
+  64 | -progress | write program-readable progress information
+  65 | -stdin | enable or disable interaction on standard input
+  66 | -timelimit | set max runtime in seconds in CPU user time
+  67 | -dump | dump each input packet
+  68 | -hex | when dumping packets, also dump the payload
+  69 | -frame_drop_threshold | frame drop threshold
+  70 | -copyts | copy timestamps
+  71 | -start_at_zero | shift input timestamps to start at 0 when using copyts
+  72 | -copytb | copy input stream time base when stream copying
+  73 | -dts_delta_threshold | timestamp discontinuity delta threshold
+  74 | -dts_error_threshold | timestamp error delta threshold
+  75 | -xerror | exit on error
+  76 | -abort_on | abort on the specified condition flags
+  77 | -filter_threads | number of non-complex filter threads
+  78 | -filter_buffered_frames | maximum number of buffered frames in a filter graph
+  79 | -filter_complex | create a complex filtergraph
+  80 | -filter_complex_threads | number of threads for -filter_complex
+  81 | -lavfi | create a complex filtergraph
+  82 | -auto_conversion_filters | enable automatic conversion filters globally
+  83 | -stats_period | set the period at which ffmpeg updates stats and -progress o
+  84 | -debug_ts | print timestamp debugging info
+  85 | -max_error_rate | ratio of decoding errors (0.0: no errors, 1.0: 100% errors) 
+  86 | -vstats | dump video coding statistics to file
+  87 | -vstats_file | dump video coding statistics to file
+  88 | -vstats_version | Version of the vstats format to use.
+  89 | -sdp_file | specify a file in which to print sdp information
+  90 | -init_hw_device | initialise hardware device
+  91 | -filter_hw_device | set hardware device used when filtering
+  94 | -f | force container format (auto-detected otherwise)
+  95 | -t | stop transcoding after specified duration
+  96 | -to | stop transcoding after specified time is reached
+  97 | -ss | start transcoding at specified time
+ 100 | -bitexact | bitexact mode
+ 101 | -thread_queue_size | set the maximum number of queued packets from the demuxer
+ 105 | -sseof | set the start time offset relative to EOF
+ 106 | -seek_timestamp | enable/disable seeking by timestamp with -ss
+ 107 | -accurate_seek | enable/disable accurate seeking with -ss
+ 108 | -isync | Indicate the input index for sync reference
+ 109 | -itsoffset | set the input ts offset
+ 110 | -re | read input at native frame rate; equivalent to -readrate 1
+ 111 | -readrate | read input at specified rate
+ 112 | -readrate_initial_burst | The initial amount of input to burst read before imposing an
+ 113 | -readrate_catchup | Temporary readrate used to catch up if an input lags behind 
+ 114 | -dump_attachment | extract an attachment into a file
+ 115 | -stream_loop | set number of times input stream shall be looped
+ 116 | -find_stream_info | read and decode the streams to fill missing information with
+ 119 | -metadata | add metadata
+ 122 | -map | set input stream mapping
+ 123 | -map_metadata | set metadata information of outfile from infile
+ 124 | -map_chapters | set chapters mapping
+ 125 | -fs | set the limit file size in bytes
+ 126 | -timestamp | set the recording timestamp ('now' to set the current time)
+ 127 | -program | add program with specified streams
+ 128 | -stream_group | add stream group with specified streams and group type-speci
+ 129 | -dframes | set the number of data frames to output
+ 130 | -target | specify target file type ("vcd", "svcd", "dvd", "dv" or "dv5
+ 131 | -shortest | finish encoding within shortest input
+ 132 | -shortest_buf_duration | maximum buffering duration (in seconds) for the -shortest op
+ 133 | -qscale | use fixed quality scale (VBR)
+ 134 | -profile | set profile
+ 135 | -attach | add an attachment to the output file
+ 136 | -muxdelay | set the maximum demux-decode delay
+ 137 | -muxpreload | set the initial demux-decode delay
+ 138 | -fpre | set options from indicated preset file
+ 141 | -c | select encoder/decoder ('copy' to copy stream without reenco
+ 142 | -filter | apply specified filters to audio/video
+ 145 | -codec | alias for -c (select encoder/decoder)
+ 146 | -pre | preset name
+ 147 | -itsscale | set the input ts scale
+ 148 | -copyinkf | copy initial non-keyframes
+ 149 | -copypriorss | copy or discard frames before start time
+ 150 | -frames | set the number of frames to output
+ 151 | -tag | force codec tag/fourcc
+ 152 | -q | use fixed quality scale (VBR)
+ 153 | -reinit_filter | reinit filtergraph on input parameter changes
+ 154 | -drop_changed | drop frame instead of reiniting filtergraph on input paramet
+ 155 | -discard | discard
+ 156 | -disposition | disposition
+ 157 | -bits_per_raw_sample | set the number of bits per raw sample
+ 158 | -stats_enc_pre | write encoding stats before encoding
+ 159 | -stats_enc_post | write encoding stats after encoding
+ 160 | -stats_mux_pre | write packets stats before muxing
+ 161 | -stats_enc_pre_fmt | format of the stats written with -stats_enc_pre
+ 162 | -stats_enc_post_fmt | format of the stats written with -stats_enc_post
+ 163 | -stats_mux_pre_fmt | format of the stats written with -stats_mux_pre
+ 164 | -time_base | set the desired time base hint for output stream (1:24, 1:48
+ 165 | -enc_time_base | set the desired time base for the encoder (1:24, 1:48000 or 
+ 166 | -bsf | A comma-separated list of bitstream filters
+ 167 | -max_muxing_queue_size | maximum number of packets that can be buffered while waiting
+ 168 | -muxing_queue_data_threshold | set the threshold after which max_muxing_queue_size is taken
+ 171 | -r | override input framerate/convert to given output framerate (
+ 172 | -aspect | set aspect ratio (4:3, 16:9 or 1.3333, 1.7777)
+ 173 | -vn | disable video
+ 174 | -vcodec | alias for -c:v (select encoder/decoder for video streams)
+ 175 | -vf | alias for -filter:v (apply filters to video streams)
+ 176 | -b | video bitrate (please use -b:v)
+ 179 | -vframes | set the number of video frames to output
+ 180 | -fpsmax | set max frame rate (Hz value, fraction or abbreviation)
+ 181 | -pix_fmt | set pixel format
+ 182 | -display_rotation | set pure counter-clockwise rotation in degrees for stream(s)
+ 183 | -display_hflip | set display horizontal flip for stream(s) (overrides any dis
+ 184 | -display_vflip | set display vertical flip for stream(s) (overrides any displ
+ 185 | -mastering_display | set SMPTE2084 mastering display color volume info
+ 186 | -content_light | set SMPTE2084 Max CLL and Max FALL values
+ 187 | -rc_override | rate control override for specific intervals
+ 188 | -timecode | set initial TimeCode value.
+ 189 | -pass | select the pass number (1 to 3)
+ 190 | -passlogfile | select two pass log file name prefix
+ 191 | -vstats | dump video coding statistics to file
+ 192 | -vstats_file | dump video coding statistics to file
+ 193 | -vstats_version | Version of the vstats format to use.
+ 194 | -intra_matrix | specify intra matrix coeffs
+ 195 | -inter_matrix | specify inter matrix coeffs
+ 196 | -chroma_intra_matrix | specify intra matrix coeffs
+ 197 | -vtag | force video tag/fourcc
+ 198 | -fps_mode | set framerate mode for matching video streams
+ 199 | -force_fps | force the selected framerate, disable the best supported fra
+ 200 | -streamid | set the value of an outfile streamid
+ 201 | -force_key_frames | force key frames at specified timestamps
+ 202 | -hwaccel | use HW accelerated decoding
+ 203 | -hwaccel_device | select a device for HW acceleration
+ 204 | -hwaccel_output_format | select output format used with HW accelerated decoding
+ 205 | -autorotate | automatically insert correct rotate filters
+ 206 | -autoscale | automatically insert a scale filter at the end of the filter
+ 207 | -apply_cropping | select the cropping to apply
+ 208 | -fix_sub_duration_heartbeat | set this video output stream to be a heartbeat stream for fi
+ 209 | -vpre | set the video options to the indicated preset
+ 212 | -aq | set audio quality (codec-specific)
+ 213 | -ar | set audio sampling rate (in Hz)
+ 214 | -ac | set number of audio channels
+ 215 | -an | disable audio
+ 216 | -acodec | alias for -c:a (select encoder/decoder for audio streams)
+ 217 | -ab | alias for -b:a (select bitrate for audio streams)
+ 218 | -af | alias for -filter:a (apply filters to audio streams)
+ 221 | -aframes | set the number of audio frames to output
+ 222 | -apad | audio pad
+ 223 | -atag | force audio tag/fourcc
+ 224 | -sample_fmt | set sample format
+ 225 | -channel_layout | set channel layout
+ 226 | -ch_layout | set channel layout
+ 227 | -guess_layout_max | set the maximum number of channels to try to guess the chann
+ 228 | -apre | set the audio options to the indicated preset
+ 231 | -sn | disable subtitle
+ 232 | -scodec | alias for -c:s (select encoder/decoder for subtitle streams)
+ 235 | -stag | force subtitle tag/fourcc
+ 236 | -fix_sub_duration | fix subtitles duration
+ 237 | -canvas_size | set canvas size (WxH or abbreviation)
+ 238 | -spre | set the subtitle options to the indicated preset
+ 241 | -dcodec | alias for -c:d (select encoder/decoder for data streams)
+ 242 | -dn | disable data

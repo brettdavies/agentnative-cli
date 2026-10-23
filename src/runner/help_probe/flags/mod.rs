@@ -10,6 +10,7 @@
 
 mod classify;
 mod header;
+mod normalize;
 mod pieces;
 
 use classify::Line;
@@ -166,7 +167,8 @@ pub(super) fn kept_apart<'a>(flags: &'a [Flag], names: &[&'a str]) -> Option<(&'
 pub(super) fn parse(raw: &str) -> Vec<Flag> {
     let mut flags: Vec<Flag> = Vec::new();
     let mut section: Option<String> = None;
-    for (index, line) in classify::lines(raw).into_iter().enumerate() {
+    let text = normalize::normalize(raw);
+    for (index, line) in classify::lines(&text).into_iter().enumerate() {
         match line {
             Line::Heading(heading) => section = Some(heading.to_string()),
             Line::Definition(header) => flags.push(Flag {
@@ -194,7 +196,7 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
 /// The index of every line of `raw` shaped like a definition, whether or not
 /// it declares a name.
 pub(super) fn definition_lines(raw: &str) -> Vec<usize> {
-    classify::lines(raw)
+    classify::lines(&normalize::normalize(raw))
         .iter()
         .enumerate()
         .filter(|(_, line)| matches!(line, Line::Definition(_) | Line::Unnamed))

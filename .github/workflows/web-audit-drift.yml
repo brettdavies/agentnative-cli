@@ -28,9 +28,6 @@ concurrency:
   group: web-audit-drift-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   drift-check:
     runs-on: ubuntu-latest

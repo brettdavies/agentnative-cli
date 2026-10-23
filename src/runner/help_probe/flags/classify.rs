@@ -485,6 +485,11 @@ Advanced:
             &[&["--force", "-f"], &["--limit", "-n"], &["--dry-run"]],
         ),
         (
+            "typer 0.27.2: a required option, marked `*` in the first cell of its row",
+            "╭─ Options ────────────────────────────────────────────╮\n│    --output            -o       <str>  write output here                     │\n│ *  --target            -t       <str>  where to deploy [required]            │\n│    --help                              Show this message and exit.           │\n╰──────────────────────────────────────────────────────╯\n",
+            &[&["--output", "-o"], &["--target", "-t"], &["--help"]],
+        ),
+        (
             "broot 1.56: a box table whose cells touch their edges",
             "│  -d    │--dates                      │Show the last modified date of files   │\n│        │--conf <paths>               │Semicolon separated paths to specific  │\n│        │                             │config files                           │\n",
             &[&["-d", "--dates"], &["--conf"]],
@@ -753,6 +758,10 @@ Advanced:
 
         let typer = declared(&fixture("probe-typer__--help.txt"));
         assert!(typer.contains(&vec!["--limit".to_string(), "-n".to_string()]));
+        assert!(typer.contains(&vec!["--target".to_string(), "-t".to_string()]));
+
+        let rich_click = declared(&fixture("probe-rich-click__--help.txt"));
+        assert!(rich_click.contains(&vec!["--target".to_string(), "-t".to_string()]));
     }
 
     #[test]

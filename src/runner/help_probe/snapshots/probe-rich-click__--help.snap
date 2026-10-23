@@ -4,6 +4,7 @@ input_file: tests/fixtures/help/probe-rich-click__--help.txt
 ---
    7 | --force, -f | skip confirmation prompts
    8 | --limit, -n | maximum number of results to return, a deliberately long des
-  10 | --dry-run | print what would change
-  11 | --print-config-dir, -cd | multi-letter single-dash alias
-  12 | --help | Show this message and exit.
+  11 | --dry-run | print what would change
+  12 | --print-config-dir, -cd | multi-letter single-dash alias
+  13 | --target, -t | where to deploy [required]
+  14 | --help | Show this message and exit.

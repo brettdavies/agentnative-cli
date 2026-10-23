@@ -9,13 +9,16 @@ const BELL: char = '\u{7}';
 /// `raw`, line for line, with ANSI escape sequences removed, each overstruck
 /// character reduced to the one printed last (groff bold is `X\bX`), TABs
 /// expanded to the next stop of eight, and each vertical edge of a box table
-/// turned into a gap. Lines keep their order and count.
+/// turned into a gap. A box-table row that leads with a `*` cell, where typer
+/// and rich-click mark a required option, has the marker blanked, so the row
+/// leads with its name. Lines keep their order and count.
 pub(super) fn normalize(raw: &str) -> String {
     raw.lines().map(shown).collect::<Vec<_>>().join("\n")
 }
 
 fn shown(line: &str) -> String {
     let mut out: Vec<char> = Vec::with_capacity(line.len());
+    let mut boxed = false;
     let mut chars = line.chars();
     while let Some(c) = chars.next() {
         match c {
@@ -27,11 +30,28 @@ fn shown(line: &str) -> String {
                 let stop = (out.len() / TAB_STOP + 1) * TAB_STOP;
                 out.resize(stop, ' ');
             }
-            '│' | '┃' | '║' => out.extend([' ', ' ']),
+            '│' | '┃' | '║' => {
+                boxed = true;
+                out.extend([' ', ' ']);
+            }
             _ => out.push(c),
         }
     }
+    if boxed {
+        blank_required_marker(&mut out);
+    }
     out.into_iter().collect()
+}
+
+/// Blank a `*` that leads the row and stands in a cell of its own.
+fn blank_required_marker(row: &mut [char]) {
+    let Some(first) = row.iter().position(|c| !c.is_whitespace()) else {
+        return;
+    };
+    let alone = row.get(first + 1..first + 3) == Some(&[' ', ' ']);
+    if row[first] == '*' && alone {
+        row[first] = ' ';
+    }
 }
 
 /// Consume the rest of an escape sequence: a CSI sequence through its final
@@ -96,6 +116,22 @@ mod tests {
         assert_eq!(
             normalize("│-d│--dates│Show dates│"),
             "  -d  --dates  Show dates  "
+        );
+    }
+
+    #[test]
+    fn a_required_marker_in_a_box_table_becomes_a_space() {
+        assert_eq!(
+            normalize("│ *  --target  -t  <str>  where to deploy [required] │"),
+            "      --target  -t  <str>  where to deploy [required]   "
+        );
+        assert_eq!(
+            normalize("  * --all: every item, as a bullet"),
+            "  * --all: every item, as a bullet"
+        );
+        assert_eq!(
+            normalize("│ *.md  files are read │"),
+            "   *.md  files are read   "
         );
     }
 

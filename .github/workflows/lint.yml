@@ -1,0 +1,16 @@
+name: Lint
+
+# pull_request only: merges are squash merges, so a push run would re-lint the
+# tree already linted at the PR head. No paths filter, so `lint / actionlint`
+# reports on every pull request and can be a required check.
+on:
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    uses: brettdavies/.github/.github/workflows/lint-basics.yml@main

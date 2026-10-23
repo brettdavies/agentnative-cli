@@ -5,4 +5,5 @@ input_file: tests/fixtures/help/probe-oclif__deploy_--help.txt
   11 | -f, --force | skip confirmation prompts
   12 | -n, --limit | maximum number of results to return, a deliberately long
   15 | -o, --output | write output here
+  16 | --color, --no-color | colorize
   17 | --dry-run | print what would change

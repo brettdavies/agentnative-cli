@@ -11,14 +11,15 @@
 //! every list / search command, so Pass needs all of them to carry one.
 //!
 //! `-n` counts only when it bounds a count: `-n` is also `--namespace`
-//! (helm, kubectl), `--dry-run` (rclone), and `--no-headers` (xsv), and
-//! terraform's single-dash `-no-color` parses as `-n`. A `-n` is a limit
-//! flag when its long form names a count (`--lines`, `--last`) or its
-//! description says so ("Max results", "number of").
+//! (helm, kubectl), `--dry-run` (rclone), and `--no-headers` (xsv). A `-n`
+//! is a limit flag when its long form names a count (`--lines`, `--last`) or
+//! its description says so ("Max results", "number of").
 
 use crate::audit::Audit;
 use crate::audits::behavioral::list_style::list_style_subcommands;
-use crate::audits::behavioral::subcommand_help::{coverage, first_flag, probe_named};
+use crate::audits::behavioral::subcommand_help::{
+    coverage, dash_rule_notes, first_flag, probe_named,
+};
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::runner::help_probe::Flag;
@@ -130,9 +131,10 @@ pub(crate) fn audit_limit_flag(
         AuditStatus::Warn(format!(
             "list-style subcommand(s) with no limit flag in their --help: {} \
              (looked for {}, or a -n that bounds a count).{carried} SHOULD-tier: callers should be able to bound \
-             response size directly rather than scrape-then-truncate.",
+             response size directly rather than scrape-then-truncate.{}",
             cov.without_list(),
             LIMIT_FLAGS.join(", "),
+            dash_rule_notes(&cov.without, subhelp, LIMIT_FLAGS),
         )),
         None,
     )
@@ -268,7 +270,7 @@ Global Flags:
 ";
 
     // Excerpts of terraform 1.16's `terraform --help` and `terraform query
-    // --help`; its single-dash `-no-color` parses as `-n`.
+    // --help`; `-no-color` is a name of its own, not `-n`.
     const TERRAFORM_HELP: &str = "\
 Usage: terraform [global options] <subcommand> [args]
 
@@ -352,6 +354,25 @@ Other Options:
                 assert!(msg.contains("in their --help: ls (looked for"), "{msg}");
                 assert!(!msg.contains("Carries one"), "{msg}");
             }
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_limit_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(RCLONE_HELP);
+        let subhelp = vec![sub(
+            "ls",
+            "Usage: tool ls [flags]\n\nFlags:\n  -limit int   Max entries\n      --help   help for ls\n",
+        )];
+        match audit_limit_flag(&help, &subhelp) {
+            (AuditStatus::Warn(msg), None) => assert!(
+                msg.ends_with(
+                    "In `ls`, `-limit` is declared, but this help also declares double-dash \
+                     names, so it does not count as `--limit`."
+                ),
+                "{msg}"
+            ),
             other => panic!("expected Warn, got {other:?}"),
         }
     }

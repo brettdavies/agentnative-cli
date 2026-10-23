@@ -224,6 +224,30 @@ mod tests {
         }
     }
 
+    // The global options of terraform 1.16.4's `--help`.
+    const TERRAFORM_TOP: &str = "Usage: terraform [global options] <subcommand> [args]\n\n\
+        Main commands:\n  validate      Check whether the configuration is valid\n  version       Show the current Terraform version\n\n\
+        Global options (use these before the subcommand, if any):\n  -chdir=DIR    Switch to a different working directory before executing the\n                given subcommand.\n  -help         Show this help output or the help for a specified subcommand.\n  -version      An alias for the \"version\" subcommand.\n";
+
+    #[test]
+    fn a_single_dash_word_is_global_only_under_its_whole_name() {
+        let own_option = "Usage: terraform [global options] validate\n\nOptions:\n\n  -compact-warnings     If Terraform produces any warnings that are not\n                        accompanied by errors, show them in a more compact form\n";
+        assert!(takes("validate", own_option, TERRAFORM_TOP));
+
+        let global_option = "Usage: terraform [global options] validate\n\nOptions:\n\n  -chdir=DIR    Switch to a different working directory\n";
+        assert!(!takes("validate", global_option, TERRAFORM_TOP));
+    }
+
+    #[test]
+    fn a_single_dash_help_word_is_the_help_flag_without_double_dash_names() {
+        let only_help = "Usage: terraform [global options] version\n\nOptions:\n\n  -help    Show this help output.\n";
+        assert!(!takes(
+            "version",
+            only_help,
+            "Usage: terraform <subcommand>\n"
+        ));
+    }
+
     #[test]
     fn reads_cobra_forms_and_wrapped_usage() {
         let cobra_top = "Usage:\n  tool [command]\n\nAvailable Commands:\n  serve  Serve\n  pull   Pull\n\n\

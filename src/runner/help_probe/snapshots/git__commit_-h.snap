@@ -2,25 +2,43 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/git__commit_-h.txt
 ---
-  10 | -q | suppress summary after successful commit
-  11 | -v | show diff in commit message template
-  14 | -F | 
-  19 | -m | 
-  21 | -c | 
-  23 | -C | 
-  32 | -s | add a Signed-off-by trailer
-  33 | -t | 
-  35 | -e | force edit of commit
-  38 | -S | 
-  42 | -a | commit all changed files
-  43 | -i | add specified files to index for commit
-  45 | -p | interactively add changes
+  10 | -q, --quiet, --no-quiet | suppress summary after successful commit
+  11 | -v, --verbose, --no-verbose | show diff in commit message template
+  14 | -F, --file, --no-file | 
+  16 | --author, --no-author | 
+  18 | --date, --no-date | override date for commit
+  19 | -m, --message, --no-message | 
+  21 | -c, --reedit-message, --no-reedit-message | 
+  23 | -C, --reuse-message, --no-reuse-message | 
+  25 | --fixup, --no-fixup | 
+  27 | --squash, --no-squash | 
+  29 | --reset-author, --no-reset-author | the commit is authored by me now (used with -C/-c/--amend)
+  30 | --trailer, --no-trailer | 
+  32 | -s, --signoff, --no-signoff | add a Signed-off-by trailer
+  33 | -t, --template, --no-template | 
+  35 | -e, --edit, --no-edit | force edit of commit
+  36 | --cleanup, --no-cleanup | 
+  37 | --status, --no-status | include status in commit message template
+  38 | -S, --gpg-sign, --no-gpg-sign | 
+  42 | -a, --all, --no-all | commit all changed files
+  43 | -i, --include, --no-include | add specified files to index for commit
+  44 | --interactive, --no-interactive | interactively add files
+  45 | -p, --patch, --no-patch | interactively add changes
   46 | -U, --unified | generate diffs with <n> lines context
   47 | --inter-hunk-context | 
-  49 | -o | commit only specified files
+  49 | -o, --only, --no-only | commit only specified files
   50 | -n, --no-verify | bypass pre-commit and commit-msg hooks
   51 | --verify | opposite of --no-verify
-  58 | -z | terminate entries with NUL
+  52 | --dry-run, --no-dry-run | show what would be committed
+  53 | --short, --no-short | show status concisely
+  54 | --branch, --no-branch | show branch information
+  55 | --ahead-behind, --no-ahead-behind | compute full ahead/behind values
+  56 | --porcelain, --no-porcelain | machine-readable output
+  57 | --long, --no-long | show status in long format (default)
+  58 | -z, --null, --no-null | terminate entries with NUL
+  59 | --amend, --no-amend | amend previous commit
   60 | --no-post-rewrite | bypass post-rewrite hook
   61 | --post-rewrite | opposite of --no-post-rewrite
-  62 | -u |
+  62 | -u, --untracked-files, --no-untracked-files | 
+  64 | --pathspec-from-file, --no-pathspec-from-file | 
+  66 | --pathspec-file-nul, --no-pathspec-file-nul |

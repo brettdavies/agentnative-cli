@@ -59,11 +59,11 @@ pub(crate) fn audit_color_flag(help: &HelpOutput) -> AuditStatus {
     if help.find_flag(&["--color"]).is_some() {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
+        AuditStatus::Warn(help.noting_dash_rule(
+            &["--color"],
             "no `--color` flag advertised. MAY-tier — `auto|always|never` lets \
-             agents and pipelines override the TTY-based default."
-                .into(),
-        )
+             agents and pipelines override the TTY-based default.",
+        ))
     }
 }
 

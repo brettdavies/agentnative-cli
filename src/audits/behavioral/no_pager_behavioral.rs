@@ -76,9 +76,10 @@ fn audit_no_pager(help: &HelpOutput) -> AuditStatus {
     if !mentions_pager {
         AuditStatus::Skip("no pager signal (less/more/$PAGER/--pager) in --help".into())
     } else {
-        AuditStatus::Warn(
-            "pager referenced in --help but no --no-pager escape hatch advertised".into(),
-        )
+        AuditStatus::Warn(help.noting_dash_rule(
+            &["--no-pager"],
+            "pager referenced in --help but no --no-pager escape hatch advertised",
+        ))
     }
 }
 

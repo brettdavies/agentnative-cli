@@ -62,11 +62,11 @@ pub(crate) fn audit_verbose_flag(help: &HelpOutput) -> AuditStatus {
     if has_verbose {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
+        AuditStatus::Warn(help.noting_dash_rule(
+            VERBOSE_FLAGS,
             "no `--verbose` / `-v` flag advertised. SHOULD-tier — agents \
-             debugging failures need a way to escalate diagnostic detail."
-                .into(),
-        )
+             debugging failures need a way to escalate diagnostic detail.",
+        ))
     }
 }
 
@@ -88,6 +88,41 @@ mod tests {
             "Options:\n  -v, --debug    Show detail.\n  -h, --help    Show help.\n",
         );
         assert_eq!(audit_verbose_flag(&help), AuditStatus::Pass);
+    }
+
+    // Excerpt of actionlint 1.7.12's `--help`, which declares no
+    // double-dash name.
+    const ACTIONLINT_HELP: &str = "Usage: actionlint [FLAGS] [FILES...] [-]\n\nFlags:\n  -color\n    \tAlways enable colorful output. This is useful to force colorful outputs\n  -format string\n    \tCustom template to format error messages in Go template syntax.\n  -verbose\n    \tEnable verbose output\n  -version\n    \tShow version and how this binary was installed\n";
+
+    // The global options of terraform 1.16.4's `--help`.
+    const TERRAFORM_HELP: &str = "Global options (use these before the subcommand, if any):\n  -chdir=DIR    Switch to a different working directory before executing the\n                given subcommand.\n  -help         Show this help output or the help for a specified subcommand.\n  -version      An alias for the \"version\" subcommand.\n";
+
+    const DASH_RULE_NOTE: &str = "`-verbose` is declared, but this help also declares double-dash names, so it does not count as `--verbose`.";
+
+    #[test]
+    fn a_single_dash_verbose_passes_in_a_help_without_double_dash_names() {
+        let help = HelpOutput::from_raw(ACTIONLINT_HELP);
+        assert_eq!(audit_verbose_flag(&help), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_single_dash_version_is_not_a_verbose_flag() {
+        let help = HelpOutput::from_raw(TERRAFORM_HELP);
+        match audit_verbose_flag(&help) {
+            AuditStatus::Warn(msg) => assert!(!msg.contains("is declared"), "{msg}"),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_verbose_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -verbose      Show detail.\n      --help    Show help.\n",
+        );
+        match audit_verbose_flag(&help) {
+            AuditStatus::Warn(msg) => assert!(msg.ends_with(DASH_RULE_NOTE), "{msg}"),
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 
     #[test]

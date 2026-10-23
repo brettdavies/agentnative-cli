@@ -81,6 +81,10 @@
           {
             "context": "guard-release / check-release-branch-name",
             "integration_id": 15368
+          },
+          {
+            "context": "lint / actionlint",
+            "integration_id": 15368
           }
         ]
       }

@@ -258,4 +258,22 @@ Flags:
             other => panic!("expected Warn, got {other:?}"),
         }
     }
+
+    #[test]
+    fn a_single_dash_cursor_in_a_list_subcommand_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Usage: tool [COMMAND]\n\nCommands:\n  list     List items.\n\nOptions:\n  -h, --help    Show help.\n",
+        );
+        let subhelp = vec![sub(
+            "list",
+            "Options:\n  -cursor <C>    Resume after this item.\n      --help     Show help.\n",
+        )];
+        match audit_cursor_pagination(&help, &subhelp).0 {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with(" In `list`, `-cursor` is declared, but this help also declares double-dash names, so it does not count as `--cursor`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
 }

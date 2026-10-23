@@ -279,4 +279,22 @@ Global Flags:
             other => panic!("expected Warn, got {other:?}"),
         }
     }
+
+    #[test]
+    fn a_single_dash_timeout_in_a_long_running_subcommand_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Usage: tool [COMMAND]\n\nCommands:\n  serve    Start server.\n\nOptions:\n  -h, --help    Show help.\n",
+        );
+        let subhelp = vec![sub(
+            "serve",
+            "Options:\n  -timeout <SECS>    Stop after this long.\n      --help         Show help.\n",
+        )];
+        match audit_timeout_behavioral(&help, &subhelp).0 {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with(" In `serve`, `-timeout` is declared, but this help also declares double-dash names, so it does not count as `--timeout`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
 }

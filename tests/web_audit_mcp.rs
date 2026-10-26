@@ -3,6 +3,8 @@
 //! conditional re-ask, the modern-lane gate, and the shared body cap.
 //! Verdict parity with the site is the corpus replay's job.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use std::collections::HashMap;

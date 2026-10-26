@@ -121,12 +121,12 @@ pub(crate) fn audit_force_yes(
             missing.push(verb.as_str());
             continue;
         };
-        if CONFIRM_FLAGS.iter().any(|flag| help.advertises_flag(flag)) {
+        if help.find_flag(CONFIRM_FLAGS).is_some() {
             continue;
         }
         match declared_flags
             .iter()
-            .find(|flag| help.advertises_flag(&flag.value))
+            .find(|flag| help.find_flag(&[&flag.value]).is_some())
         {
             Some(flag) => confirmed_by_declaration.push(format!(
                 "{verb} accepts {} via {}",
@@ -323,6 +323,73 @@ mod tests {
             verdict.mitigation,
             Some(Mitigation::Config(
                 "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    fn fixture(name: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/help")
+            .join(name);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    }
+
+    fn confirms(help: &str, flag: &str) -> Verdict {
+        let subhelp = vec![("destroy".to_string(), hp(help))];
+        audit_force_yes(
+            &["destroy".to_string()],
+            &subhelp,
+            &[declared(flag, ".anc.toml")],
+        )
+    }
+
+    #[test]
+    fn a_declared_single_dash_word_confirms_on_the_line_that_defines_it() {
+        // terraform 1.16.4's `apply --help` declares no double-dash name, so
+        // the built-in `--auto-approve` already answers.
+        let apply = confirms(&fixture("terraform__apply_--help.txt"), "-auto-approve");
+        assert_eq!(apply.status, AuditStatus::Pass);
+        assert_eq!(apply.mitigation, None);
+
+        // Beside a double-dash name the built-in does not answer, and the
+        // declared spelling does.
+        let mixed = confirms(
+            "Options:\n  -auto-approve     Skip interactive approval.\n      --help        Show help.\n",
+            "-auto-approve",
+        );
+        assert_eq!(mixed.status, AuditStatus::Pass);
+        assert_eq!(
+            mixed.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts -auto-approve via .anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_declared_flag_named_only_in_a_wrapped_description_does_not_confirm() {
+        let verdict = confirms(
+            "Options:\n  --plan <FILE>     Apply the saved plan. This skips the prompt that\n                    -auto-approve skips on a fresh plan.\n      --help        Show help.\n",
+            "-auto-approve",
+        );
+        assert!(
+            matches!(verdict.status, AuditStatus::Fail(_)),
+            "{:?}",
+            verdict.status
+        );
+    }
+
+    #[test]
+    fn a_declared_flag_on_a_tab_indented_definition_line_confirms() {
+        let verdict = confirms(
+            "Usage of tool:\n\t-noconfirm\n\t\tSkip interactive approval\n\t--help\n\t\tShow help\n",
+            "-noconfirm",
+        );
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(
+            verdict.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts -noconfirm via .anc.toml [p5].confirm_flags".into()
             ))
         );
     }

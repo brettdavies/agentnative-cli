@@ -73,10 +73,7 @@ impl Audit for RichTuiAudit {
 }
 
 pub(crate) fn audit_rich_tui(help: &HelpOutput) -> AuditStatus {
-    let has_flag = help
-        .flags()
-        .iter()
-        .any(|f| TUI_FLAGS.iter().any(|name| f.matches(name)));
+    let has_flag = help.find_flag(TUI_FLAGS).is_some();
     if has_flag {
         return AuditStatus::Pass;
     }

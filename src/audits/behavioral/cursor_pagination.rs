@@ -88,7 +88,7 @@ pub(crate) fn audit_cursor_pagination(
     }
 
     let cov = coverage(&triggers, help, subhelp, |h| {
-        first_flag(h, |f| CURSOR_FLAGS.iter().any(|name| f.matches(name)))
+        first_flag(h, |f| f.declares_any(CURSOR_FLAGS).is_some())
     });
     if !cov.with.is_empty() {
         let lacking = if cov.without.is_empty() {

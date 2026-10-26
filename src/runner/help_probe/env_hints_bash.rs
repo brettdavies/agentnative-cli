@@ -16,6 +16,7 @@
 
 use std::collections::HashSet;
 
+use super::flags::{is_definition_line, is_section_heading};
 use super::{EnvHint, EnvHintSource};
 
 /// Shell/system env vars we never want to flag as flag-bound. Tools
@@ -52,7 +53,7 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     let flag_line_indices: Vec<usize> = lines
         .iter()
         .enumerate()
-        .filter_map(|(i, l)| is_flag_line(l).then_some(i))
+        .filter_map(|(i, l)| is_definition_line(l).then_some(i))
         .collect();
     let env_section_range = find_env_section(&lines);
 
@@ -116,31 +117,6 @@ fn strip_clap_env_annotations(raw: &str) -> String {
     out
 }
 
-/// A "flag line" for proximity-window purposes: leading whitespace, then
-/// a dash (clap's canonical shape). Mirrors `parse_flags` but returns a
-/// bool so the caller can keep line indices in a Vec<usize>.
-fn is_flag_line(line: &str) -> bool {
-    if !line.starts_with(' ') {
-        return false;
-    }
-    let trimmed = line.trim_start();
-    trimmed.starts_with('-') && !trimmed.starts_with("---")
-}
-
-/// True when a line looks like a top-level help section header:
-/// non-indented, non-empty, trims to something ending in `:`, and
-/// contains at least one uppercase letter. Examples: `OPTIONS:`,
-/// `ENVIRONMENT:`, `DOCKER_CONFIG:` (if a tool happens to name a section
-/// after an env var). Used to terminate `ENVIRONMENT` sections AND to
-/// exclude the header line itself from Pattern 2's token scan — headers
-/// are never env-var references.
-fn is_section_header_line(line: &str) -> bool {
-    !line.is_empty()
-        && !line.starts_with(' ')
-        && line.trim().ends_with(':')
-        && line.chars().any(|c| c.is_ascii_uppercase())
-}
-
 /// Locate an `ENVIRONMENT` / `ENV VARS` / `ENVIRONMENT VARIABLES` section
 /// in the help output, returning the line-index range (exclusive upper).
 /// Tools like `gh` use this convention; `ripgrep` uses free prose instead
@@ -162,7 +138,7 @@ fn find_env_section(lines: &[&str]) -> Option<(usize, usize)> {
     // Section ends at the next top-level header or end-of-text.
     let end = lines[start + 1..]
         .iter()
-        .position(|l| is_section_header_line(l))
+        .position(|l| is_section_heading(l))
         .map(|offset| start + 1 + offset)
         .unwrap_or(lines.len());
     Some((start, end))
@@ -190,7 +166,7 @@ fn find_env_section(lines: &[&str]) -> Option<(usize, usize)> {
 /// entirely: a header that happens to contain an underscored uppercase
 /// token is not a prose reference to an env var.
 fn extract_env_tokens(line: &str) -> Vec<String> {
-    if is_section_header_line(line) {
+    if is_section_heading(line) {
         return Vec::new();
     }
     let mut out = Vec::new();

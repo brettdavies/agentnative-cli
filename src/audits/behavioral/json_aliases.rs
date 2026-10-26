@@ -62,8 +62,8 @@ impl Audit for JsonAliasesAudit {
 
 /// Core unit for tests. Pass when either alias is present; Warn otherwise.
 pub(crate) fn audit_json_aliases(help: &HelpOutput) -> AuditStatus {
-    let has_json = help.flags().iter().any(|f| f.matches("--json"));
-    let has_jsonl = help.flags().iter().any(|f| f.matches("--jsonl"));
+    let has_json = help.find_flag(&["--json"]).is_some();
+    let has_jsonl = help.find_flag(&["--jsonl"]).is_some();
 
     if has_json || has_jsonl {
         AuditStatus::Pass

@@ -112,7 +112,7 @@ pub(crate) fn audit_timeout_behavioral(
     }
 
     let cov = coverage(&triggers, help, subhelp, |h| {
-        first_flag(h, |f| TIMEOUT_FLAGS.iter().any(|name| f.matches(name)))
+        first_flag(h, |f| f.declares_any(TIMEOUT_FLAGS).is_some())
     });
     if !cov.with.is_empty() {
         let lacking = if cov.without.is_empty() {

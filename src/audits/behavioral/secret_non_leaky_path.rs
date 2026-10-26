@@ -18,6 +18,7 @@
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::HelpOutput;
+use crate::runner::help_probe::Flag;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Flag-name fragments that strongly imply the flag receives secret material.
@@ -95,7 +96,12 @@ impl Audit for SecretNonLeakyPathAudit {
 /// Core unit for tests. Walks the parsed flag list, identifies secret-bearing
 /// flags, and verifies each one has a non-leaky companion.
 pub(crate) fn audit_secret_non_leaky_path(help: &HelpOutput) -> AuditStatus {
-    let flag_long_names: Vec<String> = help.flags().iter().filter_map(|f| f.long.clone()).collect();
+    let flag_long_names: Vec<String> = help
+        .flags()
+        .iter()
+        .flat_map(Flag::long_names)
+        .map(str::to_string)
+        .collect();
 
     let secret_flags: Vec<&str> = flag_long_names
         .iter()

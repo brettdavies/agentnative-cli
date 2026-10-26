@@ -6,6 +6,7 @@
 
 #![allow(dead_code)]
 
+#[cfg(feature = "web")]
 pub mod corpus;
 
 use std::io::{BufRead, BufReader, Read, Write};

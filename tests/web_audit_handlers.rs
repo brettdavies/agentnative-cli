@@ -6,6 +6,8 @@
 //! corpus cannot observe (which requests went out, and what never did)
 //! are asserted against the mock transport directly.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use std::collections::{BTreeMap, HashMap};

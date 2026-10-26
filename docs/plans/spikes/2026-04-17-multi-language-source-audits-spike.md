@@ -1,7 +1,8 @@
 ---
 title: "Spike: Go, Ruby, and TypeScript source-audit viability"
 plan: docs/plans/2026-04-17-001-feat-multi-language-source-audits-plan.md
-status: complete
+status: done
+completed: 2026-04-17
 date: 2026-04-17
 ---
 

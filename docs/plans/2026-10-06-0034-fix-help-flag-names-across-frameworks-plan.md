@@ -1,6 +1,35 @@
 ---
 title: Help-Flag Names Across Frameworks - Plan
 type: fix
+status: merged
+prs:
+  - "#163"
+  - "#164"
+  - "#165"
+  - "#167"
+  - "#168"
+  - "#169"
+  - "#170"
+  - "#171"
+  - "#172"
+  - "#173"
+  - "#178"
+  - "#179"
+  - "#180"
+  - "#181"
+  - "#182"
+  - "#183"
+  - "#184"
+  - "#185"
+  - "#195"
+  - "#196"
+  - "#197"
+  - "#198"
+  - "#199"
+  - "#200"
+  - "brettdavies/agentnative#59"
+  - "brettdavies/agentnative-site#455"
+completed: 2026-10-26
 date: 2026-10-06
 topic: help-flag-names-across-frameworks
 artifact_contract: ce-unified-plan/v1
@@ -190,23 +219,23 @@ Considered and not built:
 
 ### Deferred to Follow-Up Work
 
-- **Short-letter meaning.** `-v, --version` passes `p7-should-verbose` in about ten tools (lazygit, make, bun, wrangler,
-  opencode, trivy, gum, eza, vhs, dust), and `-f`, `-y`, `-q` and `-p` carry the same class. Deciding that a short
-  letter means what its own definition says is an audit-semantics change: the spec gives `-v` to verbose (P7) and to
-  version (P3), and `verbose_flag.rs::pass_with_short_form` pins `-v, --debug` as verbose. It is planned separately,
-  after U6 makes column-layout pairs visible, with `limit_flag.rs`'s `-n` guard as its seed. The guard stays until then.
 - **Value semantics behind a name.** A boolean `--[no-]color` satisfies `p6-may-color-flag` the same way any declared
   `--color` does today; whether the row should require `auto|always|never` belongs with the spec.
 - clap's `[aliases: -y, --yes]` description annotations as declared names.
 - Section awareness for example lines that begin with a flag at definition indent (sqlite-utils `insert`'s
   `--text --convert '...'`, gitleaks `detect`'s `--pipe ...`), which stay readable as definitions.
-- `BinaryRunner` sets only `NO_COLOR=1` and inherits `TERM`, `COLUMNS` and `PAGER` from its caller, so help wraps
-  differently in a terminal than in the scorer.
 - Probing subcommands with the tool's own help spelling; terraform's subcommands answer `-help`.
-- kubectl's grouped command headings (`Basic Commands (Beginner):`), a subcommand-parsing gap.
-- `tests/dogfood.rs`'s `PENDING_FAILS` compares audit IDs against requirement-ID-prefixed strings and can never match.
 - agentnative-site registry: `goose` resolves to pressly/goose in the scorer image while the registry names block/goose,
   and `sgpt` crashes in the image (missing `click`).
+
+Shipped alongside this plan rather than deferred:
+
+- **Short-letter meaning** (#197). A short letter counts only when its own definition means what the audit asks for, so
+  `-v, --version` no longer passes `p7-should-verbose` and `-f`, `-y`, `-q` and `-p` follow the same rule. This
+  generalizes `limit_flag.rs`'s `-n` guard to every audit that credits a short letter.
+- **The probe environment, kubectl's grouped command headings, and `PENDING_FAILS`** (#161). `BinaryRunner` pins
+  `TERM=dumb`, `COLUMNS=80` and `PAGER=cat` rather than inheriting them, headings such as `Basic Commands (Beginner):`
+  read as command lists, and `tests/dogfood.rs`'s `PENDING_FAILS` matches the audit IDs it names.
 
 ### Assumptions
 
@@ -1023,20 +1052,20 @@ A and U2; U5 waits for U3 and C. Conflict flags: none across lanes.
 
 Synthesized from this review's findings. Each task derives from a specific finding above.
 
-- [ ] **T1 (P2, human: ~4h / CC: ~20min)** — help_probe — Split the flag grammar into `flags/` submodules by concern
+- [x] **T1 (P2, human: ~4h / CC: ~20min)** — help_probe — Split the flag grammar into `flags/` submodules by concern
   - Surfaced by: Architecture A1 — all grammar work planned for one `flags.rs` beside a 1,038-line `mod.rs`
   - Files: `src/runner/help_probe/flags/mod.rs`, `flags/classify.rs`, `flags/header.rs`, `flags/normalize.rs`
   - Verify: `cargo test`; each file under 200 lines excluding tests
-- [ ] **T2 (P2, human: ~2h / CC: ~10min)** — help_probe — Count columns in characters, slice on boundaries, add the
+- [x] **T2 (P2, human: ~2h / CC: ~10min)** — help_probe — Count columns in characters, slice on boundaries, add the
   multibyte no-panic test
   - Surfaced by: Code quality C1 — column math over multibyte help text can panic
   - Files: `src/runner/help_probe/flags/header.rs`, `flags/classify.rs`
   - Verify: the U5 no-panic test passes over every fixture and the multibyte cases
-- [ ] **T3 (P2, human: ~1h / CC: ~5min)** — help_probe — Pin pandoc's no-description long-only row as a definition
+- [x] **T3 (P2, human: ~1h / CC: ~5min)** — help_probe — Pin pandoc's no-description long-only row as a definition
   - Surfaced by: Test review G1 — U7 step 3 had no test
   - Files: `src/runner/help_probe/flags/classify.rs`
   - Verify: U7's truth table includes the pandoc row
-- [ ] **T4 (P3, human: ~1h / CC: ~5min)** — audits — Add the find-style `--print` marker and deny-scope evidence tests
+- [x] **T4 (P3, human: ~1h / CC: ~5min)** — audits — Add the find-style `--print` marker and deny-scope evidence tests
   - Surfaced by: Test review G2 and G3 — R8's mixed branch and U10 step 5 had no test
   - Files: `src/audits/behavioral/non_interactive.rs`, `src/audits/behavioral/quiet.rs`
   - Verify: both tests fail at U9's head and pass at U10's
@@ -1368,11 +1397,11 @@ DX IMPLEMENTATION CHECKLIST
 
 ### DX implementation tasks
 
-- [ ] **T5 (P2, human: ~2h / CC: ~10min)** — query and audits — Near-miss deny evidence for the dash rule
+- [x] **T5 (P2, human: ~2h / CC: ~10min)** — query and audits — Near-miss deny evidence for the dash rule
   - Surfaced by: Pass 3 — a deny names nothing the author declared when R8 keeps a single-dash word distinct
   - Files: `src/runner/help_probe/flags/mod.rs`, `src/audits/behavioral/verbose_flag.rs`
   - Verify: U5's mixed-help `-verbose` test asserts the evidence text
-- [ ] **T6 (P2, human: ~2h / CC: ~10min)** — docs — README help-reading section
+- [x] **T6 (P2, human: ~2h / CC: ~10min)** — docs — README help-reading section
   - Surfaced by: Pass 4 — the reading rules exist only in the plan
   - Files: `README.md`
   - Verify: the section exists after U5 and gains each rule in U6 to U8; prose checks pass

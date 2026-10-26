@@ -2,7 +2,10 @@
 title: UTF-8 Safe Evidence Previews - Plan
 type: fix
 date: 2026-09-16
-status: completed
+status: released
+prs: ["#92", "#93"]
+completed: 2026-09-17
+released_in: v0.6.0
 topic: utf8-safe-evidence-previews
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready

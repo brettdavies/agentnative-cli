@@ -1,7 +1,10 @@
 ---
 title: "fix: Prevent fork bomb when dogfooding agentnative against itself"
 type: fix
-status: completed
+status: released
+prs: ["#7"]
+completed: 2026-04-02
+released_in: v0.1.0
 date: 2026-04-02
 origin: eng-review session 2026-04-02 (gstack /plan-eng-review)
 ---

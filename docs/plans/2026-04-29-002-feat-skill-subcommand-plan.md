@@ -1,11 +1,12 @@
 ---
 title: "feat: `anc skill install <host>` — single-command skill installer with hardened git clone"
 type: feat
-status: completed
+status: released
+prs: ["#35"]
+completed: 2026-04-30
+released_in: v0.3.0
 date: 2026-04-29
 deepened: 2026-04-30
-completed: 2026-04-30
-shipped_in: "PR #35"
 ---
 
 # feat: `anc skill install <host>` — single-command skill installer with hardened git clone

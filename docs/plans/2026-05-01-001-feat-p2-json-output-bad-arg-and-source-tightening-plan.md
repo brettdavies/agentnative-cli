@@ -1,7 +1,7 @@
 ---
 title: "feat: p2-json-output bad-arg-VALUE probe + Rust tightening + Python source sibling"
 type: feat
-status: active
+status: proposed
 date: 2026-05-01
 deepened: 2026-05-01
 origin: docs/brainstorms/2026-05-01-p2-json-output-upgrade-requirements.md

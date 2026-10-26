@@ -1,7 +1,10 @@
 ---
 title: "fix: PR #77 follow-up — cfg(not(test)) polarity bug in code-unwrap; missing negative-case tests"
 type: fix
-status: completed
+status: released
+prs: ["#80"]
+completed: 2026-06-04
+released_in: v0.6.0
 priority: P0
 date: 2026-06-03
 origin: "Adversarial review of merged PR #77 (commit 817d6fa7) surfaced a P0 polarity bug: `cfg(not(test))` is treated

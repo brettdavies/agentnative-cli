@@ -1,7 +1,10 @@
 ---
 title: "feat: Complete v0.1 — reliability fixes, remaining audits, test fixtures, README"
 type: feat
-status: completed
+status: released
+prs: ["#2"]
+completed: 2026-04-01
+released_in: v0.1.0
 date: 2026-04-01
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---
@@ -317,7 +320,7 @@ graph TB
     U10 --> U11
 ```
 
-- [ ] **Unit 1: Reliability fixes + Audit trait extension (TODOs 001, 002, 003)**
+- [x] **Unit 1: Reliability fixes + Audit trait extension (TODOs 001, 002, 003)**
 
 **Goal:** Cap stdout/stderr capture at 1MB, add depth/file limits to directory walk, wire `--include-tests` flag, and
 extend the Audit trait with `group()` and `layer()` methods.
@@ -388,7 +391,7 @@ extend the Audit trait with `group()` and `layer()` methods.
 
 ---
 
-- [ ] **Unit 2: Dogfood fixes (TODOs 007, 008)**
+- [x] **Unit 2: Dogfood fixes (TODOs 007, 008)**
 
 **Goal:** Eliminate `.unwrap()` from production code and make `--quiet` discoverable so the tool passes its own audits.
 
@@ -442,7 +445,7 @@ extend the Audit trait with `group()` and `layer()` methods.
 
 ---
 
-- [ ] **Unit 3: Shared predicates + source audits batch 1 — P4 principle**
+- [x] **Unit 3: Shared predicates + source audits batch 1 — P4 principle**
 
 **Goal:** Implement 4 Rust source audits for P4: error_types, exit_codes, process_exit, try_parse.
 
@@ -496,7 +499,7 @@ extend the Audit trait with `group()` and `layer()` methods.
 
 ---
 
-- [ ] **Unit 4: Source audits batch 2 — P1/P6 principle (composable structure)**
+- [x] **Unit 4: Source audits batch 2 — P1/P6 principle (composable structure)**
 
 **Goal:** Implement 5 Rust source audits: P1 headless_auth, P6 no_pager, timeout_flag, tty_detection, plus P2
 structured_output.
@@ -555,7 +558,7 @@ structured_output.
 
 ---
 
-- [ ] **Unit 5: Source audits batch 3 — code quality + P7**
+- [x] **Unit 5: Source audits batch 3 — code quality + P7**
 
 **Goal:** Implement 3 Rust source audits: env_flags (P6), naked_println (P7), output_clamping (P7).
 
@@ -604,7 +607,7 @@ structured_output.
 
 ---
 
-- [ ] **Unit 6: Project audits + orchestration wiring**
+- [x] **Unit 6: Project audits + orchestration wiring**
 
 **Goal:** Implement the project audits layer (7 audits including completions and non-interactive source), wire project
 audits into the orchestration loop, and add `all_project_audits()` collection.
@@ -690,7 +693,7 @@ audits into the orchestration loop, and add `all_project_audits()` collection.
 
 ---
 
-- [ ] **Unit 7: JsonOutputAudit upgrade (TODO 004)**
+- [x] **Unit 7: JsonOutputAudit upgrade (TODO 004)**
 
 **Goal:** Upgrade JsonOutputAudit from skip-only to actual JSON validation.
 
@@ -739,7 +742,7 @@ audits into the orchestration loop, and add `all_project_audits()` collection.
 
 ---
 
-- [ ] **Unit 8: Test fixture projects**
+- [x] **Unit 8: Test fixture projects**
 
 **Goal:** Create 4 minimal fixture projects for regression testing.
 
@@ -791,7 +794,7 @@ Test expectation: none — fixtures are tested via integration tests in Unit 9.
 
 ---
 
-- [ ] **Unit 9: Integration tests (TODO 005)**
+- [x] **Unit 9: Integration tests (TODO 005)**
 
 **Goal:** Add end-to-end CLI integration tests using `assert_cmd`.
 
@@ -845,7 +848,7 @@ Test expectation: none — fixtures are tested via integration tests in Unit 9.
 
 ---
 
-- [ ] **Unit 10: Behavioral audit error-path tests (TODO 006)**
+- [x] **Unit 10: Behavioral audit error-path tests (TODO 006)**
 
 **Goal:** Add tests for Crash, Timeout, NotFound, and PermissionDenied paths in all 8 behavioral audits.
 
@@ -899,7 +902,7 @@ Test expectation: none — fixtures are tested via integration tests in Unit 9.
 
 ---
 
-- [ ] **Unit 11: README and dogfood verification**
+- [x] **Unit 11: README and dogfood verification**
 
 **Goal:** Write a proper README and verify the tool passes all its own audits.
 

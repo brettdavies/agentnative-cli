@@ -1,7 +1,10 @@
 ---
 title: "fix: PR #76 follow-up — scorecard transparency for .anc.toml domain_verbs; trim platform verbs"
 type: fix
-status: completed
+status: released
+prs: ["#83"]
+completed: 2026-06-04
+released_in: v0.6.0
 priority: P1
 date: 2026-06-03
 origin: "Adversarial review of merged PR #76 (commit 9263c5c7) surfaced 5 findings; this plan keeps the escape hatch

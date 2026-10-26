@@ -1,7 +1,10 @@
 ---
 title: "feat: P0 — mirror skill PR #25 release-flow hardening (sync preconditions + changelog --dry-run)"
 type: feat
-status: proposed
+status: released
+prs: ["#85", "#90", "#107"]
+completed: 2026-09-25
+released_in: v0.6.0
 priority: P0
 date: 2026-06-01
 origin: "cross-repo mirror of brettdavies/agentnative-skill PR #25 (merged 2026-06-01); scoped to the three items not already shipped via CLI PR #68"
@@ -13,9 +16,11 @@ origin: "cross-repo mirror of brettdavies/agentnative-skill PR #25 (merged 2026-
 
 `agentnative-skill` PR #25 hardened its release flow with two changes to `scripts/sync-dev-after-release.sh` and two
 changes to `scripts/generate-changelog.py`. The duplicate-section guard from PR #25 already shipped in this repo via
-[CLI PR #68](https://github.com/brettdavies/agentnative-cli/pull/68); the remaining three items still need to land here.
-A follow-up skill PR ([#26](https://github.com/brettdavies/agentnative-skill/pull/26)) fixed a regression the
-`--dry-run` work surfaced in the PR-number extraction regex; mirror that here too.
+[CLI PR #68](https://github.com/brettdavies/agentnative-cli/pull/68). A follow-up skill PR
+([#26](https://github.com/brettdavies/agentnative-skill/pull/26)) fixed a regression the `--dry-run` work surfaced in the
+PR-number extraction regex. Every item below is on `dev` through the release scripts re-vendored from the
+github-repo-setup template (#85, #90, #107): the `isDraft` precondition with exit `67`, the post-sync regen check, and
+the Python `generate-changelog.py --dry-run`, which names whitespace-only drift as wrapping.
 
 Reference PRs (read the exact diffs before implementing): <https://github.com/brettdavies/agentnative-skill/pull/25> and
 <https://github.com/brettdavies/agentnative-skill/pull/26>.

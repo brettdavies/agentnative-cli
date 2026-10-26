@@ -1,7 +1,10 @@
 ---
 title: "feat: vendor agentnative-spec — generate REQUIREMENTS at build time + drift-check"
 type: feat
-status: completed
+status: released
+prs: ["#29"]
+completed: 2026-04-27
+released_in: v0.2.0
 date: 2026-04-23
 parents:
   - https://github.com/brettdavies/agentnative/blob/dev/docs/plans/2026-04-22-002-post-frontmatter-roadmap.md
@@ -294,7 +297,7 @@ pub const SPEC_VERSION: &str = "0.2.0";  // from src/principles/spec/VERSION
 
 ## Implementation Units
 
-- [ ] U1. **Add `scripts/sync-spec.sh` and `src/principles/spec/README.md`**
+- [x] U1. **Add `scripts/sync-spec.sh` and `src/principles/spec/README.md`**
 
 **Goal:** Establish the vendoring mechanism. No code changes yet; purely file-plumbing.
 
@@ -345,7 +348,7 @@ pub const SPEC_VERSION: &str = "0.2.0";  // from src/principles/spec/VERSION
 
 ---
 
-- [ ] U2. **Initial vendored commit at v0.2.0**
+- [x] U2. **Initial vendored commit at v0.2.0**
 
 **Goal:** Land the first vendored state as a committed artifact.
 
@@ -390,7 +393,7 @@ pub const SPEC_VERSION: &str = "0.2.0";  // from src/principles/spec/VERSION
 
 ---
 
-- [ ] U3. **Add `build.rs`; generate `REQUIREMENTS` from vendored frontmatter**
+- [x] U3. **Add `build.rs`; generate `REQUIREMENTS` from vendored frontmatter**
 
 **Execution note:** Test-first for the generator. Before writing `build.rs` logic, craft a handful of fixture inputs
 (valid, missing-field, duplicate-ID, unknown-level, unknown-applicability-shape) and assert the generator produces the
@@ -463,7 +466,7 @@ feature.
 
 ---
 
-- [ ] U4. **Replace hand-maintained `REQUIREMENTS` with generated include**
+- [x] U4. **Replace hand-maintained `REQUIREMENTS` with generated include**
 
 **Goal:** Cut over to the build.rs-emitted slice. Demolish the 320-line hand-maintained `REQUIREMENTS` static.
 
@@ -513,7 +516,7 @@ feature.
 
 ---
 
-- [ ] U5. **Drift-check tests**
+- [x] U5. **Drift-check tests**
 
 **Goal:** Lock in the invariants R4 and R5 so any future change to audits or spec surfaces the mismatch immediately.
 
@@ -569,7 +572,7 @@ feature.
 
 ---
 
-- [ ] U6. **Emit `spec_version` in scorecard JSON**
+- [x] U6. **Emit `spec_version` in scorecard JSON**
 
 **Goal:** Additive v1.2 scorecard field — `anc audit --output json` includes `spec_version` sourced from vendored
 `VERSION`.

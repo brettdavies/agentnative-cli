@@ -1,6 +1,8 @@
 ---
 title: Local Web Audit - Plan
 type: feat
+status: active
+prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106"]
 date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
@@ -84,18 +86,18 @@ audience that most needs local auditing is exactly the audience that can't assem
 - KD8. **External-DNS checks auto-gate on target locality, with an override.** (session-settled: user-directed — chosen
   over always-run-with-disclosure: the default must not leak internal hostnames off-network.) Governs R12.
 - KD9. **A local run may present a sign-in credential for the audited MCP endpoint, and scores the full access
-  picture.** (session-settled: user-directed, 2026-10-01 — chosen over deferring authenticated targets: the anc.dev
+  picture.** (session-settled: user-directed — chosen over deferring authenticated targets: the anc.dev
   scorecard points rows it could not evaluate behind a sign-in to a local `anc web` run, and the site's access-scoring
   definition, `agentnative-site` plan KTD25, scores a credentialed local run as the full picture.) Governs R18, R19.
 - KD10. **The site publishes one vendoring contract, and the CLI reads site data, never site source.**
-  (session-settled: user-approved, 2026-10-08 — chosen over packaging the site engine as a TypeScript package: the CLI
+  (session-settled: user-approved — chosen over packaging the site engine as a TypeScript package: the CLI
   is Rust and cannot consume TypeScript, and the site engine already imports nothing Worker-specific.) Governs R9, R10,
   R20.
-- KD11. **Every run sends HTTPS only.** (session-settled: user-directed, 2026-10-08 — chosen over allowing http to a
+- KD11. **Every run sends HTTPS only.** (session-settled: user-directed — chosen over allowing http to a
   local target's own origin: the local engine keeps the site engine's no-plaintext rule at every vantage.) Governs R1,
   R21.
 - KD12. **Local and private targets also trust the OS trust store, and `--ca-cert` adds roots for any target.**
-  (session-settled: user-directed, 2026-10-08 — chosen over a `--ca-cert` flag alone and over requiring publicly
+  (session-settled: user-directed — chosen over a `--ca-cert` flag alone and over requiring publicly
   trusted certificates: localhost and internal CAs must work with no flags, while public targets keep anc.dev parity.)
   Governs R3, R22.
 
@@ -275,19 +277,31 @@ planned here, with no separate site plan).
 - `agentnative-spec` — this work **can proceed independently of** it; web checks are defined by the site registry, not
   the spec's principle registry.
 
+### Delivery
+
+- U2, U3 and U11 are on `dev` (#98, #100, #99).
+- The `anc web` snapshot stack (#97, #101 through #106) is on `dev` at its 2026-09-17 behavior, gated behind the cargo
+  feature `web`, which is off by default.
+- A catch-up stack follows on top of it. It re-pins the raw vendored files to `agentnative-site` `dev` `d5772289`, which
+  needs no U15 contract; ports the site engine changes since the old pin (`agentnative-site` #389, #393, #394, #395,
+  #397, #399, #401, #402, #412, #413, #418, #451, #453, #458, #462); and lands KD11 (HTTPS only), KD12 and R22 (the OS
+  trust store and `--ca-cert`), U14 (`ANC_WEB_TOKEN`), U17 (the request memo), and the port's error-step type folded
+  into the CLI's `NextStep` contract.
+- The commit that turns `web` on by default is the parity commit. No release ships `anc web` before it.
+- U16 adopts the U15 contract at a later re-pin.
+
 ### Dependencies / Assumptions
 
 - The site's probe engine remains fetch-only — standard `fetch`/`URL`/`AbortController`, no Workers-specific APIs in the
   probe path (verified; the Bun runner exists because of it).
-- The site's `main` branch is the vendoring source, because anc.dev serves `main` and site `dev` runs ahead of it until
-  a site release; the contract lives under `src/data/web-audit/contract/`, which ships to `main`. The sync pins a
-  committed SHA on that branch (KTD3); GitHub permits fetch-by-SHA, which the mechanism relies on.
+- The sync pins a committed site SHA (KTD3); GitHub permits fetch-by-SHA, which the mechanism relies on. The catch-up
+  stack pins site `dev` `d5772289` for the raw vendored files. The contract lives under
+  `src/data/web-audit/contract/`.
 - ureq/rustls/webpki-roots/aws-lc-rs/regex license clearance through `deny.toml` is unvalidated territory (zero network
   crates exist today); U1 proves it before anything builds on the stack — including adding `CDLA-Permissive-2.0`
   (webpki-roots' Mozilla-CA-bundle license) to the allow list as a recorded decision.
 - Internal targets are reachable unauthenticated from the machine running `anc`.
-- U16 can pin a contract only after it reaches site `main`: site PRs squash-merge to `dev`, and `dev` reaches `main`
-  through a release.
+- U16 pins the contract at whichever committed site SHA carries it; it does not wait for U15 to reach site `main`.
 
 ### Sources
 
@@ -498,7 +512,7 @@ planned here, with no separate site plan).
   is an optional flag with the same semantics, and `--check <id>` gates a single check with the per-status exit codes
   that make `n_a = 3` meaningful for CI and the skill consumer. Governs R1, R8.
 - KTD14. **The vendoring contract is one site directory, generated and drift-checked on the site, and mirrored as two
-  directories on the CLI.** (session-settled: user-approved, 2026-10-08 — chosen over packaging the site engine as a
+  directories on the CLI.** (session-settled: user-approved — chosen over packaging the site engine as a
   TypeScript package: the CLI reads data, not TypeScript; instantiates KD10 for R9, R10, R20.) The site keeps its
   sources where they are (`src/data/web-audit/registry.yaml`, `remediation.yaml`, `src/shared/user-agents.ts`, the
   engine modules) and commits their data projections under `src/data/web-audit/contract/`:
@@ -1285,10 +1299,11 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 
 ### U16. Re-pin to the contract and catch up
 
-- **Goal:** The CLI vendors the contract at a site `main` commit that carries it, reads only data, and its vendoring,
+- **Goal:** The CLI vendors the contract at a site commit that carries it, reads only data, and its vendoring,
   scorecard and scoring code (U2, U3) passes against that pin.
 - **Requirements:** R5, R7, R9, R14. Implements KTD3, KTD4 and KTD14 on the CLI side (cites R5, R7, R9).
-- **Dependencies:** U2, U3, and U15 released to site `main`.
+- **Dependencies:** U2, U3, and U15 committed on the site. U16 is a later re-pin on top of the catch-up stack's pin
+  to site `dev` `d5772289`.
 - **Files:** `src/web_audit/vendored/SITE_SHA`, `src/web_audit/vendored/contract/`, `scripts/sync-web-audit.sh`,
   `.github/workflows/web-audit-drift.yml`, `build.rs`, `build_support/web_registry.rs`, `build_support/ts_consts.rs`
   (deleted), `src/web_audit/registry.rs`, `src/web_audit/scorecard.rs`, `src/web_audit/score.rs`,
@@ -1296,7 +1311,7 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   `tests/web_audit_score_parity.rs`, `tests/fixtures/web-audit-contract/`, `.markdownlint-cli2.yaml`,
   `scripts/prose-check.sh`, `scripts/SYNCS.md`.
 - **Approach:**
-  1. Pin `SITE_SHA` to the first site `main` commit whose contract this unit catches up to (KTD3), and map the
+  1. Pin `SITE_SHA` to the first site commit whose contract this unit catches up to (KTD3), and map the
      contract's two directories whole in `sync-web-audit.sh`; `--check` compares both listings as well as the bytes.
   2. Delete the legacy vendored copies (`registry.yaml`, `remediation.yaml`, the three TypeScript modules, the old
      corpus and parity-fixture paths) and `build_support/ts_consts.rs`, and drop the normalizer mirror from
@@ -1620,14 +1635,14 @@ merge. U7 and U12 both touch `render.rs` and `src/cli.rs`; U12 waits for U7 by d
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex;
 checkbox as you ship.
 
-- [x] **T1 (P1, human: ~1 day / CC: ~30 min)** — U1 toolchain — Provision NASM on the two Windows jobs and cmake in the
+- [ ] **T1 (P1, human: ~1 day / CC: ~30 min)** — U1 toolchain — Provision NASM on the two Windows jobs and cmake in the
   `cross` containers.
   - Surfaced by: Architecture review — Issue 2 (D4, option 2A), narrowed against GitHub's runner-image inventory: cmake
     is preinstalled on every hosted image, NASM on neither Windows image.
   - Files: `Cross.toml` (container cmake, this repo), `brettdavies/.github` `rust-ci.yml` and `rust-release.yml` (opt-in
     NASM input), `scripts/hooks/pre-push` (step-7 comment), this repo's workflow callers.
   - Verify: every release-matrix row and the CI Windows check green with ureq in the tree.
-- [x] **T2 (P1, human: ~1 day / CC: ~30 min)** — `locality.rs` — Port `ssrf.ts` classification verbatim with its test
+- [ ] **T2 (P1, human: ~1 day / CC: ~30 min)** — `locality.rs` — Port `ssrf.ts` classification verbatim with its test
   table.
   - Surfaced by: Code Quality review — Issue 6 (D8, option 6A).
   - Files: `src/web_audit/locality.rs`, `tests/web_audit_engine.rs`.
@@ -1637,11 +1652,11 @@ checkbox as you ship.
   - Surfaced by: Step 0 search check (D2, option B).
   - Files: U1 PR body (measured delta), U10 CI size assertion.
   - Verify: recorded delta under ~5MB; CI size gate green.
-- [x] **T4 (P2, human: ~1 day / CC: ~30 min)** — `engine/pool.rs` — Enforce the deadline at request issue time.
+- [ ] **T4 (P2, human: ~1 day / CC: ~30 min)** — `engine/pool.rs` — Enforce the deadline at request issue time.
   - Surfaced by: Architecture review — Issue 1 (D3, option 1A).
   - Files: `src/web_audit/engine/pool.rs`, `tests/web_audit_engine.rs`.
   - Verify: never-responds and slow-trickle tarpit tests complete inside deadline plus grace.
-- [x] **T5 (P2, human: ~2 h / CC: ~20 min)** — `handlers/mcp/` — Read MCP responses through the capped reader, then
+- [ ] **T5 (P2, human: ~2 h / CC: ~20 min)** — `handlers/mcp/` — Read MCP responses through the capped reader, then
   parse; add the open-stream corpus scenario.
   - Surfaced by: Architecture review — Issue 3 (D5, option 3A).
   - Files: `src/web_audit/handlers/mcp/{sse,jsonrpc,checks}.rs`, site `scripts/web-audit/gen-fixtures.ts`.
@@ -1656,12 +1671,12 @@ checkbox as you ship.
   - Surfaced by: Code Quality review — Issue 5 (D7, option 5A).
   - Files: `src/web_audit/scorecard.rs`, `tests/web_audit_score_parity.rs`.
   - Verify: serialized scorecard byte-matches a JS-emitted golden.
-- [x] **T8 (P2, human: ~1 day / CC: ~40 min)** — Regex parity — Generate `regex-parity.json` site-side, choose
+- [ ] **T8 (P2, human: ~1 day / CC: ~40 min)** — Regex parity — Generate `regex-parity.json` site-side, choose
   JS-matching Rust flags in the codegen, assert equality in U5.
   - Surfaced by: Test review — Gap G1 (D10, option A).
   - Files: site `scripts/web-audit/gen-fixtures.ts`, `build.rs`, `tests/web_audit_handlers.rs`.
   - Verify: every pattern × probe pair agrees; residual divergences named in KTD1.
-- [x] **T9 (P2, human: ~3 h / CC: ~30 min)** — TLS evidence — Self-signed fixture, in-test rustls server, direct
+- [ ] **T9 (P2, human: ~3 h / CC: ~30 min)** — TLS evidence — Self-signed fixture, in-test rustls server, direct
   `rustls` dependency at ureq's version.
   - Surfaced by: Test review — Gap G10 (D11, option A).
   - Files: `tests/fixtures/tls/`, `tests/web_audit_transport.rs`, `Cargo.toml`.
@@ -1671,12 +1686,12 @@ checkbox as you ship.
   - Surfaced by: TODO step (D14, option C), superseding Performance Issue 8 (D12).
   - Files: site `src/data/web-audit/registry.yaml`, `build.rs`, `Cargo.toml`.
   - Verify: site test proves old and new patterns agree; a lookaround pattern fails the build naming its id.
-- [x] **T11 (P3, human: ~2 h / CC: ~15 min)** — `fetch/body.rs` — `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB with truncation
+- [ ] **T11 (P3, human: ~2 h / CC: ~15 min)** — `fetch/body.rs` — `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB with truncation
   flag, evidence note, over-ceiling and gzip-bomb tests.
   - Surfaced by: Performance review — Issue 9 (D13, option 9A).
   - Files: `src/web_audit/fetch/body.rs`, `tests/web_audit_transport.rs`.
   - Verify: truncation flag set, no allocation beyond the cap.
-- [x] **T12 (P3, human: ~2 h / CC: ~10 min)** — Module layout — `fetch/`, `engine/`, `handlers/mcp/` as directories with
+- [ ] **T12 (P3, human: ~2 h / CC: ~10 min)** — Module layout — `fetch/`, `engine/`, `handlers/mcp/` as directories with
   one responsibility per file.
   - Surfaced by: Code Quality review — Issue 7 (D9, option 7A).
   - Files: `src/web_audit/fetch/`, `src/web_audit/engine/`, `src/web_audit/handlers/mcp/`.
@@ -1686,35 +1701,35 @@ checkbox as you ship.
 
 ### From the DX review
 
-- [x] **T13 (P1, human: ~2 days / CC: ~45 min)** — U2, U7 — Vendor the fix catalog and deliver it on both surfaces.
+- [ ] **T13 (P1, human: ~2 days / CC: ~45 min)** — U2, U7 — Vendor the fix catalog and deliver it on both surfaces.
   - Surfaced by: DX review D4 — the site's `remediation.yaml` is 1:1 with the registry and the plan vendored only the
     registry, so a local run named every failure and no fix.
   - Files: `scripts/sync-web-audit.sh`, `build.rs`, `src/web_audit/render.rs`, `src/cli.rs`.
   - Verify: a failing row prints goal, fix and links; `anc emit web-remediation` round-trips every entry offline; the
     scorecard object is unchanged byte for byte.
-- [x] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
+- [ ] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
   - Surfaced by: DX review D8 — the same binary returned 1 for "warnings, proceed" and for "checks failed".
   - Files: `src/main.rs`, `src/cli.rs`, `README.md`, `agentnative-site` `scripts/web-audit/audit.ts`.
   - Verify: the pinning test covers 0, 1, 2 and 3 on both verbs; the site runner returns the same codes.
-- [x] **T15 (P1, human: ~1 day / CC: ~30 min)** — U7 render — Pin the run-output contract.
+- [ ] **T15 (P1, human: ~1 day / CC: ~30 min)** — U7 render — Pin the run-output contract.
   - Surfaced by: DX review D6 — a 25-second run showed nothing, and 12 failures landed among 53 passes.
   - Files: `src/web_audit/render.rs`, `tests/integration.rs`.
   - Verify: progress appears on a terminal and vanishes when piped or quieted; the report leads with the verdict and the
     failing rows; `NO_COLOR` and the quiet env binding behave as on the audit path.
-- [x] **T16 (P1, human: ~1 day / CC: ~30 min)** — U7 failures — Structured envelope and a next action on every dead end.
+- [ ] **T16 (P1, human: ~1 day / CC: ~30 min)** — U7 failures — Structured envelope and a next action on every dead end.
   - Surfaced by: DX review D10 — only one failure path was specified.
   - Files: `src/web_audit/render.rs`, `src/json_error.rs`, `tests/web_audit_failures.rs`.
   - Verify: one test per path asserts the envelope fields and a text message naming problem, cause and next action.
-- [x] **T17 (P1, human: ~1 day / CC: ~30 min)** — U13 docs — Ship docs with the feature, on the `xurl-rs` standard.
+- [ ] **T17 (P1, human: ~1 day / CC: ~30 min)** — U13 docs — Ship docs with the feature, on the `xurl-rs` standard.
   - Surfaced by: DX review D11 and D12 — no unit listed `README.md`, and the crate advertises a docs.rs page it cannot
     populate.
   - Files: `README.md`, `Cargo.toml`, `src/main.rs`, `agentnative-site` refusal message.
   - Verify: `cargo doc --no-deps` clean under `RUSTDOCFLAGS="-D warnings"`; the README exit table matches T14's test.
-- [x] **T18 (P2, human: ~4 h / CC: ~20 min)** — U7 readers — Move the emit family into phase 1.
+- [ ] **T18 (P2, human: ~4 h / CC: ~20 min)** — U7 readers — Move the emit family into phase 1.
   - Surfaced by: DX review D9 — `--check <id>` shipped in phase 1 with no way to discover the check ids.
   - Files: `src/cli.rs`, `src/main.rs`, `tests/integration.rs`.
   - Verify: `anc emit web-checks` lists every id and round-trips; `anc emit web-schema` validates a real scorecard.
-- [x] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate.
+- [ ] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate.
   - Surfaced by: DX review D3 — the under-2-minute promise was unmeasured.
   - Files: `.github/workflows/ci.yml`, `tests/`.
   - Verify: the job installs the release artifact, audits a local fixture server whose certificate comes from a CA the

@@ -2,7 +2,8 @@
 title: Release the code-unwrap cfg(test) Exemption - Plan
 type: fix
 date: 2026-09-18
-status: implementation-ready
+status: active
+prs: ["#129"]
 topic: release-the-code-unwrap-exemption
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready

@@ -1,6 +1,7 @@
 ---
 title: "refactor: Role-based audit validators — stop hardcoding field names and CLI dialects"
 status: active
+prs: ["#79"]
 date: 2026-06-02
 type: refactor
 origin: handoff from xurl-rs anc-100%-compliance work (compound friction surfaced 2026-06-02)

@@ -2,7 +2,10 @@
 title: Hand-Written Help Subcommand Parsing - Plan
 type: fix
 date: 2026-09-16
-status: completed
+status: released
+prs: ["#94", "#95", "brettdavies/agentnative#53"]
+completed: 2026-09-17
+released_in: v0.6.0
 topic: hand-written-help-subcommand-parsing
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready

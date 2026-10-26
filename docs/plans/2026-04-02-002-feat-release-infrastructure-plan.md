@@ -1,7 +1,10 @@
 ---
 title: "feat: Release infrastructure — completions, RELEASING.md, changelog, Homebrew formula"
 type: feat
-status: complete
+status: released
+prs: ["#11", "#18", "brettdavies/homebrew-tap#37", "brettdavies/homebrew-tap#41", "brettdavies/homebrew-tap#42"]
+completed: 2026-04-16
+released_in: v0.1.0
 date: 2026-04-02
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---
@@ -135,9 +138,6 @@ Unblocks the release archive step.
 
 **Dependencies:** None
 
-**Status:** Shipped as `RELEASES.md` (canonical template renamed from `RELEASING.md` — see bird commit
-`da19ad5 docs: rename RELEASING.md to RELEASES.md and align with canonical template`).
-
 **Files:**
 
 - Created: `RELEASES.md`
@@ -168,10 +168,6 @@ Unblocks the release archive step.
 **Requirements:** R4
 
 **Dependencies:** None
-
-**Status:** Shipped with 4 of 5 channels (Homebrew, `cargo install`, `cargo binstall`, pre-built binaries from GitHub
-Releases). "From source" (`git clone && cargo build --release`) is omitted — trivial for Rust users and implicit. If
-strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 
 **Files:**
 
@@ -332,65 +328,3 @@ strict 5-channel coverage is required, add a one-line bullet in a follow-up.
 - **Homebrew tap:** `brettdavies/homebrew-tap`
 - **Solution:** `~/dev/solutions-docs/architecture-patterns/release-pipeline-reusable-workflows-20260320.md`
 - **Solution:** `~/dev/solutions-docs/integration-issues/homebrew-tap-automated-formula-updates-via-dispatch.md`
-
-## Refresh Log
-
-### 2026-04-15
-
-Plan audited against repo state. Resolved: Units 1, 2, 3. Remaining: Units 4, 5, 6.
-
-- Unit 1 (completions) — shipped; 5 completion files in `completions/`.
-- Unit 2 (RELEASING.md) — shipped as `RELEASES.md` per canonical rename.
-- Unit 3 (README install channels) — 4 of 5 shipped; "From source" omitted as minor/implicit.
-- Unit 4 (Homebrew formula) — NOT done; `Formula/agentnative.rb` does not exist in `brettdavies/homebrew-tap`.
-- Unit 5 (stale branch cleanup) — NOT done; 6 stale `origin/*` branches remain (enumerated in Unit 5 body).
-- Unit 6 (CHANGELOG v0.1.0) — NOT done; `CHANGELOG.md` is a 1-line header. No `v0.1.0` tag exists.
-
-Next action: Unit 4 (Homebrew formula pre-seed) is the smallest independent piece. Unit 6 blocks the actual release and
-must happen on a `release/v0.1.0` branch, not on `dev`. Unit 5 is trivial housekeeping.
-
-### 2026-04-16
-
-Units 4 and 5 closed. Unit 6 still pending, plus a new Unit 4b blocker surfaced.
-
-- Unit 4 (Homebrew formula pre-seed) — **done on tap `dev`** via
-  [brettdavies/homebrew-tap#37](https://github.com/brettdavies/homebrew-tap/pull/37) (merge commit `6f9db69`). Ships
-  `Formula/agentnative.rb` with `v0.0.0` placeholder + zeroed sha256 per the documented pre-seed pattern, and extends
-  `update-formula.yml` allowlist regex to `^(xurl-rs|bird|agentnative)$`. Formula installs the single `anc` binary
-  (agentnative's `Cargo.toml` has exactly one `[[bin]]` target); docs reflect single-binary shipping. **Deviation from
-  plan:** formula installs `anc` only, not both `agentnative` and `anc` — accepted, single-binary crate.
-- Unit 4b (tap dev→main promotion) — **done** via
-  [brettdavies/homebrew-tap#42](https://github.com/brettdavies/homebrew-tap/pull/42) (merged 2026-04-16). Bundled PR #37
-  (formula + allowlist) with PR #41 (v0.0.0 bottle-skip) and three Dependabot action bumps. Verified on tap `main`:
-  allowlist regex now `^(xurl-rs|bird|agentnative)$`, `Formula/agentnative.rb` present, `brew install agentnative`
-  resolves against the default branch. Four candidate cherry-picks emptied out (content already on main via other PRs)
-  and were skipped as no-ops; two docs commits were excluded per `guard-main-docs`.
-- Unit 5 (stale branch cleanup) — done as a no-op. All 6 branches were already pruned on origin by GitHub's
-  auto-delete-on-merge. `git branch -r` now shows only `origin/HEAD`, `origin/dev`, `origin/main`.
-- Unit 6 (CHANGELOG v0.1.0) — still NOT done. Must happen on `release/v0.1.0` from `origin/main`, now unblocked by Unit
-  4b.
-
-- Single-binary correction (captured from earlier session work): the plan originally assumed two binaries (`agentnative`
-- `anc`). The crate ships one `[[bin]]` target (`anc`) — confirmed via `cargo metadata`. References across this plan,
-  plan 003, `README.md`, and `RELEASES.md` were updated in a prior session. Formula in PR #37 installs only `anc`,
-  matching reality.
-
-Blocking order for `anc v0.1.0`: Unit 4b (tap main promotion) → Unit 6 (generate CHANGELOG on release branch) →
-first-time manual `cargo publish` → tag push.
-
-### Refresh 2026-04-16 (Unit 6 done, v0.1.0 released)
-
-All 6 units complete. v0.1.0 released successfully through the full pipeline:
-
-- Release branch cherry-picked 13 commits from dev, excluding guarded docs/plans/ paths
-- Cargo.toml already at 0.1.0, completions already fresh -- no bump or regen needed
-- CHANGELOG.md generated via generate-changelog.py with PR body expansion
-- PR #18 merged to main, all 9 CI checks passed
-- Alpha v0.1.0-alpha.1 published manually to establish crate on crates.io
-- Trusted Publishing configured, then annotated tag pushed
-- release.yml: 5-target build, TP publish, non-draft release, Homebrew dispatch all succeeded
-- homebrew-tap: formula update PR, bottle builds (3 platforms), publish, finalize-release all succeeded
-- make_latest flipped to true. All channels live.
-
-Post-release: two CE todos filed for monorepo discovery (006) and multi-language support (007), discovered during RC
-testing against bird, xr, and markitdown.

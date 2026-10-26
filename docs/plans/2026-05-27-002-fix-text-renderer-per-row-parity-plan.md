@@ -1,7 +1,10 @@
 ---
 title: "fix: Route the text renderer through the per-row + propagation pipeline so text and JSON agree"
 type: fix
-status: completed
+status: released
+prs: ["#63"]
+completed: 2026-05-28
+released_in: v0.5.0
 date: 2026-05-27
 origin: U2 (PR #62 / commit 3839696, scorecard 7-status taxonomy + schema 0.6) shipped the per-row pipeline on the JSON path only; the `--output text` path was never migrated. Repro by auditing `bat`.
 ---
@@ -218,7 +221,7 @@ take `&[AuditResult]`; feed them the projected `Vec<AuditResult>` (drop the prov
 
 ## Implementation Units
 
-- [ ] **Unit 1: Extract `build_row_results` (pure refactor, no behavior change)**
+- [x] **Unit 1: Extract `build_row_results` (pure refactor, no behavior change)**
 
 **Goal:** Single source of truth for the per-row + propagation pipeline.
 
@@ -240,7 +243,7 @@ take `&[AuditResult]`; feed them the projected `Vec<AuditResult>` (drop the prov
 
 ---
 
-- [ ] **Unit 2: Route the text path through `build_row_results`**
+- [x] **Unit 2: Route the text path through `build_row_results`**
 
 **Goal:** `format_text` and the text-mode badge consume per-row + propagated results, not raw.
 
@@ -268,7 +271,7 @@ summary/badge. Tier via `registry::find(&r.id)`, defensively `None`-tolerant.
 
 ---
 
-- [ ] **Unit 3: Move `exit_code` to the per-row result set**
+- [x] **Unit 3: Move `exit_code` to the per-row result set**
 
 **Goal:** Process exit code reflects the per-row truth, matching `summary` / `score_pct` / `badge`.
 
@@ -291,7 +294,7 @@ summary/badge. Tier via `registry::find(&r.id)`, defensively `None`-tolerant.
 
 ---
 
-- [ ] **Unit 4: Regression test — text/JSON parity on the `bat` shape + update affected tests**
+- [x] **Unit 4: Regression test — text/JSON parity on the `bat` shape + update affected tests**
 
 **Goal:** Lock the fix against re-divergence; bring existing tests onto the per-row contract.
 

@@ -9,9 +9,10 @@ This document is the check-by-check diff between the skill and the live anc.dev 
 between their result models, and a walkthrough showing that the skill's report is constructible from one
 `anc web --output json` run plus the exit code, so the skill can consume one probe engine instead of carrying its own.
 
-`anc web` is the planned consumer, not a shipped command: the port lands the registry, the engine and the command
-together, and until it merges the subcommand and the `anc emit web-checks` / `anc emit web-remediation` surfaces the
-walkthrough cites do not exist in this repository. The vendored registry and `schema/web-scorecard.schema.json` do.
+`anc web` and the `anc emit web-checks` / `anc emit web-remediation` readers the walkthrough cites are built with the
+`web` cargo feature (`cargo install agentnative --features web`, or `cargo build --features web` from a checkout), which
+is off by default, so the released binaries do not include them. The vendored registry and
+`schema/web-scorecard.schema.json` are part of every build.
 
 ## Summary
 
@@ -179,7 +180,7 @@ part of the JSON contract; only the summarized line is.
 Each of the skill's 32 check ids appears exactly once in the coverage table above, and every scorecard field the
 walkthrough cites (`target_url`, `mcp_endpoint`, `mcp_discovery`, `categories[]`,
 `results[].{id,label,tier,keyword,status,na_reason,unprobed,evidence}`, `summary`, `score_pct`, `score.global`) is a
-field of `schema/web-scorecard.schema.json`, the web scorecard schema this repository carries and `anc web` will emit
+field of `schema/web-scorecard.schema.json`, the web scorecard schema this repository carries and `anc web` emits
 against.
 
 The counts above are derived from the two registries rather than maintained by hand: 32 check ids in the skill's

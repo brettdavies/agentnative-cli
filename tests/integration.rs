@@ -269,6 +269,32 @@ fn test_binary_only_fixture() {
     );
 }
 
+/// A binary audited on its own has no directory to hold a bundle file, and
+/// this one's `--help` declares no `skill` subcommand: the rows conditional
+/// on a skill bundle are not applicable, not passes.
+#[test]
+#[cfg(unix)]
+fn test_binary_without_skill_bundle_reports_p8_rows_not_applicable() {
+    let path = fixture_path("binary-only/test.sh");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    for id in [
+        "p8-must-bundle-install",
+        "p8-may-install-all",
+        "p8-may-bundle-update",
+    ] {
+        let row = results
+            .iter()
+            .find(|r| r["id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"));
+        assert_eq!(row["status"], "n_a", "{row}");
+        let evidence = row["evidence"].as_str().unwrap_or_default();
+        assert!(evidence.contains("no `skill` subcommand"), "{row}");
+    }
+}
+
 /// Go `flag`-style help end to end: every name printed with one dash and no
 /// double-dash name. `destroy` lists `-force`, which confirms as `--force`
 /// does; the top level lists `-version` and no verbose flag, and `-version`

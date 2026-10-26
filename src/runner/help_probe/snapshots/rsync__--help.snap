@@ -2,4 +2,157 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/rsync__--help.txt
 ---
-
+  36 | --verbose, -v | increase verbosity
+  37 | --info | fine-grained informational verbosity
+  38 | --debug | fine-grained debug verbosity
+  39 | --stderr | change stderr output mode (default: errors)
+  40 | --quiet, -q | suppress non-error messages
+  41 | --no-motd | suppress daemon-mode MOTD
+  42 | --checksum, -c | skip based on checksum, not mod-time & size
+  43 | --archive, -a | archive mode is -rlptgoD (no -A,-X,-U,-N,-H)
+  44 | --no-OPTION | turn off an implied OPTION (e.g. --no-D)
+  45 | --recursive, -r | recurse into directories
+  46 | --inc-recursive, --i-r | enable incremental recursion
+  47 | --no-inc-recursive | disable incremental recursion
+  48 | --no-i-r | same as --no-inc-recursive
+  49 | --relative, -R | use relative path names
+  50 | --no-implied-dirs | don't send implied directories with --relative
+  51 | --backup, -b | make backups (see --suffix & --backup-dir)
+  52 | --backup-dir | make backups into hierarchy based in DIR
+  53 | --suffix | backup suffix (default ~ w/o --backup-dir)
+  54 | --update, -u | skip files that are newer on the receiver
+  55 | --inplace | update destination files in-place
+  56 | --append | append data onto shorter files
+  57 | --append-verify | --append w/old data in file checksum
+  58 | --dirs, -d | transfer directories without recursing
+  59 | --old-dirs | works like --dirs when talking to old rsync
+  60 | --old-d | same as --old-dirs
+  61 | --mkpath | create destination's missing path components
+  62 | --links, -l | copy symlinks as symlinks
+  63 | --copy-links, -L | transform symlink into referent file/directory
+  64 | --copy-unsafe-links | only "unsafe" symlinks are transformed
+  65 | --safe-links | ignore symlinks that point outside the tree
+  66 | --insecure-links | follow attacker-owned symlinks in operator paths
+  67 | --confine-root | refuse operator paths resolving outside DIR
+  68 | --munge-links | munge symlinks to make them safe & unusable
+  69 | --copy-dirlinks, -k | transform symlink to directory into referent directory
+  70 | --keep-dirlinks, -K | treat symlinked directory on receiver as directory
+  71 | --hard-links, -H | preserve hard links
+  72 | --perms, -p | preserve permissions
+  73 | --executability, -E | preserve executability
+  74 | --chmod | affect file and/or directory permissions
+  75 | --acls, -A | preserve ACLs (implies --perms)
+  76 | --xattrs, -X | preserve extended attributes
+  77 | --owner, -o | preserve owner (super-user only)
+  78 | --group, -g | preserve group
+  79 | --devices | preserve device files (super-user only)
+  80 | --copy-devices | copy device contents as a regular file
+  81 | --write-devices | write to devices as files (implies --inplace)
+  82 | --specials | preserve special files
+  83 | --drop-D | receiver refuses to create devices/specials
+  84 | -D | same as --devices --specials
+  85 | --times, -t | preserve modification times
+  86 | --atimes, -U | preserve access (use) times
+  87 | --open-noatime | avoid changing the atime on opened files
+  88 | --crtimes, -N | preserve create times (newness)
+  89 | --omit-dir-times, -O | omit directories from --times
+  90 | --omit-link-times, -J | omit symlinks from --times
+  91 | --super | receiver attempts super-user activities
+  92 | --fake-super | store/recover privileged attrs using xattrs
+  93 | --sparse, -S | turn sequences of nulls into sparse blocks
+  94 | --preallocate | allocate dest files before writing them
+  95 | --dry-run, -n | perform a trial run with no changes made
+  96 | --whole-file, -W | copy files whole (w/o delta-xfer algorithm)
+  97 | --no-whole-file, --no-W | use the delta-xfer algorithm
+  98 | --checksum-choice | choose the checksum algorithm (aka --cc)
+  99 | --one-file-system, -x | don't cross filesystem boundaries
+ 100 | --block-size, -B | force a fixed checksum block-size
+ 101 | --rsh, -e | specify the remote shell to use
+ 102 | --rsync-path | specify the rsync to run on remote machine
+ 103 | --existing | skip creating new files on receiver
+ 104 | --ignore-non-existing | skip creating new files on receiver
+ 105 | --ignore-existing | skip updating files that exist on receiver
+ 106 | --remove-source-files | sender removes synchronized files (non-directory)
+ 107 | --del | an alias for --delete-during
+ 108 | --delete | delete extraneous files from dest directories
+ 109 | --delete-before | receiver deletes before xfer, not during
+ 110 | --delete-during | receiver deletes during the transfer
+ 111 | --delete-delay | find deletions during, delete after
+ 112 | --delete-after | receiver deletes after transfer, not during
+ 113 | --delete-excluded | also delete excluded files from dest directories
+ 114 | --ignore-missing-args | ignore missing source arguments without error
+ 115 | --delete-missing-args | delete missing source arguments from destination
+ 116 | --ignore-errors | delete even if there are I/O errors
+ 117 | --force | force deletion of directories even if not empty
+ 118 | --max-delete | don't delete more than NUM files
+ 119 | --max-size | don't transfer any file larger than SIZE
+ 120 | --min-size | don't transfer any file smaller than SIZE
+ 121 | --max-alloc | change a limit relating to memory alloc
+ 122 | --partial | keep partially transferred files
+ 123 | --partial-dir | put a partially transferred file into DIR
+ 124 | --delay-updates | put all updated files into place at end
+ 125 | --prune-empty-dirs, -m | prune empty directory chains from file-list
+ 126 | --numeric-ids | don't map uid/gid values by user/group name
+ 127 | --usermap | custom username mapping
+ 128 | --groupmap | custom groupname mapping
+ 129 | --chown | simple username/groupname mapping
+ 130 | --timeout | set I/O timeout in seconds
+ 131 | --contimeout | set daemon connection timeout in seconds
+ 132 | --ignore-times, -I | don't skip files that match size and time
+ 133 | --size-only | skip files that match in size
+ 134 | --modify-window, -@ | set the accuracy for mod-time comparisons
+ 135 | --temp-dir, -T | create temporary files in directory DIR
+ 136 | --fuzzy, -y | find similar file for basis if no dest file
+ 137 | --compare-dest | also compare destination files relative to DIR
+ 138 | --copy-dest | ... and include copies of unchanged files
+ 139 | --link-dest | hardlink to files in DIR when unchanged
+ 140 | --compress, -z | compress file data during the transfer
+ 141 | --compress-choice | choose the compression algorithm (aka --zc)
+ 142 | --compress-level | explicitly set compression level (aka --zl)
+ 143 | --compress-threads | explicitly set compression threads (aka --zt)
+ 144 | --skip-compress | skip compressing files with suffix in LIST
+ 145 | --cvs-exclude, -C | auto-ignore files in the same way CVS does
+ 146 | --filter, -f | add a file-filtering RULE
+ 147 | -F | same as --filter='dir-merge /.rsync-filter' repeated: --filt
+ 149 | --exclude | exclude files matching PATTERN
+ 150 | --exclude-from | read exclude patterns from FILE
+ 151 | --include | don't exclude files matching PATTERN
+ 152 | --include-from | read include patterns from FILE
+ 153 | --files-from | read list of source-file names from FILE
+ 154 | --from0, -0 | all *-from/filter files are delimited by 0s
+ 155 | --old-args | disable the modern argument-protection idiom
+ 156 | --secluded-args, -s | use the protocol to safely send the arguments
+ 157 | --trust-sender | trust the remote sender's file list
+ 158 | --copy-as | specify user & optional group for the copy
+ 159 | --address | bind address for outgoing socket to daemon
+ 160 | --port | specify double-colon alternate port number
+ 161 | --sockopts | specify custom TCP options
+ 162 | --blocking-io | use blocking I/O for the remote shell
+ 163 | --outbuf | set out buffering to None, Line, or Block
+ 164 | --stats | give some file-transfer stats
+ 165 | --8-bit-output, -8 | leave high-bit chars unescaped in output
+ 166 | --human-readable, -h | output numbers in a human-readable format
+ 167 | --progress | show progress during transfer
+ 168 | -P | same as --partial --progress
+ 169 | --itemize-changes, -i | output a change-summary for all updates
+ 170 | --remote-option, -M | send OPTION to the remote side only
+ 171 | --out-format | output updates using the specified FORMAT
+ 172 | --log-file | log what we're doing to the specified FILE
+ 173 | --log-file-format | log updates using the specified FMT
+ 174 | --password-file | read daemon-access password from FILE
+ 175 | --early-input | use FILE for daemon's early exec input
+ 176 | --list-only | list the files instead of copying them
+ 177 | --bwlimit | limit socket I/O bandwidth
+ 178 | --stop-after | Stop rsync after MINS minutes have elapsed
+ 179 | --stop-at | Stop rsync at the specified point in time
+ 180 | --fsync | fsync every written file
+ 181 | --write-batch | write a batched update to FILE
+ 182 | --only-write-batch | like --write-batch but w/o updating dest
+ 183 | --read-batch | read a batched update from FILE
+ 184 | --protocol | force an older protocol version to be used
+ 185 | --iconv | request charset conversion of filenames
+ 186 | --checksum-seed | set block/file checksum seed (advanced)
+ 187 | --ipv4, -4 | prefer IPv4
+ 188 | --ipv6, -6 | prefer IPv6
+ 189 | --version, -V | print the version + other info and exit
+ 190 | --help, -h | show this help (* -h is help only on its own)

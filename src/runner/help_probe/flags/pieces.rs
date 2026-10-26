@@ -2,7 +2,7 @@
 //! names, a value placeholder, punctuation between groups, or prose.
 //!
 //! ```text
-//! name        := "--[no-]" word | "--" word | "-" word | "-" char | "+" word | "/" word
+//! name        := "--[no-]" word | "--" word | "-" word | "-" char | "+" word | "/" word | "[" name "]"
 //! word        := alnum (alnum | "." | "_" | "-" | "@")*
 //! placeholder := "<..>" | "[..]" | "{..}" | "(..)" | quoted | "=" value | UPPER | type word
 //! ```
@@ -34,6 +34,7 @@ const TYPE_WORDS: &[&str] = &[
 const PUNCTUATION_SHORTS: &[char] = &['?', '.', '#', '@'];
 
 /// One whitespace-, comma- or pipe-separated part of a definition line.
+#[derive(Clone, Copy)]
 pub(super) struct Piece<'a> {
     pub text: &'a str,
     /// Byte offset of the piece in its line.
@@ -75,11 +76,22 @@ impl<'a> Piece<'a> {
         }
     }
 
-    /// `--[no-]x` declares `--x` and `--no-x`. A `+x` or `/x` name is read
-    /// only as an alias after a comma or pipe, so a path or a sum in prose is
-    /// not a name.
+    /// `--[no-]x` declares `--x` and `--no-x`, and Thor's `[--x=N]` declares
+    /// `--x`. A `/x` name is read only as an alias after a comma or pipe, and
+    /// a `+x` name there or at the start of the line, so a path or a sum in
+    /// prose is not a name.
     fn names(&self, first: bool) -> Option<(Vec<String>, &'a str)> {
         let text = self.text;
+        if let Some(inner) = text.strip_prefix('[').and_then(|t| t.strip_suffix(']'))
+            && inner.starts_with('-')
+            && !inner.contains(|c: char| c.is_whitespace() || matches!(c, '[' | '|'))
+        {
+            let bare = Piece {
+                text: inner,
+                ..*self
+            };
+            return bare.names(first);
+        }
         if let Some(body) = text.strip_prefix("--[no-]") {
             let (word, rest) = take_word(body)?;
             return Some((vec![format!("--{word}"), format!("--no-{word}")], rest));
@@ -88,11 +100,16 @@ impl<'a> Piece<'a> {
             ("--", body)
         } else if let Some(body) = text.strip_prefix('-') {
             ("-", body)
-        } else if let Some(body) = text.strip_prefix(['+', '/']) {
+        } else if let Some(body) = text.strip_prefix('+') {
+            if !first && !self.after_join {
+                return None;
+            }
+            ("+", body)
+        } else if let Some(body) = text.strip_prefix('/') {
             if first || !self.after_join {
                 return None;
             }
-            (&text[..1], body)
+            ("/", body)
         } else {
             return None;
         };

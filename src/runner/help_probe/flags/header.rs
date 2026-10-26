@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! definition := group (sep group)* (gap column)* description?
-//! column     := group (sep group)*
+//! column     := group (sep group)* | placeholder+
 //! group      := name placeholder*
 //! sep        := "," | " " | "|" | punctuation
 //! gap        := 2+ spaces | TAB
@@ -32,6 +32,9 @@ pub(super) struct Header<'a> {
     pub description: &'a str,
     /// The column the description starts at, when the line carries one.
     pub description_column: Option<usize>,
+    /// A gap or a marker sets the description off, with no prose between it
+    /// and the names.
+    pub set_off: bool,
     /// The column each name starts at.
     pub name_columns: Vec<usize>,
 }
@@ -44,8 +47,10 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
     let mut name_columns: Vec<usize> = Vec::new();
     let mut prose: Option<usize> = None;
     let mut after_gap: Option<usize> = None;
+    let mut after_marker = false;
+    let mut marker_set_off = false;
     for (i, piece) in all.iter().enumerate() {
-        if i > 0 && piece.after_gap && (prose.is_some() || !is_name_column(&all[i..])) {
+        if i > 0 && piece.after_gap && (prose.is_some() || !is_header_column(&all[i..])) {
             after_gap = Some(i);
             break;
         }
@@ -68,8 +73,17 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
                 placeholder.get_or_insert(piece.text);
             }
             Kind::Punctuation => {}
-            Kind::Prose => prose = Some(i),
+            // One bare word between the names and the gap names the value
+            // (`-loglevel loglevel  set logging level`).
+            Kind::Prose if all.get(i + 1).is_some_and(|next| next.after_gap) => {
+                placeholder.get_or_insert(piece.text);
+            }
+            Kind::Prose => {
+                prose = Some(i);
+                marker_set_off = after_marker;
+            }
         }
+        after_marker = MARKERS.contains(&piece.text);
     }
     if names.is_empty() {
         return None;
@@ -89,20 +103,27 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
         placeholder,
         description: described.map_or("", |first| line[first.start..].trim_end()),
         description_column: described.map(|first| column_of(line, first.start)),
+        set_off: described.is_some()
+            && ((after_gap.is_some() && prose.is_none()) || marker_set_off),
         name_columns,
     })
 }
 
-/// Whether the pieces up to the next gap are a column of names: they lead
-/// with a name and hold no prose. `--ignore option only ignores files` leads
-/// with a name and is a description.
-fn is_name_column(rest: &[Piece<'_>]) -> bool {
-    let mut kinds = rest
+/// Whether the pieces up to the next gap carry the header on. A column of
+/// names leads with a name and holds no prose; `--ignore option only ignores
+/// files` leads with a name and is a description. A column of placeholders
+/// with more text after it is a type column (typer's `<int>`).
+fn is_header_column(rest: &[Piece<'_>]) -> bool {
+    let end = rest
         .iter()
-        .enumerate()
-        .take_while(|(i, piece)| *i == 0 || !piece.after_gap)
-        .map(|(_, piece)| piece.kind(false));
-    matches!(kinds.next(), Some(Kind::Names(..))) && kinds.all(|kind| !matches!(kind, Kind::Prose))
+        .skip(1)
+        .position(|piece| piece.after_gap)
+        .map_or(rest.len(), |at| at + 1);
+    let kinds: Vec<Kind<'_>> = rest[..end].iter().map(|piece| piece.kind(false)).collect();
+    let leads_with_name = matches!(kinds.first(), Some(Kind::Names(..)));
+    let type_column =
+        end < rest.len() && kinds.iter().all(|kind| matches!(kind, Kind::Placeholder));
+    (leads_with_name && kinds.iter().all(|kind| !matches!(kind, Kind::Prose))) || type_column
 }
 
 #[cfg(test)]

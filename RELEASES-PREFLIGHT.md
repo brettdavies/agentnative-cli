@@ -14,7 +14,8 @@ This checklist covers what CI structurally can't:
 - Real-world behavior against external CLIs (CI only dogfoods `anc` against itself).
 - Distribution paths that only exercise on real artifacts (cross-compile binaries, `git clone` to a real skill-bundle
   destination, `cargo install` from a clean machine).
-- Cross-repo sequencing where releasing here before `agentnative-site` / `agentnative-spec` is ready breaks downstreams.
+- What `agentnative-site` needs to know about a release, and which `agentnative-spec` version the release vendors. The
+  site pins `anc` by release and catches up after it, so a release here never waits for the site.
 
 Post-tag verification (`release.yml` → homebrew-tap → `finalize-release.yml` → crates.io) lives in
 [`RELEASES-POSTFLIGHT.md`](./RELEASES-POSTFLIGHT.md). The tag push happens AFTER the release-branch cut and the
@@ -130,8 +131,9 @@ declined first.
 - [ ] Scorecard JSON diff: emit a scorecard on `$LAST_TAG` and on `dev` against the same target, `diff` the JSON. Every
   field renamed / added / removed / shape-changed becomes a row in the release's `### Breaking changes` (consumers
   feature-detect from this list).
-- [ ] `agentnative-site` reads the new JSON shape correctly (`/score/<tool>` renders, no `undefined` fields, the new
-  `schema_version` is recognized). If the site is not ready, hold the tag.
+- [ ] When `schema_version` changes, `agentnative-site` has the release's `### Breaking changes` before the tag. The
+  site adds a schema version to its `SUPPORTED_SCHEMA_VERSIONS` before it moves its `anc` pin, so it catches up on its
+  own schedule; the tag does not wait for it.
 - [ ] `agentnative-spec` `VERSION` matches `src/principles/spec/VERSION`. If you bumped one without the other, the
   `spec_version` field in the scorecard lies.
 - [ ] Every host URL in `src/skill_install/skill.json` resolves (the destination repo exists, the branch the install

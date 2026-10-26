@@ -1,3 +1,4 @@
+#[cfg(feature = "web")]
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -12,11 +13,15 @@ use agentnative::audits::behavioral::all_behavioral_audits;
 use agentnative::audits::project::all_project_audits;
 use agentnative::audits::source::all_source_audits;
 use agentnative::build_info::ANC_VERSION;
-use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SiteType, SkillCmd};
+use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
+#[cfg(feature = "web")]
+use agentnative::cli::{ColorChoice, SiteType};
 use agentnative::error::AppError;
 use agentnative::principles::matrix;
+#[cfg(feature = "web")]
+use agentnative::principles::registry::SPEC_VERSION;
 use agentnative::principles::registry::{
-    ExceptionCategory, SPEC_VERSION, SUPPRESSION_EVIDENCE_PREFIX, suppresses,
+    ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses,
 };
 use agentnative::project::Project;
 use agentnative::project::select::{self, Choice, Unselected};
@@ -26,17 +31,26 @@ use agentnative::scorecard::{
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
 use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
+#[cfg(feature = "web")]
 use agentnative::web_audit::emit as web_emit;
+#[cfg(feature = "web")]
 use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, run_web_audit};
+#[cfg(feature = "web")]
 use agentnative::web_audit::handlers::default_handlers;
+#[cfg(feature = "web")]
 use agentnative::web_audit::locality::SystemResolver;
+#[cfg(feature = "web")]
 use agentnative::web_audit::registry::{AUDIT_USER_AGENT, check_by_id};
+#[cfg(feature = "web")]
 use agentnative::web_audit::scorecard::to_wire_json;
+#[cfg(feature = "web")]
 use agentnative::web_audit::target as web_target;
+#[cfg(feature = "web")]
 use agentnative::web_audit::{render, transport::UreqTransport};
-use agentnative::{anc_toml, argv, audits, cli, color, json_error, output, skill_install};
+use agentnative::{anc_toml, argv, audits, color, json_error, output, skill_install};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
+#[cfg(feature = "web")]
 const WEB_SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/web-scorecard.schema.json");
 
 fn main() {
@@ -157,6 +171,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             generate(shell, &mut cmd, "anc", &mut std::io::stdout());
             return Ok(0);
         }
+        #[cfg(feature = "web")]
         Some(Commands::Web {
             target,
             site_type,
@@ -1032,14 +1047,17 @@ fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
             output::emit(SCORECARD_SCHEMA_JSON);
             Ok(0)
         }
+        #[cfg(feature = "web")]
         EmitKind::WebChecks => {
             output::emit(&web_emit::render_checks());
             Ok(0)
         }
+        #[cfg(feature = "web")]
         EmitKind::WebSchema => {
             output::emit(WEB_SCORECARD_SCHEMA_JSON);
             Ok(0)
         }
+        #[cfg(feature = "web")]
         EmitKind::WebRemediation => {
             output::emit(&web_emit::render_remediation());
             Ok(0)
@@ -1048,6 +1066,7 @@ fn run_emit(artifact: EmitKind) -> Result<i32, AppError> {
 }
 
 /// Everything `anc web` was asked for, after the global flags fold in.
+#[cfg(feature = "web")]
 struct WebRun {
     target: String,
     site_type: Option<SiteType>,
@@ -1056,13 +1075,14 @@ struct WebRun {
     output: OutputFormat,
     quiet: bool,
     verbose: bool,
-    color: cli::ColorChoice,
+    color: ColorChoice,
 }
 
 /// Emit a dead end: the structured envelope on stderr in JSON mode, the
 /// problem plus its cause and next action in text mode. Stdout carries
 /// nothing, so a JSON consumer's parse of stdout never sees half a
 /// scorecard.
+#[cfg(feature = "web")]
 fn emit_web_failure(failure: &render::Failure, json: bool) -> i32 {
     if json {
         eprintln!(
@@ -1082,6 +1102,7 @@ fn emit_web_failure(failure: &render::Failure, json: bool) -> i32 {
 }
 
 /// `anc web <target>`: probe the target from this machine and report.
+#[cfg(feature = "web")]
 fn run_web(run: WebRun) -> Result<i32, AppError> {
     let json = matches!(run.output, OutputFormat::Json);
 

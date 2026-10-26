@@ -134,12 +134,16 @@ where
     // TLD-shaped dot-bearing token with no path separator) that an
     // existing path always wins, so a filename typo stays on the offline
     // audit path and never opens a connection.
+    // Without the `web` feature there is no `web` subcommand, so every
+    // token routes to `audit`.
     let inject_for = |args: Vec<OsString>, token: &str| -> Vec<OsString> {
+        #[cfg(feature = "web")]
         if crate::web_audit::target::routes_to_web(token) {
-            inject(args, "web")
-        } else {
-            inject(args, "audit")
+            return inject(args, "web");
         }
+        #[cfg(not(feature = "web"))]
+        let _ = token;
+        inject(args, "audit")
     };
 
     let mut i = 1;

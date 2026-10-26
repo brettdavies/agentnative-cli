@@ -2,6 +2,8 @@
 //! exit table on every code, the report contract, the single-check form,
 //! the offline readers, and every dead end's envelope and next action.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use std::process::Command as StdCommand;

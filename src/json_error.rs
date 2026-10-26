@@ -199,6 +199,7 @@ pub fn clap_offending_fields(error: &clap::Error) -> serde_json::Map<String, ser
 /// verb, a verbatim command safe to run headless, and a docs URL when one
 /// exists. Unlike [`NextStep`], it always serializes `docs`, as `null` when
 /// no page exists.
+#[cfg(feature = "web")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FailureStep {
     /// What to do, from a closed set (`retry`, `fix-target`, `list-checks`).
@@ -212,6 +213,7 @@ pub struct FailureStep {
 /// Render a JSON failure envelope with a `next_step`: the error envelope's
 /// keys plus `{action, command, docs}` so an agent can act on a dead end
 /// without parsing the message.
+#[cfg(feature = "web")]
 pub fn render_failure(
     kind: &str,
     error: &str,

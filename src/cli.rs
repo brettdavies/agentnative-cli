@@ -17,7 +17,9 @@ Default output format is text; color and progress affordances auto-detect the TT
 
 Input model: targets are passed as positional path arguments or via `--command <name>`. Stdin is not consumed; `-` is reserved and behaves like a literal filename rather than a stdin sentinel."
 )]
-#[command(after_help = "Examples:
+#[cfg_attr(
+    feature = "web",
+    command(after_help = "Examples:
   anc audit .                          # human scorecard for the current project
   anc audit . --output json            # JSON envelope for agents (--json works too)
   anc audit --command rg               # audit a PATH-resolved binary by name
@@ -39,7 +41,25 @@ Exit codes:
   0  clean   1  warnings only   2  failures or usage error   3  could not check
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative audits itself.")]
+that prevents recursive self-invocation when agentnative audits itself.")
+)]
+#[cfg_attr(
+    not(feature = "web"),
+    command(after_help = "Examples:
+  anc audit .                          # human scorecard for the current project
+  anc audit . --output json            # JSON envelope for agents (--json works too)
+  anc audit --command rg               # audit a PATH-resolved binary by name
+  anc emit coverage-matrix             # emit the spec coverage matrix
+  anc emit schema                      # print the scorecard JSON Schema
+  anc skill install claude_code          # install the bundle into Claude Code
+
+When the first argument is not a subcommand, `audit` is inserted automatically:
+  anc .                  ≡  anc audit .
+  anc --command rg       ≡  anc audit --command rg
+
+Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
+that prevents recursive self-invocation when agentnative audits itself.")
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -217,6 +237,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
         #[arg(long, value_name = "CATEGORY")]
         audit_profile: Option<AuditProfile>,
     },
+    #[cfg(feature = "web")]
     /// Audit a website for agent-readiness
     ///
     /// Runs the anc.dev web-audit registry against a target from this
@@ -280,7 +301,9 @@ Exit codes (shared with `anc audit`):
         shell: Shell,
     },
     /// Render build artifacts (coverage matrix, scorecard schema)
-    #[command(after_help = "Examples:
+    #[cfg_attr(
+        feature = "web",
+        command(after_help = "Examples:
   anc emit coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
   anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
   anc emit coverage-matrix --out /tmp/cov.md          # custom output path
@@ -288,7 +311,17 @@ Exit codes (shared with `anc audit`):
   anc emit schema | jq '.title'                       # pipe into jq for inspection
   anc emit web-checks | jq -r '.checks[].id'          # every `anc web --check` id
   anc emit web-schema                                 # the web-scorecard JSON Schema
-  anc emit web-remediation                            # the web-audit fix catalog")]
+  anc emit web-remediation                            # the web-audit fix catalog")
+    )]
+    #[cfg_attr(
+        not(feature = "web"),
+        command(after_help = "Examples:
+  anc emit coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
+  anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
+  anc emit coverage-matrix --out /tmp/cov.md          # custom output path
+  anc emit schema                                     # print the scorecard JSON Schema to stdout
+  anc emit schema | jq '.title'                       # pipe into jq for inspection")
+    )]
     Emit {
         #[command(subcommand)]
         artifact: EmitKind,
@@ -383,6 +416,7 @@ pub enum EmitKind {
     /// sample output. The schema is the same document committed at
     /// `schema/scorecard.schema.json` in this repo.
     Schema,
+    #[cfg(feature = "web")]
     /// Print the compiled web-audit check registry as JSON.
     ///
     /// Every id `anc web --check <id>` accepts, with the label, category,
@@ -390,11 +424,13 @@ pub enum EmitKind {
     /// against. Compiled into the binary from the vendored anc.dev
     /// registry, so it needs no network.
     WebChecks,
+    #[cfg(feature = "web")]
     /// Print the web-scorecard JSON Schema (draft 2020-12) to stdout.
     ///
     /// The contract `anc web --output json` emits, which is the same
     /// document the hosted auditor's scorecards validate against.
     WebSchema,
+    #[cfg(feature = "web")]
     /// Print the web-audit fix catalog as JSON.
     ///
     /// One entry per check: the goal, the markdown fix and its doc links,
@@ -403,6 +439,7 @@ pub enum EmitKind {
     WebRemediation,
 }
 
+#[cfg(feature = "web")]
 /// `--site-type content|api` — which family of checks applies. Mirrors the
 /// hosted auditor's caller-supplied `site_type`, which is never detected:
 /// omitting it applies every check.
@@ -415,6 +452,7 @@ pub enum SiteType {
     Api,
 }
 
+#[cfg(feature = "web")]
 impl From<SiteType> for crate::web_audit::scorecard::DeclaredSiteType {
     fn from(t: SiteType) -> Self {
         match t {

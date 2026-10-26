@@ -109,6 +109,10 @@ exceptions = [
     # Each entry is the crate and version constraint, and its specific allow
     # list
     #{ allow = ["Zlib"], crate = "adler32" },
+    # serde_json's preserve_order feature, which keeps scorecard keys in
+    # order, depends on foldhash. Zlib is permissive and asks for no
+    # attribution in a binary.
+    { allow = ["Zlib"], crate = "foldhash" },
 ]
 
 # Some crates don't have (easily) machine readable licensing information,

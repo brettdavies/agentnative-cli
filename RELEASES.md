@@ -460,9 +460,11 @@ changelog check that reads a PR's files, and uses no extra secrets.
 
 Seven targets, listed in the `build` row of [§ Tagging and publishing](#tagging-and-publishing). The two musl rows are
 hard-blocking (`linux_musl_required: true`) and the x86_64-musl binary is exec-verified inside `alpine:latest`
-(`linux_musl_verify_alpine: true`). `release-matrix-check.yml` builds the same seven rows on every push to a `release/*`
-branch, and on a PR that changes `Cargo.toml`, `Cargo.lock`, or `rust-toolchain.toml`, so a broken row surfaces before
-the tag.
+(`linux_musl_verify_alpine: true`). A release compiles the seven rows once, on the tag push. `release-matrix-check.yml`
+builds the same rows on a PR to `dev` that changes `Cargo.toml`, `Cargo.lock`, or `rust-toolchain.toml`, since those
+are the changes that break a cross-compiled row, so a broken row surfaces on the change that broke it. It does not run
+for a release branch, a release PR, or the backport of a release's version bump; `gh workflow run
+release-matrix-check.yml --ref release/v<version>` runs it on a release branch when a release wants a rehearsal.
 
 Four of the archives are also what Homebrew installs. `Formula/agentnative.rb` in `brettdavies/homebrew-tap` names
 `agentnative-aarch64-apple-darwin.tar.gz`, `agentnative-x86_64-apple-darwin.tar.gz`,

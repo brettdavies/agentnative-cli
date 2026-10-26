@@ -15,10 +15,13 @@
 //! Emission order is semantic for `CHECKS` (scorecard rows follow registry
 //! order) and sorted everywhere else (remediation, token map).
 
-use serde_yaml::{Mapping, Value as Yaml};
+use serde_json::Value;
 
 use super::js_regex;
 use super::ts_consts::SiteConstants;
+use super::yaml;
+
+type Mapping = serde_json::Map<String, Value>;
 
 /// Handler kinds the Rust engine ports, in the site's declaration order.
 pub const HANDLER_KINDS: &[&str] = &[
@@ -140,22 +143,23 @@ pub fn normalize_registry(
     yaml: &str,
     ua_tokens: &[(String, String)],
 ) -> Result<NormalizedRegistry, String> {
-    let doc: Yaml = serde_yaml::from_str(yaml)
-        .map_err(|e| format!("web-audit registry: YAML parse error: {e}"))?;
-    let doc = doc.as_mapping().ok_or_else(|| {
+    let doc = yaml::from_str::<yaml::StringKeyed>(yaml)
+        .map_err(|e| format!("web-audit registry: YAML parse error: {e}"))?
+        .0;
+    let doc = doc.as_object().ok_or_else(|| {
         "web-audit registry: expected a YAML mapping at the top level".to_string()
     })?;
 
     let mcp_discovery = normalize_discovery(doc)?;
     let categories_map = doc
         .get("categories")
-        .and_then(Yaml::as_mapping)
+        .and_then(Value::as_object)
         .ok_or_else(|| {
             "web-audit registry: expected a top-level \"categories\" mapping".to_string()
         })?;
     let category_order: Vec<String> = doc
         .get("category_order")
-        .and_then(Yaml::as_sequence)
+        .and_then(Value::as_array)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             "web-audit registry: expected a top-level \"category_order\" array".to_string()
@@ -167,14 +171,7 @@ pub fn normalize_registry(
             })
         })
         .collect::<Result<_, _>>()?;
-    let category_keys: Vec<String> = categories_map
-        .iter()
-        .map(|(k, _)| {
-            k.as_str()
-                .map(str::to_string)
-                .ok_or_else(|| "web-audit registry: categories keys must be strings".to_string())
-        })
-        .collect::<Result<_, _>>()?;
+    let category_keys: Vec<String> = categories_map.keys().cloned().collect();
     if category_order.len() != category_keys.len()
         || !category_order
             .iter()
@@ -189,8 +186,8 @@ pub fn normalize_registry(
         .iter()
         .map(|slug| {
             let name = categories_map
-                .get(Yaml::String(slug.clone()))
-                .and_then(Yaml::as_str)
+                .get(slug)
+                .and_then(Value::as_str)
                 .ok_or_else(|| {
                     format!("web-audit registry: category {slug:?} needs a string display name")
                 })?;
@@ -200,7 +197,7 @@ pub fn normalize_registry(
 
     let checks = doc
         .get("checks")
-        .and_then(Yaml::as_sequence)
+        .and_then(Value::as_array)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
             "web-audit registry: expected a non-empty top-level \"checks\" array".to_string()
@@ -240,12 +237,12 @@ fn normalize_discovery(doc: &Mapping) -> Result<McpDiscovery, String> {
     };
     let discovery = doc
         .get("mcp_discovery")
-        .and_then(Yaml::as_mapping)
+        .and_then(Value::as_object)
         .ok_or_else(err)?;
     let strings = |key: &str| -> Result<Vec<String>, String> {
         discovery
             .get(key)
-            .and_then(Yaml::as_sequence)
+            .and_then(Value::as_array)
             .ok_or_else(err)?
             .iter()
             .map(|v| v.as_str().map(str::to_string).ok_or_else(err))
@@ -256,7 +253,7 @@ fn normalize_discovery(doc: &Mapping) -> Result<McpDiscovery, String> {
         common_paths: strings("common_paths")?,
         protocol_version: discovery
             .get("protocol_version")
-            .and_then(Yaml::as_str)
+            .and_then(Value::as_str)
             .ok_or_else(err)?
             .to_string(),
     })
@@ -268,20 +265,20 @@ fn check_err(id: &str, what: impl std::fmt::Display) -> String {
 
 fn required_str(check: &Mapping, id: &str, key: &str) -> Result<String, String> {
     match check.get(key) {
-        Some(Yaml::String(s)) if !s.is_empty() => Ok(s.clone()),
+        Some(Value::String(s)) if !s.is_empty() => Ok(s.clone()),
         _ => Err(check_err(id, format!("missing {key}"))),
     }
 }
 
 fn normalize_check(
-    raw: &Yaml,
+    raw: &Value,
     category_keys: &[String],
     ua_tokens: &[(String, String)],
 ) -> Result<NormalizedCheck, String> {
     let check = raw
-        .as_mapping()
+        .as_object()
         .ok_or_else(|| "web-audit registry: every checks entry must be a mapping".to_string())?;
-    let id = match check.get("id").and_then(Yaml::as_str) {
+    let id = match check.get("id").and_then(Value::as_str) {
         Some(id) if is_check_id(id) => id.to_string(),
         other => {
             return Err(format!(
@@ -295,7 +292,7 @@ fn normalize_check(
 
     let category = check
         .get("category")
-        .and_then(Yaml::as_str)
+        .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
     if !category_keys.contains(&category) {
@@ -306,7 +303,7 @@ fn normalize_check(
     }
     let tier = check
         .get("tier")
-        .and_then(Yaml::as_str)
+        .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
     let keyword = TIERS
@@ -327,7 +324,7 @@ fn normalize_check(
     }
     let principle = check
         .get("principle")
-        .and_then(Yaml::as_str)
+        .and_then(Value::as_str)
         .filter(|p| is_principle(p))
         .ok_or_else(|| {
             check_err(
@@ -347,7 +344,7 @@ fn normalize_check(
     }
     let site_types: Vec<String> = check
         .get("site_types")
-        .and_then(Yaml::as_sequence)
+        .and_then(Value::as_array)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| check_err(&id, "needs a non-empty site_types array"))?
         .iter()
@@ -365,7 +362,7 @@ fn normalize_check(
         .collect::<Result<_, _>>()?;
     let antecedent = check
         .get("antecedent")
-        .and_then(Yaml::as_str)
+        .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
     if !ANTECEDENTS.contains(&antecedent.as_str()) {
@@ -376,7 +373,7 @@ fn normalize_check(
     }
     let eval = match check.get("eval") {
         None => None,
-        Some(Yaml::String(e)) => Some(e.clone()),
+        Some(Value::String(e)) => Some(e.clone()),
         Some(other) => {
             return Err(check_err(
                 &id,
@@ -387,7 +384,7 @@ fn normalize_check(
     let eval_supported = eval.as_deref().is_none_or(|e| EVAL_RULES.contains(&e));
     let weight = check
         .get("weight")
-        .and_then(Yaml::as_u64)
+        .and_then(Value::as_u64)
         .filter(|w| *w > 0)
         .ok_or_else(|| {
             check_err(
@@ -412,16 +409,16 @@ fn normalize_check(
     }
     let handler = check
         .get("handler")
-        .and_then(Yaml::as_str)
+        .and_then(Value::as_str)
         .ok_or_else(|| check_err(&id, "missing handler"))?
         .to_string();
     let handler_supported = HANDLER_KINDS.contains(&handler.as_str());
     let with = check
         .get("with")
-        .and_then(Yaml::as_mapping)
+        .and_then(Value::as_object)
         .ok_or_else(|| check_err(&id, "missing \"with\" handler parameters"))?;
     if handler == "cors-preflight" {
-        let surface = with.get("surface").and_then(Yaml::as_str);
+        let surface = with.get("surface").and_then(Value::as_str);
         if !surface.is_some_and(|s| CORS_SURFACES.contains(&s)) {
             return Err(check_err(
                 &id,
@@ -434,7 +431,7 @@ fn normalize_check(
     }
     let with = expand_probe_user_agent(&id, with, ua_tokens)?;
     let patterns = collect_patterns(&id, &with)?;
-    let with_json = serde_json::to_string(&yaml_to_json(&id, &Yaml::Mapping(with))?)
+    let with_json = serde_json::to_string(&Value::Object(with))
         .map_err(|e| check_err(&id, format!("with cannot serialize as JSON: {e}")))?;
 
     Ok(NormalizedCheck {
@@ -473,11 +470,10 @@ fn is_principle(p: &str) -> bool {
         && chars.next().is_none()
 }
 
-fn yaml_display(v: Option<&Yaml>) -> String {
+fn yaml_display(v: Option<&Value>) -> String {
     match v {
         None => "null".to_string(),
-        Some(v) => serde_json::to_string(&yaml_to_json("", v).unwrap_or(serde_json::Value::Null))
-            .unwrap_or_else(|_| "null".to_string()),
+        Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "null".to_string()),
     }
 }
 
@@ -488,13 +484,13 @@ fn expand_probe_user_agent(
     with: &Mapping,
     ua_tokens: &[(String, String)],
 ) -> Result<Mapping, String> {
-    let Some(headers) = with.get("headers").and_then(Yaml::as_mapping) else {
+    let Some(headers) = with.get("headers").and_then(Value::as_object) else {
         return Ok(with.clone());
     };
-    let Some((ua_key, ua_value)) = headers.iter().find(|(k, _)| {
-        k.as_str()
-            .is_some_and(|k| k.eq_ignore_ascii_case("user-agent"))
-    }) else {
+    let Some((ua_key, ua_value)) = headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+    else {
         return Ok(with.clone());
     };
     let value = ua_value.as_str().unwrap_or_default();
@@ -513,9 +509,9 @@ fn expand_probe_user_agent(
             )
         })?;
     let mut headers = headers.clone();
-    headers.insert(ua_key.clone(), Yaml::String(expanded));
+    headers.insert(ua_key.clone(), Value::String(expanded));
     let mut out = with.clone();
-    out.insert(Yaml::String("headers".to_string()), Yaml::Mapping(headers));
+    out.insert("headers".to_string(), Value::Object(headers));
     Ok(out)
 }
 
@@ -523,12 +519,12 @@ fn expand_probe_user_agent(
 fn collect_patterns(id: &str, with: &Mapping) -> Result<Vec<PatternSpec>, String> {
     let mut out = Vec::new();
     for (path, field, flags) in PATTERN_FIELDS {
-        let mut cursor: Option<&Yaml> = None;
+        let mut cursor: Option<&Value> = None;
         for (i, key) in path.iter().enumerate() {
             let map = if i == 0 {
                 Some(with)
             } else {
-                cursor.and_then(Yaml::as_mapping)
+                cursor.and_then(Value::as_object)
             };
             cursor = map.and_then(|m| m.get(*key));
             if cursor.is_none() {
@@ -557,45 +553,6 @@ fn collect_patterns(id: &str, with: &Mapping) -> Result<Vec<PatternSpec>, String
     Ok(out)
 }
 
-fn yaml_to_json(id: &str, v: &Yaml) -> Result<serde_json::Value, String> {
-    use serde_json::Value as Json;
-    Ok(match v {
-        Yaml::Null => Json::Null,
-        Yaml::Bool(b) => Json::Bool(*b),
-        Yaml::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Json::from(i)
-            } else if let Some(u) = n.as_u64() {
-                Json::from(u)
-            } else {
-                Json::from(n.as_f64().unwrap_or_default())
-            }
-        }
-        Yaml::String(s) => Json::String(s.clone()),
-        Yaml::Sequence(seq) => Json::Array(
-            seq.iter()
-                .map(|v| yaml_to_json(id, v))
-                .collect::<Result<_, _>>()?,
-        ),
-        Yaml::Mapping(map) => {
-            let mut out = serde_json::Map::new();
-            for (k, v) in map {
-                let key = k
-                    .as_str()
-                    .ok_or_else(|| check_err(id, "with has a non-string key"))?;
-                out.insert(key.to_string(), yaml_to_json(id, v)?);
-            }
-            Json::Object(out)
-        }
-        Yaml::Tagged(_) => {
-            return Err(check_err(
-                id,
-                "with carries a YAML tag, which has no JSON form",
-            ));
-        }
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Remediation normalization
 // ---------------------------------------------------------------------------
@@ -606,21 +563,19 @@ pub fn normalize_remediation(
     yaml: &str,
     check_ids: &[&str],
 ) -> Result<Vec<RemediationEntry>, String> {
-    let doc: Yaml = serde_yaml::from_str(yaml)
-        .map_err(|e| format!("web-audit remediation.yaml: YAML parse error: {e}"))?;
+    let doc = yaml::from_str::<yaml::StringKeyed>(yaml)
+        .map_err(|e| format!("web-audit remediation.yaml: YAML parse error: {e}"))?
+        .0;
     let remediation = doc
-        .as_mapping()
+        .as_object()
         .and_then(|d| d.get("remediation"))
-        .and_then(Yaml::as_mapping)
+        .and_then(Value::as_object)
         .ok_or_else(|| {
             "web-audit remediation.yaml: expected a top-level \"remediation\" mapping".to_string()
         })?;
     let mut out = Vec::with_capacity(remediation.len());
-    for (key, entry) in remediation {
-        let id = key
-            .as_str()
-            .ok_or_else(|| "web-audit remediation: entry keys must be strings".to_string())?;
-        let entry = entry.as_mapping().ok_or_else(|| {
+    for (id, entry) in remediation {
+        let entry = entry.as_object().ok_or_else(|| {
             format!(
                 "web-audit remediation: entry \"{id}\" needs string title, goal, and fix fields"
             )
@@ -628,7 +583,7 @@ pub fn normalize_remediation(
         let field = |name: &str| -> Result<String, String> {
             entry
                 .get(name)
-                .and_then(Yaml::as_str)
+                .and_then(Value::as_str)
                 .map(str::to_string)
                 .ok_or_else(|| {
                     format!("web-audit remediation: entry \"{id}\" needs string title, goal, and fix fields")
@@ -648,13 +603,13 @@ pub fn normalize_remediation(
             ));
         }
         let resources = match entry.get("resources") {
-            None | Some(Yaml::Null) => Vec::new(),
-            Some(Yaml::Sequence(seq)) => seq
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(seq)) => seq
                 .iter()
                 .map(|r| {
-                    let r = r.as_mapping();
-                    let label = r.and_then(|r| r.get("label")).and_then(Yaml::as_str);
-                    let url = r.and_then(|r| r.get("url")).and_then(Yaml::as_str);
+                    let r = r.as_object();
+                    let label = r.and_then(|r| r.get("label")).and_then(Value::as_str);
+                    let url = r.and_then(|r| r.get("url")).and_then(Value::as_str);
                     match (label, url) {
                         (Some(label), Some(url)) if url.starts_with("http://") || url.starts_with("https://") => {
                             Ok(RemediationResource { label: label.to_string(), url: url.to_string() })

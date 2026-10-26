@@ -28,6 +28,8 @@ mod parser;
 mod ts_consts;
 #[path = "build_support/web_registry.rs"]
 mod web_registry;
+#[path = "build_support/yaml.rs"]
+mod yaml;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));

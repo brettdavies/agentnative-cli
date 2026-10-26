@@ -1931,6 +1931,7 @@ fn test_bare_invocation_still_guards_against_self_spawn() {
 /// `anc web` return the same four codes for the same kinds of outcome, and
 /// this pins every code the binary can return from a real invocation so a
 /// later edit cannot quietly merge two cases into one.
+#[cfg(feature = "web")]
 #[test]
 fn test_exit_code_table_holds_across_both_verbs() {
     // 2: a usage error, on either verb.

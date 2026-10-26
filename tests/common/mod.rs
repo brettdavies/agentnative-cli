@@ -8,6 +8,7 @@
 
 #[cfg(feature = "web")]
 pub mod corpus;
+#[cfg(feature = "web")]
 pub mod web_cli;
 
 use std::io::{BufRead, BufReader, Read, Write};

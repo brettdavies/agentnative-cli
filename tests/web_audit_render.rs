@@ -3,6 +3,8 @@
 //! live in `web_audit_failures.rs` and the flag surface in
 //! `web_audit_cli.rs`.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use agentnative::web_audit::scorecard::WebScorecard;

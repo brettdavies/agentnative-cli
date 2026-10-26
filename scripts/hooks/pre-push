@@ -71,6 +71,11 @@ pass "test (web feature)"
 # one too.
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet 2>&1 || fail "cargo doc --no-deps (RUSTDOCFLAGS=-D warnings)"
 pass "doc"
+# docs.rs builds with every feature on ([package.metadata.docs.rs]), so the
+# `web` build's pages are the published ones.
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet --features web 2>&1 \
+    || fail "cargo doc --no-deps --features web (RUSTDOCFLAGS=-D warnings)"
+pass "doc (web feature)"
 
 # 4. Security audit (licenses + advisories) — skip if cargo-deny not installed
 if cargo deny --version &>/dev/null; then

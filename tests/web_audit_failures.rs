@@ -2,6 +2,8 @@
 //! went wrong, what it says caused it, and what it tells the caller to do
 //! next, in text and in the structured envelope.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use common::web_cli::{anc, fixture_site, host_of, stderr_of, stdout_of};

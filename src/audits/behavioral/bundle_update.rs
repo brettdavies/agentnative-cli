@@ -112,15 +112,9 @@ mod tests {
 
     #[test]
     fn a_bundle_without_a_skill_subcommand_is_not_applicable() {
-        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(
+        let project = crate::audits::behavioral::tests::test_project_with_sh_script(
             "printf 'Usage: tool [COMMAND]\\n\\nCommands:\\n  run    Run it\\n'",
         );
-        // The helper roots the project at the working directory; give it the
-        // script's own directory so the bundle file is this test's alone.
-        project.path = project.binary_paths[0]
-            .parent()
-            .expect("script has a directory")
-            .to_path_buf();
         std::fs::write(project.path.join("AGENTS.md"), "# Agents\n").expect("write AGENTS.md");
         let result = BundleUpdateAudit.run(&project).expect("audit should run");
         assert_eq!(

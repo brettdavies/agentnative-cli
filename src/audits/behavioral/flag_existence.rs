@@ -150,7 +150,7 @@ mod tests {
             AuditStatus::Warn(
                 "no option definition in --help declares a non-interactive flag (one of: \
                  --no-interactive, --non-interactive, -p, --print, --no-input, --batch, \
-                 --headless, -y, --yes, --assume-yes); usage lines are not read."
+                 --headless, -y, --yes, --assume-yes); a flag named only in a usage line does not count."
                     .into()
             )
         );

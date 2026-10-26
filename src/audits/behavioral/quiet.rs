@@ -76,7 +76,8 @@ pub(crate) fn audit_quiet(help: &HelpOutput) -> AuditStatus {
         help,
         QUIET_FLAGS,
         Some(&QUIET),
-        "no option definition in --help declares --quiet or -q; usage lines are not read.",
+        "no option definition in --help declares --quiet or -q; a flag named only in a usage line \
+         does not count.",
     )
 }
 
@@ -147,8 +148,7 @@ mod tests {
         ),
     ];
 
-    const SEARCHED: &str =
-        "no option definition in --help declares --quiet or -q; usage lines are not read.";
+    const SEARCHED: &str = "no option definition in --help declares --quiet or -q; a flag named only in a usage line does not count.";
 
     #[test]
     fn a_flag_whose_name_contains_q_is_not_a_quiet_flag() {

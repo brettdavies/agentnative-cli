@@ -115,9 +115,7 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
             &accepted,
             &format!(
                 "no option definition in --help declares {}, the flags this requirement \
-                 accepts; usage lines are not read. The row is opt_out, and the \
-                 schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
-                 collapse to n/a via antecedent propagation.",
+                 accepts; a flag named only in a usage line does not count.",
                 output_flags::accepted_prose(),
             ),
         )));
@@ -141,7 +139,8 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
         &accepted,
         &format!(
             "no option definition in --help, or in the --help of the {} subcommand{} read, \
-             declares {}, the flags this requirement accepts; usage lines are not read.",
+             declares {}, the flags this requirement accepts; a flag named only in a usage line \
+             does not count.",
             read.len(),
             if read.len() == 1 { "" } else { "s" },
             output_flags::accepted_prose(),
@@ -372,10 +371,7 @@ esac
             result.status,
             AuditStatus::OptOut(
                 "no option definition in --help declares --output, --format, --output-format, \
-                 --json or --jsonl, the flags this requirement accepts; usage lines are not \
-                 read. The row is opt_out, and the schema-discovery requirements \
-                 (p2-must-schema-print, p2-should-schema-file) collapse to n/a via antecedent \
-                 propagation."
+                 --json or --jsonl, the flags this requirement accepts; a flag named only in a usage line does not count."
                     .into()
             )
         );
@@ -490,7 +486,7 @@ esac
             AuditStatus::OptOut(
                 "no option definition in --help, or in the --help of the 2 subcommands read, \
                  declares --output, --format, --output-format, --json or --jsonl, the flags this \
-                 requirement accepts; usage lines are not read. In `list`, `-format` is \
+                 requirement accepts; a flag named only in a usage line does not count. In `list`, `-format` is \
                  declared, but this help also declares double-dash names, so it does not count \
                  as `--format`."
                     .into()

@@ -132,8 +132,8 @@ pub(super) fn prints_usage(bare_output: &str) -> bool {
 /// non-interactive flags an audit accepts.
 pub(super) fn no_flag_declared(flags: &[&str]) -> String {
     format!(
-        "no option definition in --help declares a non-interactive flag (one of: {}); usage \
-         lines are not read.",
+        "no option definition in --help declares a non-interactive flag (one of: {}); a flag \
+         named only in a usage line does not count.",
         flags.join(", ")
     )
 }
@@ -205,7 +205,7 @@ kill -11 $$
         audit_non_interactive(&RunStatus::Timeout, "", Some(&HelpOutput::from_raw(help)))
     }
 
-    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --headless, --yes, --no-input, --no-browser, --device-code, -y, -p, --print); usage lines are not read.";
+    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --headless, --yes, --no-input, --no-browser, --device-code, -y, -p, --print); a flag named only in a usage line does not count.";
 
     #[test]
     fn a_declared_agentic_flag_passes_a_bare_call_that_blocks() {

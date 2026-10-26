@@ -4,6 +4,7 @@
 //! Universal applicability; MAY-tier so absence is Warn, never Fail.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -56,15 +57,12 @@ impl Audit for RawFlagAudit {
 }
 
 pub(crate) fn audit_raw_flag(help: &HelpOutput) -> AuditStatus {
-    if help.find_flag(&["--raw"]).is_some() {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(help.noting_dash_rule(
-            &["--raw"],
-            "no `--raw` flag advertised. MAY-tier — useful for pipelines that \
-             want to strip formatting before piping to other tools.",
-        ))
-    }
+    pass_or_warn(
+        help,
+        &["--raw"],
+        "no `--raw` flag advertised. MAY-tier — useful for pipelines that \
+         want to strip formatting before piping to other tools.",
+    )
 }
 
 #[cfg(test)]

@@ -24,6 +24,7 @@
 //! it uses.
 
 use super::header::{self, Header};
+use super::pieces::column_of;
 
 /// One line of a help text.
 pub(super) enum Line<'a> {
@@ -43,21 +44,25 @@ pub(super) fn lines(raw: &str) -> Vec<Line<'_>> {
     raw.lines().map(|line| layout.read(line)).collect()
 }
 
-/// The column a byte offset of `line` sits at, counted in characters.
-pub(super) fn column_of(line: &str, byte: usize) -> usize {
-    line[..byte].chars().count()
-}
-
 /// Where the definition being read keeps its description, and where the
 /// definitions under the current heading start their names.
 #[derive(Default)]
 struct Layout {
-    /// Column the current definition's description starts at.
-    description: Option<usize>,
-    /// Indent of the current definition while no line has described it.
-    undescribed: Option<usize>,
+    description: Description,
     /// Columns a name starts at, in every definition under this heading.
     name_columns: Vec<usize>,
+}
+
+/// What the definition being read has by way of a description.
+#[derive(Default)]
+enum Description {
+    /// No definition is being read.
+    #[default]
+    None,
+    /// One that starts at this column.
+    At(usize),
+    /// None yet, for a definition indented this far.
+    Awaited(usize),
 }
 
 impl Layout {
@@ -69,22 +74,26 @@ impl Layout {
             *self = Self::default();
             return Line::Heading(line.trim());
         }
-        let indent = column_of(line, line.len() - line.trim_start().len());
-        let lead = Lead::of(line.trim_start());
-        if self.continues(indent, lead.is_some()) {
-            self.description.get_or_insert(indent);
-            self.undescribed = None;
+        let trimmed = line.trim_start();
+        let indent = column_of(line, line.len() - trimmed.len());
+        let shaped = is_definition_shaped(trimmed);
+        if self.continues(indent, shaped) {
+            if let Description::Awaited(_) = self.description {
+                self.description = Description::At(indent);
+            }
             return Line::Continuation(line.trim());
         }
-        let above = self.description.take();
-        self.undescribed = None;
+        let above = match std::mem::take(&mut self.description) {
+            Description::At(column) => Some(column),
+            Description::Awaited(_) | Description::None => None,
+        };
         if indent == 0 {
             self.name_columns.clear();
         }
-        let Some(lead) = lead else {
+        if !shaped {
             return Line::Other;
-        };
-        let needs_gap = indent == 0 || lead == Lead::Bracket;
+        }
+        let needs_gap = indent == 0 || trimmed.starts_with("[-");
         let Some(header) = header::tokenize(line) else {
             return if needs_gap {
                 Line::Other
@@ -96,8 +105,10 @@ impl Layout {
         if needs_gap && !header.set_off && !aligned {
             return Line::Other;
         }
-        self.description = header.description_column;
-        self.undescribed = header.description_column.is_none().then_some(indent);
+        self.description = match header.description_column {
+            Some(column) => Description::At(column),
+            None => Description::Awaited(indent),
+        };
         self.name_columns.extend(&header.name_columns);
         Line::Definition(header)
     }
@@ -107,42 +118,29 @@ impl Layout {
     /// first line under a definition that has no description yet. A dash-led
     /// line at a column where names start is a definition instead: a GetOpt
     /// long-only row sits at the long column of the rows around it.
-    fn continues(&self, indent: usize, dash_led: bool) -> bool {
-        if let Some(column) = self.description {
-            return indent >= column;
+    fn continues(&self, indent: usize, shaped: bool) -> bool {
+        match self.description {
+            Description::At(column) => indent >= column,
+            Description::Awaited(definition) => {
+                indent > definition && !(shaped && self.name_columns.contains(&indent))
+            }
+            Description::None => false,
         }
-        self.undescribed.is_some_and(|definition| {
-            indent > definition && !(dash_led && self.name_columns.contains(&indent))
-        })
     }
 }
 
-/// What a line shaped like a definition leads with.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Lead {
-    /// `-x`, `-word` or `--word`.
-    Dash,
-    /// fzf's `+x`.
-    Plus,
-    /// Thor's `[--name]`.
-    Bracket,
-}
-
-impl Lead {
-    /// `None` for text that is not shaped like a definition. A `---` rule is
-    /// not one.
-    fn of(trimmed: &str) -> Option<Self> {
-        let second = trimmed.chars().nth(1);
-        if trimmed.starts_with("[-") {
-            Some(Self::Bracket)
-        } else if trimmed.starts_with('+') && second.is_some_and(|c| c.is_ascii_alphabetic()) {
-            Some(Self::Plus)
-        } else if trimmed.starts_with('-') && !trimmed.starts_with("---") {
-            Some(Self::Dash)
-        } else {
-            None
-        }
-    }
+/// Whether text leads the way a definition does: with a dash (`-x`, `-word`,
+/// `--word`), fzf's `+x`, or Thor's bracketed `[--name]`. A `---` rule does
+/// not.
+fn is_definition_shaped(trimmed: &str) -> bool {
+    let plus_short = trimmed.starts_with('+')
+        && trimmed
+            .chars()
+            .nth(1)
+            .is_some_and(|c| c.is_ascii_alphabetic());
+    trimmed.starts_with("[-")
+        || plus_short
+        || (trimmed.starts_with('-') && !trimmed.starts_with("---"))
 }
 
 /// A top-level section heading: not indented, ends in `:`, and carries an
@@ -157,6 +155,7 @@ pub(in crate::runner::help_probe) fn is_section_heading(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::help_probe::fixture_snapshots::fixture;
     use crate::runner::help_probe::flags::parse;
 
     /// The 1-based lines of `raw` that declare a flag.
@@ -378,16 +377,6 @@ Advanced:
                     .collect()
             })
             .collect()
-    }
-
-    fn fixture(name: &str) -> String {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/help")
-            .join(name);
-        String::from_utf8_lossy(
-            &std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
-        )
-        .into_owned()
     }
 
     /// Definition lines in layouts that do not indent with spaces, with the

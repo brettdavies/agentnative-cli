@@ -4,6 +4,7 @@
 //! TTY auto-detection enforced by `p6-must-no-color`. MAY-tier.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -56,15 +57,12 @@ impl Audit for ColorFlagAudit {
 }
 
 pub(crate) fn audit_color_flag(help: &HelpOutput) -> AuditStatus {
-    if help.find_flag(&["--color"]).is_some() {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(help.noting_dash_rule(
-            &["--color"],
-            "no `--color` flag advertised. MAY-tier — `auto|always|never` lets \
-             agents and pipelines override the TTY-based default.",
-        ))
-    }
+    pass_or_warn(
+        help,
+        &["--color"],
+        "no `--color` flag advertised. MAY-tier — `auto|always|never` lets \
+         agents and pipelines override the TTY-based default.",
+    )
 }
 
 #[cfg(test)]

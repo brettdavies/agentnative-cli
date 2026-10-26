@@ -9,6 +9,8 @@ mod js_regex;
 mod ts_consts;
 #[path = "../build_support/web_registry.rs"]
 mod web_registry;
+#[path = "../build_support/yaml.rs"]
+mod yaml;
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -417,6 +419,69 @@ fn mcp_discovery_block_is_required() {
     )
     .expect_err("missing protocol_version fails");
     assert!(e.contains("mcp_discovery"), "{e}");
+}
+
+// ---------------------------------------------------------------------------
+// YAML loading: YAML 1.2 typing, and input with no JSON form fails the build.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn yaml_1_1_boolean_words_stay_strings() {
+    let reg = normalize(
+        &CHECK_HTTP
+            .replace("title: robots present", "title: yes")
+            .replace("hint: Publish robots.txt.", "hint: off"),
+    )
+    .expect("normalizes");
+    assert_eq!(reg.checks[0].title, "yes");
+    assert_eq!(reg.checks[0].hint, "off");
+}
+
+#[test]
+fn merge_keys_stay_ordinary_and_non_finite_floats_load_as_null() {
+    let reg = normalize(&CHECK_HTTP.replace(
+        "      path: /robots.txt\n",
+        "      path: /robots.txt\n      <<: { extra: 1 }\n      ratio: .inf\n",
+    ))
+    .expect("normalizes");
+    let with: serde_json::Value =
+        serde_json::from_str(&reg.checks[0].with_json).expect("with is JSON");
+    assert_eq!(with["<<"]["extra"], 1);
+    assert!(with.get("extra").is_none(), "{with}");
+    assert!(with["ratio"].is_null(), "{with}");
+}
+
+#[test]
+fn non_string_mapping_keys_fail() {
+    let category_key = normalize_registry(
+        &registry(CHECK_HTTP).replace("  mcp: MCP\n", "  1: MCP\n"),
+        &ua_tokens(),
+    )
+    .expect_err("integer categories key");
+    let with_key = err_of(&CHECK_HTTP.replace("expect: { status: [200] }", "expect: { 200: ok }"));
+    let remediation_key = normalize_remediation(
+        &REMEDIATION_ROBOTS.replace("  robots:", "  7:"),
+        &["robots"],
+    )
+    .expect_err("integer remediation key");
+    for e in [category_key, with_key, remediation_key] {
+        assert!(
+            e.contains("YAML parse error") && e.contains("expected a string mapping key"),
+            "{e}"
+        );
+    }
+}
+
+#[test]
+fn yaml_tags_fail() {
+    let e = err_of(&CHECK_HTTP.replace(
+        "expect: { status: [200] }",
+        "expect: !custom { status: [200] }",
+    ));
+    assert!(
+        e.contains("YAML parse error") && e.contains("unsupported tag"),
+        "{e}"
+    );
 }
 
 // ---------------------------------------------------------------------------

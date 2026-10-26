@@ -10,6 +10,8 @@ use std::fmt;
 
 use serde::Deserialize;
 
+use super::yaml;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
     Must,
@@ -185,17 +187,17 @@ struct RawFrontmatter {
     requirements: Vec<RawRequirement>,
     // Fields we don't need at runtime: title, last-revised, status. Tolerated.
     #[serde(flatten)]
-    _extra: serde_yaml::Mapping,
+    _extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct RawRequirement {
     id: Option<String>,
-    level: Option<serde_yaml::Value>,
-    applicability: Option<serde_yaml::Value>,
+    level: Option<serde_json::Value>,
+    applicability: Option<serde_json::Value>,
     summary: Option<String>,
     #[serde(flatten)]
-    _extra: serde_yaml::Mapping,
+    _extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Parse a single principle markdown file.
@@ -207,9 +209,9 @@ pub fn parse_principle_file(
 ) -> Result<Vec<ParsedRequirement>, ParseError> {
     let yaml_block = extract_frontmatter(file_path, content)?;
     let raw: RawFrontmatter =
-        serde_yaml::from_str(yaml_block).map_err(|e| ParseError::YamlError {
+        yaml::from_str(yaml_block).map_err(|message| ParseError::YamlError {
             file: file_path.to_string(),
-            message: e.to_string(),
+            message,
         })?;
 
     let principle = parse_principle_id(file_path, &raw.id)?;
@@ -384,7 +386,7 @@ fn parse_principle_id(file: &str, raw: &str) -> Result<u8, ParseError> {
 fn parse_level(
     file: &str,
     req_id: &str,
-    value: Option<&serde_yaml::Value>,
+    value: Option<&serde_json::Value>,
 ) -> Result<Level, ParseError> {
     let value = value.ok_or_else(|| ParseError::MissingField {
         file: file.to_string(),
@@ -413,7 +415,7 @@ fn parse_level(
 fn parse_applicability(
     file: &str,
     req_id: &str,
-    value: Option<&serde_yaml::Value>,
+    value: Option<&serde_json::Value>,
 ) -> Result<Applicability, ParseError> {
     let value = value.ok_or_else(|| ParseError::MissingField {
         file: file.to_string(),
@@ -432,16 +434,13 @@ fn parse_applicability(
         });
     }
 
-    if let Some(map) = value.as_mapping() {
-        let if_key = serde_yaml::Value::String("if".into());
-        let kind_key = serde_yaml::Value::String("kind".into());
-
+    if let Some(map) = value.as_object() {
         // Mixing the legacy `if:` and new `kind:` shape in one applicability
         // block is ambiguous: the legacy branch only fires when `if:` is the
         // single key, so a row carrying both would silently use the new shape
         // and drop the legacy prose. Reject early with a pointer at the
         // schema the author probably meant to use.
-        if map.contains_key(&if_key) && map.contains_key(&kind_key) {
+        if map.contains_key("if") && map.contains_key("kind") {
             return Err(ParseError::UnknownApplicability {
                 file: file.to_string(),
                 requirement_id: req_id.to_string(),
@@ -451,7 +450,7 @@ fn parse_applicability(
 
         // Legacy single-key `{ if: "<prose>" }` shape.
         if map.len() == 1
-            && let Some(if_val) = map.get(&if_key)
+            && let Some(if_val) = map.get("if")
         {
             let cond = if_val
                 .as_str()
@@ -476,7 +475,7 @@ fn parse_applicability(
         // New `{ kind: conditional, antecedent: { audit_id: ... }, condition? }`
         // shape. The `kind:` key gates the new branch so legacy maps with
         // unrelated keys still surface as UnknownApplicability.
-        if let Some(kind_val) = map.get(&kind_key) {
+        if let Some(kind_val) = map.get("kind") {
             let kind = kind_val
                 .as_str()
                 .ok_or_else(|| ParseError::UnknownApplicability {
@@ -492,28 +491,23 @@ fn parse_applicability(
                 });
             }
 
-            let antecedent_key = serde_yaml::Value::String("antecedent".into());
-            let condition_key = serde_yaml::Value::String("condition".into());
-
-            let antecedent = if let Some(ante_val) = map.get(&antecedent_key) {
+            let antecedent = if let Some(ante_val) = map.get("antecedent") {
                 let ante_map =
                     ante_val
-                        .as_mapping()
+                        .as_object()
                         .ok_or_else(|| ParseError::UnknownApplicability {
                             file: file.to_string(),
                             requirement_id: req_id.to_string(),
                             hint: "`antecedent:` must be a mapping like `{ audit_id: <id> }`"
                                 .into(),
                         })?;
-                let audit_id_key = serde_yaml::Value::String("audit_id".into());
                 // v1 schema is strict: only `audit_id` is permitted inside
                 // `antecedent`. Compound antecedents (`op: any_of | all_of`)
                 // and any other key are explicitly deferred to a future
                 // schema bump per plan Sub-decision 2b. Silently ignoring
                 // unknown keys would let v2 syntax land in v1 vendored spec
                 // and behave subtly wrong.
-                for (k, _) in ante_map {
-                    let k_str = k.as_str().unwrap_or("<non-string>");
+                for k_str in ante_map.keys() {
                     if k_str != "audit_id" {
                         return Err(ParseError::UnknownApplicability {
                             file: file.to_string(),
@@ -524,7 +518,7 @@ fn parse_applicability(
                         });
                     }
                 }
-                let audit_id = ante_map.get(&audit_id_key).and_then(|v| v.as_str()).ok_or_else(|| ParseError::UnknownApplicability {
+                let audit_id = ante_map.get("audit_id").and_then(|v| v.as_str()).ok_or_else(|| ParseError::UnknownApplicability {
                     file: file.to_string(),
                     requirement_id: req_id.to_string(),
                     hint: "`antecedent.audit_id` must be a non-empty string (v1 schema supports a single antecedent only)".into(),
@@ -543,7 +537,7 @@ fn parse_applicability(
                 None
             };
 
-            let condition = match map.get(&condition_key) {
+            let condition = match map.get("condition") {
                 Some(v) => {
                     let s = v.as_str().ok_or_else(|| ParseError::UnknownApplicability {
                         file: file.to_string(),

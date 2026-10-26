@@ -6,15 +6,16 @@
 //! parse as JSON; it does not require the spec's `error`/`kind`/`message`
 //! triple, since the stricter MUST already covers that.
 //!
-//! Applicability gate: vacuous Skip when the binary doesn't advertise
-//! `--output json` in `--help`. Pass when stderr (or stdout) parses as JSON
-//! under `--output json`; Warn when JSON mode is opted into but the error
-//! comes out as plain text.
+//! Applicability gate: vacuous Skip when the top-level `--help` declares no
+//! JSON mode (`output_flags::json_mode`). Pass when stderr (or stdout) parses
+//! as JSON under the declared mode; Warn when JSON mode is opted into but the
+//! error comes out as plain text.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    advertises_json_output, parse_error_envelope, probe_bad_invocation_json,
+    NO_JSON_MODE, parse_error_envelope, probe_bad_invocation_json, shown,
 };
+use crate::audits::behavioral::output_flags;
 use crate::project::Project;
 use crate::runner::RunResult;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -49,15 +50,15 @@ impl Audit for JsonErrorOutputAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
-            Some(help) if !advertises_json_output(help) => AuditStatus::Skip(
-                "binary does not advertise `--output json` in --help; \
-                 SHOULD applies only to CLIs that opt into the JSON contract."
-                    .into(),
-            ),
-            Some(_) => {
-                let result = probe_bad_invocation_json(project.runner_ref());
-                classify_json_error_output(&result)
-            }
+            Some(help) => match output_flags::json_mode(help) {
+                None => AuditStatus::Skip(format!(
+                    "{NO_JSON_MODE}; SHOULD applies only to CLIs that opt into the JSON contract."
+                )),
+                Some(mode) => {
+                    let result = probe_bad_invocation_json(project.runner_ref(), &mode);
+                    classify_json_error_output(&result, &shown(&mode))
+                }
+            },
         };
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -73,17 +74,15 @@ impl Audit for JsonErrorOutputAudit {
     }
 }
 
-pub(crate) fn classify_json_error_output(result: &RunResult) -> AuditStatus {
+pub(crate) fn classify_json_error_output(result: &RunResult, mode: &str) -> AuditStatus {
     if parse_error_envelope(result).is_some() {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
-            "errors under `--output json` are not JSON-formatted. \
-             Consumers parsing stdout-as-JSON cannot recover the failure \
-             without a separate text-parsing path; switch the error writer \
-             to honor the active output mode."
-                .into(),
-        )
+        AuditStatus::Warn(format!(
+            "errors under `{mode}` are not JSON-formatted. Consumers parsing stdout-as-JSON \
+             cannot recover the failure without a separate text-parsing path; switch the error \
+             writer to honor the active output mode."
+        ))
     }
 }
 
@@ -107,7 +106,7 @@ mod tests {
     fn pass_on_json_stderr() {
         let stderr = r#"{"error":"BadFlag"}"#;
         assert_eq!(
-            classify_json_error_output(&fake_result(stderr, "")),
+            classify_json_error_output(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -116,7 +115,7 @@ mod tests {
     fn pass_on_json_stdout() {
         let stdout = r#"{"error":"BadFlag"}"#;
         assert_eq!(
-            classify_json_error_output(&fake_result("", stdout)),
+            classify_json_error_output(&fake_result("", stdout), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -126,7 +125,7 @@ mod tests {
         // SHOULD is weaker than the MUST — any parseable JSON passes here.
         let stderr = r#"{"reason":"x"}"#;
         assert_eq!(
-            classify_json_error_output(&fake_result(stderr, "")),
+            classify_json_error_output(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -134,7 +133,7 @@ mod tests {
     #[test]
     fn warn_on_plain_text() {
         let stderr = "error: bad flag\nFor more info, try --help.";
-        match classify_json_error_output(&fake_result(stderr, "")) {
+        match classify_json_error_output(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Warn(msg) => assert!(msg.contains("not JSON-formatted")),
             other => panic!("expected Warn, got {other:?}"),
         }

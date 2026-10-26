@@ -87,9 +87,10 @@ impl Audit for ErrorModuleAudit {
             label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
-            status: AuditStatus::Warn(
-                "No dedicated error module found (expected src/error.rs, src/errors.rs, or src/error/mod.rs)".into(),
-            ),
+            status: AuditStatus::Warn(format!(
+                "No dedicated error module found in src/ or one directory below it (looked for {})",
+                MODULE_PATHS.join(", ")
+            )),
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
@@ -181,6 +182,28 @@ mod tests {
         let project = Project::discover(&dir).expect("discover test project");
         let result = ErrorModuleAudit.run(&project).expect("run audit");
         assert_eq!(result.status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn warning_names_every_path_it_looked_for() {
+        let dir = temp_dir("no-module");
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write Cargo.toml");
+        fs::create_dir_all(dir.join("src")).expect("create src dir");
+        let project = Project::discover(&dir).expect("discover test project");
+        let result = ErrorModuleAudit.run(&project).expect("run audit");
+        assert_eq!(
+            result.status,
+            AuditStatus::Warn(
+                "No dedicated error module found in src/ or one directory below it (looked for \
+                 error.rs, errors.rs, error/mod.rs, errors/mod.rs, error.py, errors.py, \
+                 error/__init__.py, errors/__init__.py)"
+                    .into()
+            )
+        );
     }
 
     #[test]

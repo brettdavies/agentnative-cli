@@ -1,0 +1,6 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/gh__--help.txt
+---
+  59 | --help | Show help for command
+  60 | --version | Show gh version

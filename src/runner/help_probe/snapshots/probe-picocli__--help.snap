@@ -1,0 +1,14 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/probe-picocli__--help.txt
+---
+   5 | -c | single c
+   6 | -c, --classpath | multi-letter single-dash name
+   7 | --dry-run | print what would change
+   8 | -f, --force | skip confirmation prompts
+   9 | -h, --help | Show this help message and exit.
+  10 | -n, --limit | maximum number of results to return, a
+  13 | -o, --output | three names
+  14 | -p | single p
+  15 | -V, --version | Print version information and exit.
+  16 | -v | single-dash word option

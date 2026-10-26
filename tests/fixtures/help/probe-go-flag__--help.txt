@@ -1,0 +1,14 @@
+Usage of /opt/probes/bin/probe-go-flag:
+  -auto-approve
+    	skip interactive approval, a deliberately long description
+    	that the author wrapped by hand
+  -chdir DIR
+    	switch to DIR before running
+  -f	skip confirmation prompts
+  -force
+    	skip confirmation prompts (long spelling)
+  -n count
+    	maximum count of results
+  -no-color
+    	disable color
+  -v	verbose

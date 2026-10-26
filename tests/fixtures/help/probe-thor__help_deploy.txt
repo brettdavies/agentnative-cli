@@ -1,0 +1,14 @@
+Usage:
+  thor-probe.rb deploy TARGET
+
+Options:
+  -f,        [--force]                                                                 # skip confirmation prompts
+  -n,        [--limit=N]                                                               # maximum number of results to return, a deliberately long description so Thor has to wrap it onto continuation lines
+             [--dry-run], [--no-dry-run], [--skip-dry-run]                             # print what would change
+  -o, --out, [--output=FILE]                                                           # write output here
+  -cd,       [--print-config-dir], [--no-print-config-dir], [--skip-print-config-dir]  # multi-letter alias
+             [-c], [--no-c], [--skip-c]                                                # single c
+             [-d], [--no-d], [--skip-d]                                                # single d
+
+Description:
+  Deploys TARGET. Mentions --force in prose.

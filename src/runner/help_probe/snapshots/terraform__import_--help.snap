@@ -1,0 +1,13 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__import_--help.txt
+---
+  22 | -c | Path to a directory of Terraform configuration files
+  27 | -i | Disable interactive input prompts.
+  29 | -l | Don't hold a state lock during the operation. This is
+  33 | -l | Duration to retry a state lock.
+  35 | -n | If specified, output won't contain any color.
+  37 | -v | Set a variable in the Terraform configuration. This
+  41 | -v | Set variables in the Terraform configuration from
+  45 | -i | A rare option used for the remote backend only. See
+  48 | -s |

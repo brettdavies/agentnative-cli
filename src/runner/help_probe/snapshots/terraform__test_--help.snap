@@ -1,0 +1,14 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/terraform__test_--help.txt
+---
+  17 | -c | If specified, Terraform will execute this test run
+  25 | -f | If specified, Terraform will only execute the test files
+  29 | -j | If specified, machine readable output will be printed in
+  32 | -j | Saves a test report in JUnit XML format to the specified
+  37 | -n | If specified, output won't contain any color.
+  39 | -p | Limit the number of concurrent operations within the
+  42 | -t | 
+  44 | -v | Set a value for one of the input variables in the root
+  48 | -v | Load variable values from the given file, in addition
+  53 | -v | Print the plan or state for each test run block as it

@@ -1,0 +1,15 @@
+usage: probe [<flags>]
+
+kingpin probe
+
+
+Flags:
+      --[no-]help     Show context-sensitive help (also try --help-long and
+                      --help-man).
+  -f, --[no-]force    skip confirmation prompts
+  -n, --limit=LIMIT   maximum number of results to return, a deliberately long
+                      description so kingpin wraps it
+      --[no-]dry-run  print what would change
+  -o, --output=FILE   write output here
+      --[no-]color    colorize
+

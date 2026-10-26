@@ -451,9 +451,10 @@ start is a definition, not that description: `-x, --long` puts the long name fou
 `--format <FORMAT>` under an undescribed `-x` declares `--format`.
 
 A definition can sit at any indent. rsync, ffmpeg and Miller print theirs at column 0, typer and broot print them as
-rows of a box table with the short name in a cell of its own, Thor brackets its long names (`-f, [--force]`), and fzf
-has shorts that start with a plus (`+x, --no-extended`). Text is read as a terminal shows it: without ANSI escapes, with
-groff's overstruck bold collapsed, and with TABs expanded.
+rows of a box table with the short name in a cell of its own (typer marks a required option with `*` in a first cell,
+which is not part of the name), Thor brackets its long names (`-f, [--force]`), and fzf has shorts that start with a
+plus (`+x, --no-extended`). Text is read as a terminal shows it: without ANSI escapes, with groff's overstruck bold
+collapsed, and with TABs expanded.
 
 Two shapes need more than a leading dash, because usage lines wrap into them. Dash-led text at column 0 is a definition
 only when a gap or a marker sets a description off from its names, or its description starts at the column the

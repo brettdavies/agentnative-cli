@@ -39,7 +39,9 @@ COPY python/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --require-hashes --requirement /tmp/requirements.txt
 
 FROM ruby:4.0.7-slim-trixie@sha256:073f6464ca7c0b66fa86715ec57339a39da08fdc803583140edc66e486af9aeb
-RUN gem install thor --version 1.5.0 --no-document
+ADD --chmod=644 --checksum=sha256:e3a9e55fe857e44859ce104a84675ab6e8cd59c650a49106a05f55f136425e73 \
+    https://rubygems.org/downloads/thor-1.5.0.gem /tmp/thor-1.5.0.gem
+RUN gem install --local --no-document /tmp/thor-1.5.0.gem
 
 COPY --from=python312 /usr/local/ /usr/local/
 COPY --from=python313 /usr/local/ /usr/local/

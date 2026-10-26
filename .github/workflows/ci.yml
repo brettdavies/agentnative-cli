@@ -30,6 +30,61 @@ jobs:
       # failed job. The rulesets already block the merge; this is so the run's
       # colour matches what a human scanning the Actions tab should act on.
       advisories_blocking: true
+
+  # The reusable workflow above builds the default feature set. The local web
+  # audit is the `web` feature, off by default, so these jobs hold that build
+  # to the same clippy, test and Windows bars.
+  web:
+    name: Web feature (clippy, test)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: "-Dwarnings"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
+        with:
+          components: clippy
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-on-failure: true
+
+      - name: Clippy
+        run: cargo clippy --all-targets --features web
+
+      - name: Tests
+        run: cargo test --features web
+
+  web-windows:
+    name: Web feature (Windows check)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: "-Dwarnings"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          cache-on-failure: true
+
       # aws-lc-sys (behind rustls's aws-lc-rs provider) assembles with NASM on
       # x86-64 Windows, and the hosted Windows image does not ship it.
-      windows_nasm: true
+      - name: Install NASM
+        shell: pwsh
+        run: |
+          choco install nasm --no-progress --yes
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\NASM'
+
+      - name: Check (Windows)
+        run: cargo check --all-targets --features web

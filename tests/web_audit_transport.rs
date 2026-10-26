@@ -3,6 +3,8 @@
 //! exits, the three body-cap regimes, per-request proxy routing, and the
 //! TLS evidence classes.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use std::io::Write;

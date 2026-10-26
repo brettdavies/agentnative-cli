@@ -79,7 +79,8 @@ time = { version = "=0.3.55", default-features = false, features = ["std", "form
 # crypto provider and the bundled Mozilla roots (webpki-roots), so a run needs
 # no system trust store. Redirects stay off at the agent; the fetch layer
 # follows them itself so every hop is locality-classified before connecting.
-ureq = { version = "=3.4.2", default-features = false, features = [
+# These four crates are optional: only the `web` feature compiles them.
+ureq = { version = "=3.4.2", optional = true, default-features = false, features = [
     "rustls-no-provider",
     "rustls-webpki-roots",
     "gzip",
@@ -89,7 +90,7 @@ ureq = { version = "=3.4.2", default-features = false, features = [
 # matches rustls's certificate-error variants inside ureq's error to tell a
 # bundled-root rejection from other TLS failures, and ureq does not treat
 # the wrapped error as API.
-rustls = { version = "=0.23.45", default-features = false, features = [
+rustls = { version = "=0.23.45", optional = true, default-features = false, features = [
     "aws-lc-rs",
     "std",
     "tls12",
@@ -97,9 +98,14 @@ rustls = { version = "=0.23.45", default-features = false, features = [
 ] }
 # WHATWG URL parsing, so evidence URLs and redirect targets resolve exactly
 # as the site engine's `new URL()` does.
-url = "2"
+url = { version = "2", optional = true }
 # Linear-time regex engine for the registry's assertion patterns.
-regex = "1"
+regex = { version = "1", optional = true }
+
+[features]
+default = []
+# The local web audit and the networking stack it runs on.
+web = ["dep:ureq", "dep:rustls", "dep:url", "dep:regex"]
 
 [build-dependencies]
 # YAML for the vendored spec frontmatter (build.rs → $OUT_DIR/generated_requirements.rs)

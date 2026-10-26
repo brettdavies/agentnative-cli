@@ -42,7 +42,10 @@ targets = [
 # If true, metadata will be collected with `--all-features`. Note that this can't
 # be toggled off if true, if you want to conditionally enable `--all-features` it
 # is recommended to pass `--all-features` on the cmd line instead
-all-features = false
+#
+# On so the `web` feature's networking stack (rustls, aws-lc-sys, ureq) is
+# held to the advisory, license and ban rules while it is off by default.
+all-features = true
 # If true, metadata will be collected with `--no-default-features`. The same
 # caveat with `all-features` applies
 no-default-features = false

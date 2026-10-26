@@ -221,6 +221,7 @@ pub fn spawn_silent() -> SocketAddr {
 /// Spawn a TLS server presenting the given PEM certificate and key. It
 /// completes the handshake when the client accepts the chain and otherwise
 /// returns after the client's alert; it never serves HTTP.
+#[cfg(feature = "web")]
 pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
     use rustls::pki_types::pem::PemObject;
     use rustls::pki_types::{CertificateDer, PrivateKeyDer};

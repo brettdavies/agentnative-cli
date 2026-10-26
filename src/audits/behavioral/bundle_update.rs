@@ -4,10 +4,13 @@
 //! latest bundle version. MAY-tier — absence is informational.
 //!
 //! Detection: probe `tool skill --help` for `update` or `upgrade` subcommands.
-//! Gates on bundle presence and `skill` subcommand existence.
+//! Gates on a bundle the target shows (`bundle_gate`) and `skill`
+//! subcommand existence.
 
 use crate::audit::Audit;
-use crate::audits::project::bundle_exists::find_bundle;
+use crate::audits::behavioral::bundle_install::{
+    NO_SKILL_SUBCOMMAND, declares_skill_subcommand, unshown_bundle,
+};
 use crate::project::Project;
 use crate::runner::{BinaryRunner, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -59,19 +62,15 @@ impl Audit for BundleUpdateAudit {
 /// Resolve the audit's status without constructing a `AuditResult`. Per
 /// CLAUDE.md's Source Audit Convention, only `run()` constructs the result.
 fn compute_status(project: &Project) -> AuditStatus {
-    if find_bundle(&project.path).is_none() {
-        return AuditStatus::Pass;
+    if let Some(status) = unshown_bundle(project) {
+        return status;
     }
 
     let Some(help) = project.help_output() else {
         return AuditStatus::Skip("could not probe --help".into());
     };
-    let has_skill = help
-        .subcommands()
-        .iter()
-        .any(|s| s.eq_ignore_ascii_case("skill"));
-    if !has_skill {
-        return AuditStatus::Pass;
+    if !declares_skill_subcommand(help) {
+        return AuditStatus::NotApplicable(NO_SKILL_SUBCOMMAND.into());
     }
 
     let Some(runner) = project.runner.as_ref() else {
@@ -104,5 +103,29 @@ pub(crate) fn audit_bundle_update(runner: &BinaryRunner) -> AuditStatus {
         RunStatus::NotFound => AuditStatus::Skip("binary not found".into()),
         RunStatus::PermissionDenied => AuditStatus::Skip("permission denied".into()),
         RunStatus::Error(msg) => AuditStatus::Skip(format!("probe error: {msg}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bundle_without_a_skill_subcommand_is_not_applicable() {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(
+            "printf 'Usage: tool [COMMAND]\\n\\nCommands:\\n  run    Run it\\n'",
+        );
+        // The helper roots the project at the working directory; give it the
+        // script's own directory so the bundle file is this test's alone.
+        project.path = project.binary_paths[0]
+            .parent()
+            .expect("script has a directory")
+            .to_path_buf();
+        std::fs::write(project.path.join("AGENTS.md"), "# Agents\n").expect("write AGENTS.md");
+        let result = BundleUpdateAudit.run(&project).expect("audit should run");
+        assert_eq!(
+            result.status,
+            AuditStatus::NotApplicable(NO_SKILL_SUBCOMMAND.into())
+        );
     }
 }

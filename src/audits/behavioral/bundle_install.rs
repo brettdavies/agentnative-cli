@@ -6,9 +6,9 @@
 //! `tool skills add`, `tool agents add`) are accepted as soft-pass with
 //! advisory evidence.
 //!
-//! Applicability: gates on `find_bundle()` (the same heuristic
-//! `p8-bundle-exists` uses). When no bundle is present at the project root,
-//! the requirement is vacuously satisfied.
+//! Applicability: gates on [`bundle_gate`]. A target that shows no bundle
+//! (no `find_bundle()` hit and no `skill` subcommand in `--help`) reports the
+//! row as not applicable.
 
 use crate::audit::Audit;
 use crate::audits::project::bundle_exists::find_bundle;
@@ -44,15 +44,13 @@ impl Audit for BundleInstallAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        // Vacuous Pass when no bundle is present — the requirement is gated
-        // on "if CLI ships an agent skill bundle".
-        if find_bundle(&project.path).is_none() {
+        if let Some(status) = unshown_bundle(project) {
             return Ok(AuditResult {
                 id: self.id().to_string(),
                 label: self.label().into(),
                 group: self.group(),
                 layer: self.layer(),
-                status: AuditStatus::Pass,
+                status,
                 confidence: Confidence::High,
                 mitigation: None,
                 config_hint: None,
@@ -79,15 +77,51 @@ impl Audit for BundleInstallAudit {
     }
 }
 
+const NO_BUNDLE: &str =
+    "no skill bundle (AGENTS.md or SKILL.md) found and --help declares no `skill` subcommand";
+
+/// Why a row that extends `skill install` (`--all`, `skill update`) does not
+/// apply to a target that ships a bundle without a `skill` subcommand.
+pub(crate) const NO_SKILL_SUBCOMMAND: &str = "a skill bundle is present, but --help declares no \
+     `skill` subcommand for this row to extend; p8-must-bundle-install reports the missing \
+     install path";
+
+/// Whether `help` lists `skill` among its subcommands.
+pub(crate) fn declares_skill_subcommand(help: &HelpOutput) -> bool {
+    help.subcommands()
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case("skill"))
+}
+
+/// The status a row conditional on a skill bundle takes before its own
+/// check, or `None` when the target shows a bundle: a bundle file at the
+/// audit root, or a `skill` subcommand in `--help`. A binary audited on its
+/// own has no root to hold a file, so its `--help` is the only evidence.
+pub(crate) fn bundle_gate(bundle_found: bool, help: Option<&HelpOutput>) -> Option<AuditStatus> {
+    if bundle_found {
+        return None;
+    }
+    match help {
+        None => Some(AuditStatus::Skip(
+            "no skill bundle found and could not probe --help for a `skill` subcommand".into(),
+        )),
+        Some(help) if declares_skill_subcommand(help) => None,
+        Some(_) => Some(AuditStatus::NotApplicable(NO_BUNDLE.into())),
+    }
+}
+
+/// [`bundle_gate`] for `project`.
+pub(crate) fn unshown_bundle(project: &Project) -> Option<AuditStatus> {
+    bundle_gate(find_bundle(&project.path).is_some(), project.help_output())
+}
+
 /// Core unit for tests. Looks for `skill install` via subcommand parsing,
 /// then falls back to non-canonical install patterns in raw help text.
 pub(crate) fn audit_bundle_install(help: &HelpOutput) -> AuditStatus {
     // Canonical: `skill` is a top-level subcommand. The `skill install`
     // detail is not always exposed at top-level help, so accept any
     // top-level `skill` subcommand as the canonical surface.
-    let subs = help.subcommands();
-    let has_skill_subcommand = subs.iter().any(|s| s.eq_ignore_ascii_case("skill"));
-    if has_skill_subcommand {
+    if declares_skill_subcommand(help) {
         return AuditStatus::Pass;
     }
 
@@ -155,6 +189,32 @@ Options:
     fn pass_with_non_canonical_init_skill() {
         let help = HelpOutput::from_raw(HELP_INIT_SKILL);
         assert_eq!(audit_bundle_install(&help), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_target_showing_no_bundle_is_not_applicable() {
+        let help = HelpOutput::from_raw(HELP_NO_SKILL_SURFACE);
+        assert_eq!(
+            bundle_gate(false, Some(&help)),
+            Some(AuditStatus::NotApplicable(NO_BUNDLE.into()))
+        );
+    }
+
+    #[test]
+    fn a_bundle_file_or_a_skill_subcommand_grades_the_row() {
+        let no_skill = HelpOutput::from_raw(HELP_NO_SKILL_SURFACE);
+        let skill = HelpOutput::from_raw(HELP_WITH_SKILL_SUBCMD);
+        assert_eq!(bundle_gate(true, Some(&no_skill)), None);
+        assert_eq!(bundle_gate(true, None), None);
+        assert_eq!(bundle_gate(false, Some(&skill)), None);
+    }
+
+    #[test]
+    fn no_bundle_file_and_unreadable_help_skips() {
+        assert!(matches!(
+            bundle_gate(false, None),
+            Some(AuditStatus::Skip(_))
+        ));
     }
 
     #[test]

@@ -120,7 +120,7 @@ json_probe = ["version", "--client", "-o", "json"]
 schema_command = ["explain"]
 
 [p5]
-confirm_flags = ["-auto-approve"]
+confirm_flags = ["--noconfirm"]
 not_destructive = ["clean"]
 
 [p6]
@@ -161,9 +161,11 @@ lowercase. The nearest file that declares `schema_command` supplies it, and an e
 `confirm_flags`: `p5-must-force-yes` requires each destructive subcommand's own `--help` to list a confirmation flag.
 The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assume-yes`, and `--confirm`. A declared
 flag counts beside them, and only where the subcommand's `--help` lists it, so a declaration names the flag and cannot
-stand in for one. A single-dash name such as terraform's `-auto-approve` matches as a whole word. A pass that needed a
+stand in for one. Built-in and declared names match whole: `-f` does not match `-force-copy`. In a help that declares no
+double-dash name, a single-dash name matches its double-dash spelling, so terraform's `-auto-approve` meets the built-in
+`--auto-approve` without a declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. A pass that needed a
 declared flag says so in the row's evidence, naming the subcommand, the flag, and the file:
-`destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`.
+`destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`.
 
 `not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`, `clean`,
 and names built on them). A tool whose `clean` clears regenerable caches, for one, declares it here, and the audit
@@ -178,7 +180,7 @@ beside the built-in list. Entries are lowercase; they are compared with the lowe
 needed a declared verb carries `using_domain_verbs` and `domain_match_count` on the row.
 
 A key `anc` does not know is ignored. A known key with a value of the wrong type, such as
-`confirm_flags = "-auto-approve"`, is a parse error.
+`confirm_flags = "--noconfirm"`, is a parse error.
 
 ### Where `anc` looks
 
@@ -399,6 +401,38 @@ agentnative uses three layers to analyze your CLI:
 
 `--binary` and `--source` are useful when one layer regresses and you want a focused gate (CI step for source quality,
 release-gate against the compiled artifact). Without either flag, all three layers run together.
+
+### How behavioral audits read `--help`
+
+Several behavioral audits ask whether a help declares a flag (`--quiet`, `--force`, `--output`). `anc` answers from
+definition lines: indented lines that start with a flag name and, usually, describe it. A usage synopsis, an example, or
+a sentence that mentions a flag mid-line declares nothing, so a flag that appears only in `usage: tool [-q]` does not
+count.
+
+Every name on a definition line is kept whole and spelled as the help prints it, and a row that names a flag quotes that
+spelling:
+
+| Help line                                                                           | Names read                                    |
+| ----------------------------------------------------------------------------------- | --------------------------------------------- |
+| `-force-copy             Suppress prompts about copying state data` (terraform)     | `-force-copy`                                 |
+| `-n, --quiet, --silent` (GNU sed)                                                   | `-n`, `--quiet`, `--silent`                   |
+| `-q, --[no-]quiet      suppress summary after successful commit` (git)              | `-q`, `--quiet`, `--no-quiet`                 |
+| `-h,-H,--help,-help,-usage,/? = Print usage information and exit.` (cmake)          | `-h`, `-H`, `--help`, `-help`, `-usage`, `/?` |
+| `-W<category>                 = Enable the specified category of warnings.` (cmake) | `-W`                                          |
+| `-0, --http1.0                     Use HTTP/1.0` (curl)                             | `-0`, `--http1.0`                             |
+
+A value placeholder (`<FILE>`, `=false`, `N`, `[=WHEN]`) is never part of a name. A single letter matches only the same
+letter: `-f` is not `-force-copy`, and `-v` is not `-version`.
+
+One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
+double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:
+terraform's `-force` on `force-unlock` counts as `--force`. In a help that declares any double-dash name, a single-dash
+word is a name of its own, and a row that misses for that reason says so:
+`` `-verbose` is declared, but this help also declares double-dash names, so it does not count as `--verbose`. ``
+
+If `anc` misreads your tool's help, file a
+[false positive / false negative report](https://github.com/brettdavies/agentnative-cli/issues/new?template=false-positive.yml)
+with the output of `<tool> --help`. The help text becomes a test fixture.
 
 ## Scoring
 
@@ -644,8 +678,8 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
 
 - `evidence` on a `pass` row: what the audit matched, for an audit that names it (`p7-limit` names each list command and
   its limit flag), then, when an `.anc.toml` setting decided the pass, the setting, what it contributed, and the file
-  that supplied it, such as `destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`. The two parts are joined
-  by a semicolon. `null` when the pass carries neither. See [Configuration](#configuration-anctoml).
+  that supplied it, such as `destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`. The two parts are joined by
+  a semicolon. `null` when the pass carries neither. See [Configuration](#configuration-anctoml).
 - `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `files`
   lists where the setting can go, each as `{file, scope}`: `file` is `.anc.toml`, `~/.anc.toml`, or
   `$AGENTNATIVE_HOME_CONFIG` (never an absolute path), and `scope` is `repository` (the root of the repository this

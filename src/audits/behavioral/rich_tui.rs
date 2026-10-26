@@ -81,12 +81,12 @@ pub(crate) fn audit_rich_tui(help: &HelpOutput) -> AuditStatus {
     if TUI_INDICATORS.iter().any(|t| raw_lower.contains(t)) {
         return AuditStatus::Pass;
     }
-    AuditStatus::Warn(
+    AuditStatus::Warn(help.noting_dash_rule(
+        TUI_FLAGS,
         "no rich-TUI affordance detected (no `--tui`/`--interactive`/`--ui` \
          flag, no spinner/progress/tui mention in --help). MAY-tier — \
-         rich TUI in TTY contexts is a nice-to-have, not required."
-            .into(),
-    )
+         rich TUI in TTY contexts is a nice-to-have, not required.",
+    ))
 }
 
 #[cfg(test)]

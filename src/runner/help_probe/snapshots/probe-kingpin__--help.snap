@@ -2,7 +2,10 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/probe-kingpin__--help.txt
 ---
+   7 | --help, --no-help | Show context-sensitive help (also try --help-long and
    8 | --help-man | 
-   9 | -f | skip confirmation prompts
+   9 | -f, --force, --no-force | skip confirmation prompts
   10 | -n, --limit | maximum number of results to return, a deliberately long
+  12 | --dry-run, --no-dry-run | print what would change
   13 | -o, --output | write output here
+  14 | --color, --no-color | colorize

@@ -216,12 +216,12 @@ pub(crate) fn audit_schema_print(help: &HelpOutput, json_shown: bool) -> AuditSt
         return AuditStatus::Pass;
     }
 
-    AuditStatus::Fail(
+    AuditStatus::Fail(help.noting_dash_rule(
+        &["--schema"],
         "CLI emits structured output but exposes no `schema` subcommand or \
          `--schema` flag. Agents need a runtime-discoverable schema to pin \
-         against shape changes."
-            .into(),
-    )
+         against shape changes.",
+    ))
 }
 
 /// Extended audit that also walks one level into each top-level subcommand

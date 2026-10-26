@@ -7,4 +7,5 @@ input_file: tests/fixtures/help/probe-kong__--help.txt
    6 | -n, --limit | maximum number of results to return, a deliberately long
    8 | --dry-run | print what would change
    9 | -o, --output | write output here
+  10 | --color, --no-color | colorize
   11 | -v, --verbose | increase verbosity

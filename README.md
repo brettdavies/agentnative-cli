@@ -413,6 +413,11 @@ definition lines: lines that start with a flag name and, usually, describe it. A
 sentence that mentions a flag mid-line declares nothing, so a flag that appears only in `usage: tool [-q]` does not
 count.
 
+To have a flag count, print it on a line of its own, names first, with its description set off by two or more spaces or
+a marker (`#`, `=`, `--`, or a colon), and spell it the way the requirement does. One dash stands for two only in a help
+that declares no double-dash name, and a single letter counts only where its own description says what the audit asks
+for. The rest of this section is the detail behind those rules.
+
 Every name on a definition line is kept whole and spelled as the help prints it, and a row that names a flag quotes that
 spelling:
 
@@ -481,6 +486,21 @@ double-dash name, the Go `flag` convention, a single-dash word meets an audit th
 terraform's `-force` on `force-unlock` counts as `--force`. In a help that declares any double-dash name, a single-dash
 word is a name of its own, and a row that misses for that reason says so:
 `` `-verbose` is declared, but this help also declares double-dash names, so it does not count as `--verbose`. ``
+
+These layouts are read the way they look rather than the way the tool means them:
+
+- A paragraph that opens with a flag and reads as a sentence is read as a definition of the flags it opens with:
+  terraform's `-state, state-out, and -backup are legacy options supported for the local` declares `-state`. No audit
+  asks for those flags.
+- An example command at definition indent, with no backslash on the line above it, is read as a definition.
+- python3's rows with a placeholder and a spaced colon, such as `-c cmd : program passed in as string`, are not read,
+  because `cmd` opens like a sentence at column 0.
+- A synopsis printed on a line of its own under `Usage:`, and argparse's wrap of a long program name to column 7,
+  declare their dash-led lines.
+- `p1-must-env-var` does not count an environment variable printed bare in a column between a flag's names and its
+  description (`--token   GH_TOKEN   API token`), because a value placeholder prints the same way
+  (`--config-file  -c  CONFIG_FILE  Path`). `$GH_TOKEN` in that column, `[env: GH_TOKEN]`, or the name in the
+  description counts.
 
 If `anc` misreads your tool's help, file a
 [false positive / false negative report](https://github.com/brettdavies/agentnative-cli/issues/new?template=false-positive.yml)

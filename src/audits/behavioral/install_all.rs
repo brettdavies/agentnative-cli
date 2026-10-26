@@ -104,8 +104,9 @@ pub(crate) fn audit_install_help(help: &HelpOutput) -> AuditStatus {
         help,
         ALL_FLAG,
         None,
-        "no option definition in `skill install --help` declares `--all`; usage lines are not \
-         read. MAY-tier — a single `skill install --all` invocation across detected runtimes \
+        "no option definition in `skill install --help` declares `--all`; a flag named only in a \
+         usage line does not count. MAY-tier — a single `skill install --all` invocation across \
+         detected runtimes \
          is convenient for multi-agent setups.",
     )
 }
@@ -118,7 +119,7 @@ mod tests {
         audit_install_help(&HelpOutput::from_raw(help))
     }
 
-    const SEARCHED: &str = "no option definition in `skill install --help` declares `--all`; usage lines are not read. MAY-tier — a single `skill install --all` invocation across detected runtimes is convenient for multi-agent setups.";
+    const SEARCHED: &str = "no option definition in `skill install --help` declares `--all`; a flag named only in a usage line does not count. MAY-tier — a single `skill install --all` invocation across detected runtimes is convenient for multi-agent setups.";
 
     #[test]
     fn a_declared_all_flag_passes() {

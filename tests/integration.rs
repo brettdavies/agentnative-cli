@@ -342,7 +342,7 @@ fn test_usage_line_flag_is_not_a_declared_quiet_flag() {
     assert_eq!(quiet["status"], "warn", "{quiet}");
     assert_eq!(
         quiet["evidence"],
-        "no option definition in --help declares --quiet or -q; usage lines are not read."
+        "no option definition in --help declares --quiet or -q; a flag named only in a usage line does not count."
     );
 
     let signal_warns = [

@@ -8,6 +8,8 @@
 //! taken verbatim as the evidence row, so a scenario shapes wave-1
 //! evidence through mock rules alone.
 
+#![cfg(feature = "web")]
+
 use std::io::{self, Cursor, Read};
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};

@@ -9,6 +9,8 @@
 //! reproduce is named in `KNOWN_DIVERGENCES` with its reason; the list is
 //! asserted empty-or-named, never silently skipped.
 
+#![cfg(feature = "web")]
+
 mod common;
 
 use std::collections::BTreeMap;

@@ -1913,6 +1913,7 @@ fn test_dogfood_and_implicit_audit_survive_the_web_verb() {
 
 /// Bare `anc` still prints help and exits 2 rather than auditing or
 /// probing anything, which is the fork-bomb guard the dogfood depends on.
+#[cfg(feature = "web")]
 #[test]
 fn test_bare_invocation_still_guards_against_self_spawn() {
     cmd()

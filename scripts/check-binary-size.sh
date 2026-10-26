@@ -7,7 +7,7 @@
 # committed here so a dependency bump that eats the remaining headroom is a
 # reviewed diff on this line rather than a surprise in a release artifact.
 #
-# Numbers below are bytes, measured with `cargo build --release` on
+# Numbers below are bytes, measured with `cargo build --release --features web` on
 # x86_64-unknown-linux-gnu. Update them deliberately, in a PR that says
 # what grew and why.
 set -euo pipefail
@@ -21,7 +21,7 @@ readonly CEILING_BYTES=10485760
 BINARY="${1:-target/release/anc}"
 
 if [[ ! -f "$BINARY" ]]; then
-  printf 'error: %s not found; run "cargo build --release" first\n' "$BINARY" >&2
+  printf 'error: %s not found; run "cargo build --release --features web" first\n' "$BINARY" >&2
   exit 2
 fi
 

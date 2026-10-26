@@ -155,4 +155,18 @@ Options:
         let help = HelpOutput::from_raw("  --no-pager   Disable paging.\n");
         assert_eq!(audit_no_pager(&help), AuditStatus::Pass);
     }
+
+    #[test]
+    fn a_single_dash_no_pager_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -no-pager     Do not send output through less.\n      --help    Show help.\n",
+        );
+        match audit_no_pager(&help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-no-pager` is declared, but this help also declares double-dash names, so it does not count as `--no-pager`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
 }

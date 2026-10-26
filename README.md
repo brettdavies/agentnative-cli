@@ -26,9 +26,11 @@ cargo binstall agentnative
 # https://github.com/brettdavies/agentnative-cli/releases
 ```
 
-The Homebrew formula installs the pre-built archive the release publishes for your platform and compiles nothing. The
-tap signs the bottles it builds from those archives, and `brew verify brettdavies/tap/agentnative` checks one against
-that attestation.
+The Homebrew formula installs the pre-built archive the release publishes for your platform, checked against the
+checksum the formula pins, and compiles nothing. The tap pins a checksum only after it has verified the archive against
+the release's build-provenance attestation; [Verifying an
+archive](https://github.com/brettdavies/homebrew-tap#verifying-an-archive) in the tap's README has the command that
+repeats the check.
 
 Each release archive carries a build-provenance attestation and an attested SBOM, signed by the release workflow. To
 check that an archive you downloaded was built by it, from this repository:

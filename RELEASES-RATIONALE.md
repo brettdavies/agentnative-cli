@@ -233,11 +233,12 @@ publish (`v0.1.0`) requires a regular crates.io API token because Trusted Publis
 
 ### Why `make_latest: false` then `finalize-release`
 
-The GitHub Release is created visible-but-not-latest (`make_latest: false`) so `cargo-binstall` and `/releases/latest`
-don't 404 during the bottle-build window, but the release isn't yet promoted to "Latest" while bottles upload. After the
-homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to this repo,
-which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked latest, Homebrew
-formula updated with bottles, all atomically advertised.
+The GitHub Release is created visible-but-not-latest (`make_latest: false`) so its archives resolve by tag at once,
+which the tap's bump needs, while `cargo-binstall` and `/releases/latest` keep resolving the previous version until
+Homebrew can install the new one. The tap verifies the archives, tests the formula bump on four platforms, and lands
+it; it builds no bottle, so nothing is uploaded back to this repo's release. It then dispatches `finalize-release` back
+to this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked
+latest, Homebrew formula updated, all atomically advertised.
 
 ### Why backport `main` → `dev` after publish
 

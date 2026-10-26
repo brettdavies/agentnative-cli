@@ -10,4 +10,4 @@ input_file: tests/fixtures/help/terraform__import_--help.txt
   37 | -var | Set a variable in the Terraform configuration. This
   41 | -var-file | Set variables in the Terraform configuration from
   45 | -ignore-remote-version | A rare option used for the remote backend only. See
-  48 | -state |
+  48 | -state | and -backup are legacy options supported for the local

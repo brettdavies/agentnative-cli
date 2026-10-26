@@ -21,7 +21,7 @@ input_file: tests/fixtures/help/tar__--help.txt
   32 | --no-seek | archive is not seekable
   33 | -n, --seek | archive is seekable
   34 | --occurrence | process only the NUMBERth occurrence of each file
-  37 | --diff, --extract | 
+  37 | --diff, --extract | or --list and when a list of
   40 | --sparse-version | 
   42 | --sparse | 
   43 | -S, --sparse | handle sparse files efficiently
@@ -31,11 +31,11 @@ input_file: tests/fixtures/help/tar__--help.txt
   50 | --exclude-backups | exclude backup and lock files
   51 | --exclude-caches | exclude contents of directories containing
   53 | --exclude-caches-all | exclude directories containing CACHEDIR.TAG
-  54 | --exclude-caches-under | 
+  54 | --exclude-caches-under | exclude everything under directories containing
   56 | --exclude-ignore | read exclude patterns for each directory from
   58 | --exclude-ignore-recursive | 
   61 | --exclude-tag | exclude contents of directories containing FILE,
-  63 | --exclude-tag-all | 
+  63 | --exclude-tag-all | exclude directories containing FILE
   64 | --exclude-tag-under | exclude everything under directories
   66 | --exclude-vcs | exclude version control system directories
   67 | --exclude-vcs-ignores | read exclude patterns from the VCS ignore files
@@ -70,7 +70,7 @@ input_file: tests/fixtures/help/tar__--help.txt
  110 | --skip-old-files | don't replace existing files when extracting,
  112 | -U, --unlink-first | remove each file prior to extracting over it
  113 | -W, --verify | attempt to verify the archive after writing it
- 117 | --ignore-command-error | 
+ 117 | --ignore-command-error | ignore exit codes of children
  118 | --no-ignore-command-error | treat non-zero exit codes of children as
  120 | -O, --to-stdout | extract files to standard output
  121 | --to-command | pipe extracted files to another program

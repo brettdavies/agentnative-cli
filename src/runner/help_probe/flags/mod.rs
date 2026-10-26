@@ -173,7 +173,7 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
         if !is_definition_line(line) {
             continue;
         }
-        let Some(header) = header::tokenize(line.trim_start()) else {
+        let Some(header) = header::tokenize(line) else {
             continue;
         };
         flags.push(Flag {
@@ -422,6 +422,42 @@ Other common options:
         assert_eq!(found(&flags, "-print"), Some("-print"));
         assert_eq!(found(&flags, "--print"), None);
         assert_eq!(found(&flags, "--help"), Some("--help"));
+    }
+
+    fn fixture(name: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/help")
+            .join(name);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    }
+
+    #[test]
+    fn a_two_column_layout_keeps_every_long_name() {
+        let flags = parse(&fixture("lazygit__--help.txt"));
+        let long: Vec<&str> = flags.iter().flat_map(Flag::long_names).collect();
+        assert_eq!(
+            long,
+            [
+                "--help",
+                "--path",
+                "--filter",
+                "--version",
+                "--debug",
+                "--logs",
+                "--profile",
+                "--config",
+                "--print-config-dir",
+                "--use-config-dir",
+                "--work-tree",
+                "--git-dir",
+                "--use-config-file",
+                "--screen-mode",
+            ]
+        );
+        let config = find(&flags, &["-c"]).expect("lazygit declares -c");
+        assert_eq!(config.flag.name(), "--config");
+        let config_dir = find(&flags, &["-cd"]).expect("lazygit declares -cd");
+        assert_eq!(config_dir.flag.name(), "--print-config-dir");
     }
 
     #[test]

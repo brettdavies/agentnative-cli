@@ -3,7 +3,7 @@ source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/aws__s3_ls_help.txt
 ---
  267 | --recursive | 
- 285 | --human-readable | 
+ 285 | --human-readable | and --summarize options. --human-readable displays
  291 | --recursive | 
  292 | --human-readable | 
  293 | --summarize |

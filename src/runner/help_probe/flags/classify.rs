@@ -19,12 +19,28 @@
 //!
 //! A definition can sit at any indent and can lead with `-`, `+x` or a
 //! bracketed `[--name]`. Dash-led text at column 0, and any line that leads
-//! with a bracket, is a usage wrap or prose unless a gap sets a description
-//! off from it, or its description starts at the column the definition above
-//! it uses.
+//! with a bracket, is a usage wrap or prose unless a gap or a marker sets a
+//! description off from it, or its description starts at the column the
+//! definition above it uses.
+//!
+//! Three more dash-led shapes are not definitions at any indent:
+//!
+//! - a line under one that ends in a backslash, while no description is
+//!   being read (an example command carries on);
+//! - a line indented to the arguments of the usage line above it, with no
+//!   description of its own set off by a gap or a marker (the synopsis
+//!   wraps);
+//! - a line whose description no gap or marker sets off, directly under
+//!   prose at the same indent that does not end its sentence (the sentence
+//!   wraps).
 
+use super::NameForm;
 use super::header::{self, Header};
 use super::pieces::column_of;
+
+/// How far right of a short name its long name starts (`-x, --long`). clap,
+/// pflag and GNU print a long-only row at that column.
+const LONG_AFTER_SHORT: usize = 4;
 
 /// One line of a help text.
 pub(super) enum Line<'a> {
@@ -51,6 +67,16 @@ struct Layout {
     description: Description,
     /// Columns a name starts at, in every definition under this heading.
     name_columns: Vec<usize>,
+    /// The line above ends in a backslash. Outside a description, that is a
+    /// shell command in an example carrying on.
+    after_backslash: bool,
+    /// Column the arguments of the usage line being read start at. A line
+    /// indented that far carries the synopsis on, unless a gap or a marker
+    /// sets off a description of its own.
+    synopsis: Option<usize>,
+    /// Indent of the line above, when it is prose that does not end its
+    /// sentence.
+    prose: Option<usize>,
 }
 
 /// What the definition being read has by way of a description.
@@ -67,7 +93,11 @@ enum Description {
 
 impl Layout {
     fn read<'a>(&mut self, line: &'a str) -> Line<'a> {
+        let continued =
+            std::mem::replace(&mut self.after_backslash, line.trim_end().ends_with('\\'));
+        let above_prose = self.prose.take();
         if line.trim().is_empty() {
+            self.synopsis = None;
             return Line::Other;
         }
         if is_section_heading(line) {
@@ -76,8 +106,21 @@ impl Layout {
         }
         let trimmed = line.trim_start();
         let indent = column_of(line, line.len() - trimmed.len());
-        let shaped = is_definition_shaped(trimmed);
-        if self.continues(indent, shaped) {
+        let in_synopsis = self.synopsis.is_some_and(|column| indent >= column);
+        if !in_synopsis {
+            self.synopsis = synopsis_column(line);
+        }
+        let carries_a_command = continued && matches!(self.description, Description::None);
+        let shaped = is_definition_shaped(trimmed) && !carries_a_command;
+        let header = if shaped { header::tokenize(line) } else { None };
+        let wraps_the_synopsis =
+            in_synopsis && !header.as_ref().is_some_and(|header| header.set_off);
+        let (shaped, header) = if wraps_the_synopsis {
+            (false, None)
+        } else {
+            (shaped, header)
+        };
+        if self.continues(indent, header.is_some()) {
             if let Description::Awaited(_) = self.description {
                 self.description = Description::At(indent);
             }
@@ -90,19 +133,20 @@ impl Layout {
         if indent == 0 {
             self.name_columns.clear();
         }
-        if !shaped {
-            return Line::Other;
-        }
         let needs_gap = indent == 0 || trimmed.starts_with("[-");
-        let Some(header) = header::tokenize(line) else {
-            return if needs_gap {
-                Line::Other
-            } else {
-                Line::Unnamed
-            };
+        let runs_on = !trimmed.trim_end().ends_with(['.', ':', '!', '?']);
+        let Some(header) = header else {
+            if shaped && !needs_gap {
+                return Line::Unnamed;
+            }
+            self.prose = runs_on.then_some(indent);
+            return Line::Other;
         };
         let aligned = indent == 0 && above.is_some() && header.description_column == above;
-        if needs_gap && !header.set_off && !aligned {
+        let wraps_a_sentence =
+            above_prose == Some(indent) && !header.set_off && !header.description.is_empty();
+        if (needs_gap && !header.set_off && !aligned) || wraps_a_sentence {
+            self.prose = runs_on.then_some(indent);
             return Line::Other;
         }
         self.description = match header.description_column {
@@ -110,23 +154,46 @@ impl Layout {
             None => Description::Awaited(indent),
         };
         self.name_columns.extend(&header.name_columns);
+        if let (Some(first), Some(column)) = (header.names.first(), header.name_columns.first())
+            && first.form == NameForm::Letter
+        {
+            self.name_columns.push(column + LONG_AFTER_SHORT);
+        }
         Line::Definition(header)
     }
 
     /// Whether a line at `indent` carries on the current definition's
     /// description: it sits at or past the description column, or it is the
-    /// first line under a definition that has no description yet. A dash-led
-    /// line at a column where names start is a definition instead: a GetOpt
-    /// long-only row sits at the long column of the rows around it.
-    fn continues(&self, indent: usize, shaped: bool) -> bool {
+    /// first line under a definition that has no description yet. Under such
+    /// a definition, a line that declares a name at a column where names
+    /// start is a definition instead: a long-only row sits at the long
+    /// column of the rows around it.
+    fn continues(&self, indent: usize, named: bool) -> bool {
         match self.description {
             Description::At(column) => indent >= column,
             Description::Awaited(definition) => {
-                indent > definition && !(shaped && self.name_columns.contains(&indent))
+                indent > definition && !(named && self.name_columns.contains(&indent))
             }
             Description::None => false,
         }
     }
+}
+
+/// The column a usage line's arguments start at: the third word of
+/// `usage: prog [-h] ...`. argparse and git wrap a long synopsis to it.
+fn synopsis_column(line: &str) -> Option<usize> {
+    let trimmed = line.trim_start();
+    if !trimmed
+        .get(.."usage:".len())
+        .is_some_and(|lead| lead.eq_ignore_ascii_case("usage:"))
+    {
+        return None;
+    }
+    let argument = trimmed.split_whitespace().nth(2)?;
+    Some(column_of(
+        line,
+        argument.as_ptr() as usize - line.as_ptr() as usize,
+    ))
 }
 
 /// Whether text leads the way a definition does: with a dash (`-x`, `-word`,
@@ -507,6 +574,161 @@ Advanced:
             .map(|(what, raw)| format!("{what}: read {:?}", declared(raw)))
             .collect();
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Indented, dash-led text that is part of an example, a usage synopsis
+    /// or a sentence.
+    const INDENTED_NOT_DEFINITIONS: &[(&str, &str)] = &[
+        (
+            "aws-cli 2 s3 ls: an example command continued with a backslash",
+            "       The following ls command will recursively list objects in a bucket.\n\n          aws s3 ls s3://amzn-s3-demo-bucket \\\n              --recursive\n\n       Output:\n",
+        ),
+        (
+            "aws-cli 2 s3 ls: three continued lines, each a flag",
+            "          aws s3 ls s3://amzn-s3-demo-bucket \\\n              --recursive \\\n              --human-readable \\\n              --summarize\n",
+        ),
+        (
+            "aws-cli 2 s3 ls: a sentence that wraps onto a flag name",
+            "       The following ls command demonstrates the same command using the\n       --human-readable and --summarize options. --human-readable displays\n       file size in Bytes/MiB/KiB/GiB/TiB/PiB/EiB. --summarize displays the\n",
+        ),
+        (
+            "OpenJDK 21 java: a sentence that wraps onto a flag name",
+            " Arguments following the main class, source file, -jar <jarfile>,\n -m or --module <module>/<mainclass> are passed as the arguments to\n main class.\n",
+        ),
+        (
+            "a sentence that wraps onto two flag-led lines",
+            "  The sizes are printed in bytes unless you pass\n  --human-readable or the shorter\n  -h spelling, which prints sizes in MiB.\n",
+        ),
+        (
+            "argparse (Python 3.14.8): a usage line that wraps onto required options",
+            "usage: prog [-h] [--verbose] --input INPUT --mode {fast,slow}\n            --output OUTPUT --format FORMAT\n",
+        ),
+    ];
+
+    #[test]
+    fn indented_examples_usage_wraps_and_sentences_declare_nothing() {
+        let wrong: Vec<String> = INDENTED_NOT_DEFINITIONS
+            .iter()
+            .filter(|(_, raw)| !declared(raw).is_empty())
+            .map(|(what, raw)| format!("{what}: read {:?}", declared(raw)))
+            .collect();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Definitions that sit where an example, a synopsis or a sentence could,
+    /// with every name each line declares.
+    const BESIDE_PROSE_AND_USAGE: &[(&str, &str, &[&[&str]])] = &[
+        (
+            "definitions directly under a usage line, left of its arguments",
+            "Usage: nc [OPTIONS] HOST PORT\n  -l         Listen for a connection\n  -p PORT    Local port\n",
+            &[&["-l"], &["-p"]],
+        ),
+        (
+            "Go flag 1.27.1: definitions directly under `Usage of`",
+            "Usage of tool:\n  -format string\n    \tOutput format\n  -n int\n    \tLimit\n",
+            &[&["-format"], &["-n"]],
+        ),
+        (
+            "a name alone on its line, under a sentence at the same indent",
+            "Options:\n  These options control what is printed.\n  --null\n      Print a NUL byte after each name.\n",
+            &[&["--null"]],
+        ),
+        (
+            "Nmap 7.991SVN: colon-described rows under an example line that does not end its sentence",
+            "TARGET SPECIFICATION:\n  Can pass hostnames, IP addresses, networks, etc.\n  Ex: scanme.nmap.org, microsoft.com/24, 192.168.0.1; 10.0.0-255.1-254\n  -iL <inputfilename>: Input from list of hosts/networks\n  -iR <num hosts>: Choose random targets\n  --exclude <host1[,host2][,host3],...>: Exclude hosts/networks\n  --excludefile <exclude_file>: Exclude list from file\n",
+            &[&["-iL"], &["-iR"], &["--exclude"], &["--excludefile"]],
+        ),
+        (
+            "Python 3.14.8: column-0 rows described after a colon",
+            "Options (and corresponding environment variables):\n--help-env: print help about Python environment variables and exit\n--help-xoptions: print help about implementation-specific -X options and exit\n--help-all: print complete help information and exit\n",
+            &[&["--help-env"], &["--help-xoptions"], &["--help-all"]],
+        ),
+        (
+            "a described long-only row under a short-only row with no description",
+            "Options:\n  -c <CONFIG>\n      --json     Output JSON\n  -h, --help     Print help\n",
+            &[&["-c"], &["--json"], &["-h", "--help"]],
+        ),
+        (
+            "BIND host 9.18.39: one-space descriptions under a wrapped usage line",
+            "Usage: host [-aCdilrTvVw] [-c class] [-N ndots] [-t type] [-W time]\n            [-R number] [-m flag] [-p port] hostname [server]\n       -a is equivalent to -v -t ANY\n       -A is like -a but omits RRSIG, NSEC, NSEC3\n",
+            &[&["-a"], &["-A"]],
+        ),
+        (
+            "BIND dig 9.18.39: rows deeper than the usage line's arguments, after `Where:`",
+            "Usage:  dig [@global-server] [domain] [q-type] [q-class] {q-opt}\n            {global-d-opt} host [@local-server] {local-d-opt}\nWhere:  domain\t  is in the Domain Name System\n        q-opt    is one of:\n                 -4                  (use IPv4 query transport only)\n                 -b address[#port]   (bind to source address/port)\n",
+            &[&["-4"], &["-b"]],
+        ),
+        (
+            "rows with a description of their own, in one block with the usage line",
+            "usage: nc [-46bCDdhklnrStUuvZz] [-i interval] [destination] [port]\n\t\t-4\t\tUse IPv4\n\t\t-6\t\tUse IPv6\n\t\t-q secs\t\tquit after EOF\n",
+            &[&["-4"], &["-6"], &["-q"]],
+        ),
+        (
+            "colon-described rows under an indented label that ends in a colon",
+            "    Usage: backup [options] <src> <dest>\n\n    Options:\n    -h, --help: show this help\n    -q, --quiet: suppress progress output\n",
+            &[&["-h", "--help"], &["-q", "--quiet"]],
+        ),
+        (
+            "one-space rows whose descriptions wrap back to the name indent and end a sentence",
+            "OPTIONS\n       --recursive (boolean) Command is performed on all files or objects under\n       the specified directory or prefix.\n       --page-size (integer) The number of results to return in each response\n       to a list operation.\n       --quiet (boolean) Does not display the operations performed.\n",
+            &[&["--recursive"], &["--page-size"], &["--quiet"]],
+        ),
+        (
+            "a definition after a description that ends in a backslash",
+            "Options:\n  -d, --delimiter <CHAR>   Field delimiter, default \\\n  -q, --quiet              Suppress output\n",
+            &[&["-d", "--delimiter"], &["-q", "--quiet"]],
+        ),
+        (
+            "a definition after an example block that ended with a blank line",
+            "Examples:\n  tool sync \\\n    --all\n\nOptions:\n  -a, --all    Sync everything\n",
+            &[&["-a", "--all"]],
+        ),
+    ];
+
+    #[test]
+    fn a_long_only_row_under_an_undescribed_short_is_a_definition() {
+        let help = "Options:\n  -x\n      --format <FORMAT>\n      --quiet            Say less\n  -h, --help             Print help\n";
+        assert_eq!(definition_lines(help), [2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn a_wrapped_description_at_the_long_column_stays_a_description() {
+        let help = "Options:\n  -n  Number of results to return.\n      -1  means no limit.\n  -v  Print more detail. Same as\n      --verbose.  Off by default.\n";
+        assert_eq!(definition_lines(help), [2, 4]);
+        assert_eq!(
+            description_of(help, "-n"),
+            "Number of results to return. -1  means no limit."
+        );
+
+        let bullets = "Options:\n  -m MODE\n      - fast: skip verification\n      - safe: verify every block\n";
+        assert_eq!(definition_lines(bullets), [2]);
+        assert_eq!(
+            description_of(bullets, "-m"),
+            "- fast: skip verification - safe: verify every block"
+        );
+    }
+
+    #[test]
+    fn definitions_beside_prose_and_usage_are_still_read() {
+        let misread: Vec<String> = BESIDE_PROSE_AND_USAGE
+            .iter()
+            .filter(|(_, raw, expected)| declared(raw) != *expected)
+            .map(|(what, raw, expected)| {
+                format!("{what}: read {:?}, declares {expected:?}", declared(raw))
+            })
+            .collect();
+        assert!(misread.is_empty(), "{misread:#?}");
+    }
+
+    #[test]
+    fn an_example_does_not_switch_off_the_single_dash_rule() {
+        let help = crate::runner::HelpOutput::from_raw(
+            "Usage of tool:\n  -force\n    \tSkip the prompt\n  -out string\n    \tWhere to write\n\nExamples:\n  tool -force \\\n    --out x\n",
+        );
+        assert_eq!(
+            help.find_flag(&["--force"]).map(|found| found.spelling),
+            Some("-force")
+        );
     }
 
     #[test]

@@ -14,7 +14,9 @@
 //! names and placeholders is another column of names (`-cd   --print-config-dir`);
 //! anything else is the description. A word that is neither a name nor a
 //! placeholder is prose: it ends the names, and the description starts at the
-//! next gap, or at the prose itself when the line has no later gap.
+//! next gap, or at the prose itself when the line has no later gap. A gap, a
+//! marker, or a colon that ends the names sets that description off; prose
+//! that follows the names after one space does not.
 
 use super::FlagName;
 use super::pieces::{Kind, Piece, column_of, pieces};
@@ -82,7 +84,7 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
                 marker_set_off = after_marker;
             }
         }
-        after_marker = MARKERS.contains(&piece.text);
+        after_marker = sets_off(piece);
     }
     if names.is_empty() {
         return None;
@@ -106,6 +108,13 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
             && ((after_gap.is_some() && prose.is_none()) || marker_set_off),
         name_columns,
     })
+}
+
+/// Whether a description that starts right after `piece` is set off from the
+/// header: `piece` is a marker, or ends in the colon that nmap and python
+/// close a row's names with (`-iL <inputfilename>: Input from list`).
+fn sets_off(piece: &Piece<'_>) -> bool {
+    MARKERS.contains(&piece.text) || piece.text.ends_with(':')
 }
 
 /// Whether the pieces up to the next gap carry the header on. A column of
@@ -504,6 +513,11 @@ mod tests {
             "--timeout <minutes>         - Embed session cap in minutes (0 = no limit; default 30)",
             "Embed session cap in minutes (0 = no limit; default 30)",
         ),
+        (
+            "Nmap 7.991SVN",
+            "-iL <inputfilename>: Input from list of hosts/networks",
+            "Input from list of hosts/networks",
+        ),
         // Prose after one space, with and without a later gap.
         (
             "fzf 0.74.4",
@@ -528,6 +542,28 @@ mod tests {
             })
             .collect();
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    #[test]
+    fn a_gap_or_a_marker_sets_the_description_off() {
+        let set_off = |line| tokenize(line).is_some_and(|header| header.set_off);
+        for line in [
+            "-q, --quiet    Say less.",
+            "-n, --limit=N  # maximum number of results",
+            "-iL <inputfilename>: Input from list of hosts/networks",
+            "-sL: List Scan - simply list targets to scan",
+            "--help-env: print help about Python environment variables and exit",
+        ] {
+            assert!(set_off(line), "{line}");
+        }
+        for line in [
+            "-m or --module <module>/<mainclass> are passed as the arguments to",
+            "--human-readable and --summarize options. The rest of a sentence.",
+            "-A, --all-namespaces=false:",
+            "--null",
+        ] {
+            assert!(!set_off(line), "{line}");
+        }
     }
 
     #[test]

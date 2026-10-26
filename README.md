@@ -431,7 +431,8 @@ letter: `-f` is not `-force-copy`, and `-v` is not `-version`.
 Names can sit in a second column with no comma between the columns, as lazygit and pandoc print them. After a gap, text
 that leads with a flag name and holds only names and placeholders is another column; text that reads on as a sentence is
 the description, so the files-to-prompt line above declares one name. A description can also be set off by a marker in
-place of a gap: `#` (Thor), `=` (cmake), `--` (ffmpeg) or `-`.
+place of a gap: `#` (Thor), `=` (cmake), `--` (ffmpeg), `-`, or a colon that ends the names, as in nmap's
+`-iL <inputfilename>: Input from list of hosts/networks`.
 
 A wrapped description line is not a definition, even when it starts with a dash. A line indented to the description
 column of the definition above it carries on that description, so docker's `-1 for unlimited)` and the second line of
@@ -444,7 +445,9 @@ column of the definition above it carries on that description, so docker's `-1 f
 declare nothing. The same holds for a description that starts on the line after its definition, as clap's long help, the
 Go `flag` package and kubectl print it, and it holds across blank lines, because a description can run over several
 paragraphs. A line left of the description column ends it. A flag that a help mentions only inside another flag's
-description is not declared.
+description is not declared. Under a definition with no description, a line that declares a name at a column where names
+start is a definition, not that description: `-x, --long` puts the long name four columns right of the short, so
+`--format <FORMAT>` under an undescribed `-x` declares `--format`.
 
 A definition can sit at any indent. rsync, ffmpeg and Miller print theirs at column 0, typer and broot print them as
 rows of a box table with the short name in a cell of its own, Thor brackets its long names (`-f, [--force]`), and fzf
@@ -452,9 +455,19 @@ has shorts that start with a plus (`+x, --no-extended`). Text is read as a termi
 groff's overstruck bold collapsed, and with TABs expanded.
 
 Two shapes need more than a leading dash, because usage lines wrap into them. Dash-led text at column 0 is a definition
-only when a gap sets a description off from its names, or its description starts at the column the definition above it
-uses; `--hide-secret flag. Please carefully consider ...` at column 0 is prose. A line that starts with a bracketed flag
-is a definition only with such a gap, so `[--recursive]` on a synopsis line of its own declares nothing.
+only when a gap or a marker sets a description off from its names, or its description starts at the column the
+definition above it uses; `--hide-secret flag. Please carefully consider ...` at column 0 is prose, and python's
+`--help-all: print complete help information and exit` is a definition. A line that starts with a bracketed flag is a
+definition only with a description set off the same way, so `[--recursive]` on a synopsis line of its own declares
+nothing.
+
+Three more dash-led shapes are text, not definitions, at any indent. A line under one that ends in a backslash carries
+on an example command, so the `--recursive` under `aws s3 ls s3://amzn-s3-demo-bucket \` declares nothing. A line
+indented to the arguments of the `usage:` line above it carries on the synopsis, where argparse and git wrap a long one,
+unless a gap or a marker sets off a description of its own. A line that reads on as a sentence, directly under prose at
+the same indent that has not ended its sentence, is the rest of that sentence:
+`--human-readable and --summarize options. ...`. A row whose description a gap or a marker sets off is not a sentence,
+so nmap's colon-described rows under its `Ex: ...` line are definitions.
 
 One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
 double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:

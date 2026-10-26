@@ -1,13 +1,11 @@
 use crate::anc_toml::JSON_PROBE_KEY;
 use crate::audit::Audit;
 use crate::audits::behavioral::declared_probe::audit_declared_probe;
+use crate::audits::behavioral::output_flags::{self, Declared};
 use crate::audits::behavioral::subcommand_help::{dash_rule_notes, should_skip};
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Verdict};
-
-/// The flags that let a caller choose the output format.
-const OUTPUT_FLAGS: &[&str] = &["--output", "--format"];
 
 /// What the help and the safe probes established.
 enum Detected {
@@ -57,9 +55,9 @@ impl Audit for JsonOutputAudit {
             (Detected::Unverified(evidence), None) => AuditStatus::Skip(evidence).into(),
             (Detected::Settled(status @ AuditStatus::OptOut(_)), Some(probe)) => status
                 .with_note(&format!(
-                    "The probe declared via {} runs only for a tool whose help declares \
-                     --output or --format.",
-                    probe.cite(JSON_PROBE_KEY)
+                    "The probe declared via {} runs only for a tool whose help declares {}.",
+                    probe.cite(JSON_PROBE_KEY),
+                    output_flags::accepted_prose(),
                 ))
                 .into(),
             (Detected::Settled(status), _) => Verdict::from(status),
@@ -94,40 +92,34 @@ fn detect_json_output(runner: &BinaryRunner, project: &Project) -> Detected {
             ));
         }
     };
-    let flags = declared_output_flags(help);
-    if flags.is_empty() {
+    let declared = output_flags::declared(help);
+    if declared.is_empty() {
         // Most CLIs (gh, kubectl, cargo) put --output on subcommands, not
         // top-level.
         probe_subcommands(runner, help)
     } else {
-        validate_json_output(runner, &[], &flags)
+        validate_json_output(runner, &[], &declared)
     }
 }
 
-/// Each of [`OUTPUT_FLAGS`] the help declares, spelled as the help prints
-/// it: `-format` for a Go `flag` help that declares no double-dash name.
-fn declared_output_flags(help: &HelpOutput) -> Vec<String> {
-    OUTPUT_FLAGS
-        .iter()
-        .filter_map(|flag| help.find_flag(&[flag]))
-        .map(|found| found.spelling.to_string())
-        .collect()
-}
-
-/// Probe each top-level subcommand from the shared help parse for --output/--format.
+/// Probe each top-level subcommand from the shared help parse for an output flag.
 ///
 /// Most CLI frameworks (clap, cobra, argparse) list subcommands under a "Commands:"
 /// or "Subcommands:" section, and hand-written help under `... commands:`; the
 /// shared parser reads all of them.
 fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
+    let accepted = output_flags::accepted();
     let subcommands = subcommands_to_probe(help);
     if subcommands.is_empty() {
         return Detected::Settled(AuditStatus::OptOut(help.noting_dash_rule(
-            OUTPUT_FLAGS,
-            "no option definition in --help declares --output or --format, the flags this \
-             requirement accepts; usage lines are not read. The row is opt_out, and the \
-             schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
-             collapse to n/a via antecedent propagation.",
+            &accepted,
+            &format!(
+                "no option definition in --help declares {}, the flags this requirement \
+                 accepts; usage lines are not read. The row is opt_out, and the \
+                 schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
+                 collapse to n/a via antecedent propagation.",
+                output_flags::accepted_prose(),
+            ),
         )));
     }
 
@@ -138,27 +130,27 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
             continue;
         }
         let sub_help = HelpOutput::from_raw(format!("{}{}", sub_help.stdout, sub_help.stderr));
-        let flags = declared_output_flags(&sub_help);
-        if !flags.is_empty() {
-            return validate_json_output(runner, &[subcmd], &flags);
+        let declared = output_flags::declared(&sub_help);
+        if !declared.is_empty() {
+            return validate_json_output(runner, &[subcmd], &declared);
         }
         read.push((subcmd.to_string(), sub_help));
     }
 
     let message = help.noting_dash_rule(
-        OUTPUT_FLAGS,
+        &accepted,
         &format!(
             "no option definition in --help, or in the --help of the {} subcommand{} read, \
-             declares --output or --format, the flags this requirement accepts; usage lines \
-             are not read.",
+             declares {}, the flags this requirement accepts; usage lines are not read.",
             read.len(),
             if read.len() == 1 { "" } else { "s" },
+            output_flags::accepted_prose(),
         ),
     );
     let names: Vec<&str> = read.iter().map(|(name, _)| name.as_str()).collect();
     Detected::Settled(AuditStatus::OptOut(format!(
         "{message}{}",
-        dash_rule_notes(&names, &read, OUTPUT_FLAGS)
+        dash_rule_notes(&names, &read, &accepted)
     )))
 }
 
@@ -177,23 +169,22 @@ fn subcommands_to_probe(help: &HelpOutput) -> Vec<&str> {
 /// Try safe subcommands with the declared flags to validate actual JSON output.
 ///
 /// `prefix` contains any subcommand path (e.g., ["audit"]) to prepend to the
-/// probe commands. For top-level flags, prefix is empty. Each of `flags` is
-/// passed as the help spells it.
+/// probe commands. For top-level flags, prefix is empty. Each declared flag
+/// is passed as the help spells it.
 ///
 /// Strategy: try `[prefix...] --help --flag json` first (safe, --help always exits
 /// without side effects). If that produces non-JSON (many CLIs ignore --output with
-/// --help), fall back to `[prefix...] --version --flag json`. Never run the binary
-/// bare with just `--flag json`, as that could execute destructive commands.
-fn validate_json_output(runner: &BinaryRunner, prefix: &[&str], flags: &[String]) -> Detected {
+/// --help), fall back to `[prefix...] --version --flag json`. A JSON alias goes
+/// alone in place of `--flag json`. Never run the binary bare with just
+/// `--flag json`, as that could execute destructive commands.
+fn validate_json_output(runner: &BinaryRunner, prefix: &[&str], declared: &Declared) -> Detected {
     // Safe suffixes: always probe with --help or --version, never bare invocation.
     // Bare subcommand probing (`&[]`) was removed because it is unsafe in the
     // general case — subcommands may have side effects (kubectl apply, docker rm,
     // terraform plan), and for agentnative itself it caused fork bombs.
     const SAFE_SUFFIXES: &[&str] = &["--help", "--version"];
 
-    let spaced = flags.iter().map(|flag| vec![flag.clone(), "json".into()]);
-    let joined = flags.iter().map(|flag| vec![format!("{flag}=json")]);
-    for value in spaced.chain(joined) {
+    for value in declared.json_selectors() {
         for suffix in SAFE_SUFFIXES {
             let args: Vec<&str> = prefix
                 .iter()
@@ -210,7 +201,7 @@ fn validate_json_output(runner: &BinaryRunner, prefix: &[&str], flags: &[String]
     // The safe probes reach only `--help` and `--version`, which most CLIs
     // answer in text whatever the output flag says, so a miss is anc's
     // limit, not the tool's: the row is not scored.
-    let names: Vec<String> = flags.iter().map(|flag| format!("`{flag}`")).collect();
+    let names: Vec<String> = declared.names().map(|flag| format!("`{flag}`")).collect();
     let place = match prefix {
         [] => "--help".to_string(),
         path => format!("`{} --help`", path.join(" ")),
@@ -338,69 +329,12 @@ esac
             AuditStatus::OptOut(msg) => assert!(
                 msg.ends_with(
                     "The probe declared via .anc.toml [p2].json_probe runs only for a tool whose \
-                     help declares --output or --format."
+                     help declares --output, --format, --output-format, --json or --jsonl."
                 ),
                 "{msg}"
             ),
             other => panic!("expected OptOut, got {other:?}"),
         }
-    }
-
-    /// A help, and each output flag it declares as the probe must spell it.
-    const DECLARED: &[(&str, &str, &[&str])] = &[
-        (
-            "a long name with a short alias",
-            "Options:\n  -o, --output <FORMAT>    Output format: text or json\n  -h, --help               Show help\n",
-            &["--output"],
-        ),
-        (
-            "cobra's `--format string`",
-            "Flags:\n      --format string   Output format (default \"text\")\n  -h, --help            help for tool\n",
-            &["--format"],
-        ),
-        (
-            "both flags",
-            "Options:\n      --output <FILE>      Write to FILE\n      --format <FORMAT>    Output format\n",
-            &["--output", "--format"],
-        ),
-        (
-            "Go flag: one dash, and no double-dash name in the help",
-            "Usage of tool:\n  -format string\n    \tOutput format: text or json (default \"text\")\n  -version\n    \tPrint version\n",
-            &["-format"],
-        ),
-        (
-            "a longer flag that starts with the name",
-            "Options:\n      --output-format <FORMAT>    Output format\n      --output-dir <DIR>          Where to write\n      --format-version <N>        Schema version\n  -h, --help                      Show help\n",
-            &[],
-        ),
-        (
-            "a usage line",
-            "Usage: tool [--output FORMAT] <file>\n\nOptions:\n  -h, --help    Show help\n",
-            &[],
-        ),
-        (
-            "a sentence",
-            "Pass --format json for machine-readable output.\n\nOptions:\n  -h, --help    Show help\n",
-            &[],
-        ),
-        (
-            "one dash beside double-dash names",
-            "Options:\n  -format <FORMAT>    Output format\n      --help          Show help\n",
-            &[],
-        ),
-    ];
-
-    #[test]
-    fn output_flags_are_the_ones_the_help_declares_spelled_as_printed() {
-        let misread: Vec<String> = DECLARED
-            .iter()
-            .filter_map(|(what, help, expected)| {
-                let found = declared_output_flags(&HelpOutput::from_raw(*help));
-                (found != *expected)
-                    .then(|| format!("{what}: read {found:?}, declares {expected:?}"))
-            })
-            .collect();
-        assert!(misread.is_empty(), "{misread:#?}");
     }
 
     #[test]
@@ -428,7 +362,7 @@ esac
 case "$*" in
   *--output\ json*|*--output=json*) echo '{"probed":true}';;
   *--help*)
-    printf 'Usage: tool [OPTIONS]\n\nOptions:\n      --output-format <FORMAT>    Output format\n  -h, --help                      Show help\n';;
+    printf 'Usage: tool [OPTIONS]\n\nOptions:\n      --output-dir <DIR>    Where to write\n  -h, --help                Show help\n';;
   *) echo "hello";;
 esac
 "#;
@@ -437,12 +371,65 @@ esac
         assert_eq!(
             result.status,
             AuditStatus::OptOut(
-                "no option definition in --help declares --output or --format, the flags this \
-                 requirement accepts; usage lines are not read. The row is opt_out, and the \
-                 schema-discovery requirements (p2-must-schema-print, p2-should-schema-file) \
-                 collapse to n/a via antecedent propagation."
+                "no option definition in --help declares --output, --format, --output-format, \
+                 --json or --jsonl, the flags this requirement accepts; usage lines are not \
+                 read. The row is opt_out, and the schema-discovery requirements \
+                 (p2-must-schema-print, p2-should-schema-file) collapse to n/a via antecedent \
+                 propagation."
                     .into()
             )
+        );
+    }
+
+    #[test]
+    fn output_format_is_probed_as_an_output_flag() {
+        let script = r#"
+case "$*" in
+  "--help --output-format json") echo '{"format":"json"}';;
+  *--help*)
+    printf 'Usage: tool [OPTIONS]\n\nOptions:\n  -o, --output-format <FORMAT>    Output format: text or json\n  -h, --help                      Show help\n';;
+  *) echo "hello";;
+esac
+"#;
+        let result = JsonOutputAudit
+            .run(&test_project_with_sh_script(script))
+            .expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass, "got {:?}", result.status);
+    }
+
+    #[test]
+    fn a_boolean_json_alias_is_probed_alone() {
+        let script = r#"
+case "$*" in
+  "--help --json") echo '{"help":true}';;
+  *--help*)
+    printf 'Usage: tool [OPTIONS]\n\nOptions:\n      --json    Print JSON\n  -h, --help    Show help\n';;
+  *) echo "hello";;
+esac
+"#;
+        let result = JsonOutputAudit
+            .run(&test_project_with_sh_script(script))
+            .expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass, "got {:?}", result.status);
+    }
+
+    #[test]
+    fn a_json_flag_that_takes_a_value_is_not_the_alias() {
+        let script = r#"
+case "$*" in
+  *--json*--help*|*--help*--json*) echo '{"probed":true}';;
+  *--help*)
+    printf 'Usage: tool [OPTIONS]\n\nOptions:\n      --json fields    Output JSON with the specified fields\n  -h, --help           Show help\n';;
+  *) echo "hello";;
+esac
+"#;
+        let result = JsonOutputAudit
+            .run(&test_project_with_sh_script(script))
+            .expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::OptOut(_)),
+            "got {:?}",
+            result.status
         );
     }
 
@@ -502,9 +489,10 @@ esac
             result.status,
             AuditStatus::OptOut(
                 "no option definition in --help, or in the --help of the 2 subcommands read, \
-                 declares --output or --format, the flags this requirement accepts; usage lines \
-                 are not read. In `list`, `-format` is declared, but this help also declares \
-                 double-dash names, so it does not count as `--format`."
+                 declares --output, --format, --output-format, --json or --jsonl, the flags this \
+                 requirement accepts; usage lines are not read. In `list`, `-format` is \
+                 declared, but this help also declares double-dash names, so it does not count \
+                 as `--format`."
                     .into()
             )
         );
@@ -634,7 +622,7 @@ esac
         let result = JsonOutputAudit.run(&project).expect("audit should run");
         match &result.status {
             AuditStatus::OptOut(msg) => assert!(
-                msg.starts_with("no option definition in --help declares --output or --format"),
+                msg.starts_with("no option definition in --help declares --output, --format,"),
                 "{msg}"
             ),
             other => panic!("expected OptOut, got {other:?}"),

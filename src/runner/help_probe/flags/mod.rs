@@ -130,6 +130,12 @@ impl Flag {
     pub fn description(&self) -> &str {
         &self.description
     }
+
+    /// The first value placeholder on the definition line, as written:
+    /// `<FILE>`, `=false`, `N`. `None` for a flag that takes no value.
+    pub fn placeholder(&self) -> Option<&str> {
+        self.placeholder.as_deref()
+    }
 }
 
 /// A lookup hit: the flag, and the name it answered with as the help spells

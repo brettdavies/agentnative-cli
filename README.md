@@ -432,6 +432,19 @@ that leads with a flag name and holds only names and placeholders is another col
 the description, so the files-to-prompt line above declares one name. A description can also be set off by a marker in
 place of a gap: `#` (Thor), `=` (cmake), `--` (ffmpeg) or `-`.
 
+A wrapped description line is not a definition, even when it starts with a dash. A line indented to the description
+column of the definition above it carries on that description, so docker's `-1 for unlimited)` and the second line of
+
+```text
+  -v, --verbose...     Increase logging verbosity (-v for warnings, -vv for info, -vvv for debug,
+                       -vvvv for trace)
+```
+
+declare nothing. The same holds for a description that starts on the line after its definition, as clap's long help, the
+Go `flag` package and kubectl print it, and it holds across blank lines, because a description can run over several
+paragraphs. A line left of the description column ends it. A flag that a help mentions only inside another flag's
+description is not declared.
+
 One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
 double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:
 terraform's `-force` on `force-unlock` counts as `--force`. In a help that declares any double-dash name, a single-dash

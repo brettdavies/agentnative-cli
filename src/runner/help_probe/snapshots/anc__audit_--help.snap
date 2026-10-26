@@ -2,19 +2,19 @@
 source: src/runner/help_probe/fixture_snapshots.rs
 input_file: tests/fixtures/help/anc__audit_--help.txt
 ---
-  14 | --command | 
-  17 | --binary | 
-  20 | --bin | 
-  25 | --repo | 
-  30 | -q, --quiet | 
-  35 | --source | 
-  38 | --principle | 
-  41 | -v, --verbose | 
-  46 | --examples | 
-  49 | --output | 
-  55 | --include-tests | 
-  58 | --json | 
-  61 | --audit-profile | 
-  70 | --color | 
-  77 | --raw | 
-  80 | -h, --help |
+  14 | --command | Resolve a command from PATH and run behavioral audits agains
+  17 | --binary | Run only behavioral audits (skip source analysis). To choose
+  20 | --bin | Grade this binary when the directory builds several: a bin n
+  25 | --repo | Read `.anc.toml` from this directory instead of the target's
+  30 | -q, --quiet | Suppress non-essential output. Default: false (warnings and 
+  35 | --source | Run only source audits (skip behavioral)
+  38 | --principle | Filter audits by principle number (1-8)
+  41 | -v, --verbose | Escalate diagnostic detail. `-v` is shorthand for `--verbose
+  46 | --examples | Print a curated examples block and exit. Pairs with `--outpu
+  49 | --output | Output format [default: text] [possible values: text, json]
+  55 | --include-tests | Include test code in source analysis
+  58 | --json | Emit JSON output. Short alias for `--output json` on subcomm
+  61 | --audit-profile | Exemption category for the target. Suppresses audits that do
+  70 | --color | Color control for text output. `auto` (default) emits ANSI s
+  77 | --raw | Strip section headers, evidence lines, summary line, and bad
+  80 | -h, --help | Print help (see a summary with '-h')

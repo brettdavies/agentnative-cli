@@ -98,6 +98,25 @@ pub(crate) fn declared(help: &HelpOutput) -> Declared {
     }
 }
 
+/// The arguments that select JSON for a probe of the whole tool, when its
+/// top-level help declares a JSON mode: a value flag whose own definition
+/// names `json` (`--output <FMT>  text or json`), else a JSON alias.
+pub(crate) fn json_mode(help: &HelpOutput) -> Option<Vec<String>> {
+    VALUE_FLAGS
+        .iter()
+        .chain(NAMED_VALUE_FLAGS)
+        .filter_map(|flag| help.find_flag(&[flag]))
+        .find(|found| names_json(found.flag))
+        .map(|found| vec![found.spelling.to_string(), "json".to_string()])
+        .or_else(|| {
+            declared(help)
+                .aliases
+                .into_iter()
+                .next()
+                .map(|alias| vec![alias])
+        })
+}
+
 /// Whether a definition's value or description names `json` or `jsonl` as a
 /// word: `stream-json` does, `jsonnet` does not.
 fn names_json(flag: &Flag) -> bool {
@@ -221,5 +240,59 @@ mod tests {
             accepted_prose(),
             "--output, --format, --output-format, --json or --jsonl"
         );
+    }
+
+    /// A help, and the JSON mode a probe of the whole tool selects.
+    const JSON_MODES: &[(&str, &str, Option<&[&str]>)] = &[
+        (
+            "an output flag whose values name json",
+            "Options:\n  -o, --output <FORMAT>    Output format [possible values: text, json]\n",
+            Some(&["--output", "json"]),
+        ),
+        (
+            "yq's --output-format",
+            "Flags:\n  -o, --output-format string   [auto|a|yaml|y|json|j|props|p|xml|x] output format type. (default \"auto\")\n",
+            Some(&["--output-format", "json"]),
+        ),
+        (
+            "stream-json names json",
+            "Options:\n  --output-format <format>  Output format: \"text\", \"json\", or \"stream-json\"\n",
+            Some(&["--output-format", "json"]),
+        ),
+        (
+            "an output flag that writes a file",
+            "Options:\n  -o, --output <file>    Write to file instead of stdout\n      --json <data>      HTTP POST JSON\n",
+            None,
+        ),
+        (
+            "a Go template format flag",
+            "Usage of tool:\n  -format string\n    \tCustom template to format error messages in Go template syntax\n",
+            None,
+        ),
+        (
+            "a boolean alias",
+            "Options:\n      --output <FILE>    Write to FILE\n      --json             Print JSON\n",
+            Some(&["--json"]),
+        ),
+        (
+            "json named only in a sentence",
+            "Pass --output json for machine output.\n\nOptions:\n  -h, --help    Show help\n",
+            None,
+        ),
+    ];
+
+    #[test]
+    fn json_mode_is_a_declared_flag_whose_definition_names_json() {
+        let misread: Vec<String> = JSON_MODES
+            .iter()
+            .filter_map(|(what, help, expected)| {
+                let found = json_mode(&HelpOutput::from_raw(*help));
+                let expected: Option<Vec<String>> =
+                    expected.map(|args| args.iter().map(|arg| (*arg).to_string()).collect());
+                (found != expected)
+                    .then(|| format!("{what}: read {found:?}, expected {expected:?}"))
+            })
+            .collect();
+        assert!(misread.is_empty(), "{misread:#?}");
     }
 }

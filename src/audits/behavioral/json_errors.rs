@@ -30,14 +30,16 @@
 //! names anc didn't anticipate AND catches CLIs that have the right names
 //! with the wrong shapes.
 //!
-//! Applicability gate: vacuous Skip when the binary doesn't advertise
-//! `--output json` in its top-level `--help`. The MUST attaches to JSON
+//! Applicability gate: vacuous Skip when the top-level `--help` declares no
+//! JSON mode (`output_flags::json_mode`); the probe selects JSON with the
+//! flag the help declares. The MUST attaches to JSON
 //! mode, so CLIs that never opted into the JSON contract are out of scope.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    advertises_json_output, parse_error_envelope, probe_bad_invocation_json,
+    NO_JSON_MODE, parse_error_envelope, probe_bad_invocation_json, shown,
 };
+use crate::audits::behavioral::output_flags;
 use crate::project::Project;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 use serde_json::Value;
@@ -244,15 +246,15 @@ impl Audit for JsonErrorsAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
-            Some(help) if !advertises_json_output(help) => AuditStatus::Skip(
-                "binary does not advertise `--output json` in --help; \
-                 MUST applies only to CLIs that opt into the JSON contract."
-                    .into(),
-            ),
-            Some(_) => {
-                let result = probe_bad_invocation_json(project.runner_ref());
-                classify_json_error(&result)
-            }
+            Some(help) => match output_flags::json_mode(help) {
+                None => AuditStatus::Skip(format!(
+                    "{NO_JSON_MODE}; MUST applies only to CLIs that opt into the JSON contract."
+                )),
+                Some(mode) => {
+                    let result = probe_bad_invocation_json(project.runner_ref(), &mode);
+                    classify_json_error(&result, &shown(&mode))
+                }
+            },
         };
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -268,14 +270,12 @@ impl Audit for JsonErrorsAudit {
     }
 }
 
-pub(crate) fn classify_json_error(result: &crate::runner::RunResult) -> AuditStatus {
+pub(crate) fn classify_json_error(result: &crate::runner::RunResult, mode: &str) -> AuditStatus {
     let Some((value, channel)) = parse_error_envelope(result) else {
-        return AuditStatus::Fail(
-            "bad invocation under `--output json` produced no parseable JSON \
-             on stderr or stdout. JSON mode must emit a JSON error envelope, \
-             not plain text."
-                .into(),
-        );
+        return AuditStatus::Fail(format!(
+            "bad invocation under `{mode}` produced no parseable JSON on stderr or stdout. \
+             JSON mode must emit a JSON error envelope, not plain text."
+        ));
     };
 
     let Some(obj) = value.as_object() else {
@@ -341,7 +341,7 @@ mod tests {
     fn pass_with_all_three_keys_on_stderr() {
         let stderr = r#"{"error":"BadFlag","kind":"usage","message":"unknown flag --bad"}"#;
         assert_eq!(
-            classify_json_error(&fake_result(stderr, "")),
+            classify_json_error(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -350,7 +350,7 @@ mod tests {
     fn pass_with_extra_keys() {
         let stderr = r#"{"error":"BadFlag","kind":"usage","message":"unknown flag.","exit_code":2,"docs_url":"https://example.com/docs"}"#;
         assert_eq!(
-            classify_json_error(&fake_result(stderr, "")),
+            classify_json_error(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -359,7 +359,7 @@ mod tests {
     fn pass_when_envelope_on_stdout() {
         let stdout = r#"{"error":"X","kind":"usage","message":"unknown flag found."}"#;
         assert_eq!(
-            classify_json_error(&fake_result("", stdout)),
+            classify_json_error(&fake_result("", stdout), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -368,7 +368,7 @@ mod tests {
     fn fail_missing_type_id_role() {
         // Two prose-shaped fields, no kebab/snake identifier value.
         let stderr = r#"{"error":"Bad flag.","message":"unknown flag --bad."}"#;
-        match classify_json_error(&fake_result(stderr, "")) {
+        match classify_json_error(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Fail(msg) => {
                 assert!(msg.contains("type identifier"));
                 assert!(msg.contains("missing"));
@@ -384,7 +384,7 @@ mod tests {
         // message="..." (message). Plus an extra exit_code for color.
         let stderr = r#"{"status":"error","reason":"invalid-args","exit_code":2,"message":"unexpected argument '--bogus'"}"#;
         assert_eq!(
-            classify_json_error(&fake_result(stderr, "")),
+            classify_json_error(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -394,7 +394,7 @@ mod tests {
         // Discriminant via `ok: false`, type_id via "code", message via "detail".
         let stderr = r#"{"ok":false,"code":"auth-required","detail":"Please authenticate."}"#;
         assert_eq!(
-            classify_json_error(&fake_result(stderr, "")),
+            classify_json_error(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -407,7 +407,7 @@ mod tests {
         // these values from filling the discriminant role, and none of the
         // values are identifier-shaped (they're all in the success vocab).
         let stderr = r#"{"error":"ok","kind":"OK","message":"ok"}"#;
-        match classify_json_error(&fake_result(stderr, "")) {
+        match classify_json_error(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Fail(_) => {}
             other => panic!("expected Fail, got {other:?}"),
         }
@@ -427,7 +427,7 @@ mod tests {
         let stderr =
             r#"{"status":"error","error":{"code":"NOT_FOUND","detail":"The post was not found."}}"#;
         assert_eq!(
-            classify_json_error(&fake_result(stderr, "")),
+            classify_json_error(&fake_result(stderr, ""), "--output json"),
             AuditStatus::Pass
         );
     }
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn fail_only_message() {
         let stderr = r#"{"message":"Something went wrong."}"#;
-        match classify_json_error(&fake_result(stderr, "")) {
+        match classify_json_error(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Fail(_) => {} // missing discriminant + type_id
             other => panic!("expected Fail, got {other:?}"),
         }
@@ -444,7 +444,7 @@ mod tests {
     #[test]
     fn fail_only_type_id() {
         let stderr = r#"{"reason":"auth-required"}"#;
-        match classify_json_error(&fake_result(stderr, "")) {
+        match classify_json_error(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Fail(_) => {} // missing message; discriminant is the named field
             other => panic!("expected Fail, got {other:?}"),
         }
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn fail_plain_text_error() {
         let stderr = "error: unknown flag --bad";
-        match classify_json_error(&fake_result(stderr, "")) {
+        match classify_json_error(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Fail(msg) => assert!(msg.contains("no parseable JSON")),
             other => panic!("expected Fail, got {other:?}"),
         }
@@ -462,7 +462,7 @@ mod tests {
     #[test]
     fn fail_when_top_level_is_array() {
         let stderr = r#"["error","kind","message"]"#;
-        match classify_json_error(&fake_result(stderr, "")) {
+        match classify_json_error(&fake_result(stderr, ""), "--output json") {
             AuditStatus::Fail(msg) => assert!(msg.contains("not an object")),
             other => panic!("expected Fail, got {other:?}"),
         }

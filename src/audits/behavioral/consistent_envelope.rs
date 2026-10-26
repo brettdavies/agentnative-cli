@@ -4,12 +4,13 @@
 //! shows up across success and error paths, so consumers don't have to swap
 //! parsers depending on outcome. Two probes:
 //!
-//! 1. **Success envelope**: `--help --output json` (the universally-safe
+//! 1. **Success envelope**: `--help` in JSON mode (the universally-safe
 //!    JSON-mode invocation).
-//! 2. **Error envelope**: bad-flag invocation under `--output json`.
+//! 2. **Error envelope**: bad-flag invocation in JSON mode.
 //!
-//! Both probes are conditioned on the binary advertising `--output json` in
-//! `--help`. When advertised, we compare the top-level key sets. The success
+//! Both probes run only when the top-level `--help` declares a JSON mode
+//! (`output_flags::json_mode`), and select it with the flag the help
+//! declares. We compare the top-level key sets. The success
 //! envelope is allowed to carry payload-shaped keys (`data`, `results`,
 //! `items`, `count`, `total`) that the error envelope won't have; any other
 //! top-level key present in success but absent in error counts as drift.
@@ -22,8 +23,9 @@ use std::collections::HashSet;
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    advertises_json_output, probe_bad_invocation_json, probe_help_json,
+    NO_JSON_MODE, probe_bad_invocation_json, probe_help_json, shown,
 };
+use crate::audits::behavioral::output_flags;
 use crate::project::Project;
 use crate::runner::RunResult;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -63,17 +65,18 @@ impl Audit for ConsistentEnvelopeAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
-            Some(help) if !advertises_json_output(help) => AuditStatus::Skip(
-                "binary does not advertise `--output json` in --help; \
-                 envelope-consistency only applies to CLIs that opt into the JSON contract."
-                    .into(),
-            ),
-            Some(_) => {
-                let runner = project.runner_ref();
-                let success = probe_help_json(runner);
-                let error = probe_bad_invocation_json(runner);
-                audit_envelope(&success, &error)
-            }
+            Some(help) => match output_flags::json_mode(help) {
+                None => AuditStatus::Skip(format!(
+                    "{NO_JSON_MODE}; envelope-consistency only applies to CLIs that opt into the \
+                     JSON contract."
+                )),
+                Some(mode) => {
+                    let runner = project.runner_ref();
+                    let success = probe_help_json(runner, &mode);
+                    let error = probe_bad_invocation_json(runner, &mode);
+                    audit_envelope(&success, &error, &shown(&mode))
+                }
+            },
         };
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -89,25 +92,23 @@ impl Audit for ConsistentEnvelopeAudit {
     }
 }
 
-pub(crate) fn audit_envelope(success: &RunResult, error: &RunResult) -> AuditStatus {
+pub(crate) fn audit_envelope(success: &RunResult, error: &RunResult, mode: &str) -> AuditStatus {
     let success_keys = match top_level_keys(success) {
         Some(keys) => keys,
         None => {
-            return AuditStatus::Skip(
-                "success-mode probe (`--help --output json`) produced no parseable JSON; \
-                 cannot compare envelope shapes."
-                    .into(),
-            );
+            return AuditStatus::Skip(format!(
+                "success-mode probe (`--help {mode}`) produced no parseable JSON; cannot compare \
+                 envelope shapes."
+            ));
         }
     };
     let error_keys = match top_level_keys(error) {
         Some(keys) => keys,
         None => {
-            return AuditStatus::Skip(
-                "error-mode probe (bad flag + `--output json`) produced no parseable JSON; \
-                 the stricter `p2-must-json-errors` audit covers this case."
-                    .into(),
-            );
+            return AuditStatus::Skip(format!(
+                "error-mode probe (bad flag + `{mode}`) produced no parseable JSON; the stricter \
+                 `p2-must-json-errors` audit covers this case."
+            ));
         }
     };
 
@@ -170,21 +171,27 @@ mod tests {
     fn pass_when_envelopes_match() {
         let success = ok(r#"{"schema_version":"1.0","data":[1,2,3]}"#, "");
         let error = ok("", r#"{"schema_version":"1.0","error":"BadFlag"}"#);
-        assert_eq!(audit_envelope(&success, &error), AuditStatus::Pass);
+        assert_eq!(
+            audit_envelope(&success, &error, "--output json"),
+            AuditStatus::Pass
+        );
     }
 
     #[test]
     fn pass_when_only_payload_keys_differ() {
         let success = ok(r#"{"version":"1","data":[],"count":0}"#, "");
         let error = ok("", r#"{"version":"1","error":"X"}"#);
-        assert_eq!(audit_envelope(&success, &error), AuditStatus::Pass);
+        assert_eq!(
+            audit_envelope(&success, &error, "--output json"),
+            AuditStatus::Pass
+        );
     }
 
     #[test]
     fn warn_on_drift() {
         let success = ok(r#"{"schema_version":"1","trace_id":"abc","data":[]}"#, "");
         let error = ok("", r#"{"error":"BadFlag"}"#);
-        match audit_envelope(&success, &error) {
+        match audit_envelope(&success, &error, "--output json") {
             AuditStatus::Warn(msg) => {
                 assert!(msg.contains("schema_version"));
                 assert!(msg.contains("trace_id"));
@@ -198,7 +205,7 @@ mod tests {
     fn skip_when_success_not_json() {
         let success = ok("plain text help output", "");
         let error = ok("", r#"{"error":"X"}"#);
-        match audit_envelope(&success, &error) {
+        match audit_envelope(&success, &error, "--output json") {
             AuditStatus::Skip(msg) => assert!(msg.contains("success-mode")),
             other => panic!("expected Skip, got {other:?}"),
         }
@@ -208,7 +215,7 @@ mod tests {
     fn skip_when_error_not_json() {
         let success = ok(r#"{"data":[]}"#, "");
         let error = ok("", "error: bad flag");
-        match audit_envelope(&success, &error) {
+        match audit_envelope(&success, &error, "--output json") {
             AuditStatus::Skip(msg) => assert!(msg.contains("error-mode")),
             other => panic!("expected Skip, got {other:?}"),
         }

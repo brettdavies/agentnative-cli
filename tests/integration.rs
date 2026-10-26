@@ -294,6 +294,48 @@ fn test_go_flag_help_fixture_reads_single_dash_words_whole() {
     assert_eq!(verbose["status"], "warn", "{verbose}");
 }
 
+/// A quiet flag shown only in a usage line is not a declared flag: the
+/// `p7-quiet` row warns, says what was searched, and is one of the warns the
+/// `audience` label counts.
+#[test]
+#[cfg(unix)]
+fn test_usage_line_flag_is_not_a_declared_quiet_flag() {
+    let path = fixture_path("handwritten-help/quill");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    let row = |id: &str| {
+        results
+            .iter()
+            .find(|r| r["audit_id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"))
+    };
+
+    let quiet = row("p7-quiet");
+    assert_eq!(quiet["status"], "warn", "{quiet}");
+    assert_eq!(
+        quiet["evidence"],
+        "no option definition in --help declares --quiet or -q; usage lines are not read."
+    );
+
+    let signal_warns = [
+        "p1-non-interactive",
+        "p2-json-output",
+        "p7-quiet",
+        "p6-no-color-behavioral",
+    ]
+    .iter()
+    .filter(|id| row(id)["status"] == "warn")
+    .count();
+    let label = match signal_warns {
+        0..=1 => "agent-optimized",
+        2 => "mixed",
+        _ => "human-primary",
+    };
+    assert_eq!(parsed["audience"], label, "{signal_warns} signal warn(s)");
+}
+
 /// A hand-written `Common commands:` block whose entries all lead with the
 /// tool name is graded on its real subcommands: the example audit names
 /// them, the naming audit evaluates them, and `format` is not mistaken for

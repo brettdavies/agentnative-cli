@@ -13,6 +13,7 @@
 //! counts geometrically (`tool a b c --help`), and the SHOULDs/MUSTs all
 //! attach to first-level subcommands.
 
+use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::runner::help_probe::Flag;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
 
@@ -129,20 +130,27 @@ pub(crate) fn coverage<'a>(
     Coverage { with, without }
 }
 
-/// For each of `names` whose own help keeps a single-dash word apart from
-/// one of `wanted`, [`HelpOutput::dash_rule_note`] led by the subcommand's
-/// name. Empty when no help does; otherwise it starts with a space, ready to
-/// close a deny message.
+/// For each of `names` whose own help declares one of `wanted` that does
+/// not count, why, led by the subcommand's name: a single-dash word kept
+/// apart from its double-dash spelling ([`HelpOutput::dash_rule_note`]),
+/// and with `meaning`, a single letter whose definition does not give it
+/// ([`flag_meaning::rejected_note`]). `meaning` is `None` only for `wanted`
+/// with no single letter. Empty when no help does; otherwise it starts with
+/// a space, ready to close a deny message.
 pub(crate) fn dash_rule_notes(
     names: &[&str],
     subhelp: &[(String, HelpOutput)],
     wanted: &[&str],
+    meaning: Option<&Meaning>,
 ) -> String {
     names
         .iter()
         .filter_map(|name| {
             let (_, help) = subhelp.iter().find(|(sub, _)| sub == name)?;
-            let note = help.dash_rule_note(wanted)?;
+            let note = match meaning {
+                Some(meaning) => flag_meaning::notes(help, wanted, meaning),
+                None => help.dash_rule_note(wanted),
+            }?;
             Some(format!(" In `{name}`, {note}"))
         })
         .collect()

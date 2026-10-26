@@ -60,6 +60,7 @@ pub(crate) fn audit_raw_flag(help: &HelpOutput) -> AuditStatus {
     pass_or_warn(
         help,
         &["--raw"],
+        None,
         "no `--raw` flag advertised. MAY-tier — useful for pipelines that \
          want to strip formatting before piping to other tools.",
     )

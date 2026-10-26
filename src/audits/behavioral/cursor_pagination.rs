@@ -113,7 +113,7 @@ pub(crate) fn audit_cursor_pagination(
              result sets without re-scanning earlier pages.{}",
             cov.without_list(),
             CURSOR_FLAGS.join(", "),
-            dash_rule_notes(&cov.without, subhelp, CURSOR_FLAGS),
+            dash_rule_notes(&cov.without, subhelp, CURSOR_FLAGS, None),
         )),
         None,
     )

@@ -150,7 +150,7 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
     let names: Vec<&str> = read.iter().map(|(name, _)| name.as_str()).collect();
     Detected::Settled(AuditStatus::OptOut(format!(
         "{message}{}",
-        dash_rule_notes(&names, &read, &accepted)
+        dash_rule_notes(&names, &read, &accepted, None)
     )))
 }
 

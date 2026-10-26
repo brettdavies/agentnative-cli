@@ -13,7 +13,7 @@
 
 use crate::audit::Audit;
 use crate::audits::behavioral::flag_presence::pass_or_warn;
-use crate::audits::behavioral::non_interactive::{no_flag_declared, prints_usage};
+use crate::audits::behavioral::non_interactive::{NON_INTERACTIVE, no_flag_declared, prints_usage};
 use crate::project::Project;
 use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -107,7 +107,12 @@ pub(crate) fn audit_flag_existence(help: &HelpOutput) -> AuditStatus {
             "--help produced no output (likely non-English or unsupported)".into(),
         );
     }
-    pass_or_warn(help, GATE_FLAGS, &no_flag_declared(GATE_FLAGS))
+    pass_or_warn(
+        help,
+        GATE_FLAGS,
+        Some(&NON_INTERACTIVE),
+        &no_flag_declared(GATE_FLAGS),
+    )
 }
 
 #[cfg(test)]
@@ -181,6 +186,35 @@ mod tests {
             "Run with --no-input in CI.\n\nOptions:\n  -h, --help    Show help.\n",
         ),
     ];
+
+    #[test]
+    fn a_gate_letter_that_means_something_else_warns_and_says_why() {
+        // codex 0.130's `-p` selects a configuration profile.
+        let help = "Options:\n  -p, --profile <CONFIG_PROFILE_V2>\n          Configuration profile from config.toml\n  -h, --help\n          Print help\n";
+        match audit(help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with(
+                    "`-p` is declared, but its definition (`-p, --profile <CONFIG_PROFILE_V2>  \
+                     Configuration profile from config.toml`) does not mean non-interactive."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_lone_gate_letter_with_no_description_does_not_pass() {
+        match audit("Options:\n  -y\n  -h, --help     Show help.\n") {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with(
+                    "`-y` is declared, but its definition (`-y`) does not mean non-interactive."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
 
     #[test]
     fn a_gate_flag_named_but_not_declared_does_not_pass() {

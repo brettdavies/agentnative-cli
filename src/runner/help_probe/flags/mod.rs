@@ -85,6 +85,8 @@ pub struct Flag {
     /// The first value placeholder on the definition line, as written
     /// (`<FILE>`, `=false`, `N`).
     placeholder: Option<String>,
+    /// The names and placeholders as the definition line shows them.
+    header: String,
     description: String,
     /// 1-based line of the definition in the help text.
     line: usize,
@@ -136,6 +138,26 @@ impl Flag {
     pub fn placeholder(&self) -> Option<&str> {
         self.placeholder.as_deref()
     }
+
+    /// The definition as evidence quotes it: the names and placeholders as
+    /// the help shows them, then the description, each with its runs of
+    /// whitespace collapsed to one space and two spaces between them.
+    pub fn definition(&self) -> String {
+        let collapse = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let header = collapse(&self.header);
+        let description = collapse(&self.description);
+        if description.is_empty() {
+            header
+        } else {
+            format!("{header}  {description}")
+        }
+    }
+}
+
+/// Whether `name` is one dash and one character, the spelling of a name
+/// that lookups match only against the same letter.
+pub fn is_single_letter(name: &str) -> bool {
+    FlagName::new(name).form == NameForm::Letter
 }
 
 /// A lookup hit: the flag, and the name it answered with as the help spells
@@ -174,12 +196,17 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
     let mut flags: Vec<Flag> = Vec::new();
     let mut section: Option<String> = None;
     let text = normalize::normalize(raw);
-    for (index, line) in classify::lines(&text).into_iter().enumerate() {
+    for (index, (line, shown)) in classify::lines(&text)
+        .into_iter()
+        .zip(text.lines())
+        .enumerate()
+    {
         match line {
             Line::Heading(heading) => section = Some(heading.to_string()),
             Line::Definition(header) => flags.push(Flag {
                 names: header.names,
                 placeholder: header.placeholder.map(str::to_string),
+                header: header_as_shown(shown, header.description).to_string(),
                 description: header.description.to_string(),
                 line: index + 1,
                 section: section.clone(),
@@ -197,6 +224,12 @@ pub(super) fn parse(raw: &str) -> Vec<Flag> {
     }
     resolve_dash_forms(&mut flags);
     flags
+}
+
+/// The part of definition line `shown` before its `description`, trimmed.
+fn header_as_shown<'a>(shown: &'a str, description: &str) -> &'a str {
+    let shown = shown.trim_end();
+    shown.strip_suffix(description).unwrap_or(shown).trim()
 }
 
 /// A line of a help that is shaped like a definition.
@@ -278,6 +311,7 @@ mod tests {
             .map(|(index, names)| Flag {
                 names: names.iter().map(|name| FlagName::new(*name)).collect(),
                 placeholder: None,
+                header: names.join(", "),
                 description: String::new(),
                 line: index + 1,
                 section: None,

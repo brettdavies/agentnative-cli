@@ -137,7 +137,7 @@ pub(crate) fn audit_timeout_behavioral(
              operation have to enforce timeouts externally.{}",
             cov.without_list(),
             TIMEOUT_FLAGS.join(", "),
-            dash_rule_notes(&cov.without, subhelp, TIMEOUT_FLAGS),
+            dash_rule_notes(&cov.without, subhelp, TIMEOUT_FLAGS, None),
         )),
         None,
     )

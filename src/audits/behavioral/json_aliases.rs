@@ -66,6 +66,7 @@ pub(crate) fn audit_json_aliases(help: &HelpOutput) -> AuditStatus {
     pass_or_warn(
         help,
         &["--json", "--jsonl"],
+        None,
         "no --json or --jsonl short alias found. Agents and pipelines \
          benefit from short forms alongside the canonical `--output` enum.",
     )

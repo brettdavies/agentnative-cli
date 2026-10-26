@@ -429,7 +429,10 @@ spelling:
 | `--ignore-files-only   --ignore option only ignores files` (files-to-prompt)        | `--ignore-files-only`                         |
 
 A value placeholder (`<FILE>`, `=false`, `N`, `[=WHEN]`) is never part of a name. A single letter matches only the same
-letter: `-f` is not `-force-copy`, and `-v` is not `-version`.
+letter: `-f` is not `-force-copy`, and `-v` is not `-version`. A single letter also counts for an audit only when its
+own definition means what the audit asks for, through a long name the audit accepts on the same line or a description
+that names the meaning: `-v  Increase verbosity` is a verbose flag, and `-v, --version  Print version` is not. A row
+that sets a declared letter aside quotes the definition it read.
 
 Names can sit in a second column with no comma between the columns, as lazygit and pandoc print them. After a gap, text
 that leads with a flag name and holds only names and placeholders is another column; text that reads on as a sentence is

@@ -60,6 +60,7 @@ pub(crate) fn audit_color_flag(help: &HelpOutput) -> AuditStatus {
     pass_or_warn(
         help,
         &["--color"],
+        None,
         "no `--color` flag advertised. MAY-tier — `auto|always|never` lets \
          agents and pipelines override the TTY-based default.",
     )

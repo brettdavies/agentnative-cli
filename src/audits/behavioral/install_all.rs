@@ -108,6 +108,7 @@ pub(crate) fn audit_install_help(help: &HelpOutput) -> AuditStatus {
     pass_or_warn(
         help,
         ALL_FLAG,
+        None,
         "no option definition in `skill install --help` declares `--all`; usage lines are not \
          read. MAY-tier — a single `skill install --all` invocation across detected runtimes \
          is convenient for multi-agent setups.",

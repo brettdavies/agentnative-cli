@@ -1,4 +1,5 @@
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::project::Project;
 use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -19,6 +20,16 @@ const AGENTIC_FLAGS: &[&str] = &[
     "-p",
     "--print",
 ];
+
+/// What `-y` and `-p` must mean to count as a non-interactive flag. `-p` is
+/// also `--profile` (codex), `--pretty` (rg) and `--full-path` (fd); `-y` is
+/// `--ctime` in dust. The words are the accepted long names' own, plus
+/// "Assume yes" and "skip confirmation prompts".
+pub(super) const NON_INTERACTIVE: Meaning = Meaning {
+    what: "non-interactive",
+    long_names: &[],
+    words: &["yes", "confirmation", "non-interactive", "headless"],
+};
 
 /// Help-output markers on the bare invocation. `arg_required_else_help`
 /// in clap prints a "Usage:" block and exits non-zero — this is the
@@ -88,7 +99,8 @@ pub(crate) fn audit_non_interactive(
     bare_output: &str,
     help: Option<&HelpOutput>,
 ) -> AuditStatus {
-    if help.is_some_and(|help| help.find_flag(AGENTIC_FLAGS).is_some()) {
+    if help.is_some_and(|help| flag_meaning::find(help, AGENTIC_FLAGS, &NON_INTERACTIVE).is_some())
+    {
         return AuditStatus::Pass;
     }
     let cause = match bare {
@@ -104,7 +116,7 @@ pub(crate) fn audit_non_interactive(
     };
     let message = format!("{cause}, and {}", no_flag_declared(AGENTIC_FLAGS));
     AuditStatus::Warn(match help {
-        Some(help) => help.noting_dash_rule(AGENTIC_FLAGS, &message),
+        Some(help) => flag_meaning::noting(help, AGENTIC_FLAGS, &NON_INTERACTIVE, &message),
         None => message,
     })
 }
@@ -201,6 +213,7 @@ kill -11 $$
             "Options:\n  -p, --print       Print the response and exit.\n  -h, --help        Show help.\n",
             "Options:\n  -y, --yes         Assume yes.\n  -h, --help        Show help.\n",
             "Options:\n      --no-input    Never prompt.\n  -h, --help        Show help.\n",
+            "Options:\n  -y                Assume yes.\n  -h, --help        Show help.\n",
         ] {
             assert_eq!(blocked(help), AuditStatus::Pass, "{help}");
         }
@@ -238,6 +251,47 @@ kill -11 $$
             .map(|(what, _)| *what)
             .collect();
         assert!(passed.is_empty(), "{passed:?}");
+    }
+
+    #[test]
+    fn an_agentic_letter_that_means_something_else_warns_and_says_why() {
+        // rg 15.1's `-p` and dust 1.2's `-y`.
+        for (help, letter, definition) in [
+            (
+                "OPTIONS:\n    -p, --pretty\n        Alias for colors, headings and line numbers.\n",
+                "-p",
+                "-p, --pretty  Alias for colors, headings and line numbers.",
+            ),
+            (
+                "Options:\n  -y, --ctime <CTIME>  Just like -mtime, but based on file change time\n",
+                "-y",
+                "-y, --ctime <CTIME>  Just like -mtime, but based on file change time",
+            ),
+        ] {
+            match blocked(help) {
+                AuditStatus::Warn(msg) => assert!(
+                    msg.ends_with(&format!(
+                        "`{letter}` is declared, but its definition (`{definition}`) does not \
+                         mean non-interactive."
+                    )),
+                    "{msg}"
+                ),
+                other => panic!("expected Warn, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_lone_agentic_letter_with_no_description_does_not_pass() {
+        match blocked("Options:\n  -p\n  -h, --help        Show help.\n") {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with(
+                    "`-p` is declared, but its definition (`-p`) does not mean non-interactive."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 
     #[test]

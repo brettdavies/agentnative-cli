@@ -17,6 +17,7 @@ use std::borrow::Cow;
 use crate::anc_toml::{CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 use crate::audit::Audit;
 use crate::audits::behavioral::destructive_ops::destructive_subcommands;
+use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::audits::behavioral::subcommand_help::{dash_rule_notes, probe_subcommands};
 use crate::project::Project;
 use crate::runner::HelpOutput;
@@ -34,6 +35,16 @@ const CONFIRM_FLAGS: &[&str] = &[
     "--assume-yes",
     "--confirm",
 ];
+
+/// What `-y` and `-f` must mean to confirm. `-f` is also `--file` (tar,
+/// sed), `--filter` (lazygit) and `--format` (shellcheck). The words are the
+/// accepted long names' own, plus "skip confirmation prompts". A flag the
+/// `.anc.toml` chain declares is the operator's word and skips this check.
+const CONFIRM: Meaning = Meaning {
+    what: "force or yes",
+    long_names: &[],
+    words: &["force", "yes", "confirm", "confirmation"],
+};
 
 pub struct ForceYesAudit;
 
@@ -136,7 +147,7 @@ pub(crate) fn audit_force_yes(
             missing.push(verb.as_str());
             continue;
         };
-        if help.find_flag(CONFIRM_FLAGS).is_some() {
+        if flag_meaning::find(help, CONFIRM_FLAGS, &CONFIRM).is_some() {
             continue;
         }
         match declared_flags
@@ -173,7 +184,7 @@ pub(crate) fn audit_force_yes(
          confirmation so they can't be invoked accidentally.{}",
         missing.join(", "),
         accepted_flags(declared_flags),
-        dash_rule_notes(&missing, subhelp, &wanted),
+        dash_rule_notes(&missing, subhelp, &wanted, Some(&CONFIRM)),
     ))
     .into()
 }
@@ -343,6 +354,64 @@ mod tests {
             verdict.mitigation,
             Some(Mitigation::Config(
                 "destroy accepts --noconfirm via .anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    fn builtin(help: &str) -> AuditStatus {
+        let subhelp = vec![("delete".to_string(), hp(help))];
+        audit_force_yes(&["delete".to_string()], &subhelp, &[]).status
+    }
+
+    #[test]
+    fn a_confirm_letter_passes_beside_an_accepted_long_name_or_a_description_that_names_it() {
+        for help in [
+            "Options:\n  -f, --force    skip confirmation prompts\n",
+            "Options:\n  -y             Skip confirmation prompts.\n",
+            "Options:\n  -f             Force removal.\n",
+        ] {
+            assert_eq!(builtin(help), AuditStatus::Pass, "{help}");
+        }
+    }
+
+    #[test]
+    fn a_confirm_letter_that_means_something_else_fails_and_says_why() {
+        // tar 1.35's `-f`.
+        match builtin("Options:\n  -f, --file=ARCHIVE         use archive file or device ARCHIVE\n")
+        {
+            AuditStatus::Fail(msg) => assert!(
+                msg.ends_with(
+                    "In `delete`, `-f` is declared, but its definition (`-f, --file=ARCHIVE  use \
+                     archive file or device ARCHIVE`) does not mean force or yes."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_lone_confirm_letter_with_no_description_does_not_confirm() {
+        match builtin("Options:\n  -y\n      --help    Show help.\n") {
+            AuditStatus::Fail(msg) => assert!(
+                msg.ends_with(
+                    "In `delete`, `-y` is declared, but its definition (`-y`) does not mean \
+                     force or yes."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_declared_letter_confirms_whatever_its_definition_says() {
+        let verdict = confirms("Options:\n  -y, --yarn    Use yarn.\n", "y");
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(
+            verdict.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts y via .anc.toml [p5].confirm_flags".into()
             ))
         );
     }

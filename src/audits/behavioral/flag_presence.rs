@@ -1,16 +1,35 @@
 //! The verdict of an audit that asks one thing of a help: whether it
 //! declares any of a set of flags.
 
+use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::runner::HelpOutput;
+use crate::runner::help_probe::is_single_letter;
 use crate::types::AuditStatus;
 
-/// Pass when `help` declares any of `names`. Otherwise a Warn that carries
-/// `message`, closed with [`HelpOutput::dash_rule_note`] when one applies.
-pub(super) fn pass_or_warn(help: &HelpOutput, names: &[&str], message: &str) -> AuditStatus {
-    if help.find_flag(names).is_some() {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(help.noting_dash_rule(names, message))
+/// Pass when `help` declares any of `names`, a single letter among them
+/// only where its definition gives `meaning`. Otherwise a Warn that carries
+/// `message`, closed with the notes that say why a declared name did not
+/// count. `meaning` is `None` only for `names` with no single letter.
+pub(super) fn pass_or_warn(
+    help: &HelpOutput,
+    names: &[&str],
+    meaning: Option<&Meaning>,
+    message: &str,
+) -> AuditStatus {
+    match meaning {
+        Some(meaning) if flag_meaning::find(help, names, meaning).is_some() => AuditStatus::Pass,
+        Some(meaning) => AuditStatus::Warn(flag_meaning::noting(help, names, meaning, message)),
+        None => {
+            debug_assert!(
+                !names.iter().any(|name| is_single_letter(name)),
+                "a single letter needs a Meaning: {names:?}"
+            );
+            if help.find_flag(names).is_some() {
+                AuditStatus::Pass
+            } else {
+                AuditStatus::Warn(help.noting_dash_rule(names, message))
+            }
+        }
     }
 }
 
@@ -22,7 +41,7 @@ mod tests {
     const MESSAGE: &str = "no color flag.";
 
     fn verdict(help: &str) -> AuditStatus {
-        pass_or_warn(&HelpOutput::from_raw(help), NAMES, MESSAGE)
+        pass_or_warn(&HelpOutput::from_raw(help), NAMES, None, MESSAGE)
     }
 
     #[test]

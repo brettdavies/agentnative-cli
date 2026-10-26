@@ -29,6 +29,7 @@ mod more_formats;
 mod no_color;
 mod no_pager_behavioral;
 mod non_interactive;
+mod output_flags;
 mod paired_examples;
 mod quiet;
 mod raw_flag;

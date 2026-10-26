@@ -1,10 +1,20 @@
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_meaning::Meaning;
 use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 const QUIET_FLAGS: &[&str] = &["--quiet", "-q"];
+
+/// `-q` is also `--disable` (curl) and `--question` (make). The words come
+/// from real `-q` descriptions: "quiet mode" (ssh, unzip), "Suppress
+/// diagnostic output" (deno).
+const QUIET: Meaning = Meaning {
+    what: "quiet",
+    long_names: &[],
+    words: &["quiet", "suppress"],
+};
 
 pub struct QuietAudit;
 
@@ -65,6 +75,7 @@ pub(crate) fn audit_quiet(help: &HelpOutput) -> AuditStatus {
     pass_or_warn(
         help,
         QUIET_FLAGS,
+        Some(&QUIET),
         "no option definition in --help declares --quiet or -q; usage lines are not read.",
     )
 }
@@ -158,12 +169,50 @@ mod tests {
         for line in [
             "  -q, --quiet    Say less.",
             "      --quiet    Say less.",
-            "  -q             Say less.",
+            "  -q             Quiet mode.",
         ] {
             let help =
                 HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));
             assert_eq!(audit_quiet(&help), AuditStatus::Pass, "{line}");
         }
+    }
+
+    #[test]
+    fn a_q_that_means_something_else_warns_and_says_why() {
+        // curl 8.17's `-q` reads no `.curlrc`; make 4.4's asks whether
+        // targets are up to date.
+        for (line, definition) in [
+            (
+                " -q, --disable                Disable .curlrc",
+                "-q, --disable  Disable .curlrc",
+            ),
+            (
+                "  -q, --question              Run no recipe; exit status says if up to date.",
+                "-q, --question  Run no recipe; exit status says if up to date.",
+            ),
+        ] {
+            let help =
+                HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));
+            assert_eq!(
+                audit_quiet(&help),
+                AuditStatus::Warn(format!(
+                    "{SEARCHED} `-q` is declared, but its definition (`{definition}`) does not \
+                     mean quiet."
+                )),
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lone_q_with_no_description_does_not_pass() {
+        let help = HelpOutput::from_raw("Options:\n  -q\n  -h, --help    Show help.\n");
+        assert_eq!(
+            audit_quiet(&help),
+            AuditStatus::Warn(format!(
+                "{SEARCHED} `-q` is declared, but its definition (`-q`) does not mean quiet."
+            ))
+        );
     }
 
     #[test]

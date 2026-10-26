@@ -4,12 +4,23 @@
 //! agents need to debug failures. SHOULD-tier; counterpart to `p7-must-quiet`.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_meaning::Meaning;
 use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 const VERBOSE_FLAGS: &[&str] = &["--verbose", "-v", "-vv"];
+
+/// `-v` is also `--version` (claude, lazygit, bun) and `--invert-match`
+/// (rg, grep). The words come from real `-v` descriptions: "increase
+/// verbosity" (argparse, click), "verbosely list files" (tar), "set logging
+/// level" (ffmpeg), "Enable debug output".
+const VERBOSE: Meaning = Meaning {
+    what: "verbose",
+    long_names: &[],
+    words: &["verbose", "verbosely", "verbosity", "logging", "debug"],
+};
 
 pub struct VerboseFlagAudit;
 
@@ -62,6 +73,7 @@ pub(crate) fn audit_verbose_flag(help: &HelpOutput) -> AuditStatus {
     pass_or_warn(
         help,
         VERBOSE_FLAGS,
+        Some(&VERBOSE),
         "no `--verbose` / `-v` flag advertised. SHOULD-tier — agents \
          debugging failures need a way to escalate diagnostic detail.",
     )
@@ -82,9 +94,66 @@ mod tests {
     #[test]
     fn pass_with_short_form() {
         let help = HelpOutput::from_raw(
-            "Options:\n  -v, --debug    Show detail.\n  -h, --help    Show help.\n",
+            "Options:\n  -v, --debug    Enable debug output.\n  -h, --help    Show help.\n",
         );
         assert_eq!(audit_verbose_flag(&help), AuditStatus::Pass);
+    }
+
+    fn warning(help: &str) -> String {
+        match audit_verbose_flag(&HelpOutput::from_raw(help)) {
+            AuditStatus::Warn(msg) => msg,
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_lone_v_whose_description_names_verbosity_passes() {
+        // probe-go-flag's `-v` and ffmpeg 7.1's `-v <loglevel>`.
+        for help in [
+            "Usage of probe:\n  -v\tverbose\n",
+            "Main options:\n-v loglevel         set logging level\n-y                  overwrite output files\n",
+        ] {
+            assert_eq!(
+                audit_verbose_flag(&HelpOutput::from_raw(help)),
+                AuditStatus::Pass,
+                "{help}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_v_that_means_version_warns_and_says_why() {
+        // claude 2.1's `--help`.
+        let msg = warning(
+            "Options:\n  -p, --print                           Print response and exit\n  -v, --version                         Output the version number\n",
+        );
+        assert!(
+            msg.ends_with(
+                "`-v` is declared, but its definition (`-v, --version  Output the version \
+                 number`) does not mean verbose."
+            ),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn a_v_that_means_something_else_does_not_pass() {
+        // rg 15.1 and dust 1.2 declare `-v` for other flags.
+        for help in [
+            "OPTIONS:\n    -v, --invert-match\n        Invert matching.\n",
+            "Options:\n  -v, --invert-filter <REGEX>  Exclude filepaths matching this regex.\n",
+        ] {
+            assert!(warning(help).contains("does not mean verbose"), "{help}");
+        }
+    }
+
+    #[test]
+    fn a_lone_v_with_no_description_does_not_pass() {
+        let msg = warning("Options:\n  -v\n  -h, --help    Show help.\n");
+        assert!(
+            msg.ends_with("`-v` is declared, but its definition (`-v`) does not mean verbose."),
+            "{msg}"
+        );
     }
 
     // Excerpt of actionlint 1.7.12's `--help`, which declares no

@@ -15,6 +15,7 @@ mod env_hints;
 mod error_probe;
 mod examples_subcommand;
 mod flag_existence;
+mod flag_meaning;
 mod flag_presence;
 mod force_yes;
 mod help;

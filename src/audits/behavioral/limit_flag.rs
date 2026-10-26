@@ -16,32 +16,31 @@
 //! its description says so ("Max results", "number of").
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::audits::behavioral::list_style::list_style_subcommands;
 use crate::audits::behavioral::subcommand_help::{
     coverage, dash_rule_notes, first_flag, probe_named,
 };
 use crate::project::Project;
 use crate::runner::HelpOutput;
-use crate::runner::help_probe::Flag;
+use crate::runner::help_probe::{Flag, is_single_letter};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const LIMIT_FLAGS: &[&str] = &["--limit", "--max-results", "--max", "--top"];
+const LIMIT_FLAGS: &[&str] = &["--limit", "--max-results", "--max", "--top", "-n"];
 
-/// Long forms that make a `-n` a count.
-const COUNT_LONG_FORMS: &[&str] = &[
-    "--lines",
-    "--number",
-    "--num",
-    "--count",
-    "--max-count",
-    "--last",
-];
-
-/// Description words that make a `-n` a count, matched as whole words.
-const COUNT_WORDS: &[&str] = &["max", "maximum", "limit", "lines"];
-
-/// Description phrase that makes a `-n` a count.
-const COUNT_PHRASE: &str = "number of";
+/// What `-n` must mean to bound a count.
+const LIMIT: Meaning = Meaning {
+    what: "a limit",
+    long_names: &[
+        "--lines",
+        "--number",
+        "--num",
+        "--count",
+        "--max-count",
+        "--last",
+    ],
+    words: &["max", "maximum", "limit", "lines", "number of"],
+};
 
 pub struct LimitFlagAudit;
 
@@ -133,8 +132,13 @@ pub(crate) fn audit_limit_flag(
              (looked for {}, or a -n that bounds a count).{carried} SHOULD-tier: callers should be able to bound \
              response size directly rather than scrape-then-truncate.{}",
             cov.without_list(),
-            LIMIT_FLAGS.join(", "),
-            dash_rule_notes(&cov.without, subhelp, LIMIT_FLAGS),
+            LIMIT_FLAGS
+                .iter()
+                .copied()
+                .filter(|name| !is_single_letter(name))
+                .collect::<Vec<_>>()
+                .join(", "),
+            dash_rule_notes(&cov.without, subhelp, LIMIT_FLAGS, Some(&LIMIT)),
         )),
         None,
     )
@@ -145,19 +149,7 @@ fn find_limit_flag(help: &HelpOutput) -> Option<String> {
 }
 
 fn is_limit_flag(flag: &Flag) -> bool {
-    flag.declares_any(LIMIT_FLAGS).is_some()
-        || (flag.declares("-n").is_some() && bounds_a_count(flag))
-}
-
-fn bounds_a_count(flag: &Flag) -> bool {
-    if flag.declares_any(COUNT_LONG_FORMS).is_some() {
-        return true;
-    }
-    let description = flag.description().to_lowercase();
-    description.contains(COUNT_PHRASE)
-        || description
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .any(|word| COUNT_WORDS.contains(&word))
+    flag_meaning::accepts(flag, LIMIT_FLAGS, &LIMIT).is_some()
 }
 
 #[cfg(test)]
@@ -379,8 +371,10 @@ Other Options:
 
     #[test]
     fn n_counts_as_a_limit_flag_only_when_it_bounds_a_count() {
-        // Each line as the named tool's help prints it.
+        // Each line as the named tool's help prints it, after a lone `-n`
+        // with no description.
         let cases = [
+            ("  -n", false),
             // helm 4.3, global flags
             (
                 "  -n, --namespace string                namespace scope for this request",
@@ -430,7 +424,13 @@ Other Options:
             (AuditStatus::Warn(msg), None) => {
                 assert!(msg.contains("search"), "{msg}");
                 assert!(msg.contains("Carries one: list (--max)."), "{msg}");
-                assert!(!msg.contains("--namespace"), "{msg}");
+                assert!(
+                    msg.ends_with(
+                        "In `search`, `-n` is declared, but its definition (`-n, --namespace \
+                         string  namespace scope for this request`) does not mean a limit."
+                    ),
+                    "{msg}"
+                );
             }
             other => panic!("expected Warn, got {other:?}"),
         }

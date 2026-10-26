@@ -39,7 +39,7 @@ mod env_hints_bash;
 pub(crate) mod fixture_snapshots;
 mod flags;
 
-pub use flags::{Flag, FlagMatch};
+pub use flags::{Flag, FlagMatch, is_single_letter};
 
 /// Which detection pattern surfaced an [`EnvHint`]. Agents debugging a
 /// false positive need to know whether a hint came from a clap

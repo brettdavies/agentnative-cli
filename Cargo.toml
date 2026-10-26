@@ -90,7 +90,7 @@ ureq = { version = "=3.4.2", optional = true, default-features = false, features
 # matches rustls's certificate-error variants inside ureq's error to tell a
 # bundled-root rejection from other TLS failures, and ureq does not treat
 # the wrapped error as API.
-rustls = { version = "=0.23.45", optional = true, default-features = false, features = [
+rustls = { version = "=0.23.46", optional = true, default-features = false, features = [
     "aws-lc-rs",
     "std",
     "tls12",

@@ -416,6 +416,8 @@ pub struct ScorecardMeta {
     pub follow_declarations: bool,
     /// The declared-hosts trail.
     pub declared_hosts: Vec<EvidenceItem>,
+    /// Where the audit ran and whether it presented a credential.
+    pub vantage: WebVantage,
 }
 
 /// Assemble the scorecard from finalized rows, the site's `buildWebScorecard`.
@@ -503,10 +505,7 @@ pub fn build_web_scorecard(
         audit_profile: Null,
         site_type: meta.site_type,
         public_listing: meta.public_listing,
-        vantage: WebVantage {
-            network: "public".to_string(),
-            credentialed: false,
-        },
+        vantage: meta.vantage.clone(),
         follow_declarations: meta.follow_declarations,
         declared_hosts: meta.declared_hosts.clone(),
         summary,

@@ -37,7 +37,7 @@ use crate::web_audit::registry::{
 use crate::web_audit::score::ScoreConfig;
 use crate::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardMeta, ScorecardStatus,
-    WebScorecard, build_web_scorecard,
+    WebScorecard, WebVantage, build_web_scorecard,
 };
 
 /// Worker threads per wave.
@@ -756,6 +756,10 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         public_listing: false,
         follow_declarations: input.follow_declarations,
         declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
+        vantage: WebVantage {
+            network: if local_target { "local" } else { "public" }.to_string(),
+            credentialed: false,
+        },
     };
     let scorecard = build_web_scorecard(
         &results,

@@ -615,6 +615,23 @@ fn the_dns_gate_withholds_external_resolvers_for_a_local_target_unless_overridde
     assert_eq!(row(&public, "dns-aid").status, ScorecardStatus::Pass);
 }
 
+#[test]
+fn the_vantage_names_the_network_the_target_sits_on() {
+    let vantage = |url: &str| {
+        let transport = Arc::new(MockTransport::new(vec![], html(200)));
+        let mut input = RunInput::new(url, handle(transport), stand_in_handlers());
+        input.per_check_timeout = Duration::from_secs(2);
+        input.per_audit_deadline = Duration::from_secs(20);
+        let v = complete(run_web_audit(input)).scorecard.vantage;
+        (v.network, v.credentialed)
+    };
+    assert_eq!(
+        vantage("https://127.0.0.1:8080/"),
+        ("local".to_string(), false)
+    );
+    assert_eq!(vantage(BASE), ("public".to_string(), false));
+}
+
 // Deadline scenarios: a target that answers the root and discovery, then
 // never finishes another request.
 

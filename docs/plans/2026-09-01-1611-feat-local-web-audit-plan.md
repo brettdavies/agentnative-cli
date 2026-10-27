@@ -2,7 +2,7 @@
 title: Local Web Audit - Plan
 type: feat
 status: active
-prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106"]
+prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229"]
 date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
@@ -280,13 +280,16 @@ planned here, with no separate site plan).
 ### Delivery
 
 - U2, U3 and U11 are on `dev` (#98, #100, #99).
-- The `anc web` snapshot stack (#97, #101 through #106) is on `dev` at its 2026-09-17 behavior, gated behind the cargo
-  feature `web`, which is off by default.
-- A catch-up stack follows on top of it. It re-pins the raw vendored files to `agentnative-site` `dev` `d5772289`, which
-  needs no U15 contract; ports the site engine changes since the old pin (`agentnative-site` #389, #393, #394, #395,
-  #397, #399, #401, #402, #412, #413, #418, #451, #453, #458, #462); and lands KD11 (HTTPS only), KD12 and R22 (the OS
-  trust store and `--ca-cert`), U14 (`ANC_WEB_TOKEN`), U17 (the request memo), and the port's error-step type folded
-  into the CLI's `NextStep` contract.
+- The `anc web` snapshot stack (#97, #101 through #106) is on `dev`, gated behind the cargo feature `web`, which is off
+  by default.
+- The catch-up to `agentnative-site` `dev` `d5772289` is on `dev`. #204 re-pins the raw vendored files behind a
+  divergence ledger, and the site engine changes since the old pin are ported one per PR: #394 (#210), #399 and #402
+  (#211), #413 (#212 for the fetch guard, #216 for the handlers), #418 (#217), #453 as U17 (#219), #401, #412 and the
+  API half of #393 (#221), #451 (#222), #389 (#223), #395 with the rest of #393 (#224), #397 (#226), and #458 and #462
+  (#208). KD11 (HTTPS only, #212), KD12 and R22 (the OS trust store and `--ca-cert`, #209), and the port's error-step
+  type folded into the CLI's `NextStep` contract (#202) land in the same stack. The divergence ledger holds no entry:
+  the engine reproduces every scenario of the vendored corpus.
+- U14 (`ANC_WEB_TOKEN` and `--token-stdin`) is the credentialed side the corpus does not exercise.
 - The commit that turns `web` on by default is the parity commit. No release ships `anc web` before it.
 - U16 adopts the U15 contract at a later re-pin.
 
@@ -1724,11 +1727,10 @@ checkbox as you ship.
   - Files: `scripts/sync-web-audit.sh`, `build.rs`, `src/web_audit/render.rs`, `src/cli.rs`.
   - Verify: a failing row prints goal, fix and links; `anc emit web-remediation` round-trips every entry offline; the
     scorecard object is unchanged byte for byte.
-- [ ] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
-  `anc web` ships the four-code table in `src/web_audit/render/exit.rs`, `--help`, the README and a closing `exit N:`
-  line, pinned by `tests/web_audit_render.rs` (#104, #106). `anc audit` returns only 0, 1 or 2 from
-  `scorecard::exit_code` and names no code in its report, and the site runner's exit table (site #379) is closed
-  unmerged, so the second verb and the site half stay open with no unit owning them.
+- [x] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
+  `anc audit` and `anc web` return one table from `src/exit_codes.rs`, both `--help` texts print it, and both text
+  reports close on `exit N:` (#104, #106, #227). The site runner's exit table (site #379) is closed unmerged; the
+  site owns its runner.
   - Surfaced by: DX review D8 — the same binary returned 1 for "warnings, proceed" and for "checks failed".
   - Files: `src/main.rs`, `src/cli.rs`, `README.md`, `agentnative-site` `scripts/web-audit/audit.ts`.
   - Verify: the pinning test covers 0, 1, 2 and 3 on both verbs; the site runner returns the same codes.

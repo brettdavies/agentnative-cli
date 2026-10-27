@@ -1,5 +1,5 @@
 //! YAML loading shared by the build-time parsers (`parser.rs`,
-//! `web_registry.rs`).
+//! `web_registry/`).
 //!
 //! The options hold the vendored inputs to YAML 1.2 core-schema typing:
 //! `yes`/`no`/`on`/`off` stay strings, `<<` is an ordinary key rather than a

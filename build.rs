@@ -9,7 +9,7 @@
 //!    on next build — no manual sync.
 //! 3. Vendored web-audit registry (`src/web_audit/vendored/`) →
 //!    `$OUT_DIR/generated_web_registry.rs`. Driven by
-//!    `build_support/web_registry.rs`, which mirrors the site's normalizer
+//!    `build_support/web_registry/`, which mirrors the site's normalizer
 //!    and compiles every registry pattern with the `regex` crate.
 //!
 //! Errors here are *intentionally loud* — every parse failure cites the
@@ -26,7 +26,7 @@ mod js_regex;
 mod parser;
 #[path = "build_support/ts_consts.rs"]
 mod ts_consts;
-#[path = "build_support/web_registry.rs"]
+#[path = "build_support/web_registry/mod.rs"]
 mod web_registry;
 #[path = "build_support/yaml.rs"]
 mod yaml;
@@ -279,10 +279,10 @@ fn emit_skill_hosts(manifest_dir: &std::path::Path) {
 /// JSON Schema (the server-card check's required fields), and the three
 /// TypeScript modules the probe User-Agent strings resolve from, plus
 /// `SITE_SHA` naming the site commit they were taken from. Every validation
-/// failure names the offending check id; see `build_support/web_registry.rs`.
+/// failure names the offending check id; see `build_support/web_registry/`.
 fn emit_web_registry(manifest_dir: &std::path::Path) {
     let dir = manifest_dir.join("src/web_audit/vendored");
-    println!("cargo:rerun-if-changed=build_support/web_registry.rs");
+    println!("cargo:rerun-if-changed=build_support/web_registry/");
     println!("cargo:rerun-if-changed=build_support/js_regex.rs");
     println!("cargo:rerun-if-changed=build_support/ts_consts.rs");
     let read = |name: &str| -> String {

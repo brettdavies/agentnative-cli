@@ -1,4 +1,4 @@
-//! Tests for the web-audit registry codegen (`build_support/web_registry.rs`
+//! Tests for the web-audit registry codegen (`build_support/web_registry/`
 //! and its two helpers). The build script and this driver both pull the
 //! modules in via `#[path]`, so `cargo test` exercises the same code that
 //! `cargo build` runs against the vendored inputs.
@@ -7,7 +7,7 @@
 mod js_regex;
 #[path = "../build_support/ts_consts.rs"]
 mod ts_consts;
-#[path = "../build_support/web_registry.rs"]
+#[path = "../build_support/web_registry/mod.rs"]
 mod web_registry;
 #[path = "../build_support/yaml.rs"]
 mod yaml;

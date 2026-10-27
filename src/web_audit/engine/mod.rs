@@ -5,12 +5,17 @@
 //! issue time.
 
 pub mod antecedents;
+pub mod api_catalog;
+pub mod api_follow;
+pub mod api_targets;
+pub mod api_trail;
 pub mod discovery;
 pub mod discovery_documents;
 pub mod discovery_posts;
 pub mod handlers;
 pub mod mcp_wire;
 pub mod pool;
+pub mod provenance;
 pub mod retained;
 pub mod summary;
 pub mod types;

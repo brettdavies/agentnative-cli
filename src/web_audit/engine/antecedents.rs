@@ -10,6 +10,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::api_catalog::MCP_TARGET_RE;
 use super::mcp_wire::advertises_resources;
 use super::types::{ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::ProbeResponse;
@@ -59,6 +60,8 @@ pub struct AntecedentContext<'a> {
     pub root: Option<&'a ProbeResponse>,
     /// Wave-1 outcomes keyed by check id.
     pub sources: &'a HashMap<String, ProbeOutcome>,
+    /// The retained API catalog lists an anchor the API category evaluates.
+    pub api_anchors: bool,
 }
 
 /// The declared-site-type gate, applied before the antecedent token.
@@ -108,8 +111,7 @@ pub fn resolve(token: AntecedentToken, ctx: &AntecedentContext<'_>) -> Resolutio
         }
         T::ApiSurface => apply_if(api_surface_holds(ctx)),
         T::SchemasRef => apply_if(
-            source_passed(ctx, "openapi")
-                || ctx.root.is_some_and(|root| SCHEMAS_RE.is_match(&root.body)),
+            own_openapi_passed(ctx) || ctx.root.is_some_and(|root| SCHEMAS_RE.is_match(&root.body)),
         ),
         T::DocsSite => apply_if(
             ctx.site_type == Some(DeclaredSiteType::Content) || source_passed(ctx, "llms-txt"),
@@ -199,6 +201,26 @@ fn source_evidence<'a>(ctx: &AntecedentContext<'a>, id: &str) -> &'a [EvidenceIt
     ctx.sources.get(id).map_or(&[], |o| o.evidence.as_slice())
 }
 
+/// A wave-1 row's evidence from the audited origin, without what it read
+/// from hosts the site declares.
+fn own_origin_evidence(ctx: &AntecedentContext<'_>, id: &str) -> Vec<EvidenceItem> {
+    source_evidence(ctx, id)
+        .iter()
+        .filter(|item| item.get("off_origin") != Some(&serde_json::Value::Bool(true)))
+        .cloned()
+        .collect()
+}
+
+/// The OpenAPI row passed on a description the audited origin serves; one
+/// an API anchor declares on another host references no schema the audited
+/// site serves at its own paths.
+fn own_openapi_passed(ctx: &AntecedentContext<'_>) -> bool {
+    source_passed(ctx, "openapi")
+        && own_origin_evidence(ctx, "openapi")
+            .iter()
+            .any(|item| item.get("ok") == Some(&serde_json::Value::Bool(true)))
+}
+
 /// The retained body of a wave-1 check, or empty.
 pub fn retained_body<'a>(ctx: &AntecedentContext<'a>, id: &str) -> &'a str {
     source_evidence(ctx, id)
@@ -230,7 +252,7 @@ fn auth_signal_observed(ctx: &AntecedentContext<'_>) -> bool {
     if ctx.root.is_some_and(|root| root.status == Some(401)) {
         return true;
     }
-    evidence_shows_auth_challenge(source_evidence(ctx, "openapi"))
+    evidence_shows_auth_challenge(&own_origin_evidence(ctx, "openapi"))
         || evidence_shows_auth_challenge(source_evidence(ctx, "mcp-initialize"))
         || card_declares_auth(ctx)
 }
@@ -244,9 +266,6 @@ static API_DOC_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
 static API_PATH_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)/api/").unwrap());
 static SERVICE_DESC_REL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)rel\s*=\s*["']?(?:service-desc|service-doc)(?-u:\b)"#).unwrap()
-});
-static MCP_TARGET_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\.well-known/mcp|server-card|mcp-skill|/mcp(?-u:\b)").unwrap()
 });
 static LINK_TAG_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)<link(?-u:\b)[^>]*>").unwrap());
@@ -274,9 +293,11 @@ fn rest_service_desc_link(ctx: &AntecedentContext<'_>) -> bool {
         .any(|entry| SERVICE_DESC_REL_RE.is_match(&entry) && !MCP_TARGET_RE.is_match(&entry))
 }
 
-/// Any one signal makes the api-surface antecedent hold.
+/// Any one signal makes the api-surface antecedent hold: an API anchor in
+/// the retained api-catalog, or one of the site's own signals, each of
+/// which holds it whatever the catalog lists.
 fn api_surface_holds(ctx: &AntecedentContext<'_>) -> bool {
-    if ctx.site_type == Some(DeclaredSiteType::Api) {
+    if ctx.api_anchors || ctx.site_type == Some(DeclaredSiteType::Api) {
         return true;
     }
     if any_evidence_status(source_evidence(ctx, "openapi"), 200) {
@@ -337,6 +358,7 @@ mod tests {
             discovery_evidence: discovery,
             root,
             sources,
+            api_anchors: false,
         }
     }
 

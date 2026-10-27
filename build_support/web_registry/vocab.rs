@@ -17,6 +17,7 @@ pub const HANDLER_KINDS: &[&str] = &[
 ];
 /// Eval rules the Rust engine ports.
 pub const EVAL_RULES: &[&str] = &[
+    "api-description",
     "legacy-alias-redirects",
     "retained-document",
     "scoped-discovery",

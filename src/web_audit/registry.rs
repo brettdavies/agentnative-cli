@@ -159,7 +159,7 @@ mod tests {
         assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
         assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
         assert_eq!(HANDLER_KINDS.len(), 12);
-        assert_eq!(EVAL_RULES.len(), 3);
+        assert_eq!(EVAL_RULES.len(), 4);
     }
 
     /// The unported set is exact, so each port that lands shrinks it here.
@@ -178,7 +178,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(evals, BTreeSet::from(["api-description"]));
+        assert!(evals.is_empty(), "{evals:?}");
     }
 
     #[test]

@@ -16,6 +16,8 @@ pub const AUDIT_PROBE_MAX_BODY_BYTES: usize = 64 * 1024;
 /// Cap for a discovery document the audit keeps: a server card, the AI
 /// catalog, the API catalog.
 pub const DOCUMENT_MAX_BODY_BYTES: usize = 256 * 1024;
+/// Cap for an OpenAPI description the API category reads.
+pub const OPENAPI_MAX_BODY_BYTES: usize = 512 * 1024;
 /// Ceiling on an uncapped read. The site reads the root document in full
 /// within Workers memory; the local engine draws a line here so a huge page
 /// cannot exhaust the host.

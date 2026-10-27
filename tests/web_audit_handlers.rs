@@ -24,7 +24,7 @@ use agentnative::web_audit::engine::{
     Dispatch, HandlerContext, ProbeOutcome, ProbeStatus, RunOutcome,
 };
 use agentnative::web_audit::fetch::ProbeResponse;
-use agentnative::web_audit::handlers::api_hygiene::derive_api_probe_url;
+use agentnative::web_audit::handlers::api_probe_url::{ProbeUrl, derive_api_probe_url};
 use agentnative::web_audit::handlers::assert::compiled;
 use agentnative::web_audit::handlers::cors_preflight::run_cors_preflight;
 use agentnative::web_audit::handlers::default_handlers;
@@ -833,6 +833,12 @@ fn a_nested_probe_budget_that_runs_out_marks_the_row_incomplete() {
 #[test]
 fn the_api_probe_url_prefers_a_documented_client_error_then_any_safe_get() {
     let ctx = context(Arc::new(MockTransport::new(vec![], html(404, ""))));
+    let allowed = |url: &str| ctx.validate_nested(url).is_ok();
+    let derive = |body: &str| derive_api_probe_url(body, &ctx.base, &allowed);
+    let probe = |url: &str, source| ProbeUrl {
+        url: url.to_string(),
+        source,
+    };
     let spec = json!({
         "paths": {
             "/users": { "post": { "responses": { "404": {} } }, "get": { "responses": { "200": {} } } },
@@ -841,24 +847,21 @@ fn the_api_probe_url_prefers_a_documented_client_error_then_any_safe_get() {
     })
     .to_string();
     assert_eq!(
-        derive_api_probe_url(&spec, &ctx),
-        (
-            "https://example.com/users/anc-web-audit-no-such".to_string(),
+        derive(&spec),
+        probe(
+            "https://example.com/users/anc-web-audit-no-such",
             "openapi-4xx"
         )
     );
     let no_4xx = json!({ "paths": { "/things": { "get": {} } } }).to_string();
     assert_eq!(
-        derive_api_probe_url(&no_4xx, &ctx),
-        ("https://example.com/things".to_string(), "openapi-get")
+        derive(&no_4xx),
+        probe("https://example.com/things", "openapi-get")
     );
-    let fallback = (
-        "https://example.com/anc-web-audit-no-such-api".to_string(),
-        "fallback",
-    );
-    assert_eq!(derive_api_probe_url("", &ctx), fallback);
-    assert_eq!(derive_api_probe_url("not json", &ctx), fallback);
-    assert_eq!(derive_api_probe_url("[1,2]", &ctx), fallback);
+    let fallback = probe("https://example.com/anc-web-audit-no-such-api", "fallback");
+    assert_eq!(derive(""), fallback);
+    assert_eq!(derive("not json"), fallback);
+    assert_eq!(derive("[1,2]"), fallback);
     let no_safe = json!({ "paths": { "/x": { "delete": {} } } }).to_string();
-    assert_eq!(derive_api_probe_url(&no_safe, &ctx), fallback);
+    assert_eq!(derive(&no_safe), fallback);
 }

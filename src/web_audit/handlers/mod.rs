@@ -3,7 +3,9 @@
 //! check and the run's context to an outcome; the engine dispatches by
 //! the check's handler kind through a [`HandlerSet`].
 
+pub mod api_description;
 pub mod api_hygiene;
+pub mod api_probe_url;
 pub mod assert;
 pub mod auth_md;
 pub mod content_without_js;
@@ -16,13 +18,14 @@ pub mod mcp;
 pub mod scoped_llms;
 pub mod server_card;
 pub mod shared;
+pub mod targets;
 pub mod webmcp;
 
 use crate::web_audit::engine::HandlerSet;
 
-/// Every stateless handler kind and the `legacy-alias-redirects` and
-/// `retained-document` rules,
-/// registered under their registry spellings.
+/// Every stateless handler kind and the `api-description`,
+/// `legacy-alias-redirects` and `retained-document` rules, registered under
+/// their registry spellings.
 pub fn stateless_handlers() -> HandlerSet {
     let mut set = HandlerSet::new();
     set.register("http", http::run_http)
@@ -42,6 +45,7 @@ pub fn stateless_handlers() -> HandlerSet {
         .register("llms-txt-quality", llms_txt_quality::run_llms_txt_quality)
         .register("api-hygiene", api_hygiene::run_api_hygiene)
         .register("server-card", server_card::run_server_card)
+        .register_eval("api-description", api_description::run_api_description)
         .register_eval("legacy-alias-redirects", http::run_legacy_alias_redirects)
         .register_eval("retained-document", http::run_retained_document);
     set
@@ -70,6 +74,7 @@ mod tests {
         assert_eq!(
             EVAL_RULES,
             &[
+                "api-description",
                 "legacy-alias-redirects",
                 "retained-document",
                 "scoped-discovery"

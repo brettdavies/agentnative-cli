@@ -18,9 +18,10 @@ candidate, or stops with `binary-ambiguous` and one `--bin` command each. `Proje
 `manifest_path`, and `binary_paths` from the graded package, so manifest-reading audits and the tool identity follow it;
 with nothing graded, `Project::anchor_ungraded` picks the one bin-declaring package, and with several,
 `Project::manifest_skip` gives those audits their Skip evidence. Source audits run once per language present
-(`Project::languages`), reading `Project::parsed_files(language)` from `scan::source_walker`, which also skips an
-`examples` directory beside a manifest or at the root, and `audits::source::merge_shared` folds an audit id both
-languages report into one row. The README's "What a directory audit grades" section is the user-facing contract.
+(`Project::languages`), reading `Project::parsed_files(language)` in path order from `scan::source_walker`, which also
+skips an `examples` directory beside a manifest or at the root; `audits::source::pass` parses each file once for every
+source audit of its language, and `audits::source::merge_shared` folds an audit id both languages report into one row.
+The README's "What a directory audit grades" section is the user-facing contract.
 
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`
 
@@ -70,7 +71,7 @@ Key decisions already made:
 
 ## Conventions
 
-- `ast-grep-core` and `ast-grep-language` pinned to exact version (`=0.42.0`) because the API is pre-1.0
+- `ast-grep-core` and `ast-grep-language` pinned to exact version (`=0.42.3`) because the API is pre-1.0
 - `Position` uses `.line()` / `.column(&node)` methods, not tuple access
 - Pre-build `Pattern` objects for `find_all()`; `&str` rebuilds on every node
 - Feature flag is `tree-sitter-rust`, not `language-rust`
@@ -78,12 +79,25 @@ Key decisions already made:
 
 ## Source Audit Convention
 
-Most source audits follow this structure (a few legacy helpers in `output_module.rs` and `error_types.rs` use different
-helper shapes but still satisfy the core contract that `run()` is the sole `AuditResult` constructor):
+Source audits that parse share one parse per file per run, through `src/audits/source/pass.rs`:
 
-- **Struct** implements `Audit` trait with `id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`
-- **`audit_x()` helper** takes `(source: &str)` (or `(source: &str, file: &str)` when evidence needs file location
-  context) and returns `AuditStatus` (not `AuditResult`). This is the unit-testable core.
+- **Struct** implements `Audit` (`id()`, `label()`, `group()`, `layer()`, `applicable()`, `run()`) and `SourceScan<L>`
+  for its language (`ast_grep_language::Rust` or `Python`), and returns `Some(Scanner::Rust(self))` or
+  `Some(Scanner::Python(self))` from `Audit::scanner()`.
+- **`scan()`** takes a `&SourceFile<'_, L>`, parsed once (`label()` for evidence, `source()`, `root()`,
+  `include_tests()`), and returns the audit's typed per-file finding. Most audits keep an `audit_x(file)` helper that
+  returns `AuditStatus` as the unit-testable core. Patterns are `LazyLock<Pattern>` statics, compiled once, and several
+  patterns share one walk through `source::has_any`, `source::any_match`, or `source::locations_each`, which keeps
+  per-pattern evidence order. No audit parses a whole file itself; `macro_interior.rs` re-parses macro interiors, not
+  files.
+- **`run()`** takes the findings in path order with `pass::findings(project, language, lang, self)` and aggregates them.
+  Before the audit loop, `main::run` calls `pass::prepare` for each language's applicable, unsuppressed source audits,
+  so each file is parsed once for all of them and its tree dropped before the next. With nothing prepared (unit tests,
+  direct callers), `pass::findings` scans that audit alone through the same code. Findings are keyed by language and
+  audit id, because `p6-no-color`, `p4-enumerate-valid-set`, and `p6-sigterm` share an id across Rust and Python; a
+  debug assertion fails when an audit runs after its language was prepared without it.
+- **Text-only audits** (`p6-timeout`, `p1-tty-detection-source`, `p2-output-module`, `p6-sigterm`) never parse; they
+  iterate `project.parsed_files(language)`, which is in path order too.
 - **No `Audit` impl constructs `AuditResult` outside its own `run()`.** `run()` is the sole place each audit assembles
   its own result; never hardcode ID/group/layer/label string literals in `audit_x()` or anywhere outside `run()`. The
   runtime layer (`main::run`'s error and `--audit-profile` suppression branches) legitimately constructs `AuditResult`
@@ -93,14 +107,13 @@ helper shapes but still satisfy the core contract that `run()` is the sole `Audi
 - **`label()` returns `&'static str`** and feeds the `label` field in `run()`'s `AuditResult`. Having the label on the
   trait also means the suppression and error branches can show the human label instead of falling back to the opaque
   `id`. See `src/audit.rs`.
-- **Tests call `audit_x()`** and match on `AuditStatus` directly, not `result.status`
+- **Tests call `audit_x()`** (or `scan()`) on `pass::rust(source, file)` or `pass::python(source, file)` and match on
+  the finding directly, not `result.status`.
 
 This prevents ID triplication (the same string literal in `id()`, `run()`, and `audit_x()`) and ensures the `Audit`
 trait is the single source of truth for audit metadata.
 
-For cross-language pattern helpers, use `source::has_pattern_in()` / `source::find_pattern_matches_in()` /
-`source::has_string_literal_in()` with a `Language` parameter; do not write private per-language helpers in individual
-audit files.
+Shared tree helpers live in `src/source.rs`; do not write private per-language parse helpers in individual audit files.
 
 ## Principle Registry
 
@@ -157,14 +170,14 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 `src/scorecard/mod.rs` emits `schema_version: "0.9"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape.
 
-`schema/scorecard.schema.json` is the hand-written JSON Schema for this shape, and `anc emit schema` prints it. The
-file is the contract: its descriptions, closed value sets, formats, and `additionalProperties: false` exist nowhere
-else. `hand_written_schema_matches_the_serialized_shape` (`src/scorecard/schema_drift.rs`) derives the shape from the
-serialized types with `schemars`, a dev-dependency compiled only under `cfg(test)`, and names every path where the
-file disagrees on a property name, a `required` list, or a type. A shape change edits the file by hand, with
-`SCHEMA_VERSION`, the `$id`, and the root description, which `tests/scorecard_schema_v05.rs` pins to
-`SCHEMA_VERSION`. A new serialized struct takes `#[cfg_attr(test, derive(schemars::JsonSchema))]`. The reasoning is
-in `docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md`.
+`schema/scorecard.schema.json` is the hand-written JSON Schema for this shape, and `anc emit schema` prints it. The file
+is the contract: its descriptions, closed value sets, formats, and `additionalProperties: false` exist nowhere else.
+`hand_written_schema_matches_the_serialized_shape` (`src/scorecard/schema_drift.rs`) derives the shape from the
+serialized types with `schemars`, a dev-dependency compiled only under `cfg(test)`, and names every path where the file
+disagrees on a property name, a `required` list, or a type. A shape change edits the file by hand, with
+`SCHEMA_VERSION`, the `$id`, and the root description, which `tests/scorecard_schema_v05.rs` pins to `SCHEMA_VERSION`. A
+new serialized struct takes `#[cfg_attr(test, derive(schemars::JsonSchema))]`. The reasoning is in
+`docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md`.
 
 Cumulative history:
 

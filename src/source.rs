@@ -3,64 +3,9 @@
 #![deny(clippy::string_slice)]
 
 use ast_grep_core::matcher::MatcherExt;
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_core::{Doc, Matcher, Node, NodeMatch, Pattern};
-use ast_grep_language::{Python, Rust};
 
-use crate::project::Language;
 use crate::types::SourceLocation;
-
-/// Check whether a Rust source string contains at least one match for the given pattern.
-pub fn has_pattern(source: &str, pattern_str: &str) -> bool {
-    has_pattern_with(source, pattern_str, Rust)
-}
-
-/// Parse a Rust source file and find all matches for a pattern.
-pub fn find_pattern_matches(source: &str, pattern_str: &str) -> Vec<SourceLocation> {
-    find_pattern_matches_with(source, pattern_str, Rust)
-}
-
-/// Check whether `source` contains at least one match for `pattern_str` in `lang`.
-pub fn has_pattern_in(source: &str, pattern_str: &str, lang: Language) -> bool {
-    match lang {
-        Language::Rust => has_pattern_with(source, pattern_str, Rust),
-        Language::Python => has_pattern_with(source, pattern_str, Python),
-        _ => false,
-    }
-}
-
-/// Find all matches for `pattern_str` in `source`, parsed as `lang`.
-///
-/// Currently used by tests; kept as a symmetric counterpart to `has_pattern_in`
-/// for future Python audits that need evidence locations rather than a boolean.
-#[allow(dead_code)]
-pub fn find_pattern_matches_in(
-    source: &str,
-    pattern_str: &str,
-    lang: Language,
-) -> Vec<SourceLocation> {
-    match lang {
-        Language::Rust => find_pattern_matches_with(source, pattern_str, Rust),
-        Language::Python => find_pattern_matches_with(source, pattern_str, Python),
-        _ => vec![],
-    }
-}
-
-/// Check whether `source` contains a string literal matching `needle` in `lang`.
-///
-/// For Rust, checks `"needle"`. For Python, checks both `"needle"` and `'needle'`
-/// (checking both quote forms for Rust is harmless — Rust has no single-quote strings
-/// beyond char literals, so the single-quote pattern simply won't match).
-pub fn has_string_literal_in(source: &str, needle: &str, lang: Language) -> bool {
-    // Double-quoted form: works for both Rust and Python
-    let dq = format!(r#""{needle}""#);
-    if has_pattern_in(source, &dq, lang) {
-        return true;
-    }
-    // Single-quoted form: meaningful for Python, harmless no-op for Rust
-    let sq = format!("'{needle}'");
-    has_pattern_in(source, &sq, lang)
-}
 
 /// Collapse `text` to one line and bound it to `max_chars` characters,
 /// appending `...` only when characters were dropped.
@@ -139,48 +84,26 @@ pub fn locations_each<D: Doc>(
     found
 }
 
-fn has_pattern_with<L>(source: &str, pattern_str: &str, lang: L) -> bool
-where
-    L: LanguageExt + Copy,
-{
-    let pattern = match Pattern::try_new(pattern_str, lang) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let root = lang.ast_grep(source);
-    root.root().find(&pattern).is_some()
-}
-
-fn find_pattern_matches_with<L>(source: &str, pattern_str: &str, lang: L) -> Vec<SourceLocation>
-where
-    L: LanguageExt + Copy,
-{
-    let pattern = match Pattern::try_new(pattern_str, lang) {
-        Ok(p) => p,
-        Err(_) => return vec![],
-    };
-
-    let root = lang.ast_grep(source);
-    root.root()
-        .find_all(&pattern)
-        .map(|m| {
-            let pos = m.start_pos();
-            SourceLocation {
-                file: String::new(),
-                line: pos.line() + 1,
-                column: pos.column(&m) + 1,
-                text: m.text().to_string(),
-            }
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
+    use ast_grep_core::tree_sitter::LanguageExt;
+    use ast_grep_language::{Python, Rust};
+
     use super::*;
 
+    fn rust_locations(source: &str, patterns: &[&str]) -> Vec<Vec<SourceLocation>> {
+        let patterns: Vec<Pattern> = patterns.iter().map(|p| Pattern::new(p, Rust)).collect();
+        locations_each(&Rust.ast_grep(source).root(), &patterns, "src/main.rs")
+    }
+
+    fn python_locations(source: &str, pattern: &str) -> Vec<SourceLocation> {
+        let patterns = [Pattern::new(pattern, Python)];
+        let mut found = locations_each(&Python.ast_grep(source).root(), &patterns, "app.py");
+        found.remove(0)
+    }
+
     #[test]
-    fn test_find_unwrap_calls() {
+    fn locations_each_finds_every_unwrap_call() {
         let source = r#"
 fn main() {
     let x = foo().unwrap();
@@ -188,57 +111,63 @@ fn main() {
     let z = baz().unwrap();
 }
 "#;
-        let matches = find_pattern_matches(source, "$RECV.unwrap()");
-        assert_eq!(matches.len(), 2);
-        assert!(matches[0].text.contains("unwrap"));
-        assert!(matches[1].text.contains("unwrap"));
+        let found = rust_locations(source, &["$RECV.unwrap()"]);
+        assert_eq!(found[0].len(), 2);
+        assert!(found[0].iter().all(|m| m.text.contains("unwrap")));
+        assert_eq!(
+            (found[0][0].file.as_str(), found[0][0].line),
+            ("src/main.rs", 3)
+        );
     }
 
     #[test]
-    fn test_no_false_positives_in_comments() {
+    fn locations_each_skips_comments_and_strings() {
         let source = r#"
 fn main() {
     // foo().unwrap();
-    let x = bar()?;
-}
-"#;
-        let matches = find_pattern_matches(source, "$RECV.unwrap()");
-        assert_eq!(matches.len(), 0, "Should not match inside comments");
-    }
-
-    #[test]
-    fn test_no_false_positives_in_strings() {
-        let source = r#"
-fn main() {
     let msg = "call .unwrap() to panic";
     let x = bar()?;
 }
 "#;
-        let matches = find_pattern_matches(source, "$RECV.unwrap()");
-        assert_eq!(matches.len(), 0, "Should not match inside strings");
+        assert!(rust_locations(source, &["$RECV.unwrap()"])[0].is_empty());
     }
 
     #[test]
-    fn test_invalid_pattern_returns_empty() {
-        let matches = find_pattern_matches("fn main() {}", "<<<invalid>>>");
-        assert!(matches.is_empty());
+    fn locations_each_groups_matches_by_pattern_in_tree_order() {
+        let source = "fn f() { a.unwrap(); b.expect(\"x\"); c.unwrap(); }";
+        let found = rust_locations(source, &["$R.expect($M)", "$R.unwrap()"]);
+        let texts: Vec<Vec<&str>> = found
+            .iter()
+            .map(|matches| matches.iter().map(|m| m.text.as_str()).collect())
+            .collect();
+        assert_eq!(
+            texts,
+            [vec!["b.expect(\"x\")"], vec!["a.unwrap()", "c.unwrap()"]]
+        );
     }
 
     #[test]
-    fn test_has_pattern_found() {
-        let source = "fn main() { let x = foo().unwrap(); }";
-        assert!(has_pattern(source, "$RECV.unwrap()"));
+    fn has_any_reports_whether_any_pattern_matches() {
+        let patterns = [
+            Pattern::new("$RECV.unwrap()", Rust),
+            Pattern::new("$RECV.expect($MSG)", Rust),
+        ];
+        let tree = Rust.ast_grep("fn main() { let x = foo().expect(\"x\"); }");
+        assert!(has_any(&tree.root(), &patterns));
+        let tree = Rust.ast_grep("fn main() { let x = foo()?; }");
+        assert!(!has_any(&tree.root(), &patterns));
     }
 
     #[test]
-    fn test_has_pattern_not_found() {
-        let source = "fn main() { let x = foo()?; }";
-        assert!(!has_pattern(source, "$RECV.unwrap()"));
-    }
-
-    #[test]
-    fn test_has_pattern_invalid_pattern() {
-        assert!(!has_pattern("fn main() {}", "<<<invalid>>>"));
+    fn any_match_accepts_only_matches_the_test_passes() {
+        let patterns = [Pattern::new("$RECV.unwrap()", Rust)];
+        let tree = Rust.ast_grep("fn main() { let x = foo().unwrap(); }");
+        assert!(any_match(&tree.root(), &patterns, |index, m| {
+            index == 0 && m.text().starts_with("foo")
+        }));
+        assert!(!any_match(&tree.root(), &patterns, |_, m| m
+            .text()
+            .starts_with("bar")));
     }
 
     #[test]
@@ -285,62 +214,25 @@ fn main() {
     }
 
     #[test]
-    fn test_python_bare_except_matches() {
+    fn python_bare_except_matches() {
         let source = "try:\n    foo()\nexcept:\n    pass\n";
-        let matches = find_pattern_matches_in(
-            source,
-            "try:\n    $$$BODY\nexcept:\n    $$$HANDLER",
-            Language::Python,
-        );
-        assert!(!matches.is_empty(), "bare except pattern should match");
+        let found = python_locations(source, "try:\n    $$$BODY\nexcept:\n    $$$HANDLER");
+        assert!(!found.is_empty(), "bare except pattern should match");
     }
 
     #[test]
-    fn test_python_typed_except_does_not_match_bare() {
+    fn python_typed_except_does_not_match_bare() {
         let source = "try:\n    foo()\nexcept ValueError:\n    pass\n";
-        let bare_matches = find_pattern_matches_in(
-            source,
-            "try:\n    $$$BODY\nexcept:\n    $$$HANDLER",
-            Language::Python,
-        );
+        let found = python_locations(source, "try:\n    $$$BODY\nexcept:\n    $$$HANDLER");
         assert!(
-            bare_matches.is_empty(),
+            found.is_empty(),
             "typed except should not match bare except pattern"
         );
     }
 
     #[test]
-    fn test_python_sys_exit_matches() {
-        let source = "import sys\nsys.exit(1)\n";
-        let matches = find_pattern_matches_in(source, "sys.exit($$$ARGS)", Language::Python);
-        assert_eq!(matches.len(), 1);
-    }
-
-    #[test]
-    fn test_python_pattern_against_rust_source_returns_empty() {
-        let source = "fn main() { sys.exit(1); }";
-        // Rust-shaped source parsed as Python should yield no matches for our Python pattern.
-        let matches = find_pattern_matches_in(source, "fn main() { $$$BODY }", Language::Python);
-        assert!(matches.is_empty());
-    }
-
-    #[test]
-    fn test_unsupported_language_returns_empty() {
-        let source = "package main\nfunc main() {}";
-        assert!(find_pattern_matches_in(source, "anything", Language::Go).is_empty());
-        assert!(!has_pattern_in(source, "anything", Language::Node));
-    }
-
-    #[test]
-    fn test_supported_language_dispatches_correctly() {
-        let py_source = "import sys\nsys.exit(1)\n";
-        assert!(has_pattern_in(
-            py_source,
-            "sys.exit($$$ARGS)",
-            Language::Python
-        ));
-
-        let rs_source = "fn main() { x.unwrap(); }";
-        assert!(has_pattern_in(rs_source, "$RECV.unwrap()", Language::Rust));
+    fn python_sys_exit_matches() {
+        let found = python_locations("import sys\nsys.exit(1)\n", "sys.exit($$$ARGS)");
+        assert_eq!(found.len(), 1);
     }
 }

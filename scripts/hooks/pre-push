@@ -57,7 +57,9 @@ push_only_deletes() {
   while :; do
     rc=0
     IFS= read -r -t "$wait_s" line || rc=$?
-    [ "$rc" -eq 0 ] || break
+    # At end of input read returns 1 but still fills line with a last line
+    # that has no newline, which counts like any other.
+    [ "$rc" -eq 0 ] || { [ "$rc" -le 128 ] && [ -n "$line" ]; } || break
     HOOK_PUSH_REFS+="$line"$'\n'
     read -r local_ref local_sha _ <<<"$line"
     [ -n "$local_ref" ] || continue

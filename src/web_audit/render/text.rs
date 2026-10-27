@@ -19,11 +19,19 @@ use crate::web_audit::scorecard::{ResultRow, RowAdvisory, ScorecardStatus, WebSc
 pub struct RenderOptions {
     /// Apply ANSI styling to status prefixes.
     pub color: bool,
-    /// Drop the passing and inapplicable sections entirely.
+    /// Drop the score note and the advisory, passing and inapplicable
+    /// sections entirely.
     pub quiet: bool,
     /// List passing and inapplicable rows instead of counting them.
     pub verbose: bool,
 }
+
+/// What the two scores measure, in anc.dev's words: the result page's
+/// score note, which opens with `RELATIVE_SUBLABEL` from the site's
+/// `summary-labels.ts`.
+const SCORE_NOTE: &str = "relative to the checks that apply to this site; global measures it against a maximally agent-ready site.";
+/// Aligns the score note under the score values, past `Score: `.
+const SCORE_NOTE_INDENT: &str = "       ";
 
 /// The note a passing row carries about how it passed, the site's
 /// `supersededNote`: a SEP-1649 card names where SEP-2127 puts the card,
@@ -108,6 +116,9 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
             .filter(|r| !matches!(r.status, ScorecardStatus::NA | ScorecardStatus::Skip))
             .count()
     );
+    if !opts.quiet {
+        let _ = writeln!(out, "{SCORE_NOTE_INDENT}{SCORE_NOTE}");
+    }
     if let Some(note) = non_comparable_note(&report.unported) {
         let _ = writeln!(out, "Note: {note}");
     }

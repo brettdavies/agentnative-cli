@@ -121,6 +121,42 @@ fn json_mode_puts_nothing_but_the_scorecard_on_stdout() {
     }
 }
 
+/// anc.dev's wording under the score on every result page.
+const SCORE_NOTE: &str = "relative to the checks that apply to this site; global measures it against a maximally agent-ready site.";
+
+#[test]
+fn the_score_line_says_what_relative_and_global_measure_unless_quiet() {
+    let server = fixture_site();
+    let host = host_of(&server);
+    let assert = anc().args(["web", &host]).assert().code(1);
+    let out = stdout_of(assert.get_output());
+    let mut lines = out.lines().skip_while(|l| !l.starts_with("Score: "));
+    assert!(lines.next().is_some(), "a score line:\n{out}");
+    assert_eq!(
+        lines.next(),
+        Some(format!("       {SCORE_NOTE}").as_str()),
+        "{out}"
+    );
+
+    let quiet = anc().args(["web", &host, "--quiet"]).assert().code(1);
+    let out = stdout_of(quiet.get_output());
+    assert!(out.contains("Score: "), "{out}");
+    assert!(!out.contains("maximally agent-ready"), "{out}");
+}
+
+#[test]
+fn web_help_says_what_the_two_scores_measure() {
+    let help = anc().args(["web", "--help"]).assert().code(0);
+    let out = stdout_of(help.get_output());
+    let prose = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        prose.contains(&format!(
+            "two scores: relative scores the site {SCORE_NOTE}"
+        )),
+        "{out}"
+    );
+}
+
 #[test]
 fn no_color_strips_styling_and_color_always_adds_it() {
     let server = fixture_site();

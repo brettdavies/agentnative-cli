@@ -608,6 +608,38 @@ fn code_unwrap_evidence(fixture: &str, extra_args: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn test_multi_file_evidence_follows_path_order_on_every_run() {
+    // Five files each call `std::process::exit`, so a per-process file order
+    // would match path order about once in 120 runs.
+    let path = fixture_path("multi-file-evidence");
+    let expected = ["alpha.rs", "bravo.rs", "charlie.rs", "delta.rs", "echo.rs"];
+    for run in 0..2 {
+        let output = cmd()
+            .args(["audit", &path, "--source", "--output", "json"])
+            .output()
+            .expect("anc should run");
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+        let row = parsed["results"]
+            .as_array()
+            .expect("results should be an array")
+            .iter()
+            .find(|r| r["id"].as_str() == Some("p4-process-exit"))
+            .expect("results should include a p4-process-exit row");
+        let files: Vec<String> = row["evidence"]
+            .as_str()
+            .expect("p4-process-exit fail must carry evidence")
+            .lines()
+            .map(|line| {
+                let location = line.split(':').next().expect("evidence line has a path");
+                location.rsplit('/').next().unwrap_or(location).to_string()
+            })
+            .collect();
+        assert_eq!(files, expected, "run {run}: evidence out of path order");
+    }
+}
+
+#[test]
 fn test_macro_interiors_fixture_reports_only_genuine_calls() {
     // End-to-end coverage of the macro-interior matcher through the full
     // parse -> walk -> re-parse -> AuditResult -> scorecard pipeline. Unit tests

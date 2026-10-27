@@ -75,6 +75,38 @@ libc = "0.2"
 # `OffsetDateTime::now_utc`.
 time = { version = "=0.3.55", default-features = false, features = ["std", "formatting"] }
 
+# Web-audit networking stack: blocking ureq over rustls with the aws-lc-rs
+# crypto provider and the bundled Mozilla roots (webpki-roots), so a run needs
+# no system trust store. Redirects stay off at the agent; the fetch layer
+# follows them itself so every hop is locality-classified before connecting.
+# These four crates are optional: only the `web` feature compiles them.
+ureq = { version = "=3.4.2", optional = true, default-features = false, features = [
+    "rustls-no-provider",
+    "rustls-webpki-roots",
+    "gzip",
+    "brotli",
+] }
+# Direct dependency at the exact version ureq resolves: the fetch layer
+# matches rustls's certificate-error variants inside ureq's error to tell a
+# bundled-root rejection from other TLS failures, and ureq does not treat
+# the wrapped error as API.
+rustls = { version = "=0.23.46", optional = true, default-features = false, features = [
+    "aws-lc-rs",
+    "std",
+    "tls12",
+    "logging",
+] }
+# WHATWG URL parsing, so evidence URLs and redirect targets resolve exactly
+# as the site engine's `new URL()` does.
+url = { version = "2", optional = true }
+# Linear-time regex engine for the registry's assertion patterns.
+regex = { version = "1", optional = true }
+
+[features]
+default = []
+# The local web audit and the networking stack it runs on.
+web = ["dep:ureq", "dep:rustls", "dep:url", "dep:regex"]
+
 [build-dependencies]
 # YAML for the vendored spec frontmatter (build.rs → $OUT_DIR/generated_requirements.rs)
 # and the vendored web-audit registry, loaded as serde_json values. Deserialize
@@ -100,6 +132,9 @@ regex = "1"
 # Already a transitive dev-dep via insta — declared here so it's a direct
 # dependency we control.
 tempfile = "3"
+# Gzip fixtures for the bounded-body tests (a compressed body that inflates
+# past the cap must stop at the cap).
+flate2 = "1"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/agentnative-{ target }.tar.gz"

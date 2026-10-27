@@ -51,9 +51,17 @@ pass "fmt"
 cargo clippy --quiet -- -D warnings 2>&1 || fail "cargo clippy -- -D warnings"
 pass "clippy"
 
-# 3. Tests
+# 2b. The `web` feature (the local web audit, off by default), as CI's
+# "Web feature" job builds it.
+cargo clippy --quiet --all-targets --features web -- -D warnings 2>&1 \
+    || fail "cargo clippy --all-targets --features web -- -D warnings"
+pass "clippy (web feature)"
+
+# 3. Tests, for the default feature set and for the `web` feature.
 cargo test --quiet 2>&1 || fail "cargo test"
 pass "test"
+cargo test --quiet --features web 2>&1 || fail "cargo test --features web"
+pass "test (web feature)"
 
 # 4. Security audit (licenses + advisories) — skip if cargo-deny not installed
 if cargo deny --version &>/dev/null; then
@@ -111,15 +119,24 @@ fi
 # Requirements (one-time setup):
 #   sudo apt install mingw-w64                          # the C linker tree-sitter needs
 #   rustup target add x86_64-pc-windows-gnu             # the Windows std library
+#   brew install nasm                                   # the `web` feature only: aws-lc-sys assembles with it on x86-64 Windows
 #
-# If either is missing the step is skipped with a one-line note rather than
-# failing — but local Windows coverage is then absent, and CI's Windows job
-# becomes the only backstop. Install both to close that gap.
+# The `web` feature also needs cmake, which the native build already uses.
+# If a tool is missing its step is skipped with a one-line note rather than
+# failing — but local Windows coverage is then absent, and CI's Windows jobs
+# become the only backstop. Install all of them to close that gap.
 if command -v x86_64-w64-mingw32-gcc &>/dev/null \
     && rustup target list --installed 2>/dev/null | grep -q '^x86_64-pc-windows-gnu$'; then
     cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet -- -D warnings 2>&1 \
         || fail "cargo clippy --target x86_64-pc-windows-gnu -- -D warnings"
     pass "windows clippy (cross-target)"
+    if command -v nasm &>/dev/null; then
+        cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web --quiet -- -D warnings 2>&1 \
+            || fail "cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web -- -D warnings"
+        pass "windows clippy (cross-target, web feature)"
+    else
+        echo "  - windows clippy, web feature (skipped: install \`nasm\` to enable)"
+    fi
 else
     echo "  - windows clippy (skipped: install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\` to enable)"
 fi

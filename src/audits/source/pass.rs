@@ -152,7 +152,7 @@ const DEFAULT_MAX_WORKERS: usize = 4;
 const WORKER_STACK_BYTES: usize = 8 * 1024 * 1024;
 
 /// How many threads scan `files` files: `jobs` when set, else the smaller of
-/// the `available` cores and [`DEFAULT_MAX_WORKERS`]; never more than the
+/// the `available` cores and `DEFAULT_MAX_WORKERS`; never more than the
 /// files, and at least one.
 pub fn workers(jobs: Option<NonZeroUsize>, available: usize, files: usize) -> usize {
     jobs.map_or(available.min(DEFAULT_MAX_WORKERS), NonZeroUsize::get)

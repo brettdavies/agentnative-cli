@@ -211,11 +211,7 @@ pub fn body_of(answer: &HopAnswer, cap: Option<usize>) -> Option<BodyRead> {
     if answer.body_cap == Some(body::STATUS_ONLY_BODY_BYTES) {
         return None;
     }
-    let narrower = match (cap, answer.body_cap) {
-        (Some(wanted), Some(kept)) => wanted > kept,
-        _ => true,
-    };
-    if answer.truncated && narrower {
+    if answer.truncated && effective_cap(cap) > effective_cap(answer.body_cap) {
         return None;
     }
     let kept = cap.map_or(answer.bytes.len(), |c| c.min(answer.bytes.len()));
@@ -273,10 +269,18 @@ pub(crate) fn coverage(record: &HopRecord) -> i128 {
     match record {
         HopRecord::Failure(_) => -1,
         HopRecord::Answer(answer) => match answer.body_cap {
-            Some(cap) if answer.truncated || cap == 0 => cap as i128,
-            _ => i128::MAX,
+            Some(body::STATUS_ONLY_BODY_BYTES) => 0,
+            _ if !answer.truncated => i128::MAX,
+            cap => effective_cap(cap) as i128,
         },
     }
+}
+
+/// The bytes a cap reads at most. An uncapped read stops at the root
+/// ceiling, where the site's reads in full; a body cut there serves every
+/// uncapped reader the same cut.
+fn effective_cap(cap: Option<usize>) -> usize {
+    cap.unwrap_or(body::AUDIT_ROOT_MAX_BODY_BYTES)
 }
 
 /// Send one hop straight through the transport. A caller that reads the

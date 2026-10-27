@@ -46,6 +46,38 @@ RESET='\033[0m'
 pass() { echo -e "  ${GREEN}✓${RESET} $1"; }
 fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
 
+# Git writes one line per pushed ref on stdin,
+# `<local ref> <local sha> <remote ref> <remote sha>`, with an all-zero local
+# sha (40 digits, or 64 in a SHA-256 repository) for a ref the push deletes. A
+# push made only of deletes delivers no commit, so there is nothing below to
+# check. Git closes stdin once it has written the lines; the read is bounded so
+# that a stdin nobody closes cannot park the push. A terminal (the hook run by
+# hand), no ref lines, or a timeout runs every check.
+stdin_wait_seconds=${PRE_PUSH_STDIN_WAIT_SECONDS:-5}
+ref_lines=0
+delete_lines=0
+if [ ! -t 0 ]; then
+  while true; do
+    read_status=0
+    read -r -t "$stdin_wait_seconds" _ local_sha _ || read_status=$?
+    if ((read_status > 128)); then
+      ref_lines=0
+      break
+    fi
+    if [ -n "$local_sha" ]; then
+      ref_lines=$((ref_lines + 1))
+      if [[ $local_sha =~ ^0+$ ]]; then
+        delete_lines=$((delete_lines + 1))
+      fi
+    fi
+    ((read_status == 0)) || break
+  done
+fi
+if ((ref_lines > 0 && delete_lines == ref_lines)); then
+  echo "Nothing to check: the push only deletes."
+  exit 0
+fi
+
 echo -e "${BOLD}Running local CI checks...${RESET}"
 
 # The toolchain is pinned in rust-toolchain.toml — both local and CI read the same file

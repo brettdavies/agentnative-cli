@@ -275,8 +275,9 @@ fn emit_skill_hosts(manifest_dir: &std::path::Path) {
 
 /// Emit `$OUT_DIR/generated_web_registry.rs` from `src/web_audit/vendored/`.
 ///
-/// The vendored set is the site's registry, remediation catalog, and the
-/// three TypeScript modules the probe User-Agent strings resolve from, plus
+/// The vendored set is the site's registry, remediation catalog, server-card
+/// JSON Schema (the server-card check's required fields), and the three
+/// TypeScript modules the probe User-Agent strings resolve from, plus
 /// `SITE_SHA` naming the site commit they were taken from. Every validation
 /// failure names the offending check id; see `build_support/web_registry.rs`.
 fn emit_web_registry(manifest_dir: &std::path::Path) {
@@ -306,12 +307,17 @@ fn emit_web_registry(manifest_dir: &std::path::Path) {
         &read("audit-routes.ts"),
     )
     .unwrap_or_else(|e| panic!("\n  web-audit vendored constants: {e}\n"));
-    let registry =
-        web_registry::normalize_registry(&read("registry.yaml"), &consts.probe_ua_tokens)
-            .unwrap_or_else(|e| panic!("\n  {e}\n"));
+    let registry = web_registry::normalize_registry(
+        &read("registry.yaml"),
+        &consts.probe_ua_tokens,
+        &read("server-card.schema.json"),
+    )
+    .unwrap_or_else(|e| panic!("\n  {e}\n"));
     let ids: Vec<&str> = registry.checks.iter().map(|c| c.id.as_str()).collect();
-    let remediation = web_registry::normalize_remediation(&read("remediation.yaml"), &ids)
-        .unwrap_or_else(|e| panic!("\n  {e}\n"));
+    let retired: Vec<&str> = registry.retired.iter().map(|r| r.id.as_str()).collect();
+    let remediation =
+        web_registry::normalize_remediation(&read("remediation.yaml"), &ids, &retired)
+            .unwrap_or_else(|e| panic!("\n  {e}\n"));
     let src = web_registry::emit_rust(&registry, &remediation, &consts, &site_sha);
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));

@@ -522,7 +522,10 @@ mod tests {
             status,
             na_reason: None,
             unprobed: false,
+            advisory: None,
             evidence: Some(format!("evidence for {id}")),
+            hosts: Vec::new(),
+            host: None,
         }
     }
 

@@ -1,12 +1,35 @@
 {
-  "schema_version": "0.4",
+  "schema_version": "0.5",
   "spec_version": "0.0.0-corpus",
   "target_url": "https://example.com/",
   "mcp_endpoint": "https://example.com/mcp",
   "mcp_discovery": [
     {
       "source": "/.well-known/mcp.json",
+      "document": "server-card",
+      "status": 200,
+      "shape": "sep-1649",
       "endpoint": "https://example.com/mcp"
+    },
+    {
+      "source": "/.well-known/mcp/server-card.json",
+      "status": 200,
+      "shape": "sep-1649",
+      "endpoint": "https://example.com/mcp"
+    },
+    {
+      "source": "/.well-known/ai-catalog.json",
+      "document": "ai-catalog",
+      "status": 404
+    },
+    {
+      "source": "/.well-known/api-catalog",
+      "document": "api-catalog",
+      "status": 404
+    },
+    {
+      "source": "/mcp/server-card",
+      "status": 404
     }
   ],
   "tool": {
@@ -17,12 +40,18 @@
   "audit_profile": null,
   "site_type": null,
   "public_listing": false,
+  "vantage": {
+    "network": "public",
+    "credentialed": false
+  },
+  "follow_declarations": true,
+  "declared_hosts": [],
   "summary": {
     "pass": 31,
     "noncompliant": 0,
     "broken": 2,
     "absent": 7,
-    "n_a": 24,
+    "n_a": 27,
     "skip": 0,
     "error": 1
   },
@@ -94,7 +123,13 @@
       "tier": "required",
       "principle": "P2",
       "status": "absent",
-      "evidence": "https://example.com/openapi.json -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/openapi.json -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "json-schemas",
@@ -107,7 +142,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "no JSON Schema references detected"
+      "evidence": "no JSON Schema references detected",
+      "hosts": []
     },
     {
       "id": "api-catalog",
@@ -120,7 +156,13 @@
       "principle": "P8",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/.well-known/api-catalog -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/.well-known/api-catalog -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "json-errors",
@@ -132,7 +174,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "broken",
-      "evidence": "https://example.com/anc-web-audit-no-such-api -> 404 (HTML error body)"
+      "evidence": "https://example.com/anc-web-audit-no-such-api -> 404 (HTML error body)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "rate-limit-headers",
@@ -144,7 +192,13 @@
       "tier": "recommended",
       "principle": "P6",
       "status": "absent",
-      "evidence": "https://example.com/anc-web-audit-no-such-api -> 404 (no rate-limit header)"
+      "evidence": "https://example.com/anc-web-audit-no-such-api -> 404 (no rate-limit header)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-initialize",
@@ -156,7 +210,13 @@
       "tier": "required",
       "principle": "P2",
       "status": "pass",
-      "evidence": "serverInfo example, protocol 2025-06-18"
+      "evidence": "serverInfo example, protocol 2025-06-18",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-capabilities",
@@ -168,7 +228,13 @@
       "tier": "recommended",
       "principle": "P2",
       "status": "pass",
-      "evidence": "serverInfo example, protocol 2025-06-18"
+      "evidence": "serverInfo example, protocol 2025-06-18",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-tools-list",
@@ -180,7 +246,13 @@
       "tier": "required",
       "principle": "P2",
       "status": "pass",
-      "evidence": "2 tools, 1 with input schema"
+      "evidence": "2 tools, 1 with input schema",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-resources-list",
@@ -192,7 +264,13 @@
       "tier": "recommended",
       "principle": "P2",
       "status": "pass",
-      "evidence": "https://example.com/mcp -> 200"
+      "evidence": "https://example.com/mcp -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-modern-tools-list",
@@ -204,7 +282,13 @@
       "tier": "required",
       "principle": "P2",
       "status": "pass",
-      "evidence": "2 tools, 1 with input schema"
+      "evidence": "2 tools, 1 with input schema",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-server-discover",
@@ -216,7 +300,13 @@
       "tier": "recommended",
       "principle": "P2",
       "status": "pass",
-      "evidence": "supports 2026-07-28, serverInfo example"
+      "evidence": "supports 2026-07-28, serverInfo example",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-unknown-method",
@@ -228,7 +318,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32601"
+      "evidence": "error code -32601",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-malformed-body",
@@ -240,7 +336,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32700"
+      "evidence": "error code -32700",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-batch-reject",
@@ -252,7 +354,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32600"
+      "evidence": "error code -32600",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-unknown-tool",
@@ -264,7 +372,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32602"
+      "evidence": "error code -32602",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-modern-unknown-method",
@@ -276,7 +390,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32601"
+      "evidence": "error code -32601",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-modern-clientcaps",
@@ -288,7 +408,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32602"
+      "evidence": "error code -32602",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-modern-header-mismatch",
@@ -300,7 +426,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32020"
+      "evidence": "error code -32020",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-modern-version-reject",
@@ -312,7 +444,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32022"
+      "evidence": "error code -32022",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-modern-resources-miss",
@@ -324,7 +462,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "error code -32602"
+      "evidence": "error code -32602",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-accept-json",
@@ -336,7 +480,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "https://example.com/mcp -> 200"
+      "evidence": "https://example.com/mcp -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-accept-unsatisfiable",
@@ -348,7 +498,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "https://example.com/mcp -> 406"
+      "evidence": "https://example.com/mcp -> 406",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-get-fast-fail",
@@ -360,7 +516,13 @@
       "tier": "recommended",
       "principle": "P4",
       "status": "pass",
-      "evidence": "https://example.com/mcp -> 405"
+      "evidence": "https://example.com/mcp -> 405",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-cors-preflight",
@@ -372,7 +534,13 @@
       "tier": "recommended",
       "principle": "P6",
       "status": "pass",
-      "evidence": "preflight 204 allow-origin *; post 200 allow-origin absent"
+      "evidence": "preflight 204 allow-origin *; post 200 allow-origin absent",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-cors-actual",
@@ -384,11 +552,17 @@
       "tier": "recommended",
       "principle": "P6",
       "status": "broken",
-      "evidence": "preflight 204 allow-origin *; post 200 allow-origin absent"
+      "evidence": "preflight 204 allow-origin *; post 200 allow-origin absent",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
-      "id": "well-known-mcp-card",
-      "label": "A .well-known MCP server card is published (SEP-1649)",
+      "id": "mcp-server-card",
+      "label": "An MCP server card is published",
       "category": "mcp",
       "group": "P8",
       "layer": "web",
@@ -396,7 +570,14 @@
       "tier": "recommended",
       "principle": "P8",
       "status": "pass",
-      "evidence": "https://example.com/.well-known/mcp/server-card.json -> 200"
+      "advisory": "superseded",
+      "evidence": "https://example.com/.well-known/mcp.json -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-card-legacy-aliases",
@@ -408,7 +589,13 @@
       "tier": "optional",
       "principle": "P8",
       "status": "pass",
-      "evidence": "https://example.com/.well-known/mcp -> 301 (301 -> /.well-known/mcp/server-card.json)"
+      "evidence": "https://example.com/.well-known/mcp -> 301 (301 -> /.well-known/mcp/server-card.json)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "mcp-usage-doc",
@@ -420,7 +607,55 @@
       "tier": "optional",
       "principle": "P8",
       "status": "pass",
-      "evidence": "https://example.com/mcp-skill.md -> 200"
+      "evidence": "https://example.com/mcp-skill.md -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
+    },
+    {
+      "id": "mcp-auth-challenge",
+      "label": "a 401 names the RFC 9728 metadata in its WWW-Authenticate challenge",
+      "category": "mcp",
+      "group": "P1",
+      "layer": "web",
+      "keyword": "may",
+      "tier": "optional",
+      "principle": "P1",
+      "status": "n_a",
+      "na_reason": "antecedent-unmet",
+      "evidence": "MCP endpoint does not require sign-in",
+      "hosts": []
+    },
+    {
+      "id": "mcp-auth-servers",
+      "label": "protected-resource metadata lists public https authorization_servers",
+      "category": "mcp",
+      "group": "P1",
+      "layer": "web",
+      "keyword": "may",
+      "tier": "optional",
+      "principle": "P1",
+      "status": "n_a",
+      "na_reason": "antecedent-unmet",
+      "evidence": "MCP endpoint does not require sign-in",
+      "hosts": []
+    },
+    {
+      "id": "mcp-auth-enforced",
+      "label": "a tools/list without an access token is refused with 401",
+      "category": "mcp",
+      "group": "P1",
+      "layer": "web",
+      "keyword": "may",
+      "tier": "optional",
+      "principle": "P1",
+      "status": "n_a",
+      "na_reason": "antecedent-unmet",
+      "evidence": "MCP endpoint does not require sign-in",
+      "hosts": []
     },
     {
       "id": "webmcp",
@@ -432,7 +667,13 @@
       "tier": "optional",
       "principle": "P2",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200 (webmcp script asset)"
+      "evidence": "https://example.com/ -> 200 (webmcp script asset)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "llms-txt",
@@ -444,7 +685,13 @@
       "tier": "recommended",
       "principle": "P2",
       "status": "absent",
-      "evidence": "https://example.com/llms.txt -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/llms.txt -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "llms-txt-format",
@@ -457,7 +704,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "root llms.txt not present"
+      "evidence": "root llms.txt not present",
+      "hosts": []
     },
     {
       "id": "llms-txt-links",
@@ -470,7 +718,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "root llms.txt not present"
+      "evidence": "root llms.txt not present",
+      "hosts": []
     },
     {
       "id": "llms-txt-when-to-use",
@@ -483,7 +732,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "root llms.txt not present"
+      "evidence": "root llms.txt not present",
+      "hosts": []
     },
     {
       "id": "llms-full-txt",
@@ -496,7 +746,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "not a docs/content site"
+      "evidence": "not a docs/content site",
+      "hosts": []
     },
     {
       "id": "llms-txt-scoped",
@@ -509,7 +760,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "root llms.txt not present"
+      "evidence": "root llms.txt not present",
+      "hosts": []
     },
     {
       "id": "llms-full-txt-scoped",
@@ -522,7 +774,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "root llms-full.txt not present"
+      "evidence": "root llms-full.txt not present",
+      "hosts": []
     },
     {
       "id": "accept-markdown",
@@ -534,7 +787,13 @@
       "tier": "recommended",
       "principle": "P2",
       "status": "absent",
-      "evidence": "https://example.com/ -> 200 (content-type \"text/html; charset=utf-8\" !~ /markdown|text/plain/)"
+      "evidence": "https://example.com/ -> 200 (content-type \"text/html; charset=utf-8\" !~ /markdown|text/plain/)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "markdown-cli-ua",
@@ -547,7 +806,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)"
+      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)",
+      "hosts": []
     },
     {
       "id": "markdown-agent-ua",
@@ -560,7 +820,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)"
+      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)",
+      "hosts": []
     },
     {
       "id": "agent-ua-reachable",
@@ -572,7 +833,13 @@
       "tier": "recommended",
       "principle": "P7",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "markdown-accept-plain",
@@ -585,11 +852,12 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)"
+      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)",
+      "hosts": []
     },
     {
       "id": "markdown-vary",
-      "label": "Negotiated responses carry Vary Accept, User-Agent",
+      "label": "Negotiated responses carry Vary Accept",
       "category": "content-for-agents",
       "group": "P2",
       "layer": "web",
@@ -598,7 +866,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)"
+      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)",
+      "hosts": []
     },
     {
       "id": "markdown-frontmatter",
@@ -611,7 +880,8 @@
       "principle": "P2",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)"
+      "evidence": "site exposes no markdown twin (no text/markdown negotiation, no markdown alternate link, no llms.txt)",
+      "hosts": []
     },
     {
       "id": "root-meta-description",
@@ -623,7 +893,13 @@
       "tier": "recommended",
       "principle": "P3",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "schema-org-jsonld",
@@ -635,7 +911,13 @@
       "tier": "optional",
       "principle": "P2",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "content-without-js",
@@ -647,7 +929,13 @@
       "tier": "recommended",
       "principle": "P2",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "semantic-html",
@@ -659,7 +947,13 @@
       "tier": "optional",
       "principle": "P3",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "noscript-fallback",
@@ -671,7 +965,13 @@
       "tier": "recommended",
       "principle": "P1",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "robots",
@@ -683,7 +983,13 @@
       "tier": "recommended",
       "principle": "P7",
       "status": "absent",
-      "evidence": "https://example.com/robots.txt -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/robots.txt -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "sitemap",
@@ -696,7 +1002,13 @@
       "principle": "P7",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/sitemap.xml -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/sitemap.xml -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "agent-friendly-404",
@@ -708,7 +1020,13 @@
       "tier": "recommended",
       "principle": "P8",
       "status": "pass",
-      "evidence": "https://example.com/anc-web-audit-no-such-page -> 404"
+      "evidence": "https://example.com/anc-web-audit-no-such-page -> 404",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "agent-friendly-404-md",
@@ -720,7 +1038,13 @@
       "tier": "recommended",
       "principle": "P8",
       "status": "absent",
-      "evidence": "https://example.com/anc-web-audit-no-such-page -> 404 (content-type \"text/html; charset=utf-8\" !~ /markdown|text/plain/)"
+      "evidence": "https://example.com/anc-web-audit-no-such-page -> 404 (content-type \"text/html; charset=utf-8\" !~ /markdown|text/plain/)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "link-headers",
@@ -732,7 +1056,13 @@
       "tier": "recommended",
       "principle": "P3",
       "status": "absent",
-      "evidence": "https://example.com/ -> 200 (header link no match /rel=\"?(service-desc|describedby|api-catalog|service-doc)\"?/)"
+      "evidence": "https://example.com/ -> 200 (header link no match /rel=\"?(service-desc|describedby|api-catalog|service-doc)\"?/)",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "root-link-rel",
@@ -744,7 +1074,13 @@
       "tier": "recommended",
       "principle": "P3",
       "status": "pass",
-      "evidence": "https://example.com/ -> 200"
+      "evidence": "https://example.com/ -> 200",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "dns-aid",
@@ -756,7 +1092,8 @@
       "tier": "optional",
       "principle": "P8",
       "status": "error",
-      "evidence": "no DNS-AID records"
+      "evidence": "no DNS-AID records",
+      "hosts": []
     },
     {
       "id": "robots-ai-rules",
@@ -769,7 +1106,8 @@
       "principle": "P7",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "robots.txt not present"
+      "evidence": "robots.txt not present",
+      "hosts": []
     },
     {
       "id": "content-signals",
@@ -782,7 +1120,8 @@
       "principle": "P7",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "robots.txt not present"
+      "evidence": "robots.txt not present",
+      "hosts": []
     },
     {
       "id": "web-bot-auth",
@@ -795,7 +1134,13 @@
       "principle": "P6",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/.well-known/http-message-signatures-directory -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/.well-known/http-message-signatures-directory -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "security-txt",
@@ -808,7 +1153,13 @@
       "principle": "P4",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/.well-known/security.txt -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/.well-known/security.txt -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "a2a-agent-card",
@@ -821,7 +1172,13 @@
       "principle": "P8",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/.well-known/agent-card.json -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/.well-known/agent-card.json -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "ai-catalog",
@@ -834,7 +1191,13 @@
       "principle": "P8",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/.well-known/ai-catalog.json -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/.well-known/ai-catalog.json -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "agent-skills",
@@ -847,7 +1210,13 @@
       "principle": "P8",
       "status": "n_a",
       "na_reason": "optional-absent",
-      "evidence": "https://example.com/.well-known/agent-skills/index.json -> 404 (status 404 not in [200])"
+      "evidence": "https://example.com/.well-known/agent-skills/index.json -> 404 (status 404 not in [200])",
+      "hosts": [
+        {
+          "host": "example.com"
+        }
+      ],
+      "host": "example.com"
     },
     {
       "id": "oauth-discovery",
@@ -860,7 +1229,8 @@
       "principle": "P1",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "no auth surface detected"
+      "evidence": "no auth surface detected",
+      "hosts": []
     },
     {
       "id": "oauth-protected-resource",
@@ -873,7 +1243,8 @@
       "principle": "P1",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "MCP endpoint does not challenge for auth"
+      "evidence": "MCP endpoint does not challenge for auth",
+      "hosts": []
     },
     {
       "id": "auth-md",
@@ -886,7 +1257,8 @@
       "principle": "P1",
       "status": "n_a",
       "na_reason": "antecedent-unmet",
-      "evidence": "no auth surface detected"
+      "evidence": "no auth surface detected",
+      "hosts": []
     }
   ]
 }

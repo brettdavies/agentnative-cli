@@ -440,7 +440,7 @@ The two verbs emit different documents, and each `emit` verb serves its own sche
 | Verb        | Scorecard                                | Schema                |
 | ----------- | ---------------------------------------- | --------------------- |
 | `anc audit` | the CLI scorecard (`schema_version` 0.9) | `anc emit schema`     |
-| `anc web`   | the web scorecard (`schema_version` 0.4) | `anc emit web-schema` |
+| `anc web`   | the web scorecard (`schema_version` 0.5) | `anc emit web-schema` |
 
 The web scorecard is byte-identical to what anc.dev emits for the same target, which the conformance suite holds to a
 committed corpus of the hosted engine's own output. Its `spec_version` and the registry version the run scored against

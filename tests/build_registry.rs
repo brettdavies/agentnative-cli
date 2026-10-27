@@ -20,6 +20,8 @@ use web_registry::{EVAL_RULES, HANDLER_KINDS, normalize_registry, normalize_reme
 
 const TOP: &str = r#"version: 1
 mcp_discovery:
+  ai_catalog: /.well-known/ai-catalog.json
+  card_suffix: /server-card
   well_known: [/.well-known/mcp.json]
   common_paths: [/mcp]
   protocol_version: "2025-06-18"
@@ -71,7 +73,87 @@ fn ua_tokens() -> Vec<(String, String)> {
 }
 
 fn normalize(checks: &str) -> Result<web_registry::NormalizedRegistry, String> {
-    normalize_registry(&registry(checks), &ua_tokens())
+    normalize_registry(&registry(checks), &ua_tokens(), CARD_SCHEMA)
+}
+
+fn top_err(registry_text: &str) -> String {
+    match normalize_registry(registry_text, &ua_tokens(), CARD_SCHEMA) {
+        Ok(_) => panic!("expected a build error for:\n{registry_text}"),
+        Err(e) => e,
+    }
+}
+
+/// A minimal SEP-2127 extension schema: two required card fields, one
+/// required remote field.
+const CARD_SCHEMA: &str = r##"{
+  "$defs": {
+    "ServerCard": {
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": ["string", "null"] },
+        "remotes": { "type": "array", "items": { "$ref": "#/$defs/Remote" } }
+      }
+    },
+    "Remote": {
+      "required": ["url"],
+      "properties": { "url": { "type": "string" } }
+    }
+  }
+}"##;
+
+const LANES: &str = "mcp_lanes:\n  shared:\n    label: Every MCP server\n    note: any protocol\n  legacy:\n    label: Legacy lane\n    note: initialize, then a session\n";
+
+const CHECK_MCP: &str = r#"  - id: mcp-init
+    category: mcp
+    tier: required
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-session
+    lane: legacy
+    weight: 3
+    title: initialize answers
+    breadcrumb: initialize
+    handler: mcp
+    with: { op: initialize }
+    hint: Answer initialize.
+"#;
+
+const CHECK_GATED: &str = r#"  - id: mcp-challenge
+    category: mcp
+    tier: recommended
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-auth-required
+    lane: shared
+    weight: 2
+    title: challenge served
+    breadcrumb: challenge
+    handler: protected-resource
+    with: { op: challenge }
+    hint: Serve a challenge.
+"#;
+
+const CHECK_CARD: &str = r#"  - id: mcp-server-card
+    category: mcp
+    tier: recommended
+    principle: P2
+    site_types: [mcp]
+    antecedent: mcp-present
+    eval: retained-document
+    lane: shared
+    weight: 2
+    title: server card complete
+    breadcrumb: Server card
+    handler: server-card
+    with: { retained: server-card }
+    hint: Publish a complete server card.
+"#;
+
+/// A registry carrying the lane map, the three MCP checks above, and `extra`
+/// top-level text.
+fn mcp_registry(extra: &str) -> String {
+    format!("{LANES}{extra}{TOP}{CHECK_HTTP}{CHECK_MCP}{CHECK_GATED}{CHECK_CARD}")
 }
 
 fn err_of(checks: &str) -> String {
@@ -88,6 +170,15 @@ fn vendored(name: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+fn vendored_registry(ua: &[(String, String)]) -> web_registry::NormalizedRegistry {
+    normalize_registry(
+        &vendored("registry.yaml"),
+        ua,
+        &vendored("server-card.schema.json"),
+    )
+    .expect("vendored registry normalizes")
+}
+
 // ---------------------------------------------------------------------------
 // Happy path over the vendored inputs (counters carry deliberate-bump
 // semantics, like the principle registry's).
@@ -101,29 +192,62 @@ fn vendored_registry_counters() {
         &vendored("audit-routes.ts"),
     )
     .expect("site constants resolve");
-    let reg = normalize_registry(&vendored("registry.yaml"), &consts.probe_ua_tokens)
-        .expect("vendored registry normalizes");
-    assert_eq!(reg.checks.len(), 65, "check count (bump deliberately)");
+    let reg = vendored_registry(&consts.probe_ua_tokens);
+    assert_eq!(reg.checks.len(), 68, "check count (bump deliberately)");
     assert_eq!(
         reg.category_order.len(),
         6,
         "category count (bump deliberately)"
     );
     let handlers: BTreeSet<&str> = reg.checks.iter().map(|c| c.handler.as_str()).collect();
-    assert_eq!(handlers.len(), 11, "handler kinds (bump deliberately)");
+    assert_eq!(handlers.len(), 13, "handler kinds (bump deliberately)");
     let evals: BTreeSet<&str> = reg
         .checks
         .iter()
         .filter_map(|c| c.eval.as_deref())
         .collect();
-    assert_eq!(evals.len(), 2, "eval rules (bump deliberately)");
-    assert!(
-        reg.checks.iter().all(|c| c.handler_supported),
-        "every vendored handler is ported"
+    assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
+    let unported_handlers: BTreeSet<&str> = reg
+        .checks
+        .iter()
+        .filter(|c| !c.handler_supported)
+        .map(|c| c.handler.as_str())
+        .collect();
+    assert_eq!(
+        unported_handlers,
+        BTreeSet::from(["protected-resource", "server-card"]),
+        "unported handler kinds (shrink as each port lands)"
     );
+    let unported_evals: BTreeSet<&str> = reg
+        .checks
+        .iter()
+        .filter(|c| !c.eval_supported)
+        .filter_map(|c| c.eval.as_deref())
+        .collect();
+    assert_eq!(
+        unported_evals,
+        BTreeSet::from(["api-description", "retained-document"]),
+        "unported eval rules (shrink as each port lands)"
+    );
+    assert_eq!(reg.mcp_lanes.len(), 4, "MCP lanes (bump deliberately)");
+    assert_eq!(reg.retired.len(), 1, "retired ids (bump deliberately)");
+    assert_eq!(
+        reg.alternatives.len(),
+        1,
+        "alternative groups (bump deliberately)"
+    );
+    let card = reg
+        .checks
+        .iter()
+        .find(|c| c.handler == "server-card")
+        .expect("the server-card check");
+    let with: serde_json::Value = serde_json::from_str(&card.with_json).unwrap();
     assert!(
-        reg.checks.iter().all(|c| c.eval_supported),
-        "every vendored eval rule is ported"
+        with["required"].as_array().is_some_and(|r| !r.is_empty())
+            && with["remote_required"]
+                .as_array()
+                .is_some_and(|r| !r.is_empty()),
+        "the server-card check carries the schema's required lists: {with}"
     );
     assert!(
         reg.checks.iter().all(|c| !c.with_json.contains("{ua:")),
@@ -143,12 +267,12 @@ fn vendored_remediation_is_one_to_one() {
         &vendored("audit-routes.ts"),
     )
     .expect("site constants resolve");
-    let reg = normalize_registry(&vendored("registry.yaml"), &consts.probe_ua_tokens)
-        .expect("vendored registry normalizes");
+    let reg = vendored_registry(&consts.probe_ua_tokens);
     let ids: Vec<&str> = reg.checks.iter().map(|c| c.id.as_str()).collect();
-    let rem = normalize_remediation(&vendored("remediation.yaml"), &ids)
+    let retired: Vec<&str> = reg.retired.iter().map(|r| r.id.as_str()).collect();
+    let rem = normalize_remediation(&vendored("remediation.yaml"), &ids, &retired)
         .expect("vendored remediation normalizes");
-    assert_eq!(rem.len(), ids.len());
+    assert_eq!(rem.len(), ids.len() + retired.len());
 }
 
 #[test]
@@ -406,6 +530,7 @@ fn category_order_must_list_every_category_once() {
     let e = normalize_registry(
         &registry(CHECK_HTTP).replace("category_order: [api, mcp]", "category_order: [api]"),
         &ua_tokens(),
+        CARD_SCHEMA,
     )
     .expect_err("mismatch fails");
     assert!(e.contains("category_order"), "{e}");
@@ -416,6 +541,7 @@ fn mcp_discovery_block_is_required() {
     let e = normalize_registry(
         &registry(CHECK_HTTP).replace("  protocol_version: \"2025-06-18\"\n", ""),
         &ua_tokens(),
+        CARD_SCHEMA,
     )
     .expect_err("missing protocol_version fails");
     assert!(e.contains("mcp_discovery"), "{e}");
@@ -456,12 +582,14 @@ fn non_string_mapping_keys_fail() {
     let category_key = normalize_registry(
         &registry(CHECK_HTTP).replace("  mcp: MCP\n", "  1: MCP\n"),
         &ua_tokens(),
+        CARD_SCHEMA,
     )
     .expect_err("integer categories key");
     let with_key = err_of(&CHECK_HTTP.replace("expect: { status: [200] }", "expect: { 200: ok }"));
     let remediation_key = normalize_remediation(
         &REMEDIATION_ROBOTS.replace("  robots:", "  7:"),
         &["robots"],
+        &[],
     )
     .expect_err("integer remediation key");
     for e in [category_key, with_key, remediation_key] {
@@ -490,7 +618,7 @@ fn yaml_tags_fail() {
 
 #[test]
 fn remediation_missing_entry_fails_naming_id() {
-    let e = normalize_remediation(REMEDIATION_ROBOTS, &["robots", "sitemap"])
+    let e = normalize_remediation(REMEDIATION_ROBOTS, &["robots", "sitemap"], &[])
         .expect_err("sitemap has no entry");
     assert!(
         e.contains("\"sitemap\"") && e.contains("no remediation entry"),
@@ -500,7 +628,7 @@ fn remediation_missing_entry_fails_naming_id() {
 
 #[test]
 fn remediation_orphan_fails_naming_id() {
-    let e = normalize_remediation(REMEDIATION_ROBOTS, &[]).expect_err("robots is an orphan");
+    let e = normalize_remediation(REMEDIATION_ROBOTS, &[], &[]).expect_err("robots is an orphan");
     assert!(e.contains("\"robots\"") && e.contains("orphan"), "{e}");
 }
 
@@ -509,6 +637,7 @@ fn remediation_entry_needs_string_fields() {
     let e = normalize_remediation(
         &REMEDIATION_ROBOTS.replace("    goal: Publish robots.txt\n", ""),
         &["robots"],
+        &[],
     )
     .expect_err("missing goal");
     assert!(e.contains("\"robots\"") && e.contains("goal"), "{e}");
@@ -519,12 +648,14 @@ fn remediation_retired_fields_and_evidence_slots_fail() {
     let e = normalize_remediation(
         &REMEDIATION_ROBOTS.replace("    goal:", "    body: old\n    goal:"),
         &["robots"],
+        &[],
     )
     .expect_err("retired body field");
     assert!(e.contains("\"robots\"") && e.contains("body"), "{e}");
     let e = normalize_remediation(
         &REMEDIATION_ROBOTS.replace("Serve /robots.txt.", "{{evidence}}"),
         &["robots"],
+        &[],
     )
     .expect_err("evidence slot");
     assert!(e.contains("\"robots\"") && e.contains("evidence"), "{e}");
@@ -535,6 +666,7 @@ fn remediation_resource_needs_label_and_absolute_url() {
     let e = normalize_remediation(
         &REMEDIATION_ROBOTS.replace("https://www.rfc-editor.org/rfc/rfc9309", "/rfc/rfc9309"),
         &["robots"],
+        &[],
     )
     .expect_err("relative url");
     assert!(
@@ -546,7 +678,7 @@ fn remediation_resource_needs_label_and_absolute_url() {
 #[test]
 fn remediation_is_emitted_sorted_by_id() {
     let two = format!("{REMEDIATION_ROBOTS}  alpha:\n    title: a\n    goal: g\n    fix: f\n");
-    let rem = normalize_remediation(&two, &["robots", "alpha"]).expect("normalizes");
+    let rem = normalize_remediation(&two, &["robots", "alpha"], &[]).expect("normalizes");
     let ids: Vec<&str> = rem.iter().map(|r| r.id.as_str()).collect();
     assert_eq!(ids, ["alpha", "robots"]);
 }
@@ -671,8 +803,7 @@ fn every_translated_registry_pattern_compiles() {
         &vendored("audit-routes.ts"),
     )
     .expect("site constants resolve");
-    let reg = normalize_registry(&vendored("registry.yaml"), &consts.probe_ua_tokens)
-        .expect("normalizes");
+    let reg = vendored_registry(&consts.probe_ua_tokens);
     let mut count = 0;
     for check in &reg.checks {
         for p in &check.patterns {
@@ -707,7 +838,7 @@ fn emission_is_byte_stable_and_carries_every_table() {
     let consts =
         ts_consts::resolve_site_constants(UA_TS, SITE_URL_TS, ROUTES_TS).expect("resolves");
     let reg = normalize(CHECK_HTTP).expect("normalizes");
-    let rem = normalize_remediation(REMEDIATION_ROBOTS, &["robots"]).expect("normalizes");
+    let rem = normalize_remediation(REMEDIATION_ROBOTS, &["robots"], &[]).expect("normalizes");
     let a = web_registry::emit_rust(
         &reg,
         &rem,
@@ -749,7 +880,7 @@ fn unsupported_bindings_are_emitted_with_their_name() {
             .replace("    weight: 2\n", "    eval: quux\n    weight: 2\n"),
     )
     .expect("builds");
-    let rem = normalize_remediation(REMEDIATION_ROBOTS, &["robots"]).expect("normalizes");
+    let rem = normalize_remediation(REMEDIATION_ROBOTS, &["robots"], &[]).expect("normalizes");
     let src = web_registry::emit_rust(
         &reg,
         &rem,
@@ -761,4 +892,277 @@ fn unsupported_bindings_are_emitted_with_their_name() {
         "{src}"
     );
     assert!(src.contains("EvalBinding::Unsupported(\"quux\")"), "{src}");
+}
+
+// ---------------------------------------------------------------------------
+// Registry blocks beyond `checks`: lanes, retired ids, alternatives, the
+// discovery paths, and the server-card schema splice.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_mcp_blocks_normalize() {
+    let reg = normalize_registry(&mcp_registry(""), &ua_tokens(), CARD_SCHEMA).expect("normalizes");
+    assert_eq!(reg.mcp_discovery.ai_catalog, "/.well-known/ai-catalog.json");
+    assert_eq!(reg.mcp_discovery.card_suffix, "/server-card");
+    let lanes: Vec<&str> = reg.mcp_lanes.iter().map(|l| l.id.as_str()).collect();
+    assert_eq!(lanes, ["shared", "legacy"]);
+    assert_eq!(reg.checks[0].lane, None, "a non-mcp check has no lane");
+    assert_eq!(reg.checks[1].lane.as_deref(), Some("legacy"));
+}
+
+#[test]
+fn unknown_top_level_key_fails_naming_it() {
+    let e = top_err(&mcp_registry("frobs: 1\n"));
+    assert!(e.contains("\"frobs\"") && e.contains("top-level"), "{e}");
+}
+
+#[test]
+fn unknown_check_field_fails_naming_the_check() {
+    let e = err_of(&CHECK_HTTP.replace("    weight: 2\n", "    weight: 2\n    colour: red\n"));
+    assert!(e.contains("\"robots\"") && e.contains("\"colour\""), "{e}");
+}
+
+#[test]
+fn discovery_paths_are_required_and_rooted_and_unknown_keys_fail() {
+    for (from, to, needle) in [
+        (
+            "  ai_catalog: /.well-known/ai-catalog.json\n",
+            "",
+            "mcp_discovery.ai_catalog",
+        ),
+        (
+            "  card_suffix: /server-card\n",
+            "  card_suffix: server-card\n",
+            "mcp_discovery.card_suffix",
+        ),
+        (
+            "  card_suffix: /server-card\n",
+            "  card_suffix: /server-card\n  extra: 1\n",
+            "\"extra\"",
+        ),
+    ] {
+        let e = top_err(&mcp_registry("").replace(from, to));
+        assert!(e.contains(needle), "{needle}: {e}");
+    }
+}
+
+#[test]
+fn mcp_lane_entries_need_label_and_note_and_nothing_else() {
+    for (from, to, needle) in [
+        (
+            "    label: Legacy lane\n",
+            "",
+            "needs a string label and note",
+        ),
+        (
+            "    note: any protocol\n",
+            "    note: any protocol\n    colour: red\n",
+            "\"colour\"",
+        ),
+    ] {
+        let e = top_err(&mcp_registry("").replace(from, to));
+        assert!(
+            e.contains("mcp_lanes") && e.contains(needle),
+            "{needle}: {e}"
+        );
+    }
+}
+
+#[test]
+fn lane_is_required_on_mcp_checks_and_refused_elsewhere() {
+    let missing = top_err(&mcp_registry("").replace("    lane: legacy\n", ""));
+    assert!(
+        missing.contains("\"mcp-init\"") && missing.contains("needs a lane"),
+        "{missing}"
+    );
+    let unknown = top_err(&mcp_registry("").replace("lane: legacy", "lane: express"));
+    assert!(
+        unknown.contains("\"mcp-init\"") && unknown.contains("\"express\""),
+        "{unknown}"
+    );
+    let stray = err_of(&CHECK_HTTP.replace("    weight: 2\n", "    weight: 2\n    lane: legacy\n"));
+    assert!(
+        stray.contains("\"robots\"") && stray.contains("lane"),
+        "{stray}"
+    );
+}
+
+const RETIRED: &str =
+    "retired:\n  old-card:\n    successor: mcp-server-card\n    reason: replaced\n";
+
+#[test]
+fn retired_ids_normalize_and_validate() {
+    let reg =
+        normalize_registry(&mcp_registry(RETIRED), &ua_tokens(), CARD_SCHEMA).expect("normalizes");
+    assert_eq!(reg.retired.len(), 1);
+    assert_eq!(reg.retired[0].id, "old-card");
+    assert_eq!(reg.retired[0].successor, "mcp-server-card");
+    for (from, to, needle) in [
+        ("  old-card:", "  robots:", "is still a registry check"),
+        (
+            "successor: mcp-server-card",
+            "successor: gone",
+            "not a registry check",
+        ),
+        ("    reason: replaced\n", "", "needs a reason"),
+        (
+            "    reason: replaced\n",
+            "    reason: replaced\n    since: 2026\n",
+            "\"since\"",
+        ),
+        ("  old-card:", "  Old_Card:", "must match"),
+    ] {
+        let e = top_err(&mcp_registry(&RETIRED.replace(from, to)));
+        assert!(e.contains("retired") && e.contains(needle), "{needle}: {e}");
+    }
+}
+
+const ALTERNATIVES: &str = "alternatives:\n  - group: mcp-access\n    variants:\n      open: { presented_by: [mcp-session] }\n      protected: { antecedents: [mcp-auth-required] }\n";
+
+#[test]
+fn alternatives_normalize_and_validate() {
+    let reg = normalize_registry(&mcp_registry(ALTERNATIVES), &ua_tokens(), CARD_SCHEMA)
+        .expect("normalizes");
+    let group = &reg.alternatives[0];
+    assert_eq!(group.group, "mcp-access");
+    assert_eq!(group.variants[0].name, "open");
+    assert!(group.variants[0].antecedents.is_empty());
+    assert_eq!(group.variants[0].presented_by, ["mcp-session"]);
+    assert_eq!(
+        group.variants[1].presented_by,
+        ["mcp-auth-required"],
+        "presented_by defaults to antecedents"
+    );
+    for (from, to, needle) in [
+        (
+            "      open: { presented_by: [mcp-session] }\n",
+            "",
+            "at least two variants",
+        ),
+        ("[mcp-session]", "[mcp-sessions]", "unknown antecedent"),
+        ("[mcp-session]", "[mcp-session], colour: red", "\"colour\""),
+        ("[mcp-session]", "[auth-present]", "presented by no check"),
+        (
+            "{ antecedents: [mcp-auth-required] }",
+            "{ presented_by: [mcp-auth-required] }",
+            "no variant with checks of its own",
+        ),
+        (
+            "{ antecedents: [mcp-auth-required] }",
+            "{ antecedents: [mcp-session] }",
+            "belongs to both",
+        ),
+        (
+            "    variants:",
+            "    colour: red\n    variants:",
+            "\"colour\"",
+        ),
+        ("group: mcp-access", "group: MCP", "must match"),
+    ] {
+        let e = top_err(&mcp_registry(&ALTERNATIVES.replace(from, to)));
+        assert!(
+            e.contains("alternatives") || e.contains("antecedent"),
+            "{needle}: {e}"
+        );
+        assert!(e.contains(needle), "{needle}: {e}");
+    }
+}
+
+#[test]
+fn the_server_card_check_takes_its_required_lists_from_the_schema() {
+    let reg = normalize_registry(&mcp_registry(""), &ua_tokens(), CARD_SCHEMA).expect("normalizes");
+    let card = reg
+        .checks
+        .iter()
+        .find(|c| c.id == "mcp-server-card")
+        .unwrap();
+    let with: serde_json::Value = serde_json::from_str(&card.with_json).unwrap();
+    assert_eq!(
+        with,
+        serde_json::json!({
+            "retained": "server-card",
+            "required": [
+                { "field": "name", "type": ["string"] },
+                { "field": "version", "type": ["string", "null"] }
+            ],
+            "remote_required": [{ "field": "url", "type": ["string"] }]
+        })
+    );
+    assert!(!card.handler_supported, "server-card is not ported yet");
+}
+
+#[test]
+fn server_card_and_retained_document_rules_fail_naming_the_check() {
+    for (from, to, needle) in [
+        (
+            "with: { retained: server-card }",
+            "with: { retained: server-card, required: [] }",
+            "hand-authors with.required",
+        ),
+        (
+            "with: { retained: server-card }",
+            "with: { retained: api-catalog }",
+            "with.retained \"server-card\"",
+        ),
+        (
+            "with: { retained: server-card }",
+            "with: { retained: sitemap }",
+            "must name a document discovery keeps",
+        ),
+        (
+            "    eval: retained-document\n    lane: shared",
+            "    lane: shared",
+            "needs eval retained-document",
+        ),
+    ] {
+        let e = top_err(&mcp_registry("").replace(from, to));
+        assert!(
+            e.contains("\"mcp-server-card\"") && e.contains(needle),
+            "{needle}: {e}"
+        );
+    }
+    let wrong_handler = err_of(
+        &CHECK_HTTP
+            .replace(
+                "    weight: 2\n",
+                "    eval: retained-document\n    weight: 2\n",
+            )
+            .replace(
+                "      path: /robots.txt\n",
+                "      path: /robots.txt\n      retained: api-catalog\n",
+            )
+            .replace("handler: http", "handler: dns-doh"),
+    );
+    assert!(
+        wrong_handler.contains("\"robots\"") && wrong_handler.contains("retained document"),
+        "{wrong_handler}"
+    );
+}
+
+#[test]
+fn a_malformed_card_schema_fails_only_when_a_card_check_needs_it() {
+    normalize_registry(&registry(CHECK_HTTP), &ua_tokens(), "not json")
+        .expect("no card check, no read");
+    let e = normalize_registry(&mcp_registry(""), &ua_tokens(), "not json")
+        .expect_err("card check reads it");
+    assert!(e.contains("server card schema is not JSON"), "{e}");
+    let e = normalize_registry(&mcp_registry(""), &ua_tokens(), r#"{"$defs":{}}"#)
+        .expect_err("no ServerCard");
+    assert!(e.contains("$defs.ServerCard"), "{e}");
+    let untyped = CARD_SCHEMA.replace(r#""url": { "type": "string" }"#, r#""url": {}"#);
+    let e =
+        normalize_registry(&mcp_registry(""), &ua_tokens(), &untyped).expect_err("untyped field");
+    assert!(
+        e.contains("remotes[].url") && e.contains("no JSON type"),
+        "{e}"
+    );
+}
+
+#[test]
+fn protected_resource_needs_a_known_op() {
+    let e = top_err(&mcp_registry("").replace("with: { op: challenge }", "with: { op: peek }"));
+    assert!(
+        e.contains("\"mcp-challenge\"") && e.contains("with.op"),
+        "{e}"
+    );
 }

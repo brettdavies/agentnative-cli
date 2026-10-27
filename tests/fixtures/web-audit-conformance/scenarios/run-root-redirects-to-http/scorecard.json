@@ -1,0 +1,3 @@
+{
+  "unreachable": "https://example.com/ redirects to http, and anc sends no plaintext request."
+}

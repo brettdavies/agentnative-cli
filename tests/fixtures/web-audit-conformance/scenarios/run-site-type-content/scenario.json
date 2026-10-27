@@ -357,6 +357,19 @@
     },
     {
       "request": {
+        "method": "GET",
+        "url": "https://example.com/mcp/server-card"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+      }
+    },
+    {
+      "request": {
         "method": "OPTIONS",
         "url": "https://example.com/mcp"
       },

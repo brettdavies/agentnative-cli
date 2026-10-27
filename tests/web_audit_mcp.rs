@@ -100,7 +100,12 @@ fn probe(id: &str, answer: MockResponse, session: Option<&str>) -> (ProbeOutcome
 
 #[test]
 fn every_mcp_row_posts_one_json_rpc_request_to_the_endpoint() {
-    for c in CHECKS.iter().filter(|c| c.handler == HandlerBinding::Mcp) {
+    // mcp-auth-enforced sends its tools/list without the session the
+    // unported mcp-auth-required gate settles (site #397).
+    for c in CHECKS
+        .iter()
+        .filter(|c| c.handler == HandlerBinding::Mcp && c.id != "mcp-auth-enforced")
+    {
         let (_, requests) = probe(c.id, rpc_error(-32601), None);
         assert_eq!(requests.len(), 1, "{}", c.id);
         assert_eq!(requests[0].method, "POST", "{}", c.id);

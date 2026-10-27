@@ -2,7 +2,7 @@
   "description": "one legacy card path 301s to the canonical card, which is enough to pass",
   "covers": [
     "mcp-card-legacy-aliases",
-    "well-known-mcp-card",
+    "mcp-server-card",
     "mcp-usage-doc"
   ],
   "target": "https://example.com/",

@@ -1,0 +1,138 @@
+{
+  "description": "an endpoint that requires sign-in lists a public https authorization server between an http one and one on a private address: an agent can still sign in through the usable server, so the metadata row is noncompliant and names both unusable entries, and none of the three is requested",
+  "covers": [
+    "mcp-auth-servers"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "body_contains": "not-json{{"
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32700,\"message\":\"nope\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "mcp-protocol-version": "2025-03-26"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32022,\"message\":\"nope\",\"data\":{\"supported\":[\"2026-07-28\"]}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp",
+        "headers": {
+          "origin": "https://example.com"
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json",
+          "www-authenticate": "Bearer resource_metadata=\"https://example.com/.well-known/oauth-protected-resource\"",
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        },
+        "body": "{\"error\":\"unauthorized\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json",
+          "www-authenticate": "Bearer resource_metadata=\"https://example.com/.well-known/oauth-protected-resource\""
+        },
+        "body": "{\"error\":\"unauthorized\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "OPTIONS",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "POST, OPTIONS",
+          "access-control-allow-headers": "content-type"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/mcp"
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "content-type": "application/json",
+          "www-authenticate": "Bearer resource_metadata=\"https://example.com/.well-known/oauth-protected-resource\""
+        },
+        "body": "{\"error\":\"unauthorized\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/oauth-protected-resource"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"resource\":\"https://example.com/mcp\",\"authorization_servers\":[\"http://auth.example.com\",\"https://auth.example.com\",\"https://10.0.0.1/oauth\"]}"
+      }
+    }
+  ]
+}

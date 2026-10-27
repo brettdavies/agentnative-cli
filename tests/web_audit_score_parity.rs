@@ -31,63 +31,87 @@ fn status(s: &str) -> ScorecardStatus {
 }
 
 struct Fixture {
+    name: String,
     config: ScoreConfig,
     universe: Vec<WebCheckKeyword>,
     rows: Vec<(WebCheckKeyword, ScorecardStatus)>,
     expected: (u32, u32),
 }
 
-fn parity_fixture() -> Fixture {
+/// Every case in the vendored fixture, each under the fixture's shared
+/// scoring config.
+fn parity_cases() -> Vec<Fixture> {
     let raw: Value = serde_json::from_str(
         &fs::read_to_string(fixtures().join("web-audit-score-parity.json")).unwrap(),
     )
     .unwrap();
     let w = &raw["weights"];
-    Fixture {
-        config: ScoreConfig {
-            weights: ScoreWeights {
-                must: w["must"].as_f64().unwrap(),
-                should: w["should"].as_f64().unwrap(),
-                may: w["may"].as_f64().unwrap(),
-            },
-            broken_factor: raw["broken_factor"].as_f64().unwrap(),
-            noncompliant_credit: raw["noncompliant_credit"].as_f64().unwrap(),
+    let config = ScoreConfig {
+        weights: ScoreWeights {
+            must: w["must"].as_f64().unwrap(),
+            should: w["should"].as_f64().unwrap(),
+            may: w["may"].as_f64().unwrap(),
         },
-        universe: raw["universe_tiers"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| keyword(v.as_str().unwrap()))
-            .collect(),
-        rows: raw["rows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|pair| {
-                (
-                    keyword(pair[0].as_str().unwrap()),
-                    status(pair[1].as_str().unwrap()),
-                )
-            })
-            .collect(),
-        expected: (
-            raw["expected"]["relative"].as_u64().unwrap() as u32,
-            raw["expected"]["global"].as_u64().unwrap() as u32,
-        ),
-    }
+        broken_factor: raw["broken_factor"].as_f64().unwrap(),
+        noncompliant_credit: raw["noncompliant_credit"].as_f64().unwrap(),
+    };
+    raw["cases"]
+        .as_array()
+        .expect("the fixture's cases[]")
+        .iter()
+        .map(|case| Fixture {
+            name: case["name"].as_str().unwrap().to_string(),
+            config,
+            universe: case["universe_tiers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| keyword(v.as_str().unwrap()))
+                .collect(),
+            rows: case["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|pair| {
+                    (
+                        keyword(pair[0].as_str().unwrap()),
+                        status(pair[1].as_str().unwrap()),
+                    )
+                })
+                .collect(),
+            expected: (
+                case["expected"]["relative"].as_u64().unwrap() as u32,
+                case["expected"]["global"].as_u64().unwrap() as u32,
+            ),
+        })
+        .collect()
+}
+
+fn scores(f: &Fixture, config: &ScoreConfig) -> (u32, u32) {
+    let universe = score::universe_max(f.universe.iter().copied(), config);
+    let scored = score::score_web_audit(f.rows.iter().copied(), universe, config);
+    (scored.relative, scored.global)
 }
 
 #[test]
 fn the_vendored_parity_fixture_reproduces_its_expected_scores() {
-    let f = parity_fixture();
-    let universe = score::universe_max(f.universe.iter().copied(), &f.config);
-    let scored = score::score_web_audit(f.rows.iter().copied(), universe, &f.config);
-    assert_eq!((scored.relative, scored.global), f.expected);
+    let cases = parity_cases();
+    assert_eq!(cases.len(), 2, "fixture cases (bump deliberately)");
+    for f in &cases {
+        assert_eq!(scores(f, &f.config), f.expected, "case {:?}", f.name);
+    }
+    assert!(
+        cases.iter().any(|f| f.expected.1 == 100),
+        "one case earns past its universe, so global must cap at 100"
+    );
 }
 
 #[test]
 fn a_perturbed_weight_fails_the_fixture() {
-    let f = parity_fixture();
+    let f = parity_cases()
+        .into_iter()
+        .find(|f| f.expected.1 < 100)
+        .expect("an uncapped case");
     let perturbed = ScoreConfig {
         weights: ScoreWeights {
             must: f.config.weights.must + 1.0,
@@ -95,9 +119,7 @@ fn a_perturbed_weight_fails_the_fixture() {
         },
         ..f.config
     };
-    let universe = score::universe_max(f.universe.iter().copied(), &perturbed);
-    let scored = score::score_web_audit(f.rows.iter().copied(), universe, &perturbed);
-    assert_ne!((scored.relative, scored.global), f.expected);
+    assert_ne!(scores(&f, &perturbed), f.expected);
 }
 
 #[test]

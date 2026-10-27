@@ -221,16 +221,16 @@ remediation:
       - { label: MCP transports, url: "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports" }
   mcp-get-fast-fail:
     title: GET on the MCP endpoint answers fast
-    goal: Answer GET on the MCP endpoint fast (a fast-fail status or a documented surface), never a held-open hang
+    goal: Answer GET with 405 or an SSE stream, never a document and never a held-open hang
     fix: |
-      Answer a `GET` on the MCP endpoint promptly; this check fails only when the connection is
-      held open. A streamable-HTTP `GET` routed into the transport opens the server-to-client SSE
-      notification stream, and a stateless server (nothing to push) parks that connection until the
-      caller times out. Answer one of two ways instead: fast-fail non-`POST` at the router with
-      `405 Method Not Allowed` and an `Allow: POST` header; or serve a documented surface on `GET`
-      (a human- and agent-readable docs page, or a redirect to your `.well-known` MCP server card)
-      so the `GET` returns content rather than a rejection. Any prompt, completed response passes
-      (a fast-fail status, or a documented `2xx`/redirect); only a held-open hang or a `5xx` fails.
+      Answer a `GET` on the MCP endpoint promptly, and answer it as streamable HTTP defines.
+      The probe sends `Accept: text/event-stream`. A `200` whose `Content-Type` is `text/html`,
+      `text/markdown`, or any other non-SSE type fails: a catalog client treats that document as a
+      transport error. Return one of two answers. Fast-fail at the router with `405 Method Not
+      Allowed`, `Allow: POST`, and `Cache-Control: no-store`. Or return `200` with
+      `Content-Type: text/event-stream` and an SSE body. Put the human-readable description on a
+      different path. A held-open connection and a `5xx` also fail. A `408` or `429` asks to be
+      retried and is not scored.
     resources:
       - { label: MCP transports, url: "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports" }
   mcp-cors-preflight:
@@ -259,15 +259,31 @@ remediation:
       declares CORS but the `POST` omits the header.
     resources:
       - { label: MDN CORS, url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS" }
+  mcp-server-card:
+    title: An MCP server card is published
+    goal: Publish a SEP-2127 server card for your MCP server and list it in your AI catalog
+    fix: |
+      Serve a SEP-2127 server card at `<endpoint>/server-card` (`/mcp/server-card` for an endpoint at
+      `/mcp`) as `application/mcp-server-card+json`. It carries `$schema`
+      (`https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json`), `name` in reverse-DNS
+      form (`com.example/server`), `version`, `description`, and `remotes`, one entry per endpoint with
+      `type` (`streamable-http`) and `url`. List it in `/.well-known/ai-catalog.json` as an entry of type
+      `application/mcp-server-card+json` with the card's `url`. A card at `/.well-known/mcp/server-card.json`
+      is the legacy SEP-1649 shape: it still passes, and SEP-2127 is the shape to publish.
+    resources:
+      - { label: SEP-2127, url: "https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127" }
+      - { label: Server card discovery, url: "https://github.com/modelcontextprotocol/experimental-ext-server-card/blob/main/docs/discovery.md" }
+      - { label: AI catalog, url: "https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md" }
   well-known-mcp-card:
     title: A .well-known MCP server card is published
-    goal: Publish an MCP server card at the canonical SEP-1649 path
+    goal: Publish a SEP-2127 server card for your MCP server and list it in your AI catalog
     fix: |
-      Publish an MCP server card at `/.well-known/mcp/server-card.json` (SEP-1649) naming the
-      endpoint, transport, and capabilities: include `mcp_endpoint` (or `url`, or
-      `transport.endpoint`), `serverInfo`, and the transport type.
+      This check is retired in favor of `mcp-server-card`, which scores the server card. Serve a SEP-2127 card at
+      `<endpoint>/server-card` carrying `$schema`, `name`, `version`, `description`, and `remotes` (each
+      with `type` and `url`), and list it in `/.well-known/ai-catalog.json`. The SEP-1649 path,
+      `/.well-known/mcp/server-card.json`, is the legacy location.
     resources:
-      - { label: SEP-1649, url: "https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127" }
+      - { label: SEP-2127, url: "https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127" }
   mcp-card-legacy-aliases:
     title: Legacy MCP card paths redirect to the canonical card
     goal: Point every legacy MCP card path at the canonical card instead of serving its own copy
@@ -288,6 +304,39 @@ remediation:
       and reference it from the server card and `llms.txt`. It gives an agent a one-fetch orientation.
     resources:
       - { label: anc.dev example, url: "https://anc.dev/mcp-skill.md" }
+  mcp-auth-challenge:
+    title: a 401 names the RFC 9728 metadata in its WWW-Authenticate challenge
+    goal: Name your protected-resource metadata in the WWW-Authenticate challenge of every 401
+    fix: |
+      When the MCP endpoint refuses a request that carries no access token, answer `401` with
+      `WWW-Authenticate: Bearer resource_metadata="https://<host>/.well-known/oauth-protected-resource"`,
+      naming the URL of your RFC 9728 metadata. A client reads the challenge to find the authorization
+      server; without `resource_metadata` it falls back to guessing well-known locations. The MCP
+      authorization specification requires the header on every `401`.
+    resources:
+      - { label: MCP authorization, url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization" }
+      - { label: RFC 9728 section 5.1, url: "https://www.rfc-editor.org/rfc/rfc9728#section-5.1" }
+  mcp-auth-servers:
+    title: protected-resource metadata lists public https authorization_servers
+    goal: List the authorization servers that issue tokens for your MCP server in its RFC 9728 metadata
+    fix: |
+      Publish `authorization_servers` in your protected-resource metadata as an array of at least one
+      issuer URL. Each entry must be an absolute `https` URL on a public host, because a client fetches
+      that authorization server's own metadata to begin the OAuth flow. A private, loopback, or `http`
+      URL leaves every client outside your network unable to sign in.
+    resources:
+      - { label: RFC 9728 section 2, url: "https://www.rfc-editor.org/rfc/rfc9728#section-2" }
+      - { label: MCP authorization, url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization" }
+  mcp-auth-enforced:
+    title: a tools/list without an access token is refused with 401
+    goal: Refuse every MCP request that carries no access token with 401
+    fix: |
+      Check the access token before dispatching any JSON-RPC method, `tools/list` included, and answer a
+      request without one with `401` and the same `WWW-Authenticate` challenge `initialize` receives. A
+      server that challenges some methods but serves `tools/list` to anyone exposes its tool catalog to
+      callers that never signed in, and leaves a client unable to tell which calls need a token.
+    resources:
+      - { label: MCP authorization, url: "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization" }
   llms-txt:
     title: /llms.txt present with a summary and link index
     goal: Serve /llms.txt with a title, summary, and categorized link index
@@ -330,6 +379,8 @@ remediation:
     fix: |
       If your service exposes an HTTP/REST API (separate from any MCP endpoint), publish an OpenAPI
       3.1 description of it at `/openapi.json` (or `/openapi.yaml`, or `/.well-known/openapi.json`).
+      When your `/.well-known/api-catalog` lists API anchors, the description scored is the one each
+      anchor's `service-desc` links to, wherever it is hosted, not these paths: publish it at that URL.
       Non-MCP agents use it to discover endpoints, parameters, and response shapes, and to generate
       typed clients. A service whose only machine surface is MCP has no REST API to describe here.
     resources:
@@ -388,17 +439,17 @@ remediation:
     resources:
       - { label: RFC 7763 (text/markdown), url: "https://www.rfc-editor.org/rfc/rfc7763" }
   markdown-vary:
-    title: Negotiated responses carry Vary Accept, User-Agent
-    goal: Emit Vary Accept, User-Agent so shared caches never serve one client the wrong variant
+    title: Negotiated responses carry Vary Accept
+    goal: Name every negotiated request header in Vary so shared caches never serve one client the wrong variant
     fix: |
-      When the same URL serves HTML or markdown depending on the request, emit
-      `Vary: Accept, User-Agent` on every response. Without it a shared cache (a CDN or a corporate
-      proxy) can store the markdown twin under the bare URL and then hand it to a browser, or vice
-      versa. Listing both request headers you negotiate on tells every cache to key its stored copies
-      by them, so each client class gets the variant it asked for. If the CDN ignores or strips Vary
-      (Cloudflare's zone cache historically keeps only `Accept-Encoding`), do not give that cache a
-      long `s-maxage` on negotiated responses — otherwise HIT replies reach clients with no Vary and
-      the check still fails.
+      When the same URL serves HTML or markdown depending on the request, emit a `Vary` header on
+      every response that names each request header the choice depends on: `Vary: Accept` when you
+      negotiate on `Accept` alone, and `Vary: Accept, User-Agent` when agent User-Agents also receive
+      the markdown twin. Without it a shared cache (a CDN or a corporate proxy) can store the markdown
+      twin under the bare URL and then hand it to a browser, or the reverse. If the CDN ignores or
+      strips Vary (Cloudflare's zone cache historically keeps only `Accept-Encoding`), do not give
+      that cache a long `s-maxage` on negotiated responses: HIT replies would then reach clients with
+      no Vary, and the check still fails.
     resources:
       - { label: RFC 9110 (Vary), url: "https://www.rfc-editor.org/rfc/rfc9110#name-vary" }
   markdown-frontmatter:
@@ -682,11 +733,13 @@ remediation:
       - { label: llmstxt.org, url: "https://llmstxt.org/" }
   llms-txt-links:
     title: llms.txt links resolve
-    goal: Make every markdown href in /llms.txt fetchable
+    goal: Make every markdown href in /llms.txt https and fetchable
     fix: |
       Probe the markdown links in `/llms.txt` and replace 404s. An agent that follows a dead index
-      link wastes a round-trip and may conclude the project has no docs. Keep the list short and
-      current; drop links you are not willing to keep alive.
+      link wastes a round-trip and may conclude the project has no docs. Write every link as an
+      `https` URL that answers over https without redirecting to `http`: an `http` link, or one
+      that redirects to `http`, is never requested and reads noncompliant. Keep the list short
+      and current; drop links you are not willing to keep alive.
     resources:
       - { label: llmstxt.org, url: "https://llmstxt.org/" }
   llms-txt-when-to-use:

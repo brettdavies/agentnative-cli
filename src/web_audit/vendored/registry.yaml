@@ -21,6 +21,9 @@
 #   content-without-js    SSR content floor with llms.txt twin softening
 #   llms-txt-quality      format / links / when-to-use ops on retained llms.txt
 #   api-hygiene           JSON error bodies / rate-limit headers from a safe GET
+#   protected-resource    sign-in challenge and RFC 9728 metadata an MCP endpoint served (no request)
+#   server-card           required fields of the retained server card, against the
+#                         vendored SEP-2127 schema (no request)
 #
 # Fields:
 #   id          stable slug, also the remediation-doc key
@@ -32,17 +35,39 @@
 #               regardless of the declared type; no declared type runs everything)
 #   antecedent  runtime gate that flips the check to n_a when unmet
 #               (resolution table in src/worker/audit-web/antecedents.ts)
-#   eval        optional non-standard evaluation rule
+#   eval        optional non-standard evaluation rule; retained-document scores
+#               the document discovery kept under with.retained, with no request;
+#               api-description scores the OpenAPI description each api-catalog
+#               API anchor declares, wherever it is hosted, and probes path_any on
+#               the audited origin only when the catalog lists no API anchor
+#   lane        mcp checks only: the protocol lane (a key of mcp_lanes) the
+#               row groups under on the result page and its markdown twin
 #   weight      integer registry weight (scoring uses per-tier config weights;
 #               see src/worker/audit-web/score.ts)
 #   handler     one of the handlers above
-#   with        handler parameters
+#   with        handler parameters; for http, an expect.status (or
+#               status_below) marks the probe as a document check, so a
+#               document that answers but fails the expectation scores
+#               broken. A check that probes a directive or tag inside a
+#               document another check already establishes (a robots.txt
+#               line, a root-HTML tag) omits it, so its miss scores absent.
 #   hint        one-line remediation summary
+#
+# A server-card check's with.required and with.remote_required are not
+# authored here: the build reads them from the `required` arrays of the
+# vendored extension schema (src/data/web-audit/server-card.schema.json).
 
 version: 1
 
-# Endpoint discovery: first candidate that answers `initialize` wins.
+# Endpoint discovery, SEP-2127 first: the MCP server-card entries of the
+# ai_catalog, then the well_known SEP-1649 cards; a card's endpoint on the
+# audited origin wins. Without one, the common_paths take legacy
+# `initialize` and modern `tools/list` POSTs together, and a legacy answer
+# wins. The card at <endpoint> + card_suffix outranks a SEP-1649 card as
+# the card of record.
 mcp_discovery:
+  ai_catalog: /.well-known/ai-catalog.json
+  card_suffix: /server-card
   well_known:
     - /.well-known/mcp.json
     - /.well-known/mcp/server-card.json
@@ -71,6 +96,56 @@ categories:
   mcp: MCP
   agent-discovery-auth: Agent discovery & auth
 
+# Protocol lanes the MCP category's rows group under on the result page and
+# its markdown twin, in display order. The first lane also holds any stored
+# row whose check id this registry no longer carries. Display only: no audit
+# reads a lane, so the registry fingerprint ignores this map and each
+# check's `lane`.
+mcp_lanes:
+  shared:
+    label: Every MCP server
+    note: transport, discovery, and card checks that apply whichever protocol the server speaks
+  legacy:
+    label: Legacy lane · 2025-06-18
+    note: initialize, then a session
+  modern:
+    label: Modern lane · 2026-07-28
+    note: header-routed and stateless; no initialize or session
+  browser:
+    label: In-page tools · WebMCP
+    note: browser tools exposed by the site's HTML, not by the MCP server
+
+# Retired check ids, outside `checks`. A stored row can still carry one, so
+# the result page renders it under its successor's lane with a note naming
+# the successor, and its fix page stays live. Display and build only: no
+# audit reads this map, so the registry fingerprint ignores it.
+retired:
+  well-known-mcp-card:
+    successor: mcp-server-card
+    reason: the card check scores the server card discovery keeps, SEP-2127 or SEP-1649, instead of requesting one SEP-1649 path
+
+# Alternatives: site designs that cannot both be satisfied at full access,
+# whatever the audit's vantage and whatever credential it holds. A
+# variant's checks are those gated on its `antecedents`, and a design may
+# have none of its own. It is presented when a check gated on one of its
+# `presented_by` tokens (default: its antecedents) applied: the check's
+# stored row reads anything but n_a, or an n_a reason only an applicable
+# check carries. The global universe (src/worker/audit-web/score.ts) counts
+# every check outside a group, plus each variant the site presents, or the
+# largest variant when it presents none. An access limit (sign-in the audit
+# cannot present, a private or unreachable host) never forms or joins a
+# group: a check it blocks reads n_a with its reason and stays in the
+# universe. An endpoint presents the protected design when a token-less
+# handshake, or the request that found it when neither handshake drew a
+# 401 or was served a result, draws a 401 its RFC 9728 metadata backs. A
+# check gated on mcp-session presents the open design whenever it is
+# evaluated, so an endpoint can present both.
+alternatives:
+  - group: mcp-access
+    variants:
+      open: { presented_by: [mcp-session] }
+      protected: { antecedents: [mcp-auth-required] }
+
 checks:
   # ---- API -----------------------------------------------------------------
   - id: openapi
@@ -82,6 +157,7 @@ checks:
     weight: 2
     title: An OpenAPI description is published
     breadcrumb: OpenAPI description
+    eval: api-description
     handler: http
     with:
       path_any: [/openapi.json, /openapi.yaml, /.well-known/openapi.json]
@@ -113,9 +189,10 @@ checks:
     weight: 2
     title: /.well-known/api-catalog published (RFC 9727)
     breadcrumb: API catalog
+    eval: retained-document
     handler: http
     with:
-      path: /.well-known/api-catalog
+      retained: api-catalog
       expect: { status: [200], body_regex: "linkset" }
     hint: Serve /.well-known/api-catalog as application/linkset+json with a linkset[] of anchor + service-desc entries.
 
@@ -148,6 +225,7 @@ checks:
   # ---- MCP -----------------------------------------------------------------
   - id: mcp-initialize
     category: mcp
+    lane: legacy
     tier: required
     principle: P2
     site_types: [mcp]
@@ -161,10 +239,11 @@ checks:
 
   - id: mcp-capabilities
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P2
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 2
     title: initialize advertises capabilities (tools / resources / prompts)
     breadcrumb: MCP capabilities
@@ -174,10 +253,11 @@ checks:
 
   - id: mcp-tools-list
     category: mcp
+    lane: legacy
     tier: required
     principle: P2
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 4
     title: tools/list returns a tools array with input schemas
     breadcrumb: MCP tools/list
@@ -187,6 +267,7 @@ checks:
 
   - id: mcp-resources-list
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P2
     site_types: [mcp]
@@ -200,10 +281,11 @@ checks:
 
   - id: mcp-modern-tools-list
     category: mcp
+    lane: modern
     tier: required
     principle: P2
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 4
     title: header-routed tools/list (2026-07-28) returns tools without initialize
     breadcrumb: MCP tools/list (modern)
@@ -213,10 +295,11 @@ checks:
 
   - id: mcp-server-discover
     category: mcp
+    lane: modern
     tier: recommended
     principle: P2
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 3
     title: server/discover answers with server identity on the modern lane
     breadcrumb: MCP server discovery
@@ -226,6 +309,7 @@ checks:
 
   - id: mcp-unknown-method
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -243,6 +327,7 @@ checks:
   # servers is abusive.
   - id: mcp-malformed-body
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -256,6 +341,7 @@ checks:
 
   - id: mcp-batch-reject
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -269,10 +355,11 @@ checks:
 
   - id: mcp-unknown-tool
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P4
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 2
     title: tools/call with an unknown tool name returns -32602
     breadcrumb: MCP unknown tool
@@ -282,6 +369,7 @@ checks:
 
   - id: mcp-modern-unknown-method
     category: mcp
+    lane: modern
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -295,6 +383,7 @@ checks:
 
   - id: mcp-modern-clientcaps
     category: mcp
+    lane: modern
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -308,6 +397,7 @@ checks:
 
   - id: mcp-modern-header-mismatch
     category: mcp
+    lane: modern
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -321,6 +411,7 @@ checks:
 
   - id: mcp-modern-version-reject
     category: mcp
+    lane: modern
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -334,6 +425,7 @@ checks:
 
   - id: mcp-modern-resources-miss
     category: mcp
+    lane: modern
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -350,10 +442,11 @@ checks:
   # so the answer is attributable to the negotiation and to nothing else.
   - id: mcp-accept-json
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P4
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 3
     title: a JSON-only Accept is answered without SSE framing
     breadcrumb: MCP Accept JSON
@@ -363,10 +456,11 @@ checks:
 
   - id: mcp-accept-unsatisfiable
     category: mcp
+    lane: legacy
     tier: recommended
     principle: P4
     site_types: [mcp]
-    antecedent: mcp-present
+    antecedent: mcp-session
     weight: 3
     title: an unsatisfiable Accept draws a 406 rather than an unasked-for type
     breadcrumb: MCP Accept unsatisfiable
@@ -376,6 +470,7 @@ checks:
 
   - id: mcp-get-fast-fail
     category: mcp
+    lane: shared
     tier: recommended
     principle: P4
     site_types: [mcp]
@@ -387,12 +482,17 @@ checks:
     with:
       path: "{mcp_endpoint}"
       method: GET
+      headers:
+        Accept: text/event-stream
       timeout: 8
-      expect: { status_below: 500 }
-    hint: "Answer GET promptly: fast-fail non-POST with 405, or serve a documented surface (a docs page, or a redirect to your server card). A stateless streamable-HTTP GET routed into the transport otherwise holds the SSE stream open until the caller times out."
+      expect:
+        status_below: 500
+        sse_when_success: true
+    hint: "Answer GET with Accept: text/event-stream promptly. Return 405 Method Not Allowed, or 200 with Content-Type text/event-stream. A 200 that serves HTML or markdown fails. A held-open hang or a 5xx also fails."
 
   - id: mcp-cors-preflight
     category: mcp
+    lane: shared
     tier: recommended
     principle: P6
     site_types: [mcp]
@@ -411,6 +511,7 @@ checks:
 
   - id: mcp-cors-actual
     category: mcp
+    lane: shared
     tier: recommended
     principle: P6
     site_types: [mcp]
@@ -427,23 +528,28 @@ checks:
       surface: actual
     hint: Echo Access-Control-Allow-Origin on the actual POST, not only the preflight.
 
-  - id: well-known-mcp-card
+  # Scores the card of record discovery kept, of either generation: a
+  # SEP-2127 card passes when its required fields validate, and a SEP-1649
+  # card passes with the superseded advisory.
+  - id: mcp-server-card
     category: mcp
+    lane: shared
     tier: recommended
     principle: P8
     site_types: [mcp]
     antecedent: mcp-present
+    eval: retained-document
     weight: 3
-    title: A .well-known MCP server card is published (SEP-1649)
+    title: An MCP server card is published
     breadcrumb: MCP server card
-    handler: http
+    handler: server-card
     with:
-      path: /.well-known/mcp/server-card.json
-      expect: { status: [200], content_type: "json", body_regex: "mcp_endpoint|serverInfo|transport|\"name\"" }
-    hint: Publish /.well-known/mcp/server-card.json (SEP-1649).
+      retained: server-card
+    hint: Publish a SEP-2127 server card at <endpoint>/server-card and list it in /.well-known/ai-catalog.json.
 
   - id: mcp-card-legacy-aliases
     category: mcp
+    lane: shared
     tier: optional
     principle: P8
     site_types: [mcp]
@@ -463,6 +569,7 @@ checks:
 
   - id: mcp-usage-doc
     category: mcp
+    lane: shared
     tier: optional
     principle: P8
     site_types: [mcp]
@@ -476,8 +583,54 @@ checks:
       expect: { status: [200] }
     hint: Link a short markdown usage doc (curl examples, tool list, auth, rate limits) from the card and llms.txt.
 
+  # Sign-in enforcement on an endpoint that requires it: scored only when a
+  # wire probe drew a 401 that RFC 9728 metadata on the endpoint's host
+  # backs, so an open server reads these not applicable.
+  - id: mcp-auth-challenge
+    category: mcp
+    lane: shared
+    tier: optional
+    principle: P1
+    site_types: [mcp]
+    antecedent: mcp-auth-required
+    weight: 1
+    title: a 401 names the RFC 9728 metadata in its WWW-Authenticate challenge
+    breadcrumb: MCP auth challenge
+    handler: protected-resource
+    with: { op: challenge }
+    hint: Answer an unauthenticated request with 401 and WWW-Authenticate Bearer resource_metadata="<metadata URL>" so a client finds the authorization server without guessing.
+
+  - id: mcp-auth-servers
+    category: mcp
+    lane: shared
+    tier: optional
+    principle: P1
+    site_types: [mcp]
+    antecedent: mcp-auth-required
+    weight: 1
+    title: protected-resource metadata lists public https authorization_servers
+    breadcrumb: MCP authorization servers
+    handler: protected-resource
+    with: { op: metadata }
+    hint: List at least one public https issuer URL in the authorization_servers array of the RFC 9728 metadata.
+
+  - id: mcp-auth-enforced
+    category: mcp
+    lane: shared
+    tier: optional
+    principle: P1
+    site_types: [mcp]
+    antecedent: mcp-auth-required
+    weight: 1
+    title: a tools/list without an access token is refused with 401
+    breadcrumb: MCP unauthenticated tools/list
+    handler: mcp
+    with: { op: unauthenticated-tools-list }
+    hint: Refuse every request that carries no access token with 401 and the same WWW-Authenticate challenge, tools/list included, never with a tools result.
+
   - id: webmcp
     category: mcp
+    lane: browser
     tier: optional
     principle: P2
     site_types: [all]
@@ -530,7 +683,7 @@ checks:
     breadcrumb: llms.txt links
     handler: llms-txt-quality
     with: { op: links, max_candidates: 8 }
-    hint: 'Keep every markdown href in /llms.txt fetchable (2xx/3xx). Dead index links waste an agent round-trip.'
+    hint: 'Keep every markdown href in /llms.txt https and fetchable (2xx/3xx). An http link, or one that redirects to http, is never requested; a dead index link wastes an agent round-trip.'
 
   - id: llms-txt-when-to-use
     category: content-for-agents
@@ -677,19 +830,17 @@ checks:
     site_types: [all]
     antecedent: markdown-twin
     weight: 1
-    title: Negotiated responses carry Vary Accept, User-Agent
+    title: Negotiated responses carry Vary Accept
     breadcrumb: Markdown Vary
     handler: http
     with:
       path: /
       expect:
-        # Both tokens present, in either order, with `accept` not the prefix of
-        # `accept-encoding` or `accept-language`. Spelled without lookaround
-        # because the CLI compiles every registry pattern with a linear-time
-        # engine that has none; tests/web-audit-vary-pattern.test.ts pins it
-        # to the lookaround form it replaces.
-        header_regex: { name: vary, pattern: "accept(?:user-agent|[^-\\n\\r\\u2028\\u2029].*user-agent)|user-agent.*accept(?:[^-]|$)" }
-    hint: 'Emit Vary: Accept, User-Agent when the markdown twin is negotiated on the same URL, so shared caches never serve one client the wrong variant.'
+        # `accept` (or `*`) as a whole field name, so Accept-Encoding and
+        # Accept-Language do not count. Spelled without lookaround because the
+        # CLI compiles every registry pattern with a linear-time engine.
+        header_regex: { name: vary, pattern: "(?:^|[\\s,])(?:accept|\\*)(?:[\\s,]|$)" }
+    hint: 'Name every request header the markdown twin is negotiated on in Vary (Accept, plus User-Agent when agent User-Agents also get markdown), so shared caches never serve one client the wrong variant.'
 
   - id: markdown-frontmatter
     category: content-for-agents
@@ -904,7 +1055,7 @@ checks:
     handler: http
     with:
       path: /robots.txt
-      expect: { status: [200], body_regex: "^\\s*User-agent:\\s*(\\*|GPTBot|OAI-SearchBot|ChatGPT-User|Claude|ClaudeBot|Anthropic|Google-Extended|PerplexityBot|CCBot|Bytespider)" }
+      expect: { body_regex: "^\\s*User-agent:\\s*(\\*|GPTBot|OAI-SearchBot|ChatGPT-User|Claude|ClaudeBot|Anthropic|Google-Extended|PerplexityBot|CCBot|Bytespider)" }
     hint: Add explicit User-agent rules for AI crawlers (GPTBot, ClaudeBot, Google-Extended, ...) or a wildcard policy.
 
   - id: content-signals
@@ -919,7 +1070,7 @@ checks:
     handler: http
     with:
       path: /robots.txt
-      expect: { status: [200], body_regex: "^\\s*Content-Signal:\\s*(ai-train|search|ai-input)" }
+      expect: { body_regex: "^\\s*Content-Signal:\\s*(ai-train|search|ai-input)" }
     hint: 'Add Content-Signal directives to robots.txt: ai-train / search / ai-input = yes|no (contentsignals.org).'
 
   - id: web-bot-auth
@@ -1023,8 +1174,11 @@ checks:
     title: OAuth Protected Resource Metadata published (RFC 9728)
     breadcrumb: OAuth protected resource
     handler: http
+    # RFC 9728 metadata belongs to the protected resource, so it is read on
+    # the MCP endpoint's host, which a declared endpoint does not share with
+    # the audited site.
     with:
-      path: /.well-known/oauth-protected-resource
+      path: "{mcp_origin}/.well-known/oauth-protected-resource"
       expect: { status: [200], content_type: "json", body_regex: "authorization_servers|resource" }
     hint: For an authenticated MCP server, publish /.well-known/oauth-protected-resource (RFC 9728); expected absent for open servers.
 

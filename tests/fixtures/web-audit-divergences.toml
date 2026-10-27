@@ -1,0 +1,8853 @@
+# Web-audit divergence ledger: every element of the vendored conformance
+# corpus the engine does not yet reproduce at site_sha, one entry per
+# (scenario, element). An element is a top-level scorecard field,
+# `row:<check id>`, `unreachable`, or `document` (bytes differ, fields match).
+# `owner` is the site PR that set the golden value the engine misses.
+#
+# The conformance and handlers suites assert the observed divergences EQUAL
+# this ledger: an unledgered divergence fails, and an entry that starts
+# matching fails until it is removed, so each port PR drops the entries it
+# closes. Regenerate after a re-pin or a port rather than editing by hand;
+# --since is the pin before the re-pin that opened these entries:
+#   WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
+site_sha = "d5772289d71d056fd1c427ccb994e8c547ea2a43"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-inline-copy-noncompliant"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-non-permanent-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-away-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-redirect-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "alias-unpublished-optional-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "categories"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "coverage_summary"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "declared_hosts"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "mcp_discovery"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:api-catalog"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:json-errors"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:mcp-auth-challenge"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:mcp-auth-enforced"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:mcp-auth-servers"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:openapi"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "row:rate-limit-headers"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "score"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "score_pct"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-anchor-hosts"
+element = "summary"
+owner = "#401"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "categories"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "coverage_summary"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "declared_hosts"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "mcp_discovery"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:api-catalog"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:json-errors"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:mcp-auth-challenge"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:mcp-auth-enforced"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:mcp-auth-servers"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:openapi"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "row:rate-limit-headers"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "score"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "score_pct"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-description-over-cap"
+element = "summary"
+owner = "#412"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-fallback-path"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-html-error"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-json-200"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "api-hygiene-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-bare-401"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "declared_hosts"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "mcp_endpoint"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:auth-md"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-card-legacy-aliases"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-cors-actual"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-cors-preflight"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-get-fast-fail"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-malformed-body"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-modern-clientcaps"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-modern-header-mismatch"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-modern-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-modern-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-modern-version-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-server-discover"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:mcp-usage-doc"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:oauth-discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-declared-endpoint"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-modern-clientcaps"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-modern-header-mismatch"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-modern-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-modern-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-modern-version-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-server-discover"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echo-unanswered"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-echoing-gateway"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "mcp_endpoint"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:auth-md"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-card-legacy-aliases"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-cors-actual"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-cors-preflight"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-get-fast-fail"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-malformed-body"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-modern-clientcaps"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-modern-header-mismatch"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-modern-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-modern-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-modern-version-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-server-discover"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:mcp-usage-doc"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:oauth-discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-enforcement-defects"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-later-401"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-bare-heading"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-html-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "auth-md-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "mcp_endpoint"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:auth-md"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-card-legacy-aliases"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-cors-actual"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-cors-preflight"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-get-fast-fail"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-malformed-body"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-modern-clientcaps"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-modern-header-mismatch"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-modern-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-modern-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-modern-version-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-server-discover"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:mcp-usage-doc"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:oauth-discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-modern-only"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-open-endpoint"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "mcp_endpoint"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:auth-md"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-card-legacy-aliases"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-cors-actual"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-cors-preflight"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-get-fast-fail"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-malformed-body"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-modern-clientcaps"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-modern-header-mismatch"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-modern-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-modern-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-modern-version-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-server-discover"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:mcp-usage-doc"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:oauth-discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-own-endpoint"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "mcp_discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "mcp_endpoint"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:api-catalog"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:auth-md"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-card-legacy-aliases"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-cors-actual"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-cors-preflight"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-get-fast-fail"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-malformed-body"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-modern-clientcaps"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-modern-header-mismatch"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-modern-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-modern-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-modern-version-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-server-discover"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:mcp-usage-doc"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:oauth-discovery"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:oauth-protected-resource"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "row:openapi"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "auth-servers-mixed"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-non-2xx-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-rich-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-dead-links-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "content-thin-twin-na"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-full-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-only"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "categories"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "coverage_summary"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "mcp_discovery"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "row:api-catalog"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "row:mcp-cors-actual"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "row:mcp-cors-preflight"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "row:openapi"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "score"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "score_pct"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-rate-limited-no-cors"
+element = "summary"
+owner = "#402"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-post-transport-failure-no-cors"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-posture-consistent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-500-with-acao"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-only"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "cors-preflight-transport-failure"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "categories"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "coverage_summary"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "row:api-catalog"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "row:oauth-protected-resource"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "row:openapi"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "score"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "score_pct"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-card-generations-auth"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "row:api-catalog"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "row:openapi"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-card"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "row:api-catalog"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "row:openapi"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-declarations"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "row:api-catalog"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "row:openapi"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-catalog-inline-card"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "categories"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "coverage_summary"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "row:api-catalog"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "row:openapi"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "score"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "score_pct"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-legacy-card"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "row:api-catalog"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "row:openapi"
+owner = "#394"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "row:api-catalog"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "row:openapi"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "discovery-suffix-card-no-remotes"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-nxdomain"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolver-fallback"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "dns-aid-resolvers-unreachable"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "categories"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "coverage_summary"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "mcp_endpoint"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-card-legacy-aliases"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:mcp-usage-doc"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "score"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "score_pct"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-card-admit"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "declared_hosts"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "mcp_endpoint"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:api-catalog"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-accept-json"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-batch-reject"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-capabilities"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-card-legacy-aliases"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-cors-actual"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-cors-preflight"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-get-fast-fail"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-initialize"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-malformed-body"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-modern-clientcaps"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-modern-header-mismatch"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-modern-resources-miss"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-modern-tools-list"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-modern-unknown-method"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-modern-version-reject"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-resources-list"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-server-discover"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-tools-list"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-unknown-method"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-unknown-tool"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:mcp-usage-doc"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "row:openapi"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-catalog-card-document"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "categories"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "coverage_summary"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "follow_declarations"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "mcp_discovery"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-card-legacy-aliases"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:mcp-usage-doc"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:oauth-protected-resource"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "score"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "score_pct"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-disabled"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "categories"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "coverage_summary"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "mcp_discovery"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-card-legacy-aliases"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:mcp-usage-doc"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:oauth-protected-resource"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "score"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "score_pct"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-host-cap"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "declared_hosts"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "mcp_endpoint"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:api-catalog"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-accept-json"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-batch-reject"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-capabilities"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-card-legacy-aliases"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-cors-actual"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-cors-preflight"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-get-fast-fail"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-initialize"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-malformed-body"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-modern-clientcaps"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-modern-header-mismatch"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-modern-resources-miss"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-modern-tools-list"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-modern-unknown-method"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-modern-version-reject"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-resources-list"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-server-discover"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-tools-list"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-unknown-method"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-unknown-tool"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:mcp-usage-doc"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "row:openapi"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-host-catalog-card"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "categories"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "coverage_summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "declared_hosts"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "mcp_discovery"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:api-catalog"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:json-errors"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:mcp-auth-challenge"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:mcp-auth-enforced"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:mcp-auth-servers"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:openapi"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "row:rate-limit-headers"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "score"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "score_pct"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-http-declarations"
+element = "summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "mcp_discovery"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "mcp_endpoint"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-admit"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "categories"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "coverage_summary"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "mcp_discovery"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-card-legacy-aliases"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:mcp-usage-doc"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:oauth-protected-resource"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "score"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "score_pct"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-own-redirect-refused"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "categories"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "coverage_summary"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "mcp_discovery"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-card-legacy-aliases"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:mcp-usage-doc"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:oauth-protected-resource"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "score"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "score_pct"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-reciprocity-refused"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "categories"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "coverage_summary"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "mcp_endpoint"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:api-catalog"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-accept-json"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-batch-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-capabilities"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-card-legacy-aliases"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-cors-actual"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-cors-preflight"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-get-fast-fail"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-initialize"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-malformed-body"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-modern-clientcaps"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-modern-header-mismatch"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-modern-resources-miss"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-modern-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-modern-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-modern-version-reject"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-resources-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-server-discover"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-tools-list"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-unknown-method"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-unknown-tool"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:mcp-usage-doc"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "row:openapi"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "score"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "score_pct"
+owner = "#395"
+
+[[divergence]]
+scenario = "follow-redirect-hop"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-crlf-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-no-key-line-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "frontmatter-unterminated-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-no-recovery"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-404-markdown-recovery"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-affordance-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-affordance-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-affordance-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-affordance-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-challenge-interstitial"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-content-type-mismatch"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-discovery-cards"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-discovery-cards-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "categories"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "coverage_summary"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "mcp_discovery"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "row:api-catalog"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "row:mcp-get-fast-fail"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "row:mcp-server-card"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "row:openapi"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "score"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "score_pct"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-html-broken"
+element = "summary"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "categories"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "coverage_summary"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "mcp_discovery"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "row:api-catalog"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "row:mcp-get-fast-fail"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "row:mcp-server-card"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "row:openapi"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "score"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "score_pct"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-markdown-broken"
+element = "summary"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "categories"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "coverage_summary"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "mcp_discovery"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "row:api-catalog"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "row:mcp-server-card"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "row:openapi"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "score"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "score_pct"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-sse-pass"
+element = "summary"
+owner = "#462"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-get-fast-fail-timeout-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-header-regex-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-llms-txt-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-mixed-candidates-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-path-any-second-candidate"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-ai-rules"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "score"
+owner = "#451"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "score_pct"
+owner = "#451"
+
+[[divergence]]
+scenario = "http-robots-no-ai-rules"
+element = "summary"
+owner = "#451"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-soft-404"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-transport-timeout-error"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "http-ua-negotiation-absent"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "mcp_discovery"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "row:api-catalog"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "row:llms-txt-links"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "row:mcp-auth-challenge"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "row:mcp-auth-enforced"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "row:mcp-auth-servers"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "row:openapi"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-angle-bracket-pass"
+element = "summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "row:llms-txt-links"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-broken-link"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "categories"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "coverage_summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "mcp_discovery"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "row:api-catalog"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "row:llms-txt-links"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "row:mcp-auth-challenge"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "row:mcp-auth-enforced"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "row:mcp-auth-servers"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "row:openapi"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "score"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
+element = "summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "row:llms-txt-links"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-dead-link"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-h1-only"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "categories"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "coverage_summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "mcp_discovery"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "row:api-catalog"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "row:llms-txt-links"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "row:mcp-auth-challenge"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "row:mcp-auth-enforced"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "row:mcp-auth-servers"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "row:openapi"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "score"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "score_pct"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-http-link"
+element = "summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "llms-quality-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-capabilities-empty"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-no-endpoint-field"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "declared_hosts"
+owner = "#395"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-card-off-origin"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "categories"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "coverage_summary"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "mcp_discovery"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:api-catalog"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-modern-clientcaps"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-modern-header-mismatch"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-modern-resources-miss"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-modern-tools-list"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-modern-unknown-method"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-modern-version-reject"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:mcp-server-discover"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "row:openapi"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "score"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "score_pct"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-discover-rate-limited"
+element = "summary"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-dual-stack"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "categories"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "coverage_summary"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "mcp_discovery"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "row:api-catalog"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "row:mcp-cors-preflight"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "row:mcp-get-fast-fail"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "row:openapi"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "score"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "summary"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-garbage-responses"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "categories"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "coverage_summary"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "mcp_discovery"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:api-catalog"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-accept-json"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-batch-reject"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-capabilities"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-cors-actual"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-cors-preflight"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-initialize"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-malformed-body"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-modern-clientcaps"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-modern-header-mismatch"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-modern-tools-list"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-modern-unknown-method"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-modern-version-reject"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-server-discover"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-tools-list"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-unknown-method"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:mcp-unknown-tool"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "row:openapi"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "score"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "score_pct"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-http-rate-limited"
+element = "summary"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-legacy-lane"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-modern-lane"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-negotiation-defects"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-open-stream"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "row:mcp-capabilities"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "row:mcp-initialize"
+owner = "#399"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-rate-limited"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-empty-broken"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-resources-unadvertised"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "row:api-catalog"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "row:openapi"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-html-200"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "row:api-catalog"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "row:openapi"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-missing-field"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "categories"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "coverage_summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "mcp_discovery"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "row:api-catalog"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "row:openapi"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "score"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "score_pct"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-server-card-unparseable"
+element = "summary"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-sse-framing"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-stateful-session"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-typed-http-refusals"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "mcp-wrong-error-codes"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "categories"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "coverage_summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-accept-json"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-accept-unsatisfiable"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-batch-reject"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-capabilities"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-initialize"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-malformed-body"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-modern-resources-miss"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-resources-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-tools-list"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-unknown-method"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:mcp-unknown-tool"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:oauth-protected-resource"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "score"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "score_pct"
+owner = "#397"
+
+[[divergence]]
+scenario = "mcp-www-authenticate"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:oauth-protected-resource"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-all-pass"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-antecedent-unmet"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-antecedent-unmet"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-antecedent-unmet"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-antecedent-unmet"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-body-over-cap"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "categories"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "coverage_summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "mcp_discovery"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:api-catalog"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:llms-full-txt"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:llms-txt"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:llms-txt-format"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:llms-txt-links"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:llms-txt-scoped"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:llms-txt-when-to-use"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:markdown-accept-plain"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:markdown-agent-ua"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:markdown-cli-ua"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:markdown-frontmatter"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:markdown-vary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:mcp-auth-challenge"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:mcp-auth-enforced"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:mcp-auth-servers"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "row:openapi"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "score"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "score_pct"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-document-redirects-to-http"
+element = "summary"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:oauth-protected-resource"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "score"
+owner = "#451"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "score_pct"
+owner = "#451"
+
+[[divergence]]
+scenario = "run-healthy"
+element = "summary"
+owner = "#451"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-redirects"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-401"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-root-401"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-401"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-401"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-not-html"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-root-not-html"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-not-html"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-not-html"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-root-redirects-to-http"
+element = "unreachable"
+owner = "#413"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:json-errors"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:json-schemas"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:oauth-protected-resource"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "row:rate-limit-headers"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-api"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "row:mcp-server-card"
+owner = "#418"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "row:oauth-protected-resource"
+owner = "#393"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "run-site-type-content"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "scoped-llms-absent"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "scoped-llms-broken"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "scoped-llms-pass"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "scoped-llms-sitemap-dirs"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "scoped-llms-sitemap-dirs"
+element = "row:llms-txt-links"
+owner = "#413"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-mention-only"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-model-context"
+element = "summary"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "categories"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "coverage_summary"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "mcp_discovery"
+owner = "#394"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "row:api-catalog"
+owner = "#393"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "row:mcp-auth-challenge"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "row:mcp-auth-enforced"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "row:mcp-auth-servers"
+owner = "#397"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "row:openapi"
+owner = "#393"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "score"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "score_pct"
+owner = "#458"
+
+[[divergence]]
+scenario = "webmcp-script-asset"
+element = "summary"
+owner = "#397"

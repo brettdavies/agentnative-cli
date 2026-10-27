@@ -16,10 +16,11 @@ use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 
 use super::registry::{WebCheck, WebCheckKeyword, WebCheckTier};
+#[cfg(feature = "web")]
 use super::score::{self, ScoreConfig};
 
 /// Web scorecard schema version, independent of the CLI scorecard schema.
-pub const WEB_SCHEMA_VERSION: &str = "0.4";
+pub const WEB_SCHEMA_VERSION: &str = "0.5";
 
 /// The seven final states a check can settle to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -84,6 +85,47 @@ pub enum NaReason {
     OptionalAbsent,
     /// The probed surface pair shows a deliberate, consistent opt-out.
     PostureConsistent,
+    /// The endpoint requires sign-in the audit cannot present.
+    AuthRequired,
+    /// A declared host was kept from being evaluated.
+    DeclaredHostBlocked,
+    /// Following declared hosts was off.
+    FollowDisabled,
+    /// The declared host did not confirm the endpoint.
+    ReciprocityRefused,
+}
+
+/// How a passing row passed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RowAdvisory {
+    /// A server card in the SEP-1649 shape.
+    Superseded,
+}
+
+/// One host a row's evidence was requested from; on a row over several
+/// targets, also that host's own outcome.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RowHost {
+    /// The WHATWG host, port kept.
+    pub host: String,
+    /// This host's own outcome, on a row over several targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ScorecardStatus>,
+    /// Why this host's outcome is `n_a`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub na_reason: Option<NaReason>,
+}
+
+/// Where an audit ran and whether it presented a credential.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WebVantage {
+    /// `public` or `local`.
+    pub network: String,
+    /// Whether a credential was presented.
+    pub credentialed: bool,
 }
 
 /// The declared site type a run scopes to.
@@ -256,8 +298,16 @@ pub struct ResultRow {
     /// The row settled from an antecedent rather than its own request; present only when true.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unprobed: bool,
+    /// How a passing row passed, when worth a note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advisory: Option<RowAdvisory>,
     /// Compact summary of what the probe observed; null when there is none.
     pub evidence: Option<String>,
+    /// The distinct hosts the row's evidence was requested from.
+    pub hosts: Vec<RowHost>,
+    /// Present only when `hosts` holds exactly one entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
 }
 
 /// The web scorecard.
@@ -284,6 +334,12 @@ pub struct WebScorecard {
     pub site_type: Option<DeclaredSiteType>,
     /// The submitter's opt-in to the public board listing.
     pub public_listing: bool,
+    /// Where the audit ran.
+    pub vantage: WebVantage,
+    /// Whether the audit followed the hosts the target declares.
+    pub follow_declarations: bool,
+    /// The declared-hosts trail, one entry per declared host considered.
+    pub declared_hosts: Vec<EvidenceItem>,
     /// Tally by status.
     pub summary: StatusTally,
     /// Coverage by keyword level.
@@ -335,6 +391,7 @@ pub struct ScorecardMeta {
 }
 
 /// Assemble the scorecard from finalized rows, the site's `buildWebScorecard`.
+#[cfg(feature = "web")]
 pub fn build_web_scorecard(
     results: &[EngineResult],
     meta: &ScorecardMeta,
@@ -371,12 +428,28 @@ pub fn build_web_scorecard(
             status: r.status,
             na_reason: r.na_reason,
             unprobed: r.unprobed,
+            advisory: None,
             evidence: if r.evidence.is_empty() {
                 None
             } else {
                 Some(r.evidence.clone())
             },
+            host: None,
+            hosts: Vec::new(),
         });
+        let hosts = row_hosts(&r.raw_evidence);
+        let row = rows.last_mut().expect("just pushed");
+        if hosts.len() == 1 {
+            row.host = Some(hosts[0].clone());
+        }
+        row.hosts = hosts
+            .into_iter()
+            .map(|host| RowHost {
+                host,
+                status: None,
+                na_reason: None,
+            })
+            .collect();
     }
     let universe_max = score::universe_max(registry_keywords, config);
     let scored = score::score_web_audit(
@@ -403,6 +476,12 @@ pub fn build_web_scorecard(
         audit_profile: Null,
         site_type: meta.site_type,
         public_listing: meta.public_listing,
+        vantage: WebVantage {
+            network: "public".to_string(),
+            credentialed: false,
+        },
+        follow_declarations: true,
+        declared_hosts: Vec::new(),
         summary,
         coverage_summary: coverage,
         score_pct: scored.relative,
@@ -413,6 +492,38 @@ pub fn build_web_scorecard(
         categories,
         results: rows,
     }
+}
+
+/// The distinct hosts the evidence items were requested from, in order: an
+/// item with a `blocked` marker reached no host; a string `url` counts its
+/// WHATWG host (port kept), else a non-empty string `host`.
+#[cfg(feature = "web")]
+fn row_hosts(evidence: &[EvidenceItem]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for item in evidence {
+        if item.contains_key("blocked") {
+            continue;
+        }
+        let host = match item.get("url").and_then(serde_json::Value::as_str) {
+            Some(u) => url::Url::parse(u).ok().and_then(|p| {
+                p.host_str().map(|h| match p.port() {
+                    Some(port) => format!("{h}:{port}"),
+                    None => h.to_string(),
+                })
+            }),
+            None => item
+                .get("host")
+                .and_then(serde_json::Value::as_str)
+                .filter(|h| !h.is_empty())
+                .map(str::to_string),
+        };
+        if let Some(h) = host
+            && !out.contains(&h)
+        {
+            out.push(h);
+        }
+    }
+    out
 }
 
 /// Serialize a scorecard exactly as the site prints it: two-space pretty

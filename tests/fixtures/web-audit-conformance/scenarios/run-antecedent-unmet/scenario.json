@@ -12,7 +12,7 @@
     "rate-limit-headers",
     "mcp-cors-preflight",
     "mcp-cors-actual",
-    "well-known-mcp-card",
+    "mcp-server-card",
     "mcp-card-legacy-aliases",
     "mcp-usage-doc",
     "oauth-protected-resource",

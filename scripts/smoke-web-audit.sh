@@ -10,8 +10,11 @@
 # per-audit deadline, a probe that blocks on a socket, or a DNS lookup that
 # sneaks into a local run all show up here as wall clock.
 #
-# The fixture is served from a temp directory by Python's own http.server,
-# so the check needs no fixture host and makes no external request.
+# The fixture is served from a temp directory by Python's own http.server
+# over TLS, so the check needs no fixture host and makes no external
+# request. `anc web` sends HTTPS only, so the script mints a throwaway CA
+# and a certificate it signs for 127.0.0.1 with the openssl CLI, and passes
+# the CA with `--ca-cert`.
 set -euo pipefail
 
 readonly BINARY="${1:-target/release/anc}"
@@ -23,7 +26,7 @@ if [[ ! -x "$BINARY" ]]; then
   printf 'error: %s not found or not executable; run "cargo build --release --features web" first\n' "$BINARY" >&2
   exit 2
 fi
-for tool in python3 jaq; do
+for tool in python3 jaq openssl; do
   command -v "$tool" >/dev/null || {
     printf 'error: %s is required\n' "$tool" >&2
     exit 2
@@ -31,10 +34,11 @@ for tool in python3 jaq; do
 done
 
 fixture=$(mktemp -d)
+tls=$(mktemp -d)
 server_pid=""
 cleanup() {
   [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null
-  rm -rf "$fixture"
+  rm -rf "$fixture" "$tls"
 }
 trap cleanup EXIT
 
@@ -53,22 +57,40 @@ printf '# Fixture\n\n> A fixture site for the smoke check.\n\n## When to use\n\n
   >"$fixture/llms.txt"
 printf 'User-agent: *\nAllow: /\n' >"$fixture/robots.txt"
 
+# A CA and a leaf it signs for 127.0.0.1, minted fresh each run and kept
+# outside the served directory. The leaf is CA:FALSE with serverAuth, the
+# shape a private CA issues, so the run exercises a real chain to a root it
+# trusts only through --ca-cert.
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+  -keyout "$tls/ca.key" -out "$tls/ca.pem" -days 1 -subj "/CN=anc smoke CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign" 2>/dev/null
+openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+  -keyout "$tls/leaf.key" -out "$tls/leaf.csr" -subj "/CN=anc smoke fixture" 2>/dev/null
+printf 'subjectAltName=IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' \
+  >"$tls/leaf.ext"
+openssl x509 -req -in "$tls/leaf.csr" -CA "$tls/ca.pem" -CAkey "$tls/ca.key" -CAcreateserial \
+  -out "$tls/leaf.pem" -days 1 -extfile "$tls/leaf.ext" 2>/dev/null
+
 # Bind port 0 so the check never collides with anything already listening,
 # and report the port the OS handed out.
 port_file="$fixture/.port"
 # The stock handler answers HTTP/1.0 and so closes every connection, which
 # is the shape that made the transport's pooled-connection retry necessary;
 # leaving it that way keeps that path under the smoke check.
-python3 - "$fixture" "$port_file" <<'PY' &
+python3 - "$fixture" "$port_file" "$tls/leaf.pem" "$tls/leaf.key" <<'PY' &
 import functools
 import http.server
 import pathlib
 import socketserver
+import ssl
 import sys
 
-directory, port_file = sys.argv[1], sys.argv[2]
+directory, port_file, cert, key = sys.argv[1:5]
 http.server.SimpleHTTPRequestHandler.log_message = lambda *a, **k: None
 handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(cert, key)
 
 
 class Quiet(socketserver.ThreadingTCPServer):
@@ -77,6 +99,15 @@ class Quiet(socketserver.ThreadingTCPServer):
     # The audit opens its probes concurrently; socketserver's default
     # backlog of 5 lets a busy runner drop the connections past it.
     request_queue_size = 64
+
+    # The handshake runs on the connection's own thread, so one slow or
+    # failed handshake never stalls the accept loop.
+    def finish_request(self, request, client_address):
+        try:
+            request = context.wrap_socket(request, server_side=True)
+        except (ssl.SSLError, OSError):
+            return
+        self.RequestHandlerClass(request, client_address, self)
 
     def handle_error(self, request, client_address):
         pass
@@ -97,14 +128,16 @@ if [[ ! -s "$port_file" ]]; then
   exit 1
 fi
 port=$(cat "$port_file")
+# Scheme-less on purpose: a local target defaults to https like any other.
 target="127.0.0.1:$port"
-printf 'auditing the fixture site at http://%s/\n' "$target"
+printf 'auditing the fixture site at https://%s/\n' "$target"
 
 scorecard="$fixture/scorecard.json"
 stderr_log="$fixture/stderr.log"
 started=$(date +%s)
 set +e
-timeout "$BUDGET_SECONDS" "$BINARY" web "$target" --output json >"$scorecard" 2>"$stderr_log"
+timeout "$BUDGET_SECONDS" "$BINARY" web "$target" --ca-cert "$tls/ca.pem" --output json \
+  >"$scorecard" 2>"$stderr_log"
 code=$?
 set -e
 elapsed=$(($(date +%s) - started))

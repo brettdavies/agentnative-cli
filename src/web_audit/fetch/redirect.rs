@@ -4,6 +4,7 @@
 //! ```text
 //! validate target ---- unparseable / non-http(s) / metadata / unclassifiable
 //!       |                                   '--> blocked: ... (no request made)
+//!       |-- not https (after the above) ---> not requested: not https
 //!       v
 //! hop 0 .. hop N   send one request through the transport
 //!       |
@@ -13,6 +14,7 @@
 //!               |-- unparseable target --------------> blocked: unparseable redirect target
 //!               |-- metadata host ------------------->  blocked: ... (redirect hop k)   [exit 1]
 //!               |-- class differs from the target's ->  blocked: ... (redirect hop k)   [exit 2]
+//!               |-- not https ----------------------> the 3xx itself, refused: not https
 //!               |-- hop == N -----------------------> redirect limit exceeded (N hops)
 //!               '-- otherwise ----------------------> next hop
 //! ```
@@ -134,8 +136,23 @@ impl std::fmt::Debug for ChainRequest<'_> {
     }
 }
 
+/// How a chain that produced a response ended.
+#[derive(Debug)]
+pub enum ChainEnd {
+    /// The final response, a 3xx included when following is off.
+    Answer(Response),
+    /// A redirect to `http` the chain would otherwise follow: the redirect
+    /// itself, never followed, and the refusal in the site's wording.
+    InsecureRedirect {
+        /// The 3xx that named the `http` location.
+        response: Response,
+        /// `redirect refused: <status> to <location>: not https`.
+        error: String,
+    },
+}
+
 /// Run the chain from a validated target to its final response.
-pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<Response, String> {
+pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, String> {
     let via_proxy = proxy::routes_via_proxy(target.class);
     let trust = TrustClass::for_locality(target.class);
     let mut current = target.url;
@@ -155,13 +172,20 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<Response, S
             && let Some(location) = response.headers.get("location")
         {
             let next = validate_hop(location, &current, target.class, hop + 1, chain.resolver)?;
+            if next.url.scheme() != "https" {
+                let error = format!(
+                    "redirect refused: {} to {location}: not https",
+                    response.status
+                );
+                return Ok(ChainEnd::InsecureRedirect { response, error });
+            }
             if hop == chain.max_redirects {
                 return Err(limit_exceeded(chain.max_redirects));
             }
             current = next.url;
             continue;
         }
-        return Ok(response);
+        return Ok(ChainEnd::Answer(response));
     }
     Err(limit_exceeded(chain.max_redirects))
 }

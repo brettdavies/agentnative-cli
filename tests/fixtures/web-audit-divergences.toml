@@ -6644,6 +6644,11 @@ owner = "#413"
 
 [[divergence]]
 scenario = "llms-quality-dead-and-http-link"
+element = "score_pct"
+owner = "#413"
+
+[[divergence]]
+scenario = "llms-quality-dead-and-http-link"
 element = "summary"
 owner = "#413"
 
@@ -8294,58 +8299,8 @@ owner = "#413"
 
 [[divergence]]
 scenario = "run-document-redirects-to-http"
-element = "row:llms-full-txt"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
 element = "row:llms-txt"
 owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:llms-txt-format"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:llms-txt-links"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:llms-txt-scoped"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:llms-txt-when-to-use"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:markdown-accept-plain"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:markdown-agent-ua"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:markdown-cli-ua"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:markdown-frontmatter"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:markdown-vary"
-owner = "#458"
 
 [[divergence]]
 scenario = "run-document-redirects-to-http"
@@ -8541,11 +8496,6 @@ owner = "#397"
 scenario = "run-root-not-html"
 element = "row:mcp-auth-servers"
 owner = "#397"
-
-[[divergence]]
-scenario = "run-root-redirects-to-http"
-element = "unreachable"
-owner = "#413"
 
 [[divergence]]
 scenario = "run-site-type-api"

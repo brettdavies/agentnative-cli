@@ -364,10 +364,10 @@ GitHub Release binaries, and a plain `cargo install agentnative` do not include 
 `anc audit` like any other.
 
 ```bash
-# A local dev server (a scheme-less local target defaults to http)
+# A local dev server (a scheme-less target defaults to https, local ones included)
 anc web localhost:8787
 
-# A public site (a scheme-less dot-bearing target defaults to https)
+# A public site
 anc web anc.dev
 
 # Score only the checks a given kind of site answers for
@@ -396,7 +396,7 @@ Score: 71 relative · 20 global · 12 of 18 applicable checks passed
 
 Warnings (6 SHOULD or MAY):
   [WARN] Accept text/markdown content negotiation returns markdown (accept-markdown) (should)
-         http://localhost:8799/ -> 200 (content-type "text/html" !~ /markdown|text/plain/)
+         https://localhost:8799/ -> 200 (content-type "text/html" !~ /markdown|text/plain/)
          Goal: Honor Accept text/markdown on content URLs with raw markdown, not HTML chrome
          Fix:  Honor `Accept: text/markdown` on content URLs and return raw markdown rather than HTML chrome.
                Agents parse markdown far more reliably than a JS-rendered page. Serve the markdown twin at the
@@ -432,6 +432,12 @@ DNS-over-HTTPS resolvers, which would send a private hostname to a third party, 
 row reports `n_a` with its reason stated rather than querying. `--external-dns` opts in. Redirects are followed but
 never off the target's own class: a hop from a local target to a public host, or to a cloud metadata address, is refused
 and recorded rather than taken.
+
+Every request is HTTPS, at every vantage, local targets included; anc sends no plaintext request. A scheme-less target
+defaults to `https`. An explicit `http://` target, or a root that redirects to `http`, ends the run as `insecure-scheme`
+(exit 3) before anything is sent over plaintext. Inside a run, a URL on `http` is never requested
+(`not requested: not https`), and a redirect to `http` is recorded as the answer rather than followed
+(`redirect refused: <status> to <location>: not https`), the same refusals anc.dev makes.
 
 ### Which Certificates `anc web` Trusts
 
@@ -759,7 +765,7 @@ is one of a closed set, and a newer release can add to it:
 | `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                                  |
 | `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                              |
 | `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                                               |
-| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`                                                   |
+| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                |
 | `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                    |
 | `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                            |
 

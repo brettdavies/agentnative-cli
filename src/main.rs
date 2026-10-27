@@ -36,7 +36,7 @@ use agentnative::web_audit::emit as web_emit;
 #[cfg(feature = "web")]
 use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, run_web_audit};
 #[cfg(feature = "web")]
-use agentnative::web_audit::fetch::{proxy, trust};
+use agentnative::web_audit::fetch::{NOT_HTTPS, proxy, trust};
 #[cfg(feature = "web")]
 use agentnative::web_audit::handlers::default_handlers;
 #[cfg(feature = "web")]
@@ -1180,17 +1180,22 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     }
 
     let report = match run_web_audit(input) {
-        RunOutcome::Unreachable { root_error, .. } => {
-            // A chain no root vouches for is its own dead end: the server
-            // answered the handshake, and only trusting its CA moves the run.
-            let failure = match root_error
-                .as_deref()
-                .filter(|e| e.starts_with(ROOT_REJECTION_PREFIX))
+        RunOutcome::Unreachable {
+            reason, root_error, ..
+        } => {
+            // A plaintext refusal and a chain no root vouches for are their
+            // own dead ends: retrying changes neither, and each names its fix.
+            let root_error = root_error.as_deref().unwrap_or("");
+            let failure = if root_error == NOT_HTTPS {
+                render::insecure_scheme_failure(&normalized, &reason, false)
+            } else if root_error.starts_with("redirect refused: ")
+                && root_error.ends_with(": not https")
             {
-                Some(evidence) => {
-                    render::untrusted_certificate_failure(&run.target, &normalized, evidence)
-                }
-                None => render::unreachable_failure(&run.target, &normalized, defaulted_https),
+                render::insecure_scheme_failure(&normalized, &reason, true)
+            } else if root_error.starts_with(ROOT_REJECTION_PREFIX) {
+                render::untrusted_certificate_failure(&run.target, &normalized, root_error)
+            } else {
+                render::unreachable_failure(&run.target, &normalized, defaulted_https)
             };
             return Ok(emit_web_failure(&failure, json));
         }

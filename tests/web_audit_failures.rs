@@ -6,7 +6,7 @@
 
 mod common;
 
-use common::web_cli::{anc, fixture_site, host_of, stderr_of, stdout_of};
+use common::web_cli::{anc, fixture_site, host_of, plaintext_site, stderr_of, stdout_of};
 use serde_json::Value;
 
 #[test]
@@ -21,7 +21,7 @@ fn an_unreachable_target_names_the_problem_the_cause_and_the_next_command() {
     );
     assert!(err.contains("did not answer any probe"), "{err}");
     assert!(
-        err.contains("no HTTP response from http://127.0.0.1:9/"),
+        err.contains("no HTTP response from https://127.0.0.1:9/"),
         "{err}"
     );
     assert!(err.contains("check that the server is running"), "{err}");
@@ -64,18 +64,62 @@ fn a_scheme_less_dot_bearing_target_says_the_scheme_defaulted() {
         .code(3);
     let err = stderr_of(assert.get_output());
     assert!(err.contains("the scheme defaulted to https"), "{err}");
-    assert!(
-        err.contains("anc web http://anc-web-audit-nonexistent.invalid"),
-        "{err}"
-    );
+    assert!(err.contains("sends no plaintext request"), "{err}");
+    assert!(!err.contains("http://"), "no hint may suggest http: {err}");
 
     // An explicit scheme carries no such hint.
-    let assert = anc().args(["web", "http://127.0.0.1:9"]).assert().code(3);
+    let assert = anc().args(["web", "https://127.0.0.1:9"]).assert().code(3);
     assert!(
         !stderr_of(assert.get_output()).contains("scheme defaulted"),
         "{}",
         stderr_of(assert.get_output())
     );
+}
+
+#[test]
+fn an_http_target_ends_unreachable_before_any_request() {
+    let server = plaintext_site();
+    let target = server.url("/");
+    let assert = anc().args(["web", &target]).assert().code(3);
+    let err = stderr_of(assert.get_output());
+    assert!(
+        err.contains(&format!(
+            "error: {target} is not https, and anc sends no plaintext request."
+        )),
+        "{err}"
+    );
+    assert!(err.trim_end().ends_with("exit 3: could not check"), "{err}");
+
+    let assert = anc()
+        .args(["web", &target, "--output", "json"])
+        .assert()
+        .code(3);
+    let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+    assert_eq!(envelope["kind"], Value::from("runtime"));
+    assert_eq!(envelope["error"], Value::from("insecure-scheme"));
+    assert_eq!(envelope["value"], Value::from(target.as_str()));
+    assert_eq!(envelope["next_step"]["action"], Value::from("fix-target"));
+    assert!(server.hits().is_empty(), "no plaintext request may go out");
+}
+
+#[test]
+fn a_root_redirecting_to_http_ends_unreachable_without_following() {
+    let plaintext = plaintext_site();
+    let location = plaintext.url("/");
+    let server = common::spawn_https(move |_| {
+        common::RawResponse::new(302, &[("location", location.as_str())], b"")
+    });
+    let target = server.url("/");
+    let assert = anc().args(["web", &target]).assert().code(3);
+    let err = stderr_of(assert.get_output());
+    assert!(
+        err.contains(&format!(
+            "error: {target} redirects to http, and anc sends no plaintext request."
+        )),
+        "{err}"
+    );
+    assert_eq!(server.hits().len(), 1, "the root request alone");
+    assert!(plaintext.hits().is_empty(), "the http hop is never taken");
 }
 
 #[test]
@@ -160,8 +204,8 @@ fn the_web_failure_envelopes_pin_their_bytes() {
         stderr(&["web", "127.0.0.1:9", "--output", "json"]),
         format!(
             "{}{docs}{}\n",
-            r#"{"kind":"runtime","error":"target-unreachable","message":"http://127.0.0.1:9/ did not answer any probe","exit_code":3,"next_step":{"action":"retry","command":"anc web 127.0.0.1:9 --verbose","docs":""#,
-            r#""},"argument":"<TARGET>","value":"http://127.0.0.1:9/"}"#,
+            r#"{"kind":"runtime","error":"target-unreachable","message":"https://127.0.0.1:9/ did not answer any probe","exit_code":3,"next_step":{"action":"retry","command":"anc web 127.0.0.1:9 --verbose","docs":""#,
+            r#""},"argument":"<TARGET>","value":"https://127.0.0.1:9/"}"#,
         )
     );
     assert_eq!(
@@ -192,12 +236,12 @@ fn the_web_failure_envelopes_pin_their_bytes() {
 #[test]
 fn a_retry_command_quotes_a_target_a_shell_would_split() {
     let assert = anc()
-        .args(["web", "http://127.0.0.1:9/?a=1&b=2", "--output", "json"])
+        .args(["web", "https://127.0.0.1:9/?a=1&b=2", "--output", "json"])
         .assert()
         .code(3);
     let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
     assert_eq!(
         envelope["next_step"]["command"],
-        Value::from("anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose")
+        Value::from("anc web 'https://127.0.0.1:9/?a=1&b=2' --verbose")
     );
 }

@@ -2,7 +2,7 @@
 title: "feat: Import shared prose tooling and author linter-channel design context"
 type: feat
 status: released
-prs: ["#52", "#236"]
+prs: ["#52", "#236", "#238"]
 date: 2026-05-07
 completed: 2026-05-21
 released_in: v0.4.0
@@ -27,7 +27,7 @@ independent release cadence, no governance window.
 - **Sync removed.** #236 removes the U1 sync script from this repository. The files it vendored are this repository's
   own and are maintained in place: `BRAND.md`, `styles/brand/` (rule pack and README), `styles/config/` (brand vocab
   accept and reject lists), and `scripts/generate-pack-readme.mjs`, which runs by hand. `.vale.ini` and
-  `scripts/prose-check.sh` are authored here; the spec's `.vale.ini` references the `spec` pack. #236 also deletes the
+  `scripts/prose-check.sh` are authored here; the spec's `.vale.ini` references the `spec` pack. #238 deletes the
   vendored `scripts/test-prose-check.mjs`: its fixtures are not in this repository and nothing runs it.
 - **Downloaded packs.** `styles/proselint/` and `styles/write-good/` are not committed. `vale sync` downloads them from
   the `Packages = ...` line in `.vale.ini`, and `.gitignore` excludes them. `scripts/prose-check.sh` exits 2 when they

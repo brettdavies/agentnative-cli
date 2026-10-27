@@ -7,7 +7,6 @@
 //! audited origin no probe reaches it. A GET to an anchor host off the
 //! audited origin takes no redirect to another origin.
 
-use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use regex::Regex;
@@ -48,14 +47,21 @@ pub struct ApiHygieneWith {
 
 /// The anchor-host GETs a run has sent, one per URL, shared by both rows.
 #[derive(Debug, Default)]
-pub struct HostProbes(Mutex<HashMap<String, Arc<OnceLock<ProbeResponse>>>>);
+pub struct HostProbes(Mutex<Vec<(String, Arc<OnceLock<ProbeResponse>>)>>);
 
 impl HostProbes {
     /// The response for `url`, sending it only when no row has.
     fn get(&self, url: &str, send: impl FnOnce() -> ProbeResponse) -> ProbeResponse {
         let cell = {
             let mut sent = self.0.lock().unwrap_or_else(|e| e.into_inner());
-            Arc::clone(sent.entry(url.to_string()).or_default())
+            match sent.iter().find(|(sent_url, _)| sent_url == url) {
+                Some((_, cell)) => Arc::clone(cell),
+                None => {
+                    let cell = Arc::new(OnceLock::new());
+                    sent.push((url.to_string(), Arc::clone(&cell)));
+                    cell
+                }
+            }
         };
         cell.get_or_init(send).clone()
     }

@@ -12,7 +12,6 @@
 //! local engine follows no MCP declaration, so the API batch is the slice's
 //! only batch and has its slots and requests to itself.
 
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use url::Url;
@@ -50,8 +49,8 @@ pub struct Fetched {
 pub struct ApiFollowResult {
     /// Trail entries in declaration order: the anchors, then the descriptions.
     pub entries: Vec<TrailEntry>,
-    /// The descriptions read, by declaration key.
-    pub descriptions: HashMap<String, Fetched>,
+    /// The descriptions read, with their declaration keys, in declaration order.
+    pub descriptions: Vec<(String, Fetched)>,
 }
 
 /// The slice's inputs.
@@ -289,7 +288,7 @@ pub fn settle_api_declarations(
         {
             result
                 .descriptions
-                .insert(declaration_key(d.kind, &d.url), fetched);
+                .push((declaration_key(d.kind, &d.url), fetched));
         }
         result.entries.push(entry(d, settled));
     }

@@ -1,8 +1,6 @@
 //! The hosts each row's evidence came from, a mirror of `rowHostFields` in
 //! the site's `provenance.ts`.
 
-use std::collections::HashMap;
-
 use serde_json::Value;
 
 use super::api_trail::host_of;
@@ -22,7 +20,7 @@ fn item_host(item: &EvidenceItem) -> Option<String> {
     }
 }
 
-fn host_entry(host: String, outcome: Option<&(Vec<ProbeStatus>, Option<NaReason>)>) -> RowHost {
+fn host_entry(host: String, outcome: Option<(&[ProbeStatus], Option<NaReason>)>) -> RowHost {
     let Some((statuses, na_reason)) = outcome else {
         return RowHost {
             host,
@@ -35,7 +33,7 @@ fn host_entry(host: String, outcome: Option<&(Vec<ProbeStatus>, Option<NaReason>
         host,
         status: Some(status.to_scorecard()),
         na_reason: if status.to_scorecard() == ScorecardStatus::NA {
-            *na_reason
+            na_reason
         } else {
             None
         },
@@ -49,7 +47,7 @@ fn host_entry(host: String, outcome: Option<&(Vec<ProbeStatus>, Option<NaReason>
 /// outcome, read from its items' `target_status`.
 pub fn row_host_fields(evidence: &[EvidenceItem]) -> (Vec<RowHost>, Option<String>) {
     let mut hosts: Vec<String> = Vec::new();
-    let mut outcomes: HashMap<String, (Vec<ProbeStatus>, Option<NaReason>)> = HashMap::new();
+    let mut outcomes: Vec<(String, Vec<ProbeStatus>, Option<NaReason>)> = Vec::new();
     for item in evidence {
         if item.contains_key("blocked") {
             continue;
@@ -67,20 +65,29 @@ pub fn row_host_fields(evidence: &[EvidenceItem]) -> (Vec<RowHost>, Option<Strin
         else {
             continue;
         };
-        let outcome = outcomes.entry(host).or_default();
-        outcome.0.push(status);
-        if outcome.1.is_none() {
-            outcome.1 = item
+        let index = match outcomes.iter().position(|(h, ..)| *h == host) {
+            Some(index) => index,
+            None => {
+                outcomes.push((host, Vec::new(), None));
+                outcomes.len() - 1
+            }
+        };
+        let outcome = &mut outcomes[index];
+        outcome.1.push(status);
+        if outcome.2.is_none() {
+            outcome.2 = item
                 .get("na_reason")
                 .and_then(|r| serde_json::from_value(r.clone()).ok());
         }
     }
-    let per_host = hosts.len() > 1 && hosts.iter().all(|h| outcomes.contains_key(h));
+    let outcome_of = |host: &str| outcomes.iter().find(|(h, ..)| h == host);
+    let per_host = hosts.len() > 1 && hosts.iter().all(|h| outcome_of(h).is_some());
     let single = (hosts.len() == 1).then(|| hosts[0].clone());
     let rows = hosts
         .into_iter()
         .map(|host| {
-            let outcome = if per_host { outcomes.get(&host) } else { None };
+            let outcome = outcome_of(&host).filter(|_| per_host);
+            let outcome = outcome.map(|(_, statuses, reason)| (statuses.as_slice(), *reason));
             host_entry(host, outcome)
         })
         .collect();

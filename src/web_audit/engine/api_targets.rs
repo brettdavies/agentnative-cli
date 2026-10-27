@@ -8,8 +8,6 @@
 //! beside any other target, and stands alone as a miss when there is none,
 //! so declaring an API over http never scores above declaring nothing.
 
-use std::collections::HashMap;
-
 use url::Url;
 
 use super::api_catalog::{ApiKind, CatalogAnchor};
@@ -122,16 +120,16 @@ pub fn api_targets(
     if api.is_empty() {
         return None;
     }
-    let settled: HashMap<String, &TrailEntry> = follow
-        .entries
-        .iter()
-        .map(|e| (declaration_key(e.kind, &e.url), e))
-        .collect();
     let reach = |kind: ApiKind, url: &str| -> Reach {
         if same_origin(url, base) {
             return Reach::AuditedOrigin;
         }
-        let Some(entry) = settled.get(&declaration_key(kind, url)) else {
+        let key = declaration_key(kind, url);
+        let settled = follow
+            .entries
+            .iter()
+            .find(|e| declaration_key(e.kind, &e.url) == key);
+        let Some(entry) = settled else {
             return Reach::Omit;
         };
         if entry.settled.outcome == Outcome::Followed {
@@ -154,9 +152,9 @@ pub fn api_targets(
                 Reach::AuditedOrigin => Some(DescriptionReach::OnOrigin),
                 Reach::Evaluate => follow
                     .descriptions
-                    .get(&key)
-                    .cloned()
-                    .map(DescriptionReach::Fetched),
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, fetched)| DescriptionReach::Fetched(fetched.clone())),
                 Reach::Plaintext(r) => Some(DescriptionReach::Plaintext(r)),
                 Reach::Unmet(r) => Some(DescriptionReach::Unmet(r)),
             };

@@ -14,7 +14,7 @@
 use std::fmt;
 use std::io::Read;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::fetch::proxy;
 use super::headers::Headers;
@@ -205,8 +205,41 @@ fn agent(user_agent: &str, proxy: Option<ureq::Proxy>) -> ureq::Agent {
         .new_agent()
 }
 
+/// Attempts a single probe may cost, counting the first.
+///
+/// A connection the pool kept but the server had already closed fails
+/// before the request reaches anything, which is not a fact about the
+/// target: a server that closes idle keep-alive connections, or that
+/// answers HTTP/1.0 and so closes every one, would otherwise scatter
+/// `error` rows across a site that is serving perfectly, and push the run
+/// to the could-not-check exit code. Each failure discards the dead
+/// connection, so a bounded retry walks past the stale entries the pool
+/// accumulated while six threads probed at once.
+const MAX_ATTEMPTS: u32 = 3;
+
 impl Transport for UreqTransport {
     fn send(&self, request: &Request) -> Result<Response, TransportError> {
+        let started = Instant::now();
+        let mut attempt = 1;
+        loop {
+            let outcome = self.send_once(request);
+            // Only a connection-level failure is retried, and only while a
+            // further attempt still fits inside this request's own budget,
+            // so the per-audit deadline keeps its meaning. A timeout or a
+            // TLS rejection is the target's answer, not a stale socket.
+            let retryable = matches!(outcome, Err(TransportError::Network(_)))
+                && attempt < MAX_ATTEMPTS
+                && started.elapsed() * 2 < request.timeout;
+            if !retryable {
+                return outcome;
+            }
+            attempt += 1;
+        }
+    }
+}
+
+impl UreqTransport {
+    fn send_once(&self, request: &Request) -> Result<Response, TransportError> {
         let agent = match (&self.proxied, request.via_proxy) {
             (Some(proxied), true) => proxied,
             _ => &self.direct,

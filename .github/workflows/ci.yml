@@ -88,3 +88,36 @@ jobs:
 
       - name: Check (Windows)
         run: cargo check --all-targets --features web
+
+  # The web audit's TLS stack, HTTP client and regex engine are the one cost
+  # a Rust-native port can silently lose, so the release artifact is measured
+  # rather than assumed. The ceiling lives in the script. The build enables the
+  # `web` feature: that is the binary a release ships once the feature is on
+  # by default.
+  size:
+    name: Release binary size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Build release
+        run: cargo build --release --features web
+
+      - name: Check size against the ceiling
+        run: scripts/check-binary-size.sh
+
+      # The product promise is a website audit in one or two minutes with no
+      # runtime to install. The install half is a single download the release
+      # workflow publishes; this measures the other half, which is the half
+      # that can regress silently.
+      - name: Install jaq
+        run: cargo install jaq --locked
+
+      - name: First-run smoke check
+        run: scripts/smoke-web-audit.sh

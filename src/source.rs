@@ -4,7 +4,7 @@
 
 use ast_grep_core::matcher::MatcherExt;
 use ast_grep_core::tree_sitter::LanguageExt;
-use ast_grep_core::{Doc, Matcher, Node, Pattern};
+use ast_grep_core::{Doc, Matcher, Node, NodeMatch, Pattern};
 use ast_grep_language::{Python, Rust};
 
 use crate::project::Language;
@@ -80,14 +80,30 @@ pub fn evidence_preview(text: &str, max_chars: usize) -> String {
 
 /// Whether any of `patterns` matches anywhere under `root`, found in one walk.
 pub fn has_any<D: Doc>(root: &Node<'_, D>, patterns: &[Pattern]) -> bool {
+    any_match(root, patterns, |_, _| true)
+}
+
+/// Whether any match of `patterns` under `root` passes `accept`, which gets
+/// the index in `patterns` of the pattern that matched, found in one walk.
+pub fn any_match<'r, D: Doc>(
+    root: &Node<'r, D>,
+    patterns: &[Pattern],
+    accept: impl Fn(usize, &NodeMatch<'r, D>) -> bool,
+) -> bool {
     let kinds: Vec<_> = patterns.iter().map(Matcher::potential_kinds).collect();
     root.dfs().any(|node| {
-        patterns.iter().zip(&kinds).any(|(pattern, kinds)| {
-            kinds
-                .as_ref()
-                .is_none_or(|kinds| kinds.contains(node.kind_id().into()))
-                && pattern.match_node(node.clone()).is_some()
-        })
+        patterns
+            .iter()
+            .zip(&kinds)
+            .enumerate()
+            .any(|(index, (pattern, kinds))| {
+                kinds
+                    .as_ref()
+                    .is_none_or(|kinds| kinds.contains(node.kind_id().into()))
+                    && pattern
+                        .match_node(node.clone())
+                        .is_some_and(|m| accept(index, &m))
+            })
     })
 }
 

@@ -6,13 +6,23 @@
 //! Violation: `process::exit(1)` — a raw integer literal.
 //! Allowed: `process::exit(EXIT_SUCCESS)` — a named constant.
 
+use std::sync::LazyLock;
+
 use ast_grep_core::Pattern;
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Rust;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
+use crate::source::locations_each;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
+
+static EXIT_CALLS: LazyLock<[Pattern; 2]> = LazyLock::new(|| {
+    [
+        Pattern::new("process::exit($CODE)", Rust),
+        Pattern::new("std::process::exit($CODE)", Rust),
+    ]
+});
 
 /// Audit trait implementation for raw exit code detection.
 #[derive(Debug)]
@@ -43,13 +53,15 @@ impl Audit for ExitCodesAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            if let AuditStatus::Warn(evidence) = audit_exit_codes(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            if let AuditStatus::Warn(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -74,11 +86,17 @@ impl Audit for ExitCodesAudit {
     }
 }
 
-/// Audit a single source string for raw integer exit codes.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_exit_codes(source: &str, file: &str) -> AuditStatus {
-    let violations = find_raw_exit_codes(source, file);
+impl SourceScan<Rust> for ExitCodesAudit {
+    type Finding = AuditStatus;
+
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_exit_codes(file)
+    }
+}
+
+/// Audit one file for raw integer exit codes.
+pub(crate) fn audit_exit_codes(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let violations = find_raw_exit_codes(file);
 
     if violations.is_empty() {
         AuditStatus::Pass
@@ -93,51 +111,31 @@ pub(crate) fn audit_exit_codes(source: &str, file: &str) -> AuditStatus {
 }
 
 /// Find `process::exit()` calls that use raw integer literals.
-fn find_raw_exit_codes(source: &str, file: &str) -> Vec<SourceLocation> {
-    let patterns = ["process::exit($CODE)", "std::process::exit($CODE)"];
+fn find_raw_exit_codes(file: &SourceFile<'_, Rust>) -> Vec<SourceLocation> {
+    locations_each(&file.root(), &*EXIT_CALLS, &file.label())
+        .into_iter()
+        .flatten()
+        .filter(|m| exits_with_raw_literal(&m.text))
+        .collect()
+}
 
-    let root = Rust.ast_grep(source);
-    let root_node = root.root();
-    let mut violations = Vec::new();
-
-    for pattern_str in &patterns {
-        let pattern = match Pattern::try_new(pattern_str, Rust) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
-        for m in root_node.find_all(&pattern) {
-            let text = m.text().to_string();
-            // Extract the argument inside exit(...)
-            if let Some(start) = text.rfind('(')
-                && let Some(end) = text.rfind(')')
-            {
-                #[expect(
-                    clippy::string_slice,
-                    reason = "start and end come from rfind on the ASCII parens"
-                )]
-                let arg = text[start + 1..end].trim();
-                // A raw integer literal is all digits (possibly with a leading minus)
-                let is_raw_literal = !arg.is_empty()
-                    && arg
-                        .strip_prefix('-')
-                        .unwrap_or(arg)
-                        .chars()
-                        .all(|c| c.is_ascii_digit());
-                if is_raw_literal {
-                    let pos = m.start_pos();
-                    violations.push(SourceLocation {
-                        file: file.to_string(),
-                        line: pos.line() + 1,
-                        column: pos.column(&m) + 1,
-                        text,
-                    });
-                }
-            }
-        }
-    }
-
-    violations
+/// Whether the exit call `text` passes a raw integer literal.
+fn exits_with_raw_literal(text: &str) -> bool {
+    let (Some(start), Some(end)) = (text.rfind('('), text.rfind(')')) else {
+        return false;
+    };
+    #[expect(
+        clippy::string_slice,
+        reason = "start and end come from rfind on the ASCII parens"
+    )]
+    let arg = text[start + 1..end].trim();
+    // A raw integer literal is all digits (possibly with a leading minus)
+    !arg.is_empty()
+        && arg
+            .strip_prefix('-')
+            .unwrap_or(arg)
+            .chars()
+            .all(|c| c.is_ascii_digit())
 }
 
 #[cfg(test)]
@@ -152,7 +150,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let status = audit_exit_codes(source, "src/main.rs");
+        let status = audit_exit_codes(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -171,7 +169,7 @@ fn main() {
     process::exit(EXIT_SUCCESS);
 }
 "#;
-        let status = audit_exit_codes(source, "src/main.rs");
+        let status = audit_exit_codes(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -184,7 +182,7 @@ fn main() {
     process::exit(1);
 }
 "#;
-        let status = audit_exit_codes(source, "src/main.rs");
+        let status = audit_exit_codes(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("process::exit(1)"));
@@ -199,7 +197,7 @@ fn bail() {
     std::process::exit(2);
 }
 "#;
-        let status = audit_exit_codes(source, "src/lib.rs");
+        let status = audit_exit_codes(&pass::rust(source, "src/lib.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("std::process::exit(2)"));
@@ -218,7 +216,7 @@ fn main() {
     process::exit(0);
 }
 "#;
-        let status = audit_exit_codes(source, "src/main.rs");
+        let status = audit_exit_codes(&pass::rust(source, "src/main.rs"));
         if let AuditStatus::Warn(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
@@ -235,7 +233,7 @@ fn main() {
     process::exit(code);
 }
 "#;
-        let status = audit_exit_codes(source, "src/main.rs");
+        let status = audit_exit_codes(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

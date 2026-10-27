@@ -8,17 +8,29 @@
 //!   Trigger: the CLI uses clap derive with subcommands
 //!   Requirement: agentic flags must have `global = true`
 
+use std::sync::LazyLock;
+
 use ast_grep_core::Pattern;
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Rust;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::has_pattern;
+use crate::source::has_any;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
 /// Agentic flags that should be global when subcommands exist.
 const AGENTIC_FLAGS: &[&str] = &["output", "quiet", "verbose", "no_color", "no-color"];
+
+/// Signs that the CLI uses clap subcommands.
+static SUBCOMMAND_PATTERNS: LazyLock<[Pattern; 2]> = LazyLock::new(|| {
+    [
+        Pattern::new("Subcommand", Rust),
+        Pattern::new("#[command(subcommand)]", Rust),
+    ]
+});
+
+static ARG_ATTR: LazyLock<Pattern> = LazyLock::new(|| Pattern::new("#[arg($$$ARGS)]", Rust));
 
 /// Audit trait implementation for global flags detection.
 #[derive(Debug)]
@@ -49,17 +61,19 @@ impl Audit for GlobalFlagsAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_warn_evidence = Vec::new();
         let mut has_subcommands = false;
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            match &audit_global_flags(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            match status {
                 AuditStatus::Warn(evidence) => {
                     has_subcommands = true;
-                    all_warn_evidence.push(evidence.clone());
+                    all_warn_evidence.push(evidence);
                 }
                 AuditStatus::Pass => {
                     // Pass means subcommands were found but all flags are global
@@ -94,20 +108,21 @@ impl Audit for GlobalFlagsAudit {
     }
 }
 
-/// Audit a single source string for non-global agentic flags.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_global_flags(source: &str, file: &str) -> AuditStatus {
-    // Step 1: Detect if the project uses clap subcommands.
-    let has_subcommands =
-        has_pattern(source, "Subcommand") || has_pattern(source, "#[command(subcommand)]");
+impl SourceScan<Rust> for GlobalFlagsAudit {
+    type Finding = AuditStatus;
 
-    if !has_subcommands {
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_global_flags(file)
+    }
+}
+
+/// Audit one file for non-global agentic flags.
+pub(crate) fn audit_global_flags(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    if !has_any(&file.root(), &*SUBCOMMAND_PATTERNS) {
         return AuditStatus::Skip("No subcommands detected".to_string());
     }
 
-    // Step 2: Find all clap field attributes and audit agentic flags.
-    let missing = find_non_global_agentic_flags(source, file);
+    let missing = find_non_global_agentic_flags(file);
 
     if missing.is_empty() {
         AuditStatus::Pass
@@ -127,15 +142,11 @@ pub(crate) fn audit_global_flags(source: &str, file: &str) -> AuditStatus {
 }
 
 /// Find agentic flag fields that lack `global = true`.
-fn find_non_global_agentic_flags(source: &str, file: &str) -> Vec<SourceLocation> {
-    let root = Rust.ast_grep(source);
-    let root_node = root.root();
-
-    let arg_attr_pattern = Pattern::new("#[arg($$$ARGS)]", Rust);
-
+fn find_non_global_agentic_flags(file: &SourceFile<'_, Rust>) -> Vec<SourceLocation> {
+    let label = file.label();
     let mut missing = Vec::new();
 
-    for attr_match in root_node.find_all(&arg_attr_pattern) {
+    for attr_match in file.root().find_all(&*ARG_ATTR) {
         let attr_text = attr_match.text().to_string();
 
         let is_agentic = AGENTIC_FLAGS.iter().any(|flag| {
@@ -149,7 +160,7 @@ fn find_non_global_agentic_flags(source: &str, file: &str) -> Vec<SourceLocation
         if !attr_text.contains("global = true") {
             let pos = attr_match.start_pos();
             missing.push(SourceLocation {
-                file: file.to_string(),
+                file: label.clone(),
                 line: pos.line() + 1,
                 column: pos.column(&attr_match) + 1,
                 text: attr_text,
@@ -173,7 +184,7 @@ struct Cli {
     output: Option<String>,
 }
 "#;
-        let status = audit_global_flags(source, "src/cli.rs");
+        let status = audit_global_flags(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Skip(_)));
     }
 
@@ -197,7 +208,7 @@ enum Commands {
     Audit,
 }
 "#;
-        let status = audit_global_flags(source, "src/cli.rs");
+        let status = audit_global_flags(&pass::rust(source, "src/cli.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -221,7 +232,7 @@ enum Commands {
     Audit,
 }
 "#;
-        let status = audit_global_flags(source, "src/cli.rs");
+        let status = audit_global_flags(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("output"));
@@ -246,7 +257,7 @@ enum Commands {
     Audit,
 }
 "#;
-        let status = audit_global_flags(source, "src/cli.rs");
+        let status = audit_global_flags(&pass::rust(source, "src/cli.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

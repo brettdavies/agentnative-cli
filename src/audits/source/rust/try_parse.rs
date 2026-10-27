@@ -6,12 +6,19 @@
 //! Only flags `.parse().unwrap()` — `.parse().expect()` is not flagged because
 //! the developer has already considered the error case and provided a message.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::find_pattern_matches;
+use crate::source::locations_each;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const PATTERNS: &[&str] = &["$RECV.parse().unwrap()"];
+static PATTERNS: LazyLock<[Pattern; 1]> =
+    LazyLock::new(|| [Pattern::new("$RECV.parse().unwrap()", Rust)]);
 
 /// Audit trait implementation for parse-unwrap detection.
 #[derive(Debug)]
@@ -42,13 +49,15 @@ impl Audit for TryParseAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            if let AuditStatus::Warn(evidence) = audit_try_parse(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            if let AuditStatus::Warn(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -73,19 +82,20 @@ impl Audit for TryParseAudit {
     }
 }
 
-/// Audit a single source string for `.parse().unwrap()` and `.parse().expect()`.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_try_parse(source: &str, file: &str) -> AuditStatus {
-    let mut all_matches = Vec::new();
+impl SourceScan<Rust> for TryParseAudit {
+    type Finding = AuditStatus;
 
-    for pattern_str in PATTERNS {
-        let mut matches = find_pattern_matches(source, pattern_str);
-        for m in &mut matches {
-            m.file = file.to_string();
-        }
-        all_matches.extend(matches);
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_try_parse(file)
     }
+}
+
+/// Audit one file for `.parse().unwrap()`.
+pub(crate) fn audit_try_parse(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let all_matches: Vec<_> = locations_each(&file.root(), &*PATTERNS, &file.label())
+        .into_iter()
+        .flatten()
+        .collect();
 
     if all_matches.is_empty() {
         AuditStatus::Pass
@@ -110,7 +120,7 @@ fn parse_port(s: &str) -> Result<u16, std::num::ParseIntError> {
     s.parse()
 }
 "#;
-        let status = audit_try_parse(source, "src/config.rs");
+        let status = audit_try_parse(&pass::rust(source, "src/config.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -122,7 +132,7 @@ fn parse_port(s: &str) -> anyhow::Result<u16> {
     Ok(port)
 }
 "#;
-        let status = audit_try_parse(source, "src/config.rs");
+        let status = audit_try_parse(&pass::rust(source, "src/config.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -133,7 +143,7 @@ fn main() {
     let port: u16 = args[1].parse().unwrap();
 }
 "#;
-        let status = audit_try_parse(source, "src/main.rs");
+        let status = audit_try_parse(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("parse().unwrap()"));
@@ -149,7 +159,7 @@ fn main() {
     let port: u16 = args[1].parse().expect("bad port");
 }
 "#;
-        let status = audit_try_parse(source, "src/main.rs");
+        let status = audit_try_parse(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -162,7 +172,7 @@ fn main() {
     let timeout: u64 = args[3].parse().expect("bad timeout");
 }
 "#;
-        let status = audit_try_parse(source, "src/main.rs");
+        let status = audit_try_parse(&pass::rust(source, "src/main.rs"));
         if let AuditStatus::Warn(evidence) = &status {
             // Only .parse().unwrap() lines are flagged, not .expect()
             assert_eq!(evidence.lines().count(), 2);
@@ -184,7 +194,7 @@ fn parse_port(s: &str) -> u16 {
     }
 }
 "#;
-        let status = audit_try_parse(source, "src/config.rs");
+        let status = audit_try_parse(&pass::rust(source, "src/config.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

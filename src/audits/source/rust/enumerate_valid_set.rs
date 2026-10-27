@@ -11,10 +11,17 @@
 //! no closed-set declaration appears — the CLI may be hand-rolling string
 //! matching, in which case it likely fails the requirement.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::has_pattern_in;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+static CLAP_PARSER: LazyLock<Pattern> = LazyLock::new(|| Pattern::new("clap::Parser", Rust));
 
 #[derive(Debug)]
 pub struct EnumerateValidSetAudit;
@@ -44,21 +51,15 @@ impl Audit for EnumerateValidSetAudit {
         project.has_language(Language::Rust)
     }
 
-    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
-        let mut found_closed_set = false;
-        let mut found_clap = false;
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
 
-        for (_path, parsed_file) in parsed.iter() {
-            match audit_enumerate_valid_set(&parsed_file.source) {
-                EnumerateScan::ClosedSetDeclared => {
-                    found_closed_set = true;
-                    break;
-                }
-                EnumerateScan::ClapWithoutClosedSet => found_clap = true,
-                EnumerateScan::NoClap => {}
-            }
-        }
+    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
+        let scans = pass::findings(project, Language::Rust, Rust, self);
+        let found = |signal: EnumerateScan| scans.iter().any(|(_, scan)| *scan == signal);
+        let found_closed_set = found(EnumerateScan::ClosedSetDeclared);
+        let found_clap = found(EnumerateScan::ClapWithoutClosedSet);
 
         let status = if found_closed_set {
             AuditStatus::Pass
@@ -87,15 +88,24 @@ impl Audit for EnumerateValidSetAudit {
     }
 }
 
+impl SourceScan<Rust> for EnumerateValidSetAudit {
+    type Finding = EnumerateScan;
+
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> EnumerateScan {
+        audit_enumerate_valid_set(file)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum EnumerateScan {
+pub enum EnumerateScan {
     ClosedSetDeclared,
     ClapWithoutClosedSet,
     NoClap,
 }
 
 /// Inspect a single Rust source file. Returns the strongest signal found.
-pub(crate) fn audit_enumerate_valid_set(source: &str) -> EnumerateScan {
+pub(crate) fn audit_enumerate_valid_set(file: &SourceFile<'_, Rust>) -> EnumerateScan {
+    let source = file.source();
     // Closed-set declarations — any of these means clap will surface valid
     // choices in the rejection message for free.
     let closed_set_signals = [
@@ -125,7 +135,7 @@ pub(crate) fn audit_enumerate_valid_set(source: &str) -> EnumerateScan {
     ];
 
     let has_clap = clap_signals.iter().any(|sig| source.contains(sig))
-        || has_pattern_in(source, "clap::Parser", Language::Rust);
+        || file.root().find_all(&*CLAP_PARSER).next().is_some();
 
     if has_clap {
         EnumerateScan::ClapWithoutClosedSet
@@ -150,7 +160,7 @@ enum Format {
 }
 "#;
         assert_eq!(
-            audit_enumerate_valid_set(source),
+            audit_enumerate_valid_set(&pass::rust(source, "src/cli.rs")),
             EnumerateScan::ClosedSetDeclared
         );
     }
@@ -167,7 +177,7 @@ fn cli() {
 }
 "#;
         assert_eq!(
-            audit_enumerate_valid_set(source),
+            audit_enumerate_valid_set(&pass::rust(source, "src/cli.rs")),
             EnumerateScan::ClosedSetDeclared
         );
     }
@@ -185,7 +195,7 @@ fn cli() {
 }
 "#;
         assert_eq!(
-            audit_enumerate_valid_set(source),
+            audit_enumerate_valid_set(&pass::rust(source, "src/cli.rs")),
             EnumerateScan::ClosedSetDeclared
         );
     }
@@ -202,7 +212,7 @@ struct Cli {
 }
 "#;
         assert_eq!(
-            audit_enumerate_valid_set(source),
+            audit_enumerate_valid_set(&pass::rust(source, "src/cli.rs")),
             EnumerateScan::ClapWithoutClosedSet
         );
     }
@@ -214,7 +224,10 @@ fn main() {
     println!("hello");
 }
 "#;
-        assert_eq!(audit_enumerate_valid_set(source), EnumerateScan::NoClap);
+        assert_eq!(
+            audit_enumerate_valid_set(&pass::rust(source, "src/cli.rs")),
+            EnumerateScan::NoClap
+        );
     }
 
     #[test]

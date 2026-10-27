@@ -6,10 +6,28 @@
 //! Looks for `enum OutputFormat { ... }` or `enum Format { ... }` via ast-grep.
 //! Skips if no clap dependency detected.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::has_pattern;
+use crate::source::has_any;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+static OUTPUT_FORMAT_ENUMS: LazyLock<[Pattern; 4]> = LazyLock::new(|| {
+    [
+        Pattern::new("enum OutputFormat { $$$BODY }", Rust),
+        Pattern::new("pub enum OutputFormat { $$$BODY }", Rust),
+        Pattern::new("enum Format { $$$BODY }", Rust),
+        Pattern::new("pub enum Format { $$$BODY }", Rust),
+    ]
+});
+
+const MISSING_FORMAT: &str = "No OutputFormat or Format enum found. CLIs should support \
+                              structured output (e.g., --output json) for agent consumption.";
 
 /// Audit trait implementation for structured output detection.
 #[derive(Debug)]
@@ -40,13 +58,16 @@ impl Audit for StructuredOutputAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut has_clap = false;
         let mut has_output_format = false;
 
-        for (_path, parsed_file) in parsed.iter() {
-            match &audit_structured_output(&parsed_file.source) {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            match status {
                 AuditStatus::Skip(_) => {
                     // No clap in this file
                 }
@@ -66,11 +87,7 @@ impl Audit for StructuredOutputAudit {
         } else if has_output_format {
             AuditStatus::Pass
         } else {
-            AuditStatus::Warn(
-                "No OutputFormat or Format enum found. CLIs should support \
-                 structured output (e.g., --output json) for agent consumption."
-                    .to_string(),
-            )
+            AuditStatus::Warn(MISSING_FORMAT.to_string())
         };
 
         Ok(AuditResult {
@@ -87,27 +104,27 @@ impl Audit for StructuredOutputAudit {
     }
 }
 
-/// Audit a single source string for OutputFormat enum.
-pub(crate) fn audit_structured_output(source: &str) -> AuditStatus {
+impl SourceScan<Rust> for StructuredOutputAudit {
+    type Finding = AuditStatus;
+
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_structured_output(file)
+    }
+}
+
+/// Audit one file for an OutputFormat enum.
+pub(crate) fn audit_structured_output(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let source = file.source();
     let has_clap = source.contains("clap") || source.contains("#[derive(Parser)]");
 
     if !has_clap {
         return AuditStatus::Skip("no clap dependency detected".to_string());
     }
 
-    let has_output_format = has_pattern(source, "enum OutputFormat { $$$BODY }")
-        || has_pattern(source, "pub enum OutputFormat { $$$BODY }")
-        || has_pattern(source, "enum Format { $$$BODY }")
-        || has_pattern(source, "pub enum Format { $$$BODY }");
-
-    if has_output_format {
+    if has_any(&file.root(), &*OUTPUT_FORMAT_ENUMS) {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
-            "No OutputFormat or Format enum found. CLIs should support \
-             structured output (e.g., --output json) for agent consumption."
-                .to_string(),
-        )
+        AuditStatus::Warn(MISSING_FORMAT.to_string())
     }
 }
 
@@ -122,7 +139,7 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let status = audit_structured_output(source);
+        let status = audit_structured_output(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Skip(_)));
     }
 
@@ -144,7 +161,7 @@ struct Cli {
     output: OutputFormat,
 }
 "#;
-        let status = audit_structured_output(source);
+        let status = audit_structured_output(&pass::rust(source, "src/cli.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -164,7 +181,7 @@ struct Cli {
     format: Format,
 }
 "#;
-        let status = audit_structured_output(source);
+        let status = audit_structured_output(&pass::rust(source, "src/cli.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -179,7 +196,7 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let status = audit_structured_output(source);
+        let status = audit_structured_output(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("OutputFormat"));
@@ -196,7 +213,7 @@ struct Cli {
     name: String,
 }
 "#;
-        let status = audit_structured_output(source);
+        let status = audit_structured_output(&pass::rust(source, "src/cli.rs"));
         // Has clap (via derive(Parser)) but no output format
         assert!(matches!(status, AuditStatus::Warn(_)));
     }

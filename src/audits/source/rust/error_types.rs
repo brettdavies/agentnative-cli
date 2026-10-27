@@ -5,13 +5,25 @@
 //!
 //! This is a presence audit: pass if any enum with "Error" in its name exists.
 
+use std::sync::LazyLock;
+
 use ast_grep_core::Pattern;
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Rust;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
+use crate::source::any_match;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+/// Enum definitions with each visibility the audit recognizes.
+static ENUM_PATTERNS: LazyLock<[Pattern; 3]> = LazyLock::new(|| {
+    [
+        Pattern::new("enum $NAME { $$$BODY }", Rust),
+        Pattern::new("pub enum $NAME { $$$BODY }", Rust),
+        Pattern::new("pub(crate) enum $NAME { $$$BODY }", Rust),
+    ]
+});
 
 /// Audit trait implementation for structured error type detection.
 #[derive(Debug)]
@@ -42,16 +54,14 @@ impl Audit for ErrorTypesAudit {
         project.has_language(Language::Rust)
     }
 
-    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
-        let mut found = false;
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
 
-        for (_path, parsed_file) in parsed.iter() {
-            if has_error_enum(&parsed_file.source) {
-                found = true;
-                break;
-            }
-        }
+    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
+        let found = pass::findings(project, Language::Rust, Rust, self)
+            .iter()
+            .any(|(_, found)| *found);
 
         let status = if found {
             AuditStatus::Pass
@@ -77,42 +87,36 @@ impl Audit for ErrorTypesAudit {
     }
 }
 
-/// Audit whether a source string contains an enum whose name includes "Error".
-///
-/// Tries multiple patterns to handle visibility modifiers and attributes:
-/// `enum FooError { ... }`, `pub enum FooError { ... }`, etc.
-pub(crate) fn has_error_enum(source: &str) -> bool {
-    let patterns = [
-        "enum $NAME { $$$BODY }",
-        "pub enum $NAME { $$$BODY }",
-        "pub(crate) enum $NAME { $$$BODY }",
-    ];
+impl SourceScan<Rust> for ErrorTypesAudit {
+    type Finding = bool;
 
-    let root = Rust.ast_grep(source);
-    for pat_str in &patterns {
-        let pattern = match Pattern::try_new(pat_str, Rust) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-
-        for m in root.root().find_all(&pattern) {
-            let text = m.text();
-            // Extract the enum name from the matched text
-            if let Some(enum_pos) = text.find("enum ") {
-                #[expect(
-                    clippy::string_slice,
-                    reason = "enum_pos comes from find(\"enum \") and 5 is that ASCII needle's length"
-                )]
-                let after_enum = &text[enum_pos + 5..];
-                if let Some(name) = after_enum.split_whitespace().next()
-                    && name.contains("Error")
-                {
-                    return true;
-                }
-            }
-        }
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> bool {
+        has_error_enum(file)
     }
-    false
+}
+
+/// Whether one file defines an enum whose name includes "Error", with or
+/// without a visibility modifier.
+pub(crate) fn has_error_enum(file: &SourceFile<'_, Rust>) -> bool {
+    any_match(&file.root(), &*ENUM_PATTERNS, |_, m| {
+        names_an_error(&m.text())
+    })
+}
+
+/// Whether the enum definition `text` names an error type.
+fn names_an_error(text: &str) -> bool {
+    let Some(enum_pos) = text.find("enum ") else {
+        return false;
+    };
+    #[expect(
+        clippy::string_slice,
+        reason = "enum_pos comes from find(\"enum \") and 5 is that ASCII needle's length"
+    )]
+    let after_enum = &text[enum_pos + 5..];
+    after_enum
+        .split_whitespace()
+        .next()
+        .is_some_and(|name| name.contains("Error"))
 }
 
 #[cfg(test)]
@@ -129,7 +133,7 @@ enum AppError {
     Io(std::io::Error),
 }
 "#;
-        assert!(has_error_enum(source));
+        assert!(has_error_enum(&pass::rust(source, "src/error.rs")));
     }
 
     #[test]
@@ -140,7 +144,7 @@ enum CliError {
     MissingFile,
 }
 "#;
-        assert!(has_error_enum(source));
+        assert!(has_error_enum(&pass::rust(source, "src/error.rs")));
     }
 
     #[test]
@@ -155,7 +159,7 @@ fn main() {
     println!("Hello");
 }
 "#;
-        assert!(!has_error_enum(source));
+        assert!(!has_error_enum(&pass::rust(source, "src/error.rs")));
     }
 
     #[test]
@@ -165,7 +169,7 @@ fn main() {
     println!("Hello");
 }
 "#;
-        assert!(!has_error_enum(source));
+        assert!(!has_error_enum(&pass::rust(source, "src/error.rs")));
     }
 
     #[test]
@@ -176,7 +180,31 @@ enum ParseError {
     Eof,
 }
 "#;
-        assert!(has_error_enum(source));
+        assert!(has_error_enum(&pass::rust(source, "src/error.rs")));
+    }
+
+    #[test]
+    fn run_passes_when_one_later_file_holds_the_error_enum() {
+        let dir = std::env::temp_dir().join(format!("anc-errtypes-split-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).expect("create test dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write test Cargo.toml");
+        std::fs::write(dir.join("src/a.rs"), "fn main() {}\n").expect("write test a.rs");
+        std::fs::write(
+            dir.join("src/b.rs"),
+            "pub enum CliError {\n    BadArg,\n}\n",
+        )
+        .expect("write test b.rs");
+        std::fs::write(dir.join("src/c.rs"), "enum Command {\n    Run,\n}\n")
+            .expect("write test c.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+
+        let result = ErrorTypesAudit.run(&project).expect("run audit");
+
+        assert_eq!(result.status, AuditStatus::Pass);
     }
 
     #[test]

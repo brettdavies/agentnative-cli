@@ -19,6 +19,18 @@ if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); 
   exit 1
 fi
 
+# A linked worktree can find core.hooksPath set to the main checkout's
+# absolute path (worktree tooling writes it), and git then runs the main
+# checkout's copy of this hook with the worktree as its working directory.
+# Hand off to the copy that worktree has checked out, so a push or commit is
+# gated by the hook its own branch carries.
+hook_self_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
+hook_worktree_root=$(pwd -P)
+hook_own_copy="$hook_worktree_root/scripts/hooks/$(basename "${BASH_SOURCE[0]}")"
+if [[ "$hook_worktree_root" != "$hook_self_root" && -x "$hook_own_copy" ]]; then
+  exec "$hook_own_copy" "$@"
+fi
+
 set -euo pipefail
 
 RED='\033[0;31m'

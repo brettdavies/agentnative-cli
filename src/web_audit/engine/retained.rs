@@ -7,8 +7,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use url::Url;
 
-static MARKDOWN_LINK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\]\(([^)\s]+)\)").unwrap());
+use crate::web_audit::handlers::shared::markdown_hrefs;
+
 static SITEMAP_LOC_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)<loc>\s*([^<\s]+)\s*</loc>").unwrap());
 
@@ -40,8 +40,8 @@ pub fn enumerate_scoped_dirs(llms_body: &str, sitemap_body: &str, base: &str) ->
             dirs.push(dir);
         }
     };
-    for m in MARKDOWN_LINK_RE.captures_iter(llms_body) {
-        push(top_level_dir(&m[1], &base));
+    for href in markdown_hrefs(llms_body) {
+        push(top_level_dir(href, &base));
     }
     for m in SITEMAP_LOC_RE.captures_iter(sitemap_body) {
         push(top_level_dir(&m[1], &base));
@@ -63,5 +63,15 @@ mod tests {
         );
         assert!(enumerate_scoped_dirs(llms, sitemap, "not a url").is_empty());
         assert!(enumerate_scoped_dirs("", "", "https://example.com/").is_empty());
+    }
+
+    #[test]
+    fn llms_links_with_a_title_or_angle_brackets_yield_their_section() {
+        let llms =
+            "- [Guide](/guides/start.md \"Start here\")\n- [Ref](</reference/all endpoints.md>)\n";
+        assert_eq!(
+            enumerate_scoped_dirs(llms, "", "https://example.com/"),
+            ["/guides", "/reference"]
+        );
     }
 }

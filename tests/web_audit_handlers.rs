@@ -313,6 +313,33 @@ fn http_substitutes_the_endpoint_and_settles_na_without_one() {
 }
 
 #[test]
+fn mcp_get_fast_fail_asks_for_an_event_stream_and_breaks_on_a_document() {
+    for (status, content_type, want) in [
+        (200, "text/event-stream", ProbeStatus::Pass),
+        (200, "text/html; charset=utf-8", ProbeStatus::Broken),
+        (200, "text/markdown; charset=utf-8", ProbeStatus::Broken),
+        (405, "text/plain", ProbeStatus::Pass),
+    ] {
+        let transport = Arc::new(MockTransport::new(
+            vec![],
+            MockResponse::ok(status, &[("content-type", content_type)], b""),
+        ));
+        let mut ctx = context(transport.clone());
+        ctx.mcp_endpoint = Some(MCP.to_string());
+        let outcome = run_http(check("mcp-get-fast-fail"), &ctx);
+        assert_eq!(
+            outcome.status, want,
+            "{status} {content_type}: {:?}",
+            outcome.evidence
+        );
+        assert_eq!(
+            header(&transport.requests()[0], "accept"),
+            Some("text/event-stream")
+        );
+    }
+}
+
+#[test]
 fn cors_issues_exactly_the_preflight_and_the_origin_bearing_post_with_the_session() {
     let transport = Arc::new(MockTransport::new(vec![], html(200, "")));
     let mut ctx = context(transport.clone());

@@ -30,6 +30,9 @@ pub struct ExpectBlock {
     pub status: Option<Vec<u16>>,
     /// The response status must be below this bound.
     pub status_below: Option<u16>,
+    /// A 2xx must carry a `text/event-stream` content-type; any other
+    /// status is left to `status` and `status_below`.
+    pub sse_when_success: Option<bool>,
     /// The content-type must match this pattern.
     pub content_type: Option<String>,
     /// This header must be present.
@@ -83,6 +86,9 @@ pub fn compiled(check: &WebCheck, field: &str) -> Option<&'static Regex> {
         .and_then(|p| COMPILED.get(&(check.id, p.field)))
 }
 
+static EVENT_STREAM: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)text/event-stream").unwrap());
+
 fn status_text(status: Option<u16>) -> String {
     match status {
         Some(s) => s.to_string(),
@@ -129,6 +135,19 @@ pub fn assert_http(check: &WebCheck, expect: &ExpectBlock, resp: &ProbeResponse)
             status_text(status),
             if ok { "below" } else { "not below" }
         ));
+        if !ok {
+            return AssertOutcome { ok: false, reasons };
+        }
+    }
+    if expect.sse_when_success == Some(true) && matches!(status, Some(200..=299)) {
+        let ct = resp.headers.get("content-type").unwrap_or("");
+        let ok = EVENT_STREAM.is_match(ct);
+        let quoted = serde_json::to_string(ct).unwrap_or_default();
+        reasons.push(if ok {
+            format!("content-type {quoted} is text/event-stream")
+        } else {
+            format!("content-type {quoted} is not text/event-stream; return 405 or an SSE stream")
+        });
         if !ok {
             return AssertOutcome { ok: false, reasons };
         }
@@ -363,6 +382,80 @@ mod tests {
             "{:?}",
             out.reasons
         );
+    }
+
+    #[test]
+    fn a_get_fast_fail_success_must_be_an_event_stream_and_a_405_passes() {
+        let (check, expect) = expect_of("mcp-get-fast-fail");
+        let sse = assert_http(
+            check,
+            &expect,
+            &resp(
+                Some(200),
+                &[("content-type", "Text/Event-Stream; charset=utf-8")],
+                "",
+            ),
+        );
+        assert_eq!(
+            sse,
+            AssertOutcome {
+                ok: true,
+                reasons: vec![
+                    "status 200 below 500".to_string(),
+                    r#"content-type "Text/Event-Stream; charset=utf-8" is text/event-stream"#
+                        .to_string(),
+                ]
+            }
+        );
+        let page = assert_http(
+            check,
+            &expect,
+            &resp(Some(200), &[("content-type", "text/html")], "<html>"),
+        );
+        assert_eq!(
+            page,
+            AssertOutcome {
+                ok: false,
+                reasons: vec![
+                    "status 200 below 500".to_string(),
+                    r#"content-type "text/html" is not text/event-stream; return 405 or an SSE stream"#
+                        .to_string(),
+                ]
+            }
+        );
+        let untyped = assert_http(check, &expect, &resp(Some(204), &[], ""));
+        assert!(!untyped.ok);
+        assert_eq!(
+            untyped.reasons[1],
+            r#"content-type "" is not text/event-stream; return 405 or an SSE stream"#
+        );
+        let refused = assert_http(
+            check,
+            &expect,
+            &resp(Some(405), &[("content-type", "text/plain")], ""),
+        );
+        assert_eq!(
+            refused,
+            AssertOutcome {
+                ok: true,
+                reasons: vec!["status 405 below 500".to_string()]
+            }
+        );
+        assert!(!assert_http(check, &expect, &resp(Some(502), &[], "")).ok);
+    }
+
+    #[test]
+    fn markdown_vary_accepts_accept_or_a_star_as_a_whole_field_name() {
+        let (check, expect) = expect_of("markdown-vary");
+        let vary =
+            |value: &str| assert_http(check, &expect, &resp(Some(200), &[("vary", value)], "")).ok;
+        assert!(vary("Accept"));
+        assert!(vary("accept-encoding, Accept"));
+        assert!(vary("User-Agent,accept"));
+        assert!(vary("*"));
+        assert!(!vary("Accept-Encoding"));
+        assert!(!vary("Accept-Language, User-Agent"));
+        assert!(!vary("User-Agent"));
     }
 
     #[test]

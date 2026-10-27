@@ -5599,11 +5599,6 @@ owner = "#462"
 
 [[divergence]]
 scenario = "http-get-fast-fail-html-broken"
-element = "row:mcp-get-fast-fail"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-html-broken"
 element = "row:mcp-server-card"
 owner = "#462"
 
@@ -5645,11 +5640,6 @@ owner = "#462"
 [[divergence]]
 scenario = "http-get-fast-fail-markdown-broken"
 element = "row:api-catalog"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-markdown-broken"
-element = "row:mcp-get-fast-fail"
 owner = "#462"
 
 [[divergence]]
@@ -6505,11 +6495,6 @@ owner = "#458"
 [[divergence]]
 scenario = "llms-quality-angle-bracket-pass"
 element = "row:api-catalog"
-owner = "#458"
-
-[[divergence]]
-scenario = "llms-quality-angle-bracket-pass"
-element = "row:llms-txt-links"
 owner = "#458"
 
 [[divergence]]

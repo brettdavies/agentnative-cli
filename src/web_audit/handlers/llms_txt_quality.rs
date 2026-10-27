@@ -41,7 +41,7 @@ static H1: LazyLock<Regex> =
 static SUMMARY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!(r"(?mR)^>[{JS_SPACE}]+[^{JS_SPACE}]")).unwrap());
 static LINKS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"\]\([^)^{JS_SPACE}]+\)")).unwrap());
+    LazyLock::new(|| Regex::new(&format!(r"\]\([^){JS_SPACE}]+\)")).unwrap());
 static WHEN_TO_USE_HEADING: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
         r"(?imR)^#{{1,3}}[{JS_SPACE}]+[^\n\r\u{{2028}}\u{{2029}}]*(when[{JS_SPACE}]+to[{JS_SPACE}]+use|programmatic access|when to (?:connect|call) (?:the )?mcp)"
@@ -224,6 +224,12 @@ pub fn run_llms_txt_quality(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_link_destination_may_hold_a_caret() {
+        assert!(LINKS.is_match("- [Docs](/docs^v2)"));
+        assert!(!LINKS.is_match("- [Docs](/docs v2)"));
+    }
 
     #[test]
     fn format_reads_the_three_structural_signals() {

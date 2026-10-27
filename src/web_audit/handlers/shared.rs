@@ -88,15 +88,23 @@ pub fn js_trim(text: &str) -> &str {
     text.trim_matches(|c: char| c.is_whitespace() || c == '\u{FEFF}')
 }
 
-static MARKDOWN_HREF_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\]\(([^)\s]+)(?:\s+"[^"]*")?\)"#).unwrap());
+// CommonMark lets a destination sit in angle brackets (`[x](<a b.md>)`) so it
+// can hold spaces or parentheses; the brackets are syntax, not part of the URL.
+static MARKDOWN_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r#"\]\((?:<([^<>\n]+)>|([^){JS_SPACE}]+))(?:[{JS_SPACE}]+"[^"]*")?\)"#
+    ))
+    .unwrap()
+});
 
-/// Every markdown link target in `body`, in order, with an optional title
-/// stripped.
+/// Every inline-link destination in a markdown body, in document order, as
+/// written: an angle-bracketed destination without its brackets, and an
+/// optional `"title"` dropped.
 pub fn markdown_hrefs(body: &str) -> impl Iterator<Item = &str> {
-    MARKDOWN_HREF_RE
+    MARKDOWN_LINK_RE
         .captures_iter(body)
-        .map(|c| c.get(1).unwrap().as_str())
+        .filter_map(|c| c.get(1).or_else(|| c.get(2)))
+        .map(|m| m.as_str())
 }
 
 fn is_recovery_path(pathname: &str) -> bool {
@@ -147,6 +155,37 @@ mod tests {
         );
     }
 
+    fn hrefs(body: &str) -> Vec<&str> {
+        markdown_hrefs(body).collect()
+    }
+
+    #[test]
+    fn angle_bracket_destinations_are_read_without_their_brackets() {
+        assert_eq!(
+            hrefs("- [Guide](<https://example.com/docs/getting started (v2).md>): how\n"),
+            ["https://example.com/docs/getting started (v2).md"]
+        );
+        assert_eq!(hrefs("[x](<a(b)c>)"), ["a(b)c"]);
+        assert!(hrefs("[x](<a\nb>)").is_empty());
+        assert_eq!(hrefs("[x](<a>b)"), ["<a>b"]);
+    }
+
+    #[test]
+    fn a_title_after_either_destination_form_is_dropped() {
+        assert_eq!(
+            hrefs(r#"[a](/a.md "A title") [b](</b c.md> "B")"#),
+            ["/a.md", "/b c.md"]
+        );
+    }
+
+    #[test]
+    fn an_unbracketed_destination_ends_at_its_first_close_paren() {
+        assert_eq!(
+            hrefs("[w](https://en.wikipedia.org/wiki/Rust_(language))"),
+            ["https://en.wikipedia.org/wiki/Rust_(language"]
+        );
+    }
+
     #[test]
     fn recovery_links_are_same_origin_only() {
         let base = "https://example.com/";
@@ -155,6 +194,13 @@ mod tests {
             (true, "same-origin recovery /sitemap.xml".to_string())
         );
         assert!(same_origin_recovery_link("[docs](/docs/start \"Start\")", base).0);
+        assert_eq!(
+            same_origin_recovery_link("[start](</docs/getting started.md>)", base),
+            (
+                true,
+                "same-origin recovery /docs/getting%20started.md".to_string()
+            )
+        );
         assert_eq!(
             same_origin_recovery_link("[x](https://evil.test/llms.txt)", base),
             (

@@ -1636,63 +1636,79 @@ Synthesized from this review's findings. Each task derives from a specific findi
 checkbox as you ship.
 
 - [ ] **T1 (P1, human: ~1 day / CC: ~30 min)** — U1 toolchain — Provision NASM on the two Windows jobs and cmake in the
-  `cross` containers.
+  `cross` containers. Partly in place: `ci.yml`'s `web-windows` job installs NASM, the shared `rust-ci.yml` and
+  `rust-release.yml` take a `windows_nasm` input (brettdavies/.github #65), and the pre-push step-7 comment names
+  `nasm`. `release.yml` passes no `windows_nasm`, the shared release-matrix check installs no NASM, and no `Cross.toml`
+  provisions cmake; those belong with the commit that turns the `web` feature on by default.
   - Surfaced by: Architecture review — Issue 2 (D4, option 2A), narrowed against GitHub's runner-image inventory: cmake
     is preinstalled on every hosted image, NASM on neither Windows image.
   - Files: `Cross.toml` (container cmake, this repo), `brettdavies/.github` `rust-ci.yml` and `rust-release.yml` (opt-in
     NASM input), `scripts/hooks/pre-push` (step-7 comment), this repo's workflow callers.
   - Verify: every release-matrix row and the CI Windows check green with ureq in the tree.
-- [ ] **T2 (P1, human: ~1 day / CC: ~30 min)** — `locality.rs` — Port `ssrf.ts` classification verbatim with its test
-  table.
+- [x] **T2 (P1, human: ~1 day / CC: ~30 min)** — `locality.rs` — Port `ssrf.ts` classification verbatim with its test
+  table. (`src/web_audit/locality.rs`, the site's table as the module's unit tests, #97)
   - Surfaced by: Code Quality review — Issue 6 (D8, option 6A).
   - Files: `src/web_audit/locality.rs`, `tests/web_audit_engine.rs`.
   - Verify: one passing case per form in the site's `web-audit-ssrf.test.ts` table.
-- [ ] **T3 (P1, human: ~2 h / CC: ~10 min)** — U1 size gate — Set the ceiling at ~5MB delta and ship the plain aws-lc-rs
-  build.
+- [x] **T3 (P1, human: ~2 h / CC: ~10 min)** — U1 size gate — Set the ceiling at ~5MB delta and ship the plain aws-lc-rs
+  build. Ships as an absolute 20 MiB ceiling in `scripts/check-binary-size.sh`, run by `ci.yml`'s `size` job (#105),
+  with aws-lc-sys built at opt-level `"s"` (#215), not a ~5MB delta.
   - Surfaced by: Step 0 search check (D2, option B).
   - Files: U1 PR body (measured delta), U10 CI size assertion.
   - Verify: recorded delta under ~5MB; CI size gate green.
-- [ ] **T4 (P2, human: ~1 day / CC: ~30 min)** — `engine/pool.rs` — Enforce the deadline at request issue time.
+- [x] **T4 (P2, human: ~1 day / CC: ~30 min)** — `engine/pool.rs` — Enforce the deadline at request issue time.
+  (`src/web_audit/engine/pool.rs` and `timeout_for` in `engine/types.rs`, tarpit and slow-loris tests in
+  `tests/web_audit_engine.rs`, #101)
   - Surfaced by: Architecture review — Issue 1 (D3, option 1A).
   - Files: `src/web_audit/engine/pool.rs`, `tests/web_audit_engine.rs`.
   - Verify: never-responds and slow-trickle tarpit tests complete inside deadline plus grace.
-- [ ] **T5 (P2, human: ~2 h / CC: ~20 min)** — `handlers/mcp/` — Read MCP responses through the capped reader, then
-  parse; add the open-stream corpus scenario.
+- [x] **T5 (P2, human: ~2 h / CC: ~20 min)** — `handlers/mcp/` — Read MCP responses through the capped reader, then
+  parse; add the open-stream corpus scenario. Ships in `src/web_audit/handlers/mcp/mod.rs`, which reads through the
+  capped body reader and parses with `engine/mcp_wire.rs` (#101, #103), not separate `sse`, `jsonrpc` and `checks`
+  files. `tests/web_audit_conformance.rs` asserts the vendored `mcp-open-stream` scenario (#105); its rows match the
+  site and its score element sits in the divergence ledger under site #458.
   - Surfaced by: Architecture review — Issue 3 (D5, option 3A).
   - Files: `src/web_audit/handlers/mcp/{sse,jsonrpc,checks}.rs`, site `scripts/web-audit/gen-fixtures.ts`.
   - Verify: open-stream scenario resolves to the site's timeout status.
 - [x] **T6 (P2, human: ~1 h / CC: ~10 min)** — U2 vendoring — Split vendored inputs: build inputs under `src/`, test
-  inputs under `tests/fixtures/web-audit-conformance/`.
+  inputs under `tests/fixtures/web-audit-conformance/`. (`scripts/sync-web-audit.sh`, `web-audit-drift.yml`, and
+  `tests/` in `Cargo.toml`'s `exclude`, #98)
   - Surfaced by: Code Quality review — Issue 4 (D6, option 4A).
   - Files: `scripts/sync-web-audit.sh`, `.github/workflows/web-audit-drift.yml`, `tests/web_audit_conformance.rs`.
   - Verify: `cargo package --list` excludes the corpus; drift check covers both roots.
 - [x] **T7 (P2, human: ~1 h / CC: ~10 min)** — U3 mirror — Integer types for every scorecard number plus the no-`.0`
-  byte-parity test.
+  byte-parity test. (`src/web_audit/scorecard.rs`, `tests/web_audit_score_parity.rs`, #100)
   - Surfaced by: Code Quality review — Issue 5 (D7, option 5A).
   - Files: `src/web_audit/scorecard.rs`, `tests/web_audit_score_parity.rs`.
   - Verify: serialized scorecard byte-matches a JS-emitted golden.
-- [ ] **T8 (P2, human: ~1 day / CC: ~40 min)** — Regex parity — Generate `regex-parity.json` site-side, choose
-  JS-matching Rust flags in the codegen, assert equality in U5.
+- [x] **T8 (P2, human: ~1 day / CC: ~40 min)** — Regex parity — Generate `regex-parity.json` site-side, choose
+  JS-matching Rust flags in the codegen, assert equality in U5. (`build_support/js_regex.rs`, the vendored
+  `regex-parity.json`, #98; `tests/web_audit_handlers.rs`, #102)
   - Surfaced by: Test review — Gap G1 (D10, option A).
   - Files: site `scripts/web-audit/gen-fixtures.ts`, `build.rs`, `tests/web_audit_handlers.rs`.
   - Verify: every pattern × probe pair agrees; residual divergences named in KTD1.
-- [ ] **T9 (P2, human: ~3 h / CC: ~30 min)** — TLS evidence — Self-signed fixture, in-test rustls server, direct
-  `rustls` dependency at ureq's version.
+- [x] **T9 (P2, human: ~3 h / CC: ~30 min)** — TLS evidence — Self-signed fixture, in-test rustls server, direct
+  `rustls` dependency at ureq's version. (`tests/fixtures/tls/`, `tests/web_audit_transport.rs`, `rustls = "=0.23.46"`
+  in `Cargo.toml`, #97; the CA fixtures, #209)
   - Surfaced by: Test review — Gap G10 (D11, option A).
   - Files: `tests/fixtures/tls/`, `tests/web_audit_transport.rs`, `Cargo.toml`.
   - Verify: trust-root rejection evidence class asserted offline in every CI job.
 - [x] **T10 (P2, human: ~3 h / CC: ~20 min)** — Regex engine — Rewrite the Vary-header pattern site-side, compile with
-  the `regex` crate only, reject lookaround at build time.
+  the `regex` crate only, reject lookaround at build time. (`build_support/js_regex.rs`, `lookaround_fails_naming_id` in
+  `tests/build_registry.rs`, #98)
   - Surfaced by: TODO step (D14, option C), superseding Performance Issue 8 (D12).
   - Files: site `src/data/web-audit/registry.yaml`, `build.rs`, `Cargo.toml`.
   - Verify: site test proves old and new patterns agree; a lookaround pattern fails the build naming its id.
-- [ ] **T11 (P3, human: ~2 h / CC: ~15 min)** — `fetch/body.rs` — `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB with truncation
-  flag, evidence note, over-ceiling and gzip-bomb tests.
+- [x] **T11 (P3, human: ~2 h / CC: ~15 min)** — `fetch/body.rs` — `AUDIT_ROOT_MAX_BODY_BYTES` = 16 MiB with truncation
+  flag, evidence note, over-ceiling and gzip-bomb tests. (`src/web_audit/fetch/body.rs`, over-ceiling and gzip-bomb
+  tests in `tests/web_audit_transport.rs`, #97)
   - Surfaced by: Performance review — Issue 9 (D13, option 9A).
   - Files: `src/web_audit/fetch/body.rs`, `tests/web_audit_transport.rs`.
   - Verify: truncation flag set, no allocation beyond the cap.
-- [ ] **T12 (P3, human: ~2 h / CC: ~10 min)** — Module layout — `fetch/`, `engine/`, `handlers/mcp/` as directories with
-  one responsibility per file.
+- [x] **T12 (P3, human: ~2 h / CC: ~10 min)** — Module layout — `fetch/`, `engine/`, `handlers/mcp/` as directories with
+  one responsibility per file. Ships as those three directories (#97, #101, #103), with JSON-RPC and SSE parsing in
+  `engine/mcp_wire.rs` and `handlers/mcp/negotiation.rs`, not separate `sse` and `jsonrpc` files; both carry unit tests
+  with no transport, as `locality.rs` does.
   - Surfaced by: Code Quality review — Issue 7 (D9, option 7A).
   - Files: `src/web_audit/fetch/`, `src/web_audit/engine/`, `src/web_audit/handlers/mcp/`.
   - Verify: pure parsers (`sse`, `jsonrpc`, `locality`) have unit tests with no transport.
@@ -1701,35 +1717,49 @@ checkbox as you ship.
 
 ### From the DX review
 
-- [ ] **T13 (P1, human: ~2 days / CC: ~45 min)** — U2, U7 — Vendor the fix catalog and deliver it on both surfaces.
+- [x] **T13 (P1, human: ~2 days / CC: ~45 min)** — U2, U7 — Vendor the fix catalog and deliver it on both surfaces.
+  (`src/web_audit/vendored/remediation.yaml`, #98; `src/web_audit/render/rows.rs` and `src/web_audit/emit.rs`, #104)
   - Surfaced by: DX review D4 — the site's `remediation.yaml` is 1:1 with the registry and the plan vendored only the
     registry, so a local run named every failure and no fix.
   - Files: `scripts/sync-web-audit.sh`, `build.rs`, `src/web_audit/render.rs`, `src/cli.rs`.
   - Verify: a failing row prints goal, fix and links; `anc emit web-remediation` round-trips every entry offline; the
     scorecard object is unchanged byte for byte.
 - [ ] **T14 (P1, human: ~1 day / CC: ~40 min)** — exit codes, both repos — One additive table, named in every run.
+  `anc web` ships the four-code table in `src/web_audit/render/exit.rs`, `--help`, the README and a closing `exit N:`
+  line, pinned by `tests/web_audit_render.rs` (#104, #106). `anc audit` returns only 0, 1 or 2 from
+  `scorecard::exit_code` and names no code in its report, and the site runner's exit table (site #379) is closed
+  unmerged, so the second verb and the site half stay open with no unit owning them.
   - Surfaced by: DX review D8 — the same binary returned 1 for "warnings, proceed" and for "checks failed".
   - Files: `src/main.rs`, `src/cli.rs`, `README.md`, `agentnative-site` `scripts/web-audit/audit.ts`.
   - Verify: the pinning test covers 0, 1, 2 and 3 on both verbs; the site runner returns the same codes.
-- [ ] **T15 (P1, human: ~1 day / CC: ~30 min)** — U7 render — Pin the run-output contract.
+- [x] **T15 (P1, human: ~1 day / CC: ~30 min)** — U7 render — Pin the run-output contract.
+  (`src/web_audit/render/progress.rs` and `render/text.rs`, `tests/web_audit_render.rs`, #104, #106)
   - Surfaced by: DX review D6 — a 25-second run showed nothing, and 12 failures landed among 53 passes.
   - Files: `src/web_audit/render.rs`, `tests/integration.rs`.
   - Verify: progress appears on a terminal and vanishes when piped or quieted; the report leads with the verdict and the
     failing rows; `NO_COLOR` and the quiet env binding behave as on the audit path.
-- [ ] **T16 (P1, human: ~1 day / CC: ~30 min)** — U7 failures — Structured envelope and a next action on every dead end.
+- [x] **T16 (P1, human: ~1 day / CC: ~30 min)** — U7 failures — Structured envelope and a next action on every dead end.
+  (`src/web_audit/render/failure.rs`, `src/json_error.rs`, `tests/web_audit_failures.rs`, #104, #106, #202)
   - Surfaced by: DX review D10 — only one failure path was specified.
   - Files: `src/web_audit/render.rs`, `src/json_error.rs`, `tests/web_audit_failures.rs`.
   - Verify: one test per path asserts the envelope fields and a text message naming problem, cause and next action.
-- [ ] **T17 (P1, human: ~1 day / CC: ~30 min)** — U13 docs — Ship docs with the feature, on the `xurl-rs` standard.
+- [x] **T17 (P1, human: ~1 day / CC: ~30 min)** — U13 docs — Ship docs with the feature, on the `xurl-rs` standard.
+  Ships as the README's web section, `#![deny(missing_docs)]` in `src/lib.rs`, docs.rs metadata in `Cargo.toml` and the
+  pre-push `cargo doc` gate (#106). The site's copy names `anc web` only once `ANC_WEB_RELEASED` in
+  `src/worker/audit-web/provenance-copy.ts` turns true, which waits on a release that carries the verb.
   - Surfaced by: DX review D11 and D12 — no unit listed `README.md`, and the crate advertises a docs.rs page it cannot
     populate.
   - Files: `README.md`, `Cargo.toml`, `src/main.rs`, `agentnative-site` refusal message.
   - Verify: `cargo doc --no-deps` clean under `RUSTDOCFLAGS="-D warnings"`; the README exit table matches T14's test.
-- [ ] **T18 (P2, human: ~4 h / CC: ~20 min)** — U7 readers — Move the emit family into phase 1.
+- [x] **T18 (P2, human: ~4 h / CC: ~20 min)** — U7 readers — Move the emit family into phase 1.
+  (`src/web_audit/emit.rs`, `src/cli.rs`, `tests/web_audit_cli.rs`, #104)
   - Surfaced by: DX review D9 — `--check <id>` shipped in phase 1 with no way to discover the check ids.
   - Files: `src/cli.rs`, `src/main.rs`, `tests/integration.rs`.
   - Verify: `anc emit web-checks` lists every id and round-trips; `anc emit web-schema` validates a real scorecard.
-- [ ] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate.
+- [x] **T19 (P2, human: ~4 h / CC: ~20 min)** — CI — Add the first-run smoke gate. Ships as `scripts/smoke-web-audit.sh`
+  in `ci.yml`'s `size` job (#105; the generated CA and `--ca-cert`, #212). It audits the
+  `cargo build --release --features web` binary inside a 30-second budget, not an installed release artifact, because no
+  release carries the `web` feature.
   - Surfaced by: DX review D3 — the under-2-minute promise was unmeasured.
   - Files: `.github/workflows/ci.yml`, `tests/`.
   - Verify: the job installs the release artifact, audits a local fixture server whose certificate comes from a CA the

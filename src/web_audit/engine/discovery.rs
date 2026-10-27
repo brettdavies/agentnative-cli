@@ -28,6 +28,7 @@
 
 use std::time::{Duration, Instant};
 
+use serde_json::json;
 use url::Url;
 
 use super::discovery_documents::{
@@ -39,6 +40,8 @@ use super::discovery_posts::{Candidate, probe_common_paths};
 use super::discovery_walk::{CatalogSlot, Walk};
 use super::follow_trail::Declaration;
 use super::pool::run_bounded;
+use super::reciprocity_metadata::MetadataMatch;
+use super::sign_in::{DirectSource, SignInChallenge, sign_in_endpoint};
 use super::types::FetchHandle;
 use crate::web_audit::fetch::body::DOCUMENT_MAX_BODY_BYTES;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
@@ -60,6 +63,12 @@ const PASS_GRACE: Duration = Duration::from_millis(250);
 pub struct DiscoveryResult {
     /// The endpoint, when a card or a POST found one.
     pub endpoint: Option<String>,
+    /// The RFC 9728 metadata that made a common path answering 401 the
+    /// endpoint; `None` otherwise.
+    pub endpoint_metadata: Option<MetadataMatch>,
+    /// The 401 that common path answered; `None` when the endpoint was
+    /// found another way.
+    pub endpoint_challenge: Option<SignInChallenge>,
     /// The `mcp_discovery` trail: every document read, then the POSTs.
     pub evidence: Vec<EvidenceItem>,
     /// What the documents declare, in SEP-2127 order.
@@ -381,6 +390,23 @@ impl DiscoveryDocuments<'_> {
             walk.post_items = probed.items;
             walk.post_endpoint = probed.endpoint;
             walk.post_redirected = probed.redirected;
+            let mut source = DirectSource {
+                fetch: fetch.clone(),
+                timeout,
+                deadline_at,
+            };
+            if let Some(signed) = sign_in_endpoint(&probed.challenged, &mut source) {
+                walk.post_endpoint = Some(signed.path.url.clone());
+                let item = json!({
+                    "source": signed.path.path,
+                    "endpoint": signed.path.url,
+                    "probed": format!("{} (auth required)", signed.path.probed),
+                    "resource_metadata": signed.metadata.url,
+                });
+                walk.post_items
+                    .push(item.as_object().cloned().unwrap_or_default());
+                walk.post_sign_in = Some(signed);
+            }
         }
 
         // With no catalog card, the endpoint's own card outranks a SEP-1649 card.

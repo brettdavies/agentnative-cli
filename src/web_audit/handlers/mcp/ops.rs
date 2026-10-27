@@ -4,6 +4,8 @@
 //! era family (and inherit its softening) by being absent from a
 //! membership set.
 
+use crate::web_audit::registry::{HandlerBinding, WebCheck};
+
 /// Which classification branch judges the answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Family {
@@ -11,6 +13,9 @@ pub enum Family {
     Era,
     /// The row asks a question the lane has already proven it serves.
     Conformance,
+    /// The row asks whether a request without a token is refused, so the
+    /// 401 every other row reads past is its answer.
+    Enforcement,
 }
 
 /// Which protocol era's wire shape the row probes.
@@ -58,6 +63,9 @@ pub enum McpOp {
     ModernVersionReject,
     /// A modern `resources/read` for a URI no server holds.
     ModernResourcesMiss,
+    /// A legacy `tools/list` sent without a token, which an endpoint that
+    /// requires sign-in must refuse with 401.
+    UnauthenticatedToolsList,
 }
 
 /// The facts an op declares.
@@ -77,6 +85,9 @@ pub struct McpOpSpec {
     pub expects_refusal: bool,
     /// The row is judged on how the answer was framed.
     pub framed: bool,
+    /// The row asks a question every lane answers alike, so it groups with
+    /// the shared rows whichever era's wire shape carries it.
+    pub shared: bool,
 }
 
 const fn spec(family: Family, era: Era) -> McpOpSpec {
@@ -88,12 +99,13 @@ const fn spec(family: Family, era: Era) -> McpOpSpec {
         discriminates: false,
         expects_refusal: false,
         framed: false,
+        shared: false,
     }
 }
 
 impl McpOp {
     /// Every op, in registry order.
-    pub const ALL: [McpOp; 16] = [
+    pub const ALL: [McpOp; 17] = [
         McpOp::Initialize,
         McpOp::ToolsList,
         McpOp::ResourcesList,
@@ -110,6 +122,7 @@ impl McpOp {
         McpOp::ModernHeaderMismatch,
         McpOp::ModernVersionReject,
         McpOp::ModernResourcesMiss,
+        McpOp::UnauthenticatedToolsList,
     ];
 
     /// The op for a registry spelling.
@@ -136,6 +149,7 @@ impl McpOp {
             McpOp::ModernHeaderMismatch => "modern-header-mismatch",
             McpOp::ModernVersionReject => "modern-version-reject",
             McpOp::ModernResourcesMiss => "modern-resources-miss",
+            McpOp::UnauthenticatedToolsList => "unauthenticated-tools-list",
         }
     }
 
@@ -177,7 +191,32 @@ impl McpOp {
             | McpOp::ModernHeaderMismatch
             | McpOp::ModernVersionReject
             | McpOp::ModernResourcesMiss => spec(Family::Conformance, Era::Modern),
+            McpOp::UnauthenticatedToolsList => McpOpSpec {
+                shared: true,
+                ..spec(Family::Enforcement, Era::Legacy)
+            },
         }
+    }
+
+    /// The result-page lane the op's row groups under: its era's, unless
+    /// every lane answers it alike.
+    pub fn lane(self) -> &'static str {
+        let s = self.spec();
+        match (s.shared, s.era) {
+            (true, _) => "shared",
+            (false, Era::Legacy) => "legacy",
+            (false, Era::Modern) => "modern",
+        }
+    }
+
+    /// The protocol era whose wire shape an MCP row's request takes; `None`
+    /// for a row this handler does not probe.
+    pub fn request_era(check: &WebCheck) -> Option<Era> {
+        if check.handler != HandlerBinding::Mcp {
+            return None;
+        }
+        let with: serde_json::Value = serde_json::from_str(check.with_json).ok()?;
+        McpOp::parse(with.get("op")?.as_str()?).map(|op| op.spec().era)
     }
 
     /// Settled from the lane rather than probed on its own answer: every
@@ -208,7 +247,7 @@ mod tests {
     #[test]
     fn the_families_partition_the_ops_as_on_the_site() {
         let names: Vec<&str> = McpOp::ALL.iter().map(|o| o.as_str()).collect();
-        assert_eq!(names.len(), 16);
+        assert_eq!(names.len(), 17);
         for op in McpOp::ALL {
             assert_eq!(McpOp::parse(op.as_str()), Some(op));
         }
@@ -268,14 +307,10 @@ mod tests {
                 unknown.push(check.id);
                 continue;
             };
-            let era = match op.spec().era {
-                Era::Legacy => "legacy",
-                Era::Modern => "modern",
-            };
-            assert_eq!(check.lane, Some(era), "{}", check.id);
+            assert_eq!(check.lane, Some(op.lane()), "{}", check.id);
             rows += 1;
         }
         assert!(rows > 0, "the registry carries MCP op rows");
-        assert_eq!(unknown, ["mcp-auth-enforced"]);
+        assert!(unknown.is_empty(), "{unknown:?}");
     }
 }

@@ -5,9 +5,11 @@
 //! issue time.
 
 pub mod antecedents;
+pub mod antecedents_mcp;
 pub mod api_catalog;
 pub mod api_follow;
 pub mod api_targets;
+pub mod direct_source;
 pub mod discovery;
 pub mod discovery_documents;
 pub mod discovery_posts;
@@ -26,14 +28,15 @@ pub mod provenance;
 pub mod reciprocity;
 pub mod reciprocity_metadata;
 pub mod retained;
+pub mod sign_in;
 pub mod summary;
 pub mod types;
 pub mod waves;
 
 pub use handlers::{Dispatch, HandlerFn, HandlerSet};
 pub use types::{
-    FetchHandle, HandlerContext, McpLaneEvidence, McpModernLane, ProbeOutcome, ProbeStatus,
-    why_item,
+    FetchHandle, HandlerContext, McpAuthRequired, McpLaneEvidence, McpModernLane, ProbeOutcome,
+    ProbeStatus, why_item,
 };
 pub use waves::{
     DEFAULT_CONCURRENCY, DEFAULT_PER_AUDIT_DEADLINE, DEFAULT_PER_CHECK_TIMEOUT,

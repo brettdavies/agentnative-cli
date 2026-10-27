@@ -16,6 +16,7 @@
 pub mod negotiation;
 pub mod ops;
 pub mod probes;
+pub mod sign_in;
 
 use std::time::Instant;
 
@@ -25,10 +26,11 @@ use serde_json::{Map, Value, json};
 use self::negotiation::{framing_of, is_json_rpc_envelope, negotiation_for};
 use self::ops::{Era, Family, McpOp};
 use self::probes::{TYPED_REFUSAL_STATUSES, conformance_for};
+use self::sign_in::{enforcement_verdict, signed_in_answer};
 use super::shared::{item, mcp_endpoint_redirects, retry_shaped_why, why};
 use crate::web_audit::engine::mcp_wire::{
     json_rpc_error_code, legacy_initialize_body, legacy_probe_headers, legacy_tools_list_body,
-    modern_probe_body, modern_probe_headers, parse_json_rpc,
+    modern_probe_body, modern_probe_headers, parse_json_rpc, post_as_client,
 };
 use crate::web_audit::engine::{HandlerContext, McpModernLane, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::body::AUDIT_PROBE_MAX_BODY_BYTES;
@@ -87,20 +89,23 @@ fn object_keys(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn build_body(op: McpOp, method: &str, protocol_version: &str) -> String {
+fn build_body(
+    op: McpOp,
+    method: &str,
+    protocol_version: &str,
+    modern_method: Option<&str>,
+) -> String {
+    if let Some(modern_method) = modern_method {
+        return modern_probe_body(modern_method);
+    }
     match op {
         McpOp::Initialize => legacy_initialize_body(protocol_version),
-        McpOp::ToolsList => legacy_tools_list_body(),
+        McpOp::ToolsList | McpOp::UnauthenticatedToolsList => legacy_tools_list_body(),
         McpOp::ResourcesList => {
             json!({ "jsonrpc": "2.0", "id": 1, "method": "resources/list", "params": {} })
                 .to_string()
         }
-        _ => match op.spec().method {
-            Some(modern_method) => modern_probe_body(modern_method),
-            None => {
-                json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": {} }).to_string()
-            }
-        },
+        _ => json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": {} }).to_string(),
     }
 }
 
@@ -191,6 +196,15 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     let spec = op.spec();
     let conformance = conformance_for(op);
     let negotiation = negotiation_for(op);
+    // The token-less refusal is asked on the lane whose handshake drew the
+    // 401: a server that refuses the other lane before reading any token
+    // has not served that request without one.
+    let modern_method = match &ctx.mcp_auth {
+        Some(auth) if spec.family == Family::Enforcement && auth.lane == Era::Modern => {
+            McpOp::ModernToolsList.spec().method
+        }
+        _ => spec.method,
+    };
     // Modern probes stay sessionless and carry no Mcp-Name. Conformance
     // probes open fully table-shaped, and only the legacy three re-ask
     // with a session. A negotiation probe sends the lane's proven
@@ -205,7 +219,7 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
         ]
     } else if let Some(c) = &conformance {
         c.headers.clone()
-    } else if let Some(method) = spec.method {
+    } else if let Some(method) = modern_method {
         modern_probe_headers(method)
     } else {
         legacy_probe_headers()
@@ -225,7 +239,12 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     } else if let Some(c) = &conformance {
         c.body.clone()
     } else {
-        build_body(op, w.method.as_deref().unwrap_or(""), ctx.protocol_version)
+        build_body(
+            op,
+            w.method.as_deref().unwrap_or(""),
+            ctx.protocol_version,
+            modern_method,
+        )
     };
     // Every MCP probe reads at most a small JSON-RPC envelope, so the
     // shared probe cap bounds what a hostile endpoint can make the auditor
@@ -243,15 +262,16 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     // The re-ask is a second hop on one row's budget.
     let deadline_at = Instant::now() + timeout;
     let post = |headers: Vec<(String, String)>, opts: &FetchOptions| {
-        ctx.fetch.fetch(
-            endpoint,
-            &FetchInit {
-                method: "POST".to_string(),
-                headers,
-                body: Some(body.clone().into_bytes()),
-            },
-            opts,
-        )
+        let init = FetchInit {
+            method: "POST".to_string(),
+            headers,
+            body: Some(body.clone().into_bytes()),
+        };
+        if spec.family == Family::Enforcement {
+            ctx.fetch.fetch(endpoint, &init, opts)
+        } else {
+            post_as_client(&ctx.fetch, endpoint, &init, opts)
+        }
     };
 
     let mut resp = post(headers.clone(), &opts);
@@ -306,6 +326,14 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     if let Some(busy) = retry_shaped_why(resp.status) {
         set_why(&mut ev, &busy);
         return outcome(ProbeStatus::Error, ev);
+    }
+
+    if spec.family == Family::Enforcement {
+        return enforcement_verdict(resp.status, rpc.as_ref(), ev);
+    }
+    let challenge = resp.headers.get("www-authenticate");
+    if let Some(signed_in) = signed_in_answer(ctx, resp.status, challenge, spec.era, &ev) {
+        return signed_in;
     }
 
     // Settled ahead of the arms below because a legacy server declines
@@ -522,12 +550,15 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
             code == Some(w.expect_code.unwrap_or(-32601))
         }
     };
-    outcome(
-        if ok {
-            ProbeStatus::Pass
-        } else {
-            ProbeStatus::Broken
-        },
-        ev,
-    )
+    ProbeOutcome {
+        json_rpc_result: rpc.contains_key("result"),
+        ..outcome(
+            if ok {
+                ProbeStatus::Pass
+            } else {
+                ProbeStatus::Broken
+            },
+            ev,
+        )
+    }
 }

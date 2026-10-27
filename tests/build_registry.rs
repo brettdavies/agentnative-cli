@@ -215,7 +215,7 @@ fn vendored_registry_counters() {
         .collect();
     assert_eq!(
         unported_handlers,
-        BTreeSet::from(["protected-resource"]),
+        BTreeSet::new(),
         "unported handler kinds (shrink as each port lands)"
     );
     let unported_evals: BTreeSet<&str> = reg
@@ -350,7 +350,7 @@ fn known_handler_and_eval_bind_supported() {
     .expect("builds");
     assert!(reg.checks[0].handler_supported);
     assert!(reg.checks[0].eval_supported);
-    assert_eq!(HANDLER_KINDS.len(), 12);
+    assert_eq!(HANDLER_KINDS.len(), 13);
     assert_eq!(EVAL_RULES.len(), 4);
 }
 

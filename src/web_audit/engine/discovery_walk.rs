@@ -13,6 +13,7 @@ use super::discovery_documents::{
     unparseable_published_card,
 };
 use super::follow_trail::{Declaration, Kind};
+use super::sign_in::SignInEndpoint;
 use crate::web_audit::registry::McpDiscovery;
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -55,6 +56,7 @@ pub(super) struct Walk<'a> {
     pub(super) post_items: Vec<EvidenceItem>,
     pub(super) post_endpoint: Option<String>,
     pub(super) post_redirected: Vec<Declaration>,
+    pub(super) post_sign_in: Option<SignInEndpoint>,
     pub(super) suffix: Option<CardRead>,
     pub(super) deadline_hit: bool,
     pub(super) documents: RetainedDocuments,
@@ -73,6 +75,7 @@ impl<'a> Walk<'a> {
             post_items: Vec::new(),
             post_endpoint: None,
             post_redirected: Vec::new(),
+            post_sign_in: None,
             suffix: None,
             deadline_hit: false,
             documents: RetainedDocuments::new(),
@@ -141,6 +144,7 @@ impl<'a> Walk<'a> {
             post_items,
             post_endpoint,
             post_redirected,
+            post_sign_in,
             suffix,
             deadline_hit,
             mut documents,
@@ -148,7 +152,9 @@ impl<'a> Walk<'a> {
         } = self;
         let catalog: Vec<&CardRead> = catalog_slots.iter().filter_map(CatalogSlot::read).collect();
         let known: Vec<&CardRead> = well_known.iter().collect();
-        let endpoint = card_endpoint_of(&catalog, &well_known).or(post_endpoint);
+        let endpoint = card_endpoint_of(&catalog, &well_known).or(post_endpoint.clone());
+        let found_by_post = endpoint.is_some() && endpoint == post_endpoint;
+        let sign_in = post_sign_in.filter(|_| found_by_post);
         // The suffix URL is a guess the site never published, and an MCP
         // handler can answer it with any JSON object, a JSON-RPC error
         // included.
@@ -220,6 +226,8 @@ impl<'a> Walk<'a> {
             .collect();
         DiscoveryResult {
             endpoint,
+            endpoint_metadata: sign_in.as_ref().map(|s| s.metadata.clone()),
+            endpoint_challenge: sign_in.map(|s| s.challenge),
             evidence,
             declarations,
             redirected,

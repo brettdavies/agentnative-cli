@@ -95,6 +95,28 @@ pub struct McpLane {
     pub note: &'static str,
 }
 
+/// One site design in a group of alternatives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlternativeVariant {
+    /// The variant's name within its group.
+    pub name: &'static str,
+    /// The checks gated on these tokens form the variant; empty for a
+    /// design with no checks of its own.
+    pub antecedents: &'static [AntecedentToken],
+    /// The variant is presented when a check gated on one of these tokens applied.
+    pub presented_by: &'static [AntecedentToken],
+}
+
+/// Site designs that cannot both be satisfied at full access, whatever the
+/// audit's vantage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlternativeGroup {
+    /// The group's name.
+    pub group: &'static str,
+    /// Its designs, in registry order.
+    pub variants: &'static [AlternativeVariant],
+}
+
 /// A doc link attached to a fix.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RemediationResource {
@@ -178,7 +200,7 @@ mod tests {
             .collect();
         assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
         assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
-        assert_eq!(HANDLER_KINDS.len(), 12);
+        assert_eq!(HANDLER_KINDS.len(), 13);
         assert_eq!(EVAL_RULES.len(), 4);
     }
 
@@ -213,7 +235,7 @@ mod tests {
             .filter(|c| matches!(c.handler, HandlerBinding::Unsupported(_)))
             .map(|c| c.handler.as_str())
             .collect();
-        assert_eq!(handlers, BTreeSet::from(["protected-resource"]));
+        assert!(handlers.is_empty(), "{handlers:?}");
         let evals: BTreeSet<&str> = CHECKS
             .iter()
             .filter_map(|c| match c.eval {

@@ -25,7 +25,7 @@ use super::discovery_documents::{
 use super::follow_requests::{Cause, Gate, ReadOptions};
 use super::follow_trail::{host_of, normalize_endpoint_url};
 pub use super::reciprocity_metadata::MetadataMatch;
-use super::reciprocity_metadata::protected_resource_metadata;
+use super::reciprocity_metadata::{ArtifactSource, MetadataQuery, protected_resource_metadata};
 use crate::web_audit::fetch::body::DOCUMENT_MAX_BODY_BYTES;
 use crate::web_audit::fetch::{NOT_HTTPS, ProbeResponse, Refusal};
 use crate::web_audit::registry::McpDiscovery;
@@ -61,15 +61,15 @@ pub struct Admission {
     pub card: Option<AdmittingCard>,
 }
 
-/// Reads through the gate, answering a URL other than https as a read that
-/// got no response.
-pub(super) fn read(
-    gate: &mut Gate<'_>,
+/// Reads through the source, answering a URL other than https as a read
+/// that got no response.
+pub(super) fn read<S: ArtifactSource + ?Sized>(
+    source: &mut S,
     url: &str,
     opts: ReadOptions,
 ) -> Result<ProbeResponse, Cause> {
     if Url::parse(url).is_ok_and(|u| u.scheme() == "https") {
-        return gate.get(url, opts);
+        return source.get(url, opts);
     }
     Ok(ProbeResponse {
         refused: Some(Refusal::InsecureScheme),
@@ -183,13 +183,19 @@ pub fn admitting_artifact(
             card: Some(card),
         }));
     }
-    Ok(
-        protected_resource_metadata(gate, endpoint, challenge)?.map(|metadata| Admission {
-            by: "metadata",
-            metadata: Some(metadata),
-            card: None,
-        }),
-    )
+    Ok(protected_resource_metadata(
+        gate,
+        endpoint,
+        MetadataQuery {
+            challenge,
+            of_record: false,
+        },
+    )?
+    .map(|metadata| Admission {
+        by: "metadata",
+        metadata: Some(metadata),
+        card: None,
+    }))
 }
 
 #[cfg(test)]

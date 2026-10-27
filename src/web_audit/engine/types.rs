@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::api_targets::ApiTargets;
 use super::discovery_documents::RetainedDocuments;
+pub use super::sign_in::{McpAuthRequired, SignInResolver};
 use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::handlers::api_hygiene::HostProbes;
@@ -82,6 +83,10 @@ pub struct ProbeOutcome {
     pub advisory: Option<RowAdvisory>,
     /// The handler exhausted the remaining budget mid-probe.
     pub incomplete: bool,
+    /// The answer carried a JSON-RPC `result`, which is what shows a
+    /// handshake served a request. Engine-internal: the row's evidence is
+    /// what reaches the scorecard.
+    pub json_rpc_result: bool,
 }
 
 impl ProbeOutcome {
@@ -94,6 +99,7 @@ impl ProbeOutcome {
             unprobed: false,
             advisory: None,
             incomplete: false,
+            json_rpc_result: false,
         }
     }
 
@@ -254,6 +260,13 @@ pub struct HandlerContext {
     pub mcp_session_id: Option<String>,
     /// Era-lane evidence from the wave-1 MCP probes.
     pub mcp_lanes: McpLaneEvidence,
+    /// Set once the endpoint is known to require sign-in, so a 401 from it
+    /// reads as that rather than as a defect.
+    pub mcp_auth: Option<Arc<McpAuthRequired>>,
+    /// Set when wave 1 did not settle that the endpoint requires sign-in:
+    /// reads a 401 a later row drew against the endpoint's RFC 9728
+    /// metadata, which then reads as sign-in the same way.
+    pub mcp_sign_in: Option<Arc<SignInResolver>>,
     /// The per-audit deadline.
     pub deadline: Instant,
     /// Whether checks that query external DNS resolvers may run.

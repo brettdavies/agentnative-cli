@@ -15,12 +15,14 @@ use super::api_targets::api_targets;
 use super::discovery::{DiscoveryResult, read_discovery_documents};
 use super::discovery_documents::API_CATALOG_DOCUMENT;
 use super::endpoint_of_record::{Settle, settle_endpoint_of_record};
+use super::follow_trail::host_of;
 use super::handlers::{Dispatch, HandlerSet};
 use super::mcp_wire::{
     advertised_capabilities, modern_lane_from, notify_mcp_initialized, session_id_from,
 };
 use super::pool::run_bounded;
 use super::retained::enumerate_scoped_dirs;
+use super::sign_in::{DirectSource, SignInResolver, settle_mcp_auth};
 use super::summary::summarize_evidence;
 use super::types::{FetchHandle, HandlerContext, McpLaneEvidence, ProbeOutcome, why_item};
 use crate::web_audit::fetch::memo::RequestMemo;
@@ -29,14 +31,17 @@ use crate::web_audit::fetch::{
 };
 use crate::web_audit::handlers::api_description::api_description_bodies;
 use crate::web_audit::handlers::api_hygiene::HostProbes;
+use crate::web_audit::handlers::mcp::ops::McpOp;
+use crate::web_audit::handlers::mcp::sign_in::sign_in_required_outcome;
 use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::{
-    CATEGORIES, CATEGORY_ORDER, CHECKS, HandlerBinding, MCP_DISCOVERY, WebCheck, WebCheckKeyword,
+    ALTERNATIVES, CATEGORIES, CATEGORY_ORDER, CHECKS, HandlerBinding, MCP_DISCOVERY, WebCheck,
+    WebCheckKeyword,
 };
 use crate::web_audit::score::ScoreConfig;
 use crate::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardMeta, ScorecardStatus,
-    WebScorecard, build_web_scorecard,
+    WebScorecard, WebVantage, build_web_scorecard,
 };
 
 /// Worker threads per wave.
@@ -213,6 +218,17 @@ fn na_result(check: &'static WebCheck, reason: NaReason, evidence: &str) -> Engi
         evidence: evidence.to_string(),
         raw_evidence: vec![why_item(evidence)],
     }
+}
+
+/// An `n_a` row that reads as the host it could not be evaluated at
+/// rather than the audited one.
+fn na_at_host(mut result: EngineResult, host: Option<String>) -> EngineResult {
+    if let Some(host) = host {
+        for item in &mut result.raw_evidence {
+            item.insert("host".to_string(), serde_json::Value::String(host.clone()));
+        }
+    }
+    result
 }
 
 fn error_result(check: &'static WebCheck, message: &str) -> EngineResult {
@@ -531,6 +547,8 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         fetch: input.fetch.clone(),
         mcp_session_id: session,
         mcp_lanes: lanes,
+        mcp_auth: None,
+        mcp_sign_in: None,
         deadline,
         external_dns: input.external_dns,
         target_locality,
@@ -569,6 +587,32 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         }
         wave1_results.insert(probed.check.id, (probed.result, probed.unported));
     }
+
+    // Whether the endpoint requires sign-in is settled once wave 1's wire
+    // probes have answered, from their 401 or, when they drew none and were
+    // served nothing, from the 401 that found the endpoint; their own rows
+    // are then read again the way every later MCP row is. When that settles
+    // nothing, a later row's 401 is read against the same metadata.
+    let resolver = Arc::new(SignInResolver::new(
+        declared.endpoint.clone(),
+        declared.metadata.clone(),
+        DirectSource {
+            fetch: input.fetch.clone(),
+            timeout: per_check_timeout,
+            deadline_at: deadline,
+        },
+    ));
+    let mcp_auth = settle_mcp_auth(declared.challenge.as_ref(), &sources, &resolver);
+    for check in wave1
+        .iter()
+        .filter(|c| mcp_auth.is_some() && c.handler == HandlerBinding::Mcp)
+    {
+        if let Some(reread) = sources.get(check.id).and_then(sign_in_required_outcome) {
+            wave1_results.insert(check.id, (to_result(check, reread.clone()), None));
+            sources.insert(check.id.to_string(), reread);
+        }
+    }
+    let mcp_sign_in = mcp_auth.is_none().then_some(resolver);
 
     let retained_body = |id: &str| -> String {
         sources
@@ -637,6 +681,8 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         root: root.as_deref(),
         sources: &sources,
         api_anchors: anchors.iter().any(|a| a.is_api()),
+        mcp_auth: mcp_auth.as_deref(),
+        mcp_lane: None,
     };
     // Gate: declared-type filter first, then the antecedent token.
     let gate = |check: &'static WebCheck| -> Option<EngineResult> {
@@ -647,22 +693,27 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
                 "not applicable to the declared site type",
             ));
         }
-        match antecedents::resolve(check.antecedent, &actx) {
+        let row_ctx = AntecedentContext {
+            mcp_lane: McpOp::request_era(check),
+            ..actx
+        };
+        match antecedents::resolve(check.antecedent, &row_ctx) {
             Resolution::NotApplicable => Some(na_result(
                 check,
                 NaReason::AntecedentUnmet,
                 antecedents::unmet_evidence(check.antecedent),
             )),
-            Resolution::DeclaredHost(unmet) => {
-                let mut result = na_result(check, unmet.reason, &unmet.url);
-                for item in &mut result.raw_evidence {
-                    item.insert(
-                        "host".to_string(),
-                        serde_json::Value::String(unmet.host.clone()),
-                    );
-                }
-                Some(result)
+            Resolution::NotApplicableBecause(evidence) => {
+                Some(na_result(check, NaReason::AntecedentUnmet, evidence))
             }
+            Resolution::DeclaredHost(unmet) => Some(na_at_host(
+                na_result(check, unmet.reason, &unmet.url),
+                Some(unmet.host),
+            )),
+            Resolution::AuthRequired(endpoint) => Some(na_at_host(
+                na_result(check, NaReason::AuthRequired, &endpoint),
+                host_of(&endpoint),
+            )),
             Resolution::Error => Some(error_result(
                 check,
                 "antecedent unresolvable: root fetch failed",
@@ -712,13 +763,15 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             None => applicable.push(check),
         }
     }
-    let ctx2 = handler_ctx(
+    let mut ctx2 = handler_ctx(
         scoped_dirs,
         Arc::new(retained),
         descriptions,
         session,
         lanes,
     );
+    ctx2.mcp_auth = mcp_auth.clone();
+    ctx2.mcp_sign_in = mcp_sign_in;
     for probed in run_wave(
         applicable,
         &ctx2,
@@ -755,11 +808,15 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         public_listing: false,
         follow_declarations: input.follow_declarations,
         declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
+        vantage: WebVantage {
+            network: if local_target { "local" } else { "public" }.to_string(),
+            credentialed: false,
+        },
     };
     let scorecard = build_web_scorecard(
         &results,
         &meta,
-        CHECKS.iter().map(|c| c.keyword),
+        (CHECKS, ALTERNATIVES),
         CATEGORY_ORDER,
         CATEGORIES,
         &ScoreConfig::default(),

@@ -6,6 +6,7 @@
 use serde_json::Value;
 
 use super::types::{ProbeOutcome, ProbeStatus};
+use crate::web_audit::handlers::mcp::ops::{Family, McpOp};
 use crate::web_audit::handlers::server_card::server_card_evidence;
 use crate::web_audit::registry::{EvalBinding, HandlerBinding, WebCheck};
 use crate::web_audit::scorecard::EvidenceItem;
@@ -70,6 +71,10 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
         return joined_why(first, "; ").unwrap_or_else(|| "not applicable".to_string());
     }
 
+    if check.handler == HandlerBinding::ProtectedResource {
+        return joined_why(first, "; ").unwrap_or_default();
+    }
+
     if check.handler == HandlerBinding::ServerCard {
         return server_card_evidence(outcome);
     }
@@ -82,14 +87,21 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
                 js_str(first.get("error"))
             );
         }
-        if matches!(
-            outcome.status,
-            ProbeStatus::Absent | ProbeStatus::Noncompliant
-        ) && let Some(why) = joined_why(first, "; ")
+        let op = with_op(check);
+        // An enforcement row's reason is its whole finding, whatever its status.
+        let enforcement = op
+            .as_deref()
+            .and_then(McpOp::parse)
+            .is_some_and(|o| o.spec().family == Family::Enforcement);
+        if (enforcement
+            || matches!(
+                outcome.status,
+                ProbeStatus::Absent | ProbeStatus::Noncompliant
+            ))
+            && let Some(why) = joined_why(first, "; ")
         {
             return why;
         }
-        let op = with_op(check);
         // An errored handshake never answered, so it has no serverInfo to name.
         if op.as_deref() == Some("initialize") && outcome.status != ProbeStatus::Error {
             return match server_info_name(first) {

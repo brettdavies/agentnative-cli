@@ -1,0 +1,110 @@
+{
+  "description": "four declared hosts each redirect into a private range and are blocked; the fifth exceeds the per-audit host cap and is never requested",
+  "covers": [
+    "mcp-initialize"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/ai-catalog.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"specVersion\":\"1.0\",\"entries\":[{\"identifier\":\"urn:air:example.com:mcp:example\",\"type\":\"application/mcp-server-card+json\",\"data\":{\"$schema\":\"https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json\",\"name\":\"com.example/example\",\"version\":\"1.0.0\",\"description\":\"Example MCP server\",\"remotes\":[{\"type\":\"streamable-http\",\"url\":\"https://h1.example.net/mcp\"}]}},{\"identifier\":\"urn:air:example.com:mcp:example\",\"type\":\"application/mcp-server-card+json\",\"data\":{\"$schema\":\"https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json\",\"name\":\"com.example/example\",\"version\":\"1.0.0\",\"description\":\"Example MCP server\",\"remotes\":[{\"type\":\"streamable-http\",\"url\":\"https://h2.example.net/mcp\"}]}},{\"identifier\":\"urn:air:example.com:mcp:example\",\"type\":\"application/mcp-server-card+json\",\"data\":{\"$schema\":\"https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json\",\"name\":\"com.example/example\",\"version\":\"1.0.0\",\"description\":\"Example MCP server\",\"remotes\":[{\"type\":\"streamable-http\",\"url\":\"https://h3.example.net/mcp\"}]}},{\"identifier\":\"urn:air:example.com:mcp:example\",\"type\":\"application/mcp-server-card+json\",\"data\":{\"$schema\":\"https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json\",\"name\":\"com.example/example\",\"version\":\"1.0.0\",\"description\":\"Example MCP server\",\"remotes\":[{\"type\":\"streamable-http\",\"url\":\"https://h4.example.net/mcp\"}]}}]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp/server-card.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"name\":\"example\",\"version\":\"1.0.0\",\"mcp_endpoint\":\"https://h5.example.net/mcp\",\"documentation\":\"https://example.com/mcp-skill.md\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://h1.example.net/mcp"
+      },
+      "response": {
+        "status": 302,
+        "headers": {
+          "location": "http://10.0.0.1/mcp"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://h2.example.net/mcp"
+      },
+      "response": {
+        "status": 302,
+        "headers": {
+          "location": "http://10.0.0.1/mcp"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://h3.example.net/mcp"
+      },
+      "response": {
+        "status": 302,
+        "headers": {
+          "location": "http://10.0.0.1/mcp"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://h4.example.net/mcp"
+      },
+      "response": {
+        "status": 302,
+        "headers": {
+          "location": "http://10.0.0.1/mcp"
+        },
+        "body": ""
+      }
+    }
+  ]
+}

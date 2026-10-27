@@ -1,0 +1,63 @@
+{
+  "description": "the declared endpoint answers GET with 405 and Allow: POST but publishes no card, catalog entry, or metadata naming it: no wire probe, and the MCP rows name the host that did not confirm it",
+  "covers": [
+    "mcp-initialize",
+    "mcp-tools-list",
+    "mcp-cors-preflight",
+    "mcp-cors-actual",
+    "mcp-get-fast-fail"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp/server-card.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"name\":\"example\",\"version\":\"1.0.0\",\"mcp_endpoint\":\"https://mcp.example.net/mcp\",\"documentation\":\"https://example.com/mcp-skill.md\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://mcp.example.net/mcp"
+      },
+      "response": {
+        "status": 405,
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "allow": "POST"
+        },
+        "body": "Method Not Allowed"
+      }
+    }
+  ]
+}

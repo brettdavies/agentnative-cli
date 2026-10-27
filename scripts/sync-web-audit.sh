@@ -4,6 +4,7 @@
 # Build inputs (build.rs compiles them into $OUT_DIR/generated_web_registry.rs):
 #   src/data/web-audit/registry.yaml            -> src/web_audit/vendored/registry.yaml
 #   src/data/web-audit/remediation.yaml         -> src/web_audit/vendored/remediation.yaml
+#   src/data/web-audit/server-card.schema.json  -> src/web_audit/vendored/server-card.schema.json
 #   src/shared/user-agents.ts                   -> src/web_audit/vendored/user-agents.ts
 #   src/shared/site-url.ts                      -> src/web_audit/vendored/site-url.ts
 #   src/shared/audit-routes.ts                  -> src/web_audit/vendored/audit-routes.ts
@@ -48,6 +49,7 @@ PIN_FILE="src/web_audit/vendored/SITE_SHA"
 SYNC_FILES=(
   "src/data/web-audit/registry.yaml=src/web_audit/vendored/registry.yaml"
   "src/data/web-audit/remediation.yaml=src/web_audit/vendored/remediation.yaml"
+  "src/data/web-audit/server-card.schema.json=src/web_audit/vendored/server-card.schema.json"
   "src/shared/user-agents.ts=src/web_audit/vendored/user-agents.ts"
   "src/shared/site-url.ts=src/web_audit/vendored/site-url.ts"
   "src/shared/audit-routes.ts=src/web_audit/vendored/audit-routes.ts"

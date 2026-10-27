@@ -59,6 +59,10 @@ export const API_SCORE_PATH = '/api/score';
 export const RETIRED_REDIRECTS: Readonly<Record<string, string>> = {
   '/web-audit': `${AUDIT_PATH}?lane=web`,
   '/web-audit.md': `${AUDIT_PATH}.md`,
+  // The endpoint description used to be served at /mcp. The protocol path
+  // now answers 405; these twins move to the docs page.
+  '/mcp.md': '/mcp-docs.md',
+  '/mcp.html': '/mcp-docs',
 };
 
 /** The retired website result path; its host is the target the result route serves. */
@@ -342,6 +346,27 @@ export function scoreMarkdownPath(target: string): string {
 
 export function scoreJsonPath(target: string): string {
   return `${scorePath(target)}/json`;
+}
+
+export const BADGE_PREFIX = '/badge/';
+
+/** `/badge/<slug>.svg` for a curated tool. The build emits one per registry name. */
+export function badgePath(target: string): string {
+  assertResultTarget(target);
+  return `${BADGE_PREFIX}${encodeTarget(target)}.svg`;
+}
+
+/**
+ * The slug a `/badge/<slug>.svg` path names, or null for anything else. The
+ * slug charset matches the registry's own `name` pattern, so a nested or
+ * oddly-encoded path falls through to the asset binding untouched.
+ */
+export function badgeSlugOf(pathname: string): string | null {
+  if (!pathname.startsWith(BADGE_PREFIX)) return null;
+  const rest = pathname.slice(BADGE_PREFIX.length);
+  if (!rest.endsWith('.svg')) return null;
+  const slug = rest.slice(0, -'.svg'.length);
+  return /^[a-z0-9-]+$/.test(slug) ? slug : null;
 }
 
 // ---------------------------------------------------------------------------

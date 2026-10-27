@@ -1,0 +1,100 @@
+{
+  "description": "a Stripe-shaped api-catalog anchors two API hosts and an MCP endpoint with no service-desc: the OpenAPI row scores each declared description where it is hosted (JSON on one host, YAML on the other), the hygiene rows probe each anchor host once (the documented 4xx path, then the nonsense path) and list both hosts in anchor order, JSON errors pass and rate-limit headers are missing at both, the third anchor is recorded not followed and never requested, and no hygiene probe reaches the audited site",
+  "covers": [
+    "openapi",
+    "api-catalog",
+    "json-errors",
+    "rate-limit-headers"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": true,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"description\" content=\"Example: a site with agent entry points.\">\n<link rel=\"service-desc\" href=\"/openapi.json\">\n<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">\n<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\"}</script>\n<script src=\"/js/webmcp.js\"></script>\n</head>\n<body>\n<main>\n<h1>Example</h1>\n<p>Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. Readable prose about the example service and its agent surfaces. </p>\n</main>\n<noscript><a href=\"/llms.txt\">llms.txt</a> <a href=\"/openapi.json\">OpenAPI</a></noscript>\n</body>\n</html>\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/api-catalog"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/linkset+json"
+        },
+        "body": "{\"linkset\":[{\"anchor\":\"https://api.example.net/\",\"service-desc\":[{\"href\":\"https://api.example.net/openapi.json\",\"type\":\"application/openapi+json\"}],\"service-doc\":[{\"href\":\"https://example.com/docs/api\",\"type\":\"text/html\"}]},{\"anchor\":\"https://files.example.net/\",\"service-desc\":[{\"href\":\"https://files.example.net/openapi.yaml\",\"type\":\"application/openapi+yaml\"}]},{\"anchor\":\"https://mcp.example.net/mcp\",\"service-doc\":[{\"href\":\"https://example.com/docs/mcp\",\"type\":\"text/html\"}]}]}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.net/openapi.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"openapi\":\"3.1.0\",\"info\":{\"title\":\"Example API\",\"version\":\"1.0.0\"},\"paths\":{\"/v1/items/{id}\":{\"get\":{\"responses\":{\"200\":{\"description\":\"ok\"},\"404\":{\"description\":\"missing\"}}}}}}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://api.example.net/v1/items/anc-web-audit-no-such"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Unrecognized request URL\"}}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://files.example.net/openapi.yaml"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/yaml"
+        },
+        "body": "openapi: 3.1.0\ninfo:\n  title: Example files API\n  version: 1.0.0\npaths: {}\n"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://files.example.net/anc-web-audit-no-such-api"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Unrecognized request URL\"}}"
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
-  "description": "a card without an endpoint field passes the card check while discovery falls through to initialize",
+  "description": "a card without an endpoint field that names its server in serverInfo is SEP-1649-shaped and passes the card check with the superseded advisory, while discovery falls through to initialize",
   "covers": [
-    "well-known-mcp-card",
+    "mcp-server-card",
     "mcp-initialize"
   ],
   "target": "https://example.com/",

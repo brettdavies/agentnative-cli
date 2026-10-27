@@ -1,35 +1,47 @@
 {
-  "description": "Shared scoring fixture: src/worker/audit-web/score.ts (tests/web-audit-two-score.test.ts) and scripts/scoring/score_model.py --fixture must both produce `expected`. Non-default weights, broken factor and noncompliant credit exercise the config surface.",
+  "description": "Shared scoring fixture: src/worker/audit-web/score.ts (tests/web-audit-two-score.test.ts) and scripts/scoring/score_model.py --fixture must both produce each case's `expected`. Non-default weights, broken factor and noncompliant credit exercise the config surface. `scoring_input` names the row fields both scorers compute a score from. Each case pins its own universe and rows; one earns more than its universe, so both scorers must cap global at 100.",
+  "scoring_input": ["keyword", "status"],
   "weights": { "must": 4, "should": 2.5, "may": 1 },
   "broken_factor": 0.6,
   "noncompliant_credit": 0.4,
-  "universe_tiers": [
-    "must",
-    "must",
-    "must",
-    "must",
-    "should",
-    "should",
-    "should",
-    "should",
-    "may",
-    "may",
-    "may",
-    "may"
-  ],
-  "rows": [
-    ["must", "pass"],
-    ["must", "pass"],
-    ["must", "absent"],
-    ["must", "noncompliant"],
-    ["should", "pass"],
-    ["should", "absent"],
-    ["should", "broken"],
-    ["should", "noncompliant"],
-    ["may", "pass"],
-    ["may", "broken"],
-    ["may", "noncompliant"],
-    ["may", "n_a"]
-  ],
-  "expected": { "relative": 45, "global": 41 }
+  "cases": [
+    {
+      "name": "mixed outcomes",
+      "universe_tiers": [
+        "must",
+        "must",
+        "must",
+        "must",
+        "should",
+        "should",
+        "should",
+        "should",
+        "may",
+        "may",
+        "may",
+        "may"
+      ],
+      "rows": [
+        ["must", "pass"],
+        ["must", "pass"],
+        ["must", "absent"],
+        ["must", "noncompliant"],
+        ["should", "pass"],
+        ["should", "absent"],
+        ["should", "broken"],
+        ["should", "noncompliant"],
+        ["may", "pass"],
+        ["may", "broken"],
+        ["may", "noncompliant"],
+        ["may", "n_a"]
+      ],
+      "expected": { "relative": 45, "global": 41 }
+    },
+    {
+      "name": "earned above the universe",
+      "universe_tiers": ["must", "should"],
+      "rows": [["must", "pass"], ["must", "pass"], ["should", "pass"], ["may", "noncompliant"]],
+      "expected": { "relative": 95, "global": 100 }
+    }
+  ]
 }

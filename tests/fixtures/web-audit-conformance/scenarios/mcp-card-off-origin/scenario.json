@@ -1,7 +1,7 @@
 {
   "description": "a card declaring an off-origin endpoint is recorded and never probed; discovery falls through to initialize",
   "covers": [
-    "well-known-mcp-card",
+    "mcp-server-card",
     "mcp-initialize"
   ],
   "target": "https://example.com/",

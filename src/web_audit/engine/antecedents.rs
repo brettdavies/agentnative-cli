@@ -10,11 +10,13 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::antecedents_mcp::{self as mcp, no_mcp_endpoint};
 use super::api_catalog::MCP_TARGET_RE;
 use super::follow_trail::DeclaredHostReason;
-use super::mcp_wire::advertises_resources;
+use super::sign_in::McpAuthRequired;
 use super::types::{ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::ProbeResponse;
+use crate::web_audit::handlers::mcp::ops::Era;
 use crate::web_audit::registry::{AntecedentToken, WebCheckSiteType};
 use crate::web_audit::scorecard::{DeclaredSiteType, EvidenceItem};
 
@@ -44,15 +46,21 @@ pub enum Resolution {
     Apply,
     /// The check does not apply; the row is `n_a`.
     NotApplicable,
+    /// The check does not apply, for a reason the token's own evidence line
+    /// does not state.
+    NotApplicableBecause(&'static str),
     /// The check needs an endpoint a declared host kept from being
     /// evaluated; the row is `n_a` for that reason and reads as that host.
     DeclaredHost(DeclaredHostReason),
+    /// The check needs a session the endpoint (named here) gives only a
+    /// signed-in client; the row is `n_a` `auth-required`.
+    AuthRequired(String),
     /// The antecedent cannot be resolved because the root never answered.
     Error,
 }
 
 /// The wave-1 facts every resolver reads.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct AntecedentContext<'a> {
     /// The declared site type; `None` runs everything.
     pub site_type: Option<DeclaredSiteType>,
@@ -68,14 +76,10 @@ pub struct AntecedentContext<'a> {
     pub api_anchors: bool,
     /// Why the declared host behind a missing endpoint was not evaluated.
     pub follow_unmet: Option<&'a DeclaredHostReason>,
-}
-
-/// `n_a` for a check that needs the MCP endpoint there is none of, naming
-/// the declared host behind that when one is.
-fn no_mcp_endpoint(ctx: &AntecedentContext<'_>) -> Resolution {
-    ctx.follow_unmet.map_or(Resolution::NotApplicable, |unmet| {
-        Resolution::DeclaredHost(unmet.clone())
-    })
+    /// Set when the endpoint of record requires sign-in.
+    pub mcp_auth: Option<&'a McpAuthRequired>,
+    /// The protocol era of the MCP row being gated; `None` for every other row.
+    pub mcp_lane: Option<Era>,
 }
 
 /// The declared-site-type gate, applied before the antecedent token.
@@ -103,30 +107,12 @@ pub fn resolve(token: AntecedentToken, ctx: &AntecedentContext<'_>) -> Resolutio
             _ => Resolution::Error,
         },
         T::HtmlRoot => html_root_gate(ctx).unwrap_or(Resolution::Apply),
-        T::McpPresent | T::McpSession if ctx.mcp_endpoint.is_none() => no_mcp_endpoint(ctx),
-        T::McpPresent | T::McpSession => Resolution::Apply,
-        T::McpAuthRequired => match no_mcp_endpoint(ctx) {
-            unmet @ Resolution::DeclaredHost(_) if ctx.mcp_endpoint.is_none() => unmet,
-            _ => Resolution::NotApplicable,
-        },
-        T::McpAuth => {
-            if ctx.mcp_endpoint.is_none() {
-                return no_mcp_endpoint(ctx);
-            }
-            apply_if(
-                evidence_shows_auth_challenge(source_evidence(ctx, "mcp-initialize"))
-                    || card_declares_auth(ctx),
-            )
-        }
-        T::McpResources => {
-            if ctx.mcp_endpoint.is_none() {
-                return no_mcp_endpoint(ctx);
-            }
-            apply_if(
-                advertises_resources(source_evidence(ctx, "mcp-initialize"))
-                    || advertises_resources(source_evidence(ctx, "mcp-server-discover")),
-            )
-        }
+        T::McpPresent if ctx.mcp_endpoint.is_none() => no_mcp_endpoint(ctx),
+        T::McpPresent => Resolution::Apply,
+        T::McpSession => mcp::mcp_session(ctx),
+        T::McpAuthRequired => mcp::mcp_auth_required(ctx),
+        T::McpAuth => mcp::mcp_auth(ctx),
+        T::McpResources => mcp::mcp_resources(ctx),
         T::ApiSurface => apply_if(api_surface_holds(ctx)),
         T::SchemasRef => apply_if(
             own_openapi_passed(ctx) || ctx.root.is_some_and(|root| SCHEMAS_RE.is_match(&root.body)),
@@ -253,26 +239,13 @@ fn any_evidence_status(items: &[EvidenceItem], status: u64) -> bool {
         .any(|item| item.get("status").and_then(|s| s.as_u64()) == Some(status))
 }
 
-fn evidence_shows_auth_challenge(items: &[EvidenceItem]) -> bool {
-    any_evidence_status(items, 401)
-        || items
-            .iter()
-            .any(|item| item.get("www_authenticate").is_some_and(|v| v.is_string()))
-}
-
-fn card_declares_auth(ctx: &AntecedentContext<'_>) -> bool {
-    ctx.discovery_evidence
-        .iter()
-        .any(|item| item.get("authentication") == Some(&serde_json::Value::Bool(true)))
-}
-
 fn auth_signal_observed(ctx: &AntecedentContext<'_>) -> bool {
     if ctx.root.is_some_and(|root| root.status == Some(401)) {
         return true;
     }
-    evidence_shows_auth_challenge(&own_origin_evidence(ctx, "openapi"))
-        || evidence_shows_auth_challenge(source_evidence(ctx, "mcp-initialize"))
-        || card_declares_auth(ctx)
+    mcp::evidence_shows_auth_challenge(&own_origin_evidence(ctx, "openapi"))
+        || mcp::handshake_shows_auth_challenge(ctx)
+        || mcp::card_declares_auth(ctx)
 }
 
 static SCHEMAS_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -378,6 +351,8 @@ mod tests {
             sources,
             api_anchors: false,
             follow_unmet: None,
+            mcp_auth: None,
+            mcp_lane: None,
         }
     }
 

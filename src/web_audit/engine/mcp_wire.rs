@@ -114,7 +114,19 @@ pub fn notify_mcp_initialized(
         followed,
         "POST",
     );
-    fetch.fetch(endpoint, &init, &opts);
+    post_as_client(fetch, endpoint, &init, &opts);
+}
+
+/// A request to the endpoint of record that speaks to it as a client: every
+/// handshake and session request goes out here. The row that asks whether a
+/// request without a token is refused sends its own.
+pub fn post_as_client(
+    fetch: &FetchHandle,
+    endpoint: &str,
+    init: &FetchInit,
+    opts: &FetchOptions,
+) -> ProbeResponse {
+    fetch.fetch(endpoint, init, opts)
 }
 
 /// Extract a JSON-RPC object from a JSON or `text/event-stream` body. An

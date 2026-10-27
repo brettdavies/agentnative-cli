@@ -20,6 +20,7 @@ use super::mcp_wire::{
     legacy_initialize_body, legacy_probe_headers, modern_probe_body, modern_probe_headers,
     parse_json_rpc,
 };
+use super::sign_in::ChallengedPath;
 use super::types::FetchHandle;
 use crate::web_audit::fetch::redirect::is_redirect;
 use crate::web_audit::fetch::{CrossOriginRedirects, FetchInit, FetchOptions, ProbeResponse};
@@ -43,6 +44,33 @@ pub struct PostProbing {
     pub items: Vec<EvidenceItem>,
     /// Where POSTs were redirected off the audited origin, in probe order.
     pub redirected: Vec<Declaration>,
+    /// With no endpoint found, the paths whose POSTs drew a 401, in probe order.
+    pub challenged: Vec<ChallengedPath>,
+}
+
+/// The paths a POST lane answered with 401, the legacy lane's answer read first.
+fn challenged_paths(
+    candidates: &[Candidate],
+    legacy: &[ProbeResponse],
+    modern: &[ProbeResponse],
+) -> Vec<ChallengedPath> {
+    candidates
+        .iter()
+        .zip(legacy.iter().zip(modern))
+        .filter_map(|(candidate, (legacy, modern))| {
+            let (resp, probed) = if legacy.status == Some(401) {
+                (legacy, "initialize")
+            } else {
+                (modern, "modern-tools-list")
+            };
+            (resp.status == Some(401)).then(|| ChallengedPath {
+                path: candidate.path,
+                url: candidate.url.clone(),
+                probed,
+                challenge: resp.headers.get("www-authenticate").map(str::to_string),
+            })
+        })
+        .collect()
 }
 
 fn row(value: Value) -> EvidenceItem {
@@ -138,6 +166,7 @@ pub fn probe_common_paths(
                 endpoint: Some(candidate.url.clone()),
                 items,
                 redirected,
+                challenged: Vec::new(),
             };
         }
         items.push(miss(
@@ -160,6 +189,7 @@ pub fn probe_common_paths(
                 endpoint: Some(candidate.url.clone()),
                 items,
                 redirected,
+                challenged: Vec::new(),
             };
         }
         items.push(miss(
@@ -174,6 +204,7 @@ pub fn probe_common_paths(
         endpoint: None,
         items,
         redirected,
+        challenged: challenged_paths(candidates, legacy, modern),
     }
 }
 

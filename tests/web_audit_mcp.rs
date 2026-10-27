@@ -60,6 +60,8 @@ fn context(transport: Arc<dyn Transport + Send + Sync>) -> HandlerContext {
         fetch: FetchHandle::new(transport, Arc::new(PublicResolver), "test-ua"),
         mcp_session_id: None,
         mcp_lanes: McpLaneEvidence::default(),
+        mcp_auth: None,
+        mcp_sign_in: None,
         deadline: Instant::now() + Duration::from_secs(20),
         external_dns: false,
         target_locality: Some(Locality::Public),
@@ -105,12 +107,7 @@ fn probe(id: &str, answer: MockResponse, session: Option<&str>) -> (ProbeOutcome
 
 #[test]
 fn every_mcp_row_posts_one_json_rpc_request_to_the_endpoint() {
-    // mcp-auth-enforced sends its tools/list without the session the
-    // unported mcp-auth-required gate settles (site #397).
-    for c in CHECKS
-        .iter()
-        .filter(|c| c.handler == HandlerBinding::Mcp && c.id != "mcp-auth-enforced")
-    {
+    for c in CHECKS.iter().filter(|c| c.handler == HandlerBinding::Mcp) {
         let (_, requests) = probe(c.id, rpc_error(-32601), None);
         assert_eq!(requests.len(), 1, "{}", c.id);
         assert_eq!(requests[0].method, "POST", "{}", c.id);
@@ -426,11 +423,7 @@ fn a_retry_shaped_answer_is_an_operational_error_on_every_mcp_row_whatever_rides
         rpc_error_body(-32601),
         json!({ "jsonrpc": "2.0", "id": 1, "result": { "tools": [] } }).to_string(),
     ];
-    // mcp-auth-enforced's op is the unported enforcement family (site #397).
-    for c in CHECKS
-        .iter()
-        .filter(|c| c.handler == HandlerBinding::Mcp && c.id != "mcp-auth-enforced")
-    {
+    for c in CHECKS.iter().filter(|c| c.handler == HandlerBinding::Mcp) {
         for (status, reason) in RETRY_SHAPED {
             for body in &bodies {
                 let (outcome, requests) = probe(c.id, answered(status, body), None);

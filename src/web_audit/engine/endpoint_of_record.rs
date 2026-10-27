@@ -20,6 +20,8 @@ use super::follow_trail::{
     Declaration, DeclaredHostReason, Kind, Outcome, Settled, TrailEntry, declaration_key,
     declared_host_reason, declares_host,
 };
+use super::reciprocity_metadata::MetadataMatch;
+use super::sign_in::SignInChallenge;
 use super::types::FetchHandle;
 use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::McpDiscovery;
@@ -31,6 +33,12 @@ pub struct EndpointOfRecord {
     pub endpoint: Option<String>,
     /// The endpoint came from a declared host, pinned when reciprocity admitted it.
     pub followed: bool,
+    /// RFC 9728 metadata naming the endpoint that finding or admitting it
+    /// already read.
+    pub metadata: Option<MetadataMatch>,
+    /// The 401 discovery drew from the audited site's own endpoint while
+    /// finding it; `None` when it found it another way.
+    pub challenge: Option<SignInChallenge>,
     /// The declared-hosts trail, in declaration order.
     pub trail: Vec<TrailEntry>,
     /// Why the rows that need an endpoint were not evaluated, when a declared host is why.
@@ -99,6 +107,12 @@ pub fn endpoint_of_record(
     let endpoint = own.cloned().or_else(|| follow.endpoint.clone());
     EndpointOfRecord {
         followed: own.is_none() && follow.endpoint.is_some(),
+        metadata: if own.is_some() {
+            discovery.endpoint_metadata.clone()
+        } else {
+            follow.endpoint_metadata.clone()
+        },
+        challenge: own.and(discovery.endpoint_challenge.clone()),
         unmet: endpoint.is_none().then(|| unmet_reason(&trail)).flatten(),
         endpoint,
         trail,

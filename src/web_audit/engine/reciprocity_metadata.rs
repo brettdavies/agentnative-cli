@@ -1,7 +1,9 @@
-//! RFC 9728 protected-resource metadata as reciprocity reads it, a mirror
-//! of `resolveProtectedResourceMetadata` in the site's `reciprocity.ts`:
-//! the metadata must name the endpoint as its `resource`, and below the
-//! root, metadata at a nonsense path must not echo that path back.
+//! RFC 9728 protected-resource metadata as reciprocity and sign-in read it,
+//! a mirror of `resolveProtectedResourceMetadata` in the site's
+//! `reciprocity.ts`: the metadata must name the endpoint as its `resource`,
+//! and below the root, metadata at a nonsense path must not echo that path
+//! back. Reads go through an [`ArtifactSource`]: the follow slice's gate,
+//! or a direct source outside it.
 
 use std::sync::LazyLock;
 
@@ -13,6 +15,7 @@ use super::discovery_documents::{JsonObject, parse_json_object};
 use super::follow_requests::{Cause, Gate, ReadOptions};
 use super::follow_trail::normalize_endpoint_url;
 use super::reciprocity::{read, same_host};
+use crate::web_audit::fetch::ProbeResponse;
 use crate::web_audit::fetch::body::METADATA_MAX_BODY_BYTES;
 use crate::web_audit::handlers::shared::RETRY_SHAPED_STATUSES;
 
@@ -31,8 +34,26 @@ static RESOURCE_METADATA_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)(?:^|[\s,])resource_metadata\s*=\s*(?:"([^"]*)"|([^\s,]+))"#).unwrap()
 });
 
+/// Where artifact reads go: one GET per URL, redirects disabled.
+pub trait ArtifactSource {
+    /// Read `url`, or say what stopped the read before it started.
+    fn get(&mut self, url: &str, opts: ReadOptions) -> Result<ProbeResponse, Cause>;
+    /// Whether the guard would let a request reach `url`.
+    fn admits(&self, url: &str) -> bool;
+}
+
+impl ArtifactSource for Gate<'_> {
+    fn get(&mut self, url: &str, opts: ReadOptions) -> Result<ProbeResponse, Cause> {
+        Gate::get(self, url, opts)
+    }
+
+    fn admits(&self, url: &str) -> bool {
+        self.fetch.validate(url).is_ok()
+    }
+}
+
 /// RFC 9728 metadata naming an endpoint, and where it was read.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetadataMatch {
     /// Where it was read.
     pub url: String,
@@ -73,46 +94,64 @@ fn resource_of(metadata: Option<&JsonObject>) -> Option<String> {
         .and_then(normalize_endpoint_url)
 }
 
-fn read_metadata(gate: &mut Gate<'_>, url: &str) -> Result<Option<JsonObject>, Cause> {
-    let response = read(gate, url, METADATA_READ)?;
+fn read_metadata<S: ArtifactSource + ?Sized>(
+    source: &mut S,
+    url: &str,
+) -> Result<Option<JsonObject>, Cause> {
+    let response = read(source, url, METADATA_READ)?;
     Ok((response.status == Some(200))
         .then(|| parse_json_object(&response))
         .flatten())
 }
 
-/// Whether metadata at a nonsense path rules out a gateway that echoes any
-/// requested path: `Some(true)` when it answered below 500 without naming
-/// that path, `Some(false)` when it named it, `None` when the read says
-/// nothing about the path (no answer, a server error, a retry status).
-fn echo_ruled_out(gate: &mut Gate<'_>, origin: &str) -> Result<Option<bool>, Cause> {
+/// What the nonsense-path read says about a gateway that echoes any
+/// requested path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EchoControl {
+    /// It answered below 500 without naming that path.
+    RuledOut,
+    /// It named it.
+    Echoed,
+    /// No answer, a server error, or a retry status: nothing about the path.
+    Unanswered,
+}
+
+fn echo_control<S: ArtifactSource + ?Sized>(
+    source: &mut S,
+    origin: &str,
+) -> Result<EchoControl, Cause> {
     let url = format!("{origin}{PROTECTED_RESOURCE_PATH}{ECHO_PROBE_PATH}");
-    let response = read(gate, &url, METADATA_READ)?;
+    let response = read(source, &url, METADATA_READ)?;
     let Some(status) = response.status else {
-        return Ok(None);
+        return Ok(EchoControl::Unanswered);
     };
     if status >= 500 || RETRY_SHAPED_STATUSES.iter().any(|(s, _)| *s == status) {
-        return Ok(None);
+        return Ok(EchoControl::Unanswered);
     }
     let echoed = (status == 200)
         .then(|| resource_of(parse_json_object(&response).as_ref()))
         .flatten();
-    Ok(Some(
-        echoed != normalize_endpoint_url(&format!("{origin}{ECHO_PROBE_PATH}")),
-    ))
+    Ok(
+        if echoed == normalize_endpoint_url(&format!("{origin}{ECHO_PROBE_PATH}")) {
+            EchoControl::Echoed
+        } else {
+            EchoControl::RuledOut
+        },
+    )
 }
 
 /// The metadata URL a challenge names: `Ok(None)` when it names none,
 /// `Err(())` when it names one the auditor will not read (anything but
-/// https on the endpoint's own public host).
-fn challenge_metadata_url(
-    gate: &Gate<'_>,
+/// https on the endpoint's own host, or a URL the guard refuses).
+fn challenge_metadata_url<S: ArtifactSource + ?Sized>(
+    source: &S,
     endpoint: &str,
     challenge: &str,
 ) -> Result<Option<String>, ()> {
     let Some(raw) = resource_metadata_from_challenge(challenge) else {
         return Ok(None);
     };
-    if gate.fetch.validate(&raw).is_err() {
+    if !source.admits(&raw) {
         return Err(());
     }
     let https = Url::parse(&raw).is_ok_and(|u| u.scheme() == "https");
@@ -122,25 +161,41 @@ fn challenge_metadata_url(
     Ok(Some(raw))
 }
 
+/// How a metadata read is asked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MetadataQuery<'a> {
+    /// The `WWW-Authenticate` value of a 401 the endpoint answered.
+    pub challenge: Option<&'a str>,
+    /// The endpoint is already of record, so the metadata decides only
+    /// whether it requires sign-in, never whether it exists or may be
+    /// probed: an unanswered echo read leaves the match standing, and only
+    /// one that echoed refuses it. Where the metadata finds or admits an
+    /// endpoint, an unanswered read confirms nothing.
+    pub of_record: bool,
+}
+
 /// RFC 9728 metadata for `endpoint`, read from the challenge's
 /// `resource_metadata` URL when there is one, else the well-known
 /// locations, matching only when its `resource` normalizes to the
 /// endpoint. Below the root, metadata at a nonsense path must not echo
 /// that path back: a gateway that generates metadata for any requested
 /// path confirms nothing.
-pub(super) fn protected_resource_metadata(
-    gate: &mut Gate<'_>,
+pub fn protected_resource_metadata<S: ArtifactSource + ?Sized>(
+    source: &mut S,
     endpoint: &str,
-    challenge: Option<&str>,
+    query: MetadataQuery<'_>,
 ) -> Result<Option<MetadataMatch>, Cause> {
-    let urls = match challenge.map(|c| challenge_metadata_url(gate, endpoint, c)) {
+    let urls = match query
+        .challenge
+        .map(|c| challenge_metadata_url(source, endpoint, c))
+    {
         Some(Err(())) => return Ok(None),
         Some(Ok(Some(url))) => vec![url],
         Some(Ok(None)) | None => protected_resource_metadata_urls(endpoint),
     };
     let mut found: Option<MetadataMatch> = None;
     for url in urls {
-        if let Some(metadata) = read_metadata(gate, &url)? {
+        if let Some(metadata) = read_metadata(source, &url)? {
             found = Some(MetadataMatch { url, metadata });
             break;
         }
@@ -156,5 +211,9 @@ pub(super) fn protected_resource_metadata(
         return Ok(Some(found));
     }
     let origin = parsed.origin().ascii_serialization();
-    Ok((echo_ruled_out(gate, &origin)? == Some(true)).then_some(found))
+    Ok(match echo_control(source, &origin)? {
+        EchoControl::RuledOut => Some(found),
+        EchoControl::Unanswered if query.of_record => Some(found),
+        EchoControl::Unanswered | EchoControl::Echoed => None,
+    })
 }

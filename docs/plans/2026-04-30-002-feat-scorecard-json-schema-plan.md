@@ -2,7 +2,7 @@
 title: "feat: scorecard JSON Schema — derive, embed, expose, publish"
 type: feat
 status: merged
-prs: ["#54", "#238"]
+prs: ["#54", "#239"]
 completed: 2026-10-27
 date: 2026-04-30
 ---
@@ -27,7 +27,7 @@ cross-repo plumbing is documented here but executed in the site repo.
 
 The hand-written `schema/scorecard.schema.json` is the contract: PR #54 ships it with `anc emit schema` (U5, U7), and it
 carries what a derive cannot (descriptions, closed value sets, formats, `additionalProperties: false`, examples). A unit
-test derives the shape from the serialized types with `schemars` and fails when the file drifts from it (U6, PR #238).
+test derives the shape from the serialized types with `schemars` and fails when the file drifts from it (U6, PR #239).
 The derive-and-generate design below (U2 to U4) is not pursued, per the spike
 `docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md`. The site archive behind the versioned `$id` URLs (U9)
 is agentnative-site's.
@@ -490,7 +490,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
   **Goal:** CI fails when schema and binary disagree.
 
-  The drift test is `hand_written_schema_matches_the_serialized_shape` in `src/scorecard/schema_drift.rs` (#238). It
+  The drift test is `hand_written_schema_matches_the_serialized_shape` in `src/scorecard/schema_drift.rs` (#239). It
   derives the shape with `schemars` and compares it with `schema/scorecard.schema.json` at every depth: property
   names, `required` lists, and the JSON types each property admits. Round-trip validation stays where it is:
   `tests/scorecard_schema_v05.rs` checks live scorecards against the schema's required keys, status enum, and row
@@ -573,7 +573,7 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
   `anc emit --help` lists `schema`, and the README's JSON Output section names `anc emit schema` and
   `schema/scorecard.schema.json`. AGENTS.md's agent-facing JSON section points at `anc emit schema`, and CLAUDE.md's
-  "Scorecard JSON fields" section describes the hand-written file and its drift test (#238). The README link to the
+  "Scorecard JSON fields" section describes the hand-written file and its drift test (#239). The README link to the
   versioned `$id` URL is not pursued: the URL returns 404 until agentnative-site serves the archive (U9).
 
   **Requirements:** R10 (the schema's own `title`/`description`), AGENTS-side discovery.

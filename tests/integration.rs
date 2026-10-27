@@ -856,6 +856,38 @@ fn test_command_flag_resolves_path_and_runs_behavioral_only() {
     }
 }
 
+/// `anc audit --help` prints the exit table every verb shares, byte for
+/// byte, so an agent reading either verb's help branches on the same codes.
+#[test]
+fn test_audit_help_prints_the_shared_exit_table() {
+    let assert = cmd().args(["audit", "--help"]).assert().code(0);
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(
+        stdout.contains(agentnative::exit_codes::EXIT_TABLE),
+        "`anc audit --help` lacks the shared exit table:\n{stdout}"
+    );
+}
+
+/// The text report closes by naming the code the process returns.
+#[test]
+fn test_audit_text_report_closes_on_the_exit_code_it_returns() {
+    #[cfg(unix)]
+    {
+        let assert = cmd().args(["audit", "--command", "ls"]).assert();
+        let code = assert.get_output().status.code().expect("an exit code");
+        let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+        let last = stdout
+            .lines()
+            .rev()
+            .find(|l| !l.is_empty())
+            .unwrap_or_default();
+        assert!(
+            last.starts_with(&format!("exit {code}: ")),
+            "the report's last line does not name exit {code}:\n{stdout}"
+        );
+    }
+}
+
 #[test]
 fn test_text_and_json_agree_on_row_count_and_exit_code() {
     // Parity guard for the text-renderer fix: the default text view and the

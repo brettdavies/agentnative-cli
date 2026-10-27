@@ -57,6 +57,9 @@ When the first argument is not a subcommand, `audit` is inserted automatically:
   anc .                  ≡  anc audit .
   anc --command rg       ≡  anc audit --command rg
 
+Exit codes:
+  0  clean   1  warnings only   2  failures or usage error   3  could not check
+
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
 that prevents recursive self-invocation when agentnative audits itself.")
 )]
@@ -159,7 +162,7 @@ pub enum Commands {
     /// Pass the target as a positional argument or via `--command <name>`
     /// to resolve from PATH. `-` is reserved and behaves like any other
     /// path argument (no special stdin meaning).
-    #[command(after_help = "Examples:
+    #[command(after_help = concat!("Examples:
   anc audit .                                  # default: project at cwd
   anc audit . --output json                    # JSON envelope for agents
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
@@ -170,7 +173,9 @@ pub enum Commands {
 
 Defaults: path = `.`, output = text, no principle filter.
 
-Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml")]
+Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml
+
+", crate::exit_table!()))]
     Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
@@ -255,7 +260,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// Each run reports two scores: relative scores the site relative to
     /// the checks that apply to this site; global measures it against a
     /// maximally agent-ready site.
-    #[command(after_help = "Examples:
+    #[command(after_help = concat!("Examples:
   anc web localhost:8787                       # a local dev server, over https like any target
   anc web https://anc.dev                      # a public site
   anc web staging.internal:8080 --verbose      # list every passing row too
@@ -273,12 +278,7 @@ automatically:
   anc localhost:8787 ≡  anc web localhost:8787
 A path that exists wins, so `anc ./anc.dev` still audits the directory.
 
-Exit codes (shared with `anc audit`):
-  0  clean: every applicable check passed
-  1  warnings only: a SHOULD or MAY check missed
-  2  failures present: a MUST check missed, or a usage error
-  3  could not check: the target was unreachable, a probe errored or was cut
-     short by the deadline, or every selected check was inapplicable")]
+", crate::exit_table!()))]
     Web {
         /// Target URL or host. A scheme-less target defaults to https,
         /// localhost included: every run sends HTTPS only, and an http://

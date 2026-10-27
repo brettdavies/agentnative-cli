@@ -67,6 +67,21 @@ impl Default for FetchOptions {
     }
 }
 
+/// The clause every no-plaintext refusal ends with, the site's wording.
+pub const NO_PLAINTEXT_REQUEST: &str = "anc sends no plaintext request";
+
+/// The error of a request never sent because its URL is not `https`.
+pub const NOT_HTTPS: &str = "not requested: not https";
+
+/// Why the guard declined to send a request it was asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    /// The URL, or the redirect it answered with, is not `https`. With a
+    /// status, the target answered with a redirect to `http`; without one,
+    /// nothing was sent.
+    InsecureScheme,
+}
+
 /// What a probe observed, mirroring the site's `ProbeResponse`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProbeResponse {
@@ -82,6 +97,8 @@ pub struct ProbeResponse {
     pub elapsed_ms: u64,
     /// The body was cut at its cap.
     pub truncated: bool,
+    /// Why the guard declined the request or its redirect, when it did.
+    pub refused: Option<Refusal>,
 }
 
 impl ProbeResponse {
@@ -94,6 +111,7 @@ impl ProbeResponse {
             error: Some(error),
             elapsed_ms,
             truncated: false,
+            refused: None,
         }
     }
 }
@@ -144,6 +162,12 @@ impl<'a> Fetcher<'a> {
             Ok(target) => target,
             Err(reason) => return ProbeResponse::failed(reason, elapsed(started)),
         };
+        if target.url.scheme() != "https" {
+            return ProbeResponse {
+                refused: Some(Refusal::InsecureScheme),
+                ..ProbeResponse::failed(NOT_HTTPS.to_string(), elapsed(started))
+            };
+        }
         let mut headers = init.headers.clone();
         if !has_header(&headers, "user-agent") {
             headers.push(("user-agent".to_string(), self.user_agent.to_string()));
@@ -163,7 +187,18 @@ impl<'a> Fetcher<'a> {
             headers,
             body,
         } = match redirect::follow(&chain, target) {
-            Ok(response) => response,
+            Ok(redirect::ChainEnd::Answer(response)) => response,
+            Ok(redirect::ChainEnd::InsecureRedirect { response, error }) => {
+                return ProbeResponse {
+                    status: Some(response.status),
+                    headers: response.headers,
+                    body: String::new(),
+                    error: Some(error),
+                    elapsed_ms: elapsed(started),
+                    truncated: false,
+                    refused: Some(Refusal::InsecureScheme),
+                };
+            }
             Err(reason) => return ProbeResponse::failed(reason, elapsed(started)),
         };
         let read = match body::read_capped(body, opts.max_body_bytes) {
@@ -180,6 +215,7 @@ impl<'a> Fetcher<'a> {
             error: None,
             elapsed_ms: elapsed(started),
             truncated: read.truncated,
+            refused: None,
         }
     }
 }

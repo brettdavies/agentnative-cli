@@ -10,8 +10,6 @@
 
 use url::Url;
 
-use crate::web_audit::locality::{Locality, classify_literal};
-
 /// Final labels that read as file extensions, never as a top-level domain,
 /// even where a registry happens to own the same string (`.rs`, `.md`,
 /// `.sh`): a dot-bearing token ending in one of these is a filename.
@@ -107,17 +105,11 @@ pub fn routes_to_web(token: &str) -> bool {
     looks_like_url(token) && !std::path::Path::new(token).exists()
 }
 
-/// The scheme a scheme-less target defaults to: `http` for localhost and
-/// local IP literals, `https` for everything else.
-fn default_scheme(host: &str) -> &'static str {
-    match classify_literal(host) {
-        Ok(Some(Locality::Local)) => "http",
-        _ => "https",
-    }
-}
-
 /// Normalize a target into an absolute http(s) URL, or explain why it
-/// cannot be one.
+/// cannot be one. A scheme-less target defaults to `https`, a local one
+/// included: every run sends HTTPS only. An explicit `http` target still
+/// normalizes, so the run can end naming the no-plaintext reason rather
+/// than calling the target unreadable.
 pub fn normalize_target(token: &str) -> Result<String, String> {
     let token = token.trim();
     if token.is_empty() {
@@ -128,19 +120,7 @@ pub fn normalize_target(token: &str) -> Result<String, String> {
     } else if token.contains("://") {
         return Err("unsupported scheme: only http and https targets can be audited".to_string());
     } else {
-        let (authority, _) = host_and_rest(token);
-        let host = if let Some(rest) = authority.strip_prefix('[') {
-            rest.split(']')
-                .next()
-                .map(|h| format!("[{h}]"))
-                .unwrap_or_default()
-        } else {
-            authority
-                .rsplit_once(':')
-                .map_or(authority, |(h, _)| h)
-                .to_string()
-        };
-        format!("{}://{token}", default_scheme(&host))
+        format!("https://{token}")
     };
     let url = Url::parse(&candidate).map_err(|e| format!("unparseable url {candidate}: {e}"))?;
     if !matches!(url.scheme(), "http" | "https") {
@@ -215,23 +195,27 @@ mod tests {
     }
 
     #[test]
-    fn scheme_less_targets_default_by_locality() {
+    fn scheme_less_targets_default_to_https_local_ones_included() {
         assert_eq!(normalize_target("anc.dev").unwrap(), "https://anc.dev/");
         assert_eq!(
             normalize_target("localhost:8787").unwrap(),
-            "http://localhost:8787/"
+            "https://localhost:8787/"
         );
         assert_eq!(
             normalize_target("127.0.0.1:8080/docs").unwrap(),
-            "http://127.0.0.1:8080/docs"
+            "https://127.0.0.1:8080/docs"
         );
         assert_eq!(
             normalize_target("[::1]:8080").unwrap(),
-            "http://[::1]:8080/"
+            "https://[::1]:8080/"
         );
         assert_eq!(
             normalize_target("staging.internal:8080").unwrap(),
-            "http://staging.internal:8080/"
+            "https://staging.internal:8080/"
+        );
+        assert_eq!(
+            normalize_target("http://localhost:8787").unwrap(),
+            "http://localhost:8787/"
         );
         assert_eq!(
             normalize_target("93.184.216.34:8080").unwrap(),

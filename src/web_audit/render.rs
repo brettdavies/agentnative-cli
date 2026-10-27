@@ -409,10 +409,11 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
         "no HTTP response from {normalized}, on the root fetch or on any MCP discovery probe"
     )];
     if defaulted_https {
-        hints.push(format!(
-            "the scheme defaulted to https; if the server speaks plain HTTP, try `{}`",
-            web_command(&[&format!("http://{token}")])
-        ));
+        hints.push(
+            "the scheme defaulted to https; anc web sends no plaintext request, so a server \
+             that speaks only HTTP cannot be audited until it serves TLS"
+                .to_string(),
+        );
     }
     hints.push("check that the server is running and that this machine can reach it".to_string());
     Failure {
@@ -441,6 +442,32 @@ pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &s
                 .to_string(),
         ],
         next_step: NextStep::add_ca_cert(format!("{} --ca-cert <FILE>", web_command(&[token]))),
+        exit_code: EXIT_COULD_NOT_CHECK,
+        argument: TARGET_ARGUMENT,
+        value: normalized.to_string(),
+    }
+}
+
+/// The target is `http`, or its root redirects to `http`: the run ends
+/// before any plaintext request, with the engine's no-plaintext reason as
+/// the message.
+pub fn insecure_scheme_failure(normalized: &str, reason: &str, redirected: bool) -> Failure {
+    let cause = if redirected {
+        "the root redirects https to http; serve the site over https end to end"
+    } else {
+        "anc web sends HTTPS only, local targets included: serve the site over TLS and audit \
+         its https URL"
+    };
+    Failure {
+        slug: "insecure-scheme",
+        message: reason.to_string(),
+        hints: vec![
+            cause.to_string(),
+            "a certificate from a private or development CA needs `--ca-cert <FILE>`, or that \
+             CA in the OS trust store"
+                .to_string(),
+        ],
+        next_step: NextStep::fix_target(web_command(&["--help"])),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),

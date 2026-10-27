@@ -314,6 +314,7 @@ mod tests {
             error: None,
             elapsed_ms: 0,
             truncated: false,
+            refused: None,
         }
     }
 

@@ -15,7 +15,7 @@ use agentnative::web_audit::fetch::body::{
     AUDIT_PROBE_MAX_BODY_BYTES, AUDIT_ROOT_MAX_BODY_BYTES, STATUS_ONLY_BODY_BYTES,
 };
 use agentnative::web_audit::fetch::trust::{OsRoots, TrustClass, TrustConfig, load_ca_file};
-use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
+use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse, Refusal};
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::transport::{Request, Transport, TransportError, UreqTransport};
@@ -281,7 +281,7 @@ fn fetch_refuses_a_redirect_into_ipv6_metadata() {
 #[test]
 fn fetch_refuses_a_local_target_redirecting_to_a_public_host() {
     let transport = MockTransport::new(
-        vec![get("http://localhost:8787/").response(ok(
+        vec![get("https://localhost:8787/").response(ok(
             302,
             &[("location", "https://example.com/")],
             "",
@@ -290,7 +290,7 @@ fn fetch_refuses_a_local_target_redirecting_to_a_public_host() {
     );
     let resp = fetch(
         &transport,
-        "http://localhost:8787/",
+        "https://localhost:8787/",
         &FetchOptions::default(),
     );
     assert_eq!(resp.status, None);
@@ -342,21 +342,62 @@ fn fetch_refuses_a_metadata_target_before_any_request() {
 }
 
 #[test]
+fn an_http_url_is_never_requested_local_or_public() {
+    let transport = MockTransport::new(vec![], MockResponse::ok(200, &[], b"plaintext"));
+    for url in ["http://localhost:8787/", "http://example.com/"] {
+        let resp = fetch(&transport, url, &FetchOptions::default());
+        assert_eq!(resp.status, None);
+        assert_eq!(resp.error.as_deref(), Some("not requested: not https"));
+        assert_eq!(resp.refused, Some(Refusal::InsecureScheme));
+    }
+    assert!(transport.requests().is_empty());
+}
+
+#[test]
+fn a_redirect_to_http_is_the_answer_and_is_never_followed() {
+    let transport = MockTransport::new(
+        vec![get("https://example.com/docs").response(ok(
+            301,
+            &[("location", "http://example.com/docs")],
+            "moved",
+        ))],
+        MockResponse::ok(200, &[], b"plaintext"),
+    );
+    let resp = fetch(
+        &transport,
+        "https://example.com/docs",
+        &FetchOptions::default(),
+    );
+    assert_eq!(resp.status, Some(301));
+    assert_eq!(resp.body, "");
+    assert_eq!(
+        resp.error.as_deref(),
+        Some("redirect refused: 301 to http://example.com/docs: not https")
+    );
+    assert_eq!(resp.refused, Some(Refusal::InsecureScheme));
+    assert_eq!(
+        resp.headers.get("location"),
+        Some("http://example.com/docs")
+    );
+    assert_eq!(transport.requests().len(), 1);
+}
+
+#[test]
 fn fetch_serves_a_local_target_and_its_same_class_redirect() {
     let transport = MockTransport::new(
         vec![
-            get("http://localhost:8787/").response(ok(
+            get("https://localhost:8787/").response(ok(
                 301,
-                &[("location", "http://127.0.0.1:8787/")],
+                &[("location", "https://127.0.0.1:8787/")],
                 "",
             )),
-            get("http://127.0.0.1:8787/").response(ok(200, &[], "home")),
+            get("https://127.0.0.1:8787/").response(ok(200, &[], "home")),
         ],
         unmatched(),
     );
     let resp = fetch(
         &transport,
-        "http://localhost:8787/",
+        "https://localhost:8787/",
         &FetchOptions::default(),
     );
     assert_eq!(resp.status, Some(200));
@@ -518,8 +559,8 @@ fn ureq_transport_decodes_gzip_bodies() {
         enc.finish().unwrap()
     };
     let server =
-        common::spawn(move |_| RawResponse::new(200, &[("content-encoding", "gzip")], &body));
-    let transport = UreqTransport::new(UA);
+        common::spawn_https(move |_| RawResponse::new(200, &[("content-encoding", "gzip")], &body));
+    let transport = UreqTransport::with_trust(UA, None, TrustConfig::new(test_ca()));
     let resp = fetch(&transport, &server.url("/"), &FetchOptions::default());
     assert_eq!(resp.body, "compressed hello");
 }
@@ -529,8 +570,8 @@ fn gzip_body_inflating_past_the_root_ceiling_truncates_with_the_flag() {
     let bomb = gzip_of_zeros(AUDIT_ROOT_MAX_BODY_BYTES + (1 << 20));
     assert!(bomb.len() < 64 * 1024, "the bomb must be small on the wire");
     let server =
-        common::spawn(move |_| RawResponse::new(200, &[("content-encoding", "gzip")], &bomb));
-    let transport = UreqTransport::new(UA);
+        common::spawn_https(move |_| RawResponse::new(200, &[("content-encoding", "gzip")], &bomb));
+    let transport = UreqTransport::with_trust(UA, None, TrustConfig::new(test_ca()));
     let resp = fetch(&transport, &server.url("/"), &FetchOptions::default());
     assert_eq!(resp.status, Some(200));
     assert_eq!(resp.body.len(), AUDIT_ROOT_MAX_BODY_BYTES);
@@ -597,8 +638,9 @@ fn public_target_routes_through_the_proxy() {
 #[test]
 fn loopback_target_connects_directly_when_a_proxy_is_configured() {
     let proxy = common::spawn_connect_proxy(|_| RawResponse::new(200, &[], b"via proxy"));
-    let origin = common::spawn(|_| RawResponse::new(200, &[], b"direct"));
-    let transport = UreqTransport::with_proxy(UA, Some(proxy_to(&proxy)));
+    let origin = common::spawn_https(|_| RawResponse::new(200, &[], b"direct"));
+    let transport =
+        UreqTransport::with_trust(UA, Some(proxy_to(&proxy)), TrustConfig::new(test_ca()));
     let resp = fetch(&transport, &origin.url("/"), &FetchOptions::default());
     assert_eq!(resp.body, "direct");
     assert!(proxy.hits().is_empty());
@@ -608,14 +650,26 @@ fn loopback_target_connects_directly_when_a_proxy_is_configured() {
 #[test]
 fn fetcher_routes_a_public_name_through_the_proxy_and_a_loopback_literal_direct() {
     let proxy = common::spawn_connect_proxy(|_| RawResponse::new(200, &[], b"via proxy"));
-    let origin = common::spawn(|_| RawResponse::new(200, &[], b"direct"));
-    let transport = UreqTransport::with_proxy(UA, Some(proxy_to(&proxy)));
-    let resp = fetch(&transport, "http://public.test/x", &FetchOptions::default());
-    assert_eq!(resp.body, "via proxy");
-    assert_eq!(proxy.hits()[0].target, "public.test:80");
+    let origin = common::spawn_https(|_| RawResponse::new(200, &[], b"direct"));
+    let transport =
+        UreqTransport::with_trust(UA, Some(proxy_to(&proxy)), TrustConfig::new(test_ca()));
+    // The public name tunnels through the proxy; the in-test proxy cannot
+    // speak TLS inside the tunnel, so only the CONNECT is asserted.
+    let _ = fetch(
+        &transport,
+        "https://public.test/x",
+        &FetchOptions::default(),
+    );
+    assert_eq!(proxy.hits()[0].method, "CONNECT");
+    assert_eq!(proxy.hits()[0].target, "public.test:443");
+    let before = proxy.hits().len();
     let resp = fetch(&transport, &origin.url("/"), &FetchOptions::default());
     assert_eq!(resp.body, "direct");
-    assert_eq!(proxy.hits().len(), 2, "no third hit for the loopback fetch");
+    assert_eq!(
+        proxy.hits().len(),
+        before,
+        "no proxy hit for the loopback fetch"
+    );
 }
 
 #[test]
@@ -821,13 +875,15 @@ fn a_connection_closed_before_any_response_is_retried_once_and_bounded() {
     // Two dead connections, then a real answer: the probe succeeds.
     let (addr, accepted) = common::spawn_closing(2, "# recovered\n");
     let transport = UreqTransport::new(UA);
-    let resp = fetch(
-        &transport,
-        &format!("http://{addr}/llms.txt"),
-        &FetchOptions::default(),
-    );
-    assert_eq!(resp.status, Some(200), "{:?}", resp.error);
-    assert_eq!(resp.body, "# recovered\n");
+    // The retry lives in the transport, below the fetch layer's https
+    // rule, so the plain-HTTP closing server is driven through it directly.
+    let mut resp = transport
+        .send(&request(&format!("http://{addr}/llms.txt"), 8000, false))
+        .expect("the probe walks past the dead connections");
+    assert_eq!(resp.status, 200);
+    let mut body = String::new();
+    std::io::Read::read_to_string(&mut resp.body, &mut body).unwrap();
+    assert_eq!(body, "# recovered\n");
     assert_eq!(
         *accepted.lock().unwrap(),
         3,
@@ -837,13 +893,10 @@ fn a_connection_closed_before_any_response_is_retried_once_and_bounded() {
     // A server that never answers: the error surfaces, and the attempts
     // are bounded rather than retried forever.
     let (addr, accepted) = common::spawn_closing(usize::MAX, "");
-    let resp = fetch(
-        &transport,
-        &format!("http://{addr}/llms.txt"),
-        &FetchOptions::default(),
-    );
-    assert_eq!(resp.status, None);
-    let error = resp.error.expect("a network error");
+    let error = transport
+        .send(&request(&format!("http://{addr}/llms.txt"), 8000, false))
+        .expect_err("a network error")
+        .to_string();
     assert!(error.starts_with("NetworkError: "), "{error}");
     let attempts = *accepted.lock().unwrap();
     assert!(

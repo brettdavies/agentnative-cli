@@ -564,7 +564,7 @@ fn an_unported_handler_skips_its_rows_by_name_without_failing_the_run() {
 
 #[test]
 fn the_dns_gate_withholds_external_resolvers_for_a_local_target_unless_overridden() {
-    let local = "http://127.0.0.1:8080/";
+    let local = "https://127.0.0.1:8080/";
     let run = |external_dns: bool| {
         let transport = Arc::new(MockTransport::new(vec![], html(200)));
         let mut input = RunInput::new(

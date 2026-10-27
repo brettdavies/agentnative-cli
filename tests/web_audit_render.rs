@@ -16,7 +16,7 @@ fn a_reachable_site_reports_the_verdict_then_its_misses_with_fixes() {
     let assert = anc().args(["web", &host_of(&server)]).assert().code(1);
     let out = stdout_of(assert.get_output());
 
-    assert!(out.starts_with("anc web http://"), "{out}");
+    assert!(out.starts_with("anc web https://"), "{out}");
     assert!(out.contains("registry v1 (anc.dev "), "{out}");
     assert!(out.contains("spec "), "{out}");
     assert!(out.contains("mcp endpoint: none"), "{out}");
@@ -103,7 +103,7 @@ fn json_mode_puts_nothing_but_the_scorecard_on_stdout() {
             .unwrap_or_else(|e| panic!("stdout is a scorecard: {e}\n{out}"));
         assert_eq!(scorecard.results.len(), 68);
         assert_eq!(scorecard.schema_version, "0.5");
-        assert!(scorecard.target_url.starts_with("http://127.0.0.1:"));
+        assert!(scorecard.target_url.starts_with("https://127.0.0.1:"));
         assert_eq!(scorecard.tool.url, scorecard.target_url);
         // Byte-identical to the mirror's own rendering, so the CLI adds
         // nothing to the wire shape.

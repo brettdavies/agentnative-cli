@@ -5,8 +5,15 @@ use assert_cmd::Command;
 
 use super::{RawRequest, RawResponse, Server};
 
+/// The binary, with the test CA standing in for the OS trust store:
+/// rustls-native-certs reads `SSL_CERT_FILE` in place of the platform
+/// store, and every fixture site is a local target, which trusts that
+/// store. A test that needs the machine's own store removes the variable.
 pub fn anc() -> Command {
-    Command::cargo_bin("anc").expect("binary should exist")
+    let mut cmd = Command::cargo_bin("anc").expect("binary should exist");
+    cmd.env("SSL_CERT_FILE", super::test_ca_path())
+        .env_remove("SSL_CERT_DIR");
+    cmd
 }
 
 pub const HTML_HEAD: &str = "<!doctype html><html><head>\
@@ -35,13 +42,15 @@ pub fn not_found() -> RawResponse {
 
 /// A site that publishes llms.txt and robots.txt and serves HTML at the
 /// root: every MUST applicable to it passes, and a handful of SHOULDs miss.
+/// It serves HTTPS with a leaf the test CA signed, which [`anc`] trusts.
 pub fn fixture_site() -> Server {
-    super::spawn(fixture_page)
+    super::spawn_https(fixture_page)
 }
 
-/// [`fixture_site`] over HTTPS, presenting a leaf the test CA signed.
-pub fn fixture_site_https() -> Server {
-    super::spawn_https(fixture_page)
+/// [`fixture_site`] over plain HTTP, for proving no plaintext request
+/// reaches it.
+pub fn plaintext_site() -> Server {
+    super::spawn(fixture_page)
 }
 
 fn fixture_page(req: &RawRequest) -> RawResponse {
@@ -60,7 +69,7 @@ fn fixture_page(req: &RawRequest) -> RawResponse {
 /// A site whose root is a MUST-bearing API surface that answers wrongly,
 /// so the run has a real failure to report.
 pub fn api_site() -> Server {
-    super::spawn(|req: &RawRequest| {
+    super::spawn_https(|req: &RawRequest| {
         let path = req.target.split('?').next().unwrap_or("/");
         match path {
             "/" => ok("text/html; charset=utf-8", &html_body()),

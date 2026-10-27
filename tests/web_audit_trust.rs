@@ -7,7 +7,7 @@
 
 mod common;
 
-use common::web_cli::{anc, fixture_site_https, stderr_of, stdout_of};
+use common::web_cli::{anc, fixture_site, stderr_of, stdout_of};
 use common::{empty_home_config, test_ca_path};
 use serde_json::Value;
 
@@ -25,9 +25,13 @@ fn registry_rows() -> usize {
 
 #[test]
 fn a_private_ca_ends_the_run_naming_the_rejection_and_the_ca_cert_fix() {
-    let server = fixture_site_https();
+    let server = fixture_site();
     let target = server.url("/");
-    let output = anc().args(["web", &target]).output().unwrap();
+    let output = anc()
+        .env_remove("SSL_CERT_FILE")
+        .args(["web", &target])
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(3), "{output:?}");
     assert!(stdout_of(&output).is_empty(), "stdout must stay empty");
     let err = stderr_of(&output);
@@ -47,6 +51,7 @@ fn a_private_ca_ends_the_run_naming_the_rejection_and_the_ca_cert_fix() {
     );
 
     let output = anc()
+        .env_remove("SSL_CERT_FILE")
         .args(["web", &target, "--output", "json"])
         .output()
         .unwrap();
@@ -66,8 +71,9 @@ fn a_private_ca_ends_the_run_naming_the_rejection_and_the_ca_cert_fix() {
 
 #[test]
 fn a_ca_cert_root_lets_the_handshake_through_and_every_check_runs() {
-    let server = fixture_site_https();
+    let server = fixture_site();
     let output = anc()
+        .env_remove("SSL_CERT_FILE")
         .args([
             "web",
             &server.url("/"),
@@ -99,7 +105,7 @@ fn a_ca_cert_root_lets_the_handshake_through_and_every_check_runs() {
 fn a_local_target_trusts_a_ca_in_the_os_trust_store() {
     // rustls-native-certs reads SSL_CERT_FILE in place of the platform
     // store, which stands in for a CA installed on the machine.
-    let server = fixture_site_https();
+    let server = fixture_site();
     let output = anc()
         .env("SSL_CERT_FILE", test_ca_path())
         .env_remove("SSL_CERT_DIR")
@@ -114,7 +120,7 @@ fn a_local_target_trusts_a_ca_in_the_os_trust_store() {
 
 #[test]
 fn a_bad_ca_cert_file_is_a_usage_error_before_any_request() {
-    let server = fixture_site_https();
+    let server = fixture_site();
     let target = server.url("/");
     let not_pem = empty_home_config();
     let missing = "/nonexistent/anc-test-ca.pem";

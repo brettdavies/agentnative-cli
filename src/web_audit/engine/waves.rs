@@ -19,7 +19,9 @@ use super::pool::run_bounded;
 use super::retained::enumerate_scoped_dirs;
 use super::summary::summarize_evidence;
 use super::types::{FetchHandle, HandlerContext, McpLaneEvidence, ProbeOutcome, why_item};
-use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
+use crate::web_audit::fetch::{
+    FetchInit, FetchOptions, NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal,
+};
 use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::{
     CATEGORIES, CATEGORY_ORDER, CHECKS, HandlerBinding, MCP_DISCOVERY, WebCheck, WebCheckKeyword,
@@ -374,6 +376,21 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             ..FetchOptions::default()
         },
     );
+    // A root that is not https, or that redirects to http, ends the run
+    // before discovery: nothing it serves is readable without a plaintext
+    // request, and the site engine ends the same way.
+    if root_resp.refused == Some(Refusal::InsecureScheme) {
+        let how = if root_resp.status.is_none() {
+            "is not https"
+        } else {
+            "redirects to http"
+        };
+        return RunOutcome::Unreachable {
+            reason: format!("{base} {how}, and {NO_PLAINTEXT_REQUEST}."),
+            discovery: Vec::new(),
+            root_error: root_resp.error,
+        };
+    }
     let root: Option<Arc<ProbeResponse>> = root_resp.status.map(|_| Arc::new(root_resp.clone()));
     let per_check_timeout = if root.is_none() {
         input.per_check_timeout.min(DEGRADED_PER_CHECK_TIMEOUT)

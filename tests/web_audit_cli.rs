@@ -272,7 +272,14 @@ fn the_verb_runs_under_a_bare_exec() {
     let server = fixture_site();
     let exe = assert_cmd::cargo::cargo_bin("anc");
     let out = StdCommand::new(exe)
-        .args(["web", &host_of(&server), "--check", "llms-txt"])
+        .args([
+            "web",
+            &host_of(&server),
+            "--check",
+            "llms-txt",
+            "--ca-cert",
+            common::test_ca_path(),
+        ])
         .env_clear()
         .output()
         .expect("spawn anc");

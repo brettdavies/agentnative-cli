@@ -248,7 +248,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// public DNS resolvers the `dns-aid` check queries, which are
     /// withheld for a local target unless `--external-dns` is set).
     #[command(after_help = "Examples:
-  anc web localhost:8787                       # a local dev server (scheme defaults to http)
+  anc web localhost:8787                       # a local dev server, over https like any target
   anc web https://anc.dev                      # a public site
   anc web staging.internal:8080 --verbose      # list every passing row too
   anc web anc.dev --output json                # the scorecard on stdout, nothing else
@@ -272,7 +272,8 @@ Exit codes (shared with `anc audit`):
      short by the deadline, or every selected check was inapplicable")]
     Web {
         /// Target URL or host. A scheme-less target defaults to https,
-        /// except localhost and local IP literals, which default to http.
+        /// localhost included: every run sends HTTPS only, and an http://
+        /// target ends unreachable before any request goes out.
         #[arg(value_hint = ValueHint::Url)]
         target: String,
 

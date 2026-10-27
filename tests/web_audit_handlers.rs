@@ -234,6 +234,7 @@ fn root(body: &str) -> Arc<ProbeResponse> {
         error: None,
         elapsed_ms: 0,
         truncated: false,
+        refused: None,
     })
 }
 

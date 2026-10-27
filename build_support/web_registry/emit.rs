@@ -235,6 +235,32 @@ pub fn emit_rust(
     }
     src.push_str("];\n\n");
 
+    src.push_str("/// Site designs the global score counts one variant of, in registry order.\n");
+    src.push_str("pub const ALTERNATIVES: &[AlternativeGroup] = &[\n");
+    let tokens = |items: &[String]| -> String {
+        let parts: Vec<String> = items
+            .iter()
+            .map(|t| format!("AntecedentToken::{}", pascal(t)))
+            .collect();
+        format!("&[{}]", parts.join(", "))
+    };
+    for group in &reg.alternatives {
+        src.push_str(&format!(
+            "    AlternativeGroup {{ group: {:?}, variants: &[\n",
+            group.group
+        ));
+        for v in &group.variants {
+            src.push_str(&format!(
+                "        AlternativeVariant {{ name: {:?}, antecedents: {}, presented_by: {} }},\n",
+                v.name,
+                tokens(&v.antecedents),
+                tokens(&v.presented_by)
+            ));
+        }
+        src.push_str("    ] },\n");
+    }
+    src.push_str("];\n\n");
+
     src.push_str("/// Retired check ids: outside `CHECKS`, each keeps its fix-catalog entry.\n");
     let retired: Vec<String> = reg.retired.iter().map(|r| r.id.clone()).collect();
     src.push_str(&format!(

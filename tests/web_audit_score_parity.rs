@@ -88,7 +88,11 @@ fn parity_cases() -> Vec<Fixture> {
 }
 
 fn scores(f: &Fixture, config: &ScoreConfig) -> (u32, u32) {
-    let universe = score::universe_max(f.universe.iter().copied(), config);
+    let universe: f64 = f
+        .universe
+        .iter()
+        .map(|k| config.weights.for_keyword(*k))
+        .sum();
     let scored = score::score_web_audit(f.rows.iter().copied(), universe, config);
     (scored.relative, scored.global)
 }

@@ -31,7 +31,8 @@ use crate::web_audit::handlers::api_description::api_description_bodies;
 use crate::web_audit::handlers::api_hygiene::HostProbes;
 use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::{
-    CATEGORIES, CATEGORY_ORDER, CHECKS, HandlerBinding, MCP_DISCOVERY, WebCheck, WebCheckKeyword,
+    ALTERNATIVES, CATEGORIES, CATEGORY_ORDER, CHECKS, HandlerBinding, MCP_DISCOVERY, WebCheck,
+    WebCheckKeyword,
 };
 use crate::web_audit::score::ScoreConfig;
 use crate::web_audit::scorecard::{
@@ -759,7 +760,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     let scorecard = build_web_scorecard(
         &results,
         &meta,
-        CHECKS.iter().map(|c| c.keyword),
+        (CHECKS, ALTERNATIVES),
         CATEGORY_ORDER,
         CATEGORIES,
         &ScoreConfig::default(),

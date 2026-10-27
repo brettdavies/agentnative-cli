@@ -13,21 +13,6 @@
 site_sha = "d5772289d71d056fd1c427ccb994e8c547ea2a43"
 
 [[divergence]]
-scenario = "alias-inline-copy-noncompliant"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "alias-redirect-pass"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "alias-unpublished-optional-absent"
-element = "score"
-owner = "#458"
-
-[[divergence]]
 scenario = "api-anchor-hosts"
 element = "row:mcp-auth-challenge"
 owner = "#401"
@@ -853,11 +838,6 @@ element = "summary"
 owner = "#397"
 
 [[divergence]]
-scenario = "auth-open-endpoint"
-element = "score"
-owner = "#397"
-
-[[divergence]]
 scenario = "auth-own-endpoint"
 element = "categories"
 owner = "#397"
@@ -1293,81 +1273,6 @@ element = "row:mcp-auth-servers"
 owner = "#397"
 
 [[divergence]]
-scenario = "cors-full-pass"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "cors-post-only"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "cors-post-rate-limited-no-cors"
-element = "score"
-owner = "#402"
-
-[[divergence]]
-scenario = "cors-post-transport-failure-no-cors"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "cors-posture-consistent"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-500-with-acao"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-only"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-transport-failure"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "discovery-card-generations-auth"
-element = "score"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-catalog-card"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-catalog-declarations"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-catalog-inline-card"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-legacy-card"
-element = "score"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-suffix-card"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-suffix-card-no-remotes"
-element = "score"
-owner = "#418"
-
-[[divergence]]
 scenario = "dns-aid-nxdomain"
 element = "row:mcp-auth-challenge"
 owner = "#397"
@@ -1428,16 +1333,6 @@ element = "row:mcp-auth-servers"
 owner = "#397"
 
 [[divergence]]
-scenario = "follow-card-admit"
-element = "score"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-host-catalog-card"
-element = "score"
-owner = "#418"
-
-[[divergence]]
 scenario = "follow-http-declarations"
 element = "row:mcp-auth-challenge"
 owner = "#413"
@@ -1451,16 +1346,6 @@ owner = "#413"
 scenario = "follow-http-declarations"
 element = "row:mcp-auth-servers"
 owner = "#413"
-
-[[divergence]]
-scenario = "follow-own-redirect-admit"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "follow-redirect-hop"
-element = "score"
-owner = "#395"
 
 [[divergence]]
 scenario = "frontmatter-absent"
@@ -1626,26 +1511,6 @@ owner = "#397"
 scenario = "http-discovery-cards-broken"
 element = "row:mcp-auth-servers"
 owner = "#397"
-
-[[divergence]]
-scenario = "http-get-fast-fail-html-broken"
-element = "score"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-markdown-broken"
-element = "score"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-sse-pass"
-element = "score"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-timeout-broken"
-element = "score"
-owner = "#458"
 
 [[divergence]]
 scenario = "http-header-regex-absent"
@@ -1946,86 +1811,6 @@ owner = "#397"
 scenario = "llms-quality-pass"
 element = "row:mcp-auth-servers"
 owner = "#397"
-
-[[divergence]]
-scenario = "mcp-capabilities-empty"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-card-no-endpoint-field"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-card-off-origin"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "score"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-dual-stack"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-edges-rate-limited"
-element = "score"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-legacy-lane"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-modern-lane"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-open-stream"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-resources-empty-broken"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-server-card-html-200"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-missing-field"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-unparseable"
-element = "score"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-sse-framing"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-stateful-session"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-typed-http-refusals"
-element = "score"
-owner = "#458"
 
 [[divergence]]
 scenario = "mcp-www-authenticate"
@@ -2123,11 +1908,6 @@ element = "summary"
 owner = "#397"
 
 [[divergence]]
-scenario = "run-all-pass"
-element = "score"
-owner = "#458"
-
-[[divergence]]
 scenario = "run-antecedent-unmet"
 element = "row:mcp-auth-challenge"
 owner = "#397"
@@ -2156,11 +1936,6 @@ owner = "#413"
 scenario = "run-document-redirects-to-http"
 element = "row:mcp-auth-servers"
 owner = "#413"
-
-[[divergence]]
-scenario = "run-healthy"
-element = "score"
-owner = "#451"
 
 [[divergence]]
 scenario = "run-redirects"
@@ -2206,16 +1981,6 @@ owner = "#397"
 scenario = "run-root-not-html"
 element = "row:mcp-auth-servers"
 owner = "#397"
-
-[[divergence]]
-scenario = "run-site-type-api"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "run-site-type-content"
-element = "score"
-owner = "#458"
 
 [[divergence]]
 scenario = "webmcp-mention-only"

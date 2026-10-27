@@ -1,8 +1,8 @@
 //! The two-score model, a mirror of the site's `score.ts`.
 //!
 //! RELATIVE is the headline: earned points over the maximum achievable for
-//! this site's applicable checks. GLOBAL is context: earned points over a
-//! maximally agent-ready site's maximum, so a bigger correct routine
+//! this site's applicable checks. GLOBAL is context: earned points over the
+//! most a single site could earn (`universe`), so a bigger correct routine
 //! outranks a small perfect one. Per applicable row, at per-tier weights:
 //! `pass` earns the weight, `noncompliant` earns a quarter of it, `broken`
 //! costs three quarters of it, an absent MUST is a full-weight zero, an
@@ -95,16 +95,6 @@ pub fn is_scored(status: ScorecardStatus) -> bool {
 /// Half-up rounding for non-negative operands, the site's `Math.floor(x + 0.5)`.
 pub fn round_half_up(x: f64) -> f64 {
     (x + 0.5).floor()
-}
-
-/// GLOBAL denominator: every check in the registry at its tier weight.
-pub fn universe_max<I>(keywords: I, config: &ScoreConfig) -> f64
-where
-    I: IntoIterator<Item = WebCheckKeyword>,
-{
-    keywords.into_iter().fold(0.0, |sum, keyword| {
-        sum + config.weights.for_keyword(keyword)
-    })
 }
 
 fn credit_for(status: ScorecardStatus, config: &ScoreConfig) -> Option<f64> {
@@ -214,12 +204,8 @@ mod tests {
 
     /// A registry-shaped universe: 5 MUST, 15 SHOULD, 16 MAY at default weights.
     fn universe() -> f64 {
-        universe_max(
-            std::iter::repeat_n(Must, 5)
-                .chain(std::iter::repeat_n(Should, 15))
-                .chain(std::iter::repeat_n(May, 16)),
-            &ScoreConfig::default(),
-        )
+        let w = ScoreConfig::default().weights;
+        5.0 * w.must + 15.0 * w.should + 16.0 * w.may
     }
 
     #[test]

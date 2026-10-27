@@ -40,3 +40,4 @@ pub mod target;
 mod tls;
 #[cfg(feature = "web")]
 pub mod transport;
+pub mod universe;

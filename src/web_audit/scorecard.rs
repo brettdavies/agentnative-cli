@@ -18,9 +18,13 @@ use serde::{Deserialize, Serialize, Serializer};
 
 #[cfg(feature = "web")]
 use super::engine::provenance::row_host_fields;
+#[cfg(feature = "web")]
+use super::registry::AlternativeGroup;
 use super::registry::{WebCheck, WebCheckKeyword, WebCheckTier};
 #[cfg(feature = "web")]
 use super::score::{self, ScoreConfig};
+#[cfg(feature = "web")]
+use super::universe::{UniverseRow, universe_max};
 
 /// Web scorecard schema version, independent of the CLI scorecard schema.
 pub const WEB_SCHEMA_VERSION: &str = "0.5";
@@ -100,6 +104,17 @@ pub enum NaReason {
     DeclaredHostUnreachable,
     /// A cap or the follow slice's clock kept the declared host from being requested.
     DeclaredHostBudgetExceeded,
+}
+
+impl NaReason {
+    /// Whether only a check that applied to the site can carry the reason,
+    /// so the global universe can read which alternatives a site presents
+    /// from its rows alone. `auth-required` is false although an applied
+    /// check can carry it: the antecedent gate also stamps it on checks
+    /// that never applied.
+    pub fn only_when_applicable(self) -> bool {
+        matches!(self, NaReason::OptionalAbsent | NaReason::PostureConsistent)
+    }
 }
 
 /// How a passing row passed.
@@ -408,7 +423,7 @@ pub struct ScorecardMeta {
 pub fn build_web_scorecard(
     results: &[EngineResult],
     meta: &ScorecardMeta,
-    registry_keywords: impl IntoIterator<Item = WebCheckKeyword>,
+    registry: (&[WebCheck], &[AlternativeGroup]),
     category_order: &[&str],
     category_names: &[(&str, &str)],
     config: &ScoreConfig,
@@ -453,10 +468,20 @@ pub fn build_web_scorecard(
         let row = rows.last_mut().expect("just pushed");
         (row.hosts, row.host) = row_host_fields(&r.raw_evidence);
     }
-    let universe_max = score::universe_max(registry_keywords, config);
+    let (checks, alternatives) = registry;
+    let universe = universe_max(
+        checks,
+        alternatives,
+        results.iter().map(|r| UniverseRow {
+            id: r.check.id,
+            status: r.status,
+            na_reason: r.na_reason,
+        }),
+        config,
+    );
     let scored = score::score_web_audit(
         results.iter().map(|r| (r.check.keyword, r.status)),
-        universe_max,
+        universe,
         config,
     );
     let categories = score::category_rollups(

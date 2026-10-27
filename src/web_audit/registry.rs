@@ -95,6 +95,28 @@ pub struct McpLane {
     pub note: &'static str,
 }
 
+/// One site design in a group of alternatives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlternativeVariant {
+    /// The variant's name within its group.
+    pub name: &'static str,
+    /// The checks gated on these tokens form the variant; empty for a
+    /// design with no checks of its own.
+    pub antecedents: &'static [AntecedentToken],
+    /// The variant is presented when a check gated on one of these tokens applied.
+    pub presented_by: &'static [AntecedentToken],
+}
+
+/// Site designs that cannot both be satisfied at full access, whatever the
+/// audit's vantage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AlternativeGroup {
+    /// The group's name.
+    pub group: &'static str,
+    /// Its designs, in registry order.
+    pub variants: &'static [AlternativeVariant],
+}
+
 /// A doc link attached to a fix.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RemediationResource {

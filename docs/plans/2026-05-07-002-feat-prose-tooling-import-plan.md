@@ -2,7 +2,7 @@
 title: "feat: Import shared prose tooling and author linter-channel design context"
 type: feat
 status: released
-prs: ["#52"]
+prs: ["#52", "#236"]
 date: 2026-05-07
 completed: 2026-05-21
 released_in: v0.4.0

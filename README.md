@@ -486,12 +486,13 @@ ANC_WEB_TOKEN="$TOKEN" anc web localhost:8787
 anc web localhost:8787 --token-stdin < token.txt
 ```
 
-The token goes only to the endpoint's handshake and session requests (`Authorization: Bearer <token>`), and never to a
-declared host's documents, the RFC 9728 metadata, a listed authorization server, any other check, or a redirect to
-another origin. Whether the endpoint requires sign-in is still decided from what a client without a token is answered:
-the run asks the two handshakes again without the token, and the `mcp-auth-enforced` row sends its `tools/list` without
-one. The scorecard records `vantage.credentialed: true` and never the token, which no output, evidence line, or error
-prints. Every process anc starts, an audited binary or a `git clone` included, runs without `ANC_WEB_TOKEN`.
+The token goes only to the endpoint's handshake and session requests (`Authorization: Bearer <token>`), including when
+the endpoint sits on a declared host that confirms it, and never to a declared host's documents, the RFC 9728 metadata,
+a listed authorization server, any other check, or a redirect to another origin. Whether the endpoint requires sign-in
+is still decided from what a client without a token is answered: the run asks the two handshakes again without the
+token, and the `mcp-auth-enforced` row sends its `tools/list` without one. The scorecard records `vantage.credentialed:
+true` and never the token, which no output, evidence line, or error prints. Every process anc starts, an audited binary
+or a `git clone` included, runs without `ANC_WEB_TOKEN`.
 
 A token that is empty (`empty-token`), or holds whitespace, a control character, or non-ASCII (`invalid-token`), ends
 the run before any request goes out, exit 2. `--token-stdin` refuses a terminal stdin (`token-stdin-terminal`) rather

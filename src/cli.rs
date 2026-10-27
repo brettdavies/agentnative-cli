@@ -263,8 +263,10 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// invocation (`ANC_WEB_TOKEN=<token> anc web <target>`) rather than
     /// exported, or from one line of stdin with `--token-stdin`. The token
     /// goes only to the audited MCP endpoint's handshake and session
-    /// requests: never to another host, a metadata document, a sign-in
-    /// server, or the request that checks a token-less client is refused.
+    /// requests, on a declared host too when the endpoint lives there and
+    /// that host confirms it: never to any other host, a metadata document,
+    /// a sign-in server, or the request that checks a token-less client is
+    /// refused.
     /// It is never printed, and every process anc starts runs without
     /// `ANC_WEB_TOKEN`.
     ///

@@ -172,6 +172,7 @@ pub struct AuditResult {
 /// Today's only producer is `p6-standard-names`, for a CLI whose flagged
 /// verbs no `[p6] domain_verbs` covered.
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct ConfigHint {
     /// Where the setting can go: the repository's file first, then the
     /// user-level file when one is configured.
@@ -185,6 +186,7 @@ pub struct ConfigHint {
 
 /// A file a [`ConfigHint`] setting can go in.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct ConfigFile {
     /// The file, named the way evidence names files: `.anc.toml` at a
     /// repository root, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`. Never
@@ -196,6 +198,7 @@ pub struct ConfigFile {
 
 /// Which audits read a [`ConfigFile`]. A closed set.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum ConfigScope {
     /// The root of the repository this audit found, or the `--repo`

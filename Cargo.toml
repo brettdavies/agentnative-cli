@@ -142,6 +142,9 @@ serde-saphyr = { version = "2.0.0", default-features = false, features = ["deser
 regex = "1"
 
 [dev-dependencies]
+# Derives the scorecard shape in src/scorecard/schema_drift.rs, the test that holds the
+# hand-written schema/scorecard.schema.json to the serialized types. Test-only.
+schemars = "1.2.3"
 assert_cmd = "2"
 insta = "1"
 predicates = "3"

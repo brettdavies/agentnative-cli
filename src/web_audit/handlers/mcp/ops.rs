@@ -244,4 +244,38 @@ mod tests {
         assert!(!McpOp::AcceptJson.coded_conformance());
         assert!(McpOp::ModernResourcesMiss.coded_conformance());
     }
+
+    /// A lane names the protocol era a row exercises, and this table is
+    /// where that era is decided, so an op row filed under the other lane
+    /// would tell a reader the wrong era failed. A row whose op the table
+    /// does not carry is listed exactly, so porting its op adds it here.
+    #[test]
+    fn every_mcp_op_row_sits_in_its_ops_era_lane() {
+        use crate::web_audit::registry::{CHECKS, HandlerBinding};
+
+        let mut rows = 0;
+        let mut unknown = Vec::new();
+        for check in CHECKS
+            .iter()
+            .filter(|c| matches!(c.handler, HandlerBinding::Mcp))
+        {
+            let with: serde_json::Value =
+                serde_json::from_str(check.with_json).expect("with_json parses");
+            let Some(op) = with.get("op").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(op) = McpOp::parse(op) else {
+                unknown.push(check.id);
+                continue;
+            };
+            let era = match op.spec().era {
+                Era::Legacy => "legacy",
+                Era::Modern => "modern",
+            };
+            assert_eq!(check.lane, Some(era), "{}", check.id);
+            rows += 1;
+        }
+        assert!(rows > 0, "the registry carries MCP op rows");
+        assert_eq!(unknown, ["mcp-auth-enforced"]);
+    }
 }

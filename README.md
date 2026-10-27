@@ -393,6 +393,7 @@ The report leads with the verdict, then the MUST misses, then the SHOULD and MAY
 ```text
 Verdict: WARN: warnings only (6 SHOULD or MAY misses)
 Score: 71 relative · 20 global · 12 of 18 applicable checks passed
+       relative to the checks that apply to this site; global measures it against a maximally agent-ready site.
 
 Warnings (6 SHOULD or MAY):
   [WARN] Accept text/markdown content negotiation returns markdown (accept-markdown) (should)
@@ -404,7 +405,17 @@ Warnings (6 SHOULD or MAY):
          Docs: RFC 7763 (text/markdown) <https://www.rfc-editor.org/rfc/rfc7763>
 ```
 
-Passing and inapplicable rows are a count by default; `--verbose` lists them. `--quiet` drops them entirely.
+The line under the score says what the two scores measure, in anc.dev's words. Passing and inapplicable rows are a count
+by default; `--verbose` lists them. `--quiet` drops them entirely, along with the score line's explanation.
+
+Inside each section, the MCP checks come last, grouped by protocol lane as on anc.dev's result page. A lane heading
+carries the lane's pass count over the whole report and a line saying what the lane covers:
+
+```text
+  MCP · Modern lane · 2026-07-28 (0/7 pass)
+    header-routed and stateless; no initialize or session.
+    [WARN] server/discover answers with server identity on the modern lane (mcp-server-discover) (should)
+```
 
 ### Reading the Registry Offline
 

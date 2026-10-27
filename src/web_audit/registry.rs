@@ -5,8 +5,8 @@
 //! does and emits every table as a `const` into
 //! `$OUT_DIR/generated_web_registry.rs`, which this module includes. The
 //! tables are the check definitions (`CHECKS`, in registry order, which is
-//! also scorecard row order), the display categories, MCP discovery
-//! configuration, the fix catalog, the probe User-Agent strings, and the
+//! also scorecard row order), the display categories, the MCP protocol
+//! lanes, MCP discovery configuration, the fix catalog, the probe User-Agent strings, and the
 //! pinned site commit (`SITE_SHA`). Nothing here is parsed at runtime.
 //!
 //! A check whose handler kind or eval rule the engine has not ported binds to
@@ -72,6 +72,9 @@ pub struct WebCheck {
     pub breadcrumb: &'static str,
     /// One-line remediation summary.
     pub hint: &'static str,
+    /// The `MCP_LANES` id a `LANE_CATEGORY` check groups under; `None`
+    /// outside that category. Display only: no probe or score reads it.
+    pub lane: Option<&'static str>,
     /// Probe handler.
     pub handler: HandlerBinding,
     /// The `with` handler parameters as a JSON object, `{ua:...}` tokens
@@ -79,6 +82,17 @@ pub struct WebCheck {
     pub with_json: &'static str,
     /// Every regex-bearing value in `with`, translated.
     pub patterns: &'static [RegexPattern],
+}
+
+/// One protocol lane the MCP category's rows group under in the report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct McpLane {
+    /// The id a check's `lane` names.
+    pub id: &'static str,
+    /// Display label.
+    pub label: &'static str,
+    /// One line saying what the lane covers.
+    pub note: &'static str,
 }
 
 /// A doc link attached to a fix.
@@ -127,6 +141,12 @@ pub fn remediation_for(id: &str) -> Option<&'static WebRemediation> {
         .map(|i| &REMEDIATION[i])
 }
 
+/// The protocol lane a check groups under, if any.
+pub fn lane_of(id: &str) -> Option<&'static McpLane> {
+    let lane = check_by_id(id)?.lane?;
+    MCP_LANES.iter().find(|l| l.id == lane)
+}
+
 /// The display name of a category slug, if any.
 pub fn category_name(slug: &str) -> Option<&'static str> {
     CATEGORIES
@@ -160,6 +180,29 @@ mod tests {
         assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
         assert_eq!(HANDLER_KINDS.len(), 12);
         assert_eq!(EVAL_RULES.len(), 4);
+    }
+
+    #[test]
+    fn the_lane_map_lists_its_lanes_in_display_order() {
+        let ids: Vec<&str> = MCP_LANES.iter().map(|l| l.id).collect();
+        assert_eq!(ids, ["shared", "legacy", "modern", "browser"]);
+        for lane in MCP_LANES {
+            assert!(!lane.label.is_empty() && !lane.note.is_empty(), "{lane:?}");
+        }
+    }
+
+    #[test]
+    fn every_mcp_check_and_no_other_resolves_to_a_lane() {
+        for c in CHECKS {
+            assert_eq!(
+                lane_of(c.id).is_some(),
+                c.category == LANE_CATEGORY,
+                "{}: lane {:?}",
+                c.id,
+                c.lane
+            );
+        }
+        assert_eq!(lane_of("no-such-check"), None);
     }
 
     /// The unported set is exact, so each port that lands shrinks it here.

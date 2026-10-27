@@ -247,6 +247,10 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// issued from here; the only host contacted is the target (plus the
     /// public DNS resolvers the `dns-aid` check queries, which are
     /// withheld for a local target unless `--external-dns` is set).
+    ///
+    /// Each run reports two scores: relative scores the site relative to
+    /// the checks that apply to this site; global measures it against a
+    /// maximally agent-ready site.
     #[command(after_help = "Examples:
   anc web localhost:8787                       # a local dev server, over https like any target
   anc web https://anc.dev                      # a public site

@@ -7,7 +7,13 @@
 
 mod common;
 
+use std::sync::Arc;
+
+use agentnative::web_audit::engine::RunOutcome;
+use agentnative::web_audit::handlers::default_handlers;
+use agentnative::web_audit::render::{RenderOptions, format_text};
 use agentnative::web_audit::scorecard::WebScorecard;
+use common::corpus::{load_cases, replay};
 use common::web_cli::{anc, fixture_site, host_of, stderr_of, stdout_of};
 
 #[test]
@@ -115,6 +121,42 @@ fn json_mode_puts_nothing_but_the_scorecard_on_stdout() {
     }
 }
 
+/// anc.dev's wording under the score on every result page.
+const SCORE_NOTE: &str = "relative to the checks that apply to this site; global measures it against a maximally agent-ready site.";
+
+#[test]
+fn the_score_line_says_what_relative_and_global_measure_unless_quiet() {
+    let server = fixture_site();
+    let host = host_of(&server);
+    let assert = anc().args(["web", &host]).assert().code(1);
+    let out = stdout_of(assert.get_output());
+    let mut lines = out.lines().skip_while(|l| !l.starts_with("Score: "));
+    assert!(lines.next().is_some(), "a score line:\n{out}");
+    assert_eq!(
+        lines.next(),
+        Some(format!("       {SCORE_NOTE}").as_str()),
+        "{out}"
+    );
+
+    let quiet = anc().args(["web", &host, "--quiet"]).assert().code(1);
+    let out = stdout_of(quiet.get_output());
+    assert!(out.contains("Score: "), "{out}");
+    assert!(!out.contains("maximally agent-ready"), "{out}");
+}
+
+#[test]
+fn web_help_says_what_the_two_scores_measure() {
+    let help = anc().args(["web", "--help"]).assert().code(0);
+    let out = stdout_of(help.get_output());
+    let prose = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        prose.contains(&format!(
+            "two scores: relative scores the site {SCORE_NOTE}"
+        )),
+        "{out}"
+    );
+}
+
 #[test]
 fn no_color_strips_styling_and_color_always_adds_it() {
     let server = fixture_site();
@@ -202,4 +244,187 @@ fn the_readme_exit_table_matches_the_codes_the_binary_returns() {
             "`anc web --help` lost `{code}  {phrase}`"
         );
     }
+}
+
+/// The text report of a corpus scenario's replay, as `anc web` prints it.
+fn corpus_report(name: &str, verbose: bool) -> String {
+    let case = load_cases()
+        .into_iter()
+        .find(|c| c.name == name)
+        .unwrap_or_else(|| panic!("no corpus scenario {name}"));
+    match replay(&case.scenario, Arc::new(default_handlers())) {
+        RunOutcome::Complete(report) => format_text(
+            &report,
+            RenderOptions {
+                color: false,
+                quiet: false,
+                verbose,
+            },
+        ),
+        RunOutcome::Unreachable { reason, .. } => panic!("{name} reported unreachable: {reason}"),
+    }
+}
+
+/// A section's outline: each row as its indent and check id, each lane
+/// heading and lane note as written, the evidence and fix lines dropped.
+fn outline(out: &str, heading: &str) -> Vec<String> {
+    let section = out
+        .split("\n\n")
+        .find(|block| block.starts_with(heading))
+        .unwrap_or_else(|| panic!("no {heading:?} section in:\n{out}"));
+    section
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let indent = line.len() - line.trim_start().len();
+            let text = line.trim_start();
+            if text.starts_with('[') {
+                let id = text
+                    .rsplit(") (")
+                    .nth(1)
+                    .and_then(|tail| tail.rsplit(" (").next())
+                    .unwrap_or_else(|| panic!("no check id in {line:?}"));
+                Some(format!("{}{id}", " ".repeat(indent)))
+            } else if indent <= 4 {
+                Some(line.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+const SHARED: [&str; 2] = [
+    "  MCP · Every MCP server (4/4 pass)",
+    "    transport, discovery, and card checks that apply whichever protocol the server speaks.",
+];
+const LEGACY: [&str; 2] = [
+    "  MCP · Legacy lane · 2025-06-18 (8/10 pass)",
+    "    initialize, then a session.",
+];
+const MODERN: [&str; 2] = [
+    "  MCP · Modern lane · 2026-07-28 (0/7 pass)",
+    "    header-routed and stateless; no initialize or session.",
+];
+const BROWSER: [&str; 2] = [
+    "  MCP · In-page tools · WebMCP (1/1 pass)",
+    "    browser tools exposed by the site's HTML, not by the MCP server.",
+];
+
+fn lines(parts: &[&[&str]]) -> Vec<String> {
+    parts.concat().into_iter().map(str::to_string).collect()
+}
+
+/// The position of the first lane heading in a section outline.
+fn first_lane(outline: &[String]) -> usize {
+    outline
+        .iter()
+        .position(|line| line.starts_with("  MCP · "))
+        .unwrap_or_else(|| panic!("no lane heading in {outline:#?}"))
+}
+
+#[test]
+fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
+    let out = corpus_report("mcp-negotiation-defects", false);
+    assert_eq!(
+        outline(&out, "Failures ("),
+        lines(&[&["  openapi"], &MODERN, &["    mcp-modern-tools-list"]]),
+        "{out}"
+    );
+    assert_eq!(
+        outline(&out, "Warnings ("),
+        lines(&[
+            &[
+                "  json-errors",
+                "  rate-limit-headers",
+                "  llms-txt",
+                "  accept-markdown",
+                "  robots",
+                "  agent-friendly-404-md",
+                "  link-headers",
+            ],
+            &LEGACY,
+            &["    mcp-accept-json", "    mcp-accept-unsatisfiable"],
+            &MODERN,
+            &[
+                "    mcp-server-discover",
+                "    mcp-modern-unknown-method",
+                "    mcp-modern-clientcaps",
+                "    mcp-modern-header-mismatch",
+                "    mcp-modern-version-reject",
+                "    mcp-modern-resources-miss",
+            ],
+        ]),
+        "{out}"
+    );
+    assert_eq!(
+        outline(&out, "Advisories ("),
+        lines(&[&SHARED, &["    mcp-server-card"]]),
+        "{out}"
+    );
+    // A lane's rows keep the row layout, two columns deeper.
+    assert!(
+        out.contains(
+            "    [WARN] a JSON-only Accept is answered without SSE framing (mcp-accept-json) (should)\n           https://example.com/mcp -> 200"
+        ),
+        "{out}"
+    );
+    assert!(
+        out.contains("\n           Note: Superseded shape (SEP-1649)."),
+        "{out}"
+    );
+}
+
+#[test]
+fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
+    let out = corpus_report("mcp-negotiation-defects", true);
+    let passed = outline(&out, "Passed (");
+    let lane_at = first_lane(&passed);
+    assert!(
+        passed[..lane_at]
+            .iter()
+            .all(|line| line.starts_with("  ") && !line.starts_with("   ")),
+        "the rows outside any lane come first:\n{out}"
+    );
+    assert_eq!(
+        passed[lane_at..],
+        lines(&[
+            &SHARED,
+            &[
+                "    mcp-get-fast-fail",
+                "    mcp-server-card",
+                "    mcp-card-legacy-aliases",
+                "    mcp-usage-doc",
+            ],
+            &LEGACY,
+            &[
+                "    mcp-initialize",
+                "    mcp-capabilities",
+                "    mcp-tools-list",
+                "    mcp-resources-list",
+                "    mcp-unknown-method",
+                "    mcp-malformed-body",
+                "    mcp-batch-reject",
+                "    mcp-unknown-tool",
+            ],
+            &BROWSER,
+            &["    webmcp"],
+        ])[..],
+        "{out}"
+    );
+    let inapplicable = outline(&out, "Not applicable (");
+    assert_eq!(
+        inapplicable[first_lane(&inapplicable)..],
+        lines(&[
+            &SHARED,
+            &[
+                "    mcp-cors-preflight",
+                "    mcp-cors-actual",
+                "    mcp-auth-challenge",
+                "    mcp-auth-servers",
+                "    mcp-auth-enforced",
+            ],
+        ])[..],
+        "{out}"
+    );
 }

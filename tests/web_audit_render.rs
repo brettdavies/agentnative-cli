@@ -328,7 +328,7 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
     let out = corpus_report("mcp-negotiation-defects", false);
     assert_eq!(
         outline(&out, "Failures ("),
-        lines(&[&MODERN, &["    mcp-modern-tools-list"]]),
+        lines(&[&["  openapi"], &MODERN, &["    mcp-modern-tools-list"]]),
         "{out}"
     );
     assert_eq!(

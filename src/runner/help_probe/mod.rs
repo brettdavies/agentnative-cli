@@ -98,7 +98,7 @@ impl CommandBlock {
     pub fn command_text<'a>(&self, entry: &'a str) -> &'a str {
         let invocation = before_description_gap(entry.split('\t').next().unwrap_or(entry));
         if self.prefix.is_none() {
-            return invocation;
+            return without_name_colon(invocation);
         }
         let rest = invocation
             .split_once(char::is_whitespace)
@@ -403,6 +403,24 @@ fn prefix_candidates(raw: &str, binary_stem: Option<&str>) -> Vec<String> {
     candidates
 }
 
+/// gh prints each entry as `auth:` before its description gap; the colon
+/// closes the name and is not part of it.
+fn without_name_colon(invocation: &str) -> &str {
+    match invocation.strip_suffix(':') {
+        Some(name) if !name.is_empty() && !name.contains(char::is_whitespace) => name,
+        _ => invocation,
+    }
+}
+
+/// A heading printed in capitals at column 0 with no closing colon, as gh
+/// prints `CORE COMMANDS` and `ADDITIONAL COMMANDS`.
+fn is_uppercase_command_heading(line: &str) -> bool {
+    let line = line.trim_end();
+    !line.starts_with(char::is_whitespace)
+        && line.ends_with("COMMANDS")
+        && line.chars().all(|c| c.is_ascii_uppercase() || c == ' ')
+}
+
 /// Collect every command block: a header, then the indented lines that
 /// follow it until a blank line or a non-indented line closes the block.
 /// The block's first entry sets its entry indentation; a later line
@@ -415,7 +433,7 @@ fn parse_command_blocks(raw: &str, candidates: &[String]) -> Vec<CommandBlock> {
     let mut in_block = false;
     for line in raw.lines() {
         let trimmed = line.trim();
-        if is_command_header(trimmed) {
+        if is_command_header(trimmed) || is_uppercase_command_heading(line) {
             blocks.push(CommandBlock {
                 header: trimmed.to_string(),
                 entries: Vec::new(),
@@ -490,6 +508,41 @@ fn is_subcommand_name(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gh_capital_headings_and_colon_entries_are_command_blocks() {
+        let help = HelpOutput::from_raw_for_binary(
+            include_str!("../../../tests/fixtures/help/gh__--help.txt"),
+            "gh",
+        );
+        let subcommands = help.subcommands();
+        for name in [
+            "auth", "pr", "repo", "skill", "cache", "workflow", "api", "co",
+        ] {
+            assert!(
+                subcommands.iter().any(|s| s == name),
+                "{name} missing from {subcommands:?}"
+            );
+        }
+        assert!(
+            subcommands.iter().all(|s| !s.ends_with(':')),
+            "{subcommands:?}"
+        );
+        assert_eq!(
+            help.subcommand_summary("skill"),
+            Some("Install and manage agent skills (preview)")
+        );
+    }
+
+    #[test]
+    fn a_capital_line_is_a_heading_only_at_column_0_and_ending_in_commands() {
+        assert!(is_uppercase_command_heading("CORE COMMANDS"));
+        assert!(is_uppercase_command_heading("GITHUB ACTIONS COMMANDS  "));
+        assert!(!is_uppercase_command_heading("  CORE COMMANDS"));
+        assert!(!is_uppercase_command_heading("USAGE"));
+        assert!(!is_uppercase_command_heading("Core Commands"));
+        assert!(!is_uppercase_command_heading("COMMANDS AND FLAGS"));
+    }
 
     // A fixture modeled on ripgrep's `--help` — short+long flags, env hint.
     const RIPGREP_HELP: &str = r#"ripgrep 14.1

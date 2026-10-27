@@ -210,6 +210,16 @@ Options:
     }
 
     #[test]
+    fn gh_declares_its_skill_subcommand() {
+        let help = HelpOutput::from_raw_for_binary(
+            include_str!("../../../tests/fixtures/help/gh__--help.txt"),
+            "gh",
+        );
+        assert!(declares_skill_subcommand(&help));
+        assert_eq!(bundle_gate(false, Some(&help)), None);
+    }
+
+    #[test]
     fn no_bundle_file_and_unreadable_help_skips() {
         assert!(matches!(
             bundle_gate(false, None),

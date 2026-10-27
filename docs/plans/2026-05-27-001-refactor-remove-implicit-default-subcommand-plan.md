@@ -1,12 +1,16 @@
 ---
 title: "refactor: Remove implicit default subcommand (require explicit `anc audit`)"
 type: refactor
-status: proposed
+status: dropped
+dropped_reason: "implicit routing is a documented, tested feature across both verbs: `anc .` runs `anc audit .`, and `anc anc.dev` runs `anc web anc.dev`"
 date: 2026-05-27
 origin: maintainer decision — require the explicit verb (git/cargo/kubectl/docker/gh/terraform convention); supersedes the default-subcommand portion of docs/plans/2026-04-02-003-feat-cli-default-subcommand-and-command-flag-plan.md
 ---
 
 # refactor: Remove implicit default subcommand (require explicit `anc audit`)
+
+**Status.** Dropped. Implicit routing is a documented, tested feature across both verbs: `anc .` runs `anc audit .`,
+and with the `web` feature `anc anc.dev` runs `anc web anc.dev`. No unit below is built.
 
 ## Summary
 
@@ -18,7 +22,10 @@ kubectl, docker, gh, terraform). Removing the injection lets clap emit its nativ
 principle. The only cost is five extra characters for interactive humans; agents — the primary audience — parse a
 contract and gain nothing from the keystroke savings.
 
-This is a mild, documented breaking behavior change. It is pre-1.0 (current version `0.4.0`); CHANGELOG/version handling
+With the `web` feature, the same function rewrites a positional that reads as a network target to `anc web <target>`
+(`src/argv.rs`, `crate::web_audit::target::routes_to_web`), so `anc anc.dev` runs `anc web anc.dev`.
+
+This is a mild, documented breaking behavior change. It is pre-1.0 (current version `0.6.0`); CHANGELOG/version handling
 is a release-PR concern, not part of this plan's units.
 
 ---
@@ -28,9 +35,9 @@ is a release-PR concern, not part of this plan's units.
 The implicit default subcommand is wrong for `anc` on three counts:
 
 1. **Ambiguous for multi-subcommand CLIs.** Single-purpose tools (rg, fd, jq, cat) have no subcommands, so a bare first
-   token is unambiguous. `anc` has four subcommands (`audit`, `completions`, `emit`, `skill`, plus clap's auto `help`),
-   so a bare first token is ambiguous: is it a subcommand or a positional for the default? git/cargo/kubectl resolve the
-   ambiguity by requiring the explicit verb. `anc` should too.
+   token is unambiguous. `anc` has four subcommands (`audit`, `completions`, `emit`, `skill`, plus `web` with the `web`
+   feature and clap's auto `help`), so a bare first token is ambiguous: is it a subcommand or a positional for the
+   default? git/cargo/kubectl resolve the ambiguity by requiring the explicit verb. `anc` should too.
 
 2. **It violates P6 ("Composable, Predictable Command Structure").** `anc` *is* the agent-native CLI linter. With the
    injection, `anc foo` behaves differently depending on whether `foo` happens to be a recognized subcommand — and a
@@ -123,7 +130,7 @@ behavior.
 
 ### Predecessor plan
 
-- `docs/plans/2026-04-02-003-feat-cli-default-subcommand-and-command-flag-plan.md` (status: shipped) — **added** the
+- `docs/plans/2026-04-02-003-feat-cli-default-subcommand-and-command-flag-plan.md` (status: released) — **added** the
   implicit default. Its Post-Implementation Notes (lines 285-355) document the seven edge cases the injection accreted
   (clap's auto `help` not in `get_subcommands()`, value-flag pairing, subcommand-scoped-flag intent, `--` separator,
   `anc -q` panic fix, `--command`+`--source` conflict, bash completion `compgen` patch). This plan **supersedes the

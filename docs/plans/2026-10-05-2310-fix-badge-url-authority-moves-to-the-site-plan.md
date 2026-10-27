@@ -31,6 +31,8 @@ surrounding text names.
 - **Who finishes:** `ce-work` implements per repo. The CLI's `scripts/release/smoke.sh` holds the release boundary, and
   the cross-repo blast-radius section of `RELEASES-PREFLIGHT.md` sends the site the schema change before the tag.
 - **Open blockers:** None.
+- **Delivery:** U1 is delivered: agentnative-site #448 merges it and #449 releases it. U2 through U7 have no PR, and
+  the CLI tasks T1 through T3 are open.
 
 ---
 
@@ -51,8 +53,8 @@ paste into a README. It carries no HTTP client, so it never learns whether that 
 
 For 86 of the 98 curated tools the two names coincide and the output is accidentally correct. For the other 12,
 including `ripgrep`, `aws-cli`, `claude-code`, `nushell`, `gemini-cli` and `flyctl`, the binary differs from the slug
-and the printed snippet is a working link wrapped around a 404 image. Measured: `/badge/rg.svg` returns 404 while
-`/badge/ripgrep.svg` returns 200.
+and the printed snippet names a badge path keyed by the binary rather than the slug. U1's redirect repairs that for
+curated tools: `/badge/rg.svg` returns 301 to `/badge/ripgrep.svg`, which returns 200. An uncurated name returns 404.
 
 The reach is wider than the bug. `BADGE_BASE_URL` compiles a domain and two path shapes into a binary distributed
 through Homebrew and crates.io, so the site can no longer reorganize `/badge/` or `/score/` without carrying redirects
@@ -337,10 +339,10 @@ the corpus both need the released binary.
 - **Dependencies:** None.
 - **Files:** `agentnative-site/src/shared/audit-routes.ts`, `agentnative-site/src/worker/audit/result.ts`,
   `agentnative-site/src/worker/index.ts`, `agentnative-site/tests/audit-result-route.test.ts`
-- **Approach:** The work is already implemented on the pushed branch `fix/badge-alias-redirect` at commit `0d5f12c`,
-  which adds `BADGE_PREFIX`, `badgePath` and `badgeSlugOf` beside the existing score-path helpers, an exported
+- **Status:** Delivered. agentnative-site #448 merges it and #449 releases it; `/badge/rg.svg` returns 301 to
+  `/badge/ripgrep.svg`.
+- **Approach:** Add `BADGE_PREFIX`, `badgePath` and `badgeSlugOf` beside the existing score-path helpers, an exported
   `badgeAliasRedirect` reusing `curatedEntryForBinary` and `registryOrNull`, and a dispatch ahead of the asset fetch.
-  Open the PR against the site's `dev`; the branch exists on `origin` with no PR.
 - **Execution note:** This unit stands on its own merits regardless of the rest of the plan. Released `anc` builds will
   keep printing binary-name badge URLs indefinitely, and no CLI change reaches them.
 - **Patterns to follow:** the `/score/<binary>` alias at `src/worker/audit/result.ts:355-356`.
@@ -357,6 +359,7 @@ the corpus both need the released binary.
 
 - **Goal:** The site accepts and renders a real 0.10 scorecard, and no site surface still declares 0.9 current or
   documents a removed field.
+- **Status:** Not started. The site's `SUPPORTED_SCHEMA_VERSIONS` ends at `'0.9'`.
 - **Requirements:** R9, R10.
 - **Dependencies:** U1.
 - **Files:** `agentnative-site/src/build/scorecards.mjs`, `agentnative-site/tests/build.test.ts`,
@@ -393,6 +396,7 @@ the corpus both need the released binary.
 
 - **Goal:** Every rendered embed snippet comes from the registry entry's name, so it is correct for all 98 curated tools
   and indifferent to the scorecard's schema vintage.
+- **Status:** Not started. `src/shared/scorecard-format.mjs` still reads `scorecard.badge.embed_markdown`.
 - **Requirements:** R6, R9.
 - **Dependencies:** U2.
 - **Files:** `agentnative-site/src/shared/scorecard-format.mjs`, `agentnative-site/src/worker/audit/result.ts`,
@@ -438,6 +442,7 @@ the corpus both need the released binary.
 ### U4. Site: `/badge` becomes the normative convention
 
 - **Goal:** One page states the authoritative embed shape, and it is the page the CLI points at.
+- **Status:** Not started.
 - **Requirements:** R7.
 - **Dependencies:** U3.
 - **Files:** `agentnative-site/content/badge.md`
@@ -453,6 +458,8 @@ the corpus both need the released binary.
 ### U5. CLI: remove per-tool URL construction
 
 - **Goal:** The scorecard and the terminal carry the score and a convention pointer, and no per-tool URL.
+- **Status:** Not started. `SCHEMA_VERSION` is `"0.9"`, `BadgeInfo` carries all six fields, and
+  `scripts/release/smoke.sh` has no `gate_convention_url`.
 - **Requirements:** R1, R2, R3, R4, R5, R10.
 - **Dependencies:** None on the site. Merging U5 to the CLI's `dev` ships nothing, and the release preflight hands the
   site the schema change before the tag (KTD7).
@@ -526,6 +533,7 @@ the corpus both need the released binary.
 ### U6. CLI: documentation and runbook
 
 - **Goal:** No document describes fields the scorecard no longer carries.
+- **Status:** Not started.
 - **Requirements:** R1, R10.
 - **Dependencies:** U5.
 - **Files:** `README.md`, `AGENTS.md`, `RELEASES-POSTFLIGHT.md`, `CLAUDE.md`,
@@ -555,6 +563,7 @@ the corpus both need the released binary.
 
 - **Goal:** The site's live-scoring lane emits the new shape, and the committed corpus stops carrying 0.9 artifacts for
   tools that have been re-audited.
+- **Status:** Not started; it waits on U5, U6 and a CLI release.
 - **Requirements:** R9.
 - **Dependencies:** U5, U6, and a published CLI release.
 - **Files:** `agentnative-site/src/data/anc/VERSION`, `agentnative-site/docker/sandbox/Dockerfile`,

@@ -1,7 +1,8 @@
 ---
 title: "refactor: Role-based audit validators — stop hardcoding field names and CLI dialects"
-status: active
-prs: ["#79"]
+status: superseded
+superseded_by: docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md
+prs: ["#79", "#82"]
 date: 2026-06-02
 type: refactor
 origin: handoff from xurl-rs anc-100%-compliance work (compound friction surfaced 2026-06-02)
@@ -33,6 +34,13 @@ This work pays off in three ways:
    with the wrong shapes. A role-based check fails it.
 3. **It documents the spec's actual contract.** The audits become readable as English assertions about agent experience,
    not regex against a particular library's API.
+
+**Delivery.** #79 ships U3, with the role classifier inline in the audit (part of U1): `p2-must-json-errors` accepts any
+envelope whose values fill the discriminant, type-identifier, and message roles, whatever the field names. #82 removes
+an `.unwrap()` from `is_type_id_value` in that code. The audit-philosophy plan
+(`docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md`) supersedes this one and
+carries the design forward. U2 and U4 to U8 are not built, so `p1-must-env-var`, `p6-must-global-flags`,
+`p7-naked-println`, and `code-unwrap` still match on vocabulary.
 
 ---
 
@@ -84,7 +92,7 @@ This is the shape `anc` recommends in
 `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` and that `anc skill install` itself
 emits. It is unambiguously a well-formed error envelope.
 
-`anc audit /home/brett/dev/xurl-rs --output json` reports:
+`anc audit ~/dev/xurl-rs --output json` reports:
 
 ```json
 {
@@ -501,6 +509,9 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U1. `src/role_check.rs` — the role classifier
 
+- **Status.** Partly shipped in #79. The classifier lives inside `src/audits/behavioral/json_errors.rs` (`RoleSet`,
+  `classify_envelope`, and the role predicates), with its tests in that file's test module; the shared
+  `src/role_check.rs` module and the `tests/role_check_tests.rs` table do not exist.
 - **Goal.** Ship the `RoleClassifier` (KTD1) with full test coverage of pass/fail/edge cases. No audit changes yet —
   this is the foundation.
 - **Requirements.** R1, R2, R10.
@@ -548,6 +559,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U2. `src/audits/probe_or_source.rs` — the tiered audit wrapper
 
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Ship the `ProbeOrSource` wrapper (KTD2) with the tiered policy. No audit migrations yet — this is the second
   foundation piece.
 - **Requirements.** R3, R5.
@@ -585,6 +597,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U3. Reframe `p2-must-json-errors`
 
+- **Status.** Shipped in #79.
 - **Goal.** Replace the hardcoded-keys check in `src/audits/behavioral/json_errors.rs` with a call to
   `RoleClassifier::classify`. Preserve the behavioral probe (run `tool --bogus-flag --output json`); only the validation
   logic changes.
@@ -614,11 +627,12 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 - Regression — self-dogfood: `anc check ./agentnative-cli/target/release/anc --output json` continues to pass on this
   audit.
 - **Verification.** `cargo test --test json_errors_tests`. Then `cargo build --release && ./target/release/anc audit
-  /home/brett/dev/xurl-rs --output json | jaq '.results[] | select(.id == "p2-must-json-errors") | .status'` returns
+  ~/dev/xurl-rs --output json | jaq '.results[] | select(.id == "p2-must-json-errors") | .status'` returns
   `"pass"`.
 
 ### U4. Reframe `p1-must-env-var` as probe-or-source
 
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the env-var check to behavioral-first per KTD3, with the existing source-grep as Skip-class
   fallback.
 - **Requirements.** R3, R5, R6.
@@ -649,6 +663,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U5. Reframe `p6-must-global-flags` as probe-or-source
 
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the global-flag check per KTD5.
 - **Requirements.** R3, R5, R6.
 - **Dependencies.** U2.
@@ -668,6 +683,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U6. Reframe `p7-naked-println` as probe-or-source
 
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the naked-println check per KTD4.
 - **Requirements.** R3, R5, R6.
 - **Dependencies.** U2.
@@ -691,6 +707,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U7. Reframe `code-unwrap` as probe-or-source
 
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the unwrap check per KTD6. The cfg-test exemption from PR #77 stays in place for the source
   fallback.
 - **Requirements.** R3, R5, R6.
@@ -716,6 +733,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U8. Documentation pass — rewrite reframed audits' module rustdoc as English assertions
 
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** R10. Each reframed audit's `//!` block (module-level doc comment) becomes a plain-English description of
   what it asserts and why, with code links to the implementation.
 - **Requirements.** R10.
@@ -744,7 +762,7 @@ After every U-merge:
    previously-passing audit must continue to pass. `p2-must-json-errors` and the four reframed audits must pass on anc
    itself.
 2. **xurl-rs check:**
-   `./target/release/anc audit /home/brett/dev/xurl-rs --output json | jaq '.results[] | select(.status != "pass")'`.
+   `./target/release/anc audit ~/dev/xurl-rs --output json | jaq '.results[] | select(.status != "pass")'`.
    The five reframed audits should all pass on xurl-rs 1.3.0 after U3-U7 land.
 3. **bird check:** same against the bird CLI. Document any divergences as either real bird bugs or anc over-fits.
 4. **Cross-language coverage:** run the same against a Python CLI in the test fixtures (anc ships several). The
@@ -753,7 +771,7 @@ After every U-merge:
 End-state acceptance criteria:
 
 - `anc check ./agentnative-cli/target/release/anc --output json` reports 100% pass on the reframed audits.
-- `anc check /home/brett/dev/xurl-rs --output json` shows `p1-must-env-var`, `p2-must-json-errors`,
+- `anc check ~/dev/xurl-rs --output json` shows `p1-must-env-var`, `p2-must-json-errors`,
   `p6-must-global-flags`, `p7-naked-println`, `code-unwrap` all at `pass` without any xurl-rs change. (xurl-rs becomes
   the canonical "yes the framework works" test.)
 - No previously-passing audit regresses.

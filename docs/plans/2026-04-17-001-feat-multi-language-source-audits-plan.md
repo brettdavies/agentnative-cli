@@ -1,7 +1,7 @@
 ---
 title: "feat: Go, Ruby, and TypeScript source audits"
 type: feat
-status: active
+status: proposed
 date: 2026-04-17
 ---
 
@@ -55,8 +55,8 @@ requested a research spike first. The spike produces a written report that infor
 
 - Not implementing the full 7-principle audit set per language at launch — 3–4 starter audits each, with the remainder
   deferred to a follow-up iteration once the pipeline is proven (same approach that worked for Python in the v0.1 plan).
-- Not adding `--fix`/rewrite support for the new audits — the ast-grep architecture supports it, but it is still
-  deferred to v0.2 for every language.
+- Not adding `--fix`/rewrite support for the new audits. The ast-grep architecture supports it, but no language has
+  it.
 - Not extending behavioral audits — they are already language-agnostic and need nothing here.
 - Not adding JavaScript-specific source audits. If the spike recommends keeping `Language::Node` as a JS-only variant
   distinct from a new `Language::TypeScript`, JS source audits are deferred.
@@ -71,7 +71,7 @@ requested a research spike first. The spike produces a written report that infor
   a follow-up plan once starter coverage lands.
 - JavaScript-specific source audits (separate from TypeScript): deferred until the Node/TypeScript variant decision is
   implemented.
-- `--fix`/rewrite support: deferred to a dedicated v0.2 plan.
+- `--fix`/rewrite support: deferred to a dedicated plan.
 - Real-world validation across additional Go/Ruby/TS CLIs: deferred to a validation plan analogous to the v0.1 Python
   validation work.
 
@@ -722,9 +722,9 @@ table to reflect the new coverage.
   `## Changelog` section per the global PR convention — specifically: "Added Go source audits (4 starter audits)",
   "Added TypeScript source audits", "Added Ruby source audits", and (if split into multiple PRs) feature-flag-enable
   notes per grammar.
-- Release cadence: this work is a minor version bump (`v0.2.0`) consistent with the design-doc positioning that v0.2 is
-  "more languages + `--fix`"; coordinate with whoever is cutting the next release before Unit 6 merges so the release
-  notes land correctly. (The `--fix` half of v0.2 is a separate plan.)
+- Release cadence: this work is a minor version bump, the "more languages" half of the design doc's "more languages +
+  `--fix`" increment; coordinate with whoever is cutting the next release before Unit 6 merges so the release notes land
+  correctly. (The `--fix` half is a separate plan.)
 - Toolchain: no toolchain bump is expected. If the spike reveals that a grammar requires a newer Rust edition or
   compiler, escalate — the project's `rust-toolchain.toml` pinning policy (reviewed PR, ≥7-day stable quarantine)
   applies.
@@ -766,7 +766,9 @@ table to reflect the new coverage.
 
 ### Phase 1 — Spike
 
-- Unit 1 lands as a single doc PR. No code changes. Purpose: unblock Units 2–5 with validated assumptions.
+- Unit 1 lands as a single doc PR. No code changes. Purpose: unblock Units 2–5 with validated assumptions. Phase 1 is
+  complete: the spike report recommends proceeding to Unit 2. Phases 2 to 4 are a future option, with nothing in
+  flight.
 
 ### Phase 2 — Infrastructure
 

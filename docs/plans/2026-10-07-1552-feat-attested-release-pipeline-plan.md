@@ -2,7 +2,20 @@
 title: Attested Release Pipeline - Plan
 type: feat
 status: active
-prs: ["#154", "#155", "#156", "#157", "#174", "#175", "#176"]
+prs:
+  - "brettdavies/.github#80"
+  - "brettdavies/agent-skills#156"
+  - "brettdavies/agent-skills#157"
+  - "brettdavies/agent-skills#158"
+  - "#154"
+  - "#155"
+  - "#156"
+  - "#157"
+  - "brettdavies/homebrew-tap#151"
+  - "brettdavies/xurl-rs#309"
+  - "#174"
+  - "#175"
+  - "#176"
 date: 2026-10-07
 topic: attested-release-pipeline
 artifact_contract: ce-unified-plan/v1
@@ -28,6 +41,10 @@ execution: code
   formula to get past it.
 - **Who finishes:** The maintainer cuts and tags the proving release (U11). The agent prepares it and verifies the
   result.
+- **Delivery:** U1 through U10 are merged: brettdavies/.github #80 (U1), agent-skills #156, #158 and #157 (U2 to
+  U4), #154 to #157 in this repo (U5 to U8), homebrew-tap #151 (U9) and xurl-rs #309 (U10). #174 to #176 build the
+  release matrix once at the tag and carry the runbooks with it. U11 is open: v0.6.0 is the latest tag, and the live
+  `protect-main` ruleset lacks the three contexts `.github/rulesets/protect-main.json` adds.
 
 ---
 

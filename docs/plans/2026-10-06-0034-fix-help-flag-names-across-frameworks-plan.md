@@ -27,6 +27,9 @@ prs:
   - "#198"
   - "#199"
   - "#200"
+  - "#161"
+  - "#203"
+  - "#206"
   - "brettdavies/agentnative#59"
   - "brettdavies/agentnative-site#455"
 completed: 2026-10-26
@@ -236,6 +239,10 @@ Shipped alongside this plan rather than deferred:
 - **The probe environment, kubectl's grouped command headings, and `PENDING_FAILS`** (#161). `BinaryRunner` pins
   `TERM=dumb`, `COLUMNS=80` and `PAGER=cat` rather than inheriting them, headings such as `Basic Commands (Beginner):`
   read as command lists, and `tests/dogfood.rs`'s `PENDING_FAILS` matches the audit IDs it names.
+- **Command headings that name a tool's subcommands** (#203, #206). gh's capitalized headings (`CORE COMMANDS:`) and
+  their colon-ended entries, title-case and one-word headings at column 0 that end in "commands" or "subcommands", and
+  an underlined heading with column-0 entries (direnv) read as command lists, so a tool's `skill` subcommand is found
+  and its P8 rows are scored rather than read as n_a.
 
 ### Assumptions
 
@@ -1104,8 +1111,8 @@ None.
 | Choice              | Current                    | A               | B                                       |
 | ------------------- | -------------------------- | --------------- | --------------------------------------- |
 | R1 arrangement      | ten units, one rule per PR | keep as written | pause to look for a smaller arrangement |
-| R2 module layout    | pending                    | pending         | pending                                 |
-| R3 multibyte safety | pending                    | pending         | pending                                 |
+| R2 module layout    | approved A (D2)            | approved A (D2) | approved A (D2)                         |
+| R3 multibyte safety | approved A (D3)            | approved A (D3) | approved A (D3)                         |
 
 - **Question D1:**
 
@@ -1143,7 +1150,7 @@ Look for unit merges that cut corpus runs while keeping attribution, then return
 | ------------------- | --------------- | ------------------------------------------------------------ | ---------------------------------------------- |
 | R1 arrangement      | approved A (D1) | approved A (D1)                                              | approved A (D1)                                |
 | R2 module layout    | one `flags.rs`  | `flags/` split: model and query, normalize, classify, header | one `flags.rs`, split when it passes 200 lines |
-| R3 multibyte safety | pending         | pending                                                      | pending                                        |
+| R3 multibyte safety | approved A (D3) | approved A (D3)                                              | approved A (D3)                                |
 
 - **Question D2:**
 
@@ -1385,14 +1392,14 @@ DX plan is solid. Developers will have a good experience.
 ```text
 DX IMPLEMENTATION CHECKLIST
 ============================
-[ ] A flag row's evidence names a flag the author's --help prints, as printed
-[ ] Every deny row of a presence audit names its search scope (U10 step 5)
-[ ] A dash-rule near-miss says which declared word did not count and why (D7)
-[ ] README states how behavioral audits read --help, with real lines (D8)
-[ ] README points misread reports at the false-positive template with the --help output
-[ ] CONTRIBUTING names the harness command and links its README
-[ ] The harness refusal names the binary, both hashes and the rebuild command
-[ ] Each row-moving PR's Changelog names its rule with one example
+[x] A flag row's evidence names a flag the author's --help prints, as printed
+[x] Every deny row of a presence audit names its search scope (U10 step 5)
+[x] A dash-rule near-miss says which declared word did not count and why (D7)
+[x] README states how behavioral audits read --help, with real lines (D8)
+[x] README points misread reports at the false-positive template with the --help output
+[x] CONTRIBUTING names the harness command and links its README
+[x] The harness refusal names the binary, both hashes and the rebuild command
+[x] Each row-moving PR's Changelog names its rule with one example
 ```
 
 ### DX implementation tasks

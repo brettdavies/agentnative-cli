@@ -1,7 +1,8 @@
 ---
 title: "fix: PR #79 follow-up — close the three worst bypasses in p2-must-json-errors role-based validator"
 type: fix
-status: proposed
+status: superseded
+superseded_by: docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md
 priority: P1
 date: 2026-06-03
 origin: "Adversarial review of merged PR #79 (commit 34b94175) surfaced 9 findings, including a self-acknowledged
@@ -34,6 +35,13 @@ literal-keys, kept with full name-role coupling, or redesigned around contract-s
 verify shape consistency).
 
 PR reference: <https://github.com/brettdavies/agentnative-cli/pull/79> (merged 2026-06-03).
+
+**Status.** Superseded by the audit-philosophy plan
+(`docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md`), which carries the
+`p2-must-json-errors` redesign forward. PR #79's role-based validator ships, and #82 removes an `.unwrap()` from its
+`is_type_id_value`; this plan's three patches do not. A numeric value on a discriminant-named field still passes, the
+success guard is the original closed set of 8 strings, and no outer-success guard exists
+(`src/audits/behavioral/json_errors.rs`).
 
 ## Findings inventory
 
@@ -81,7 +89,7 @@ The adversarial review surfaced 9 findings against this PR.
 
 - **R1**: `is_discriminant` for `Value::Number(n)` returns `true` only when the field name is in a new constant
   `ERROR_DISCRIMINANT_NAMES: &[&str] = &["error_code", "exit_code", "code"]` AND `n.as_i64() != Some(0)` (zero is
-  success-coded for integer-style exit codes). Source: `src/audits/behavioral/json_errors.rs:148-173`.
+  success-coded for integer-style exit codes). Source: `src/audits/behavioral/json_errors.rs:136-178`.
 - Concrete test: `{"level":0,"kind":"info","message":"completed."}` produces `Warn` (not `Pass`).
 
 - **R2**: `SUCCESS_VALUE_STRINGS` expands to recognize a documented family of success synonyms. Either:
@@ -91,7 +99,7 @@ The adversarial review surfaced 9 findings against this PR.
   phrases) coupled with case-insensitive comparison.
 
   Either approach is acceptable; prefer (a) for simplicity unless the value set grows past 20. Source:
-  `src/audits/behavioral/json_errors.rs:61-70, 163-168`.
+  `src/audits/behavioral/json_errors.rs:63-72, 165-168`.
 - Concrete tests: `{"status":"OKAY",...}`, `{"outcome":"successful",...}`, `{"result":"success",...}` all produce
   `Warn`.
 
@@ -115,7 +123,7 @@ The adversarial review surfaced 9 findings against this PR.
   `{"status":"error","reason":"destination-not-empty","exit_code":1, "message":"..."}` continues to `Pass`. Pin that the
   R1/R2/R3 changes don't break the audit's primary dogfood.
 
-- **R5**: The existing 12 tests continue to pass (no regressions in either direction).
+- **R5**: The existing 13 tests continue to pass (no regressions in either direction).
 
 ## Implementation Units
 
@@ -138,15 +146,15 @@ inline: "outer envelope signals success; never descend into nested data to harve
 
 ### U4. Add the 6 new tests
 
-Place tests adjacent to the existing 12 in `src/audits/behavioral/json_errors.rs`. Each test constructs the JSON
+Place tests adjacent to the existing 13 in `src/audits/behavioral/json_errors.rs`. Each test constructs the JSON
 explicitly (not via macros) so the bypass shape is readable. Name tests descriptively (R4 names above).
 
 ### U5. Verify with dogfood and downstream consumers
 
 - `anc audit .` on the anc source: `p2-must-json-errors` Passes (regression pin via test, also exercised by dogfood).
-- `anc audit /home/brett/dev/xurl-rs`: `p2-must-json-errors` Passes (xurl-rs's envelope is the canonical shape; the
+- `anc audit ~/dev/xurl-rs`: `p2-must-json-errors` Passes (xurl-rs's envelope is the canonical shape; the
   patches don't tighten in ways that affect it).
-- `anc audit /home/brett/dev/bird` (or wherever the bird CLI lives): same check.
+- `anc audit ~/dev/bird` (or wherever the bird CLI lives): same check.
 
 These are verification steps, not in-scope code changes.
 
@@ -178,7 +186,7 @@ These are verification steps, not in-scope code changes.
 ## Acceptance
 
 - All 6 new tests pass.
-- The existing 12 tests pass unchanged.
+- The existing 13 tests pass unchanged.
 - `cargo test` total at the post-PR-#79 baseline (833+ passing, 2 ignored).
 - `cargo clippy --all-targets -- -Dwarnings` clean.
 - `cargo fmt --check` clean.

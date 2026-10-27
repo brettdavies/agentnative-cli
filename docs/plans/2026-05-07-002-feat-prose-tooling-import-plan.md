@@ -22,24 +22,26 @@ sync (PR A); independent release cadence, no governance window.
 - **Scope split.** U1, U2, and U3 ship in #52. U4 (CI gate), U5 (drift workflow + manifest test), and U6 (ast-grep Rust
   extraction) are separate follow-ups, so the pipeline is proven against a handful of markdown files before it points at
   the Rust sources U6 would extract from.
-- **Tag-pinned sync, not branch-pinned.** The Key Technical Decision below says "Sync source ref is `dev`, not a tag";
-  the script pins the latest `v*` tag instead, for three reasons: (a) `agentnative-site/scripts/sync-prose-tooling.sh`
-  ships tag-pinned — established ecosystem precedent; (b) `agentnative-cli/scripts/sync-spec.sh` is tag-pinned —
-  within-repo precedent; (c) supply-chain hygiene — fixed refs over moving branches.
+- **Sync tracks spec `main`, not `dev`.** The Key Technical Decision below says "Sync source ref is `dev`, not a tag";
+  the script resolves the HEAD of agentnative-spec's `main` instead, from the remote first and a local checkout as the
+  fallback. Prose tooling is shared infrastructure with a faster cadence than the principle contract, so consumers do
+  not pin it to a tag; tag-pinning belongs to the principle contract through `scripts/sync-spec.sh`.
 - **Manifest reality.** The plan calls for vendoring `styles/proselint/` and
   `styles/write-good/`. These directories exist in the spec's working tree but are gitignored upstream — vale's
   `Packages = ...` line in `.vale.ini` downloads them at runtime. Following the upstream pattern, this repo's
-  `.gitignore` excludes them and vale auto-fetches on first invocation. Final vendored manifest at `v0.4.0`: 11 files
-  (`BRAND.md`, `.vale.ini`, brand pack YAMLs + README, brand vocab accept/reject, orchestrator + test harness
-- generator).
+  `.gitignore` excludes them and vale auto-fetches on first invocation. The vendored manifest is `BRAND.md`,
+  `styles/brand/` (rule pack and README), `styles/config/` (brand vocab accept and reject lists),
+  `scripts/test-prose-check.mjs`, and `scripts/generate-pack-readme.mjs`. `.vale.ini` is authored here, because
+  upstream's config references the `spec` pack.
 
 - **Upstream parameterization not landed.** Risk #1 holds: upstream `prose-check.sh` does not support
   env-var-configurable file globs. Rather than an upstream PR first, the CLI owns `scripts/prose-check.sh` itself (the
   orchestrator is un-vendored in #52) instead of carrying a divergence block in a vendored copy. Upstream todo is
   `agentnative-spec/.context/compound-engineering/todos/010-pending-p0-prose-check-consumer-exclusion-config.md` (Phase
   1: `--exclude PATTERN` flag). When that ships, the orchestrator can be re-vendored.
-- **Coverage limit.** With U1, U2, and U3 shipped, prose-check covers markdown only: `README.md`, `RELEASES.md`,
-  `CLAUDE.md`, `scripts/SYNCS.md`, `PRODUCT.md` (see the filename note below). The
+- **Coverage limit.** With U1, U2, and U3 shipped, prose-check covers markdown only: every `*.md` outside the planning,
+  fixture, vendored-spec, and generated paths, such as `README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, and
+  `PRODUCT.md` (see the filename note below). The
   high-leverage prose — clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, audit `label()` returns —
   is **NOT** covered until U6 ships. U6 is the unit that makes the CLI itself speak brand voice; U1+U2+U3 only ensures
   contributor- and consumer-facing docs do.
@@ -215,8 +217,8 @@ because there's no sync mechanism.
 
 ### U1. Author `scripts/sync-prose-tooling.sh` (new sync script with `--check` mode)
 
-**Status:** Complete (#52). Tag-pinned, not branch-pinned (see the section above); vendors 11 files from
-`agentnative-spec v0.4.0`, and `--check` mode passes.
+**Status:** Complete (#52). The script tracks agentnative-spec's `main` HEAD and vendors the manifest listed in the
+section above; `--check` mode compares the vendored files against that ref.
 
 **Goal:** Land the cross-repo sync mechanism that vendors prose tooling from `agentnative-spec`. Remote-first, local
 fallback, `--check` drift mode. No content vendored yet — script only.

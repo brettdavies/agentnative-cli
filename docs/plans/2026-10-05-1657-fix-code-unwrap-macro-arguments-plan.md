@@ -1,8 +1,9 @@
 ---
 title: Code-Unwrap Inside Macro Arguments - Plan
 type: fix
-status: active
+status: merged
 prs: ["#149", "#150", "#151", "#152", "#159"]
+completed: 2026-10-08
 date: 2026-10-05
 topic: code-unwrap-macro-arguments
 artifact_contract: ce-unified-plan/v1
@@ -646,8 +647,8 @@ Comparison grid:
 | ----------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- |
 | R1 matcher reach                    | walker only, pattern path deferred as unmeasured     | walker plus the shared pattern path                                    | walker only, deferral kept with the measured reason recorded | walker only, deferral kept with the unmeasured claim as-is |
 | Files in scope                      | `unwrap.rs`, `tests/integration.rs`, new fixture dir | adds `src/source.rs` and every pattern-based Rust audit's expectations | unchanged                                                    | unchanged                                                  |
-| R2 file split (finding 2)           | pending                                              | pending                                                                | pending                                                      | pending                                                    |
-| R3 interior prefilter (Performance) | pending                                              | pending                                                                | pending                                                      | pending                                                    |
+| R2 file split (finding 2)           | approved at D2, own module                           | unchanged                                                              | unchanged                                                    | unchanged                                                  |
+| R3 interior prefilter (Performance) | approved at D3, gated on interior text               | unchanged                                                              | unchanged                                                    | unchanged                                                  |
 
 Question D1:
 
@@ -709,7 +710,7 @@ Comparison grid:
 | `unwrap.rs` production LOC after the change | 252 today                               | ~260                                                           | ~330                           | ~180 plus a new module                        |
 | Refactor trigger                            | met and unaddressed                     | addressed by the new concern landing outside the file          | unaddressed, wording corrected | addressed before this change starts           |
 | R1 matcher reach                            | approved at D1, walker only             | unchanged                                                      | unchanged                      | unchanged                                     |
-| R3 interior prefilter                       | pending                                 | pending                                                        | pending                        | pending                                       |
+| R3 interior prefilter                       | approved at D3, gated on interior text  | unchanged                                                      | unchanged                      | unchanged                                     |
 
 Question D2:
 
@@ -992,12 +993,12 @@ checkbox as you ship.
     only the line
   - Files: the new interior module, `src/audits/source/rust/unwrap.rs`
   - Verify: a multi-line macro reports the call's own line and column; a first-line case exercises the wrapper prefix
-- [ ] **T4 (P3, follow-up, human: ~2 days / CC: ~45min)** — `src/source.rs` — Close the same blind spot for the
+- **T4 (P3, out of scope, human: ~2 days / CC: ~45min)** — `src/source.rs` — Close the same blind spot for the
   pattern-based Rust audits
   - Surfaced by: Scope Challenge finding 1, deferred at D1 — `p4-try-parse` warns on a bare `s.parse().unwrap()` and
     passes on the identical call inside `println!`
   - Files: `src/source.rs` and every pattern-based Rust audit's expectations
-  - Verify: not this branch; a follow-up with its own plan
+  - Verify: not this plan; the work needs a plan of its own, and no plan in `docs/plans/` covers it
 
 ### Unresolved decisions
 

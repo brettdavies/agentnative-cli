@@ -16,23 +16,23 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** Someone who installs `anc` and audits a Rust crate with ordinary inline test modules gets a truthful
-  `code-unwrap` verdict. Today they get a failure listing every `.unwrap()` in their test code, and the fix for that has
-  been merged and unreleased since June.
-- **Means:** Cut the release that carries it, then add one cheap signal so the next merged-but-unreleased fix is visible
-  without a consumer having to discover it.
+  `code-unwrap` verdict. v0.6.0 carries the fix; a binary older than v0.6.0 fails the audit on every `.unwrap()` in
+  the crate's test code.
+- **Means:** The v0.6.0 release (#129) carries it. One cheap signal (U2) and one `RELEASES.md` passage (U3) remain, so
+  the next merged-but-unreleased fix is visible without a consumer having to discover it.
+- **Delivery:** U1 is delivered by #129. U2 and U3 have no PR.
 - **Execution profile:** `code-unwrap` stops reporting `#[cfg(test)]`-gated calls. For a consumer on a released binary
   this reads as a fix; for anyone who added `--include-tests` to work around it, that flag keeps its meaning.
 
 ## Problem Frame
 
 `code-unwrap` exempts `.unwrap()` inside `#[cfg(test)]`-gated items. That behavior landed in #77 (`817d6fa`) and was
-corrected for `cfg(not(test))` polarity in #80 (`7ba92a5`), both merged 2026-06-02 and 2026-09-03. `git tag --contains`
-is empty for both commits: `main` sits at `v0.5.0`, tagged 2026-06-01, and `dev` is 133 commits ahead of it spanning
-2026-06-01 to 2026-09-17.
+corrected for `cfg(not(test))` polarity in #80 (`7ba92a5`), both merged 2026-06-02 and 2026-09-03. v0.5.0, tagged
+2026-06-01, carries neither.
 
-So every installed `anc` predates the fix. Audited against `brettdavies/xurl-rs`, the released 0.5.0 binary reports 32
-`.unwrap()` hits and all 32 sit after a `#[cfg(test)]` marker: a 100% false-positive rate on the audit's headline Rust
-finding. Built from `dev` and run against the same tree, `code-unwrap` passes.
+So every `anc` through v0.5.0 predates the fix. Audited against `brettdavies/xurl-rs`, the released 0.5.0 binary
+reports 32 `.unwrap()` hits and all 32 sit after a `#[cfg(test)]` marker: a 100% false-positive rate on the audit's
+headline Rust finding. Built from `dev` and run against the same tree, `code-unwrap` passes.
 
 This already cost a downstream consumer real work. `xurl-rs` carried a task in its adoption-grade plan to report this as
 an upstream false positive; there was nothing to report, because `dev` already carries the fix. Its companion task, an
@@ -56,8 +56,7 @@ checked.
 **Out of scope**
 
 - Changing `code-unwrap` itself. The audit is correct on `dev`; this is a distribution problem.
-- The open `anc web` stack (#97, #99, #101-#106). Whether it lands before the cut is U1's one decision, not a scope
-  expansion.
+- The `anc web` stack (#97, #99, #101-#106), which v0.6.0 does not carry.
 - Re-auditing the other 131 commits on `dev`. They passed CI when they merged.
 - Anything in the consumer repo. Its false-positive task is closed; its `.anc.toml` task waits on the config plan.
 
@@ -67,42 +66,50 @@ checked.
 
 **Goal.** A published `anc` whose `code-unwrap` exempts `#[cfg(test)]`-gated calls.
 
+**Status.** Delivered by #129, the v0.6.0 release.
+
 **Approach.** Follow `RELEASES.md` § Releasing dev to main as written: overlay `dev`'s tree onto a `release/*` branch
 cut from `main`, PR to `main`, tag. Work the go/no-go list in `RELEASES-PREFLIGHT.md` and the post-tag steps in
 `RELEASES-POSTFLIGHT.md`; neither needs changing for this release.
 
-**The one decision.** Whether the open `anc web` stack lands on `dev` first. Releasing without it is the shorter path
-and unblocks the consumer sooner; waiting folds three months of backlog and a new command into one cut. Either is
-defensible, and the version bump follows from which is chosen. Settle it before cutting, not during.
+**The one decision.** Whether the `anc web` stack lands on `dev` first. v0.6.0 is cut without it.
 
 **Verification.**
 
-- `git tag --contains 817d6fa` and `git tag --contains 7ba92a5` each name the new tag.
+- The v0.6.0 tree carries both fixes: `git show v0.6.0:src/audits/source/rust/unwrap.rs` holds the `cfg(test)` gate
+  and its `not(...)` handling. `git tag --contains` cannot show this, because each release squash-merges `dev`'s tree
+  into `main`, so no `dev` commit is an ancestor of a release tag.
 - Install the published artifact and audit a crate whose only `.unwrap()` calls are inside `#[cfg(test)]`: `code-unwrap`
   passes. The minimal case is a crate whose `src/main.rs` is `fn main() {}` plus a `#[cfg(test)] mod tests` containing
-  one `.unwrap()`. That input fails on 0.5.0 and passes on `dev`, so it distinguishes the two binaries in one run.
+  one `.unwrap()`. That input fails on 0.5.0 and passes on 0.6.0, so it distinguishes the two binaries in one run. The
+  Homebrew `anc 0.6.0` passes `code-unwrap` on it.
 - `CHANGELOG.md` names the `code-unwrap` change under the new version, worded for someone who saw the false positives.
 
 ### U2. Make the gap visible next time
 
 **Goal.** A merged user-visible fix that has not shipped is noticeable without a consumer discovering it.
 
+**Status.** Not started. No scheduled job reports the gap, and `build.rs` emits only `ANC_VERSION`, with no commit.
+
 **Approach.** Pick one, smallest first. This is a signal, not a release gate, and it should not be able to block a PR.
 
-- A scheduled job that reports how far `dev` is ahead of `main`, in commits and in days. Today that reads 133 and 108.
-  Cheapest to write, and it puts the number somewhere it gets seen.
+- A scheduled job that reports how far `dev` is ahead of `main`, in commits and in days. Cheapest to write, and it puts
+  the number somewhere it gets seen.
 - `anc --version` and the JSON envelope reporting the commit the binary was built from. This one also answers the
   question a confused consumer actually has, which is whether their binary predates a fix.
 
 Either is sufficient. Do not build both, and do not build a release gate: the failure here was that nobody was looking,
 not that a check was missing from CI.
 
-**Verification.** Run it against today's `dev` and `main` before the cut, when the gap is 133 commits, and confirm it
-reports the gap. A signal that only works on a clean tree proves nothing.
+**Verification.** Run it against `dev` and `main` while `dev` carries merged, unreleased work, and confirm it reports
+the gap. A signal that only works on a clean tree proves nothing.
 
 ### U3. Say that merged is not shipped
 
 **Goal.** The next plan's acceptance criteria do not treat a merge as delivery.
+
+**Status.** Not started. `RELEASES.md` has no such passage. The pr77 polarity plan's frontmatter reads
+`status: released` with `released_in: v0.6.0`, which separates its merge from its release.
 
 **Approach.** One short passage in `RELEASES.md` stating that a fix reaches users at a tag, not at a merge, and that a
 plan claiming a consumer-visible outcome is not complete until a release carries it. Correct the completed-plan record
@@ -114,20 +121,20 @@ history.
 
 ## Sequencing
 
-U1 first; it is the only unit a user feels. U2 and U3 are independent of it and of each other, and either can follow.
+U1 is delivered. U2 and U3 are independent of each other, and either can go first.
 
 ## Definition of Done
 
-- A tag contains `817d6fa` and `7ba92a5`, and the published binary passes `code-unwrap` on the minimal `#[cfg(test)]`
-  crate above.
-- `CHANGELOG.md` names the change.
+- A release tag's tree carries the fixes from `817d6fa` and `7ba92a5`, and the published binary passes `code-unwrap` on
+  the minimal `#[cfg(test)]` crate above. v0.6.0 meets this.
+- `CHANGELOG.md` names the change. v0.6.0's section names #77.
 - One recurrence signal from U2 exists and was observed reporting a real gap.
 - `RELEASES.md` states that merged is not shipped.
 
 ## Sources
 
-- `src/audits/source/rust/unwrap.rs` — the audit and its walk; correct as of `dev`.
+- `src/audits/source/rust/unwrap.rs` — the audit and its walk.
 - `docs/plans/2026-06-03-004-fix-pr77-code-unwrap-cfg-not-test-polarity-plan.md` — the completed plan whose acceptance
   criterion never held for a released binary.
 - `RELEASES.md`, `RELEASES-PREFLIGHT.md`, `RELEASES-POSTFLIGHT.md` — the release flow this plan follows unchanged.
-- PRs #77 and #80 — the merged, unreleased fixes.
+- PRs #77 and #80 — the fixes, carried by #129, the v0.6.0 release.

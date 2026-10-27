@@ -1,6 +1,7 @@
 //! Helpers every stateless handler shares: token substitution, evidence
-//! rows, the miss ranking across candidates, and the same-origin
-//! recovery-link scan. A mirror of the site's `handlers/shared.ts`.
+//! rows, the statuses that ask for a retry, the miss ranking across
+//! candidates, and the same-origin recovery-link scan. A mirror of the
+//! site's `handlers/shared.ts`.
 
 use std::sync::LazyLock;
 
@@ -52,6 +53,30 @@ pub fn why(lines: &[&str]) -> Value {
 /// A missing surface: 404 or 410.
 pub fn is_missing_status(status: Option<u16>) -> bool {
     matches!(status, Some(404) | Some(410))
+}
+
+/// Statuses whose shape is "not now" rather than "not here": a target
+/// asking to be retried is reporting its own load, not answering what the
+/// request asked. Each carries its RFC 9110 reason phrase, which a row's
+/// evidence names.
+pub const RETRY_SHAPED_STATUSES: [(u16, &str); 2] =
+    [(408, "Request Timeout"), (429, "Too Many Requests")];
+
+/// `HTTP <status> <reason>` for a retry-shaped status.
+pub fn retry_shaped_answer(status: Option<u16>) -> Option<String> {
+    let status = status?;
+    RETRY_SHAPED_STATUSES
+        .iter()
+        .find(|(s, _)| *s == status)
+        .map(|(s, reason)| format!("HTTP {s} {reason}"))
+}
+
+/// The `why` of a row its own retry-shaped answer settles as `error`.
+/// Such an answer reports the target's load at that moment, whichever
+/// layer sent it, so neither its body nor its headers describe the surface
+/// the row asks about.
+pub fn retry_shaped_why(status: Option<u16>) -> Option<String> {
+    retry_shaped_answer(status).map(|answer| format!("the target answered {answer}; not scored"))
 }
 
 /// How a non-passing candidate missed.
@@ -212,6 +237,21 @@ mod tests {
             same_origin_recovery_link("[x](/llms.txt)", "nope").1,
             "unparseable audit origin"
         );
+    }
+
+    #[test]
+    fn retry_shaped_statuses_name_their_reason_phrase() {
+        assert_eq!(
+            retry_shaped_why(Some(408)).as_deref(),
+            Some("the target answered HTTP 408 Request Timeout; not scored")
+        );
+        assert_eq!(
+            retry_shaped_answer(Some(429)).as_deref(),
+            Some("HTTP 429 Too Many Requests")
+        );
+        for status in [None, Some(200), Some(404), Some(500), Some(503)] {
+            assert_eq!(retry_shaped_why(status), None, "{status:?}");
+        }
     }
 
     #[test]

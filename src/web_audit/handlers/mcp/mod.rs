@@ -25,7 +25,7 @@ use serde_json::{Map, Value, json};
 use self::negotiation::{framing_of, is_json_rpc_envelope, negotiation_for};
 use self::ops::{Era, Family, McpOp};
 use self::probes::{TYPED_REFUSAL_STATUSES, conformance_for};
-use super::shared::{item, why};
+use super::shared::{item, retry_shaped_why, why};
 use crate::web_audit::engine::mcp_wire::{
     json_rpc_error_code, legacy_initialize_body, legacy_probe_headers, legacy_tools_list_body,
     modern_probe_body, modern_probe_headers, parse_json_rpc,
@@ -64,8 +64,6 @@ const RATE_LIMITED_CODE: i64 = -32099;
 /// JSON-RPC's reserved generic server error, whose session-required
 /// meaning is one reading among many.
 const SESSION_REQUIRED_CODE: i64 = -32000;
-/// Statuses whose shape is "not now" rather than "not here".
-const RETRY_SHAPED_STATUSES: [u16; 2] = [408, 429];
 
 fn truthy(value: Option<&Value>) -> bool {
     match value {
@@ -133,13 +131,11 @@ fn era_lane_unavailable(op: McpOp, code: Option<i64>, ctx: &HandlerContext) -> b
 }
 
 /// Whether a status is compatible with reading an answer as an era signal
-/// at all: a 5xx and a retry-shaped status both describe the target's
-/// condition rather than its protocol surface.
+/// at all: a 5xx describes the target's condition rather than its protocol
+/// surface. A retry-shaped status says the same and never reaches here: it
+/// is settled first, as an operational error.
 fn era_readable_status(status: Option<u16>) -> bool {
-    match status {
-        None => true,
-        Some(s) => s < 500 && !RETRY_SHAPED_STATUSES.contains(&s),
-    }
+    status.is_none_or(|s| s < 500)
 }
 
 /// Whether a `server/discover` answer reports the modern lane's absence.
@@ -296,6 +292,15 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     if code == Some(RATE_LIMITED_CODE) {
         ev.insert("error_code".to_string(), json!(RATE_LIMITED_CODE));
         set_why(&mut ev, "rate limited by the target");
+        return outcome(ProbeStatus::Error, ev);
+    }
+
+    // Settled on the status alone, ahead of every arm that reads a body: a
+    // retry-shaped answer reports the target's load at that moment, so the
+    // body riding it (a JSON-RPC code included) describes the load rather
+    // than the surface or the era.
+    if let Some(busy) = retry_shaped_why(resp.status) {
+        set_why(&mut ev, &busy);
         return outcome(ProbeStatus::Error, ev);
     }
 

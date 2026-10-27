@@ -2264,16 +2264,6 @@ owner = "#402"
 
 [[divergence]]
 scenario = "cors-post-rate-limited-no-cors"
-element = "row:mcp-cors-actual"
-owner = "#402"
-
-[[divergence]]
-scenario = "cors-post-rate-limited-no-cors"
-element = "row:mcp-cors-preflight"
-owner = "#402"
-
-[[divergence]]
-scenario = "cors-post-rate-limited-no-cors"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -6109,43 +6099,8 @@ owner = "#399"
 
 [[divergence]]
 scenario = "mcp-discover-rate-limited"
-element = "row:mcp-modern-clientcaps"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:mcp-modern-header-mismatch"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:mcp-modern-resources-miss"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:mcp-modern-tools-list"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:mcp-modern-unknown-method"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:mcp-modern-version-reject"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
 element = "row:mcp-server-card"
 owner = "#418"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:mcp-server-discover"
-owner = "#399"
 
 [[divergence]]
 scenario = "mcp-discover-rate-limited"
@@ -6214,16 +6169,6 @@ owner = "#402"
 
 [[divergence]]
 scenario = "mcp-edges-rate-limited"
-element = "row:mcp-cors-preflight"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-edges-rate-limited"
-element = "row:mcp-get-fast-fail"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-edges-rate-limited"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -6235,6 +6180,11 @@ owner = "#402"
 [[divergence]]
 scenario = "mcp-edges-rate-limited"
 element = "score"
+owner = "#402"
+
+[[divergence]]
+scenario = "mcp-edges-rate-limited"
+element = "score_pct"
 owner = "#402"
 
 [[divergence]]
@@ -6289,93 +6239,8 @@ owner = "#399"
 
 [[divergence]]
 scenario = "mcp-http-rate-limited"
-element = "row:mcp-accept-json"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-accept-unsatisfiable"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-batch-reject"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-capabilities"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-cors-actual"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-cors-preflight"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-initialize"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-malformed-body"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-modern-clientcaps"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-modern-header-mismatch"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-modern-tools-list"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-modern-unknown-method"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-modern-version-reject"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
 element = "row:mcp-server-card"
 owner = "#418"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-server-discover"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-tools-list"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-unknown-method"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:mcp-unknown-tool"
-owner = "#399"
 
 [[divergence]]
 scenario = "mcp-http-rate-limited"
@@ -6546,16 +6411,6 @@ owner = "#458"
 scenario = "mcp-rate-limited"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-rate-limited"
-element = "row:mcp-capabilities"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-rate-limited"
-element = "row:mcp-initialize"
-owner = "#399"
 
 [[divergence]]
 scenario = "mcp-rate-limited"

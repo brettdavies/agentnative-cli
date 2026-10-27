@@ -11,12 +11,15 @@ use std::path::Path;
 use crate::argv::format_invocation;
 use crate::color::{paint, status_style};
 use crate::json_error::NextStep;
+use crate::web_audit::engine::discovery_documents::card_suffix_url;
 use crate::web_audit::engine::{ProgressSink, RunReport, Unported};
 use crate::web_audit::fetch::trust::CaCertError;
 use crate::web_audit::registry::{
-    CHECKS, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword, remediation_for,
+    CHECKS, MCP_DISCOVERY, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword, remediation_for,
 };
-use crate::web_audit::scorecard::{EngineResult, ResultRow, ScorecardStatus, WebScorecard};
+use crate::web_audit::scorecard::{
+    EngineResult, ResultRow, RowAdvisory, ScorecardStatus, WebScorecard,
+};
 
 /// Every applicable check passed.
 pub const EXIT_CLEAN: i32 = 0;
@@ -177,6 +180,25 @@ fn write_row(out: &mut String, row: &ResultRow, color: bool, with_fix: bool) {
     }
 }
 
+/// The note a passing row carries about how it passed, the site's
+/// `supersededNote`: a SEP-1649 card names where SEP-2127 puts the card,
+/// from the scorecard's endpoint when it recorded one.
+pub fn advisory_note(row: &ResultRow, endpoint: Option<&str>) -> Option<String> {
+    match row.advisory? {
+        RowAdvisory::Superseded => {
+            let suffix = MCP_DISCOVERY.card_suffix;
+            let card = endpoint.filter(|e| url::Url::parse(e).is_ok()).map_or_else(
+                || format!("<endpoint>{suffix}"),
+                |e| card_suffix_url(e, suffix),
+            );
+            Some(format!(
+                "Superseded shape (SEP-1649). SEP-2127 moves the card to {card}, listed in {}.",
+                MCP_DISCOVERY.ai_catalog
+            ))
+        }
+    }
+}
+
 /// The note that a score is not comparable with anc.dev, when any handler
 /// or rule the run needed is unported.
 pub fn non_comparable_note(unported: &[Unported]) -> Option<String> {
@@ -290,6 +312,18 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
         }
     }
     if !opts.quiet {
+        let endpoint = scorecard.mcp_endpoint.as_deref();
+        let advised: Vec<(&ResultRow, String)> = passed
+            .iter()
+            .filter_map(|row| advisory_note(row, endpoint).map(|note| (*row, note)))
+            .collect();
+        if !advised.is_empty() {
+            let _ = writeln!(out, "\nAdvisories ({}):", advised.len());
+            for (row, note) in &advised {
+                write_row(&mut out, row, opts.color, false);
+                let _ = writeln!(out, "         Note: {note}");
+            }
+        }
         if opts.verbose {
             let _ = writeln!(out, "\nPassed ({}):", passed.len());
             for row in &passed {
@@ -598,6 +632,32 @@ mod tests {
             hosts: Vec::new(),
             host: None,
         }
+    }
+
+    #[test]
+    fn a_superseded_card_names_where_sep_2127_puts_the_card() {
+        let plain = row(
+            "mcp-server-card",
+            WebCheckKeyword::Should,
+            ScorecardStatus::Pass,
+        );
+        assert_eq!(advisory_note(&plain, Some("https://x.test/mcp")), None);
+        let advised = ResultRow {
+            advisory: Some(RowAdvisory::Superseded),
+            ..plain
+        };
+        assert_eq!(
+            advisory_note(&advised, Some("https://x.test/mcp/?a=1")).as_deref(),
+            Some(
+                "Superseded shape (SEP-1649). SEP-2127 moves the card to https://x.test/mcp/server-card, listed in /.well-known/ai-catalog.json."
+            )
+        );
+        assert_eq!(
+            advisory_note(&advised, None).as_deref(),
+            Some(
+                "Superseded shape (SEP-1649). SEP-2127 moves the card to <endpoint>/server-card, listed in /.well-known/ai-catalog.json."
+            )
+        );
     }
 
     #[test]

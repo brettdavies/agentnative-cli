@@ -13,6 +13,7 @@ pub const HANDLER_KINDS: &[&str] = &[
     "content-without-js",
     "llms-txt-quality",
     "api-hygiene",
+    "server-card",
 ];
 /// Eval rules the Rust engine ports.
 pub const EVAL_RULES: &[&str] = &[

@@ -24,11 +24,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "alias-inline-copy-noncompliant"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "alias-inline-copy-noncompliant"
 element = "row:openapi"
 owner = "#393"
 
@@ -56,11 +51,6 @@ owner = "#458"
 scenario = "alias-non-permanent-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "alias-non-permanent-broken"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "alias-non-permanent-broken"
@@ -94,11 +84,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "alias-redirect-away-broken"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "alias-redirect-away-broken"
 element = "row:openapi"
 owner = "#393"
 
@@ -126,11 +111,6 @@ owner = "#458"
 scenario = "alias-redirect-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "alias-redirect-pass"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "alias-redirect-pass"
@@ -161,11 +141,6 @@ owner = "#458"
 scenario = "alias-unpublished-optional-absent"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "alias-unpublished-optional-absent"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "alias-unpublished-optional-absent"
@@ -834,11 +809,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-echo-unanswered"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "auth-echo-unanswered"
 element = "row:mcp-server-discover"
 owner = "#397"
 
@@ -1141,11 +1111,6 @@ owner = "#397"
 scenario = "auth-later-401"
 element = "row:mcp-resources-list"
 owner = "#397"
-
-[[divergence]]
-scenario = "auth-later-401"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "auth-later-401"
@@ -1556,11 +1521,6 @@ owner = "#397"
 scenario = "auth-open-endpoint"
 element = "coverage_summary"
 owner = "#397"
-
-[[divergence]]
-scenario = "auth-open-endpoint"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "auth-open-endpoint"
@@ -2191,11 +2151,6 @@ owner = "#458"
 scenario = "cors-full-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-full-pass"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-full-pass"
@@ -2226,11 +2181,6 @@ owner = "#458"
 scenario = "cors-post-only"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-post-only"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-post-only"
@@ -2261,11 +2211,6 @@ owner = "#402"
 scenario = "cors-post-rate-limited-no-cors"
 element = "coverage_summary"
 owner = "#402"
-
-[[divergence]]
-scenario = "cors-post-rate-limited-no-cors"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-post-rate-limited-no-cors"
@@ -2296,11 +2241,6 @@ owner = "#458"
 scenario = "cors-post-transport-failure-no-cors"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-post-transport-failure-no-cors"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-post-transport-failure-no-cors"
@@ -2331,11 +2271,6 @@ owner = "#458"
 scenario = "cors-posture-consistent"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-posture-consistent"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-posture-consistent"
@@ -2366,11 +2301,6 @@ owner = "#458"
 scenario = "cors-preflight-500-with-acao"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-500-with-acao"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-preflight-500-with-acao"
@@ -2401,11 +2331,6 @@ owner = "#458"
 scenario = "cors-preflight-only"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-only"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-preflight-only"
@@ -2436,11 +2361,6 @@ owner = "#458"
 scenario = "cors-preflight-transport-failure"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-transport-failure"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "cors-preflight-transport-failure"
@@ -2471,11 +2391,6 @@ owner = "#394"
 scenario = "discovery-card-generations-auth"
 element = "coverage_summary"
 owner = "#394"
-
-[[divergence]]
-scenario = "discovery-card-generations-auth"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "discovery-card-generations-auth"
@@ -2510,11 +2425,6 @@ owner = "#418"
 [[divergence]]
 scenario = "discovery-catalog-card"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-catalog-card"
-element = "row:mcp-server-card"
 owner = "#418"
 
 [[divergence]]
@@ -2554,11 +2464,6 @@ owner = "#395"
 
 [[divergence]]
 scenario = "discovery-catalog-declarations"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-catalog-declarations"
 element = "row:openapi"
 owner = "#394"
 
@@ -2585,11 +2490,6 @@ owner = "#418"
 [[divergence]]
 scenario = "discovery-catalog-inline-card"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-catalog-inline-card"
-element = "row:mcp-server-card"
 owner = "#418"
 
 [[divergence]]
@@ -2621,11 +2521,6 @@ owner = "#394"
 scenario = "discovery-legacy-card"
 element = "coverage_summary"
 owner = "#394"
-
-[[divergence]]
-scenario = "discovery-legacy-card"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "discovery-legacy-card"
@@ -2659,11 +2554,6 @@ owner = "#418"
 
 [[divergence]]
 scenario = "discovery-suffix-card"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-suffix-card"
 element = "row:openapi"
 owner = "#394"
 
@@ -2690,11 +2580,6 @@ owner = "#418"
 [[divergence]]
 scenario = "discovery-suffix-card-no-remotes"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-suffix-card-no-remotes"
-element = "row:mcp-server-card"
 owner = "#418"
 
 [[divergence]]
@@ -4924,11 +4809,6 @@ owner = "#462"
 
 [[divergence]]
 scenario = "http-get-fast-fail-html-broken"
-element = "row:mcp-server-card"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-html-broken"
 element = "row:openapi"
 owner = "#462"
 
@@ -4959,11 +4839,6 @@ owner = "#462"
 
 [[divergence]]
 scenario = "http-get-fast-fail-markdown-broken"
-element = "row:mcp-server-card"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-markdown-broken"
 element = "row:openapi"
 owner = "#462"
 
@@ -4990,11 +4865,6 @@ owner = "#462"
 [[divergence]]
 scenario = "http-get-fast-fail-sse-pass"
 element = "coverage_summary"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-sse-pass"
-element = "row:mcp-server-card"
 owner = "#462"
 
 [[divergence]]
@@ -5026,11 +4896,6 @@ owner = "#458"
 scenario = "http-get-fast-fail-timeout-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-get-fast-fail-timeout-broken"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "http-get-fast-fail-timeout-broken"
@@ -5969,11 +5834,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-capabilities-empty"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-capabilities-empty"
 element = "row:openapi"
 owner = "#393"
 
@@ -6001,11 +5861,6 @@ owner = "#458"
 scenario = "mcp-card-no-endpoint-field"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-card-no-endpoint-field"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-card-no-endpoint-field"
@@ -6044,11 +5899,6 @@ owner = "#395"
 
 [[divergence]]
 scenario = "mcp-card-off-origin"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-card-off-origin"
 element = "row:openapi"
 owner = "#393"
 
@@ -6079,11 +5929,6 @@ owner = "#399"
 
 [[divergence]]
 scenario = "mcp-discover-rate-limited"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
 element = "row:openapi"
 owner = "#399"
 
@@ -6111,11 +5956,6 @@ owner = "#458"
 scenario = "mcp-dual-stack"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-dual-stack"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-dual-stack"
@@ -6149,11 +5989,6 @@ owner = "#402"
 
 [[divergence]]
 scenario = "mcp-edges-rate-limited"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-edges-rate-limited"
 element = "row:openapi"
 owner = "#402"
 
@@ -6184,23 +6019,8 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-garbage-responses"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-garbage-responses"
 element = "row:openapi"
 owner = "#393"
-
-[[divergence]]
-scenario = "mcp-garbage-responses"
-element = "score"
-owner = "#458"
-
-[[divergence]]
-scenario = "mcp-garbage-responses"
-element = "score_pct"
-owner = "#458"
 
 [[divergence]]
 scenario = "mcp-garbage-responses"
@@ -6219,11 +6039,6 @@ owner = "#399"
 
 [[divergence]]
 scenario = "mcp-http-rate-limited"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
 element = "row:openapi"
 owner = "#399"
 
@@ -6251,11 +6066,6 @@ owner = "#458"
 scenario = "mcp-legacy-lane"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-legacy-lane"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-legacy-lane"
@@ -6286,11 +6096,6 @@ owner = "#458"
 scenario = "mcp-modern-lane"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-modern-lane"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-modern-lane"
@@ -6321,11 +6126,6 @@ owner = "#458"
 scenario = "mcp-negotiation-defects"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-negotiation-defects"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-negotiation-defects"
@@ -6356,11 +6156,6 @@ owner = "#458"
 scenario = "mcp-open-stream"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-open-stream"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-open-stream"
@@ -6391,11 +6186,6 @@ owner = "#458"
 scenario = "mcp-rate-limited"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-rate-limited"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-rate-limited"
@@ -6426,11 +6216,6 @@ owner = "#458"
 scenario = "mcp-resources-empty-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-resources-empty-broken"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-resources-empty-broken"
@@ -6461,11 +6246,6 @@ owner = "#458"
 scenario = "mcp-resources-unadvertised"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-resources-unadvertised"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-resources-unadvertised"
@@ -6495,11 +6275,6 @@ owner = "#418"
 [[divergence]]
 scenario = "mcp-server-card-html-200"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-html-200"
-element = "row:mcp-server-card"
 owner = "#418"
 
 [[divergence]]
@@ -6530,11 +6305,6 @@ owner = "#418"
 [[divergence]]
 scenario = "mcp-server-card-missing-field"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-missing-field"
-element = "row:mcp-server-card"
 owner = "#418"
 
 [[divergence]]
@@ -6565,11 +6335,6 @@ owner = "#418"
 [[divergence]]
 scenario = "mcp-server-card-unparseable"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-unparseable"
-element = "row:mcp-server-card"
 owner = "#418"
 
 [[divergence]]
@@ -6601,11 +6366,6 @@ owner = "#458"
 scenario = "mcp-sse-framing"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-sse-framing"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-sse-framing"
@@ -6636,11 +6396,6 @@ owner = "#458"
 scenario = "mcp-stateful-session"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-stateful-session"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-stateful-session"
@@ -6671,11 +6426,6 @@ owner = "#458"
 scenario = "mcp-typed-http-refusals"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-typed-http-refusals"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-typed-http-refusals"
@@ -6706,11 +6456,6 @@ owner = "#458"
 scenario = "mcp-wrong-error-codes"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-wrong-error-codes"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "mcp-wrong-error-codes"
@@ -6799,11 +6544,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "mcp-www-authenticate"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-www-authenticate"
 element = "row:mcp-tools-list"
 owner = "#397"
 
@@ -6864,11 +6604,6 @@ owner = "#393"
 
 [[divergence]]
 scenario = "run-all-pass"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "run-all-pass"
 element = "row:oauth-protected-resource"
 owner = "#393"
 
@@ -6934,11 +6669,6 @@ owner = "#393"
 
 [[divergence]]
 scenario = "run-body-over-cap"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "run-body-over-cap"
 element = "row:openapi"
 owner = "#393"
 
@@ -7026,11 +6756,6 @@ owner = "#393"
 scenario = "run-healthy"
 element = "row:json-schemas"
 owner = "#393"
-
-[[divergence]]
-scenario = "run-healthy"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "run-healthy"
@@ -7159,11 +6884,6 @@ owner = "#393"
 
 [[divergence]]
 scenario = "run-site-type-api"
-element = "row:mcp-server-card"
-owner = "#418"
-
-[[divergence]]
-scenario = "run-site-type-api"
 element = "row:oauth-protected-resource"
 owner = "#393"
 
@@ -7201,11 +6921,6 @@ owner = "#458"
 scenario = "run-site-type-content"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "run-site-type-content"
-element = "row:mcp-server-card"
-owner = "#418"
 
 [[divergence]]
 scenario = "run-site-type-content"

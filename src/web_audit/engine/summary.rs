@@ -6,6 +6,7 @@
 use serde_json::Value;
 
 use super::types::{ProbeOutcome, ProbeStatus};
+use crate::web_audit::handlers::server_card::server_card_evidence;
 use crate::web_audit::registry::{EvalBinding, HandlerBinding, WebCheck};
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -67,6 +68,10 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
     let first = outcome.evidence.first().unwrap_or(&empty);
     if outcome.status == ProbeStatus::Na {
         return joined_why(first, "; ").unwrap_or_else(|| "not applicable".to_string());
+    }
+
+    if check.handler == HandlerBinding::ServerCard {
+        return server_card_evidence(outcome);
     }
 
     if check.handler == HandlerBinding::Mcp {

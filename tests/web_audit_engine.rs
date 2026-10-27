@@ -245,15 +245,14 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     assert_eq!(report.scorecard.results.len(), 68);
     assert!(report.complete);
     // The stand-in set registers handler kinds only, so the eval rules that
-    // reach dispatch are unported here, as is server-card, which no port has
-    // landed for; the protected-resource rows settle n_a on their antecedent
-    // first.
+    // reach dispatch are unported here; the protected-resource rows settle
+    // n_a on their antecedent first.
     let mut unported: Vec<&str> = report.unported.iter().map(|u| u.kind).collect();
     unported.sort_unstable();
     unported.dedup();
     assert_eq!(
         unported,
-        ["api-description", "retained-document", "server-card"],
+        ["api-description", "retained-document"],
         "{:?}",
         report.unported
     );
@@ -263,14 +262,14 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         Some("https://example.com/mcp")
     );
     assert_eq!(
-        report.scorecard.summary.pass, 60,
+        report.scorecard.summary.pass, 61,
         "{:?}",
         report.scorecard.summary
     );
     assert_eq!(report.scorecard.summary.n_a, 5);
     assert_eq!(
-        report.scorecard.summary.skip, 3,
-        "the three unported eval rows"
+        report.scorecard.summary.skip, 2,
+        "the two unported eval rows"
     );
     assert_eq!(report.scorecard.score.relative, 100);
     let auth = row(&report, "oauth-protected-resource");

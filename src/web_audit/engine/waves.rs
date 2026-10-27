@@ -186,6 +186,7 @@ fn to_result(check: &'static WebCheck, outcome: ProbeOutcome) -> EngineResult {
         status: outcome.status.to_scorecard(),
         na_reason: outcome.na_reason,
         unprobed: outcome.unprobed,
+        advisory: outcome.advisory,
         evidence: summarize_evidence(check, &outcome),
         raw_evidence: outcome.evidence,
     }
@@ -197,6 +198,7 @@ fn na_result(check: &'static WebCheck, reason: NaReason, evidence: &str) -> Engi
         status: ScorecardStatus::NA,
         na_reason: Some(reason),
         unprobed: false,
+        advisory: None,
         evidence: evidence.to_string(),
         raw_evidence: vec![why_item(evidence)],
     }
@@ -213,6 +215,7 @@ fn error_result(check: &'static WebCheck, message: &str) -> EngineResult {
         status: ScorecardStatus::Error,
         na_reason: None,
         unprobed: false,
+        advisory: None,
         evidence: message.to_string(),
         raw_evidence: vec![item],
     }
@@ -224,6 +227,7 @@ fn skip_result(check: &'static WebCheck, why: &str, evidence: &str) -> EngineRes
         status: ScorecardStatus::Skip,
         na_reason: None,
         unprobed: false,
+        advisory: None,
         evidence: evidence.to_string(),
         raw_evidence: vec![why_item(why)],
     }
@@ -283,6 +287,7 @@ fn probe_one(
                 status: ScorecardStatus::NA,
                 na_reason: None,
                 unprobed: false,
+                advisory: None,
                 evidence: EXTERNAL_DNS_WITHHELD.to_string(),
                 raw_evidence: vec![why_item(EXTERNAL_DNS_WITHHELD)],
             },

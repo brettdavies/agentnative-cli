@@ -1,4 +1,7 @@
 pub mod audience;
+mod exit;
+
+pub use exit::{exit_code, exit_reason};
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
@@ -697,6 +700,9 @@ pub fn format_text(
         out.push_str(&hint);
     }
 
+    let code = exit_code(results);
+    let _ = writeln!(out, "\nexit {code}: {}", exit_reason(code, results));
+
     out
 }
 
@@ -1006,38 +1012,6 @@ fn build_coverage_summary(
     CoverageSummary { must, should, may }
 }
 
-/// Derive the process exit code from the full result set.
-///
-/// - `0` — every audit Pass or Skip.
-/// - `1` — at least one Warn.
-/// - `2` — at least one Fail or Error.
-///
-/// **`--audit-profile` affects the exit code by masking Fails to Skips.**
-/// An audit that would otherwise Fail but is suppressed by the applied
-/// profile contributes nothing to `has_fail_or_error` and cannot lift the
-/// code above `0`/`1`. This is intentional per plan R4: the caller is
-/// declaring "this category of audit doesn't apply to this tool", so
-/// scoring against that requirement would produce a misleading non-zero
-/// exit. The tradeoff is that callers passing the wrong profile can
-/// silently bless a broken tool — guarding against that lives upstream
-/// (site's regen script, CI policy), not here.
-pub fn exit_code(results: &[AuditResult]) -> i32 {
-    let has_fail_or_error = results
-        .iter()
-        .any(|r| matches!(r.status, AuditStatus::Fail(_) | AuditStatus::Error(_)));
-    let has_warn = results
-        .iter()
-        .any(|r| matches!(r.status, AuditStatus::Warn(_)));
-
-    if has_fail_or_error {
-        2
-    } else if has_warn {
-        1
-    } else {
-        0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1275,7 +1249,7 @@ mod tests {
             AuditStatus::Error("boom".into()),
             AuditGroup::P1,
         )];
-        assert_eq!(exit_code(&results), 2);
+        assert_eq!(exit_code(&results), 3);
     }
 
     #[test]

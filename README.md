@@ -768,17 +768,19 @@ mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should 
 
 ### Exit Codes
 
-One table for every verb. `anc audit`, `anc web`, and the site's own runner return the same four codes:
+One table for every verb: `anc audit` and `anc web` return the same four codes, and every text report closes by naming
+the code it returns and what earned it.
 
-| Code | Meaning                                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------------------- |
-| 0    | Clean: every applicable check passed                                                                    |
-| 1    | Warnings only: a SHOULD or MAY check missed                                                             |
-| 2    | Failures present: a MUST check missed, or a usage error                                                 |
-| 3    | Could not check: the target was unreachable, a probe errored or was cut short, or every check was `n_a` |
+| Code | Meaning                                                                                                           |
+| ---- | ----------------------------------------------------------------------------------------------------------------- |
+| 0    | Clean: every applicable check passed                                                                              |
+| 1    | Warnings only: a SHOULD or MAY check missed                                                                       |
+| 2    | Failures present: a MUST check missed, or a usage error                                                           |
+| 3    | Could not check: the target was unreachable, an audit or probe errored or was cut short, or every check was `n_a` |
 
-Every `anc web` run closes by naming the code it returns and what earned it. On the web path, a status becomes a warning
-or a failure through the tier the check carries: a MUST miss fails, a SHOULD or MAY miss warns.
+On the web path, a status becomes a warning or a failure through the tier the check carries: a MUST miss fails, a
+SHOULD or MAY miss warns. On `anc audit`, each audit reports `fail` or `warn` itself; an audit that errored returns 3
+even when another failed, and a suppressed (`--audit-profile`) or not-applicable audit counts toward no code.
 
 Exit 2 also covers usage errors (bare `anc`, an unknown flag, mutually exclusive flags, an unknown `--check` id). Agents
 distinguishing a usage error from a check failure should parse `stderr`, where a usage error prints `Usage:` in text

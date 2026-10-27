@@ -3,24 +3,10 @@
 use crate::web_audit::registry::WebCheckKeyword;
 use crate::web_audit::scorecard::{ResultRow, ScorecardStatus};
 
-/// Every applicable check passed.
-pub const EXIT_CLEAN: i32 = 0;
-/// Warnings only: a SHOULD or MAY miss.
-pub const EXIT_WARNINGS: i32 = 1;
-/// Failures present: a MUST miss.
-pub const EXIT_FAILURES: i32 = 2;
-/// Could not check: an unreachable target, a probe that errored or was cut
-/// short, or every selected check inapplicable.
-pub const EXIT_COULD_NOT_CHECK: i32 = 3;
-
-/// The exit table, as `--help` and the README print it.
-pub const EXIT_TABLE: &str = "\
-Exit codes (shared with `anc audit`):
-  0  clean: every applicable check passed
-  1  warnings only: a SHOULD or MAY check missed
-  2  failures present: a MUST check missed, or a usage error
-  3  could not check: the target was unreachable, a probe errored or was cut
-     short by the deadline, or every selected check was inapplicable";
+pub(super) use crate::exit_codes::plural;
+pub use crate::exit_codes::{
+    EXIT_CLEAN, EXIT_COULD_NOT_CHECK, EXIT_FAILURES, EXIT_TABLE, EXIT_WARNINGS,
+};
 
 /// A row that probed a surface and found it wanting.
 pub(super) fn is_miss(row: &ResultRow) -> bool {
@@ -92,14 +78,6 @@ pub fn exit_reason(code: i32, rows: &[ResultRow]) -> String {
                 )
             }
         }
-    }
-}
-
-pub(super) fn plural(n: usize, one: &str, many: &str) -> String {
-    if n == 1 {
-        one.to_string()
-    } else {
-        many.to_string()
     }
 }
 

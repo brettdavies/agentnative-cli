@@ -30,6 +30,8 @@ pub mod color;
 #[doc(hidden)]
 pub mod error;
 #[doc(hidden)]
+pub mod exit_codes;
+#[doc(hidden)]
 pub mod json_error;
 #[doc(hidden)]
 pub mod output;

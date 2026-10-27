@@ -283,6 +283,18 @@ fn sleep_ms(ms: u64) {
     thread::sleep(Duration::from_millis(ms));
 }
 
+/// Block until `reached` holds, checking every millisecond. A case that
+/// needs another thread to have got somewhere waits on that state rather
+/// than on the clock, so a loaded machine slows it down instead of
+/// reordering it.
+fn wait_for(what: &str, reached: impl Fn() -> bool) {
+    let cap = Instant::now() + Duration::from_secs(5);
+    while !reached() {
+        assert!(Instant::now() < cap, "waited 5 s for {what}");
+        sleep_ms(1);
+    }
+}
+
 #[test]
 fn an_identical_request_reads_the_answer_already_received_as_a_copy_of_its_own() {
     let (transport, shared) = mock(MockResponse::ok(200, &[("x-a", "1")], b"User-agent: *"));
@@ -321,6 +333,7 @@ fn the_memo_counts_the_hops_it_sent_and_answered_from_the_record_and_the_body_by
             over_body_cap: 0,
             over_total_cap: 0,
             reads_open: 0,
+            waiting: 0,
         }
     );
 }
@@ -440,6 +453,9 @@ fn a_timeout_answers_only_a_caller_whose_deadline_is_no_longer() {
     let memo = RequestMemo::new();
     let timed_out = fetch(&shared, Some(&memo), URL_A, ms(40));
     let shorter = fetch(&shared, Some(&memo), URL_A, ms(20));
+    wait_for("the first request to reach the target", || {
+        !target.received().is_empty()
+    });
     assert_eq!(
         (
             timed_out.error.as_deref(),
@@ -449,6 +465,10 @@ fn a_timeout_answers_only_a_caller_whose_deadline_is_no_longer() {
         (Some(DEADLINE), Some(DEADLINE), 1)
     );
     fetch(&shared, Some(&memo), URL_A, ms(60));
+    wait_for(
+        "the longer caller's own request to reach the target",
+        || target.received().len() >= 2,
+    );
     assert_eq!(target.received().len(), 2);
 }
 
@@ -461,6 +481,10 @@ fn an_answer_that_took_longer_than_the_next_caller_allows_is_asked_for_again() {
     let memo = RequestMemo::new();
     fetch(&shared, Some(&memo), URL_A, ms(1_000));
     fetch(&shared, Some(&memo), URL_A, ms(20));
+    wait_for(
+        "the hurried caller's own request to reach the target",
+        || target.received().len() >= 2,
+    );
     assert_eq!(target.received().len(), 2);
 }
 
@@ -521,14 +545,14 @@ fn a_status_only_probe_answers_at_the_headers_while_the_memo_reads_a_stalling_bo
     let (target, shared, _, _release) = stalls_after_headers(200, &[]);
     let memo = RequestMemo::new();
     let started = Instant::now();
-    let status_only = fetch(&shared, Some(&memo), URL_A, status_only(80));
+    let status_only = fetch(&shared, Some(&memo), URL_A, status_only(1_000));
     let status_ms = started.elapsed();
-    let reader = fetch(&shared, Some(&memo), URL_A, ms(80));
+    let reader = fetch(&shared, Some(&memo), URL_A, ms(1_000));
     assert_eq!(
         (
             status_only.status,
             status_only.error.as_deref(),
-            status_ms < Duration::from_millis(40)
+            status_ms < Duration::from_millis(500)
         ),
         (Some(200), None, true)
     );
@@ -542,17 +566,19 @@ fn a_status_only_probe_answers_at_the_headers_while_the_memo_reads_a_stalling_bo
 fn the_memos_body_read_stops_at_the_status_only_callers_deadline_when_nobody_waits_on_it() {
     let (_, shared, dropped, release) = stalls_after_headers(200, &[]);
     let memo = RequestMemo::new();
-    fetch(&shared, Some(&memo), URL_A, status_only(40));
+    let started = Instant::now();
+    fetch(&shared, Some(&memo), URL_A, status_only(500));
     assert_eq!(
         (dropped.load(Ordering::SeqCst), memo.stats().reads_open),
         (false, 1)
     );
-    sleep_ms(80);
+    thread::sleep((started + Duration::from_millis(600)).saturating_duration_since(Instant::now()));
     let stats = memo.stats();
     assert_eq!((stats.reads_open, stats.retained_bytes), (0, 0));
     drop(release);
-    sleep_ms(20);
-    assert!(dropped.load(Ordering::SeqCst));
+    wait_for("the abandoned read to drop the body", || {
+        dropped.load(Ordering::SeqCst)
+    });
     assert_eq!(memo.stats().retained_bytes, 0);
 }
 
@@ -562,6 +588,9 @@ fn a_body_reader_that_joins_the_memos_body_read_late_in_its_budget_still_reads_t
     let memo = RequestMemo::new();
     thread::scope(|s| {
         let status_only = s.spawn(|| fetch(&shared, Some(&memo), URL_A, status_only(1_000)));
+        wait_for("the status-only request to reach the target", || {
+            target.received().len() == 1
+        });
         sleep_ms(200);
         let reader = fetch(&shared, Some(&memo), URL_A, ms(350));
         status_only.join().unwrap();
@@ -578,10 +607,10 @@ fn a_body_reader_that_joins_the_memos_body_read_late_in_its_budget_still_reads_t
 
 #[test]
 fn a_body_reader_with_a_later_deadline_pushes_the_memos_body_read_back_to_it() {
-    let (target, shared) = body_after(Duration::from_millis(150), "BODY");
+    let (target, shared) = body_after(Duration::from_millis(800), "BODY");
     let memo = RequestMemo::new();
-    fetch(&shared, Some(&memo), URL_A, status_only(80));
-    let reader = fetch(&shared, Some(&memo), URL_A, ms(400));
+    fetch(&shared, Some(&memo), URL_A, status_only(400));
+    let reader = fetch(&shared, Some(&memo), URL_A, ms(2_000));
     assert_eq!(
         (
             reader.body.as_str(),
@@ -603,23 +632,26 @@ fn a_status_only_caller_does_not_wait_for_a_concurrent_body_readers_stalled_body
                 Some(&memo),
                 URL_A,
                 Opts {
-                    timeout_ms: Some(300),
+                    timeout_ms: Some(1_000),
                     max_body_bytes: Some(65_536),
                     ..Opts::default()
                 },
             )
         });
-        sleep_ms(10);
+        wait_for("the body reader's request to reach the target", || {
+            target.received().len() == 1
+        });
         let started = Instant::now();
-        let status_only = fetch(&shared, Some(&memo), URL_A, status_only(300));
+        let status_only = fetch(&shared, Some(&memo), URL_A, status_only(1_000));
         let status_ms = started.elapsed();
         assert_eq!(
             (
                 status_only.status,
                 status_only.headers.get("ratelimit-limit"),
-                status_ms < Duration::from_millis(100)
+                status_ms < Duration::from_millis(500),
+                reader.is_finished()
             ),
-            (Some(404), Some("100"), true)
+            (Some(404), Some("100"), true, false)
         );
         let reader = reader.join().unwrap();
         assert_eq!(
@@ -634,12 +666,12 @@ fn a_body_read_that_fails_after_the_headers_still_answers_a_status_only_caller()
     let (target, shared, _, _release) = stalls_after_headers(404, &[("ratelimit-limit", "100")]);
     let memo = RequestMemo::new();
     let body_reader = || Opts {
-        timeout_ms: Some(60),
+        timeout_ms: Some(500),
         max_body_bytes: Some(65_536),
         ..Opts::default()
     };
     let reader = fetch(&shared, Some(&memo), URL_A, body_reader());
-    let status_only = fetch(&shared, Some(&memo), URL_A, status_only(60));
+    let status_only = fetch(&shared, Some(&memo), URL_A, status_only(500));
     let same_reader = fetch(&shared, Some(&memo), URL_A, body_reader());
     assert_eq!(
         (reader.status, reader.error.as_deref()),
@@ -676,26 +708,30 @@ fn closing_the_memo_stops_a_body_read_it_runs_on_its_own_and_lets_go_of_every_an
     memo.close();
     assert_eq!((memo.stats().reads_open, memo.len()), (0, 0));
     drop(release);
-    sleep_ms(20);
-    assert!(dropped.load(Ordering::SeqCst));
+    wait_for("the abandoned read to drop the body", || {
+        dropped.load(Ordering::SeqCst)
+    });
 }
 
 #[test]
 fn closing_the_memo_aborts_a_request_still_waiting_on_the_target() {
     let (target, shared, _release) = hang();
     let memo = RequestMemo::new();
-    let started = Instant::now();
-    let answer = thread::scope(|s| {
+    let (answer, after_close) = thread::scope(|s| {
         let pending = s.spawn(|| fetch(&shared, Some(&memo), URL_A, ms(5_000)));
-        sleep_ms(10);
+        wait_for("the request to reach the target", || {
+            target.received().len() == 1
+        });
+        let closed = Instant::now();
         memo.close();
-        pending.join().unwrap()
+        let answer = pending.join().unwrap();
+        (answer, closed.elapsed())
     });
     assert_eq!(
         (
             answer.status,
             target.received().len(),
-            started.elapsed() < Duration::from_secs(1)
+            after_close < Duration::from_secs(2)
         ),
         (None, 1, true)
     );
@@ -720,24 +756,30 @@ fn a_caller_still_waiting_on_the_memo_when_it_closes_cannot_keep_its_body_read_r
     fetch(&shared, Some(&memo), URL_A, status_only(5_000));
     thread::scope(|s| {
         let waiting = s.spawn(|| fetch(&shared, Some(&memo), URL_A, ms(5_000)));
-        sleep_ms(10);
+        wait_for("the body reader to wait on the memo's read", || {
+            memo.stats().waiting == 1
+        });
         memo.close();
         waiting.join().unwrap();
     });
     assert_eq!(memo.stats().reads_open, 0);
     drop(release);
-    sleep_ms(20);
-    assert!(dropped.load(Ordering::SeqCst));
+    wait_for("the abandoned read to drop the body", || {
+        dropped.load(Ordering::SeqCst)
+    });
 }
 
 #[test]
 fn a_caller_still_waiting_on_the_memo_when_it_closes_keeps_nothing_in_it() {
-    let (_, shared, _release) = hang();
+    let (target, shared, _release) = hang();
     let memo = RequestMemo::new();
     fetch(&shared, Some(&memo), URL_A, ms(50));
     thread::scope(|s| {
         let waiting = s.spawn(|| fetch(&shared, Some(&memo), URL_A, ms(5_000)));
-        sleep_ms(10);
+        wait_for(
+            "the longer caller's own request to reach the target",
+            || target.received().len() == 2 && memo.stats().waiting == 1,
+        );
         memo.close();
         waiting.join().unwrap();
     });
@@ -747,17 +789,23 @@ fn a_caller_still_waiting_on_the_memo_when_it_closes_keeps_nothing_in_it() {
 #[test]
 fn a_caller_waiting_on_an_identical_request_in_flight_gives_up_at_its_own_deadline() {
     let (target, shared) = target(|_| {
-        sleep_ms(300);
+        sleep_ms(1_000);
         Ok(text(200, &[], "late"))
     });
     let memo = RequestMemo::new();
     let started = Instant::now();
     let (slow, hurried) = thread::scope(|s| {
-        let slow = s.spawn(|| fetch(&shared, Some(&memo), URL_A, ms(2_000)));
-        sleep_ms(5);
+        let slow = s.spawn(|| fetch(&shared, Some(&memo), URL_A, ms(3_000)));
+        wait_for("the slow caller's request to reach the target", || {
+            target.received().len() == 1
+        });
         let hurried_started = Instant::now();
         let hurried = fetch(&shared, Some(&memo), URL_A, ms(50));
-        assert!(hurried_started.elapsed() < Duration::from_millis(250));
+        assert!(hurried_started.elapsed() < Duration::from_millis(500));
+        assert!(
+            !slow.is_finished(),
+            "the hurried caller waited for the answer"
+        );
         (slow.join().unwrap(), hurried)
     });
     assert_eq!(
@@ -768,7 +816,7 @@ fn a_caller_waiting_on_an_identical_request_in_flight_gives_up_at_its_own_deadli
         ),
         ("late", Some(DEADLINE), 1)
     );
-    assert!(started.elapsed() >= Duration::from_millis(300));
+    assert!(started.elapsed() >= Duration::from_millis(1_000));
 }
 
 #[test]

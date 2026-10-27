@@ -7,14 +7,31 @@ use std::sync::atomic::Ordering;
 use std::sync::{Condvar, MutexGuard};
 use std::time::Instant;
 
-use super::Shared;
 use super::stages::{Entry, Stages};
+use super::{Shared, lock};
 use crate::web_audit::fetch::hop::{self, HopContext, HopRecord};
 
 #[derive(Clone, Copy)]
 enum Stage {
     Headers,
     Full,
+}
+
+/// One caller counted in `MemoStats::waiting` for as long as it waits.
+/// Held under the entry's lock, so it takes the memo's lock second.
+struct Waiting<'a>(&'a Shared);
+
+impl<'a> Waiting<'a> {
+    fn count(shared: &'a Shared) -> Self {
+        lock(&shared.state).stats.waiting += 1;
+        Waiting(shared)
+    }
+}
+
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        lock(&self.0.state).stats.waiting -= 1;
+    }
 }
 
 /// How a joining caller fared.
@@ -43,6 +60,7 @@ impl Entry {
         let mut stages = self.stages();
         self.expire_due_locked(&mut stages, shared, Instant::now());
         let waited = pick(&stages, stage).is_none();
+        let _waiting = waited.then(|| Waiting::count(shared));
         loop {
             if let Some(record) = pick(&stages, stage) {
                 return Some((record.clone(), waited));
@@ -59,6 +77,7 @@ impl Entry {
     /// The sender's own answer, waited for no longer than its deadline.
     pub(super) fn wait_sender(&self, shared: &Shared, ctx: &HopContext) -> HopRecord {
         let mut stages = self.stages();
+        let mut waiting: Option<Waiting<'_>> = None;
         loop {
             self.expire_due_locked(&mut stages, shared, Instant::now());
             if let Some(record) = &stages.for_sender {
@@ -67,6 +86,7 @@ impl Entry {
             if Instant::now() >= ctx.deadline {
                 return hop::timed_out_for(ctx);
             }
+            waiting.get_or_insert_with(|| Waiting::count(shared));
             let until = ctx.deadline.min(self.due(&stages));
             stages = wait_until(&self.changed, stages, until);
         }

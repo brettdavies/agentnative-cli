@@ -79,6 +79,9 @@ pub struct MemoStats {
     pub over_total_cap: usize,
     /// Body reads the memo runs on its own that have not ended.
     pub reads_open: usize,
+    /// Callers waiting right now on a request in flight or a body read,
+    /// senders included.
+    pub waiting: usize,
 }
 
 /// One audit's answers, keyed by the request that produced them. Clones

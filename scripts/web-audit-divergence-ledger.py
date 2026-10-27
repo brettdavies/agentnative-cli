@@ -34,8 +34,9 @@ HEADER = """\
 #
 # The conformance and handlers suites assert the observed divergences EQUAL
 # this ledger: an unledgered divergence fails, and an entry that starts
-# matching fails until it is removed, so each port PR deletes the entries
-# it closes. Regenerate after a re-pin, never by hand:
+# matching fails until it is removed, so each port PR drops the entries it
+# closes. Regenerate after a re-pin or a port rather than editing by hand;
+# --since is the pin before the re-pin that opened these entries:
 #   WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
 """
 

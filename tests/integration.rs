@@ -663,11 +663,13 @@ fn masked_source_scorecard(
 
 #[test]
 fn test_source_scorecard_is_the_same_at_every_worker_count() {
-    let path = fixture_path("multi-file-evidence");
-    let at = |jobs: &str| masked_source_scorecard(&path, &[("AGENTNATIVE_JOBS", jobs)], &[]);
-    let one = at("1");
-    assert_eq!(at("2"), one, "2 workers");
-    assert_eq!(at("8"), one, "8 workers");
+    for fixture in ["multi-file-evidence", "multi-file-python"] {
+        let path = fixture_path(fixture);
+        let at = |jobs: &str| masked_source_scorecard(&path, &[("AGENTNATIVE_JOBS", jobs)], &[]);
+        let one = at("1");
+        assert_eq!(at("2"), one, "{fixture}: 2 workers");
+        assert_eq!(at("8"), one, "{fixture}: 8 workers");
+    }
 }
 
 #[test]

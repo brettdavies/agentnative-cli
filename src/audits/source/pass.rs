@@ -468,13 +468,12 @@ mod tests {
     }
 
     #[test]
-    fn prepare_scans_each_file_once_for_runnable_audits_only() {
+    fn prepare_scans_each_file_once_per_audit() {
         let project = project_with("runnable", &[("a.rs", "// a"), ("b.rs", "// b")]);
-        let runnable = Counted::new("x", Language::Rust);
-        let excluded = Counted::new("y", Language::Rust);
-        prepare(&project, Language::Rust, &[&runnable], None);
-        assert_eq!(runnable.scans(), 2);
-        assert_eq!(excluded.scans(), 0);
+        let first = Counted::new("x", Language::Rust);
+        let second = Counted::new("y", Language::Rust);
+        prepare(&project, Language::Rust, &[&first, &second], None);
+        assert_eq!((first.scans(), second.scans()), (2, 2));
     }
 
     #[test]

@@ -6,6 +6,9 @@
 
 #![allow(dead_code)]
 
+#[cfg(feature = "web")]
+pub mod corpus;
+
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};

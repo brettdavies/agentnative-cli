@@ -19,6 +19,8 @@ pub mod engine;
 #[cfg(feature = "web")]
 pub mod fetch;
 #[cfg(feature = "web")]
+pub mod handlers;
+#[cfg(feature = "web")]
 pub mod headers;
 #[cfg(feature = "web")]
 pub mod locality;

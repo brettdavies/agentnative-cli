@@ -29,6 +29,8 @@ pub mod headers;
 pub mod locality;
 #[cfg(feature = "web")]
 pub mod mock;
+#[cfg(feature = "web")]
+mod pattern;
 pub mod registry;
 #[cfg(feature = "web")]
 pub mod render;

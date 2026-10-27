@@ -8,9 +8,9 @@ use regex::Regex;
 use url::Url;
 
 use crate::web_audit::handlers::shared::markdown_hrefs;
+use crate::web_audit::pattern::fixed;
 
-static SITEMAP_LOC_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)<loc>\s*([^<\s]+)\s*</loc>").unwrap());
+static SITEMAP_LOC_RE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)<loc>\s*([^<\s]+)\s*</loc>"));
 
 /// The top-level section directory of a same-origin href with at least two
 /// path segments, or `None`. An off-origin href is dropped, never fetched.

@@ -28,22 +28,21 @@ use crate::web_audit::engine::discovery_documents::same_origin;
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::body::OPENAPI_MAX_BODY_BYTES;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
 static DESCRIPTION_TYPE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)json|yaml|vnd\.oai\.openapi").unwrap());
-static HTML_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)html").unwrap());
-static MARKUP_START_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"^[{JS_SPACE}]*<")).unwrap());
+    LazyLock::new(|| fixed(r"(?i)json|yaml|vnd\.oai\.openapi"));
+static HTML_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)html"));
+static MARKUP_START_RE: LazyLock<Regex> = LazyLock::new(|| fixed(&format!(r"^[{JS_SPACE}]*<")));
 static JSON_OBJECT_START_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"^[{JS_SPACE}]*\{{")).unwrap());
+    LazyLock::new(|| fixed(&format!(r"^[{JS_SPACE}]*\{{")));
 // Service descriptions that are not OpenAPI, named in their opening bytes.
 static OTHER_FORMAT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(
+    fixed(&format!(
         r#"(?m)^[{JS_SPACE}]*asyncapi[{JS_SPACE}]*:|"asyncapi"[{JS_SPACE}]*:|"__schema"[{JS_SPACE}]*:|"_postman_id"[{JS_SPACE}]*:|^#%RAML"#
     ))
-    .unwrap()
 });
 
 fn read_in_part_why() -> String {

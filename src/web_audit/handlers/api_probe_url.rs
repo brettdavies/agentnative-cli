@@ -15,13 +15,13 @@ use url::Url;
 
 use crate::web_audit::engine::api_targets::ApiHostTarget;
 use crate::web_audit::engine::discovery_documents::is_templated_url;
+use crate::web_audit::pattern::fixed;
 
 /// The path probed when no OpenAPI operation can be derived.
 pub const API_HYGIENE_FALLBACK_PATH: &str = "/anc-web-audit-no-such-api";
 
-static PATH_PARAM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{[^}]+\}").unwrap());
-static CLIENT_ERROR_CODE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(4\d\d|4XX)$").unwrap());
+static PATH_PARAM: LazyLock<Regex> = LazyLock::new(|| fixed(r"\{[^}]+\}"));
+static CLIENT_ERROR_CODE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)^(4\d\d|4XX)$"));
 
 /// The derived GET and where it came from.
 #[derive(Clone, Debug, PartialEq, Eq)]

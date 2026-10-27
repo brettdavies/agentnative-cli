@@ -15,6 +15,7 @@ use super::shared::{
 };
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::FetchInit;
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 
 /// The `with` block of the `auth-md` check.
@@ -29,11 +30,12 @@ pub struct AuthMdWith {
     pub timeout: Option<f64>,
 }
 
-static MARKDOWNISH_CT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)markdown|text/plain").unwrap());
-static HTML_CT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)text/html").unwrap());
+static MARKDOWNISH_CT: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)markdown|text/plain"));
+static HTML_CT: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)text/html"));
 static LEADING_HEADING: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[\t\n\x0B\x0C\r \u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]*#").unwrap()
+    fixed(
+        r"^[\t\n\x0B\x0C\r \u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]*#",
+    )
 });
 
 /// Probe the candidate paths for a non-empty markdown or plain-text document.

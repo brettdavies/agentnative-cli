@@ -22,6 +22,7 @@ use super::shared::{
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus, why_item};
 use crate::web_audit::fetch::body::STATUS_ONLY_BODY_BYTES;
 use crate::web_audit::fetch::{FetchInit, FetchOptions};
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -43,16 +44,14 @@ pub struct LlmsTxtQualityWith {
 }
 
 static H1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"(?mR)^#[{JS_SPACE}]+[^{JS_SPACE}]")).unwrap());
+    LazyLock::new(|| fixed(&format!(r"(?mR)^#[{JS_SPACE}]+[^{JS_SPACE}]")));
 static SUMMARY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"(?mR)^>[{JS_SPACE}]+[^{JS_SPACE}]")).unwrap());
-static LINKS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"\]\([^){JS_SPACE}]+\)")).unwrap());
+    LazyLock::new(|| fixed(&format!(r"(?mR)^>[{JS_SPACE}]+[^{JS_SPACE}]")));
+static LINKS: LazyLock<Regex> = LazyLock::new(|| fixed(&format!(r"\]\([^){JS_SPACE}]+\)")));
 static WHEN_TO_USE_HEADING: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(
+    fixed(&format!(
         r"(?imR)^#{{1,3}}[{JS_SPACE}]+[^\n\r\u{{2028}}\u{{2029}}]*(when[{JS_SPACE}]+to[{JS_SPACE}]+use|programmatic access|when to (?:connect|call) (?:the )?mcp)"
     ))
-    .unwrap()
 });
 
 fn format_why(body: &str) -> (bool, Vec<&'static str>) {

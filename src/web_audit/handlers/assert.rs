@@ -11,6 +11,7 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::web_audit::fetch::ProbeResponse;
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::{CHECKS, WebCheck};
 
 /// A header-regex expectation.
@@ -86,8 +87,7 @@ pub fn compiled(check: &WebCheck, field: &str) -> Option<&'static Regex> {
         .and_then(|p| COMPILED.get(&(check.id, p.field)))
 }
 
-static EVENT_STREAM: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)text/event-stream").unwrap());
+static EVENT_STREAM: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)text/event-stream"));
 
 fn status_text(status: Option<u16>) -> String {
     match status {

@@ -449,6 +449,16 @@ declared URL, and never reaches a host of another class than the target's. The s
 records how each declared URL was treated. `--no-follow` audits the target alone: rows that depend on a declared host
 then report `n_a` (`follow-disabled`).
 
+An MCP endpoint that answers a token-less request with 401 gets one more read: its RFC 9728 protected-resource metadata,
+on the endpoint's own host and over https, at most once per audit. The read goes to the URL the 401's
+`resource_metadata` names when that URL is https on the endpoint's host, otherwise to the well-known locations. For an
+endpoint below the root, one more read of a path no resource lives at rules out a gateway that answers metadata for any
+path. A listed authorization server is never requested. When that metadata names the endpoint, the endpoint is present
+and requires sign-in: rows that need a signed-in session report `n_a` (`auth-required`), and three sign-in rows score
+the challenge, the listed authorization servers, and whether a `tools/list` without a token is refused. The scorecard's
+`vantage` records where the audit ran (`network`: `public`, or `local` for a target on the machine's own network) and
+that it presented no credential (`credentialed: false`).
+
 The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
 for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
 in. Redirects are followed but never off the target's own class: a hop from a local target to a public host, or to a

@@ -36,18 +36,25 @@ pub fn not_found() -> RawResponse {
 /// A site that publishes llms.txt and robots.txt and serves HTML at the
 /// root: every MUST applicable to it passes, and a handful of SHOULDs miss.
 pub fn fixture_site() -> Server {
-    super::spawn(|req: &RawRequest| {
-        let path = req.target.split('?').next().unwrap_or("/");
-        match path {
-            "/" => ok("text/html; charset=utf-8", &html_body()),
-            "/llms.txt" => ok(
-                "text/plain; charset=utf-8",
-                "# Fixture\n\n> A fixture site for the audit.\n\n## When to use\n\n- [Home](/)\n",
-            ),
-            "/robots.txt" => ok("text/plain", "User-agent: *\nAllow: /\n"),
-            _ => not_found(),
-        }
-    })
+    super::spawn(fixture_page)
+}
+
+/// [`fixture_site`] over HTTPS, presenting a leaf the test CA signed.
+pub fn fixture_site_https() -> Server {
+    super::spawn_https(fixture_page)
+}
+
+fn fixture_page(req: &RawRequest) -> RawResponse {
+    let path = req.target.split('?').next().unwrap_or("/");
+    match path {
+        "/" => ok("text/html; charset=utf-8", &html_body()),
+        "/llms.txt" => ok(
+            "text/plain; charset=utf-8",
+            "# Fixture\n\n> A fixture site for the audit.\n\n## When to use\n\n- [Home](/)\n",
+        ),
+        "/robots.txt" => ok("text/plain", "User-agent: *\nAllow: /\n"),
+        _ => not_found(),
+    }
 }
 
 /// A site whose root is a MUST-bearing API surface that answers wrongly,

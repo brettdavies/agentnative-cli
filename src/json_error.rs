@@ -110,6 +110,10 @@ pub enum NextAction {
     FixTarget,
     /// Pick a real check id: `command` lists every id this build scores.
     ListChecks,
+    /// Rerun trusting the server's CA: `template` holds the same `anc web`
+    /// target with `--ca-cert <FILE>`, the file being the CA's PEM
+    /// certificate.
+    AddCaCert,
 }
 
 impl NextStep {
@@ -150,6 +154,15 @@ impl NextStep {
 
     pub fn list_checks(command: String) -> Self {
         Self::web(NextAction::ListChecks, command)
+    }
+
+    pub fn add_ca_cert(template: String) -> Self {
+        Self {
+            action: NextAction::AddCaCert,
+            command: None,
+            template: Some(template),
+            docs: Some(WEB_AUDIT_DOCS),
+        }
     }
 
     fn web(action: NextAction, command: String) -> Self {
@@ -380,6 +393,7 @@ mod tests {
             NextStep::retry("anc web localhost:8787 --verbose".into()),
             NextStep::fix_target("anc web --help".into()),
             NextStep::list_checks("anc emit web-checks".into()),
+            NextStep::add_ca_cert("anc web localhost:8443 --ca-cert <FILE>".into()),
         ];
         for step in steps {
             assert!(
@@ -418,6 +432,7 @@ mod tests {
         assert_eq!(action(NextStep::retry("x".into())), "retry");
         assert_eq!(action(NextStep::fix_target("x".into())), "fix-target");
         assert_eq!(action(NextStep::list_checks("x".into())), "list-checks");
+        assert_eq!(action(NextStep::add_ca_cert("x".into())), "add-ca-cert");
     }
 
     #[test]

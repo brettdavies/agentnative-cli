@@ -36,6 +36,8 @@ use agentnative::web_audit::emit as web_emit;
 #[cfg(feature = "web")]
 use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, run_web_audit};
 #[cfg(feature = "web")]
+use agentnative::web_audit::fetch::{proxy, trust};
+#[cfg(feature = "web")]
 use agentnative::web_audit::handlers::default_handlers;
 #[cfg(feature = "web")]
 use agentnative::web_audit::locality::SystemResolver;
@@ -46,7 +48,10 @@ use agentnative::web_audit::scorecard::to_wire_json;
 #[cfg(feature = "web")]
 use agentnative::web_audit::target as web_target;
 #[cfg(feature = "web")]
-use agentnative::web_audit::{render, transport::UreqTransport};
+use agentnative::web_audit::{
+    render,
+    transport::{ROOT_REJECTION_PREFIX, UreqTransport},
+};
 use agentnative::{anc_toml, argv, audits, color, json_error, output, skill_install};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
@@ -177,6 +182,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             site_type,
             check,
             external_dns,
+            ca_cert,
             output,
         }) => {
             return run_web(WebRun {
@@ -184,6 +190,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 site_type,
                 check,
                 external_dns,
+                ca_cert,
                 output: if json_alias {
                     OutputFormat::Json
                 } else {
@@ -1072,6 +1079,7 @@ struct WebRun {
     site_type: Option<SiteType>,
     check: Option<String>,
     external_dns: bool,
+    ca_cert: Vec<std::path::PathBuf>,
     output: OutputFormat,
     quiet: bool,
     verbose: bool,
@@ -1119,6 +1127,22 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         return Ok(emit_web_failure(&render::unknown_check_failure(id), json));
     }
 
+    // Every `--ca-cert` file is read and checked as a trust root before any
+    // connection, so a typo'd path or a key file passed by mistake costs
+    // nothing and names the file.
+    let mut ca_certs = Vec::new();
+    for path in &run.ca_cert {
+        match trust::load_ca_file(path) {
+            Ok(certs) => ca_certs.extend(certs),
+            Err(reason) => {
+                return Ok(emit_web_failure(
+                    &render::ca_cert_failure(path, &reason),
+                    json,
+                ));
+            }
+        }
+    }
+
     let scheme_less = !run.target.contains("://");
     let normalized = match web_target::normalize_target(&run.target) {
         Ok(url) => url,
@@ -1132,7 +1156,11 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     let defaulted_https = scheme_less && normalized.starts_with("https://");
 
     let fetch = FetchHandle::new(
-        Arc::new(UreqTransport::from_env(AUDIT_USER_AGENT)),
+        Arc::new(UreqTransport::with_trust(
+            AUDIT_USER_AGENT,
+            proxy::proxy_from_env(),
+            trust::TrustConfig::new(ca_certs),
+        )),
         Arc::new(SystemResolver),
         AUDIT_USER_AGENT,
     );
@@ -1152,11 +1180,19 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     }
 
     let report = match run_web_audit(input) {
-        RunOutcome::Unreachable { .. } => {
-            return Ok(emit_web_failure(
-                &render::unreachable_failure(&run.target, &normalized, defaulted_https),
-                json,
-            ));
+        RunOutcome::Unreachable { root_error, .. } => {
+            // A chain no root vouches for is its own dead end: the server
+            // answered the handshake, and only trusting its CA moves the run.
+            let failure = match root_error
+                .as_deref()
+                .filter(|e| e.starts_with(ROOT_REJECTION_PREFIX))
+            {
+                Some(evidence) => {
+                    render::untrusted_certificate_failure(&run.target, &normalized, evidence)
+                }
+                None => render::unreachable_failure(&run.target, &normalized, defaulted_https),
+            };
+            return Ok(emit_web_failure(&failure, json));
         }
         RunOutcome::Complete(report) => report,
     };

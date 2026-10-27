@@ -254,6 +254,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
   anc web anc.dev --output json                # the scorecard on stdout, nothing else
   anc web anc.dev --check llms-txt             # gate a script on one check
   anc web anc.dev --site-type api              # score only the checks an API answers for
+  anc web intranet.test --ca-cert ca.pem       # also trust a private CA's root
   anc emit web-checks                          # every check id, offline
   anc emit web-remediation                     # the whole fix catalog, offline
 
@@ -291,6 +292,13 @@ Exit codes (shared with `anc audit`):
         /// party.
         #[arg(long)]
         external_dns: bool,
+
+        /// Also trust the root certificates in this PEM file, for any
+        /// target. Repeat for several files. A local or private target
+        /// already trusts the OS trust store; a public target trusts the
+        /// bundled Mozilla roots. Chain and hostname checks always run.
+        #[arg(long = "ca-cert", value_name = "FILE", value_hint = ValueHint::FilePath)]
+        ca_cert: Vec<std::path::PathBuf>,
 
         /// Output format
         #[arg(long, default_value = "text")]

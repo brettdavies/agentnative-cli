@@ -28,6 +28,7 @@ use std::time::Duration;
 use url::Url;
 
 use super::proxy;
+use super::trust::TrustClass;
 use crate::web_audit::locality::{Locality, Resolver, classify_host};
 use crate::web_audit::transport::{Request, Response, Transport};
 
@@ -136,6 +137,7 @@ impl std::fmt::Debug for ChainRequest<'_> {
 /// Run the chain from a validated target to its final response.
 pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<Response, String> {
     let via_proxy = proxy::routes_via_proxy(target.class);
+    let trust = TrustClass::for_locality(target.class);
     let mut current = target.url;
     for hop in 0..=chain.max_redirects {
         let request = Request {
@@ -145,6 +147,7 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<Response, S
             body: chain.body.map(<[u8]>::to_vec),
             timeout: chain.timeout,
             via_proxy,
+            trust,
         };
         let response = chain.transport.send(&request).map_err(|e| e.to_string())?;
         if chain.follow_redirects

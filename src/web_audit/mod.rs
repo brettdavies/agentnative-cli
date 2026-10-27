@@ -8,7 +8,8 @@
     feature = "web",
     doc = "",
     doc = "Probes flow through one blocking, single-hop [`transport::Transport`]",
-    doc = "(ureq over rustls with bundled roots), a guarded fetch layer in [`fetch`]",
+    doc = "(ureq over rustls, trusting the set [`fetch::trust`] picks per locality class),",
+    doc = "a guarded fetch layer in [`fetch`]",
     doc = "that follows redirects itself so every hop is checked, and the",
     doc = "[`locality`] classifier that decides which hosts count as local, public,",
     doc = "or cloud-metadata before any connection is made."
@@ -35,5 +36,7 @@ pub mod score;
 pub mod scorecard;
 #[cfg(feature = "web")]
 pub mod target;
+#[cfg(feature = "web")]
+mod tls;
 #[cfg(feature = "web")]
 pub mod transport;

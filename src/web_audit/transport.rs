@@ -6,18 +6,24 @@
 //! where the conformance corpus records exchanges, which is why the
 //! production [`UreqTransport`] and the mock in [`super::mock`] share it.
 //!
-//! [`UreqTransport`] is ureq over rustls with the aws-lc-rs provider and the
-//! bundled Mozilla roots, so a run needs no system trust store. It holds two
-//! agents: one that never touches a proxy, and one carrying the configured
-//! proxy, chosen per request by the caller's [`Request::via_proxy`] flag.
+//! [`UreqTransport`] is ureq over rustls with the aws-lc-rs provider. A
+//! public request verifies against the bundled Mozilla roots plus any
+//! `--ca-cert` roots, so it needs no system trust store; a local request
+//! also trusts the OS store ([`super::fetch::trust`]). It holds three
+//! agents: a public one that never touches a proxy, a public one carrying
+//! the configured proxy, chosen by [`Request::via_proxy`], and a local one,
+//! chosen by [`Request::trust`] and built the first time a local request
+//! needs it, so a public run never reads the OS store.
 
 use std::fmt;
 use std::io::Read;
-use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use super::fetch::proxy;
+use super::fetch::trust::{TrustClass, TrustConfig};
 use super::headers::Headers;
+use super::tls;
 
 /// One HTTP request for exactly one hop.
 #[derive(Clone, Debug)]
@@ -36,6 +42,9 @@ pub struct Request {
     /// sets this for public targets only; local targets always connect
     /// directly.
     pub via_proxy: bool,
+    /// The trust set the handshake verifies against, from the hop's
+    /// locality class.
+    pub trust: TrustClass,
 }
 
 /// A response head plus its unread body.
@@ -67,13 +76,20 @@ pub trait Transport {
 /// out from every other failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TlsFailure {
-    /// The server's chain leads to no root in the bundled Mozilla set. A
-    /// private CA and a self-signed certificate both land here, and so does
-    /// a public root issued after this release's bundle.
-    pub bundled_root_rejection: bool,
+    /// The server's chain leads to no root in the trust set. A private CA
+    /// absent from the set and a self-signed certificate both land here,
+    /// and so does a public root issued after this release's bundle.
+    pub root_rejection: bool,
+    /// The trust set the chain was checked against, when the transport
+    /// knows it.
+    pub trust_set: Option<&'static str>,
     /// The TLS library's own account of the failure.
     pub detail: String,
 }
+
+/// How a root rejection's evidence begins, the one string a caller can
+/// recognize the class by once the error is text.
+pub const ROOT_REJECTION_PREFIX: &str = "TlsError: chain rejected by ";
 
 /// A request that produced no response.
 #[derive(Debug)]
@@ -95,13 +111,12 @@ impl fmt::Display for TransportError {
         match self {
             TransportError::Timeout => f.write_str("TimeoutError: deadline exceeded"),
             TransportError::ConnectTimeout => f.write_str("TimeoutError: connect timed out"),
-            TransportError::Tls(tls) if tls.bundled_root_rejection => {
-                write!(
-                    f,
-                    "TlsError: chain rejected by bundled roots ({})",
-                    tls.detail
-                )
-            }
+            TransportError::Tls(tls) if tls.root_rejection => write!(
+                f,
+                "{ROOT_REJECTION_PREFIX}{} ({})",
+                tls.trust_set.unwrap_or("the trust set"),
+                tls.detail
+            ),
             TransportError::Tls(tls) => write!(f, "TlsError: {}", tls.detail),
             TransportError::Network(detail) => write!(f, "NetworkError: {detail}"),
             TransportError::Verbatim(message) => f.write_str(message),
@@ -120,7 +135,8 @@ impl From<ureq::Error> for TransportError {
             ureq::Error::Timeout(_) => TransportError::Timeout,
             ureq::Error::Rustls(tls) => TransportError::Tls(classify_rustls(&tls)),
             ureq::Error::Tls(detail) => TransportError::Tls(TlsFailure {
-                bundled_root_rejection: false,
+                root_rejection: false,
+                trust_set: None,
                 detail: detail.to_string(),
             }),
             // rustls reports a failed handshake through the stream as an I/O
@@ -138,32 +154,51 @@ impl From<ureq::Error> for TransportError {
 }
 
 fn classify_rustls(err: &rustls::Error) -> TlsFailure {
-    let bundled_root_rejection = matches!(
+    let root_rejection = matches!(
         err,
         rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer)
     );
     TlsFailure {
-        bundled_root_rejection,
+        root_rejection,
+        trust_set: None,
         detail: err.to_string(),
     }
 }
 
-/// The production transport: blocking ureq over rustls with bundled roots.
+impl TransportError {
+    /// Name the trust set a TLS failure was checked against.
+    fn checked_against(self, trust_set: &'static str) -> Self {
+        match self {
+            TransportError::Tls(tls) => TransportError::Tls(TlsFailure {
+                trust_set: Some(trust_set),
+                ..tls
+            }),
+            other => other,
+        }
+    }
+}
+
+/// The production transport: blocking ureq over rustls, one agent per
+/// trust class and proxy route.
 pub struct UreqTransport {
+    user_agent: String,
+    trust: TrustConfig,
     direct: ureq::Agent,
     proxied: Option<ureq::Agent>,
+    local: OnceLock<ureq::Agent>,
 }
 
 impl fmt::Debug for UreqTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UreqTransport")
             .field("proxied", &self.proxied.is_some())
+            .field("trust", &self.trust)
             .finish_non_exhaustive()
     }
 }
 
 impl UreqTransport {
-    /// A transport that never uses a proxy.
+    /// A transport that never uses a proxy and trusts the default set.
     pub fn new(user_agent: &str) -> Self {
         Self::with_proxy(user_agent, None)
     }
@@ -176,33 +211,46 @@ impl UreqTransport {
 
     /// A transport with an explicit proxy for requests flagged `via_proxy`.
     pub fn with_proxy(user_agent: &str, proxy: Option<ureq::Proxy>) -> Self {
+        Self::with_trust(user_agent, proxy, TrustConfig::default())
+    }
+
+    /// A transport with an explicit proxy and trust configuration.
+    pub fn with_trust(user_agent: &str, proxy: Option<ureq::Proxy>, trust: TrustConfig) -> Self {
+        let public = tls::client_config(&trust, TrustClass::Public);
         UreqTransport {
-            direct: agent(user_agent, None),
-            proxied: proxy.map(|p| agent(user_agent, Some(p))),
+            user_agent: user_agent.to_string(),
+            direct: agent(user_agent, None, public.clone()),
+            proxied: proxy.map(|p| agent(user_agent, Some(p), public)),
+            local: OnceLock::new(),
+            trust,
         }
+    }
+
+    fn local_agent(&self) -> &ureq::Agent {
+        self.local.get_or_init(|| {
+            let local = tls::client_config(&self.trust, TrustClass::Local);
+            agent(&self.user_agent, None, local)
+        })
     }
 }
 
 // Redirects stay off so a 3xx returns as a response and the fetch layer
 // decides whether the next hop may be contacted. Status codes are never
-// errors: a 404 is evidence. The direct agent passes `None` explicitly,
+// errors: a 404 is evidence. The direct agents pass `None` explicitly,
 // because ureq's default config reads the proxy environment on its own.
-// The crypto provider is named on the agent rather than installed as the
-// process default, so the choice is local to this transport.
-fn agent(user_agent: &str, proxy: Option<ureq::Proxy>) -> ureq::Agent {
-    let tls = ureq::tls::TlsConfig::builder()
-        .root_certs(ureq::tls::RootCerts::WebPki)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
-        .build();
-    ureq::Agent::config_builder()
+fn agent(
+    user_agent: &str,
+    proxy: Option<ureq::Proxy>,
+    tls_config: std::sync::Arc<rustls::ClientConfig>,
+) -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
         .user_agent(user_agent)
         .http_status_as_error(false)
         .max_redirects(0)
         .max_redirects_will_error(false)
         .proxy(proxy)
-        .tls_config(tls)
-        .build()
-        .new_agent()
+        .build();
+    tls::agent(config, tls_config)
 }
 
 /// Attempts a single probe may cost, counting the first.
@@ -240,10 +288,12 @@ impl Transport for UreqTransport {
 
 impl UreqTransport {
     fn send_once(&self, request: &Request) -> Result<Response, TransportError> {
-        let agent = match (&self.proxied, request.via_proxy) {
-            (Some(proxied), true) => proxied,
-            _ => &self.direct,
+        let agent = match (request.trust, &self.proxied, request.via_proxy) {
+            (TrustClass::Local, _, _) => self.local_agent(),
+            (TrustClass::Public, Some(proxied), true) => proxied,
+            (TrustClass::Public, _, _) => &self.direct,
         };
+        let trust_set = self.trust.label(request.trust);
         let method = ureq::http::Method::from_bytes(request.method.as_bytes())
             .map_err(|e| TransportError::Network(format!("method {:?}: {e}", request.method)))?;
         let mut builder = ureq::http::Request::builder()
@@ -255,7 +305,8 @@ impl UreqTransport {
         let response = match &request.body {
             Some(body) => run(agent, builder.body(body.clone()), request.timeout),
             None => run(agent, builder.body(()), request.timeout),
-        }?;
+        }
+        .map_err(|e| e.checked_against(trust_set))?;
         Ok(Response::from_ureq(response))
     }
 }
@@ -311,12 +362,12 @@ mod tests {
     }
 
     #[test]
-    fn unknown_issuer_is_the_bundled_root_class_and_other_tls_errors_are_not() {
+    fn unknown_issuer_is_the_root_rejection_class_and_other_tls_errors_are_not() {
         let unknown = ureq::Error::Rustls(rustls::Error::InvalidCertificate(
             rustls::CertificateError::UnknownIssuer,
         ));
         match TransportError::from(unknown) {
-            TransportError::Tls(tls) => assert!(tls.bundled_root_rejection),
+            TransportError::Tls(tls) => assert!(tls.root_rejection),
             other => panic!("{other:?}"),
         }
         let expired = ureq::Error::Rustls(rustls::Error::InvalidCertificate(
@@ -324,7 +375,7 @@ mod tests {
         ));
         match TransportError::from(expired) {
             TransportError::Tls(tls) => {
-                assert!(!tls.bundled_root_rejection);
+                assert!(!tls.root_rejection);
                 assert!(tls.detail.contains("xpired"), "{}", tls.detail);
             }
             other => panic!("{other:?}"),
@@ -339,7 +390,7 @@ mod tests {
         let io = std::io::Error::new(std::io::ErrorKind::InvalidData, inner);
         let err = TransportError::from(ureq::Error::Io(io));
         assert!(
-            err.to_string().contains("chain rejected by bundled roots"),
+            err.to_string().contains("chain rejected by the trust set"),
             "{err}"
         );
     }

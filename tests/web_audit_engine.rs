@@ -456,7 +456,9 @@ fn silence_and_edge_errors_are_unreachable_but_any_real_status_audits() {
         MockResponse::error("connection refused"),
     ));
     match run_web_audit(input(silent, stand_in_handlers())) {
-        RunOutcome::Unreachable { reason, discovery } => {
+        RunOutcome::Unreachable {
+            reason, discovery, ..
+        } => {
             assert!(reason.starts_with("https://example.com/ did not answer any probe (no HTTP response from the root fetch or MCP discovery)."), "{reason}");
             assert_eq!(discovery.len(), 6);
             assert_eq!(discovery[0].get("status"), Some(&Value::Null));
@@ -776,7 +778,9 @@ fn an_unparseable_target_is_reported_not_panicked() {
     let mut input = input(transport, stand_in_handlers());
     input.url = "not a url".to_string();
     match run_web_audit(input) {
-        RunOutcome::Unreachable { reason, discovery } => {
+        RunOutcome::Unreachable {
+            reason, discovery, ..
+        } => {
             assert_eq!(reason, "blocked: unparseable url: not a url");
             assert!(discovery.is_empty());
         }

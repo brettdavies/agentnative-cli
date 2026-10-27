@@ -339,23 +339,20 @@ Three release-flow artifacts live outside any automated prose check and need a m
 - `CHANGELOG.md` (a generated artifact built from upstream PR bodies).
 - Release-PR bodies (composed after `CHANGELOG.md` has been generated).
 
-The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
-[`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-This repo's `main` branch does not ship a local copy; point Vale at the spec checkout via `--config` (see the example
-below).
+This repository maintains its Vale configuration (`.vale.ini`), rule packs (`styles/`), and orchestrator
+(`scripts/prose-check.sh`) on `dev`; `main` does not carry them. Point Vale at a `dev` checkout's `.vale.ini` via
+`--config` (see the example below), after `vale sync` in that checkout has downloaded the packages `.vale.ini` lists.
 
 ```bash
 # 1. Save the artifact to /tmp/.
 gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edits
 # cp CHANGELOG.md /tmp/body.md                                 # for changelog scrub
 
-# 2. Vale (against the spec's rule packs).
-vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
+# 2. Vale (against this repo's rule packs, from a dev checkout).
+vale --no-global --config ~/dev/agentnative-cli/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
 
 # 3. LanguageTool grammar check via lt_check (~/dotfiles/config/shell/languagetool.sh).
-#    Skips cleanly if LT is unreachable. Inspect: `lt_rules`, `lt_info`. See
-#    ~/dev/agentnative-spec/CONTRIBUTING.md § Voice enforcement for the
-#    install-vs-required nuance.
+#    Skips cleanly if LT is unreachable. Inspect: `lt_rules`, `lt_info`.
 lt_check /tmp/body.md
 
 # 4. unslop (em-dash density and AI-unique structural patterns).

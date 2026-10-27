@@ -144,9 +144,9 @@ explicitly (not via macros) so the bypass shape is readable. Name tests descript
 ### U5. Verify with dogfood and downstream consumers
 
 - `anc audit .` on the anc source: `p2-must-json-errors` Passes (regression pin via test, also exercised by dogfood).
-- `anc audit /home/brett/dev/xurl-rs`: `p2-must-json-errors` Passes (xurl-rs's envelope is the canonical shape; the
+- `anc audit ~/dev/xurl-rs`: `p2-must-json-errors` Passes (xurl-rs's envelope is the canonical shape; the
   patches don't tighten in ways that affect it).
-- `anc audit /home/brett/dev/bird` (or wherever the bird CLI lives): same check.
+- `anc audit ~/dev/bird` (or wherever the bird CLI lives): same check.
 
 These are verification steps, not in-scope code changes.
 

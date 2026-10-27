@@ -9,7 +9,7 @@ date: 2026-04-17
 
 ## Question
 
-Running `anc audit` against the Claude Code binary at `/home/brett/.local/share/claude/versions/2.1.113` reports
+Running `anc audit` against the Claude Code binary at `~/.local/share/claude/versions/2.1.113` reports
 `[PASS] Non-interactive by default (p1-non-interactive)`. But typing `claude` with no arguments in an interactive
 terminal launches Claude's TUI. That feels like a straight-up P1 violation — an agent-native linter should not be
 handing out passes to tools whose bare-invocation UX is a full-screen interactive session. So: is the pass a bug, a
@@ -17,7 +17,7 @@ principle gap, or a real P1-compliant case that only *looks* wrong from the outs
 
 ## TL;DR
 
-- **Reproduced the pass.** `anc audit /home/brett/.local/share/claude/versions/2.1.113` prints
+- **Reproduced the pass.** `anc audit ~/.local/share/claude/versions/2.1.113` prints
   `[PASS] Non-interactive by default (p1-non-interactive)`.
 - **The pass is technically correct per the principle as written.** Claude auto-detects non-TTY stdin, suppresses the
   TUI, and exits with an actionable error in 2.2s. That is exactly what P1's SHOULD clause asks for, and P1's MAY clause
@@ -40,7 +40,7 @@ principle gap, or a real P1-compliant case that only *looks* wrong from the outs
 All probes run on the real binary, not the shell wrapper:
 
 ```text
-/home/brett/.local/share/claude/versions/2.1.113   (ELF, 225 MB — Node.js SEA)
+~/.local/share/claude/versions/2.1.113   (ELF, 225 MB — Node.js SEA)
 ```
 
 The shell `claude` on this machine is a function that may route to `caam run` for `-p` invocations; `anc` was pointed at
@@ -72,7 +72,7 @@ receive a signal. Exit code is **not consulted** for this audit's verdict.
 Reproduced the harness directly:
 
 ```text
-NO_COLOR=1 /home/brett/.local/share/claude/versions/2.1.113 </dev/null >stdout.log 2>stderr.log
+NO_COLOR=1 ~/.local/share/claude/versions/2.1.113 </dev/null >stdout.log 2>stderr.log
 exit_code = 1
 elapsed   = 2.21s
 stdout    = (empty)
@@ -258,8 +258,8 @@ project's audience expects to fail. Resolve the framing first; let that drive th
   investigation.
 - `src/runner.rs` — `BinaryRunner::spawn_and_wait`, which sets stdin to `/dev/null` and enforces the 5-second timeout.
 - `src/audits/project/non_interactive.rs` — the Rust-only source-layer analog.
-- `/home/brett/dev/agentnative-site/content/principles/p1-non-interactive-by-default.md` — the principle definition.
-- Empirical probe: direct invocation of the ELF binary at `/home/brett/.local/share/claude/versions/2.1.113` with
+- `~/dev/agentnative-site/content/principles/p1-non-interactive-by-default.md` — the principle definition.
+- Empirical probe: direct invocation of the ELF binary at `~/.local/share/claude/versions/2.1.113` with
   `stdin </dev/null`, matching the harness exactly.
 - Claude Code `--help` output (version as of 2026-04-17): lists `-p / --print`, `--output-format`, `auth` subcommand,
   `setup-token` subcommand, and several dozen other flags.

@@ -183,7 +183,7 @@ remediation.
   any future regression surfaces with a clear cause.
 - `anc audit .` dogfood: any existing `#[cfg(not(test))]` items in `src/` are inspected; any flagged production unwraps
   either fixed or explicitly catalogued as expected.
-- `anc audit /home/brett/dev/xurl-rs` `code-unwrap` continues to Pass.
+- `anc audit ~/dev/xurl-rs` `code-unwrap` continues to Pass.
 
 ## Notes for the implementer
 

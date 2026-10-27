@@ -84,7 +84,7 @@ This is the shape `anc` recommends in
 `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md` and that `anc skill install` itself
 emits. It is unambiguously a well-formed error envelope.
 
-`anc audit /home/brett/dev/xurl-rs --output json` reports:
+`anc audit ~/dev/xurl-rs --output json` reports:
 
 ```json
 {
@@ -614,7 +614,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 - Regression — self-dogfood: `anc check ./agentnative-cli/target/release/anc --output json` continues to pass on this
   audit.
 - **Verification.** `cargo test --test json_errors_tests`. Then `cargo build --release && ./target/release/anc audit
-  /home/brett/dev/xurl-rs --output json | jaq '.results[] | select(.id == "p2-must-json-errors") | .status'` returns
+  ~/dev/xurl-rs --output json | jaq '.results[] | select(.id == "p2-must-json-errors") | .status'` returns
   `"pass"`.
 
 ### U4. Reframe `p1-must-env-var` as probe-or-source
@@ -744,7 +744,7 @@ After every U-merge:
    previously-passing audit must continue to pass. `p2-must-json-errors` and the four reframed audits must pass on anc
    itself.
 2. **xurl-rs check:**
-   `./target/release/anc audit /home/brett/dev/xurl-rs --output json | jaq '.results[] | select(.status != "pass")'`.
+   `./target/release/anc audit ~/dev/xurl-rs --output json | jaq '.results[] | select(.status != "pass")'`.
    The five reframed audits should all pass on xurl-rs 1.3.0 after U3-U7 land.
 3. **bird check:** same against the bird CLI. Document any divergences as either real bird bugs or anc over-fits.
 4. **Cross-language coverage:** run the same against a Python CLI in the test fixtures (anc ships several). The
@@ -753,7 +753,7 @@ After every U-merge:
 End-state acceptance criteria:
 
 - `anc check ./agentnative-cli/target/release/anc --output json` reports 100% pass on the reframed audits.
-- `anc check /home/brett/dev/xurl-rs --output json` shows `p1-must-env-var`, `p2-must-json-errors`,
+- `anc check ~/dev/xurl-rs --output json` shows `p1-must-env-var`, `p2-must-json-errors`,
   `p6-must-global-flags`, `p7-naked-println`, `code-unwrap` all at `pass` without any xurl-rs change. (xurl-rs becomes
   the canonical "yes the framework works" test.)
 - No previously-passing audit regresses.

@@ -345,6 +345,13 @@ agentnative. Three rules guard the probe:
 - NEVER revert binary discovery to the always-prefer-release shape (rule 3); that pattern silently masked
   `p2-must-schema-print` regressions during the v0.4.0 spec sync
 
+**Tests that audit this repository** go through `self_audit` in `tests/common/self_audit.rs`. A probe never audits: one
+`anc audit .` runs its probes one at a time, each `--help`, `-h`, `--version`, `-V`, the bad flag, or bare. The cost is
+the source layer, about 25 CPU-seconds per audit in a debug build, and libtest runs one test per core. `self_audit` runs
+each distinct invocation once per test binary and holds one of `SLOTS` (4) lock files in the system temp directory while
+it runs, so audits of this repository run four at a time across every test run on the machine.
+`tests/self_audit_guard.rs` fails on a spawn that passes `"."` from the package root without it.
+
 ## CI and Quality
 
 **Toolchain pin:** `rust-toolchain.toml` pins the channel to a specific `X.Y.Z` version with a trailing comment naming

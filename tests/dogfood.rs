@@ -7,23 +7,14 @@
 //! (CARGO_MANIFEST_DIR) and parses the JSON scorecard, so every layer counts:
 //! behavioral, source, and project.
 
-use assert_cmd::Command;
 use serde_json::Value;
+
+use common::self_audit::self_audit;
 
 mod common;
 
-fn cmd() -> Command {
-    let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
-    cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
-    cmd
-}
-
 fn audit_repo_json() -> Value {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let out = cmd()
-        .args(["audit", manifest, "--output", "json"])
-        .output()
-        .expect("anc audit spawn");
+    let out = self_audit(&["audit", env!("CARGO_MANIFEST_DIR"), "--output", "json"]);
     let stdout = String::from_utf8(out.stdout).expect("utf-8 stdout");
     serde_json::from_str(&stdout)
         .unwrap_or_else(|e| panic!("failed to parse `anc audit` JSON: {e}\nstdout:\n{stdout}"))

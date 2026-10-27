@@ -1,5 +1,8 @@
 use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
+
+use common::self_audit::{self_audit, self_audit_with_env};
 
 mod common;
 
@@ -103,7 +106,7 @@ fn test_audit_self() {
     // earlier in development it returned 1 (warnings) or 2 (failures). All
     // three are valid signals that the run completed normally — the
     // assertion targets the summary line shape, not a specific verdict.
-    let assert = cmd().args(["audit", "."]).assert();
+    let assert = self_audit(&["audit", "."]).assert();
 
     assert
         .code(predicate::in_iter([0, 1, 2]))
@@ -112,7 +115,7 @@ fn test_audit_self() {
 
 #[test]
 fn test_audit_json_output() {
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
 
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
@@ -131,14 +134,8 @@ fn test_audit_json_output() {
 
 #[test]
 fn test_audit_quiet() {
-    let normal = cmd()
-        .args(["audit", "."])
-        .output()
-        .expect("normal run should succeed");
-    let quiet = cmd()
-        .args(["audit", ".", "-q"])
-        .output()
-        .expect("quiet run should succeed");
+    let normal = self_audit(&["audit", "."]);
+    let quiet = self_audit(&["audit", ".", "-q"]);
 
     let normal_stdout = String::from_utf8_lossy(&normal.stdout);
     let quiet_stdout = String::from_utf8_lossy(&quiet.stdout);
@@ -164,9 +161,7 @@ fn test_audit_quiet() {
 
 #[test]
 fn test_audit_principle_filter() {
-    let assert = cmd()
-        .args(["audit", ".", "--principle", "3", "--output", "json"])
-        .assert();
+    let assert = self_audit(&["audit", ".", "--principle", "3", "--output", "json"]).assert();
 
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
@@ -222,10 +217,8 @@ fn test_completions_bash() {
 
 #[test]
 fn test_no_color_env() {
-    let assert = cmd()
-        .env("NO_COLOR", "1")
-        .args(["audit", ".", "--output", "json"])
-        .assert();
+    let assert =
+        self_audit_with_env(&["audit", ".", "--output", "json"], &[("NO_COLOR", "1")]).assert();
 
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
@@ -726,14 +719,8 @@ fn test_bare_invocation_prints_help() {
 #[test]
 fn test_default_subcommand_dot_matches_explicit_audit() {
     // `anc .` and `anc audit .` must produce the same JSON scorecard.
-    let implicit = cmd()
-        .args([".", "--output", "json"])
-        .output()
-        .expect("implicit run should execute");
-    let explicit = cmd()
-        .args(["audit", ".", "--output", "json"])
-        .output()
-        .expect("explicit run should execute");
+    let implicit = self_audit(&[".", "--output", "json"]);
+    let explicit = self_audit(&["audit", ".", "--output", "json"]);
 
     assert_eq!(
         implicit.status.code(),
@@ -755,8 +742,7 @@ fn test_default_subcommand_dot_matches_explicit_audit() {
 #[test]
 fn test_default_subcommand_preserves_global_flag_before_path() {
     // `anc -q .` — global flag precedes the path argument.
-    cmd()
-        .args(["-q", "."])
+    self_audit(&["-q", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("[PASS]").not())
@@ -766,8 +752,7 @@ fn test_default_subcommand_preserves_global_flag_before_path() {
 #[test]
 fn test_default_subcommand_preserves_global_long_flag_before_path() {
     // `anc --quiet .` — long-form global flag precedes the path.
-    cmd()
-        .args(["--quiet", "."])
+    self_audit(&["--quiet", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("[PASS]").not());
@@ -776,7 +761,7 @@ fn test_default_subcommand_preserves_global_long_flag_before_path() {
 #[test]
 fn test_default_subcommand_passes_trailing_flags_through() {
     // `anc . --output json` — the injected subcommand must carry trailing flags.
-    let assert = cmd().args([".", "--output", "json"]).assert();
+    let assert = self_audit(&[".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let parsed: serde_json::Value =
         serde_json::from_slice(&output).expect("output should be valid JSON");
@@ -817,8 +802,7 @@ fn test_default_subcommand_does_not_fire_for_version() {
 #[test]
 fn test_explicit_subcommand_still_works() {
     // `anc audit .` — must still pass through unchanged.
-    cmd()
-        .args(["audit", "."])
+    self_audit(&["audit", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("audits:"));
@@ -958,8 +942,7 @@ fn test_command_flag_unknown_binary_errors() {
 #[test]
 fn test_command_flag_conflicts_with_path() {
     // `anc audit --command ls .` — clap rejects both arguments.
-    cmd()
-        .args(["audit", "--command", "ls", "."])
+    self_audit(&["audit", "--command", "ls", "."])
         .assert()
         .code(2)
         .stderr(predicate::str::contains("cannot be used with"));
@@ -1076,8 +1059,7 @@ fn test_command_flag_value_matching_subcommand_name() {
 fn test_double_dash_separator_with_path() {
     // `anc -- .` should run audit against `.` (POSIX convention treats
     // everything after `--` as positional).
-    cmd()
-        .args(["--", "."])
+    self_audit(&["--", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("audits:"));
@@ -1149,8 +1131,7 @@ fn test_broken_python_fixture() {
 fn test_audit_profile_rejects_unknown_value() {
     // clap's value_enum rejects unknown values with exit code 2 — no
     // custom validation needed.
-    cmd()
-        .args(["audit", ".", "--audit-profile", "not-a-real-category"])
+    self_audit(&["audit", ".", "--audit-profile", "not-a-real-category"])
         .assert()
         .code(2)
         .stderr(predicate::str::contains("audit-profile"));
@@ -1158,16 +1139,15 @@ fn test_audit_profile_rejects_unknown_value() {
 
 #[test]
 fn test_audit_profile_echoed_in_json_output() {
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "human-tui",
-            "--output",
-            "json",
-        ])
-        .assert();
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "human-tui",
+        "--output",
+        "json",
+    ])
+    .assert();
     // Non-zero exit OK — anc has warnings on itself; we're asserting the
     // scorecard shape, not the pass/fail verdict.
     let output = assert.get_output().stdout.clone();
@@ -1179,16 +1159,15 @@ fn test_audit_profile_echoed_in_json_output() {
 
 #[test]
 fn test_audit_profile_suppresses_listed_audits() {
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "human-tui",
-            "--output",
-            "json",
-        ])
-        .assert();
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "human-tui",
+        "--output",
+        "json",
+    ])
+    .assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1219,7 +1198,7 @@ fn test_audit_profile_suppresses_listed_audits() {
 fn test_audit_profile_absent_emits_null() {
     // No --audit-profile flag: scorecard should echo null, preserving
     // v0.1.2 behavior for consumers that feature-detect.
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1231,16 +1210,15 @@ fn test_audit_profile_shrinks_audience_denominator() {
     // When --audit-profile human-tui suppresses p1-non-interactive (one
     // of the 4 audience signal audits), the classifier can't form a 4-way
     // verdict. Expect audience: null per R2.
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "human-tui",
-            "--output",
-            "json",
-        ])
-        .assert();
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "human-tui",
+        "--output",
+        "json",
+    ])
+    .assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1264,7 +1242,7 @@ fn test_audience_non_null_on_self_dogfood() {
     // label isn't the contract. What matters is that `audience` is a
     // non-null string (classifier actually ran) and that `audience_reason`
     // is absent (no gap to explain).
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1292,9 +1270,7 @@ fn test_principle_filter_forces_audience_null() {
     // the run loop. Since the 4 audience signals span P1, P2, P6, P7,
     // three of them disappear — audience must be null with
     // `audience_reason: "insufficient_signal"`.
-    let assert = cmd()
-        .args(["audit", ".", "--principle", "2", "--output", "json"])
-        .assert();
+    let assert = self_audit(&["audit", ".", "--principle", "2", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1319,7 +1295,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     // Enforcing "no unexpected keys" too (bidirectional check) means an
     // accidental extra key also fails — which is the correct behavior
     // for a versioned schema contract.
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1374,17 +1350,16 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
     // requirement-row, so the suppressed probe surfaces under its row id
     // `p5-must-dry-run` (covered by the `p5-dry-run` audit) with
     // `audit_id: "p5-dry-run"` for provenance.
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "diagnostic-only",
-            "--output",
-            "json",
-        ])
-        .assert()
-        .code(predicate::in_iter([0, 1, 2]));
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "diagnostic-only",
+        "--output",
+        "json",
+    ])
+    .assert()
+    .code(predicate::in_iter([0, 1, 2]));
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1919,14 +1894,8 @@ fn test_previously_valid_bare_forms_still_route_to_audit() {
 /// `anc audit .` now that a second verb can claim the first argument.
 #[test]
 fn test_dogfood_and_implicit_audit_survive_the_web_verb() {
-    let implicit = cmd()
-        .args([".", "--output", "json"])
-        .output()
-        .expect("implicit run");
-    let explicit = cmd()
-        .args(["audit", ".", "--output", "json"])
-        .output()
-        .expect("explicit run");
+    let implicit = self_audit(&[".", "--output", "json"]);
+    let explicit = self_audit(&["audit", ".", "--output", "json"]);
     assert_eq!(implicit.status.code(), explicit.status.code());
     let implicit_json: serde_json::Value =
         serde_json::from_slice(&implicit.stdout).expect("implicit JSON");
@@ -1983,7 +1952,7 @@ fn test_exit_code_table_holds_across_both_verbs() {
 
     // 0, 1 or 2 from a real audit: the verdict codes. The dogfood run is
     // whichever its own scorecard earns, and every value is in the table.
-    let audit = cmd().args(["audit", "."]).assert();
+    let audit = self_audit(&["audit", "."]).assert();
     let code = audit.get_output().status.code().expect("an exit code");
     assert!(
         (0..=2).contains(&code),

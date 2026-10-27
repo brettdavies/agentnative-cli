@@ -35,9 +35,9 @@ cargo binstall agentnative
 
 The Homebrew formula installs the pre-built archive the release publishes for your platform, checked against the
 checksum the formula pins, and compiles nothing. The tap pins a checksum only after it has verified the archive against
-the release's build-provenance attestation; [Verifying an
-archive](https://github.com/brettdavies/homebrew-tap#verifying-an-archive) in the tap's README has the command that
-repeats the check.
+the release's build-provenance attestation;
+[Verifying an archive](https://github.com/brettdavies/homebrew-tap#verifying-an-archive) in the tap's README has the
+command that repeats the check.
 
 Each release archive carries a build-provenance attestation and an attested SBOM, signed by the release workflow. To
 check that an archive you downloaded was built by it, from this repository:
@@ -433,6 +433,26 @@ row reports `n_a` with its reason stated rather than querying. `--external-dns` 
 never off the target's own class: a hop from a local target to a public host, or to a cloud metadata address, is refused
 and recorded rather than taken.
 
+### Which Certificates `anc web` Trusts
+
+A public target trusts the Mozilla roots bundled in the binary and nothing else, so a public site's verdict matches
+anc.dev's and the machine's own trust store never changes it. A local or private target (localhost, a private or
+link-local address, a `.internal` or single-label name, or a name that resolves to one) also trusts the operating
+system's trust store, so a site signed by an internal CA or by a development CA such as mkcert's works with no flags
+once that CA is installed on the machine.
+
+`--ca-cert <FILE>` adds the root certificates in a PEM file to the trust set for any target, and may be repeated:
+
+```bash
+anc web https://intranet.test --ca-cert corp-root.pem
+anc web https://localhost:8443 --ca-cert "$(mkcert -CAROOT)/rootCA.pem"
+```
+
+Chain and hostname verification always run; no flag turns them off. A file that cannot be read or holds no PEM
+certificate fails before any request goes out (`invalid-ca-cert`, exit 2). A chain that leads to no trusted root ends
+the run as `untrusted-certificate`, exit 3, naming the roots it was checked against: `bundled roots`, plus
+`the OS trust store` for a local target and `--ca-cert roots` when any were passed.
+
 ### Two Scorecard Families
 
 The two verbs emit different documents, and each `emit` verb serves its own schema:
@@ -733,19 +753,21 @@ Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `
 `message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
 is one of a closed set, and a newer release can add to it:
 
-| `action`      | Carries                                                                                      | Raised by                                       |
-| ------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error` |
-| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`               |
-| `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                           |
-| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                            |
-| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`                                |
-| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                 |
+| `action`      | Carries                                                                                      | Raised by                                                          |
+| ------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert` |
+| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                                  |
+| `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                              |
+| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                                               |
+| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`                                                   |
+| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                    |
+| `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                            |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
 `bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
-error, where `value` is the target (the URL probed, for `target-unreachable`) or the `--check` id.
+error, where `value` is the target (the URL probed, for `target-unreachable` and `untrusted-certificate`), the `--check`
+id, or the `--ca-cert` file.
 
 ### Shell Completions
 

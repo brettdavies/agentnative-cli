@@ -142,6 +142,10 @@ pub enum RunOutcome {
         reason: String,
         /// The discovery trail.
         discovery: Vec<EvidenceItem>,
+        /// Why the root fetch produced no response, in the transport's
+        /// words: the line that tells a refused connection from a rejected
+        /// certificate chain.
+        root_error: Option<String>,
     },
     /// The run scored.
     Complete(Box<RunReport>),
@@ -350,6 +354,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         return RunOutcome::Unreachable {
             reason: format!("blocked: unparseable url: {}", input.url),
             discovery: Vec::new(),
+            root_error: None,
         };
     };
     let deadline = Instant::now() + input.per_audit_deadline;
@@ -423,6 +428,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         return RunOutcome::Unreachable {
             reason,
             discovery: discovery.evidence,
+            root_error: root_resp.error,
         };
     }
 

@@ -203,6 +203,7 @@ mod tests {
             body: None,
             timeout: Duration::from_secs(1),
             via_proxy: false,
+            trust: crate::web_audit::fetch::trust::TrustClass::Public,
         }
     }
 

@@ -80,20 +80,31 @@ libc = "0.2"
 time = { version = "=0.3.55", default-features = false, features = ["std", "formatting"] }
 
 # Web-audit networking stack: blocking ureq over rustls with the aws-lc-rs
-# crypto provider and the bundled Mozilla roots (webpki-roots), so a run needs
-# no system trust store. Redirects stay off at the agent; the fetch layer
-# follows them itself so every hop is locality-classified before connecting.
-# These four crates are optional: only the `web` feature compiles them.
+# crypto provider and the bundled Mozilla roots (webpki-roots), so a public
+# target needs no system trust store. Redirects stay off at the agent; the
+# fetch layer follows them itself so every hop is locality-classified before
+# connecting. These crates are optional: only the `web` feature compiles them.
+# ureq's own TLS connector builds its root store from one `RootCerts` value,
+# which cannot hold the bundled trust anchors beside extra roots, so the
+# transport wraps TLS itself (src/web_audit/tls.rs) through ureq's transport
+# API, and the exact pin covers that API too.
 ureq = { version = "=3.4.2", optional = true, default-features = false, features = [
     "rustls-no-provider",
-    "rustls-webpki-roots",
     "gzip",
     "brotli",
 ] }
-# Direct dependency at the exact version ureq resolves: the fetch layer
-# matches rustls's certificate-error variants inside ureq's error to tell a
-# bundled-root rejection from other TLS failures, and ureq does not treat
-# the wrapped error as API.
+# The bundled Mozilla trust anchors, at the version ureq resolves.
+webpki-roots = { version = "1.0.11", optional = true }
+# The OS trust store for local and private targets: certificate files on
+# Linux and the BSDs (honoring SSL_CERT_FILE and SSL_CERT_DIR), the keychain
+# on macOS, the system store on Windows. Chosen over rustls-platform-verifier,
+# which loads its Linux roots through this same crate and verifies through a
+# path that cannot also trust the bundled anchors and `--ca-cert` roots.
+rustls-native-certs = { version = "0.8", optional = true }
+# Direct dependency at the exact version ureq resolves: the transport builds
+# each trust class's rustls client config, and matches rustls's
+# certificate-error variants inside ureq's error to tell a root rejection
+# from other TLS failures; ureq does not treat the wrapped error as API.
 rustls = { version = "=0.23.46", optional = true, default-features = false, features = [
     "aws-lc-rs",
     "std",
@@ -109,7 +120,14 @@ regex = { version = "1", optional = true }
 [features]
 default = []
 # The local web audit and the networking stack it runs on.
-web = ["dep:ureq", "dep:rustls", "dep:url", "dep:regex"]
+web = [
+    "dep:ureq",
+    "dep:rustls",
+    "dep:webpki-roots",
+    "dep:rustls-native-certs",
+    "dep:url",
+    "dep:regex",
+]
 
 [build-dependencies]
 # YAML for the vendored spec frontmatter (build.rs → $OUT_DIR/generated_requirements.rs)

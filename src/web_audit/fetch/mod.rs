@@ -10,6 +10,7 @@
 pub mod body;
 pub mod proxy;
 pub mod redirect;
+pub mod trust;
 
 use std::time::{Duration, Instant};
 

@@ -78,11 +78,12 @@ impl RawResponse {
 pub struct Server {
     pub addr: SocketAddr,
     hits: Arc<Mutex<Vec<RawRequest>>>,
+    scheme: &'static str,
 }
 
 impl Server {
     pub fn url(&self, path: &str) -> String {
-        format!("http://{}{}", self.addr, path)
+        format!("{}://{}{}", self.scheme, self.addr, path)
     }
 
     pub fn hits(&self) -> Vec<RawRequest> {
@@ -115,11 +116,19 @@ where
             });
         }
     });
-    Server { addr, hits }
+    Server {
+        addr,
+        hits,
+        scheme: "http",
+    }
 }
 
 fn read_request(stream: &TcpStream) -> Option<RawRequest> {
-    let mut reader = BufReader::new(stream.try_clone().ok()?);
+    read_request_from(stream.try_clone().ok()?)
+}
+
+fn read_request_from<R: Read>(stream: R) -> Option<RawRequest> {
+    let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line).ok()?;
     let mut parts = line.trim_end().splitn(3, ' ');
@@ -153,7 +162,7 @@ fn read_request(stream: &TcpStream) -> Option<RawRequest> {
     })
 }
 
-fn write_response(mut stream: TcpStream, resp: &RawResponse) {
+fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
     let reason = match resp.status {
         200 => "OK",
         301 => "Moved Permanently",
@@ -208,7 +217,11 @@ where
             });
         }
     });
-    Server { addr, hits }
+    Server {
+        addr,
+        hits,
+        scheme: "http",
+    }
 }
 
 /// Spawn a server that accepts connections and never answers them.
@@ -261,11 +274,10 @@ pub fn spawn_closing(closes: usize, body: &'static str) -> (SocketAddr, Arc<Mute
     (addr, accepted)
 }
 
-/// Spawn a TLS server presenting the given PEM certificate and key. It
-/// completes the handshake when the client accepts the chain and otherwise
-/// returns after the client's alert; it never serves HTTP.
+/// A rustls server config presenting the given PEM certificate chain and
+/// key.
 #[cfg(feature = "web")]
-pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
+fn tls_server_config(cert_pem: &[u8], key_pem: &[u8]) -> Arc<rustls::ServerConfig> {
     use rustls::pki_types::pem::PemObject;
     use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
@@ -280,7 +292,15 @@ pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
         .with_no_client_auth()
         .with_single_cert(certs, key)
         .expect("server config");
-    let config = Arc::new(config);
+    Arc::new(config)
+}
+
+/// Spawn a TLS server presenting the given PEM certificate and key. It
+/// completes the handshake when the client accepts the chain and otherwise
+/// returns after the client's alert; it never serves HTTP.
+#[cfg(feature = "web")]
+pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
+    let config = tls_server_config(cert_pem, key_pem);
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().unwrap();
     thread::spawn(move || {
@@ -300,4 +320,62 @@ pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
         }
     });
     addr
+}
+
+/// The test CA, and a leaf it signed for `localhost` and `127.0.0.1`, from
+/// `tests/fixtures/tls/`.
+#[cfg(feature = "web")]
+pub const TEST_CA_PEM: &[u8] = include_bytes!("../fixtures/tls/ca.cert.pem");
+#[cfg(feature = "web")]
+pub const CA_SIGNED_CERT_PEM: &[u8] = include_bytes!("../fixtures/tls/ca-signed.cert.pem");
+#[cfg(feature = "web")]
+pub const CA_SIGNED_KEY_PEM: &[u8] = include_bytes!("../fixtures/tls/ca-signed.key.pem");
+
+/// The test CA's path, for a `--ca-cert` argument.
+#[cfg(feature = "web")]
+pub fn test_ca_path() -> &'static str {
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/tls/ca.cert.pem"
+    )
+}
+
+/// Spawn an HTTPS server on a loopback port, presenting the leaf the test
+/// CA signed. Each connection carries one request; the response closes it.
+/// A connection whose handshake fails records nothing.
+#[cfg(feature = "web")]
+pub fn spawn_https<F>(handler: F) -> Server
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
+    let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let addr = listener.local_addr().unwrap();
+    let hits: Arc<Mutex<Vec<RawRequest>>> = Arc::new(Mutex::new(Vec::new()));
+    let recorder = Arc::clone(&hits);
+    let handler = Arc::new(handler);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { break };
+            let recorder = Arc::clone(&recorder);
+            let handler = Arc::clone(&handler);
+            let config = Arc::clone(&config);
+            thread::spawn(move || {
+                let conn = rustls::ServerConnection::new(config).expect("server connection");
+                let mut tls = rustls::StreamOwned::new(conn, stream);
+                if let Some(req) = read_request_from(&mut tls) {
+                    recorder.lock().unwrap().push(req.clone());
+                    let resp = handler(&req);
+                    write_response(&mut tls, &resp);
+                    tls.conn.send_close_notify();
+                    let _ = tls.flush();
+                }
+            });
+        }
+    });
+    Server {
+        addr,
+        hits,
+        scheme: "https",
+    }
 }

@@ -6,11 +6,13 @@
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::IsTerminal;
+use std::path::Path;
 
 use crate::argv::format_invocation;
 use crate::color::{paint, status_style};
 use crate::json_error::NextStep;
 use crate::web_audit::engine::{ProgressSink, RunReport, Unported};
+use crate::web_audit::fetch::trust::CaCertError;
 use crate::web_audit::registry::{
     CHECKS, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword, remediation_for,
 };
@@ -375,7 +377,7 @@ pub struct Failure {
     /// The exit code this failure returns.
     pub exit_code: i32,
     /// The input the failure names, spelled as clap's own errors spell it:
-    /// `<TARGET>` or `--check <ID>`.
+    /// `<TARGET>`, `--check <ID>` or `--ca-cert <FILE>`.
     pub argument: &'static str,
     /// The value of [`Failure::argument`] the failure is about.
     pub value: String,
@@ -385,6 +387,8 @@ pub struct Failure {
 const TARGET_ARGUMENT: &str = "<TARGET>";
 /// The `--check` flag, as clap names it.
 const CHECK_ARGUMENT: &str = "--check <ID>";
+/// The `--ca-cert` flag, as clap names it.
+const CA_CERT_ARGUMENT: &str = "--ca-cert <FILE>";
 
 /// `anc web` with `args`, shell-quoted so the line runs as printed.
 fn web_command(args: &[&str]) -> String {
@@ -419,6 +423,46 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
+    }
+}
+
+/// The target answered with a certificate chain no root in the trust set
+/// vouches for. Nothing was sent past the handshake, and retrying changes
+/// nothing; trusting the server's CA does.
+pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &str) -> Failure {
+    Failure {
+        slug: "untrusted-certificate",
+        message: format!("{normalized} presented a certificate chain this run does not trust"),
+        hints: vec![
+            evidence.to_string(),
+            "if the server's certificate comes from a private or development CA, pass that \
+             CA's PEM certificate with `--ca-cert <FILE>`, or install it in the OS trust store, \
+             which a local or private target also trusts"
+                .to_string(),
+        ],
+        next_step: NextStep::add_ca_cert(format!("{} --ca-cert <FILE>", web_command(&[token]))),
+        exit_code: EXIT_COULD_NOT_CHECK,
+        argument: TARGET_ARGUMENT,
+        value: normalized.to_string(),
+    }
+}
+
+/// A `--ca-cert` file supplies no usable root, a usage error raised before
+/// any request goes out.
+pub fn ca_cert_failure(path: &Path, reason: &CaCertError) -> Failure {
+    let shown = path.display().to_string();
+    Failure {
+        slug: "invalid-ca-cert",
+        message: format!("cannot trust --ca-cert {shown}: {reason}"),
+        hints: vec![
+            "pass a PEM file holding the CA's root certificate, a block that begins \
+             `-----BEGIN CERTIFICATE-----`"
+                .to_string(),
+        ],
+        next_step: NextStep::show_help(web_command(&["--help"])),
+        exit_code: EXIT_FAILURES,
+        argument: CA_CERT_ARGUMENT,
+        value: shown,
     }
 }
 
@@ -637,6 +681,7 @@ mod tests {
         };
         assert_eq!(spelled("target"), TARGET_ARGUMENT);
         assert_eq!(spelled("check"), CHECK_ARGUMENT);
+        assert_eq!(spelled("ca_cert"), CA_CERT_ARGUMENT);
     }
 
     #[test]

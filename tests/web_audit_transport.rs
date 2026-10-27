@@ -14,6 +14,7 @@ use std::time::Duration;
 use agentnative::web_audit::fetch::body::{
     AUDIT_PROBE_MAX_BODY_BYTES, AUDIT_ROOT_MAX_BODY_BYTES, STATUS_ONLY_BODY_BYTES,
 };
+use agentnative::web_audit::fetch::trust::{OsRoots, TrustClass, TrustConfig, load_ca_file};
 use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
@@ -59,6 +60,7 @@ fn request(url: &str, timeout_ms: u64, via_proxy: bool) -> Request {
         body: None,
         timeout: Duration::from_millis(timeout_ms),
         via_proxy,
+        trust: TrustClass::Public,
     }
 }
 
@@ -641,8 +643,51 @@ fn no_proxy_entries_are_honored() {
 // TLS evidence
 // ---------------------------------------------------------------------------
 
+/// An OS trust store that fails the test if anything reads it.
+struct UnreadableOsStore;
+
+impl OsRoots for UnreadableOsStore {
+    fn load(&self) -> Vec<rustls::pki_types::CertificateDer<'static>> {
+        panic!("a public request must never read the OS trust store")
+    }
+}
+
+/// An OS trust store holding exactly the given roots, counting its reads.
+struct FixedOsStore {
+    roots: Vec<rustls::pki_types::CertificateDer<'static>>,
+    reads: std::sync::atomic::AtomicUsize,
+}
+
+impl OsRoots for FixedOsStore {
+    fn load(&self) -> Vec<rustls::pki_types::CertificateDer<'static>> {
+        self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.roots.clone()
+    }
+}
+
+fn test_ca() -> Vec<rustls::pki_types::CertificateDer<'static>> {
+    load_ca_file(std::path::Path::new(common::test_ca_path())).expect("the test CA loads")
+}
+
+fn trusted_request(url: &str, trust: TrustClass) -> Request {
+    Request {
+        trust,
+        ..request(url, 5000, false)
+    }
+}
+
+fn rejection(err: &TransportError) -> String {
+    match err {
+        TransportError::Tls(tls) => {
+            assert!(tls.root_rejection, "{tls:?}");
+            err.to_string()
+        }
+        other => panic!("expected a TLS root rejection, got {other:?}"),
+    }
+}
+
 #[test]
-fn self_signed_server_yields_the_bundled_root_rejection_class() {
+fn self_signed_server_yields_the_root_rejection_class_naming_the_trust_set() {
     let cert = include_bytes!("fixtures/tls/localhost.cert.pem");
     let key = include_bytes!("fixtures/tls/localhost.key.pem");
     let addr = common::spawn_tls(cert, key);
@@ -654,26 +699,106 @@ fn self_signed_server_yields_the_bundled_root_rejection_class() {
             false,
         ))
         .expect_err("the bundled roots must reject a self-signed chain");
-    match &err {
-        TransportError::Tls(tls) => {
-            assert!(tls.bundled_root_rejection, "{tls:?}");
-            assert!(
-                err.to_string().contains("chain rejected by bundled roots"),
-                "{err}"
-            );
-        }
-        other => panic!("expected a TLS failure, got {other:?}"),
-    }
+    let evidence = rejection(&err);
+    assert!(
+        evidence.starts_with("TlsError: chain rejected by bundled roots ("),
+        "{evidence}"
+    );
+    // Through the fetch layer, localhost is a local target, so the chain
+    // was also checked against the OS store, and the evidence says so.
     let resp = fetch(
         &transport,
         &format!("https://localhost:{}/", addr.port()),
         &FetchOptions::default(),
     );
     assert_eq!(resp.status, None);
+    let error = resp.error.unwrap();
     assert!(
-        resp.error
-            .unwrap()
-            .contains("chain rejected by bundled roots")
+        error.starts_with("TlsError: chain rejected by bundled roots and the OS trust store ("),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_private_ca_is_rejected_until_passed_as_a_ca_cert_root() {
+    let server = common::spawn_https(|_| RawResponse::new(200, &[], b"private"));
+    let url = server.url("/");
+
+    let untrusted = UreqTransport::new(UA);
+    let err = untrusted
+        .send(&trusted_request(&url, TrustClass::Public))
+        .expect_err("a private CA is in no bundled root set");
+    assert!(
+        rejection(&err).starts_with("TlsError: chain rejected by bundled roots ("),
+        "{err}"
+    );
+    assert!(
+        server.hits().is_empty(),
+        "no request may cross a failed handshake"
+    );
+
+    let trusted = UreqTransport::with_trust(UA, None, TrustConfig::new(test_ca()));
+    let resp = fetch(&trusted, &url, &FetchOptions::default());
+    assert_eq!(resp.error, None);
+    assert_eq!(resp.status, Some(200));
+    assert_eq!(resp.body, "private");
+    assert_eq!(server.hits().len(), 1);
+}
+
+#[test]
+fn a_ca_cert_root_extends_the_public_set_without_reading_the_os_store() {
+    let server = common::spawn_https(|_| RawResponse::new(200, &[], b"ok"));
+    let trust = TrustConfig::new(test_ca()).with_os_roots(std::sync::Arc::new(UnreadableOsStore));
+    let transport = UreqTransport::with_trust(UA, None, trust);
+    let resp = transport
+        .send(&trusted_request(&server.url("/"), TrustClass::Public))
+        .expect("a --ca-cert root verifies the chain for a public request");
+    assert_eq!(resp.status, 200);
+}
+
+#[test]
+fn a_local_request_trusts_the_os_store_and_reads_it_once() {
+    let server = common::spawn_https(|_| RawResponse::new(200, &[], b"ok"));
+    let os = std::sync::Arc::new(FixedOsStore {
+        roots: test_ca(),
+        reads: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let trust = TrustConfig::default().with_os_roots(os.clone());
+    let transport = UreqTransport::with_trust(UA, None, trust);
+
+    let err = transport
+        .send(&trusted_request(&server.url("/"), TrustClass::Public))
+        .expect_err("a public request ignores a CA only the OS store holds");
+    assert!(
+        rejection(&err).starts_with("TlsError: chain rejected by bundled roots ("),
+        "{err}"
+    );
+    assert_eq!(os.reads.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    for _ in 0..2 {
+        let resp = transport
+            .send(&trusted_request(&server.url("/"), TrustClass::Local))
+            .expect("the OS store's CA verifies a local request");
+        assert_eq!(resp.status, 200);
+    }
+    assert_eq!(os.reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_local_rejection_names_every_root_source_it_was_checked_against() {
+    let server = common::spawn_https(|_| RawResponse::new(200, &[], b"ok"));
+    let trust = TrustConfig::default().with_os_roots(std::sync::Arc::new(FixedOsStore {
+        roots: Vec::new(),
+        reads: std::sync::atomic::AtomicUsize::new(0),
+    }));
+    let transport = UreqTransport::with_trust(UA, None, trust);
+    let err = transport
+        .send(&trusted_request(&server.url("/"), TrustClass::Local))
+        .expect_err("the test CA is in neither the bundled set nor this OS store");
+    assert!(
+        rejection(&err)
+            .starts_with("TlsError: chain rejected by bundled roots and the OS trust store ("),
+        "{err}"
     );
 }
 

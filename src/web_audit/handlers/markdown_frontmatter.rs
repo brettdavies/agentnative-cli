@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::http::header_pairs;
-use super::shared::{JS_SPACE, item, resolve_url, why};
+use super::shared::{JS_SPACE, item, redirects_to_http, redirects_to_http_item, resolve_url, why};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::FetchInit;
 use crate::web_audit::registry::WebCheck;
@@ -54,6 +54,12 @@ pub fn run_markdown_frontmatter(check: &WebCheck, ctx: &HandlerContext) -> Probe
         },
         &opts,
     );
+    if redirects_to_http(&resp) {
+        return ProbeOutcome::new(
+            ProbeStatus::Absent,
+            vec![redirects_to_http_item(&url, resp.status)],
+        );
+    }
     if resp.error.is_some() || resp.status.is_none() {
         return ProbeOutcome::new(
             ProbeStatus::Error,

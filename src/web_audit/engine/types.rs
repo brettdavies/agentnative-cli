@@ -29,6 +29,18 @@ pub enum ProbeStatus {
 }
 
 impl ProbeStatus {
+    /// The site's `ProbeStatus` spelling, which evidence items carry.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProbeStatus::Pass => "pass",
+            ProbeStatus::Noncompliant => "noncompliant",
+            ProbeStatus::Broken => "broken",
+            ProbeStatus::Absent => "absent",
+            ProbeStatus::Na => "na",
+            ProbeStatus::Error => "error",
+        }
+    }
+
     /// The scorecard status this verdict becomes.
     pub fn to_scorecard(self) -> ScorecardStatus {
         match self {

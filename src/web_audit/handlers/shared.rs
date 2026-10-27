@@ -1,15 +1,17 @@
 //! Helpers every stateless handler shares: token substitution, evidence
-//! rows, the statuses that ask for a retry, the miss ranking across
-//! candidates, and the same-origin recovery-link scan. A mirror of the
-//! site's `handlers/shared.ts`.
+//! rows, the statuses that ask for a retry, a URL that answered only with
+//! a redirect to http, the miss ranking across candidates, and the
+//! same-origin recovery-link scan. A mirror of the site's
+//! `handlers/shared.ts`.
 
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{Value, json};
 use url::Url;
 
 use crate::web_audit::engine::ProbeStatus;
+use crate::web_audit::fetch::{NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal};
 use crate::web_audit::scorecard::EvidenceItem;
 
 pub use crate::web_audit::engine::discovery::resolve_url;
@@ -79,6 +81,55 @@ pub fn retry_shaped_why(status: Option<u16>) -> Option<String> {
     retry_shaped_answer(status).map(|answer| format!("the target answered {answer}; not scored"))
 }
 
+/// The URL answered, but only with a redirect to http, whose hop the guard
+/// refused: nothing it serves is readable over https.
+pub fn redirects_to_http(resp: &ProbeResponse) -> bool {
+    resp.refused == Some(Refusal::InsecureScheme) && resp.status.is_some()
+}
+
+/// Why a declared URL was not requested over plaintext.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlaintextReason {
+    /// The URL as written is not https.
+    NotHttps,
+    /// The URL answered with a redirect to http.
+    RedirectsToHttp,
+}
+
+impl PlaintextReason {
+    /// The site's wording.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PlaintextReason::NotHttps => "not https",
+            PlaintextReason::RedirectsToHttp => "redirects to http",
+        }
+    }
+
+    fn why(self) -> String {
+        format!("{}; {NO_PLAINTEXT_REQUEST}", self.as_str())
+    }
+}
+
+/// The evidence fields for a declared URL anc did not request over
+/// plaintext, which the caller adds after its own fields.
+pub fn plaintext_item(reason: PlaintextReason) -> EvidenceItem {
+    item([
+        ("blocked", json!(reason.as_str())),
+        ("ok", json!(false)),
+        ("why", json!([reason.why()])),
+    ])
+}
+
+/// The evidence item for a URL that answered only with a redirect to http.
+pub fn redirects_to_http_item(url: &str, status: Option<u16>) -> EvidenceItem {
+    item([
+        ("url", json!(url)),
+        ("status", json!(status)),
+        ("ok", json!(false)),
+        ("why", json!([PlaintextReason::RedirectsToHttp.why()])),
+    ])
+}
+
 /// How a non-passing candidate missed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Miss {
@@ -86,20 +137,34 @@ pub enum Miss {
     Broken,
     /// The surface is not there.
     Absent,
+    /// The surface is listed but not usable over https.
+    Noncompliant,
     /// The probe did not complete.
     Error,
 }
 
-/// Across candidates, any broken outranks absent (something is there and
-/// wrong) and a definitive absence outranks an operational error.
-pub fn worst(misses: &[Miss]) -> ProbeStatus {
-    if misses.contains(&Miss::Broken) {
-        ProbeStatus::Broken
-    } else if misses.contains(&Miss::Absent) {
-        ProbeStatus::Absent
-    } else {
-        ProbeStatus::Error
+impl Miss {
+    /// The verdict this miss gives a row it decides.
+    pub fn status(self) -> ProbeStatus {
+        match self {
+            Miss::Broken => ProbeStatus::Broken,
+            Miss::Absent => ProbeStatus::Absent,
+            Miss::Noncompliant => ProbeStatus::Noncompliant,
+            Miss::Error => ProbeStatus::Error,
+        }
     }
+}
+
+/// Across candidates, any broken outranks absent (something is there and
+/// wrong) and a definitive absence outranks an operational error. A
+/// noncompliant miss earns credit and an absent one does not, so it ranks
+/// below absent: a link listed only over http never lifts a row a dead link
+/// decides.
+pub fn worst(misses: &[Miss]) -> ProbeStatus {
+    [Miss::Broken, Miss::Absent, Miss::Noncompliant]
+        .into_iter()
+        .find(|miss| misses.contains(miss))
+        .map_or(ProbeStatus::Error, Miss::status)
 }
 
 /// The number of UTF-16 code units, which is what a JavaScript `length`
@@ -255,11 +320,56 @@ mod tests {
     }
 
     #[test]
-    fn misses_rank_broken_over_absent_over_error() {
+    fn misses_rank_broken_over_absent_over_noncompliant_over_error() {
         assert_eq!(worst(&[Miss::Error, Miss::Absent]), ProbeStatus::Absent);
         assert_eq!(worst(&[Miss::Absent, Miss::Broken]), ProbeStatus::Broken);
+        assert_eq!(
+            worst(&[Miss::Noncompliant, Miss::Absent]),
+            ProbeStatus::Absent
+        );
+        assert_eq!(
+            worst(&[Miss::Error, Miss::Noncompliant]),
+            ProbeStatus::Noncompliant
+        );
         assert_eq!(worst(&[Miss::Error]), ProbeStatus::Error);
         assert_eq!(worst(&[]), ProbeStatus::Error);
+    }
+
+    fn response(status: Option<u16>, refused: Option<Refusal>) -> ProbeResponse {
+        ProbeResponse {
+            status,
+            refused,
+            ..ProbeResponse::failed(String::new(), 0)
+        }
+    }
+
+    #[test]
+    fn only_an_answered_refusal_redirects_to_http() {
+        let refused = Some(Refusal::InsecureScheme);
+        assert!(redirects_to_http(&response(Some(301), refused)));
+        assert!(!redirects_to_http(&response(None, refused)));
+        assert!(!redirects_to_http(&response(Some(301), None)));
+    }
+
+    #[test]
+    fn plaintext_items_carry_the_site_wording() {
+        assert_eq!(
+            Value::Object(plaintext_item(PlaintextReason::NotHttps)),
+            json!({
+                "blocked": "not https",
+                "ok": false,
+                "why": ["not https; anc sends no plaintext request"],
+            })
+        );
+        assert_eq!(
+            Value::Object(redirects_to_http_item("https://x/a", Some(302))),
+            json!({
+                "url": "https://x/a",
+                "status": 302,
+                "ok": false,
+                "why": ["redirects to http; anc sends no plaintext request"],
+            })
+        );
     }
 
     #[test]

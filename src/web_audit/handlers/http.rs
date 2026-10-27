@@ -7,8 +7,8 @@ use serde_json::{Map, Value, json};
 
 use super::assert::{AliasVerdict, ExpectBlock, assert_http, classify_alias_probe};
 use super::shared::{
-    Miss, is_missing_status, item, resolve_url, retry_shaped_why, same_origin_recovery_link,
-    substitute_endpoint, worst,
+    Miss, is_missing_status, item, redirects_to_http, redirects_to_http_item, resolve_url,
+    retry_shaped_why, same_origin_recovery_link, substitute_endpoint, worst,
 };
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
@@ -51,8 +51,13 @@ pub fn header_pairs(headers: Option<&Map<String, Value>>) -> Vec<(String, String
 /// a status expectation any other miss is a surface that exists and
 /// misbehaves; without one the check probes an affordance of an existing
 /// document, so a failed assertion is an absence. A timeout is operational
-/// unless the check opted into an explicit hang budget.
+/// unless the check opted into an explicit hang budget. A redirect to http
+/// is absent: anc never takes that hop, and a surface served only over
+/// plaintext earns no more than a missing one.
 fn classify_miss(resp: &ProbeResponse, expect: &ExpectBlock, has_explicit_timeout: bool) -> Miss {
+    if redirects_to_http(resp) {
+        return Miss::Absent;
+    }
     if let Some(error) = &resp.error {
         return if error.starts_with("TimeoutError") && has_explicit_timeout {
             Miss::Broken
@@ -71,7 +76,8 @@ fn classify_miss(resp: &ProbeResponse, expect: &ExpectBlock, has_explicit_timeou
 }
 
 /// One response asserted against the check's expectations, as its
-/// evidence row, and whether it passed.
+/// evidence row, and whether it passed. A redirect to http is never
+/// asserted: nothing it serves is readable over https.
 fn assess_response(
     check: &WebCheck,
     url: &str,
@@ -80,6 +86,12 @@ fn assess_response(
     expect: &ExpectBlock,
     base: &str,
 ) -> (bool, EvidenceItem) {
+    if redirects_to_http(resp) {
+        let mut row = redirects_to_http_item(url, resp.status);
+        row.insert("elapsed_ms".to_string(), json!(resp.elapsed_ms));
+        row.insert("error".to_string(), Value::Null);
+        return (false, row);
+    }
     let asserted = assert_http(check, expect, resp);
     let (recovery_ok, recovery_why) =
         if asserted.ok && expect.same_origin_recovery_link == Some(true) {

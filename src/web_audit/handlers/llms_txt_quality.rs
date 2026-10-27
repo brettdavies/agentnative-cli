@@ -1,18 +1,24 @@
 //! The `llms-txt-quality` trio (format / links / when-to-use), a mirror
 //! of the site's `handlers/llms-txt-quality.ts`. Reads the retained
 //! wave-1 `/llms.txt` body, so format and when-to-use issue no fetch;
-//! link probes are validated and budgeted like scoped-llms.
+//! link probes are validated and budgeted like scoped-llms. An http link,
+//! or one that redirects to http, is never requested: llmstxt.org asks for
+//! a markdown link per item and never for plaintext, so such a link is
+//! present but not usable over https.
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 use url::Url;
 
-use super::shared::{JS_SPACE, Miss, is_missing_status, item, markdown_hrefs, why, worst};
+use super::shared::{
+    JS_SPACE, Miss, PlaintextReason, is_missing_status, item, markdown_hrefs, plaintext_item,
+    redirects_to_http, redirects_to_http_item, why, worst,
+};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus, why_item};
 use crate::web_audit::fetch::body::STATUS_ONLY_BODY_BYTES;
 use crate::web_audit::fetch::{FetchInit, FetchOptions};
@@ -92,6 +98,60 @@ pub fn hrefs_from(body: &str, base: &str) -> Vec<String> {
     out
 }
 
+/// One link's evidence and its own miss, `None` when it resolved. The row's
+/// evidence line reads the miss to name the link that decided the row.
+fn probe_link(href: &str, timeout: Duration, ctx: &HandlerContext) -> (Option<Miss>, EvidenceItem) {
+    if let Err(reason) = ctx.validate_nested(href) {
+        let row = item([
+            ("url", json!(href)),
+            ("blocked", json!(reason)),
+            ("ok", json!(false)),
+        ]);
+        return (Some(Miss::Absent), row);
+    }
+    if !Url::parse(href).is_ok_and(|url| url.scheme() == "https") {
+        let mut row = item([("url", json!(href))]);
+        row.extend(plaintext_item(PlaintextReason::NotHttps));
+        return (Some(Miss::Noncompliant), row);
+    }
+    let resp = ctx.fetch.fetch(
+        href,
+        &FetchInit::default(),
+        &FetchOptions {
+            timeout,
+            max_body_bytes: Some(STATUS_ONLY_BODY_BYTES),
+            ..FetchOptions::default()
+        },
+    );
+    if redirects_to_http(&resp) {
+        return (
+            Some(Miss::Noncompliant),
+            redirects_to_http_item(href, resp.status),
+        );
+    }
+    let Some(status) = resp.status.filter(|_| resp.error.is_none()) else {
+        let row = item([
+            ("url", json!(href)),
+            ("status", json!(resp.status)),
+            ("error", json!(resp.error)),
+            ("ok", json!(false)),
+        ]);
+        return (Some(Miss::Error), row);
+    };
+    let ok = (200..400).contains(&status);
+    let miss = match (ok, is_missing_status(Some(status))) {
+        (true, _) => None,
+        (false, true) => Some(Miss::Absent),
+        (false, false) => Some(Miss::Broken),
+    };
+    let row = item([
+        ("url", json!(href)),
+        ("status", json!(status)),
+        ("ok", json!(ok)),
+    ]);
+    (miss, row)
+}
+
 /// Evaluate the op against the retained llms.txt body.
 pub fn run_llms_txt_quality(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     let w: LlmsTxtQualityWith = serde_json::from_str(check.with_json).unwrap_or_default();
@@ -169,47 +229,11 @@ pub fn run_llms_txt_quality(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutc
             exhausted = true;
             break;
         }
-        if let Err(reason) = ctx.validate_nested(href) {
-            evidence.push(item([
-                ("url", json!(href)),
-                ("blocked", json!(reason)),
-                ("ok", json!(false)),
-            ]));
-            misses.push(Miss::Absent);
-            continue;
-        }
-        let resp = ctx.fetch.fetch(
-            href,
-            &FetchInit::default(),
-            &FetchOptions {
-                timeout: slice,
-                max_body_bytes: Some(STATUS_ONLY_BODY_BYTES),
-                ..FetchOptions::default()
-            },
-        );
-        let Some(status) = resp.status.filter(|_| resp.error.is_none()) else {
-            evidence.push(item([
-                ("url", json!(href)),
-                ("status", json!(resp.status)),
-                ("error", json!(resp.error)),
-                ("ok", json!(false)),
-            ]));
-            misses.push(Miss::Error);
-            continue;
-        };
-        let ok = (200..400).contains(&status);
-        evidence.push(item([
-            ("url", json!(href)),
-            ("status", json!(status)),
-            ("ok", json!(ok)),
-        ]));
-        if !ok {
-            misses.push(if is_missing_status(Some(status)) {
-                Miss::Absent
-            } else {
-                Miss::Broken
-            });
-        }
+        let (miss, mut row) = probe_link(href, slice, ctx);
+        let verdict = miss.map_or(ProbeStatus::Pass, Miss::status);
+        row.insert("link_verdict".to_string(), json!(verdict.as_str()));
+        evidence.push(row);
+        misses.extend(miss);
     }
 
     if misses.is_empty() {

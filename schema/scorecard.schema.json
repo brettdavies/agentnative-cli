@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://anc.dev/scorecard-v0.9.schema.json",
   "title": "agentnative scorecard",
-  "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.7). Schema 0.7 introduces the 7-status taxonomy (`opt_out` and `n_a` added to `status`, with matching counters in `summary`), per-row emission (one result per requirement-row instead of per audit_id; `tier` and `audit_id` fields added to each result), and antecedent propagation for conditional requirements. See docs/plans/2026-05-21-001-feat-scorecard-fairness-taxonomy-plan.md in the agentnative-site repo for the full taxonomy rationale.",
+  "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.9). Each result is one requirement row, carrying its RFC 2119 `tier` and the `audit_id` of the probe that produced it; `status` takes one of seven values, with a matching counter in `summary`; a conditional requirement whose antecedent is unmet reads `n_a`. The field reference is at https://anc.dev/scorecard-schema.",
   "type": "object",
   "required": [
     "schema_version",
@@ -66,7 +66,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Requirement-row identifier (schema 0.7+; matches `coverage/matrix.json` row ids, e.g. `p1-must-no-interactive`). The site's `/score/<tool>` page and external leaderboards pin on these strings. Previously (≤0.5) this carried the probe id."
+          "description": "Requirement-row identifier (schema 0.7+; matches `coverage/matrix.json` row ids, e.g. `p1-must-no-interactive`). The site's `/score/<tool>` page and external leaderboards pin on these strings."
         },
         "label": {
           "type": "string",
@@ -253,7 +253,7 @@
     },
     "BadgeInfo": {
       "type": "object",
-      "description": "Agent-native badge metadata derived from this run. `score_pct` is `pass / (pass + warn + fail)` rounded to an integer percent — Skips and Errors are excluded from both sides of the ratio. `eligible` is `true` iff `score_pct >= 80` and a tool slug was derivable. `embed_markdown` is populated only when `eligible` (do-not-nag contract); `scorecard_url` / `badge_url` are populated whenever a slug exists so below-floor regressions shift color rather than 404.",
+      "description": "Agent-native badge metadata derived from this run. `score_pct` is the credit-weighted leaderboard score defined in agentnative-spec `principles/scoring.md`, rounded to an integer percent: over the behavioral rows whose status is `pass`, `warn`, `fail`, or `opt_out`, a `pass` earns full credit, a `warn` half, and a `fail` or `opt_out` none. `n_a`, `skip`, and `error` rows and every source and project row are left out, and a run with no rows to score reads 0. `eligible` is `true` iff `score_pct >= 70` and a tool slug was derivable. `embed_markdown` is populated only when `eligible` (do-not-nag contract); `scorecard_url` / `badge_url` are populated whenever a slug exists so below-floor regressions shift color rather than 404.",
       "required": ["eligible", "score_pct", "embed_markdown", "scorecard_url", "badge_url", "convention_url"],
       "additionalProperties": false,
       "properties": {

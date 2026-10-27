@@ -78,9 +78,15 @@ pub fn handshake_served(outcome: Option<&ProbeOutcome>) -> bool {
     })
 }
 
-/// A wave-1 wire probe was served a result: the endpoint answered a request
-/// that carried no token.
-pub fn served_without_sign_in(sources: &HashMap<String, ProbeOutcome>) -> bool {
+/// Whether a check is one of the wave-1 wire probes.
+pub fn is_wire_probe(id: &str) -> bool {
+    WIRE_PROBES.iter().any(|(probe, _)| *probe == id)
+}
+
+/// A wave-1 wire probe was served a result, so the client that sent it
+/// holds a session: one without a token when the outcomes are token-less,
+/// the run's own token otherwise.
+pub fn wire_probe_served(sources: &HashMap<String, ProbeOutcome>) -> bool {
     WIRE_PROBES
         .iter()
         .any(|(id, _)| handshake_served(sources.get(*id)))
@@ -228,17 +234,18 @@ impl SignInResolver {
 }
 
 /// Whether the endpoint of record requires sign-in, once wave 1 has probed
-/// it. Wave 1's 401 is read first. When neither wire probe drew one, nor was
+/// it, read from the wire probes as a client without a token saw them.
+/// Their 401 is read first. When neither wire probe drew one, nor was
 /// served a result, the 401 discovery drew while finding the endpoint still
 /// stands: a timeout, a rate limit, or a server error on the handshake says
 /// nothing about whether the endpoint requires sign-in.
 pub fn settle_mcp_auth(
     observed: Option<&SignInChallenge>,
-    sources: &HashMap<String, ProbeOutcome>,
+    token_less: &HashMap<String, ProbeOutcome>,
     resolver: &SignInResolver,
 ) -> Option<Arc<McpAuthRequired>> {
-    let answer = wire_challenge(sources).or_else(|| {
-        (!served_without_sign_in(sources))
+    let answer = wire_challenge(token_less).or_else(|| {
+        (!wire_probe_served(token_less))
             .then(|| observed.cloned())
             .flatten()
     })?;

@@ -2002,3 +2002,33 @@ fn test_exit_code_table_holds_across_both_verbs() {
         assert!(text.contains(row), "`anc web --help` lost `{row}`");
     }
 }
+
+// ── Inherited environment ──────────────────────────────────────────
+
+/// A token exported for `anc web` stays with anc: the binary an audit
+/// spawns, which could be anyone's, starts without it.
+#[test]
+#[cfg(unix)]
+fn an_audited_binary_never_inherits_the_web_token() {
+    let dump = tempfile::NamedTempFile::new().expect("temp file");
+    cmd()
+        .args([
+            "audit",
+            &fixture_path("env-dump/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("ANC_WEB_TOKEN", "fixture-token-must-not-leak")
+        .env("ANC_TEST_ENV_DUMP", dump.path())
+        .output()
+        .expect("anc runs");
+    let seen = std::fs::read_to_string(dump.path()).expect("the fixture's dump");
+    assert!(
+        seen.contains("ANC_TEST_ENV_DUMP="),
+        "the fixture never ran: {seen:?}"
+    );
+    assert!(
+        !seen.contains("ANC_WEB_TOKEN") && !seen.contains("fixture-token-must-not-leak"),
+        "an audited binary inherited the web token:\n{seen}"
+    );
+}

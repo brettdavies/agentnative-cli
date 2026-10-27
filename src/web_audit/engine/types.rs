@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use super::api_targets::ApiTargets;
 use super::discovery_documents::RetainedDocuments;
 pub use super::sign_in::{McpAuthRequired, SignInResolver};
+use crate::web_audit::credential::Credential;
 use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::handlers::api_hygiene::HostProbes;
@@ -157,14 +158,16 @@ impl Default for McpLaneEvidence {
     }
 }
 
-/// The transport, resolver and identity every probe in a run shares, and
-/// the run's request memo once the run opens one.
+/// The transport, resolver and identity every probe in a run shares, the
+/// run's request memo once the run opens one, and the token it presents to
+/// the MCP endpoint, when it has one.
 #[derive(Clone)]
 pub struct FetchHandle {
     transport: Arc<dyn Transport + Send + Sync>,
     resolver: Arc<dyn Resolver + Send + Sync>,
     user_agent: Arc<str>,
     memo: Option<RequestMemo>,
+    credential: Option<Credential>,
 }
 
 impl std::fmt::Debug for FetchHandle {
@@ -172,6 +175,7 @@ impl std::fmt::Debug for FetchHandle {
         f.debug_struct("FetchHandle")
             .field("user_agent", &self.user_agent)
             .field("memo", &self.memo)
+            .field("credential", &self.credential)
             .finish_non_exhaustive()
     }
 }
@@ -188,7 +192,35 @@ impl FetchHandle {
             resolver,
             user_agent: Arc::from(user_agent),
             memo: None,
+            credential: None,
         }
+    }
+
+    /// This handle presenting `credential` to the MCP endpoint. Only
+    /// [`crate::web_audit::engine::mcp_wire::post_as_client`] sends it;
+    /// [`FetchHandle::fetch`] never does.
+    pub fn with_credential(&self, credential: Credential) -> Self {
+        FetchHandle {
+            credential: Some(credential),
+            ..self.clone()
+        }
+    }
+
+    /// This handle with no token, for asking what a client without one sees.
+    pub fn without_credential(&self) -> Self {
+        FetchHandle {
+            credential: None,
+            ..self.clone()
+        }
+    }
+
+    /// Whether the run presents a token.
+    pub fn credentialed(&self) -> bool {
+        self.credential.is_some()
+    }
+
+    pub(crate) fn credential(&self) -> Option<&Credential> {
+        self.credential.as_ref()
     }
 
     /// This handle with every fetch going through `memo`.

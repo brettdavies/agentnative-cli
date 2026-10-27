@@ -457,7 +457,7 @@ path. A listed authorization server is never requested. When that metadata names
 and requires sign-in: rows that need a signed-in session report `n_a` (`auth-required`), and three sign-in rows score
 the challenge, the listed authorization servers, and whether a `tools/list` without a token is refused. The scorecard's
 `vantage` records where the audit ran (`network`: `public`, or `local` for a target on the machine's own network) and
-that it presented no credential (`credentialed: false`).
+whether it presented a token (`credentialed`).
 
 The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
 for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
@@ -473,6 +473,29 @@ plaintext scores no better than a missing one: a document that redirects to `htt
 (`redirects to http; anc sends no plaintext request`). An `http` link in llms.txt is never requested
 (`not https; anc sends no plaintext request`); it, or a link that redirects to `http`, makes `llms-txt-links` read
 `noncompliant` unless a dead or broken link outranks it. The row's evidence names the link that decided it.
+
+### Signing In to an MCP Endpoint
+
+A run can present a bearer token for the audited MCP endpoint, so the rows anc.dev reports `n_a` (`auth-required`) are
+evaluated and a correctly protected server can reach a global score of 100. The token comes from the `ANC_WEB_TOKEN`
+environment variable, or from the first line of stdin with `--token-stdin`, never from an argument. Scope the variable
+to one invocation rather than exporting it:
+
+```bash
+ANC_WEB_TOKEN="$TOKEN" anc web localhost:8787
+anc web localhost:8787 --token-stdin < token.txt
+```
+
+The token goes only to the endpoint's handshake and session requests (`Authorization: Bearer <token>`), and never to a
+declared host's documents, the RFC 9728 metadata, a listed authorization server, any other check, or a redirect to
+another origin. Whether the endpoint requires sign-in is still decided from what a client without a token is answered:
+the run asks the two handshakes again without the token, and the `mcp-auth-enforced` row sends its `tools/list` without
+one. The scorecard records `vantage.credentialed: true` and never the token, which no output, evidence line, or error
+prints. Every process anc starts, an audited binary or a `git clone` included, runs without `ANC_WEB_TOKEN`.
+
+A token that is empty (`empty-token`), or holds whitespace, a control character, or non-ASCII (`invalid-token`), ends
+the run before any request goes out, exit 2. `--token-stdin` refuses a terminal stdin (`token-stdin-terminal`) rather
+than wait on a prompt.
 
 ### Which Certificates `anc web` Trusts
 
@@ -796,21 +819,22 @@ Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `
 `message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
 is one of a closed set, and a newer release can add to it:
 
-| `action`      | Carries                                                                                      | Raised by                                                          |
-| ------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert` |
-| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                                  |
-| `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                              |
-| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                                               |
-| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                |
-| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                    |
-| `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                            |
+| `action`      | Carries                                                                                      | Raised by                                                                                                                                            |
+| ------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert`, `empty-token`, `invalid-token`, `token-stdin-terminal`, `token-stdin-unreadable` |
+| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                                                                                                                    |
+| `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                                                                                                                |
+| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                                                                                                                                 |
+| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                                                                                                  |
+| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                                                                                                      |
+| `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                                                                                                              |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
 `bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
 error, where `value` is the target (the URL probed, for `target-unreachable` and `untrusted-certificate`), the `--check`
-id, or the `--ca-cert` file.
+id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or `--token-stdin` as its `argument`, and its `value`
+is never the token: empty, or `[redacted]` for a token that was read.
 
 ### Shell Completions
 
@@ -958,7 +982,7 @@ Three shapes of contribution, in order of cost:
 
 1. **Signal** (false-positive report, scoring bug, feature request, registry submission): file an issue with the
    matching template at
-   [github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
+[github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
 2. **Proposal** (new language auditor, scoring-engine rework, registry expansion): open a design issue first; the
    maintainer signs off before code lands.
 3. **Code**: PR against `dev` (per branch discipline).

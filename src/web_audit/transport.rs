@@ -20,13 +20,14 @@ use std::io::Read;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use super::credential::RedactedHeaders;
 use super::fetch::proxy;
 use super::fetch::trust::{TrustClass, TrustConfig};
 use super::headers::Headers;
 use super::tls;
 
 /// One HTTP request for exactly one hop.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Request {
     /// HTTP method, uppercase.
     pub method: String,
@@ -45,6 +46,19 @@ pub struct Request {
     /// The trust set the handshake verifies against, from the hop's
     /// locality class.
     pub trust: TrustClass,
+}
+
+impl fmt::Debug for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Request")
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .field("headers", &RedactedHeaders(&self.headers))
+            .field("timeout", &self.timeout)
+            .field("via_proxy", &self.via_proxy)
+            .field("trust", &self.trust)
+            .finish_non_exhaustive()
+    }
 }
 
 /// A response head plus its unread body.

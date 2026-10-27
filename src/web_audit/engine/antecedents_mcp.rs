@@ -5,7 +5,7 @@
 
 use super::antecedents::{AntecedentContext, Resolution};
 use super::mcp_wire::advertises_resources;
-use super::sign_in::{lane_refused, served_without_sign_in, wire_probe_evidence};
+use super::sign_in::{lane_refused, wire_probe_evidence, wire_probe_served};
 use crate::web_audit::handlers::mcp::ops::Era;
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -30,9 +30,10 @@ pub(super) fn evidence_shows_auth_challenge<'a>(
     })
 }
 
-/// A 401 or challenge on either wave-1 MCP handshake, legacy or modern.
+/// A 401 or challenge on either wave-1 MCP handshake, legacy or modern, as
+/// a client without a token was answered.
 pub(super) fn handshake_shows_auth_challenge(ctx: &AntecedentContext<'_>) -> bool {
-    evidence_shows_auth_challenge(wire_probe_evidence(ctx.sources))
+    evidence_shows_auth_challenge(wire_probe_evidence(ctx.token_less))
 }
 
 pub(super) fn card_declares_auth(ctx: &AntecedentContext<'_>) -> bool {
@@ -43,13 +44,14 @@ pub(super) fn card_declares_auth(ctx: &AntecedentContext<'_>) -> bool {
 
 /// A row that needs a session asks for something only a signed-in client
 /// receives, so on an endpoint that requires sign-in it is not evaluated
-/// rather than read as absent or broken. A handshake answered with a
-/// JSON-RPC error is a lane refusing the request, not serving it, so only a
-/// result shows the endpoint serves clients without a token. A lane whose
-/// own handshake was refused that way is not one sign-in blocks: its rows
-/// run and read as they do on an open server.
+/// rather than read as absent or broken, unless the run's own handshake was
+/// served: without a token, the endpoint serves clients that hold none;
+/// with one, the token opened it. A handshake answered with a JSON-RPC
+/// error is a lane refusing the request, not serving it, so only a result
+/// shows that. A lane whose own handshake was refused that way is not one
+/// sign-in blocks: its rows run and read as they do on an open server.
 fn sign_in_blocks(ctx: &AntecedentContext<'_>, lane: Option<Era>) -> bool {
-    if ctx.mcp_auth.is_none() || served_without_sign_in(ctx.sources) {
+    if ctx.mcp_auth.is_none() || wire_probe_served(ctx.sources) {
         return false;
     }
     lane.is_none_or(|lane| !lane_refused(ctx.sources, lane))

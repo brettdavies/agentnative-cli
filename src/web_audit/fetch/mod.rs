@@ -19,6 +19,7 @@ pub mod trust;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::credential::RedactedHeaders;
 use super::headers::Headers;
 use super::locality::Resolver;
 use super::transport::Transport;
@@ -29,7 +30,7 @@ use redirect::HopSender;
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(8_000);
 
 /// The request a caller wants sent.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct FetchInit {
     /// HTTP method, uppercase.
     pub method: String,
@@ -37,6 +38,15 @@ pub struct FetchInit {
     pub headers: Vec<(String, String)>,
     /// Request body.
     pub body: Option<Vec<u8>>,
+}
+
+impl std::fmt::Debug for FetchInit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FetchInit")
+            .field("method", &self.method)
+            .field("headers", &RedactedHeaders(&self.headers))
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for FetchInit {

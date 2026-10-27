@@ -56,6 +56,7 @@ use std::process::Command;
 
 use crate::cli::OutputFormat;
 use crate::error::AppError;
+use crate::spawn_env::withhold_anc_secrets;
 
 // `SkillHost`, `KNOWN_HOSTS`, and `resolve_host` are auto-generated at
 // build time from `src/skill_install/skill.json`. To add or remove a host,
@@ -262,6 +263,7 @@ pub fn build_clone_command(url: &str, dest: &Path) -> Command {
     for var in GIT_HARDEN_ENV_REMOVE {
         cmd.env_remove(var);
     }
+    withhold_anc_secrets(&mut cmd);
     for (key, value) in GIT_HARDEN_ENV_SET {
         cmd.env(key, value);
     }
@@ -929,6 +931,12 @@ mod tests {
                 "GIT_HARDEN_ENV_SET entry {key}={value:?} not present in env-set list; got {entry:?}",
             );
         }
+
+        let token = envs.get(crate::spawn_env::WEB_TOKEN_ENV);
+        assert!(
+            matches!(token, Some(None)),
+            "git must not inherit the web token; got {token:?}"
+        );
     }
 
     /// Sanity: `format_clone_command` produces the canonical user-visible

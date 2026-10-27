@@ -257,6 +257,17 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// resolvers the `dns-aid` check queries, which are withheld for a
     /// local target unless `--external-dns` is set.
     ///
+    /// An MCP endpoint that requires sign-in reports its session and
+    /// handshake rows `n_a` (`auth-required`) unless the run presents a
+    /// bearer token for it: from `ANC_WEB_TOKEN`, scoped to this one
+    /// invocation (`ANC_WEB_TOKEN=<token> anc web <target>`) rather than
+    /// exported, or from one line of stdin with `--token-stdin`. The token
+    /// goes only to the audited MCP endpoint's handshake and session
+    /// requests: never to another host, a metadata document, a sign-in
+    /// server, or the request that checks a token-less client is refused.
+    /// It is never printed, and every process anc starts runs without
+    /// `ANC_WEB_TOKEN`.
+    ///
     /// Each run reports two scores: relative scores the site relative to
     /// the checks that apply to this site; global measures it against a
     /// maximally agent-ready site.
@@ -269,6 +280,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
   anc web anc.dev --site-type api              # score only the checks an API answers for
   anc web anc.dev --no-follow                  # the site alone, no host it declares
   anc web intranet.test --ca-cert ca.pem       # also trust a private CA's root
+  anc web localhost:8787 --token-stdin < token # sign in to the MCP endpoint
   anc emit web-checks                          # every check id, offline
   anc emit web-remediation                     # the whole fix catalog, offline
 
@@ -316,6 +328,12 @@ A path that exists wins, so `anc ./anc.dev` still audits the directory.
         /// bundled Mozilla roots. Chain and hostname checks always run.
         #[arg(long = "ca-cert", value_name = "FILE", value_hint = ValueHint::FilePath)]
         ca_cert: Vec<std::path::PathBuf>,
+
+        /// Read a bearer token for the audited MCP endpoint from the first
+        /// line of stdin, in place of `ANC_WEB_TOKEN`. The token goes only
+        /// to that endpoint's handshake and session requests.
+        #[arg(long)]
+        token_stdin: bool,
 
         /// Output format
         #[arg(long, default_value = "text")]

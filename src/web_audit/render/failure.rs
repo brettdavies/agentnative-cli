@@ -8,6 +8,8 @@ use std::path::Path;
 use super::exit::{EXIT_COULD_NOT_CHECK, EXIT_FAILURES};
 use crate::argv::format_invocation;
 use crate::json_error::NextStep;
+use crate::spawn_env::WEB_TOKEN_ENV;
+use crate::web_audit::credential::{TokenError, TokenSource};
 use crate::web_audit::fetch::trust::CaCertError;
 
 /// A run that ended without a scorecard, and what to do about it.
@@ -36,6 +38,8 @@ const TARGET_ARGUMENT: &str = "<TARGET>";
 const CHECK_ARGUMENT: &str = "--check <ID>";
 /// The `--ca-cert` flag, as clap names it.
 const CA_CERT_ARGUMENT: &str = "--ca-cert <FILE>";
+/// The `--token-stdin` flag, as clap names it.
+const TOKEN_STDIN_ARGUMENT: &str = "--token-stdin";
 
 /// `anc web` with `args`, shell-quoted so the line runs as printed.
 fn web_command(args: &[&str]) -> String {
@@ -170,6 +174,55 @@ pub fn unknown_check_failure(id: &str) -> Failure {
     }
 }
 
+/// No usable token was read, a usage error raised before any request
+/// goes out. The value is never echoed: `value` is empty for an empty
+/// token and `[redacted]` for one that was read.
+pub fn token_failure(error: &TokenError) -> Failure {
+    let (argument, source) = match error {
+        TokenError::Empty(TokenSource::Env) | TokenError::Invalid(TokenSource::Env) => {
+            (WEB_TOKEN_ENV, WEB_TOKEN_ENV)
+        }
+        _ => (TOKEN_STDIN_ARGUMENT, "stdin"),
+    };
+    let (slug, message, hint, value) = match error {
+        TokenError::Empty(_) => (
+            "empty-token",
+            format!("the token from {source} is empty"),
+            "pass the MCP endpoint's bearer token, or leave ANC_WEB_TOKEN unset to audit \
+             without signing in",
+            "",
+        ),
+        TokenError::Invalid(_) => (
+            "invalid-token",
+            format!("the token from {source} is not a bearer token"),
+            "a bearer token is visible ASCII with no spaces; check that the whole token, \
+             and nothing else, was passed",
+            "[redacted]",
+        ),
+        TokenError::StdinTerminal => (
+            "token-stdin-terminal",
+            "--token-stdin reads the token from stdin, and stdin is a terminal".to_string(),
+            "pipe the token in, for example `anc web <TARGET> --token-stdin < token.txt`",
+            "",
+        ),
+        TokenError::StdinUnreadable(cause) => (
+            "token-stdin-unreadable",
+            format!("--token-stdin could not read stdin: {cause}"),
+            "pipe the token in as one line of text",
+            "",
+        ),
+    };
+    Failure {
+        slug,
+        message,
+        hints: vec![hint.to_string()],
+        next_step: NextStep::show_help(web_command(&["--help"])),
+        exit_code: EXIT_FAILURES,
+        argument,
+        value: value.to_string(),
+    }
+}
+
 impl Failure {
     /// The envelope's `kind`: `usage` for a failure that exits as a usage
     /// error, `runtime` for one that could not check.
@@ -266,5 +319,6 @@ mod tests {
         assert_eq!(spelled("target"), TARGET_ARGUMENT);
         assert_eq!(spelled("check"), CHECK_ARGUMENT);
         assert_eq!(spelled("ca_cert"), CA_CERT_ARGUMENT);
+        assert_eq!(spelled("token_stdin"), TOKEN_STDIN_ARGUMENT);
     }
 }

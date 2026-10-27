@@ -30,7 +30,12 @@ use agentnative::scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
+#[cfg(feature = "web")]
+use agentnative::spawn_env::WEB_TOKEN_ENV;
+use agentnative::spawn_env::withhold_anc_secrets;
 use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
+#[cfg(feature = "web")]
+use agentnative::web_audit::credential::read_token;
 #[cfg(feature = "web")]
 use agentnative::web_audit::emit as web_emit;
 #[cfg(feature = "web")]
@@ -184,6 +189,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             external_dns,
             no_follow,
             ca_cert,
+            token_stdin,
             output,
         }) => {
             return run_web(WebRun {
@@ -193,6 +199,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 external_dns,
                 follow_declarations: !no_follow,
                 ca_cert,
+                token_stdin,
                 output: if json_alias {
                     OutputFormat::Json
                 } else {
@@ -909,7 +916,7 @@ fn unbuilt_warning(names: &[String], target_dirs: &[String], binary_only: bool) 
 fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
     let locator = if cfg!(windows) { "where" } else { "which" };
 
-    let output = std::process::Command::new(locator)
+    let output = withhold_anc_secrets(&mut std::process::Command::new(locator))
         .arg(name)
         .output()
         .map_err(|e| {
@@ -1083,6 +1090,7 @@ struct WebRun {
     external_dns: bool,
     follow_declarations: bool,
     ca_cert: Vec<std::path::PathBuf>,
+    token_stdin: bool,
     output: OutputFormat,
     quiet: bool,
     verbose: bool,
@@ -1146,6 +1154,21 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         }
     }
 
+    let credential = {
+        use std::io::IsTerminal as _;
+        let stdin = std::io::stdin();
+        let is_terminal = stdin.is_terminal();
+        match read_token(
+            run.token_stdin,
+            std::env::var_os(WEB_TOKEN_ENV),
+            &mut stdin.lock(),
+            is_terminal,
+        ) {
+            Ok(credential) => credential,
+            Err(error) => return Ok(emit_web_failure(&render::token_failure(&error), json)),
+        }
+    };
+
     let scheme_less = !run.target.contains("://");
     let normalized = match web_target::normalize_target(&run.target) {
         Ok(url) => url,
@@ -1167,6 +1190,10 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         Arc::new(SystemResolver),
         AUDIT_USER_AGENT,
     );
+    let fetch = match credential {
+        Some(credential) => fetch.with_credential(credential),
+        None => fetch,
+    };
     let handlers = Arc::new(default_handlers());
     let mut progress = render::StderrProgress::new();
     let show_progress = render::progress_enabled(run.quiet) && !json;

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use agentnative::web_audit::credential::Credential;
 use agentnative::web_audit::engine::{FetchHandle, HandlerSet, RunInput, RunOutcome, RunReport};
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
@@ -204,7 +205,21 @@ pub fn replay_on(
     handlers: Arc<HandlerSet>,
     transport: Arc<MockTransport>,
 ) -> RunOutcome {
+    replay_as(scenario, handlers, transport, None)
+}
+
+/// [`replay_on`] presenting `credential` to the MCP endpoint.
+pub fn replay_as(
+    scenario: &Scenario,
+    handlers: Arc<HandlerSet>,
+    transport: Arc<MockTransport>,
+    credential: Option<Credential>,
+) -> RunOutcome {
     let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), AUDIT_USER_AGENT);
+    let fetch = match credential {
+        Some(credential) => fetch.with_credential(credential),
+        None => fetch,
+    };
     let mut input = RunInput::new(&scenario.target, fetch, handlers);
     input.site_type = match scenario.site_type.as_deref() {
         Some("content") => Some(DeclaredSiteType::Content),

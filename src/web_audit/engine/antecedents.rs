@@ -73,6 +73,10 @@ pub struct AntecedentContext<'a> {
     pub root: Option<&'a ProbeResponse>,
     /// Wave-1 outcomes keyed by check id.
     pub sources: &'a HashMap<String, ProbeOutcome>,
+    /// The wave-1 wire probes as a client without a token saw them:
+    /// `sources` itself in a run that presents none, and the probes asked
+    /// again without the token in one that does.
+    pub token_less: &'a HashMap<String, ProbeOutcome>,
     /// The retained API catalog lists an anchor the API category evaluates.
     pub api_anchors: bool,
     /// Why the declared host behind a missing endpoint was not evaluated.
@@ -346,6 +350,7 @@ mod tests {
             discovery_evidence: discovery,
             root,
             sources,
+            token_less: sources,
             api_anchors: false,
             follow_unmet: None,
             mcp_auth: None,

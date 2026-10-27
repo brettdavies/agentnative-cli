@@ -8,6 +8,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::spawn_env::withhold_anc_secrets;
+
 /// How long `cargo metadata` may run before discovery falls back to
 /// `<root>/target`. The same bound as a behavioral probe.
 const METADATA_TIMEOUT: Duration = Duration::from_secs(5);
@@ -105,7 +107,7 @@ fn env_target_dir(value: Option<OsString>, cwd: &Path) -> Option<PathBuf> {
 /// or `None` when cargo cannot start, fails, prints something unreadable,
 /// or outlasts `timeout`.
 fn metadata_target_dir(cargo: &OsStr, dir: &Path, timeout: Duration) -> Option<PathBuf> {
-    let mut child = Command::new(cargo)
+    let mut child = withhold_anc_secrets(&mut Command::new(cargo))
         .args([
             "metadata",
             "--format-version",

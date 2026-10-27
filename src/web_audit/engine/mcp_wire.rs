@@ -118,15 +118,21 @@ pub fn notify_mcp_initialized(
 }
 
 /// A request to the endpoint of record that speaks to it as a client: every
-/// handshake and session request goes out here. The row that asks whether a
-/// request without a token is refused sends its own.
+/// handshake and session request goes out here, and it is the one request
+/// that carries the run's token. The row that asks whether a request
+/// without a token is refused sends its own.
 pub fn post_as_client(
     fetch: &FetchHandle,
     endpoint: &str,
     init: &FetchInit,
     opts: &FetchOptions,
 ) -> ProbeResponse {
-    fetch.fetch(endpoint, init, opts)
+    let Some(credential) = fetch.credential() else {
+        return fetch.fetch(endpoint, init, opts);
+    };
+    let mut signed = init.clone();
+    signed.headers.push(credential.header());
+    fetch.fetch(endpoint, &signed, opts)
 }
 
 /// Extract a JSON-RPC object from a JSON or `text/event-stream` body. An

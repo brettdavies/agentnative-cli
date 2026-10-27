@@ -3,11 +3,13 @@
 //! `--check` form. JSON mode prints the scorecard itself and lives with the
 //! scorecard mirror.
 
+use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::IsTerminal;
 
+use crate::argv::format_invocation;
 use crate::color::{paint, status_style};
-use crate::json_error::FailureStep;
+use crate::json_error::NextStep;
 use crate::web_audit::engine::{ProgressSink, RunReport, Unported};
 use crate::web_audit::registry::{
     CHECKS, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword, remediation_for,
@@ -369,13 +371,30 @@ pub struct Failure {
     /// The cause and what to try, one line each.
     pub hints: Vec<String>,
     /// The action, command and docs an agent takes next.
-    pub next_step: FailureStep,
+    pub next_step: NextStep,
     /// The exit code this failure returns.
     pub exit_code: i32,
+    /// The input the failure names, spelled as clap's own errors spell it:
+    /// `<TARGET>` or `--check <ID>`.
+    pub argument: &'static str,
+    /// The value of [`Failure::argument`] the failure is about.
+    pub value: String,
 }
 
-/// Where the local web audit is documented.
-const WEB_DOCS: &str = "https://anc.dev/audit";
+/// The positional `anc web` audits, as clap names it.
+const TARGET_ARGUMENT: &str = "<TARGET>";
+/// The `--check` flag, as clap names it.
+const CHECK_ARGUMENT: &str = "--check <ID>";
+
+/// `anc web` with `args`, shell-quoted so the line runs as printed.
+fn web_command(args: &[&str]) -> String {
+    let argv: Vec<OsString> = ["anc", "web"]
+        .iter()
+        .chain(args)
+        .map(OsString::from)
+        .collect();
+    format_invocation(&argv)
+}
 
 /// The target answered nothing. The engine's reason is the hosted
 /// auditor's wording, which speaks for its own vantage point, so the
@@ -387,7 +406,8 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
     )];
     if defaulted_https {
         hints.push(format!(
-            "the scheme defaulted to https; if the server speaks plain HTTP, try `anc web http://{token}`"
+            "the scheme defaulted to https; if the server speaks plain HTTP, try `{}`",
+            web_command(&[&format!("http://{token}")])
         ));
     }
     hints.push("check that the server is running and that this machine can reach it".to_string());
@@ -395,12 +415,10 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
         slug: "target-unreachable",
         message: format!("{normalized} did not answer any probe"),
         hints,
-        next_step: FailureStep {
-            action: "retry",
-            command: format!("anc web {token} --verbose"),
-            docs: Some(WEB_DOCS),
-        },
+        next_step: NextStep::retry(web_command(&[token, "--verbose"])),
         exit_code: EXIT_COULD_NOT_CHECK,
+        argument: TARGET_ARGUMENT,
+        value: normalized.to_string(),
     }
 }
 
@@ -413,12 +431,10 @@ pub fn invalid_target_failure(token: &str, reason: &str) -> Failure {
             "pass a URL or a host, such as `anc web localhost:8787` or `anc web https://anc.dev`"
                 .to_string(),
         ],
-        next_step: FailureStep {
-            action: "fix-target",
-            command: "anc web --help".to_string(),
-            docs: Some(WEB_DOCS),
-        },
+        next_step: NextStep::fix_target(web_command(&["--help"])),
         exit_code: EXIT_COULD_NOT_CHECK,
+        argument: TARGET_ARGUMENT,
+        value: token.to_string(),
     }
 }
 
@@ -429,12 +445,22 @@ pub fn unknown_check_failure(id: &str) -> Failure {
         slug: "unknown-check",
         message: format!("no such check: {id}"),
         hints: vec!["run `anc emit web-checks` for every id this build scores".to_string()],
-        next_step: FailureStep {
-            action: "list-checks",
-            command: "anc emit web-checks".to_string(),
-            docs: Some(WEB_DOCS),
-        },
+        next_step: NextStep::list_checks("anc emit web-checks".to_string()),
         exit_code: EXIT_FAILURES,
+        argument: CHECK_ARGUMENT,
+        value: id.to_string(),
+    }
+}
+
+impl Failure {
+    /// The envelope's `kind`: `usage` for a failure that exits as a usage
+    /// error, `runtime` for one that could not check.
+    pub fn kind(&self) -> &'static str {
+        if self.exit_code == EXIT_FAILURES {
+            "usage"
+        } else {
+            "runtime"
+        }
     }
 }
 
@@ -445,12 +471,25 @@ pub fn format_failure(failure: &Failure) -> String {
     for hint in &failure.hints {
         let _ = writeln!(out, "  {hint}");
     }
+    if let Some(command) = &failure.next_step.command {
+        let _ = writeln!(out, "  next: {command}");
+    }
     let _ = writeln!(
         out,
-        "  next: {}\n\nexit {}: could not check",
-        failure.next_step.command, failure.exit_code
+        "\nexit {}: {}",
+        failure.exit_code,
+        failure_meaning(failure.exit_code)
     );
     out
+}
+
+/// What a failure's exit code means, as the exit table words it. A run
+/// that ends without a scorecard exits 2 only for a usage error.
+fn failure_meaning(exit_code: i32) -> &'static str {
+    match exit_code {
+        EXIT_FAILURES => "usage error",
+        _ => "could not check",
+    }
 }
 
 /// The one-line `--check` form: id, status and the evidence line, tab
@@ -542,6 +581,59 @@ mod tests {
         );
         assert_eq!(prefix_for(&row("a", WebCheckKeyword::May, S::Pass)), "PASS");
         assert_eq!(prefix_for(&row("a", WebCheckKeyword::May, S::NA)), "N/A ");
+    }
+
+    #[test]
+    fn a_retry_command_quotes_a_target_a_shell_would_split() {
+        let failure = unreachable_failure(
+            "http://127.0.0.1:9/?a=1&b=2",
+            "http://127.0.0.1:9/?a=1&b=2",
+            false,
+        );
+        assert_eq!(
+            failure.next_step.command.as_deref(),
+            Some("anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose")
+        );
+        let plain = unreachable_failure("127.0.0.1:9", "http://127.0.0.1:9/", false);
+        assert_eq!(
+            plain.next_step.command.as_deref(),
+            Some("anc web 127.0.0.1:9 --verbose")
+        );
+    }
+
+    #[test]
+    fn the_failure_trailer_names_what_its_exit_code_means() {
+        let unknown = format_failure(&unknown_check_failure("no-such-check"));
+        assert!(unknown.ends_with("\nexit 2: usage error\n"), "{unknown}");
+        let unreachable = format_failure(&unreachable_failure(
+            "127.0.0.1:9",
+            "http://127.0.0.1:9/",
+            false,
+        ));
+        assert!(
+            unreachable.ends_with("\nexit 3: could not check\n"),
+            "{unreachable}"
+        );
+        let invalid = format_failure(&invalid_target_failure("ftp://x", "unsupported scheme"));
+        assert!(
+            invalid.ends_with("\nexit 3: could not check\n"),
+            "{invalid}"
+        );
+    }
+
+    #[test]
+    fn a_failure_names_its_argument_as_clap_does() {
+        let mut cli = <crate::cli::Cli as clap::CommandFactory>::command();
+        cli.build();
+        let web = cli.find_subcommand("web").expect("the web subcommand");
+        let spelled = |id: &str| {
+            web.get_arguments()
+                .find(|arg| arg.get_id() == id)
+                .unwrap_or_else(|| panic!("no `{id}` argument"))
+                .to_string()
+        };
+        assert_eq!(spelled("target"), TARGET_ARGUMENT);
+        assert_eq!(spelled("check"), CHECK_ARGUMENT);
     }
 
     #[test]

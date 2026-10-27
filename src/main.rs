@@ -1085,14 +1085,18 @@ struct WebRun {
 #[cfg(feature = "web")]
 fn emit_web_failure(failure: &render::Failure, json: bool) -> i32 {
     if json {
+        let mut offending = serde_json::Map::new();
+        offending.insert("argument".into(), failure.argument.into());
+        offending.insert("value".into(), failure.value.clone().into());
         eprintln!(
             "{}",
-            json_error::render_failure(
-                "runtime",
+            json_error::render_error_with(
+                failure.kind(),
                 failure.slug,
                 &failure.message,
                 failure.exit_code,
                 &failure.next_step,
+                offending,
             )
         );
     } else {

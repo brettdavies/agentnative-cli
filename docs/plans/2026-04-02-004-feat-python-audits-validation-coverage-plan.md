@@ -1,7 +1,10 @@
 ---
 title: "feat: Python starter audits, fixture test coverage, and real-world validation"
 type: feat
-status: done
+status: released
+prs: ["#15"]
+completed: 2026-04-16
+released_in: v0.1.0
 date: 2026-04-02
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---

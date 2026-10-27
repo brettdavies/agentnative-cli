@@ -1,7 +1,10 @@
 ---
 title: "feat: Show HN launch readiness — agentnative-cli"
 type: feat
-status: completed
+status: released
+prs: ["#29", "#32"]
+completed: 2026-04-29
+released_in: v0.2.0
 date: 2026-04-28
 parent: ~/.gstack/projects/brettdavies-agentnative/brett-dev-design-show-hn-launch-inversion-20260427-144756.md
 ---
@@ -132,16 +135,6 @@ keeping the v0.2.0 release coherent with the post-rename repo state and the cent
   (local-only). Site-owned fix; matters because post-launch coverage-matrix re-sync (after CLI v0.2.0 ships U1.5
   re-vendor) needs the script working on default invocation.
 
-### Launch-eve gate state (2026-04-29 PM)
-
-- **Spec `v0.3.0` HARD GATE for U1.5:** ✅ **CLEARED.** Tag `v0.3.0` published to `agentnative-spec` `main` at
-  2026-04-29T16:26:54Z (09:26 PT) via spec PR #15 (squash `5cea8bf`). Wave step 1/7 of the central tracker's launch wave
-  is closed; CLI Phase A (U1.5 → release PR cut) is unblocked and runnable tonight per Q-CLI2.
-- **Launch wave context:** CLI v0.2.0 is **step 2 of 7** in the central tracker's
-  `Release Versions and Order — SoT for v0.3.0 launch wave` section. Post target rolled back from Wed 2026-04-29 to
-  **Thu 2026-04-30 09:00 AM PT** (24h push to absorb spec PR #15 review-block + wave bake time). Per the central
-  tracker's day-2 status log entry `2026-04-29 — wave step 1 fired: spec v0.3.0 published`.
-
 ### Coordinating in-flight plans (do NOT dual-file)
 
 - `docs/plans/2026-04-23-001-feat-spec-vendor-plan.md` — `status: completed`. Shipped via `#29`. Referenced here as the
@@ -218,9 +211,7 @@ None applicable — this is repo-internal release choreography.
   version parity.
 - **Q-CLI2: Which night to cut the release branch?** **Wednesday 2026-04-29 PT for Thursday 2026-04-30 09:00 AM PT
   post.** ~12h bake time before post lands; matches the central tracker's resolved launch-day decision (parent Q4).
-  Original Q-CLI2 targeted Wed-cut-for-Thu-post; superseded 2026-04-28 to Tue-cut-for-Wed-post; superseded again
-  2026-04-29 (24h push) back to Wed-cut-for-Thu-post to absorb spec PR #15 review-block + wave bake time. See central
-  tracker § Release Versions and Order — SoT for v0.3.0 launch wave.
+  See central tracker § Release Versions and Order — SoT for v0.3.0 launch wave.
 - **Q-CLI3: Should the lib/bin split (TODO 016) ride this release?** **No, defer post-launch.** Even though the refactor
   is mechanical and ~1 hour, it would land an additional `[lib]` Cargo target in a `MINOR` release — a consumer-facing
   surface change distinct from the spec-vendor feature. Cleaner story is "v0.2.0 = spec-vendor + active-status
@@ -240,8 +231,6 @@ None applicable — this is repo-internal release choreography.
 - U1. **Pre-launch CHANGELOG + version-bump prep**
 
 **Goal:** Ensure CHANGELOG.md and `Cargo.toml` are ready to ship the next release without surprises at branch-cut time.
-
-**Status:** `not-started`
 
 **Requirements:** Gate 7 (release tagged with the spec-vendor work), Q-CLI1.
 
@@ -289,16 +278,12 @@ release commits in `git log --grep='feat(v0\.1' --oneline`.
 **Goal:** Update the CLI's vendored spec content from `v0.2.0` (draft principles) to `v0.3.0` (active principles) so the
 launch binary reports `spec_version: 0.3.0` and bundles the same principle-status posture readers see at `anc.dev`.
 
-**Status:** `ready` (preconditions cleared 2026-04-29 09:26 PT — runnable tonight per Q-CLI2)
-
 **Requirements:** Gate 7 (CLI launch coherence). Cross-repo coordination with spec Gate 2 (status: active flip shipped
 in spec `v0.3.0` — wave step 1/7 closed).
 
-**Dependencies:** **HARD BLOCK — spec `v0.3.0` tag must exist on `agentnative-spec` `main`.** ✅ **Cleared 2026-04-29
-09:26 PT** via spec PR #15 (squash `5cea8bf` on `main`); release URL
-`https://github.com/brettdavies/agentnative/releases/tag/v0.3.0`. Verify via
-`gh release view --repo brettdavies/agentnative v0.3.0` (exit 0) before running U1.5 — preserved as the runtime safety
-audit; expected to pass on first invocation.
+**Dependencies:** **HARD BLOCK — spec `v0.3.0` tag must exist on `agentnative-spec` `main`** (spec PR #15, release
+`https://github.com/brettdavies/agentnative/releases/tag/v0.3.0`). Verify via
+`gh release view --repo brettdavies/agentnative v0.3.0` (exit 0) before running U1.5.
 
 **Files:**
 
@@ -354,8 +339,6 @@ vendoring contract works. Brett's prior re-vendor cadence: re-run after every ne
 
 **Goal:** Stage the night-before release PR from `dev` → `release/launch` → `main` per Brett's standing pattern.
 
-**Status:** `not-started`
-
 **Requirements:** Gate 7. Q-CLI2 resolved: cut Wed 2026-04-29 PT for Thu 2026-04-30 09:00 AM PT post.
 
 **Dependencies:** U1.5 (spec re-vendor commit on `dev`). U1's CHANGELOG/version-bump prep is a no-op on `dev` per
@@ -395,8 +378,6 @@ exact branch-naming and PR-body shape used previously.
 
 **Goal:** Trigger the release pipeline (`release.yml` → reusable `rust-release.yml`) and watch it land cleanly to
 crates.io, GitHub Releases, and the Homebrew tap.
-
-**Status:** `not-started`
 
 **Requirements:** Gate 7.
 
@@ -441,8 +422,6 @@ crates.io, GitHub Releases, and the Homebrew tap.
 - U4. **Cold-device `brew install anc` verification**
 
 **Goal:** Prove the install path readers will use on launch morning actually works end-to-end.
-
-**Status:** `not-started`
 
 **Requirements:** Gate 7 (the second half — release tagged is necessary but not sufficient; the install must work from a
 cold device).
@@ -498,18 +477,8 @@ cold device).
 
 - U5. **Gate 4 plan-checkbox sweep (CLI side)**
 
-> **Close-out (2026-04-27).** Sweep landed in `be767e4`. Actual scope diverged from the planning text in two
-> instructive ways: (1) the three "Likely modify" handoff docs were **moved** to `.context/handoffs/` (local-only,
-> gitignored) rather than status-flipped in place, and the relocation expanded to all 6 handoff-shaped docs across
-> `docs/plans/` and `docs/plans/spikes/`; (2) the multi-language source-audits plan kept `status: active` (CE plan
-> status enum is binary `active`/`completed` — no `deferred` exists) with a post-launch deferral admonition added at
-> the top of the file. Net public surface: `docs/plans/` dropped from 12 plans to 9 + 2 spike artifacts. No
-> status-string normalization, as planned.
-
 **Goal:** Reconcile `docs/plans/*.md` checkboxes and statuses so a reader landing in this repo from the Show HN post
 sees plans that match reality.
-
-**Status:** `done`
 
 **Requirements:** Gate 4 (CLI-repo subset — spec repo owns the rest of the sweep).
 
@@ -563,8 +532,6 @@ that need a terminal "this actually shipped, here's the evidence" summary on top
 - U6. **(Coordination only) — Gate 5 status confirmation**
 
 **Goal:** Confirm and document, in this plan, that Gate 5's CLI-side scope is fully done; no execution remains here.
-
-**Status:** `done`
 
 **Requirements:** Gate 5.
 

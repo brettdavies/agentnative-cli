@@ -1,6 +1,10 @@
 ---
 title: Config Follows the Repo - Plan
 type: feat
+status: released
+prs: ["#111", "#112", "#114", "#115", "#116"]
+completed: 2026-10-02
+released_in: v0.6.0
 date: 2026-10-01
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-plan-bootstrap
@@ -561,11 +565,11 @@ Sequential implementation, no parallelization opportunity.
 
 ## Implementation Tasks
 
-- [ ] **T1 (P1, human: ~1h / CC: ~10min)** — anc_toml — Display failing config files without directory structure
+- [x] **T1 (P1, human: ~1h / CC: ~10min)** — anc_toml — Display failing config files without directory structure
   - Surfaced by: R1 — KTD4 would put absolute and home-anchored paths into committed scorecards
   - Files: `src/anc_toml/mod.rs`, `tests/scorecard_metadata_security.rs`
   - Verify: U2's display-path scenario and U3's PII scenario pass
-- [ ] **T2 (P3, human: ~30min / CC: ~5min)** — anc_toml — Resolve the chain behind one `anc_toml` entry point
+- [x] **T2 (P3, human: ~30min / CC: ~5min)** — anc_toml — Resolve the chain behind one `anc_toml` entry point
   - Surfaced by: R2 — `src/main.rs` is 928 lines
   - Files: `src/anc_toml/mod.rs`, `src/main.rs`
   - Verify: `src/main.rs` gains only the call and the stored result

@@ -1,6 +1,10 @@
 ---
 title: Workspace and Mixed-Language Discovery - Plan
 type: feat
+status: released
+prs: ["#117", "#118", "#119", "#120", "#121", "#122"]
+completed: 2026-10-02
+released_in: v0.6.0
 date: 2026-10-01
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-plan-bootstrap
@@ -557,11 +561,11 @@ Sequential implementation, no parallelization opportunity.
 
 ## Implementation Tasks
 
-- [ ] **T1 (P2, human: ~1h / CC: ~10min)** — project — Build the runner after selection
+- [x] **T1 (P2, human: ~1h / CC: ~10min)** — project — Build the runner after selection
   - Surfaced by: R1 — `Project::discover` builds the runner from the first binary
   - Files: `src/project/mod.rs`, `src/main.rs`
   - Verify: AE3 grades the `--bin` choice in every behavioral audit
-- [ ] **T2 (P2, human: ~20min / CC: ~3min)** — docs — State the multi-binary behavior change
+- [x] **T2 (P2, human: ~20min / CC: ~3min)** — docs — State the multi-binary behavior change
   - Surfaced by: R2 — a two-bin crate exits 2 after upgrade
   - Files: PR body changelog, `README.md`
   - Verify: the `### Changed` bullet and the README note both name `--bin`

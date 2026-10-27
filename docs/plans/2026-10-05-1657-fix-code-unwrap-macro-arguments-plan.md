@@ -1,6 +1,8 @@
 ---
 title: Code-Unwrap Inside Macro Arguments - Plan
 type: fix
+status: active
+prs: ["#149", "#150", "#151", "#152", "#159"]
 date: 2026-10-05
 topic: code-unwrap-macro-arguments
 artifact_contract: ce-unified-plan/v1

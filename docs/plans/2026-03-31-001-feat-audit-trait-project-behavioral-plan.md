@@ -1,7 +1,10 @@
 ---
 title: "feat: Implement Audit trait, Project struct, and behavioral audits"
 type: feat
-status: completed
+status: released
+prs: ["#1"]
+completed: 2026-04-01
+released_in: v0.1.0
 date: 2026-03-31
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 deepened: 2026-03-31
@@ -245,7 +248,7 @@ graph TB
     U4 --> U5
 ```
 
-- [ ] **Unit 1: Project struct, auto-detection, and lazy file cache**
+- [x] **Unit 1: Project struct, auto-detection, and lazy file cache**
 
   **Goal:** Define the Project struct with language detection, binary discovery, and lazy parsed-file cache.
 
@@ -297,7 +300,7 @@ graph TB
 - Can construct a Project from the agentnative repo itself (dogfood sanity)
 - File cache populates lazily and excludes test code
 
-- [ ] **Unit 2: Binary runner with timeout, caching, and partial-read mode**
+- [x] **Unit 2: Binary runner with timeout, caching, and partial-read mode**
 
   **Goal:** Create a binary execution wrapper with reader-thread timeout, result caching, and a partial-read mode for
   SIGPIPE testing.
@@ -351,7 +354,7 @@ graph TB
 - Timeout test completes in ~1s, not 10s (proves kill works)
 - Cache hit returns same result without re-executing
 
-- [ ] **Unit 3: Audit trait, language-partitioned structure, and source audit refactor**
+- [x] **Unit 3: Audit trait, language-partitioned structure, and source audit refactor**
 
   **Goal:** Define the Audit trait with `applicable()` and `Result` return, refactor existing 3 source audits into the
   language-partitioned module structure, consolidate `has_pattern()`, tighten `global_flags` Subcommand pattern, and
@@ -413,7 +416,7 @@ graph TB
 - Test code excluded from source scans by default
 - Language-partitioned module structure in place
 
-- [ ] **Unit 4: Behavioral audits**
+- [x] **Unit 4: Behavioral audits**
 
   **Goal:** Implement 8 behavioral audits that run a compiled binary and assess agent-readiness.
 
@@ -482,7 +485,7 @@ graph TB
 - Each audit correctly returns Skip when not applicable
 - Timeout behavior verified (test completes quickly, not after full timeout)
 
-- [ ] **Unit 5: CLI, scorecard output, and wiring**
+- [x] **Unit 5: CLI, scorecard output, and wiring**
 
   **Goal:** Replace the spike main.rs with a real clap CLI, implement text and JSON scorecard formatters with
   `AuditResultView`, and wire everything together with the mode matrix.

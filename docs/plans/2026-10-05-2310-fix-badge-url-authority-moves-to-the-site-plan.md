@@ -1,6 +1,8 @@
 ---
 title: Badge URL Authority Moves to the Site - Plan
 type: fix
+status: active
+prs: ["brettdavies/agentnative-site#448", "brettdavies/agentnative-site#449"]
 date: 2026-10-05
 topic: badge-url-authority
 artifact_contract: ce-unified-plan/v1
@@ -26,8 +28,8 @@ surrounding text names.
   contract that another repo reads, against both repos' stated additive-only convention.
 - **Stop conditions:** Stop and raise if dropping the fields would leave the site unable to render the existing 0.9
   corpus. That invalidates the ordering, not the Objective.
-- **Who finishes:** `ce-work` implements per repo. The CLI's `scripts/release/smoke.sh` and the cross-repo blast-radius
-  gate in `RELEASES-PREFLIGHT.md:110-120` hold the release boundary.
+- **Who finishes:** `ce-work` implements per repo. The CLI's `scripts/release/smoke.sh` holds the release boundary, and
+  the cross-repo blast-radius section of `RELEASES-PREFLIGHT.md` sends the site the schema change before the tag.
 - **Open blockers:** None.
 
 ---
@@ -99,7 +101,8 @@ corrects it so the repo does not carry two directions.
 
 - R9. The site renders the committed 0.9 corpus and a 0.10 scorecard identically with respect to the badge snippet.
 - R10. The scorecard schema version records the removal, and the schema and the code that emits it change together.
-- R11. The CLI release does not tag until the site serves the new shape.
+- R11. The CLI never waits on the site. The site learns of the schema change before the CLI tag, through the release
+  preflight, and adds the new version to `SUPPORTED_SCHEMA_VERSIONS` before it moves its `anc` pin.
 
 ### Acceptance Examples
 
@@ -166,8 +169,9 @@ corrects it so the repo does not carry two directions.
   which the same runbook marks deprecated at `:149` and `:197` in favor of the container path. So U2 lands its version
   widening together with a real artifact at that version, and the set's "adding a version without a corpus able to
   satisfy it" warning never applies.
-- The consumer still leads, for a different reason than release mechanics: the site must not render a shape the CLI is
-  about to emit as the literal `undefined`, and inject mode is what lets it prove that on a branch.
+- The site pins `anc` by release, so a 0.10 scorecard reaches a site render only after the site moves that pin. The
+  site adds 0.10 to `SUPPORTED_SCHEMA_VERSIONS` first, so it never renders the new shape as the literal `undefined`, and
+  inject mode lets it prove that on a branch.
 - The site deploys from `main`, and `origin/dev` is 578 commits ahead of `origin/main`. Merging to the site's `dev` is
   not a deploy. A 0.10 scorecard reaches a production render only after the site's own `src/data/anc/VERSION` and
   sandbox pin advance, which U7 owns, so neither the CLI's merge nor its tag waits on a site release cut.
@@ -199,8 +203,8 @@ corrects it so the repo does not carry two directions.
   migration window it exists for.
 - `agentnative-site/src/shared/audit-envelope.ts:106,132-144` — the site already builds its own `scorecard_url` from the
   request origin, and `curatedEntryForBinary` is the binary-to-canonical resolver the `/score/<binary>` alias uses.
-- `scripts/SYNCS.md:59` and `RELEASES-PREFLIGHT.md:110-120` — the corpus regeneration path and the committed cross-repo
-  gate: "If the site is not ready, hold the tag."
+- `scripts/SYNCS.md:59` and `RELEASES-PREFLIGHT.md` § Cross-repo blast radius — the corpus regeneration path, and the
+  preflight item that hands the site a release's `### Breaking changes` before the tag without waiting for it.
 - `docs/solutions/conventions/schema-version-set-during-staged-rollout.md` — the same two repos at 0.5 to 0.6: widen the
   consumer's version set rather than flipping it, because the corpus cannot regenerate in the same commit. Names the
   trap that an in-repo "bump and regen together" instruction reads as correct here and is wrong.
@@ -245,10 +249,11 @@ corrects it so the repo does not carry two directions.
   surfaces, no longer finds a link inside it. Governs R1.
 - KTD6. **`--quiet` suppresses the convention pointer.** `PRODUCT.md`'s register reserves `--quiet` for stripping prose,
   and the pointer is prose; today's hint prints under `--quiet` only because nothing guards it. Governs R4.
-- KTD7. **The consumer leads: U1 through U4 are merged and proven against a real 0.10 scorecard before the CLI tag.**
-  `RELEASES-PREFLIGHT.md:110-120` sets the standard as readiness, not deployment: the site "reads the new JSON shape
-  correctly... If the site is not ready, hold the tag." Inject mode proves that on a branch, so the gate is a branch
-  verification rather than a wait on the site's release cut. Governs R11.
+- KTD7. **The CLI never waits on the site.** U5 and U6 merge to the CLI's `dev` when they are ready, and the CLI tags
+  on its own schedule. The release preflight (`RELEASES-PREFLIGHT.md` § Cross-repo blast radius) hands the site the
+  release's `### Breaking changes` before the tag. The site pins `anc` by release (its `docker/score` pin is the site's
+  to move) and adds the new schema version to `SUPPORTED_SCHEMA_VERSIONS` before it moves that pin, so U1 through U4
+  land on the site's schedule. Governs R11.
 
 A bake-off was considered and did not qualify: research converged on one mechanism per side, and no two structurally
 distinct candidates survived to compare.
@@ -316,9 +321,9 @@ flowchart TB
 U1 is independent and repairs embeds already published, so it goes first. U2 precedes U3 because the snippet change
 should land on a build that already accepts the version, and because U2's inject-mode artifact is what U3 tests the
 0.9-and-0.10 parity against. U4 follows U3 so the normative page describes the shape the site actually generates. U5 is
-the one commit where schema and emitter move together, and it needs U1 through U4 merged and verified on the site's
-`dev`, not deployed. U6 trails U5 because the docs describe the shape U5 establishes. U7 waits on the CLI release, since
-advancing the pin and refreshing the corpus both need the released binary.
+the one commit where schema and emitter move together, and it does not wait on U1 through U4 (KTD7). U6 trails U5
+because the docs describe the shape U5 establishes. U7 waits on the CLI release, since advancing the pin and refreshing
+the corpus both need the released binary.
 
 ---
 
@@ -449,9 +454,8 @@ advancing the pin and refreshing the corpus both need the released binary.
 
 - **Goal:** The scorecard and the terminal carry the score and a convention pointer, and no per-tool URL.
 - **Requirements:** R1, R2, R3, R4, R5, R10.
-- **Dependencies:** U1 through U4 merged on the site's `dev` and verified against the real 0.10 scorecard U2 produced.
-  The site's release cut is not a prerequisite: merging U5 to the CLI's `dev` ships nothing, and `RELEASES-PREFLIGHT.md`
-  gates readiness rather than deployment (KTD7).
+- **Dependencies:** None on the site. Merging U5 to the CLI's `dev` ships nothing, and the release preflight hands the
+  site the schema change before the tag (KTD7).
 - **Files:** `src/scorecard/mod.rs`, `src/main.rs`, `schema/scorecard.schema.json`, `scripts/release/smoke.sh`,
   `tests/scorecard_schema_v05.rs`, `tests/integration.rs`, `tests/scorecard_metadata_security.rs`
 - **Approach:**
@@ -583,7 +587,7 @@ advancing the pin and refreshing the corpus both need the released binary.
 | CLI schema parity and validation     | `scripts/release/smoke.sh`, run manually                          | U5                 |
 | Real 0.10 artifact                   | `bash docker/score/build.sh --from-source <cli-repo> --run`       | U2                 |
 | Markdown lint                        | `markdownlint-cli2` on touched files                              | U2, U4, U6         |
-| Cross-repo release gate              | the blast-radius check in `RELEASES-PREFLIGHT.md:110-120`         | the CLI tag        |
+| Cross-repo release notice            | the blast-radius section of `RELEASES-PREFLIGHT.md`               | the CLI tag        |
 
 The schema gates matter more than the test count here. `scripts/release/smoke.sh` holds two invariants no unit test
 covers: that `anc emit schema` matches the committed file byte for byte, and that every emitted scorecard validates
@@ -605,9 +609,9 @@ and neither runs in the pre-push hook.
   this as a scoring change.
 - The CLI PR body carries a `### Breaking changes` row naming each removed field, and `CHANGELOG.md` is left untouched.
 - `scripts/release/smoke.sh` passes against the built binary, including its schema-parity and validation gates.
-- U1 through U4 are merged on the site's `dev` and verified against a real 0.10 scorecard before the CLI release is
-  tagged, which is the readiness the cross-repo gate asks for. The in-production requirement belongs to U7's pin
-  advance, the only path by which a 0.10 scorecard reaches a production render.
+- The site has the release's `### Breaking changes` before the CLI tag, and adds 0.10 to `SUPPORTED_SCHEMA_VERSIONS`
+  before it moves its `anc` pin. The in-production requirement belongs to U7's pin advance, the only path by which a
+  0.10 scorecard reaches a production render.
 - No document in either repo describes a removed field, and the superseded "No CLI change" line in the earlier plan
   record is corrected.
 - No placeholder 0.10 artifact, abandoned compatibility branch, or dead field remains in either diff.

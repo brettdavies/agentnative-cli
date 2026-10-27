@@ -1,27 +1,16 @@
 ---
 title: "feat: Default subcommand (anc .) and --command flag for PATH lookup"
 type: feat
-status: shipped
+status: released
+prs: ["#12", "#13"]
+completed: 2026-04-16
+released_in: v0.1.0
 date: 2026-04-02
 deepened: 2026-04-02
-shipped: 2026-04-15
 origin: ~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md
 ---
 
 # feat: Default subcommand (anc .) and --command flag for PATH lookup
-
-## Status
-
-**Shipped on `dev`** — both implementation units complete plus a follow-on cluster of edge-case fixes surfaced by
-post-merge code review.
-
-- PR [#12](https://github.com/brettdavies/agentnative/pull/12) — initial implementation (commit `4afef67`, merged
-  2026-04-15)
-- PR [#13](https://github.com/brettdavies/agentnative/pull/13) — 7 edge-case fixes + refactor surfaced by `/ce-review`
-  of the merged PR (open against `dev`)
-- Pattern documented for reuse: `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`
-
-See **Post-Implementation Notes** at the end for the delta between the planned design and what actually shipped.
 
 ## Overview
 

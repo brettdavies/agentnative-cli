@@ -1,7 +1,7 @@
 ---
 title: "feat: agentnative-spec output-envelope SHOULDs + matching audits"
 type: feat
-status: active
+status: proposed
 date: 2026-04-30
 ---
 

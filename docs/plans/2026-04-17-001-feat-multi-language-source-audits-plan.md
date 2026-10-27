@@ -7,16 +7,6 @@ date: 2026-04-17
 
 # feat: Go, Ruby, and TypeScript source audits
 
-> **Phase 1 (research spike) shipped 2026-04-17** — Unit 1's ast-grep viability assessment landed at
-> [`docs/plans/spikes/2026-04-17-multi-language-source-audits-spike.md`](spikes/2026-04-17-multi-language-source-audits-spike.md)
-> (`status: complete`).
->
-> **Phase 2 (Units 2–6 — Go / TypeScript / Ruby starter audits + cross-cutting infra + fixtures)** is **deferred to
-> post-launch.** Per the Show HN launch readiness plan
-> ([`2026-04-28-001`](2026-04-28-001-feat-show-hn-launch-readiness-plan.md)), multi-language source coverage is not
-> a launch-day hook and stays out of the v0.2.0 cherry-pick window. `status: active` reflects continuing scope, not
-> in-flight implementation.
-
 ## Overview
 
 Extend source audits beyond Rust and Python to cover Go, Ruby, and TypeScript. Start with a scoped research spike to
@@ -274,7 +264,7 @@ all_source_audits(Language) router extends to include Go, TypeScript, Ruby branc
 
 ## Implementation Units
 
-- [x] **Unit 1: Research spike — ast-grep viability and starter audit candidates** — completed 2026-04-17, report at
+- [x] **Unit 1: Research spike — ast-grep viability and starter audit candidates** — report at
   `docs/plans/spikes/2026-04-17-multi-language-source-audits-spike.md`
 
 **Goal:** Produce a written spike report that characterizes, per language (Go, TypeScript, Ruby): the exact

@@ -1,6 +1,7 @@
 ---
 title: "Spike: Why `p1-non-interactive` passes on `claude` even though the bare CLI launches a TUI"
-status: complete
+status: done
+completed: 2026-04-17
 date: 2026-04-17
 ---
 

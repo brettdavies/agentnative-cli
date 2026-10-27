@@ -1,6 +1,8 @@
 ---
 title: Attested Release Pipeline - Plan
 type: feat
+status: active
+prs: ["#154", "#155", "#156", "#157", "#174", "#175", "#176"]
 date: 2026-10-07
 topic: attested-release-pipeline
 artifact_contract: ce-unified-plan/v1
@@ -34,9 +36,10 @@ execution: code
 ### Summary
 
 `agentnative-cli` adopts the attested release pipeline: its release signs every archive and publishes an SBOM, its
-Homebrew formula installs those archives instead of compiling, and the tap signs the bottles. A pre-tag build of every
-release target and tighter branch protection catch failures before a tag exists. The upstream skills and templates take
-the same standard, and the next `anc` release proves the whole chain.
+Homebrew formula installs those archives instead of compiling, and the tap signs the bottles. A build of every release
+target on each pull request to `dev` that changes the dependency graph or the toolchain pin, and tighter branch
+protection, catch failures before a tag exists; the release itself compiles its targets once, at the tag. The upstream
+skills and templates take the same standard, and the next `anc` release proves the whole chain.
 
 ### Problem Frame
 
@@ -88,8 +91,9 @@ repo scaffolded today starts behind the standard.
 
 **Failures surface before a tag**
 
-- R4. Every release target builds on each `release/**` branch, and whenever the dependency graph or the toolchain pin
-  changes.
+- R4. Every release target builds on each pull request to `dev` that changes the dependency graph or the toolchain
+  pin, and on manual dispatch for any ref. A release branch, a release pull request, and the backport of a release's
+  version bump do not run it.
 - R5. `dev` requires the CI checks that run on every PR. `main` additionally requires the Windows, advisories, and
   shellcheck checks.
 
@@ -402,18 +406,21 @@ sequenceDiagram
 
 ### U6. Pre-tag build check caller
 
-- **Goal:** Every `anc` release target builds before a tag exists.
+- **Goal:** Every `anc` release target builds whenever a change to `dev` touches the dependency graph or the toolchain
+  pin.
 - **Requirements:** R4
 - **Dependencies:** U1
 - **Repo:** `agentnative-cli`
 - **Files:** `.github/workflows/release-matrix-check.yml` (create)
-- **Approach:** A thin caller of U1's workflow that runs on `release/**` pushes, on PRs that touch `Cargo.toml`,
-  `Cargo.lock`, `rust-toolchain.toml`, or the workflow itself, and on manual dispatch.
+- **Approach:** A thin caller of U1's workflow that runs on pull requests to `dev` that touch `Cargo.toml`,
+  `Cargo.lock`, `rust-toolchain.toml`, or the workflow itself, and on manual dispatch (#174). It does not run on a
+  release branch: `gh workflow run release-matrix-check.yml --ref release/v<version>` rehearses a release on demand.
 - **Patterns to follow:** U3's caller template; `xurl-rs`'s trigger block.
 - **Test scenarios:**
   - The PR that adds the caller triggers it through its own path filter, and all seven targets build.
   - A PR that touches only documentation does not trigger it.
-- **Verification:** The proving release branch in U11 shows seven green rows before the tag.
+- **Verification:** The latest run on a pull request to `dev` that changed the dependency graph shows seven green rows;
+  the release preflight reads that run.
 
 ### U7. Runbooks and README describe the pipeline
 
@@ -448,7 +455,7 @@ sequenceDiagram
   2. Pass `advisories_blocking: true` in `ci.yml`.
   3. Update the lists in the runbook's branch-protection section.
   4. After the PR merges, apply both rulesets live on the maintainer's instruction and read them back (KTD6).
-- **Live apply state:** `protect-dev` was applied on 2026-10-08 and reads back equal to its committed file.
+- **Live apply state:** `protect-dev` is applied and reads back equal to its committed file.
   `protect-main` is **not** applied: the live ruleset is missing `ci / Security audit (advisories)`, `ci / Shellcheck`
   and `ci / Windows check`. Its apply is sequenced into U11 step 7, after the tag publishes, because a required check
   that fails to report on the release PR blocks the release itself, and `main` is the branch the release moves through.
@@ -559,7 +566,7 @@ A CI run counts as green only when every check's conclusion is read from the rol
 
 - R9 holds on the published proving release.
 - Every PR in U1 through U10 is merged by the maintainer, and each repo's CI is green on the merge.
-- The live rulesets on `agentnative-cli` equal the committed JSON. `protect-dev` holds as of 2026-10-08;
+- The live rulesets on `agentnative-cli` equal the committed JSON. `protect-dev` holds;
   `protect-main` is applied in U11 step 7 and is the last piece of this clause.
 - `agentnative-cli`'s `dev` is synced with the release, and its postflight passes.
 - The skills changes are on `agent-skills` `main`, and the live skills checkout is fast-forwarded to that commit on the

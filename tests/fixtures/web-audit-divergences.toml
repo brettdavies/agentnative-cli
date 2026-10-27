@@ -5699,11 +5699,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "llms-quality-broken-link"
-element = "row:llms-txt-links"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-broken-link"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5749,11 +5744,6 @@ owner = "#413"
 
 [[divergence]]
 scenario = "llms-quality-dead-and-http-link"
-element = "row:llms-txt-links"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-dead-and-http-link"
 element = "row:mcp-auth-challenge"
 owner = "#413"
 
@@ -5796,11 +5786,6 @@ owner = "#458"
 scenario = "llms-quality-dead-link"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "llms-quality-dead-link"
-element = "row:llms-txt-links"
-owner = "#413"
 
 [[divergence]]
 scenario = "llms-quality-dead-link"
@@ -5890,11 +5875,6 @@ owner = "#413"
 [[divergence]]
 scenario = "llms-quality-http-link"
 element = "coverage_summary"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-http-link"
-element = "row:llms-txt-links"
 owner = "#413"
 
 [[divergence]]
@@ -6994,16 +6974,6 @@ owner = "#413"
 
 [[divergence]]
 scenario = "run-document-redirects-to-http"
-element = "row:api-catalog"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
-element = "row:llms-txt"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
 element = "row:mcp-auth-challenge"
 owner = "#413"
 
@@ -7251,11 +7221,6 @@ owner = "#458"
 scenario = "run-site-type-content"
 element = "summary"
 owner = "#397"
-
-[[divergence]]
-scenario = "scoped-llms-sitemap-dirs"
-element = "row:llms-txt-links"
-owner = "#413"
 
 [[divergence]]
 scenario = "webmcp-mention-only"

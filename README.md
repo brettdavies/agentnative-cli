@@ -437,7 +437,11 @@ Every request is HTTPS, at every vantage, local targets included; anc sends no p
 defaults to `https`. An explicit `http://` target, or a root that redirects to `http`, ends the run as `insecure-scheme`
 (exit 3) before anything is sent over plaintext. Inside a run, a URL on `http` is never requested
 (`not requested: not https`), and a redirect to `http` is recorded as the answer rather than followed
-(`redirect refused: <status> to <location>: not https`), the same refusals anc.dev makes.
+(`redirect refused: <status> to <location>: not https`), the same refusals anc.dev makes. A surface served only over
+plaintext scores no better than a missing one: a document that redirects to `http` reads `absent`
+(`redirects to http; anc sends no plaintext request`). An `http` link in llms.txt is never requested
+(`not https; anc sends no plaintext request`); it, or a link that redirects to `http`, makes `llms-txt-links` read
+`noncompliant` unless a dead or broken link outranks it. The row's evidence names the link that decided it.
 
 ### Which Certificates `anc web` Trusts
 

@@ -14,12 +14,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use agentnative::web_audit::engine::discovery_documents::{API_CATALOG_DOCUMENT, RetainedDocument};
-use agentnative::web_audit::engine::{
-    FetchHandle, HandlerContext, McpLaneEvidence, ProbeOutcome, ProbeStatus, RunOutcome,
-};
+use agentnative::web_audit::engine::{ProbeOutcome, ProbeStatus, RunOutcome};
 use agentnative::web_audit::fetch::ProbeResponse;
 use agentnative::web_audit::handlers::api_hygiene::derive_api_probe_url;
 use agentnative::web_audit::handlers::assert::compiled;
@@ -31,15 +29,15 @@ use agentnative::web_audit::handlers::llms_txt_quality::run_llms_txt_quality;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Locality;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::registry::{WebCheck, check_by_id};
+use agentnative::web_audit::registry::check_by_id;
 use agentnative::web_audit::scorecard::NaReason;
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
-use common::corpus::{Golden, PublicResolver, corpus_dir, describe, diff_rows, load_cases, replay};
+use common::corpus::{Golden, corpus_dir, describe, diff_rows, load_cases, replay};
+use common::handler_context::{BASE, check, context};
 use common::ledger::{ROW, UNREACHABLE, compare_with_ledger, load_ledger};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-const BASE: &str = "https://example.com/";
 const MCP: &str = "https://example.com/mcp";
 
 // Corpus replay.
@@ -186,10 +184,6 @@ fn every_registry_pattern_agrees_with_the_site_over_the_probe_table() {
 
 // Behaviors the corpus cannot observe.
 
-fn check(id: &str) -> &'static WebCheck {
-    check_by_id(id).unwrap_or_else(|| panic!("no registry check {id}"))
-}
-
 fn html(status: u16, body: &str) -> MockResponse {
     MockResponse::ok(
         status,
@@ -204,26 +198,6 @@ fn json_ok(body: Value) -> MockResponse {
         &[("content-type", "application/json")],
         body.to_string().as_bytes(),
     )
-}
-
-fn context(transport: Arc<dyn Transport + Send + Sync>) -> HandlerContext {
-    HandlerContext {
-        base: BASE.to_string(),
-        host: "example.com".to_string(),
-        mcp_endpoint: None,
-        protocol_version: "2025-06-18",
-        default_timeout: Duration::from_secs(2),
-        root: None,
-        scoped_dirs: Arc::new(Vec::new()),
-        retained_bodies: Arc::new(HashMap::new()),
-        retained_documents: Arc::new(HashMap::new()),
-        fetch: FetchHandle::new(transport, Arc::new(PublicResolver), "test-ua"),
-        mcp_session_id: None,
-        mcp_lanes: McpLaneEvidence::default(),
-        deadline: Instant::now() + Duration::from_secs(20),
-        external_dns: false,
-        target_locality: Some(Locality::Public),
-    }
 }
 
 fn root(body: &str) -> Arc<ProbeResponse> {

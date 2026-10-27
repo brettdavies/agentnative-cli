@@ -9,6 +9,8 @@
 #[cfg(feature = "web")]
 pub mod corpus;
 #[cfg(feature = "web")]
+pub mod handler_context;
+#[cfg(feature = "web")]
 pub mod ledger;
 #[cfg(feature = "web")]
 pub mod web_cli;

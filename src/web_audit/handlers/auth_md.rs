@@ -9,7 +9,10 @@ use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::shared::{Miss, is_missing_status, item, js_trim, resolve_url, worst};
+use super::shared::{
+    Miss, is_missing_status, item, js_trim, redirects_to_http, redirects_to_http_item, resolve_url,
+    worst,
+};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::FetchInit;
 use crate::web_audit::registry::WebCheck;
@@ -51,6 +54,11 @@ pub fn run_auth_md(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
             continue;
         }
         let resp = ctx.fetch.fetch(&url, &FetchInit::default(), &opts);
+        if redirects_to_http(&resp) {
+            evidence.push(redirects_to_http_item(&url, resp.status));
+            misses.push(Miss::Absent);
+            continue;
+        }
         if let Some(error) = &resp.error {
             evidence.push(item([
                 ("url", json!(url)),

@@ -184,6 +184,12 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
         );
     }
 
+    if check.handler == HandlerBinding::LlmsTxtQuality
+        && let Some(line) = link_evidence(outcome)
+    {
+        return line;
+    }
+
     if check.eval == Some(EvalBinding::LegacyAliasRedirects) {
         let wanted = if outcome.status == ProbeStatus::Pass {
             "pass"
@@ -219,6 +225,13 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
         return format!("{}: {}", js_str(item.get("url")), js_str(item.get("error")));
     }
     let why = why_lines(item).and_then(|lines| lines.last().cloned());
+    if let Some(blocked) = item.get("blocked").and_then(Value::as_str) {
+        return format!(
+            "{}: {}",
+            coalesce(item.get("url"), check.id),
+            why.unwrap_or_else(|| blocked.to_string())
+        );
+    }
     let is_miss = matches!(
         outcome.status,
         ProbeStatus::Broken | ProbeStatus::Absent | ProbeStatus::Error
@@ -231,6 +244,29 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
             .map(|w| format!(" ({w})"))
             .unwrap_or_default()
     )
+}
+
+/// The links row names the link whose own verdict decided it: the first
+/// link probed may have resolved while a later one missed.
+fn link_evidence(outcome: &ProbeOutcome) -> Option<String> {
+    let link = outcome
+        .evidence
+        .iter()
+        .find(|e| e.get("link_verdict").and_then(Value::as_str) == Some(outcome.status.as_str()))?;
+    let url = js_str(link.get("url"));
+    if truthy(link.get("error")) {
+        return Some(format!("{url}: {}", js_str(link.get("error"))));
+    }
+    let why = joined_why(link, "; ");
+    if !link.get("status").is_some_and(Value::is_number) {
+        let reason = why.unwrap_or_else(|| js_str(link.get("blocked")));
+        return Some(format!("{url}: {reason}"));
+    }
+    let status = js_str(link.get("status"));
+    Some(match why {
+        None => format!("{url} -> {status}"),
+        Some(why) => format!("{url} -> {status} ({why})"),
+    })
 }
 
 fn with_op(check: &WebCheck) -> Option<String> {
@@ -437,6 +473,70 @@ mod tests {
         assert_eq!(
             summarize_evidence(alias, &redirected),
             "https://x/.well-known/mcp.json -> 301 (301 -> /.well-known/mcp/server-card.json)"
+        );
+    }
+
+    #[test]
+    fn the_links_row_names_the_link_that_decided_it() {
+        let links = check_by_id("llms-txt-links").unwrap();
+        let resolved =
+            json!({"url": "https://x/a.md", "status": 200, "ok": true, "link_verdict": "pass"});
+        let line = |status, item: Value| {
+            summarize_evidence(links, &outcome(status, vec![resolved.clone(), item]))
+        };
+        assert_eq!(
+            line(
+                ProbeStatus::Absent,
+                json!({"url": "https://x/b.md", "status": 404, "ok": false, "link_verdict": "absent"})
+            ),
+            "https://x/b.md -> 404"
+        );
+        assert_eq!(
+            line(
+                ProbeStatus::Noncompliant,
+                json!({"url": "http://x/c.md", "blocked": "not https", "ok": false, "why": ["not https; anc sends no plaintext request"], "link_verdict": "noncompliant"})
+            ),
+            "http://x/c.md: not https; anc sends no plaintext request"
+        );
+        assert_eq!(
+            line(
+                ProbeStatus::Noncompliant,
+                json!({"url": "https://x/d.md", "status": 301, "ok": false, "why": ["redirects to http; anc sends no plaintext request"], "link_verdict": "noncompliant"})
+            ),
+            "https://x/d.md -> 301 (redirects to http; anc sends no plaintext request)"
+        );
+        assert_eq!(
+            line(
+                ProbeStatus::Absent,
+                json!({"url": "http://10.0.0.5/x.md", "blocked": "blocked: ipv4 10.0.0.5 is in blocked range 10.0.0.0/8", "ok": false, "link_verdict": "absent"})
+            ),
+            "http://10.0.0.5/x.md: blocked: ipv4 10.0.0.5 is in blocked range 10.0.0.0/8"
+        );
+        assert_eq!(
+            line(
+                ProbeStatus::Error,
+                json!({"url": "https://x/e.md", "status": null, "error": "connection refused", "ok": false, "link_verdict": "error"})
+            ),
+            "https://x/e.md: connection refused"
+        );
+        assert_eq!(
+            summarize_evidence(links, &outcome(ProbeStatus::Pass, vec![resolved.clone()])),
+            "https://x/a.md -> 200"
+        );
+    }
+
+    #[test]
+    fn a_blocked_item_reads_its_reason_instead_of_a_status() {
+        let scoped = check_by_id("llms-txt-scoped").unwrap();
+        let blocked = outcome(
+            ProbeStatus::Absent,
+            vec![
+                json!({"url": "http://10.0.0.5/docs/llms.txt", "blocked": "blocked: ipv4 10.0.0.5 is in blocked range 10.0.0.0/8"}),
+            ],
+        );
+        assert_eq!(
+            summarize_evidence(scoped, &blocked),
+            "http://10.0.0.5/docs/llms.txt: blocked: ipv4 10.0.0.5 is in blocked range 10.0.0.0/8"
         );
     }
 }

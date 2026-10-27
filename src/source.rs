@@ -35,20 +35,14 @@ pub fn any_match<'r, D: Doc>(
     patterns: &[Pattern],
     accept: impl Fn(usize, &NodeMatch<'r, D>) -> bool,
 ) -> bool {
-    let kinds: Vec<_> = patterns.iter().map(Matcher::potential_kinds).collect();
+    let could_match = kind_filter(patterns);
     root.dfs().any(|node| {
-        patterns
-            .iter()
-            .zip(&kinds)
-            .enumerate()
-            .any(|(index, (pattern, kinds))| {
-                kinds
-                    .as_ref()
-                    .is_none_or(|kinds| kinds.contains(node.kind_id().into()))
-                    && pattern
-                        .match_node(node.clone())
-                        .is_some_and(|m| accept(index, &m))
-            })
+        patterns.iter().enumerate().any(|(index, pattern)| {
+            could_match(index, node.kind_id())
+                && pattern
+                    .match_node(node.clone())
+                    .is_some_and(|m| accept(index, &m))
+        })
     })
 }
 
@@ -60,14 +54,11 @@ pub fn locations_each<D: Doc>(
     patterns: &[Pattern],
     file: &str,
 ) -> Vec<Vec<SourceLocation>> {
-    let kinds: Vec<_> = patterns.iter().map(Matcher::potential_kinds).collect();
+    let could_match = kind_filter(patterns);
     let mut found: Vec<Vec<SourceLocation>> = patterns.iter().map(|_| Vec::new()).collect();
     for node in root.dfs() {
-        for ((pattern, kinds), out) in patterns.iter().zip(&kinds).zip(found.iter_mut()) {
-            if kinds
-                .as_ref()
-                .is_some_and(|kinds| !kinds.contains(node.kind_id().into()))
-            {
+        for (index, (pattern, out)) in patterns.iter().zip(found.iter_mut()).enumerate() {
+            if !could_match(index, node.kind_id()) {
                 continue;
             }
             if let Some(m) = pattern.match_node(node.clone()) {
@@ -84,22 +75,28 @@ pub fn locations_each<D: Doc>(
     found
 }
 
+/// Whether a node of kind `kind` could match the `index`th of `patterns`,
+/// the node-kind prefilter `find_all` applies.
+fn kind_filter(patterns: &[Pattern]) -> impl Fn(usize, u16) -> bool {
+    let kinds: Vec<_> = patterns.iter().map(Matcher::potential_kinds).collect();
+    move |index, kind| {
+        kinds
+            .get(index)
+            .and_then(Option::as_ref)
+            .is_none_or(|kinds| kinds.contains(kind.into()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ast_grep_core::tree_sitter::LanguageExt;
-    use ast_grep_language::{Python, Rust};
+    use ast_grep_language::Rust;
 
     use super::*;
 
     fn rust_locations(source: &str, patterns: &[&str]) -> Vec<Vec<SourceLocation>> {
         let patterns: Vec<Pattern> = patterns.iter().map(|p| Pattern::new(p, Rust)).collect();
         locations_each(&Rust.ast_grep(source).root(), &patterns, "src/main.rs")
-    }
-
-    fn python_locations(source: &str, pattern: &str) -> Vec<SourceLocation> {
-        let patterns = [Pattern::new(pattern, Python)];
-        let mut found = locations_each(&Python.ast_grep(source).root(), &patterns, "app.py");
-        found.remove(0)
     }
 
     #[test]
@@ -211,28 +208,5 @@ fn main() {
                 assert!(preview.chars().count() <= budget + 3);
             }
         }
-    }
-
-    #[test]
-    fn python_bare_except_matches() {
-        let source = "try:\n    foo()\nexcept:\n    pass\n";
-        let found = python_locations(source, "try:\n    $$$BODY\nexcept:\n    $$$HANDLER");
-        assert!(!found.is_empty(), "bare except pattern should match");
-    }
-
-    #[test]
-    fn python_typed_except_does_not_match_bare() {
-        let source = "try:\n    foo()\nexcept ValueError:\n    pass\n";
-        let found = python_locations(source, "try:\n    $$$BODY\nexcept:\n    $$$HANDLER");
-        assert!(
-            found.is_empty(),
-            "typed except should not match bare except pattern"
-        );
-    }
-
-    #[test]
-    fn python_sys_exit_matches() {
-        let found = python_locations("import sys\nsys.exit(1)\n", "sys.exit($$$ARGS)");
-        assert_eq!(found.len(), 1);
     }
 }

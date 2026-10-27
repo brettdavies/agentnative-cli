@@ -67,6 +67,10 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       RUSTFLAGS: "-Dwarnings"
+      # Crate downloads on hosted Windows runners fail with curl error 16
+      # ("Error in the HTTP2 framing layer"), which cargo does not retry;
+      # HTTP/1.1 avoids it.
+      CARGO_HTTP_MULTIPLEXING: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

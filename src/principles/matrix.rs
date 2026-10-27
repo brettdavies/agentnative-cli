@@ -498,49 +498,7 @@ mod tests {
     /// Adding to this list is a deliberate act — the test below fails loudly
     /// when a MUST loses its cover (or a new MUST lands in the spec) so a
     /// human has to opt into "we know this isn't auto-audited, here's why."
-    const UNVERIFIED_MUSTS: &[(&str, &str)] = &[
-        // Pre-existing coverage gaps surfaced by R5 against vendored spec
-        // v0.2.0. Each MUST is real and important; the absence of an audit
-        // reflects scope-of-work, not a stance that the requirement should
-        // not be enforced. Track follow-up work in the project roadmap.
-        (
-            "p2-must-exit-codes",
-            "vocabulary audit (0, 1, 2, 77, 78 codes appear in mapping) — \
-             distinct from `p4-must-exit-code-mapping` which the existing \
-             `exit_codes.rs` audit covers (mapping shape, not specific values).",
-        ),
-        (
-            "p2-must-json-errors",
-            "behavioral audit requires inducing an error path with `--output \
-             json` and parsing the JSON envelope — no current behavioral \
-             audit probes error paths.",
-        ),
-        (
-            "p3-must-subcommand-examples",
-            "behavioral audit would walk `<subcommand> --help` for an \
-             `Examples:` section — distinct from `p3-must-top-level-examples` \
-             which `p3_examples.rs` covers; per-subcommand traversal is \
-             out of scope for v0.1.x.",
-        ),
-        (
-            "p4-must-actionable-errors",
-            "judgment-quality audit — requires inducing error paths and \
-             evaluating message structure (what failed, why, hint). Not \
-             reducible to a static-analysis or shape audit at current scale.",
-        ),
-        (
-            "p5-must-force-yes",
-            "no source audit yet detects clap `--force` / `--yes` flag \
-             declarations; would mirror `p5-must-dry-run`'s pattern. \
-             follow-up work.",
-        ),
-        (
-            "p5-must-read-write-distinction",
-            "judgment-quality audit — distinguishing read-only from \
-             mutating subcommands requires per-subcommand semantic \
-             understanding beyond ast-grep's reach. Not auto-verified.",
-        ),
-    ];
+    const UNVERIFIED_MUSTS: &[(&str, &str)] = &[];
 
     /// R4 — every `Audit::covers()` id in the live catalog resolves in the
     /// generated `REQUIREMENTS` slice. A typo (or a renamed-then-forgotten
@@ -592,10 +550,12 @@ mod tests {
     }
 
     /// R5 (allowlist hygiene) — every entry in `UNVERIFIED_MUSTS` references
-    /// an id that is currently a MUST in the spec and carries a non-empty
-    /// rationale. Catches stale shields after a rename or level change.
+    /// an id that is currently a MUST in the spec, carries a non-empty
+    /// rationale, and has no audit covering it. Catches stale shields after a
+    /// rename, a level change, or an audit landing for the MUST.
     #[test]
     fn unverified_musts_allowlist_only_references_real_must_ids() {
+        use crate::audits::all_audits_catalog;
         use std::collections::HashSet;
 
         let must_ids: HashSet<&'static str> = REQUIREMENTS
@@ -603,8 +563,17 @@ mod tests {
             .filter(|r| r.level == Level::Must)
             .map(|r| r.id)
             .collect();
+        let covered: HashSet<&'static str> = all_audits_catalog()
+            .iter()
+            .flat_map(|c| c.covers().iter().copied())
+            .collect();
 
         for (id, why) in UNVERIFIED_MUSTS {
+            assert!(
+                !covered.contains(id),
+                "UNVERIFIED_MUSTS entry `{id}` is covered by an audit's \
+                 `covers()`, so it is verified: remove the entry."
+            );
             assert!(
                 must_ids.contains(id),
                 "UNVERIFIED_MUSTS entry `{id}` (`{why}`) is not a current MUST \

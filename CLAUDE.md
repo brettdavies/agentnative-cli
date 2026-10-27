@@ -155,7 +155,18 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 ## Scorecard JSON fields
 
 `src/scorecard/mod.rs` emits `schema_version: "0.9"`. The schema evolves additively during the `0.x` pre-launch window;
-consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
+consumers feature-detect each addition rather than pinning exact shape.
+
+`schema/scorecard.schema.json` is the hand-written JSON Schema for this shape, and `anc emit schema` prints it. The
+file is the contract: its descriptions, closed value sets, formats, and `additionalProperties: false` exist nowhere
+else. `hand_written_schema_matches_the_serialized_shape` (`src/scorecard/schema_drift.rs`) derives the shape from the
+serialized types with `schemars`, a dev-dependency compiled only under `cfg(test)`, and names every path where the
+file disagrees on a property name, a `required` list, or a type. A shape change edits the file by hand, with
+`SCHEMA_VERSION`, the `$id`, and the root description, which `tests/scorecard_schema_v05.rs` pins to
+`SCHEMA_VERSION`. A new serialized struct takes `#[cfg_attr(test, derive(schemars::JsonSchema))]`. The reasoning is
+in `docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md`.
+
+Cumulative history:
 
 - `0.2`: `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
 - `0.3`: `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).

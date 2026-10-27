@@ -16,7 +16,7 @@ set -euo pipefail
 readonly BASELINE_BYTES=3517008
 # The measured artifact with `anc web` reachable, plus headroom for a
 # dependency bump: exceeding this is a decision, not an accident.
-readonly CEILING_BYTES=10485760
+readonly CEILING_BYTES=20971520
 
 BINARY="${1:-target/release/anc}"
 

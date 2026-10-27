@@ -171,3 +171,10 @@ strip = true
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# aws-lc-sys compiles its C library with OPENSSL_SMALL when its own package
+# is built for size (aws-lc-sys builder `is_small`). The crypto library is
+# most of the `web` feature's weight, and building it this way cuts the
+# release binary by about 1.46 MB, measured on x86_64-unknown-linux-gnu.
+[profile.release.package.aws-lc-sys]
+opt-level = "s"

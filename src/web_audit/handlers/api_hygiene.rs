@@ -22,6 +22,7 @@ use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::body::{AUDIT_PROBE_MAX_BODY_BYTES, STATUS_ONLY_BODY_BYTES};
 use crate::web_audit::fetch::redirect::{DEFAULT_MAX_REDIRECTS, is_redirect};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 
 const RATE_LIMIT_HEADERS: [&str; 8] = [
@@ -67,10 +68,9 @@ impl HostProbes {
     }
 }
 
-static HTML_CT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)html").unwrap());
-static HTML_BODY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(r"(?i)^[{JS_SPACE}]*<(!doctype|html|head|body)\b")).unwrap()
-});
+static HTML_CT: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)html"));
+static HTML_BODY: LazyLock<Regex> =
+    LazyLock::new(|| fixed(&format!(r"(?i)^[{JS_SPACE}]*<(!doctype|html|head|body)\b")));
 
 fn is_client_error(status: u16) -> bool {
     (400..500).contains(&status)

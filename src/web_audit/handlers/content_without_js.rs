@@ -17,6 +17,7 @@ use super::shared::{JS_SPACE, item, js_len, js_trim, markdown_hrefs, why};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus, why_item};
 use crate::web_audit::fetch::body::AUDIT_PROBE_MAX_BODY_BYTES;
 use crate::web_audit::fetch::{FetchInit, FetchOptions};
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -40,13 +41,11 @@ pub struct ContentWithoutJsWith {
     pub timeout: Option<f64>,
 }
 
-static SCRIPT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<script.*?</script>").unwrap());
-static STYLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<style.*?</style>").unwrap());
-static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
-static SPACE_RUN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"[{JS_SPACE}]+")).unwrap());
-static H1: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"(?i)<h1[{JS_SPACE}>]")).unwrap());
+static SCRIPT: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?is)<script.*?</script>"));
+static STYLE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?is)<style.*?</style>"));
+static TAG: LazyLock<Regex> = LazyLock::new(|| fixed(r"<[^>]+>"));
+static SPACE_RUN: LazyLock<Regex> = LazyLock::new(|| fixed(&format!(r"[{JS_SPACE}]+")));
+static H1: LazyLock<Regex> = LazyLock::new(|| fixed(&format!(r"(?i)<h1[{JS_SPACE}>]")));
 
 /// The page's text with scripts, styles and tags removed and whitespace
 /// collapsed.

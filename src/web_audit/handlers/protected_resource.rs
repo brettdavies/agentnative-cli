@@ -19,6 +19,7 @@ use url::Url;
 use crate::web_audit::engine::reciprocity_metadata::resource_metadata_from_challenge;
 use crate::web_audit::engine::{HandlerContext, McpAuthRequired, ProbeOutcome, ProbeStatus};
 use crate::web_audit::locality::{Locality, site_block_reason};
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -26,8 +27,7 @@ const MAX_AUTHORIZATION_SERVERS: usize = 8;
 const MAX_URL_LENGTH: usize = 2048;
 const MAX_SHOWN_LENGTH: usize = 200;
 
-static BEARER_CHALLENGE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)(?:^|,)\s*bearer(?:\s|$)").unwrap());
+static BEARER_CHALLENGE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)(?:^|,)\s*bearer(?:\s|$)"));
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]

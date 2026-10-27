@@ -17,6 +17,7 @@ use super::sign_in::McpAuthRequired;
 use super::types::{ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::ProbeResponse;
 use crate::web_audit::handlers::mcp::ops::Era;
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::{AntecedentToken, WebCheckSiteType};
 use crate::web_audit::scorecard::{DeclaredSiteType, EvidenceItem};
 
@@ -248,22 +249,18 @@ fn auth_signal_observed(ctx: &AntecedentContext<'_>) -> bool {
         || mcp::card_declares_auth(ctx)
 }
 
-static SCHEMAS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)application/schema\+json|json-?schema|/schema\.json").unwrap()
-});
+static SCHEMAS_RE: LazyLock<Regex> =
+    LazyLock::new(|| fixed(r"(?i)application/schema\+json|json-?schema|/schema\.json"));
 static API_DOC_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(?-u:\b)(?:openapi|swagger)[A-Za-z0-9_./-]*\.(?:json|ya?ml)(?-u:\b)").unwrap()
+    fixed(r"(?i)(?-u:\b)(?:openapi|swagger)[A-Za-z0-9_./-]*\.(?:json|ya?ml)(?-u:\b)")
 });
-static API_PATH_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)/api/").unwrap());
-static SERVICE_DESC_REL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)rel\s*=\s*["']?(?:service-desc|service-doc)(?-u:\b)"#).unwrap()
-});
-static LINK_TAG_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)<link(?-u:\b)[^>]*>").unwrap());
+static API_PATH_RE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)/api/"));
+static SERVICE_DESC_REL_RE: LazyLock<Regex> =
+    LazyLock::new(|| fixed(r#"(?i)rel\s*=\s*["']?(?:service-desc|service-doc)(?-u:\b)"#));
+static LINK_TAG_RE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)<link(?-u:\b)[^>]*>"));
 static REL_ALTERNATE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?i)rel=["']?alternate["']?"#).unwrap());
-static TEXT_MARKDOWN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)text/markdown").unwrap());
+    LazyLock::new(|| fixed(r#"(?i)rel=["']?alternate["']?"#));
+static TEXT_MARKDOWN_RE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)text/markdown"));
 
 /// A service-desc or service-doc link (Link header or `<link>` tag) to a non-MCP target.
 fn rest_service_desc_link(ctx: &AntecedentContext<'_>) -> bool {

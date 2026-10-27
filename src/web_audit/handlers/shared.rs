@@ -14,6 +14,7 @@ use crate::web_audit::engine::ProbeStatus;
 use crate::web_audit::fetch::{
     CrossOriginRedirects, FetchOptions, NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal,
 };
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::scorecard::EvidenceItem;
 
 pub use crate::web_audit::engine::discovery::resolve_url;
@@ -232,10 +233,9 @@ pub fn js_trim(text: &str) -> &str {
 // CommonMark lets a destination sit in angle brackets (`[x](<a b.md>)`) so it
 // can hold spaces or parentheses; the brackets are syntax, not part of the URL.
 static MARKDOWN_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(&format!(
+    fixed(&format!(
         r#"\]\((?:<([^<>\n]+)>|([^){JS_SPACE}]+))(?:[{JS_SPACE}]+"[^"]*")?\)"#
     ))
-    .unwrap()
 });
 
 /// Every inline-link destination in a markdown body, in document order, as

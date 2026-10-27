@@ -14,6 +14,7 @@ use url::Url;
 use super::discovery::resolve_url;
 use super::follow_trail::{Declaration, Kind};
 use crate::web_audit::fetch::ProbeResponse;
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::scorecard::EvidenceItem;
 
 /// The media type an AI catalog entry names a server card by, and the
@@ -32,7 +33,7 @@ const MAX_CATALOG_CARDS: usize = 4;
 
 // The extension schema's remote URL template variable: `{name}`.
 static URL_TEMPLATE_VARIABLE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{[A-Za-z_][A-Za-z0-9_]*\}").unwrap());
+    LazyLock::new(|| fixed(r"\{[A-Za-z_][A-Za-z0-9_]*\}"));
 
 /// A JSON object body.
 pub type JsonObject = Map<String, Value>;

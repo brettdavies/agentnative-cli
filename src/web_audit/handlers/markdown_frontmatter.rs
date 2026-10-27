@@ -13,6 +13,7 @@ use super::http::header_pairs;
 use super::shared::{JS_SPACE, item, redirects_to_http, redirects_to_http_item, resolve_url, why};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::FetchInit;
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 
 /// The `with` block of the `markdown-frontmatter` check.
@@ -27,10 +28,10 @@ pub struct MarkdownFrontmatterWith {
     pub timeout: Option<f64>,
 }
 
-static HTML_CT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)text/html").unwrap());
-static FENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:---|\.\.\.)$").unwrap());
+static HTML_CT: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)text/html"));
+static FENCE: LazyLock<Regex> = LazyLock::new(|| fixed(r"^(?:---|\.\.\.)$"));
 static KEY_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"^[^{JS_SPACE}][^:]*:([{JS_SPACE}]|$)")).unwrap());
+    LazyLock::new(|| fixed(&format!(r"^[^{JS_SPACE}][^:]*:([{JS_SPACE}]|$)")));
 
 /// Fetch the markdown twin and look for a well-formed frontmatter block.
 pub fn run_markdown_frontmatter(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {

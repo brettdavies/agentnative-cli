@@ -9,6 +9,7 @@ use serde_json::json;
 
 use super::shared::{item, why};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 
 // Each marker must be structural: an attribute, a script element, or a
@@ -20,15 +21,15 @@ static WEBMCP_MARKERS: LazyLock<[(&str, Regex); 3]> = LazyLock::new(|| {
     [
         (
             "application/webmcp script block",
-            Regex::new(r#"(?i)\btype\s*=\s*["']?application/webmcp(?:\+json)?\b"#).unwrap(),
+            fixed(r#"(?i)\btype\s*=\s*["']?application/webmcp(?:\+json)?\b"#),
         ),
         (
             "modelContext API reference",
-            Regex::new(r"\b(?:navigator|document|window)\s*\.\s*modelContext\b").unwrap(),
+            fixed(r"\b(?:navigator|document|window)\s*\.\s*modelContext\b"),
         ),
         (
             "webmcp script asset",
-            Regex::new(r#"(?i)<script\b[^>]*\bsrc\s*=\s*["'][^"']*webmcp[^"']*["']"#).unwrap(),
+            fixed(r#"(?i)<script\b[^>]*\bsrc\s*=\s*["'][^"']*webmcp[^"']*["']"#),
         ),
     ]
 });

@@ -18,6 +18,7 @@ use super::reciprocity::{read, same_host};
 use crate::web_audit::fetch::ProbeResponse;
 use crate::web_audit::fetch::body::METADATA_MAX_BODY_BYTES;
 use crate::web_audit::handlers::shared::RETRY_SHAPED_STATUSES;
+use crate::web_audit::pattern::fixed;
 
 const PROTECTED_RESOURCE_PATH: &str = "/.well-known/oauth-protected-resource";
 // A path no real resource lives at: metadata naming it as its resource was
@@ -30,9 +31,8 @@ const METADATA_READ: ReadOptions = ReadOptions {
     timeout_cap: None,
 };
 
-static RESOURCE_METADATA_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)(?:^|[\s,])resource_metadata\s*=\s*(?:"([^"]*)"|([^\s,]+))"#).unwrap()
-});
+static RESOURCE_METADATA_RE: LazyLock<Regex> =
+    LazyLock::new(|| fixed(r#"(?i)(?:^|[\s,])resource_metadata\s*=\s*(?:"([^"]*)"|([^\s,]+))"#));
 
 /// Where artifact reads go: one GET per URL, redirects disabled.
 pub trait ArtifactSource {

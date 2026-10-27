@@ -17,6 +17,7 @@ use super::shared::{
 };
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus, why_item};
 use crate::web_audit::fetch::FetchInit;
+use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 
 /// Candidates probed when the check names no cap.
@@ -34,7 +35,7 @@ pub struct ScopedLlmsWith {
     pub timeout: Option<f64>,
 }
 
-static LOOKS_LIKE_LLMS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?mR)^#|\]\(").unwrap());
+static LOOKS_LIKE_LLMS: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?mR)^#|\]\("));
 
 /// Probe each section directory for the scoped file.
 pub fn run_scoped_llms(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {

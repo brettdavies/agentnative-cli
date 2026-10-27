@@ -3,7 +3,7 @@ title: Local Web Audit - Plan
 type: feat
 status: blocked
 blocked_on: "the owner's go-ahead for the commit that turns the web feature on by default (the parity commit, which carries task T1's release NASM and cmake), and agentnative-site committing the U15 vendoring contract that U16 re-pins to"
-prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229"]
+prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230"]
 date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
@@ -166,9 +166,10 @@ flowchart TB
 - R17. The binary has one exit-code contract across every verb, and a run's output names the code it is returning and
   what earned it.
 - R18. A run can present a bearer token for the audited MCP endpoint, read from the `ANC_WEB_TOKEN` environment variable
-  or from stdin with `--token-stdin`, never from an argv value. The token goes only to the endpoint's handshake and
-  session probes: never to followed hosts, metadata documents, sign-in servers, any other check, or the enforcement
-  probe that tests token-less refusal. It never appears in the scorecard, text output, logs, or errors.
+  or from stdin with `--token-stdin`, never from an argv value. The token goes only to the endpoint of record's
+  handshake and session probes, on a declared host too when the endpoint lives there and that host confirms it: never
+  to the follow slice's own requests, metadata documents, sign-in servers, any other check, or the enforcement probe
+  that tests token-less refusal. It never appears in the scorecard, text output, logs, or errors.
 - R19. Every local scorecard records its vantage as the site defines it (`vantage: { network: "local", credentialed }`,
   `credentialed` true only when a token was presented), and the sign-in server check counts a private-address
   authorization server as usable when the endpoint itself is private.
@@ -290,7 +291,7 @@ planned here, with no separate site plan).
   (#208). KD11 (HTTPS only, #212), KD12 and R22 (the OS trust store and `--ca-cert`, #209), and the port's error-step
   type folded into the CLI's `NextStep` contract (#202) land in the same stack. The divergence ledger holds no entry:
   the engine reproduces every scenario of the vendored corpus.
-- U14 (`ANC_WEB_TOKEN` and `--token-stdin`) is the credentialed side the corpus does not exercise.
+- U14 (`ANC_WEB_TOKEN` and `--token-stdin`) is on `dev` (#230), the credentialed side the corpus does not exercise.
 - The commit that turns `web` on by default is the parity commit, and task T1's release NASM and `Cross.toml` cmake
   ride with it. It waits on the owner's go-ahead, and no release ships `anc web` before it.
 - U16 waits on U15: it re-pins once `agentnative-site` commits the vendoring contract under
@@ -1242,8 +1243,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - **Test scenarios:**
   - Happy path: a mock protected MCP server with a valid token yields evaluated session rows, passing sign-in checks,
     and `vantage.credentialed` true.
-  - Security: the token never reaches a followed host, a metadata URL, a sign-in server, or the enforcement probe
-    (asserted on the mock's request log), and never appears in JSON, text, or error output.
+  - Security: the token never reaches the follow slice's own requests, a metadata URL, a sign-in server, or the
+    enforcement probe (asserted on the mock's request log), and never appears in JSON, text, or error output.
   - Security: a credentialed handshake answered by a 307 or a 308 to another public origin sends no request carrying
     the token to that origin (KTD1).
   - Security: an audited fixture binary that prints its environment shows no `ANC_WEB_TOKEN`.

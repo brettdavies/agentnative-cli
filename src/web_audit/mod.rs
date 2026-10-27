@@ -15,6 +15,8 @@
 )]
 
 #[cfg(feature = "web")]
+pub mod emit;
+#[cfg(feature = "web")]
 pub mod engine;
 #[cfg(feature = "web")]
 pub mod fetch;
@@ -27,7 +29,11 @@ pub mod locality;
 #[cfg(feature = "web")]
 pub mod mock;
 pub mod registry;
+#[cfg(feature = "web")]
+pub mod render;
 pub mod score;
 pub mod scorecard;
+#[cfg(feature = "web")]
+pub mod target;
 #[cfg(feature = "web")]
 pub mod transport;

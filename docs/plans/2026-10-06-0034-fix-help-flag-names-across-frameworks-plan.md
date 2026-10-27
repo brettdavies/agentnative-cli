@@ -27,6 +27,9 @@ prs:
   - "#198"
   - "#199"
   - "#200"
+  - "#161"
+  - "#203"
+  - "#206"
   - "brettdavies/agentnative#59"
   - "brettdavies/agentnative-site#455"
 completed: 2026-10-26
@@ -236,6 +239,10 @@ Shipped alongside this plan rather than deferred:
 - **The probe environment, kubectl's grouped command headings, and `PENDING_FAILS`** (#161). `BinaryRunner` pins
   `TERM=dumb`, `COLUMNS=80` and `PAGER=cat` rather than inheriting them, headings such as `Basic Commands (Beginner):`
   read as command lists, and `tests/dogfood.rs`'s `PENDING_FAILS` matches the audit IDs it names.
+- **Command headings that name a tool's subcommands** (#203, #206). gh's capitalized headings (`CORE COMMANDS:`) and
+  their colon-ended entries, title-case and one-word headings at column 0 that end in "commands" or "subcommands", and
+  an underlined heading with column-0 entries (direnv) read as command lists, so a tool's `skill` subcommand is found
+  and its P8 rows are scored rather than read as n_a.
 
 ### Assumptions
 

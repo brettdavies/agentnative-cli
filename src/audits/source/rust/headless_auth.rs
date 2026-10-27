@@ -27,6 +27,7 @@ const AUTH_IDENT_KEYWORDS: &[&str] = &[
 ];
 
 /// Audit trait implementation for headless auth detection.
+#[derive(Debug)]
 pub struct HeadlessAuthAudit;
 
 impl Audit for HeadlessAuthAudit {
@@ -96,6 +97,7 @@ impl Audit for HeadlessAuthAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

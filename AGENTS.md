@@ -86,17 +86,18 @@ URL-rewriting comes from disabling user config wholesale, not from a `-c url.<re
 opposite of blocking).
 
 The host map (`SkillHost` enum, `KNOWN_HOSTS`, `resolve_host`, `host_envelope_str`) is **build-time-generated** from
-`src/skill_install/skill.json` by `build.rs::emit_skill_hosts`. To add or change a host, edit the JSON (or run `bash
-scripts/sync-skill-fixture.sh` to pull the upstream site contract) and `cargo build` regenerates the Rust map; no hand
-edits to `src/skill_install.rs` are required. CI's `skill-fixture-drift.yml` runs `--check` on every PR to catch fixture
-vs upstream drift.
+`src/skill_install/skill.json` by `build.rs::emit_skill_hosts`. To add or change a host, edit the JSON (or run
+`bash scripts/sync-skill-fixture.sh` to pull the upstream site contract) and `cargo build` regenerates the Rust map; no
+hand edits to `src/skill_install.rs` are required. CI's `skill-fixture-drift.yml` runs `--check` on every PR to catch
+fixture vs upstream drift.
 
 ## Agent-facing JSON surface
 
-`anc audit <target> --output json` emits a `schema_version: "0.5"` scorecard. The schema is at `0.x` while `anc` is
-pre-launch: shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
-norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
-following scorecard-level fields beyond the base `results` / `summary`:
+`anc audit <target> --output json` emits a scorecard whose `schema_version` names its shape, and `anc emit schema`
+prints the JSON Schema (draft 2020-12) that describes it. The schema is at `0.x` while `anc` is pre-launch: shape may
+evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the norm; consumers should
+feature-detect new keys rather than pinning to an exact value. The current shape includes the following scorecard-level
+fields beyond the base `results` / `summary`:
 
 - `audience`: `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral audits
   (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Informational only; never gates totals
@@ -122,10 +123,10 @@ following scorecard-level fields beyond the base `results` / `summary`:
   derivation from the live run. `score_pct` is the credit-weighted score defined in `agentnative-spec`
   `principles/scoring.md`, over behavioral-layer rows only: `round(100 × Σ w·credit / Σ w)`, with credit 1 for `pass`,
   0.5 for `warn`, and 0 for `fail` and `opt_out`; `n_a`, `skip`, and `error` are excluded. `eligible` is true iff
-  `score_pct >= 70` (`BADGE_ELIGIBILITY_FLOOR_PCT`) and a tool slug was derivable. `embed_markdown` is
-  `null` below the floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even
-  below the floor; `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint
-  (`--output text`) prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
+  `score_pct >= 70` (`BADGE_ELIGIBILITY_FLOOR_PCT`) and a tool slug was derivable. `embed_markdown` is `null` below the
+  floor (do-not-nag contract). `scorecard_url` / `badge_url` are populated whenever a slug exists, even below the floor;
+  `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition. The text-mode hint (`--output text`)
+  prints the same embed snippet only when eligible; below-floor runs print nothing badge-related.
 
 `--audit-profile` accepts exactly 4 values: `human-tui`, `file-traversal`, `posix-utility`, `diagnostic-only`. Unknown
 values exit 2 with a structured error. The full per-category mapping of suppressed audit IDs is committed to
@@ -135,16 +136,18 @@ values exit 2 with a structured error. The full per-category mapping of suppress
 jaq '.audit_profiles' coverage/matrix.json
 ```
 
-Suppressed audits appear in `results[]` as `status: "skip"` with evidence starting with `"suppressed by audit_profile:
-"` (the shared prefix is pinned in `src/principles/registry.rs` as `SUPPRESSION_EVIDENCE_PREFIX`).
+Suppressed audits appear in `results[]` as `status: "skip"` with evidence starting with
+`"suppressed by audit_profile: "` (the shared prefix is pinned in `src/principles/registry.rs` as
+`SUPPRESSION_EVIDENCE_PREFIX`).
 
 ## Exit Codes
 
 - `0`: all audits passed
 - `1`: warnings present, no failures
-- `2`: failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH,
-  a directory that builds several binaries with no `--bin` (`binary-ambiguous`), a `--bin` that names none of them
+- `2`: failures, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH, a
+  directory that builds several binaries with no `--bin` (`binary-ambiguous`), a `--bin` that names none of them
   (`unknown-bin`), `--bin` beside a binary target (`bin-needs-directory`))
+- `3`: could not check: an audit errored, or none applied. An errored audit outranks a failure.
 
 Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr; usage errors
 include `Usage:` text, and audit failures don't. Under `--output json`, every error is one envelope on stderr with a
@@ -159,8 +162,8 @@ contract.
 - `src/audits/project/`: file and manifest inspection audits
 - `src/runner.rs`: binary execution with timeout and caching
 - `src/project/`: project discovery: workspace declarations (`workspace/`), the gitignore-aware tree scan (`scan.rs`),
-  the package inventory (`inventory.rs`), declared bins on disk (`bins.rs`), binary selection (`select.rs`), and the
-  per-language source cache (`mod.rs`)
+  the package inventory (`inventory.rs`), declared bins on disk (`bins.rs`) in cargo's target directory
+  (`cargo_target.rs`), binary selection (`select.rs`), and the per-language source cache (`mod.rs`)
 - `src/scorecard.rs`: output formatting (text and JSON)
 - `src/types.rs`: AuditResult, AuditStatus, AuditGroup, AuditLayer
 - `src/principles/registry.rs`: single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the
@@ -184,9 +187,9 @@ behavior.
 
 User-facing prose follows the **linter channel** rules in [`PRODUCT.md`](PRODUCT.md). Short version: second-person
 imperative, no RFC 2119 keywords in error messages, no marketing voice, errors name "what failed / why / what to do."
-`BRAND.md` and `PRODUCT.md` are the authoritative voice contract. The Vale rule pack maintained in `agentnative-spec`
-(mirrored onto this repo's `dev` branch) encodes the literal phrases for enforcement on contributor PRs against `dev`;
-the pack and `scripts/prose-check.sh` are dev-only tooling and do not ship to `main`.
+`BRAND.md` and `PRODUCT.md` are the authoritative voice contract. The Vale rule pack this repository maintains in
+`styles/` encodes the literal phrases for enforcement on contributor PRs against `dev`; the pack and
+`scripts/prose-check.sh` are dev-only tooling and do not ship to `main`.
 
 ## Testing
 

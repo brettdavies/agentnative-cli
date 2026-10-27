@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::bins::{self, Candidate};
+use super::cargo_target::CargoTarget;
 use super::{Language, scan, workspace};
 
 /// One package in the audited tree.
@@ -31,12 +32,15 @@ pub struct Inventory {
     pub candidates: Vec<Candidate>,
     /// Names of declared bins that are not built.
     pub unbuilt: Vec<String>,
+    /// The cargo target directories searched for the unbuilt Rust bins.
+    pub target_dirs: Vec<PathBuf>,
     /// One message per declaration, member, or scan limit to report.
     pub warnings: Vec<String>,
 }
 
-/// Inventory the packages under `root`.
-pub fn inventory(root: &Path, include_tests: bool) -> Inventory {
+/// Inventory the packages under `root`, finding their Rust builds where
+/// `cargo` puts them.
+pub fn inventory(root: &Path, include_tests: bool, cargo: &CargoTarget) -> Inventory {
     let declared = workspace::read(root);
     let scanned = scan::manifests(root, include_tests);
     let mut found = Inventory {
@@ -57,9 +61,10 @@ pub fn inventory(root: &Path, include_tests: bool) -> Inventory {
         add(&mut found, language, manifest);
     }
     found.warnings.extend(scanned.warnings);
-    let bins = bins::candidates(root, &mut found.packages);
+    let bins = bins::candidates(root, &mut found.packages, cargo);
     found.candidates = bins.candidates;
     found.unbuilt = bins.unbuilt;
+    found.target_dirs = bins.target_dirs;
     found
 }
 
@@ -103,9 +108,14 @@ mod tests {
             .join(name)
     }
 
+    /// Builds in cargo's default place for `root`.
+    fn beside(root: &Path) -> CargoTarget {
+        CargoTarget::at(root.join("target"))
+    }
+
     /// Packages as `(language, root relative to the audit root)`.
     fn listed(root: &Path, include_tests: bool) -> Vec<(Language, String)> {
-        let found = inventory(root, include_tests);
+        let found = inventory(root, include_tests, &beside(root));
         assert!(found.warnings.is_empty(), "{:?}", found.warnings);
         found
             .packages
@@ -243,7 +253,7 @@ mod tests {
             "packages: &all\n  - 'pkgs/*'\n",
         );
 
-        let found = inventory(tmp.path(), false);
+        let found = inventory(tmp.path(), false, &beside(tmp.path()));
 
         assert_eq!(found.warnings.len(), 1, "{:?}", found.warnings);
         assert!(
@@ -256,7 +266,7 @@ mod tests {
     #[test]
     fn this_repository_is_one_package() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let found = inventory(root, false);
+        let found = inventory(root, false, &beside(root));
         assert_eq!(
             found.packages,
             [Package {

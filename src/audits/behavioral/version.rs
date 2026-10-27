@@ -72,6 +72,7 @@ impl Audit for VersionAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

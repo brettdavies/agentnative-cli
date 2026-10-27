@@ -19,8 +19,8 @@ candidate, or stops with `binary-ambiguous` and one `--bin` command each. `Proje
 with nothing graded, `Project::anchor_ungraded` picks the one bin-declaring package, and with several,
 `Project::manifest_skip` gives those audits their Skip evidence. Source audits run once per language present
 (`Project::languages`), reading `Project::parsed_files(language)` from `scan::source_walker`, which also skips an
-`examples` directory beside a manifest or at the root, and `audits::source::merge_shared` folds an audit id
-both languages report into one row. The README's "What a directory audit grades" section is the user-facing contract.
+`examples` directory beside a manifest or at the root, and `audits::source::merge_shared` folds an audit id both
+languages report into one row. The README's "What a directory audit grades" section is the user-facing contract.
 
 Design doc: `~/.gstack/projects/brettdavies-agentnative/brett-main-design-20260327-214808.md`
 
@@ -52,8 +52,8 @@ For the full routing table, see `~/.claude/skills/docs/workflow-routing.md`.
 ## Documented Solutions
 
 `docs/solutions/` (symlink to `~/dev/solutions-docs/`) is a searchable archive of past solutions and best practices,
-organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search with `qmd query "<topic>"
---collection solutions`. Relevant when implementing or debugging in documented areas.
+organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search with
+`qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in documented areas.
 
 ## gstack Project History
 
@@ -155,7 +155,18 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 ## Scorecard JSON fields
 
 `src/scorecard/mod.rs` emits `schema_version: "0.9"`. The schema evolves additively during the `0.x` pre-launch window;
-consumers feature-detect each addition rather than pinning exact shape. Cumulative history:
+consumers feature-detect each addition rather than pinning exact shape.
+
+`schema/scorecard.schema.json` is the hand-written JSON Schema for this shape, and `anc emit schema` prints it. The
+file is the contract: its descriptions, closed value sets, formats, and `additionalProperties: false` exist nowhere
+else. `hand_written_schema_matches_the_serialized_shape` (`src/scorecard/schema_drift.rs`) derives the shape from the
+serialized types with `schemars`, a dev-dependency compiled only under `cfg(test)`, and names every path where the
+file disagrees on a property name, a `required` list, or a type. A shape change edits the file by hand, with
+`SCHEMA_VERSION`, the `$id`, and the root description, which `tests/scorecard_schema_v05.rs` pins to
+`SCHEMA_VERSION`. A new serialized struct takes `#[cfg_attr(test, derive(schemars::JsonSchema))]`. The reasoning is
+in `docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md`.
+
+Cumulative history:
 
 - `0.2`: `coverage_summary` (three-way `{must, should, may} × {total, verified}` counts), `audience`, `audit_profile`.
 - `0.3`: `spec_version` (vendored agentnative-spec version, sourced by `build.rs` from `src/principles/spec/VERSION`).
@@ -208,44 +219,45 @@ Existing field semantics:
 
 - `badge`: `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }`. Computed by
   `compute_badge(results, tool_name)` via `score_pct`, the credit-weighted, behavioral-only leaderboard formula from
-  `agentnative-spec` `principles/scoring.md`: over the denominator set `D` (behavioral rows whose status is in `{pass,
-  warn, fail, opt_out}`), `score_pct = round(100 × Σ w(tier)·credit / Σ w(tier))` with `credit(pass)=1.0`,
+  `agentnative-spec` `principles/scoring.md`: over the denominator set `D` (behavioral rows whose status is in
+  `{pass, warn, fail, opt_out}`), `score_pct = round(100 × Σ w(tier)·credit / Σ w(tier))` with `credit(pass)=1.0`,
   `credit(warn)=0.5`, `credit(fail)=credit(opt_out)=0.0`, and tier weights flat (`W_MUST = W_SHOULD = W_MAY = 1.0`, a
   tunable parameter). `n_a` / `skip` / `error` and every non-behavioral (source/project) row are excluded from `D`;
-  source-only runs therefore have an empty `D` and score `0`. `eligible` is true iff `score_pct >=
-  BADGE_ELIGIBILITY_FLOOR_PCT` (currently `70`) **and** a tool slug was derivable; `embed_markdown` is `Some` only when
-  `eligible` (the do-not-nag contract from the site's badge convention). `scorecard_url` / `badge_url` are populated
-  whenever a slug exists, even below the floor, because the site renders an SVG for every scored tool so a regression
-  below the floor shifts color rather than 404s. `convention_url` is the fixed `https://anc.dev/badge` pointer. URLs are
-  anchored at `BADGE_BASE_URL = "https://anc.dev"` so the URL pattern lives in one place. Authority for the formula,
-  floor, and cohort bands is `principles/scoring.md`; the site renders the band colors. Text mode (`--output text`)
-  appends a post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is used for the slug so
-  the JSON `embed_markdown` and the printed hint can never disagree.
+  source-only runs therefore have an empty `D` and score `0`. `eligible` is true iff
+  `score_pct >= BADGE_ELIGIBILITY_FLOOR_PCT` (currently `70`) **and** a tool slug was derivable; `embed_markdown` is
+  `Some` only when `eligible` (the do-not-nag contract from the site's badge convention). `scorecard_url` / `badge_url`
+  are populated whenever a slug exists, even below the floor, because the site renders an SVG for every scored tool so a
+  regression below the floor shifts color rather than 404s. `convention_url` is the fixed `https://anc.dev/badge`
+  pointer. URLs are anchored at `BADGE_BASE_URL = "https://anc.dev"` so the URL pattern lives in one place. Authority
+  for the formula, floor, and cohort bands is `principles/scoring.md`; the site renders the band colors. Text mode
+  (`--output text`) appends a post-summary hint via `BadgeInfo::text_hint()` when `eligible`; the same `tool.name` is
+  used for the slug so the JSON `embed_markdown` and the printed hint can never disagree.
 
-`0.8` addition (`MitigationInfo` carrier on `AuditResult`):
+`0.8` addition (`Mitigation` carrier on `AuditResult`):
 
-- `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples, builtin_match_count, subcommand_total
-  }` is attached to an `AuditResult` when the audit's verdict was assisted by a documented per-CLI opt-in. Today's only
-  producer is `src/audits/behavioral/standard_names.rs`: when `p6-standard-names` Passes because one or more subcommands
-  were recognized via `.anc.toml [p6] domain_verbs` (rather than the built-in `STANDARD_VERBS` list), the audit fills
-  `MitigationInfo` with the bifurcated match counts and the first `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb
-  names in encounter order.
-- `AuditResultView` surfaces two top-level fields derived from the carrier: `using_domain_verbs: Option<bool>` and
-  `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from rows
-  that did not consult `domain_verbs`. The Pass row's `evidence` field is populated (rather than `null`) via
-  `format_pass_evidence(&mitigation)`; rows without mitigation keep the historical `evidence: null` on Pass.
-- The carrier shape is deliberately not audit-specific. Future audits that admit per-CLI mitigation (suppression profile
-  assistance, conditional-applicability config) can populate `MitigationInfo` with the same fields rather than growing
-  parallel typed carriers. The semantic contract is "this verdict depended on a self-declared opt-in; here is what
-  assisted."
+- `AuditResult.mitigation: Option<Mitigation>` is set when a Pass depended on a `.anc.toml` setting. The semantic
+  contract is "this verdict depended on a self-declared opt-in; here is what assisted." `Mitigation` has two variants:
+  - `DomainVerbs(MitigationInfo)`: `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples,
+    builtin_match_count, subcommand_total }`, filled by `src/audits/behavioral/standard_names.rs` when
+    `p6-standard-names` Passes because one or more subcommands were recognized via `.anc.toml [p6] domain_verbs` (rather
+    than the built-in `STANDARD_VERBS` list), with the bifurcated match counts and the first
+    `DOMAIN_MATCH_EXAMPLES_LIMIT` (5) matched domain-verb names in encounter order.
+  - `Config(String)`: every other setting. The prose names the setting, what it contributed, and the file that supplied
+    it, cited through `anc_toml::Sourced::cite` (`destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`). An
+    audit that credits a setting returns a `types::Verdict { status, mitigation }` from its core helper.
+- `AuditResultView` surfaces two top-level fields from the `DomainVerbs` variant: `using_domain_verbs: Option<bool>` and
+  `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from every
+  other row. `scorecard::pass_row_evidence` composes a Pass row's `evidence`: `AuditResult.pass_evidence` (what the
+  audit observed, such as the subcommands and flags `p7-limit` matched) first, then the mitigation prose
+  (`format_pass_evidence` for `DomainVerbs`, the prose itself for `Config`), joined by a semicolon. A Pass with neither
+  keeps `evidence: null`. A setting that shapes a non-Pass verdict says so in that status's own evidence string.
 
 `0.9` addition (`ConfigHint` carrier on `AuditResult`):
 
-- `ConfigHint { files, domain_verbs, docs }` is attached to an `AuditResult` when a warning is one a `.anc.toml`
-  setting would clear and no config supplied it. Today's only producer is `standard_names.rs`: a `p6-standard-names`
-  Warn with no `domain_verbs` applied carries the flagged verbs (lowercase, `--help` order), the files the setting can
-  go in, and `anc_toml::DOCS_URL`. A Warn that config shaped, a Pass, and the Warn an unreadable chain produces carry
-  none.
+- `ConfigHint { files, domain_verbs, docs }` is attached to an `AuditResult` when a warning is one a `.anc.toml` setting
+  would clear and no config supplied it. Today's only producer is `standard_names.rs`: a `p6-standard-names` Warn with
+  no `domain_verbs` applied carries the flagged verbs (lowercase, `--help` order), the files the setting can go in, and
+  `anc_toml::DOCS_URL`. A Warn that config shaped, a Pass, and the Warn an unreadable chain produces carry none.
 - `files` lists `ConfigFile { file, scope }`, the repository's `.anc.toml` first, then the user-level file when one is
   configured. `scope` is `repository` (the git root or `--repo`), `tool-repository` (a target outside any repository:
   the tool's own checkout, read through `--repo`), or `user` (every audit on the machine). `file` follows the evidence
@@ -298,8 +310,8 @@ surface lives in `src/skill_install.rs`:
   `GIT_ASKPASS`, `GIT_EXEC_PATH`).
 - `GIT_HARDEN_ENV_SET: &[(&str, &str)]`: three env vars **set** on the spawned process. The
   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` pair disables every layer of user-controlled git
-  config, the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried `-c
-  url.<repo>.insteadOf=`, which does the *opposite* of blocking and doubles the clone URL). `GIT_TERMINAL_PROMPT=0`
+  config, the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried
+  `-c url.<repo>.insteadOf=`, which does the *opposite* of blocking and doubles the clone URL). `GIT_TERMINAL_PROMPT=0`
   blocks credential prompts; git's default-when-unset is to prompt, which is the wrong default for a non-interactive
   subcommand.
 
@@ -324,20 +336,32 @@ agentnative. Three rules guard the probe:
 1. **Bare invocation prints help** (`cli.rs`): `arg_required_else_help = true` means children spawned with no args get
    instant help output instead of running `audit .`. This is also correct CLI behavior (P1 principle).
 2. **Safe probing only** (`json_output.rs`): Subcommands are probed with `--help`/`--version` suffixes only, never bare.
-   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands.
+   Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands. The one call outside those
+   suffixes is a `.anc.toml [p2] json_probe`: `run_declared_probe` runs the declared arguments exactly as written,
+   through the same `BinaryRunner` (no shell, timeout, closed stdin), because the tool's repository or the operator
+   chose them. An empty declaration declares nothing, so the bare invocation never runs.
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
-   `target/release/<bin>` and `target/debug/<bin>` exist, the function returns the one with the more recent mtime.
-   Avoids the stale-release-binary trap in dev workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios
-   where only one profile is built fall through cleanly to the existence check. Ties go to debug (cargo's dev-flow
-   default). Test coverage: `test_discover_picks_newer_artifact_by_mtime` + `test_discover_picks_release_when_newer`.
-   Backstory: `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`.
+   `release/<bin>` and `debug/<bin>` exist in a target directory, the function returns the one with the more recent
+   mtime. The target directory is cargo's (`src/project/cargo_target.rs`): `CARGO_TARGET_DIR`, else what
+   `cargo metadata` reports at the audit root, else `<root>/target`. Avoids the stale-release-binary trap in dev
+   workflows where `cargo run`/`cargo test` only refresh debug. CI scenarios where only one profile is built fall
+   through cleanly to the existence check. Ties go to debug (cargo's dev-flow default). Test coverage:
+   `test_discover_picks_newer_artifact_by_mtime` + `test_discover_picks_release_when_newer`. Backstory:
+   `docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md`.
 
 **Rules for new behavioral audits:**
 
-- NEVER probe subcommands without `--help`/`--version` suffixes
+- NEVER probe subcommands without `--help`/`--version` suffixes, except through a declared `[p2] json_probe`
 - NEVER remove `arg_required_else_help` from `Cli`; it prevents recursive self-invocation
 - NEVER revert binary discovery to the always-prefer-release shape (rule 3); that pattern silently masked
   `p2-must-schema-print` regressions during the v0.4.0 spec sync
+
+**Tests that audit this repository** go through `self_audit` in `tests/common/self_audit.rs`. A probe never audits: one
+`anc audit .` runs its probes one at a time, each `--help`, `-h`, `--version`, `-V`, the bad flag, or bare. The cost is
+the source layer, about 25 CPU-seconds per audit in a debug build, and libtest runs one test per core. `self_audit` runs
+each distinct invocation once per test binary and holds one of `SLOTS` (4) lock files in the system temp directory while
+it runs, so audits of this repository run four at a time across every test run on the machine.
+`tests/self_audit_guard.rs` fails on a spawn that passes `"."` from the package root without it.
 
 ## CI and Quality
 
@@ -348,8 +372,8 @@ manifest is the toolchain's "lockfile"). Bumping the toolchain is a reviewed PR 
 runtime `rustup update` anywhere. Policy: bump only after a new stable has aged ≥7 days (supply-chain quarantine).
 
 **Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
-Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run: `git config
-core.hooksPath scripts/hooks`
+Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run:
+`git config core.hooksPath scripts/hooks`
 
 **Windows compatibility:** Only `libc` belongs in `[target.'cfg(unix)'.dependencies]`. All SIGPIPE/signal code must be
 inside `#[cfg(unix)]` blocks. The pre-push hook checks this statically.

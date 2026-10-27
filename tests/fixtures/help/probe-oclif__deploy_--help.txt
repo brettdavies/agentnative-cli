@@ -1,0 +1,21 @@
+oclif probe
+
+USAGE
+  $ probe deploy [TARGET] [-f] [-n <value>] [--dry-run] [-o <value>]
+    [--color]
+
+ARGUMENTS
+  [TARGET]  deploy target
+
+FLAGS
+  -f, --force           skip confirmation prompts
+  -n, --limit=<value>   maximum number of results to return, a deliberately long
+                        description so oclif has to wrap it onto continuation
+                        lines
+  -o, --output=<value>  write output here
+      --[no-]color      colorize
+      --dry-run         print what would change
+
+DESCRIPTION
+  oclif probe
+

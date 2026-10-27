@@ -1,0 +1,15 @@
+probe [options]
+
+Commands:
+  probe sub  a subcommand
+
+Options:
+      --version                 Show version number                    [boolean]
+  -f, --force                   skip confirmation prompts              [boolean]
+  -n, --limit                   maximum number of results to return, a
+                                deliberately long description so yargs has to
+                                wrap it onto continuation lines         [number]
+      --dry-run                 print what would change                [boolean]
+  -o, --output, --out           write output here                       [string]
+      --print-config-dir, --cd  multi-letter alias                     [boolean]
+      --help                    Show help                              [boolean]

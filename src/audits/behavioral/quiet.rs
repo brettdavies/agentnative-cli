@@ -1,7 +1,20 @@
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_meaning::Meaning;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
-use crate::runner::RunStatus;
+use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+const QUIET_FLAGS: &[&str] = &["--quiet", "-q"];
+
+/// `-q` is also `--disable` (curl) and `--question` (make). The words come
+/// from real `-q` descriptions: "quiet mode" (ssh, unzip), "Suppress
+/// diagnostic output" (deno).
+const QUIET: Meaning = Meaning {
+    what: "quiet",
+    long_names: &[],
+    words: &["quiet", "suppress"],
+};
 
 pub struct QuietAudit;
 
@@ -31,20 +44,8 @@ impl Audit for QuietAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let runner = project.runner_ref();
-        let result = runner.run(&["--help"], &[]);
-
-        let status = match result.status {
-            RunStatus::Ok => {
-                let output = format!("{}{}", result.stdout, result.stderr);
-                if output.contains("--quiet") || output.contains("-q") {
-                    AuditStatus::Pass
-                } else {
-                    AuditStatus::Warn("no --quiet/-q flag detected in --help output".into())
-                }
-            }
-            _ => AuditStatus::Warn("could not run --help to detect quiet flag".into()),
-        };
+        let ran = project.runner_ref().run(&["--help"], &[]).status;
+        let status = status_after(&ran, project.help_output());
 
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -55,8 +56,29 @@ impl Audit for QuietAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
+}
+
+/// The verdict for a `--help` run that ended with `ran`. A help that did not
+/// exit on its own is not searched: what it printed before it timed out or
+/// died may not be all of it.
+fn status_after(ran: &RunStatus, help: Option<&HelpOutput>) -> AuditStatus {
+    match (ran, help) {
+        (RunStatus::Ok, Some(help)) => audit_quiet(help),
+        _ => AuditStatus::Warn("could not run --help to detect quiet flag".into()),
+    }
+}
+
+pub(crate) fn audit_quiet(help: &HelpOutput) -> AuditStatus {
+    pass_or_warn(
+        help,
+        QUIET_FLAGS,
+        Some(&QUIET),
+        "no option definition in --help declares --quiet or -q; a flag named only in a usage line \
+         does not count.",
+    )
 }
 
 #[cfg(test)]
@@ -77,6 +99,150 @@ mod tests {
         let project = test_project_with_sh_script("echo 'no quiet here'");
         let result = QuietAudit.run(&project).expect("audit should run");
         assert!(matches!(result.status, AuditStatus::Warn(_)));
+    }
+
+    #[test]
+    fn a_help_that_crashes_is_not_searched() {
+        // Prints a quiet flag, then dies on a signal.
+        let project =
+            test_project_with_sh_script("echo '  -q, --quiet  Suppress output'\nkill -11 $$");
+        let result = QuietAudit.run(&project).expect("audit should run");
+        assert_eq!(
+            result.status,
+            AuditStatus::Warn("could not run --help to detect quiet flag".into())
+        );
+    }
+
+    #[test]
+    fn a_help_that_timed_out_is_not_searched() {
+        let help = HelpOutput::from_raw("  -q, --quiet  Suppress output");
+        assert_eq!(
+            status_after(&RunStatus::Timeout, Some(&help)),
+            AuditStatus::Warn("could not run --help to detect quiet flag".into())
+        );
+        assert_eq!(status_after(&RunStatus::Ok, Some(&help)), AuditStatus::Pass);
+        assert_eq!(
+            status_after(&RunStatus::Ok, None),
+            AuditStatus::Warn("could not run --help to detect quiet flag".into())
+        );
+    }
+
+    /// One definition line per tool whose help carries `-q` inside another
+    /// flag's name and declares no quiet flag.
+    const NO_QUIET_FLAG: &[(&str, &str)] = &[
+        (
+            "eza 0.23.5",
+            "      --no-quotes                  don't quote file names with spaces",
+        ),
+        (
+            "helm 4.3.0",
+            "      --qps float32                     queries per second used when communicating with the Kubernetes API, not including bursting",
+        ),
+        (
+            "scc 4.1.0",
+            "      --file-list-queue-size int            the size of the queue of files found and ready to be read into memory (default 16)",
+        ),
+        (
+            "yq 4.54.1",
+            "      --ini-preserve-quotes               preserve surrounding quotes on INI values during round-trip",
+        ),
+    ];
+
+    const SEARCHED: &str = "no option definition in --help declares --quiet or -q; a flag named only in a usage line does not count.";
+
+    #[test]
+    fn a_flag_whose_name_contains_q_is_not_a_quiet_flag() {
+        let passed: Vec<&str> = NO_QUIET_FLAG
+            .iter()
+            .filter(|(_, line)| {
+                let help =
+                    HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));
+                audit_quiet(&help) == AuditStatus::Pass
+            })
+            .map(|(tool, _)| *tool)
+            .collect();
+        assert!(passed.is_empty(), "{passed:?}");
+    }
+
+    #[test]
+    fn a_declared_quiet_flag_passes_by_either_name() {
+        for line in [
+            "  -q, --quiet    Say less.",
+            "      --quiet    Say less.",
+            "  -q             Quiet mode.",
+        ] {
+            let help =
+                HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));
+            assert_eq!(audit_quiet(&help), AuditStatus::Pass, "{line}");
+        }
+    }
+
+    #[test]
+    fn a_q_that_means_something_else_warns_and_says_why() {
+        // curl 8.17's `-q` reads no `.curlrc`; make 4.4's asks whether
+        // targets are up to date.
+        for (line, definition) in [
+            (
+                " -q, --disable                Disable .curlrc",
+                "-q, --disable  Disable .curlrc",
+            ),
+            (
+                "  -q, --question              Run no recipe; exit status says if up to date.",
+                "-q, --question  Run no recipe; exit status says if up to date.",
+            ),
+        ] {
+            let help =
+                HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));
+            assert_eq!(
+                audit_quiet(&help),
+                AuditStatus::Warn(format!(
+                    "{SEARCHED} `-q` is declared, but its definition (`{definition}`) does not \
+                     mean quiet."
+                )),
+                "{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lone_q_with_no_description_does_not_pass() {
+        let help = HelpOutput::from_raw("Options:\n  -q\n  -h, --help    Show help.\n");
+        assert_eq!(
+            audit_quiet(&help),
+            AuditStatus::Warn(format!(
+                "{SEARCHED} `-q` is declared, but its definition (`-q`) does not mean quiet."
+            ))
+        );
+    }
+
+    #[test]
+    fn a_quiet_flag_shown_only_in_a_usage_line_warns_and_names_what_was_searched() {
+        let help = HelpOutput::from_raw(
+            "Usage: quill [-q] [-o FILE] <input>\n\nOptions:\n  -o, --out FILE    Write output here.\n  -h, --help        Show help.\n",
+        );
+        assert_eq!(audit_quiet(&help), AuditStatus::Warn(SEARCHED.into()));
+    }
+
+    #[test]
+    fn a_single_dash_quiet_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -quiet        Say less.\n      --help    Show help.\n",
+        );
+        match audit_quiet(&help) {
+            AuditStatus::Warn(msg) => {
+                assert!(msg.starts_with(SEARCHED), "{msg}");
+                assert!(msg.ends_with("so it does not count as `--quiet`."), "{msg}");
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_quiet_passes_in_a_help_without_double_dash_names() {
+        let help = HelpOutput::from_raw(
+            "Usage of tool:\n  -quiet\n    \tSay less\n  -version\n    \tShow version\n",
+        );
+        assert_eq!(audit_quiet(&help), AuditStatus::Pass);
     }
 
     #[test]

@@ -14,11 +14,13 @@ use ast_grep_core::Node;
 use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
 use ast_grep_language::Rust;
 
+use super::macro_interior;
 use crate::audit::Audit;
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
 /// Audit trait implementation for unwrap detection.
+#[derive(Debug)]
 pub struct UnwrapAudit;
 
 impl Audit for UnwrapAudit {
@@ -70,6 +72,7 @@ impl Audit for UnwrapAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
@@ -103,9 +106,9 @@ fn walk<'a>(
     include_cfg_test: bool,
     out: &mut Vec<SourceLocation>,
 ) {
-    if (!inside_cfg_test || include_cfg_test)
-        && let Some(snippet) = unwrap_call_snippet(&node)
-    {
+    let reportable = !inside_cfg_test || include_cfg_test;
+
+    if reportable && let Some(snippet) = unwrap_call_snippet(&node) {
         let pos = node.start_pos();
         out.push(SourceLocation {
             file: file.to_string(),
@@ -113,6 +116,18 @@ fn walk<'a>(
             column: pos.column(&node) + 1,
             text: snippet,
         });
+    }
+
+    // Macro arguments reach here as a flat `token_tree`, so the plain matcher
+    // above never sees the call inside one. The interior module answers for the
+    // whole invocation from its outermost tree and declines a nested one, so each
+    // call arrives once and no position needs folding here.
+    if reportable && node.kind() == "token_tree" {
+        out.extend(macro_interior::unwrap_calls_in_interior(
+            &node,
+            file,
+            include_cfg_test,
+        ));
     }
 
     // tree-sitter-rust models `#[cfg(test)]` as an `attribute_item` *sibling*
@@ -143,6 +158,14 @@ fn walk<'a>(
             walk(child, file, inside_cfg_test, include_cfg_test, out);
             continue;
         }
+        if is_comment(kind.as_ref()) {
+            // A comment between an attribute and the item it decorates is a
+            // sibling of both, and a doc comment on a test-only item is
+            // idiomatic. Consuming the one-shot flag here would report that
+            // item's whole body as production code.
+            walk(child, file, inside_cfg_test, include_cfg_test, out);
+            continue;
+        }
         let child_inside = inside_cfg_test || (next_is_cfg_test && is_item_like(kind.as_ref()));
         // The one-shot gate fires on the very next sibling regardless of kind:
         // `#[cfg(test)] use foo;` consumes the flag without gating any later
@@ -154,8 +177,10 @@ fn walk<'a>(
 
 /// Match a `call_expression` whose receiver chain ends in `.unwrap()`.
 ///
-/// Returns the matched snippet (the call text) for evidence reporting.
-fn unwrap_call_snippet<'a>(node: &Node<'a, StrDoc<Rust>>) -> Option<String> {
+/// Returns the matched snippet (the call text) for evidence reporting. Shared
+/// with [`super::macro_interior`] so a call recovered from a macro interior is
+/// held to the same test as one the walker matches directly.
+pub(super) fn unwrap_call_snippet<'a>(node: &Node<'a, StrDoc<Rust>>) -> Option<String> {
     if node.kind() != "call_expression" {
         return None;
     }
@@ -169,7 +194,12 @@ fn unwrap_call_snippet<'a>(node: &Node<'a, StrDoc<Rust>>) -> Option<String> {
 
 /// Item-like node kinds whose preceding `#[cfg(test)]` attribute gates their
 /// bodies. Mirrors tree-sitter-rust's item nodes.
+///
+/// A macro in item position (`thread_local! { .. }`, `lazy_static! { .. }`) is
+/// an item, so `macro_invocation` belongs here: a `#[cfg(test)]` before one
+/// gates the calls its body holds.
 const ITEM_KINDS: &[&str] = &[
+    "macro_invocation",
     "mod_item",
     "function_item",
     "function_signature_item",
@@ -186,6 +216,12 @@ const ITEM_KINDS: &[&str] = &[
 
 fn is_item_like(kind: &str) -> bool {
     ITEM_KINDS.contains(&kind)
+}
+
+/// Comment kinds the gate steps over. A `///` doc comment is a `line_comment`
+/// carrying a marker child, so the two kinds cover every form.
+fn is_comment(kind: &str) -> bool {
+    kind == "line_comment" || kind == "block_comment"
 }
 
 /// Strip `#[ ... ]` / `#![ ... ]` framing and check whether the inner attribute
@@ -224,7 +260,7 @@ fn attribute_text_is_cfg_test(attr: &str) -> bool {
 /// recursion claims "this attribute resolves to test-gated"; sibling predicates
 /// inside `any(...)` / `all(...)` cannot revoke that claim, so a production
 /// item with `cfg(any(not(test), unix))` correctly returns `false`.
-fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
+pub(super) fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
     let bytes = args.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -303,7 +339,7 @@ fn cfg_args_contain_test(args: &str, negated: bool) -> bool {
 /// Given a string that starts with `(`, return the slice between the opening
 /// paren and the matching closing paren, respecting nested parens and string
 /// literals. Returns `None` if no balanced match exists.
-fn balanced_parens(s: &str) -> Option<&str> {
+pub(super) fn balanced_parens(s: &str) -> Option<&str> {
     let bytes = s.as_bytes();
     if bytes.first().copied() != Some(b'(') {
         return None;
@@ -797,11 +833,397 @@ fn helper() {
         }
     }
 
+    /// Single evidence line for a source expected to produce exactly one finding.
+    fn sole_evidence(source: &str, file: &str, include_cfg_test: bool) -> String {
+        match audit_unwrap_with(source, file, include_cfg_test) {
+            AuditStatus::Fail(evidence) => {
+                assert_eq!(
+                    evidence.lines().count(),
+                    1,
+                    "expected exactly one finding, got:\n{evidence}"
+                );
+                evidence
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reports_unwrap_in_macro_argument() {
+        let source = r#"
+fn render(f: &mut Formatter, v: Option<u8>) -> fmt::Result {
+    write!(f, "{}", v.unwrap())?;
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/render.rs", false),
+            "src/render.rs:3:21 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn reports_unwrap_in_item_position_macro_interior() {
+        let source = r#"
+lazy_static! {
+    static ref RE: Regex = Regex::new("x").unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/re.rs", false),
+            r#"src/re.rs:3:28 — Regex::new("x").unwrap()"#
+        );
+    }
+
+    #[test]
+    fn macro_interior_column_matches_a_plain_call_after_a_newline() {
+        // The interior's start column applies only to its first line. A call
+        // after the interior's first newline carries the column it would have
+        // outside a macro, which is what this pins: the two sources put the
+        // same call at the same indentation, one wrapped and one bare.
+        let wrapped = r#"
+fn render() {
+    write!(
+        f,
+        v.unwrap(),
+    )?;
+}
+"#;
+        let bare = r#"
+fn render() {
+    let a = 1;
+    let b = 2;
+        v.unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(wrapped, "src/render.rs", false),
+            "src/render.rs:5:9 — v.unwrap()"
+        );
+        assert_eq!(
+            sole_evidence(bare, "src/render.rs", false),
+            "src/render.rs:5:9 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn macro_interior_column_is_offset_on_the_interiors_first_line() {
+        // A call on the interior's first line does take the interior's start
+        // column. Asserting the line alone would pass with the two column rules
+        // inverted.
+        let source = r#"
+fn render() {
+    write!(f, v.unwrap())?;
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/render.rs", false),
+            "src/render.rs:3:15 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn nested_macro_interiors_report_one_finding() {
+        let source = r#"
+fn render() {
+    write!(f, "{}", format!("{}", v.unwrap()))?;
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/render.rs", false),
+            "src/render.rs:3:35 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn ignores_macro_rules_fragment_and_arm() {
+        // No call expression with this text exists in the source: tree-sitter
+        // models the macro body as flat tokens, and `$x` is a metavariable.
+        let source = r#"
+macro_rules! unwrap_or_bail {
+    ($x:expr) => {
+        $x.unwrap()
+    };
+}
+
+fn main() {}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn sibling_method_names_in_a_macro_argument_are_not_reported() {
+        // The method-name boundary is pinned rather than incidental: each of
+        // these shares a prefix or a shape with the matched call and none of
+        // them panics the way `.unwrap()` does.
+        let source = r#"
+fn main() {
+    println!("{}", v.unwrap_or(0));
+    println!("{}", v.unwrap_or_else(f));
+    println!("{}", r.unwrap_err());
+    println!("{}", v.expect("m"));
+    println!("{}", v.unwrap);
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn a_raw_string_in_a_macro_argument_is_not_reported() {
+        let source = r##"
+fn main() {
+    println!("{}", r#"call .unwrap() here"#);
+}
+"##;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn a_comment_inside_a_macro_interior_is_not_reported() {
+        let source = r#"
+fn main() {
+    println!(
+        // never call foo().unwrap() here
+        "{}",
+        1
+    );
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn a_string_literal_nested_in_a_test_macro_argument_is_not_reported() {
+        // This audit's own test module asserts on evidence text in exactly this
+        // shape, so `--include-tests` over this repository is the live case.
+        let source = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn t() {
+        assert!(evidence.contains("foo().unwrap()"));
+    }
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", true),
+            AuditStatus::Pass
+        );
+    }
+
+    #[test]
+    fn exempts_a_macro_argument_inside_a_cfg_test_mod() {
+        let source = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn t() {
+        assert_eq!(v.unwrap(), 1);
+    }
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", true),
+            "src/lib.rs:6:20 — v.unwrap()"
+        );
+    }
+
+    #[test]
+    fn exempts_a_cfg_test_gated_item_position_macro_invocation() {
+        // A macro in item position is an item, so the gate's taxonomy has to
+        // cover `macro_invocation` for its body to inherit the exemption.
+        let source = r#"
+#[cfg(test)]
+thread_local! {
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", true),
+            "src/lib.rs:4:24 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn a_comment_between_cfg_test_and_its_item_does_not_clear_the_gate() {
+        // A doc comment on a test-only item is idiomatic, and the gate fires on
+        // the next sibling, so a comment sibling must be stepped over rather
+        // than consume it.
+        let source = r#"
+#[cfg(test)]
+// a note
+mod a {
+    fn h(v: Option<u8>) { let _ = v.unwrap(); }
+}
+
+#[cfg(test)]
+/// A doc comment.
+thread_local! {
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        if let AuditStatus::Fail(evidence) = &included {
+            assert_eq!(evidence.lines().count(), 2, "got:\n{evidence}");
+        } else {
+            panic!("expected Fail with --include-tests, got {included:?}");
+        }
+    }
+
+    #[test]
+    fn a_cfg_test_attribute_inside_a_macro_interior_gates_it() {
+        // The walker's gate stops at the token tree, so an attribute written
+        // inside the interior has to be read there.
+        let source = r#"
+thread_local! {
+    #[cfg(test)]
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", true),
+            "src/lib.rs:4:24 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn a_cfg_if_test_branch_inside_a_macro_interior_gates_it() {
+        // `cfg_if!` recovers its attribute as an error plus an array rather
+        // than an `attribute_item`, which is why the gate is read from the
+        // interior's text.
+        let source = r#"
+cfg_if! {
+    if #[cfg(test)] {
+        static PROBE: u8 = load().unwrap();
+    } else {
+        static REAL: u8 = load2().unwrap();
+    }
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/lib.rs", false),
+            AuditStatus::Pass
+        );
+        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        assert!(matches!(included, AuditStatus::Fail(_)));
+    }
+
+    #[test]
+    fn cfg_not_test_inside_a_macro_interior_still_reports() {
+        // Polarity crosses the boundary unchanged: a production-only branch is
+        // not test code.
+        let source = r#"
+thread_local! {
+    #[cfg(not(test))]
+    static REAL: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", false),
+            "src/lib.rs:4:23 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn cfg_not_test_gated_macro_interior_still_reports() {
+        // The existing polarity rule reaches interiors too: a production-only
+        // item is not test code.
+        let source = r#"
+#[cfg(not(test))]
+thread_local! {
+    static PROBE: u8 = load().unwrap();
+}
+"#;
+        assert_eq!(
+            sole_evidence(source, "src/lib.rs", false),
+            "src/lib.rs:4:24 — load().unwrap()"
+        );
+    }
+
+    #[test]
+    fn ignores_macro_interior_without_a_call() {
+        let source = r#"
+fn main() {
+    println!("plain text");
+}
+"#;
+        assert_eq!(
+            audit_unwrap_with(source, "src/main.rs", false),
+            AuditStatus::Pass
+        );
+    }
+
+    /// A per-process scratch directory for a `Project::discover` fixture.
+    fn temp_project_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("anc-unwrap-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
+
+    #[test]
+    fn a_macro_interior_finding_carries_the_audits_own_confidence() {
+        // Confidence is one constant set at the single construction site in
+        // `run()`, and `SourceLocation` carries none, so macro position has no
+        // per-finding dimension to lower.
+        let audit = UnwrapAudit;
+        let dir = temp_project_dir("conf");
+        std::fs::create_dir_all(dir.join("src")).expect("create src dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write test Cargo.toml");
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "fn main() {\n    println!(\"{}\", v.unwrap());\n}\n",
+        )
+        .expect("write test main.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+        let result = audit.run(&project).expect("run audit");
+
+        assert!(
+            matches!(result.status, AuditStatus::Fail(_)),
+            "the macro-interior call should be reported, got {:?}",
+            result.status
+        );
+        assert_eq!(result.confidence, Confidence::High);
+    }
+
     #[test]
     fn applicable_for_rust() {
         let audit = UnwrapAudit;
-        let dir = std::env::temp_dir().join(format!("anc-unwrap-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
+        let dir = temp_project_dir("test");
         std::fs::write(
             dir.join("Cargo.toml"),
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
@@ -814,8 +1236,7 @@ fn helper() {
     #[test]
     fn not_applicable_for_python() {
         let audit = UnwrapAudit;
-        let dir = std::env::temp_dir().join(format!("anc-unwrap-py-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
+        let dir = temp_project_dir("py");
         std::fs::write(
             dir.join("pyproject.toml"),
             "[project]\nname = \"test\"\nversion = \"0.1.0\"\n",
@@ -828,8 +1249,7 @@ fn helper() {
     #[test]
     fn not_applicable_for_none() {
         let audit = UnwrapAudit;
-        let dir = std::env::temp_dir().join(format!("anc-unwrap-none-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("create test dir");
+        let dir = temp_project_dir("none");
         let project = Project::discover(&dir).expect("discover test project");
         assert!(!audit.applicable(&project));
     }

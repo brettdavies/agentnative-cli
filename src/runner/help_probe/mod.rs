@@ -34,32 +34,12 @@ use anyhow::Result;
 
 use super::{BinaryRunner, RunStatus};
 
-/// A flag discovered in `--help` output. `short` is the single-character
-/// variant (e.g., `-q`); `long` is the GNU-style variant (e.g., `--quiet`).
-/// At least one of the two is always set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Flag {
-    pub short: Option<String>,
-    pub long: Option<String>,
-}
-
-impl Flag {
-    /// Whether this flag exposes `name` under either its short or long form.
-    /// Accepts `-s`, `--long`, or even `long` / `s` (without dashes).
-    pub fn matches(&self, name: &str) -> bool {
-        let with_dash_long = if name.starts_with('-') {
-            name.to_string()
-        } else if name.len() == 1 {
-            format!("-{name}")
-        } else {
-            format!("--{name}")
-        };
-        self.short.as_deref() == Some(with_dash_long.as_str())
-            || self.long.as_deref() == Some(with_dash_long.as_str())
-    }
-}
-
 mod env_hints_bash;
+#[cfg(test)]
+pub(crate) mod fixture_snapshots;
+mod flags;
+
+pub use flags::{Flag, FlagMatch, is_single_letter};
 
 /// Which detection pattern surfaced an [`EnvHint`]. Agents debugging a
 /// false positive need to know whether a hint came from a clap
@@ -118,7 +98,7 @@ impl CommandBlock {
     pub fn command_text<'a>(&self, entry: &'a str) -> &'a str {
         let invocation = before_description_gap(entry.split('\t').next().unwrap_or(entry));
         if self.prefix.is_none() {
-            return invocation;
+            return without_name_colon(invocation);
         }
         let rest = invocation
             .split_once(char::is_whitespace)
@@ -129,10 +109,18 @@ impl CommandBlock {
         }
         rest
     }
+
+    /// The description part of `entry`: the text after the two-space (or
+    /// tab) description gap, trimmed. Empty when the entry has no gap.
+    pub fn summary<'a>(&self, entry: &'a str) -> &'a str {
+        let invocation = before_description_gap(entry.split('\t').next().unwrap_or(entry));
+        entry[invocation.len()..].trim()
+    }
 }
 
 /// Shared, lazily-parsed view over `<binary> --help`. Construct via
 /// [`HelpOutput::probe`] in runner code, or [`HelpOutput::from_raw`] in tests.
+#[derive(Debug)]
 pub struct HelpOutput {
     raw: String,
     /// File stem of the binary the probe spawned, `None` for text built
@@ -158,6 +146,15 @@ impl HelpOutput {
             command_blocks: OnceLock::new(),
             subcommands: OnceLock::new(),
         }
+    }
+
+    /// [`HelpOutput::from_raw`] with the binary stem a probe records, for
+    /// help text whose only tool-name signal is the binary itself.
+    #[cfg(test)]
+    pub(crate) fn from_raw_for_binary(raw: impl Into<String>, binary_stem: &str) -> Self {
+        let mut help = Self::from_raw(raw);
+        help.binary_stem = Some(binary_stem.to_string());
+        help
     }
 
     /// Spawn `<binary> --help` via the shared `BinaryRunner` and capture its
@@ -194,7 +191,37 @@ impl HelpOutput {
 
     /// Flags parsed out of the help surface. Lazy + cached on first call.
     pub fn flags(&self) -> &[Flag] {
-        self.flags.get_or_init(|| parse_flags(&self.raw))
+        self.flags.get_or_init(|| flags::parse(&self.raw))
+    }
+
+    /// The first flag, in help order, that declares any of `names`, with the
+    /// name it answered with as the help spells it. A single letter answers
+    /// only the same letter. A word answers the same word with the same dash
+    /// count, and in a help that declares no double-dash name a single-dash
+    /// word also answers its double-dash spelling.
+    pub fn find_flag(&self, names: &[&str]) -> Option<FlagMatch<'_>> {
+        flags::find(self.flags(), names)
+    }
+
+    /// When a lookup for `names` misses only because this help keeps a
+    /// single-dash word apart from its double-dash spelling: the declared
+    /// word, and why it does not count.
+    pub fn dash_rule_note(&self, names: &[&str]) -> Option<String> {
+        flags::kept_apart(self.flags(), names).map(|(declared, wanted)| {
+            format!(
+                "`{declared}` is declared, but this help also declares double-dash names, so \
+                 it does not count as `{wanted}`."
+            )
+        })
+    }
+
+    /// `message`, closed with [`HelpOutput::dash_rule_note`] when one
+    /// applies.
+    pub fn noting_dash_rule(&self, names: &[&str], message: &str) -> String {
+        match self.dash_rule_note(names) {
+            Some(note) => format!("{message} {note}"),
+            None => message.to_string(),
+        }
     }
 
     /// `[env: FOO]` hints parsed out of the help surface. Lazy + cached.
@@ -217,6 +244,22 @@ impl HelpOutput {
             .get_or_init(|| subcommand_names(self.command_blocks()))
     }
 
+    /// The command-list summary of top-level subcommand `name`: the
+    /// description on the first entry that names it. `None` when no entry
+    /// names it or that entry carries no description.
+    pub fn subcommand_summary(&self, name: &str) -> Option<&str> {
+        self.command_blocks()
+            .iter()
+            .find_map(|block| {
+                block
+                    .entries
+                    .iter()
+                    .find(|entry| block.command_text(entry).split_whitespace().next() == Some(name))
+                    .map(|entry| block.summary(entry))
+            })
+            .filter(|summary| !summary.is_empty())
+    }
+
     /// Why [`HelpOutput::subcommands`] is empty, worded as what the parser
     /// observed so an audit never asserts the tool has no subcommands when it
     /// means none were parsed.
@@ -229,87 +272,11 @@ impl HelpOutput {
     }
 }
 
-/// Parse flag declarations from clap-style help text.
-///
-/// A "flag line" is a line that starts with whitespace and then a dash. The
-/// header portion (before the description) is split from the description by
-/// two or more spaces — clap's canonical shape. We tokenize the header on
-/// commas and whitespace, then classify each token as short (`-s`) or long
-/// (`--long`).
-fn parse_flags(raw: &str) -> Vec<Flag> {
-    let mut flags = Vec::new();
-    for line in raw.lines() {
-        if !line.starts_with(' ') {
-            continue;
-        }
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with('-') {
-            continue;
-        }
-        // Separator / heading lines like `---` are not flags.
-        if trimmed.starts_with("---") {
-            continue;
-        }
-        let header = before_description_gap(trimmed);
-
-        let mut short: Option<String> = None;
-        let mut long: Option<String> = None;
-        for piece in header.split(',') {
-            let candidate = piece.split_whitespace().next().unwrap_or(piece.trim());
-            if candidate.is_empty() {
-                continue;
-            }
-            if let Some(long_name) = parse_long_flag(candidate) {
-                long = Some(long_name);
-            } else if let Some(short_name) = parse_short_flag(candidate) {
-                short = Some(short_name);
-            }
-        }
-        if short.is_some() || long.is_some() {
-            flags.push(Flag { short, long });
-        }
-    }
-    flags
-}
-
 /// The text before clap's two-space description gap: the flag header of a
 /// flag line, the invocation of a command entry. The whole line when there
 /// is no description on it.
 fn before_description_gap(line: &str) -> &str {
     line.split("  ").next().unwrap_or(line)
-}
-
-/// Extract a `--long` flag name from a token like `--long`, `--long=<VAL>`,
-/// `--long[=<VAL>]`, or `--long <VAL>`. Returns `None` when `candidate` is
-/// not a long flag.
-fn parse_long_flag(candidate: &str) -> Option<String> {
-    if !candidate.starts_with("--") || candidate.len() <= 2 {
-        return None;
-    }
-    // Walk the name chars: letters, digits, dashes, underscores.
-    let end = candidate[2..]
-        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
-        .map(|i| i + 2)
-        .unwrap_or(candidate.len());
-    if end <= 2 {
-        return None;
-    }
-    Some(candidate[..end].to_string())
-}
-
-/// Extract a `-s` short flag from a token like `-s`, `-s<VAL>`, or `-s,`.
-fn parse_short_flag(candidate: &str) -> Option<String> {
-    let bytes = candidate.as_bytes();
-    if bytes.len() < 2 || bytes[0] != b'-' {
-        return None;
-    }
-    // Second char must be a flag character (letter, digit, or `?`).
-    let c = bytes[1] as char;
-    if c.is_ascii_alphanumeric() || c == '?' {
-        Some(format!("-{c}"))
-    } else {
-        None
-    }
 }
 
 /// Parse env-var bindings from help text using two complementary patterns.
@@ -402,13 +369,23 @@ fn usage_tool_name(raw: &str) -> Option<String> {
     None
 }
 
-/// A block header is any line whose last word is `commands:` or
-/// `subcommands:`, case-insensitively: clap's `Commands:`, cobra's
-/// `Available Commands:`, and hand-written `Common commands:` alike.
+/// A block header is any line ending in `:` that carries `commands` or
+/// `subcommands` as a whole word, case-insensitively: clap's `Commands:`,
+/// cobra's `Available Commands:`, hand-written `Common commands:`, and the
+/// grouped headings a large cobra tool uses, where the word is not last
+/// (`Basic Commands (Beginner):`, `Subcommands provided by plugins:`).
+///
+/// Whole-word rather than substring, so `Metacommands:` is not a header. The
+/// cost of matching the word mid-line is bounded by [`parse_command_blocks`],
+/// which drops a header no indented entry follows, so a prose line that happens
+/// to end in `commands:` contributes nothing.
 fn is_command_header(trimmed: &str) -> bool {
-    trimmed.split_whitespace().last().is_some_and(|last| {
-        last.eq_ignore_ascii_case("commands:") || last.eq_ignore_ascii_case("subcommands:")
-    })
+    trimmed.ends_with(':')
+        && trimmed
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|word| {
+                word.eq_ignore_ascii_case("commands") || word.eq_ignore_ascii_case("subcommands")
+            })
 }
 
 /// The tokens a prefixed block's entries may lead with: the `Usage:` line's
@@ -426,6 +403,38 @@ fn prefix_candidates(raw: &str, binary_stem: Option<&str>) -> Vec<String> {
     candidates
 }
 
+/// gh prints each entry as `auth:` before its description gap; the colon
+/// closes the name and is not part of it.
+fn without_name_colon(invocation: &str) -> &str {
+    match invocation.strip_suffix(':') {
+        Some(name) if !name.is_empty() && !name.contains(char::is_whitespace) => name,
+        _ => invocation,
+    }
+}
+
+/// A heading with no closing colon, alone at column 0: up to three words that
+/// start with a capital and end in `commands` or `subcommands`, as gh prints
+/// `CORE COMMANDS`, supabase `SUBCOMMANDS`, trivy `Scanning Commands` and
+/// direnv `Available commands`.
+fn is_bare_command_heading(line: &str) -> bool {
+    let line = line.trim_end();
+    let words: Vec<&str> = line.split(' ').collect();
+    !line.starts_with(char::is_whitespace)
+        && line.starts_with(|c: char| c.is_ascii_uppercase())
+        && words.len() <= 3
+        && words
+            .iter()
+            .all(|word| !word.is_empty() && word.chars().all(|c| c.is_ascii_alphabetic()))
+        && words.last().is_some_and(|last| {
+            last.eq_ignore_ascii_case("commands") || last.eq_ignore_ascii_case("subcommands")
+        })
+}
+
+/// A rule of dashes or equals signs, which direnv prints under its heading.
+fn is_underline(trimmed: &str) -> bool {
+    trimmed.len() >= 3 && (trimmed.chars().all(|c| c == '-') || trimmed.chars().all(|c| c == '='))
+}
+
 /// Collect every command block: a header, then the indented lines that
 /// follow it until a blank line or a non-indented line closes the block.
 /// The block's first entry sets its entry indentation; a later line
@@ -436,9 +445,13 @@ fn parse_command_blocks(raw: &str, candidates: &[String]) -> Vec<CommandBlock> {
     let mut blocks: Vec<CommandBlock> = Vec::new();
     let mut entry_indent: Option<usize> = None;
     let mut in_block = false;
+    // Under an underlined heading, as direnv prints it, each entry sits at
+    // column 0 and ends in a colon, with its details indented beneath it.
+    let mut after_heading = false;
+    let mut underlined = false;
     for line in raw.lines() {
         let trimmed = line.trim();
-        if is_command_header(trimmed) {
+        if is_command_header(trimmed) || is_bare_command_heading(line) {
             blocks.push(CommandBlock {
                 header: trimmed.to_string(),
                 entries: Vec::new(),
@@ -446,8 +459,24 @@ fn parse_command_blocks(raw: &str, candidates: &[String]) -> Vec<CommandBlock> {
             });
             entry_indent = None;
             in_block = true;
-        } else if !in_block {
+            after_heading = true;
+            underlined = false;
             continue;
+        }
+        let first_after_heading = std::mem::replace(&mut after_heading, false);
+        if !in_block {
+            continue;
+        } else if first_after_heading && is_underline(trimmed) {
+            underlined = true;
+        } else if underlined {
+            if trimmed.is_empty() {
+                in_block = false;
+            } else if !line.starts_with(char::is_whitespace) {
+                match (trimmed.strip_suffix(':'), blocks.last_mut()) {
+                    (Some(entry), Some(block)) => block.entries.push(entry.to_string()),
+                    _ => in_block = false,
+                }
+            }
         } else if trimmed.is_empty() || !line.starts_with(char::is_whitespace) {
             in_block = false;
         } else if let Some(block) = blocks.last_mut() {
@@ -513,6 +542,69 @@ fn is_subcommand_name(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gh_capital_headings_and_colon_entries_are_command_blocks() {
+        let help = HelpOutput::from_raw_for_binary(
+            include_str!("../../../tests/fixtures/help/gh__--help.txt"),
+            "gh",
+        );
+        let subcommands = help.subcommands();
+        for name in [
+            "auth", "pr", "repo", "skill", "cache", "workflow", "api", "co",
+        ] {
+            assert!(
+                subcommands.iter().any(|s| s == name),
+                "{name} missing from {subcommands:?}"
+            );
+        }
+        assert!(
+            subcommands.iter().all(|s| !s.ends_with(':')),
+            "{subcommands:?}"
+        );
+        assert_eq!(
+            help.subcommand_summary("skill"),
+            Some("Install and manage agent skills (preview)")
+        );
+    }
+
+    // Excerpts of trivy 0.69's and direnv 2.38's `--help`.
+    const TRIVY_HELP: &str = "Usage:\n  trivy [command]\n\nScanning Commands\n  config      Scan config files for misconfigurations\n  image       Scan a container image\n\nManagement Commands\n  module      Manage modules\n\nUtility Commands\n  clean       Remove cached files\n  help        Help about any command\n";
+    const DIRENV_HELP: &str = "direnv v2.38.2\nUsage: direnv COMMAND [...ARGS]\n\nAvailable commands\n------------------\nallow [PATH_TO_RC]:\n  aliases: permit, grant\n  Grants direnv permission to load the given .envrc or .env file.\nexec DIR COMMAND [...ARGS]:\n  Executes a command after loading the first .envrc or .env found in DIR\nprune:\n  Removes old allowed and required files\n";
+
+    #[test]
+    fn title_case_headings_without_a_colon_are_command_blocks() {
+        let help = HelpOutput::from_raw_for_binary(TRIVY_HELP, "trivy");
+        assert_eq!(
+            help.subcommands(),
+            ["config", "image", "module", "clean", "help"]
+        );
+        assert_eq!(
+            help.subcommand_summary("image"),
+            Some("Scan a container image")
+        );
+    }
+
+    #[test]
+    fn an_underlined_heading_reads_column_0_entries_that_end_in_a_colon() {
+        let help = HelpOutput::from_raw_for_binary(DIRENV_HELP, "direnv");
+        assert_eq!(help.subcommands(), ["allow", "exec", "prune"]);
+    }
+
+    #[test]
+    fn a_bare_heading_is_short_capitalized_and_ends_in_commands() {
+        assert!(is_bare_command_heading("CORE COMMANDS"));
+        assert!(is_bare_command_heading("GITHUB ACTIONS COMMANDS  "));
+        assert!(is_bare_command_heading("SUBCOMMANDS"));
+        assert!(is_bare_command_heading("Scanning Commands"));
+        assert!(is_bare_command_heading("Available commands"));
+        assert!(!is_bare_command_heading("  CORE COMMANDS"));
+        assert!(!is_bare_command_heading("USAGE"));
+        assert!(!is_bare_command_heading("COMMANDS AND FLAGS"));
+        assert!(!is_bare_command_heading("run these commands"));
+        assert!(!is_bare_command_heading("Run all of these commands"));
+        assert!(!is_bare_command_heading("See: commands"));
+    }
 
     // A fixture modeled on ripgrep's `--help` — short+long flags, env hint.
     const RIPGREP_HELP: &str = r#"ripgrep 14.1
@@ -601,36 +693,40 @@ Options:
 "#;
 
     #[test]
-    fn parse_flags_extracts_short_and_long() {
-        let flags = parse_flags(RIPGREP_HELP);
-        assert!(flags.iter().any(|f| f.short.as_deref() == Some("-q")));
-        assert!(flags.iter().any(|f| f.long.as_deref() == Some("--quiet")));
-        assert!(
-            flags
-                .iter()
-                .any(|f| f.long.as_deref() == Some("--no-messages"))
+    fn flags_are_found_by_short_and_long_name() {
+        let help = HelpOutput::from_raw(RIPGREP_HELP);
+        for name in ["-q", "--quiet", "--no-messages", "--null"] {
+            let hit = help.find_flag(&[name]).expect(name);
+            assert_eq!(hit.spelling, name);
+        }
+        assert!(help.find_flag(&["--verbose"]).is_none());
+    }
+
+    #[test]
+    fn a_value_shape_stays_out_of_the_long_name() {
+        let help = HelpOutput::from_raw(RIPGREP_HELP);
+        let regexp = help.find_flag(&["--regexp"]).expect("regexp flag parsed");
+        assert_eq!(regexp.flag.declares("-e"), Some("-e"));
+    }
+
+    #[test]
+    fn a_single_dash_word_is_found_by_its_whole_name() {
+        let help = HelpOutput::from_raw(
+            "Usage: terraform [global options] apply [options]\n\nOptions:\n\n  -auto-approve          Skip interactive approval of plan before applying.\n\n  -lock=false            Don't hold a state lock during the operation.\n",
         );
-        assert!(flags.iter().any(|f| f.long.as_deref() == Some("--null")));
+        assert!(help.find_flag(&["-auto-approve"]).is_some());
+        assert!(help.find_flag(&["-lock"]).is_some());
+        assert!(help.find_flag(&["-auto"]).is_none());
+        assert!(help.find_flag(&["-approve"]).is_none());
     }
 
     #[test]
-    fn parse_flags_handles_equals_and_values() {
-        let flags = parse_flags(RIPGREP_HELP);
-        // --regexp=PATTERN — the value shape must not leak into the long name.
-        let regexp = flags
-            .iter()
-            .find(|f| f.long.as_deref() == Some("--regexp"))
-            .expect("regexp flag parsed");
-        assert_eq!(regexp.short.as_deref(), Some("-e"));
-    }
-
-    #[test]
-    fn parse_flags_ignores_prose_dashes() {
+    fn a_dash_rule_is_not_a_flag() {
         // A line starting with '---' (separator) must not become a flag.
         let src = "Usage: foo [OPTIONS]\n\n-------\n\nOptions:\n  -q, --quiet    Quiet mode.\n";
-        let flags = parse_flags(src);
-        assert_eq!(flags.len(), 1);
-        assert_eq!(flags[0].short.as_deref(), Some("-q"));
+        let help = HelpOutput::from_raw(src);
+        assert_eq!(help.flags().len(), 1);
+        assert_eq!(help.flags()[0].declares("-q"), Some("-q"));
     }
 
     #[test]
@@ -769,6 +865,63 @@ Options:
     }
 
     #[test]
+    fn grouped_command_headings_are_read() {
+        // kubectl groups its commands under several headings, and only some of
+        // them end in the word `Commands:`.
+        let help = HelpOutput::from_raw(concat!(
+            "Usage:\n  kubectl [flags] [options]\n\n",
+            "Basic Commands (Beginner):\n",
+            "  create          Create a resource from a file or from stdin\n",
+            "  expose          Expose a replication controller as a new service\n\n",
+            "Basic Commands (Intermediate):\n",
+            "  explain         Get documentation for a resource\n",
+            "  get             Display one or many resources\n\n",
+            "Troubleshooting and Debugging Commands:\n",
+            "  describe        Show details of a specific resource\n\n",
+            "Subcommands provided by plugins:\n",
+            "  gadget          Run a plugin\n\n",
+            "Usage:\n  kubectl [command]\n",
+        ));
+        assert_eq!(
+            help.subcommands(),
+            ["create", "expose", "explain", "get", "describe", "gadget"]
+        );
+        assert_eq!(
+            help.command_blocks()
+                .iter()
+                .map(|b| b.header.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Basic Commands (Beginner):",
+                "Basic Commands (Intermediate):",
+                "Troubleshooting and Debugging Commands:",
+                "Subcommands provided by plugins:",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_heading_word_inside_a_longer_word_is_not_a_command_header() {
+        assert!(!is_command_header("Metacommands:"));
+        assert!(!is_command_header("Usage:"));
+        assert!(!is_command_header("Flags:"));
+        assert!(!is_command_header("Basic Commands (Beginner)"));
+        assert!(is_command_header("Basic Commands (Beginner):"));
+        assert!(is_command_header("Subcommands provided by plugins:"));
+    }
+
+    #[test]
+    fn a_prose_line_with_no_entries_yields_no_block() {
+        // A header is dropped unless indented entries follow it, which is what
+        // bounds the cost of matching a heading word mid-line.
+        let help = HelpOutput::from_raw(
+            "Usage: tool\n\nRun `tool help` to list commands:\n\nFlags:\n  -h  help\n",
+        );
+        assert!(help.command_blocks().is_empty());
+        assert!(help.subcommands().is_empty());
+    }
+
+    #[test]
     fn usage_tool_name_reads_the_usage_line() {
         assert_eq!(usage_tool_name(HERDR_HELP).as_deref(), Some("herdr"));
         assert_eq!(usage_tool_name(CLAP_HELP).as_deref(), Some("anc"));
@@ -889,13 +1042,12 @@ Options:
     fn parse_non_english_help_degrades_cleanly() {
         // English-only parsers: no flags advertised via English conventions,
         // no `Commands:` header, no `[env: ...]` hint — all parsers return empty.
-        let flags = parse_flags(NON_ENGLISH_HELP);
         // The Chinese options block still uses `-H, --header` syntax so we may
         // detect the flags themselves — the non-English text is in the
         // descriptions, not the flag names. The check is that parsing doesn't
         // panic and returns sane structured data.
-        for f in &flags {
-            assert!(f.short.is_some() || f.long.is_some());
+        for flag in HelpOutput::from_raw(NON_ENGLISH_HELP).flags() {
+            assert!(!flag.name().is_empty());
         }
         assert!(parse_env_hints(NON_ENGLISH_HELP).is_empty());
         assert!(
@@ -917,19 +1069,6 @@ Options:
     }
 
     #[test]
-    fn flag_matches_accepts_various_spellings() {
-        let f = Flag {
-            short: Some("-q".into()),
-            long: Some("--quiet".into()),
-        };
-        assert!(f.matches("-q"));
-        assert!(f.matches("--quiet"));
-        assert!(f.matches("quiet"));
-        assert!(f.matches("q"));
-        assert!(!f.matches("--verbose"));
-    }
-
-    #[test]
     fn is_env_var_name_edges() {
         assert!(is_env_var_name("FOO"));
         assert!(is_env_var_name("FOO_BAR"));
@@ -938,15 +1077,5 @@ Options:
         assert!(!is_env_var_name("lower"));
         assert!(!is_env_var_name("1LEADING"));
         assert!(!is_env_var_name("foo-bar"));
-    }
-
-    #[test]
-    fn parse_short_flag_accepts_digits_and_question() {
-        assert_eq!(parse_short_flag("-q"), Some("-q".into()));
-        assert_eq!(parse_short_flag("-1"), Some("-1".into()));
-        assert_eq!(parse_short_flag("-?"), Some("-?".into()));
-        assert_eq!(parse_short_flag("--long"), None);
-        assert_eq!(parse_short_flag("-"), None);
-        assert_eq!(parse_short_flag("-,"), None);
     }
 }

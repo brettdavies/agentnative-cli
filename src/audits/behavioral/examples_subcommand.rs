@@ -50,12 +50,13 @@ impl Audit for ExamplesSubcommandAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
 
 pub(crate) fn audit_examples_subcommand(help: &HelpOutput) -> AuditStatus {
-    let has_flag = help.flags().iter().any(|f| f.matches("--examples"));
+    let has_flag = help.find_flag(&["--examples"]).is_some();
     if has_flag {
         return AuditStatus::Pass;
     }
@@ -75,11 +76,11 @@ pub(crate) fn audit_examples_subcommand(help: &HelpOutput) -> AuditStatus {
         return AuditStatus::Pass;
     }
 
-    AuditStatus::Warn(
+    AuditStatus::Warn(help.noting_dash_rule(
+        &["--examples"],
         "no `examples` subcommand or `--examples` flag found. MAY-tier — \
-         a curated usage block keeps agents from hunting through long help text."
-            .into(),
-    )
+         a curated usage block keeps agents from hunting through long help text.",
+    ))
 }
 
 #[cfg(test)]
@@ -109,6 +110,20 @@ mod tests {
         );
         match audit_examples_subcommand(&help) {
             AuditStatus::Warn(msg) => assert!(msg.contains("examples")),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_examples_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -examples     Print usage examples.\n      --help    Show help.\n",
+        );
+        match audit_examples_subcommand(&help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-examples` is declared, but this help also declares double-dash names, so it does not count as `--examples`."),
+                "{msg}"
+            ),
             other => panic!("expected Warn, got {other:?}"),
         }
     }

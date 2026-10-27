@@ -15,7 +15,7 @@ _anc() {
 
     local context curcontext="$curcontext" state line
     _arguments "${_arguments_options[@]}" : \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -47,7 +47,7 @@ _arguments "${_arguments_options[@]}" : \
 file-traversal\:"File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those audits land"
 posix-utility\:"POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs satisfied vacuously via stdin-primary input"
 diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so the P5 mutation-boundary MUSTs do not apply"))' \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '--binary[Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin]' \
 '--source[Run only source audits (skip behavioral)]' \
 '--include-tests[Include test code in source analysis]' \
@@ -65,7 +65,7 @@ diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 ;;
 (completions)
 _arguments "${_arguments_options[@]}" : \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -80,7 +80,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (emit)
 _arguments "${_arguments_options[@]}" : \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -104,7 +104,7 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--out=[Path for the Markdown artifact. Defaults to \`docs/coverage-matrix.md\`]:PATH:_files' \
 '--json-out=[Path for the JSON artifact. Defaults to \`coverage/matrix.json\`]:PATH:_files' \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '--check[Exit non-zero when committed artifacts differ from rendered output. CI drift guard]' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -119,7 +119,7 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (schema)
 _arguments "${_arguments_options[@]}" : \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -165,7 +165,7 @@ esac
 ;;
 (skill)
 _arguments "${_arguments_options[@]}" : \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
 '(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -188,7 +188,7 @@ _arguments "${_arguments_options[@]}" : \
             (install)
 _arguments "${_arguments_options[@]}" : \
 '--output=[Output format for the result envelope]:OUTPUT:(text json)' \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '()--all[Install into every known host in one invocation]' \
 '--dry-run[Print the resolved git command without spawning. Captures cleanly via \`eval \$(anc skill install --dry-run <host>)\`]' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
@@ -206,7 +206,7 @@ _arguments "${_arguments_options[@]}" : \
 (update)
 _arguments "${_arguments_options[@]}" : \
 '--output=[Output format for the result envelope]:OUTPUT:(text json)' \
-'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (https\://no-color.org/)]:WHEN:(auto always never)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
 '()--all[Refresh every known host in one invocation]' \
 '--dry-run[Print the resolved commands without spawning]' \
 '-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \

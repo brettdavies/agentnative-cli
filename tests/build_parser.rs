@@ -7,6 +7,8 @@
 
 #[path = "../build_support/parser.rs"]
 mod parser;
+#[path = "../build_support/yaml.rs"]
+mod yaml;
 
 use parser::{
     Antecedent, Applicability, Level, ParseError, ParsedRequirement, aggregate, emit_rust,
@@ -476,6 +478,44 @@ fn vendored_spec_parses_to_expected_requirement_count() {
     assert_eq!(combined.last().unwrap().id, "p8-may-bundle-update");
 }
 
+#[test]
+fn yaml_1_1_boolean_words_stay_strings() {
+    // YAML 1.2 typing: plain `yes`/`no`/`on`/`off` are strings, so prose
+    // fields and conditions keep them verbatim in the generated source.
+    let content = "---\n\
+                   id: p1\n\
+                   requirements:\n\
+                   \x20\x20- id: p1-must-foo\n\
+                   \x20\x20\x20\x20level: must\n\
+                   \x20\x20\x20\x20applicability:\n\
+                   \x20\x20\x20\x20\x20\x20if: yes\n\
+                   \x20\x20\x20\x20summary: no\n\
+                   \x20\x20- id: p1-should-bar\n\
+                   \x20\x20\x20\x20level: should\n\
+                   \x20\x20\x20\x20applicability:\n\
+                   \x20\x20\x20\x20\x20\x20kind: conditional\n\
+                   \x20\x20\x20\x20\x20\x20condition: off\n\
+                   \x20\x20\x20\x20summary: on\n\
+                   ---\n";
+    let reqs = parse_principle_file("p1-bool.md", content).expect("parses");
+    assert_eq!(reqs[0].summary, "no");
+    assert_eq!(
+        reqs[0].applicability,
+        Applicability::Conditional {
+            condition: Some("yes".into()),
+            antecedent: None
+        }
+    );
+    assert_eq!(reqs[1].summary, "on");
+    assert_eq!(
+        reqs[1].applicability,
+        Applicability::Conditional {
+            condition: Some("off".into()),
+            antecedent: None
+        }
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Red team: adversarial YAML inputs that try to slip past the parser.
 // Every entry below tests a footgun a future spec author could fall into,
@@ -643,6 +683,45 @@ fn rt_rejects_empty_antecedent_mapping() {
          \x20\x20\x20\x20summary: empty antecedent\n"
     );
     rt_assert_error_mentions(&yaml, &["p2-must-x", "audit_id"]);
+}
+
+#[test]
+fn rt_rejects_non_string_antecedent_key() {
+    // A non-string key inside `antecedent` is outside the v1 schema like any
+    // other extra key, and surfaces as the same applicability error.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: must\n\
+         \x20\x20\x20\x20applicability:\n\
+         \x20\x20\x20\x20\x20\x20kind: conditional\n\
+         \x20\x20\x20\x20\x20\x20antecedent:\n\
+         \x20\x20\x20\x20\x20\x20\x20\x20audit_id: p2-json-output\n\
+         \x20\x20\x20\x20\x20\x20\x20\x201: extra\n\
+         \x20\x20\x20\x20summary: integer antecedent key\n"
+    );
+    rt_assert_error_mentions(
+        &yaml,
+        &[
+            "p2-must-x",
+            "unsupported `applicability` shape",
+            "v1 schema",
+        ],
+    );
+}
+
+#[test]
+fn rt_rejects_yaml_tag() {
+    // An application tag has no meaning in the spec schema; the build fails
+    // rather than reading the tagged value as if the tag were absent.
+    let yaml = format!(
+        "{RT_FIXTURE_HEAD}\
+         \x20\x20- id: p2-must-x\n\
+         \x20\x20\x20\x20level: !custom must\n\
+         \x20\x20\x20\x20applicability: universal\n\
+         \x20\x20\x20\x20summary: tagged level\n"
+    );
+    rt_assert_error_mentions(&yaml, &["p2-rt.md", "YAML parse error", "unsupported tag"]);
 }
 
 #[test]

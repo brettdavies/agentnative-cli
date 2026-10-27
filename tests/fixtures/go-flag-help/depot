@@ -1,0 +1,39 @@
+#!/bin/sh
+# Help in the Go `flag` package's shape: every name is printed with one dash,
+# and no help text declares a double-dash name.
+case "$1" in
+  --help|-help|-h)
+    cat <<'HELP'
+Usage: depot [global options] <subcommand> [args]
+
+Main commands:
+  apply     Create or update the stack
+  destroy   Destroy the stack
+
+Global options (use these before the subcommand, if any):
+  -chdir=DIR    Switch to a different working directory before executing the
+                given subcommand.
+  -help         Show this help output or the help for a specified subcommand.
+  -version      Show the current version.
+HELP
+    exit 0 ;;
+  --version|-version) echo "depot 0.1.0"; exit 0 ;;
+  apply|destroy)
+    sub="$1"; shift
+    case "$*" in
+      *-help*)
+        echo "Usage: depot [global options] $sub [options]"
+        echo
+        echo "Options:"
+        echo
+        if [ "$sub" = destroy ]; then
+          echo "  -force         Don't ask for confirmation before destroying."
+          echo
+        fi
+        echo "  -no-color      If specified, output won't contain any color."
+        exit 0 ;;
+      *) echo "depot $sub: not implemented" >&2; exit 2 ;;
+    esac ;;
+  -*) echo "error: flag provided but not defined: $1" >&2; exit 2 ;;
+  *) echo "Usage: depot [global options] <subcommand> [args]" >&2; exit 2 ;;
+esac

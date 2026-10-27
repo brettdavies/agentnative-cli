@@ -33,6 +33,7 @@ const LONG_RUNNING_SIGNALS: &[&str] = &[
     "Flask(",
 ];
 
+#[derive(Debug)]
 pub struct SigtermPythonAudit;
 
 impl Audit for SigtermPythonAudit {
@@ -100,6 +101,7 @@ impl Audit for SigtermPythonAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

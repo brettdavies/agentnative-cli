@@ -67,15 +67,13 @@ impl Audit for RichTuiAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
 
 pub(crate) fn audit_rich_tui(help: &HelpOutput) -> AuditStatus {
-    let has_flag = help
-        .flags()
-        .iter()
-        .any(|f| TUI_FLAGS.iter().any(|name| f.matches(name)));
+    let has_flag = help.find_flag(TUI_FLAGS).is_some();
     if has_flag {
         return AuditStatus::Pass;
     }
@@ -83,12 +81,12 @@ pub(crate) fn audit_rich_tui(help: &HelpOutput) -> AuditStatus {
     if TUI_INDICATORS.iter().any(|t| raw_lower.contains(t)) {
         return AuditStatus::Pass;
     }
-    AuditStatus::Warn(
+    AuditStatus::Warn(help.noting_dash_rule(
+        TUI_FLAGS,
         "no rich-TUI affordance detected (no `--tui`/`--interactive`/`--ui` \
          flag, no spinner/progress/tui mention in --help). MAY-tier — \
-         rich TUI in TTY contexts is a nice-to-have, not required."
-            .into(),
-    )
+         rich TUI in TTY contexts is a nice-to-have, not required.",
+    ))
 }
 
 #[cfg(test)]
@@ -126,6 +124,20 @@ mod tests {
         );
         match audit_rich_tui(&help) {
             AuditStatus::Warn(msg) => assert!(msg.contains("rich-TUI")),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_ui_beside_double_dash_names_warns_and_says_why() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -ui           Open the panel.\n      --help    Show help.\n",
+        );
+        match audit_rich_tui(&help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-ui` is declared, but this help also declares double-dash names, so it does not count as `--ui`."),
+                "{msg}"
+            ),
             other => panic!("expected Warn, got {other:?}"),
         }
     }

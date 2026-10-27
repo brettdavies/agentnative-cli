@@ -81,6 +81,7 @@ impl Audit for AutoVerbosityAudit {
             confidence: Confidence::Low,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

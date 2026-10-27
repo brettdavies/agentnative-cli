@@ -1,0 +1,44 @@
+---
+source: src/runner/help_probe/fixture_snapshots.rs
+input_file: tests/fixtures/help/git__commit_-h.txt
+---
+  10 | -q, --quiet, --no-quiet | suppress summary after successful commit
+  11 | -v, --verbose, --no-verbose | show diff in commit message template
+  14 | -F, --file, --no-file | read message from file
+  16 | --author, --no-author | override author for commit
+  18 | --date, --no-date | override date for commit
+  19 | -m, --message, --no-message | commit message
+  21 | -c, --reedit-message, --no-reedit-message | reuse and edit message from specified commit
+  23 | -C, --reuse-message, --no-reuse-message | reuse message from specified commit
+  25 | --fixup, --no-fixup | use autosquash formatted message to fixup or amend/reword sp
+  27 | --squash, --no-squash | use autosquash formatted message to squash specified commit
+  29 | --reset-author, --no-reset-author | the commit is authored by me now (used with -C/-c/--amend)
+  30 | --trailer, --no-trailer | add custom trailer(s)
+  32 | -s, --signoff, --no-signoff | add a Signed-off-by trailer
+  33 | -t, --template, --no-template | use specified template file
+  35 | -e, --edit, --no-edit | force edit of commit
+  36 | --cleanup, --no-cleanup | how to strip spaces and #comments from message
+  37 | --status, --no-status | include status in commit message template
+  38 | -S, --gpg-sign, --no-gpg-sign | GPG sign commit
+  42 | -a, --all, --no-all | commit all changed files
+  43 | -i, --include, --no-include | add specified files to index for commit
+  44 | --interactive, --no-interactive | interactively add files
+  45 | -p, --patch, --no-patch | interactively add changes
+  46 | -U, --unified | generate diffs with <n> lines context
+  47 | --inter-hunk-context | show context between diff hunks up to the specified number o
+  49 | -o, --only, --no-only | commit only specified files
+  50 | -n, --no-verify | bypass pre-commit and commit-msg hooks
+  51 | --verify | opposite of --no-verify
+  52 | --dry-run, --no-dry-run | show what would be committed
+  53 | --short, --no-short | show status concisely
+  54 | --branch, --no-branch | show branch information
+  55 | --ahead-behind, --no-ahead-behind | compute full ahead/behind values
+  56 | --porcelain, --no-porcelain | machine-readable output
+  57 | --long, --no-long | show status in long format (default)
+  58 | -z, --null, --no-null | terminate entries with NUL
+  59 | --amend, --no-amend | amend previous commit
+  60 | --no-post-rewrite | bypass post-rewrite hook
+  61 | --post-rewrite | opposite of --no-post-rewrite
+  62 | -u, --untracked-files, --no-untracked-files | show untracked files, optional modes: all, normal, no. (Defa
+  64 | --pathspec-from-file, --no-pathspec-from-file | read pathspec from file
+  66 | --pathspec-file-nul, --no-pathspec-file-nul | with --pathspec-from-file, pathspec elements are separated w

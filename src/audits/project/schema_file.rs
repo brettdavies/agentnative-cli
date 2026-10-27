@@ -11,6 +11,7 @@ use crate::audit::Audit;
 use crate::project::Project;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
+#[derive(Debug)]
 pub struct SchemaFileAudit;
 
 impl Audit for SchemaFileAudit {
@@ -50,6 +51,7 @@ impl Audit for SchemaFileAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

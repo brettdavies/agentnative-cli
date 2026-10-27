@@ -13,6 +13,7 @@
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::HelpOutput;
+use crate::runner::help_probe::Flag;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Verb fragments that, when used as the long form of a top-level flag,
@@ -85,6 +86,7 @@ impl Audit for SubcommandOperationsAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
@@ -93,8 +95,12 @@ pub(crate) fn audit_subcommand_operations(help: &HelpOutput) -> AuditStatus {
     let verb_flags: Vec<&str> = help
         .flags()
         .iter()
-        .filter_map(|f| f.long.as_deref())
-        .filter(|long| VERB_FLAGS.iter().any(|v| long.eq_ignore_ascii_case(v)))
+        .flat_map(Flag::long_names)
+        .filter(|long| {
+            VERB_FLAGS
+                .iter()
+                .any(|verb| names_the_same_word(long, verb))
+        })
         .collect();
 
     if verb_flags.is_empty() {
@@ -108,9 +114,36 @@ pub(crate) fn audit_subcommand_operations(help: &HelpOutput) -> AuditStatus {
     ))
 }
 
+/// Whether a long name and a verb flag are the same word, whatever their
+/// case or dash count: a long name is a single-dash word only where one dash
+/// and two name the same flag.
+fn names_the_same_word(long: &str, verb: &str) -> bool {
+    long.trim_start_matches('-')
+        .eq_ignore_ascii_case(verb.trim_start_matches('-'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_single_dash_verb_flag_counts_in_a_help_without_double_dash_names() {
+        let help = HelpOutput::from_raw(
+            "Usage of tool:\n  -search string\n    \tFind entries that match\n  -v\tverbose\n",
+        );
+        match audit_subcommand_operations(&help) {
+            AuditStatus::Warn(msg) => assert!(msg.contains("found: -search."), "{msg}"),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_verb_word_is_not_a_long_flag_beside_double_dash_names() {
+        let help = HelpOutput::from_raw(
+            "Options:\n  -search <pattern>  Find entries that match\n      --help         Show help\n",
+        );
+        assert_eq!(audit_subcommand_operations(&help), AuditStatus::Pass);
+    }
 
     #[test]
     fn pass_when_no_verb_flags() {

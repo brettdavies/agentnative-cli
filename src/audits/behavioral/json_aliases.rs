@@ -9,6 +9,7 @@
 //! met). Skip when the help cannot be probed.
 
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_presence::pass_or_warn;
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
@@ -55,24 +56,20 @@ impl Audit for JsonAliasesAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
 
 /// Core unit for tests. Pass when either alias is present; Warn otherwise.
 pub(crate) fn audit_json_aliases(help: &HelpOutput) -> AuditStatus {
-    let has_json = help.flags().iter().any(|f| f.matches("--json"));
-    let has_jsonl = help.flags().iter().any(|f| f.matches("--jsonl"));
-
-    if has_json || has_jsonl {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(
-            "no --json or --jsonl short alias found. Agents and pipelines \
-             benefit from short forms alongside the canonical `--output` enum."
-                .into(),
-        )
-    }
+    pass_or_warn(
+        help,
+        &["--json", "--jsonl"],
+        None,
+        "no --json or --jsonl short alias found. Agents and pipelines \
+         benefit from short forms alongside the canonical `--output` enum.",
+    )
 }
 
 #[cfg(test)]

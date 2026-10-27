@@ -1,5 +1,8 @@
 use assert_cmd::Command;
+use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
+
+use common::self_audit::{self_audit, self_audit_with_env};
 
 mod common;
 
@@ -103,7 +106,7 @@ fn test_audit_self() {
     // earlier in development it returned 1 (warnings) or 2 (failures). All
     // three are valid signals that the run completed normally — the
     // assertion targets the summary line shape, not a specific verdict.
-    let assert = cmd().args(["audit", "."]).assert();
+    let assert = self_audit(&["audit", "."]).assert();
 
     assert
         .code(predicate::in_iter([0, 1, 2]))
@@ -112,7 +115,7 @@ fn test_audit_self() {
 
 #[test]
 fn test_audit_json_output() {
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
 
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
@@ -131,14 +134,8 @@ fn test_audit_json_output() {
 
 #[test]
 fn test_audit_quiet() {
-    let normal = cmd()
-        .args(["audit", "."])
-        .output()
-        .expect("normal run should succeed");
-    let quiet = cmd()
-        .args(["audit", ".", "-q"])
-        .output()
-        .expect("quiet run should succeed");
+    let normal = self_audit(&["audit", "."]);
+    let quiet = self_audit(&["audit", ".", "-q"]);
 
     let normal_stdout = String::from_utf8_lossy(&normal.stdout);
     let quiet_stdout = String::from_utf8_lossy(&quiet.stdout);
@@ -164,9 +161,7 @@ fn test_audit_quiet() {
 
 #[test]
 fn test_audit_principle_filter() {
-    let assert = cmd()
-        .args(["audit", ".", "--principle", "3", "--output", "json"])
-        .assert();
+    let assert = self_audit(&["audit", ".", "--principle", "3", "--output", "json"]).assert();
 
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
@@ -222,10 +217,8 @@ fn test_completions_bash() {
 
 #[test]
 fn test_no_color_env() {
-    let assert = cmd()
-        .env("NO_COLOR", "1")
-        .args(["audit", ".", "--output", "json"])
-        .assert();
+    let assert =
+        self_audit_with_env(&["audit", ".", "--output", "json"], &[("NO_COLOR", "1")]).assert();
 
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
@@ -267,6 +260,99 @@ fn test_binary_only_fixture() {
         !stdout.contains("source"),
         "binary-only fixture should not run source audits; got:\n{stdout}"
     );
+}
+
+/// A binary audited on its own has no directory to hold a bundle file, and
+/// this one's `--help` declares no `skill` subcommand: the rows conditional
+/// on a skill bundle are not applicable, not passes.
+#[test]
+#[cfg(unix)]
+fn test_binary_without_skill_bundle_reports_p8_rows_not_applicable() {
+    let path = fixture_path("binary-only/test.sh");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    for id in [
+        "p8-must-bundle-install",
+        "p8-may-install-all",
+        "p8-may-bundle-update",
+    ] {
+        let row = results
+            .iter()
+            .find(|r| r["id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"));
+        assert_eq!(row["status"], "n_a", "{row}");
+        let evidence = row["evidence"].as_str().unwrap_or_default();
+        assert!(evidence.contains("no `skill` subcommand"), "{row}");
+    }
+}
+
+/// Go `flag`-style help end to end: every name printed with one dash and no
+/// double-dash name. `destroy` lists `-force`, which confirms as `--force`
+/// does; the top level lists `-version` and no verbose flag, and `-version`
+/// is not `-v`.
+#[test]
+#[cfg(unix)]
+fn test_go_flag_help_fixture_reads_single_dash_words_whole() {
+    let path = fixture_path("go-flag-help/depot");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    let row = |id: &str| {
+        results
+            .iter()
+            .find(|r| r["audit_id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"))
+    };
+
+    let force_yes = row("p5-force-yes");
+    assert_eq!(force_yes["status"], "pass", "{force_yes}");
+    let verbose = row("p7-verbose");
+    assert_eq!(verbose["status"], "warn", "{verbose}");
+}
+
+/// A quiet flag shown only in a usage line is not a declared flag: the
+/// `p7-quiet` row warns, says what was searched, and is one of the warns the
+/// `audience` label counts.
+#[test]
+#[cfg(unix)]
+fn test_usage_line_flag_is_not_a_declared_quiet_flag() {
+    let path = fixture_path("handwritten-help/quill");
+    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array().expect("results array");
+    let row = |id: &str| {
+        results
+            .iter()
+            .find(|r| r["audit_id"] == id)
+            .unwrap_or_else(|| panic!("no row for {id}"))
+    };
+
+    let quiet = row("p7-quiet");
+    assert_eq!(quiet["status"], "warn", "{quiet}");
+    assert_eq!(
+        quiet["evidence"],
+        "no option definition in --help declares --quiet or -q; a flag named only in a usage line does not count."
+    );
+
+    let signal_warns = [
+        "p1-non-interactive",
+        "p2-json-output",
+        "p7-quiet",
+        "p6-no-color-behavioral",
+    ]
+    .iter()
+    .filter(|id| row(id)["status"] == "warn")
+    .count();
+    let label = match signal_warns {
+        0..=1 => "agent-optimized",
+        2 => "mixed",
+        _ => "human-primary",
+    };
+    assert_eq!(parsed["audience"], label, "{signal_warns} signal warn(s)");
 }
 
 /// A hand-written `Common commands:` block whose entries all lead with the
@@ -454,31 +540,8 @@ fn test_cfg_test_edge_cases_fixture_flags_only_production_unwraps() {
     // Exempted (must NOT appear in evidence):
     //   - line 30: test_only_helper()             (#[cfg(test)])
     //   - line 37: tests::unit()                  (inside #[cfg(test)] mod)
-    let path = fixture_path("cfg-test-edge-cases");
-
-    let assert = cmd().args(["audit", &path, "--output", "json"]).assert();
-    let output = assert.get_output().stdout.clone();
-    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json_str).expect("output should be valid JSON");
-
-    let code_unwrap = parsed["results"]
-        .as_array()
-        .expect("results should be an array")
-        .iter()
-        .find(|r| r["id"].as_str() == Some("code-unwrap"))
-        .expect("results should include a code-unwrap row");
-
-    assert_eq!(
-        code_unwrap["status"].as_str(),
-        Some("fail"),
-        "code-unwrap must fail on the fixture (two production unwraps): {code_unwrap}",
-    );
-
-    let evidence = code_unwrap["evidence"]
-        .as_str()
-        .expect("code-unwrap fail must carry an evidence string");
-    let lines: Vec<&str> = evidence.lines().collect();
+    let lines = code_unwrap_evidence("cfg-test-edge-cases", &[]);
+    let evidence = lines.join("\n");
     assert_eq!(
         lines.len(),
         2,
@@ -510,6 +573,130 @@ fn test_cfg_test_edge_cases_fixture_flags_only_production_unwraps() {
     }
 }
 
+/// `code-unwrap` evidence lines for a fixture, through the real CLI.
+fn code_unwrap_evidence(fixture: &str, extra_args: &[&str]) -> Vec<String> {
+    let path = fixture_path(fixture);
+    let mut args = vec!["audit", &path, "--output", "json"];
+    args.extend_from_slice(extra_args);
+
+    let assert = cmd().args(&args).assert();
+    let output = assert.get_output().stdout.clone();
+    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).expect("output should be valid JSON");
+
+    let code_unwrap = parsed["results"]
+        .as_array()
+        .expect("results should be an array")
+        .iter()
+        .find(|r| r["id"].as_str() == Some("code-unwrap"))
+        .expect("results should include a code-unwrap row")
+        .clone();
+
+    assert_eq!(
+        code_unwrap["status"].as_str(),
+        Some("fail"),
+        "code-unwrap must fail on the {fixture} fixture: {code_unwrap}",
+    );
+
+    code_unwrap["evidence"]
+        .as_str()
+        .expect("code-unwrap fail must carry an evidence string")
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn test_macro_interiors_fixture_reports_only_genuine_calls() {
+    // End-to-end coverage of the macro-interior matcher through the full
+    // parse -> walk -> re-parse -> AuditResult -> scorecard pipeline. Unit tests
+    // in src/audits/source/rust/macro_interior.rs cover the re-parse in
+    // isolation; this drives a real project on disk.
+    //
+    // Pinned to tests/fixtures/macro-interiors/src/lib.rs. Reported:
+    //   -  9:23 v.unwrap()      single-line write!, call on the interior's first line
+    //   - 20:9  v.unwrap()      multi-line write!, call after the interior's first newline
+    //   - 26:37 v.unwrap()      nested write!/format!, reported once
+    //   - 30:28 load().unwrap() thread_local!, an item-position macro body
+    //   - 95:39 v.unwrap()      json! key-value pair, read through the colon
+    //   - 101:35 v.unwrap()     three nesting levels, recovered in one pass
+    //   - 107:23 a.unwrap().unwrap()  a chain, keyed to one row by position
+    // Clean (must NOT appear):
+    //   - 34 string literal, 38 raw string, 43 comment,
+    //   - 50-53 unwrap_or / unwrap_or_else / unwrap_err / expect,
+    //   - 58 macro_rules! fragment,
+    //   - 78-79 stringify! / concat!, whose arguments are tokens,
+    //   - 87 a macro_rules! transcriber nested in cfg_if!
+    // Gated by #[cfg(test)], so default-exempt:
+    //   - 67 assert_eq!(v.unwrap(), 1)
+    let evidence = code_unwrap_evidence("macro-interiors", &[]);
+
+    let reported: Vec<(&str, &str)> = vec![
+        ("/lib.rs:9:23", "v.unwrap()"),
+        ("/lib.rs:20:9", "v.unwrap()"),
+        ("/lib.rs:26:37", "v.unwrap()"),
+        ("/lib.rs:30:28", "load().unwrap()"),
+        ("/lib.rs:95:39", "v.unwrap()"),
+        ("/lib.rs:101:35", "v.unwrap()"),
+        ("/lib.rs:107:23", "a.unwrap().unwrap()"),
+    ];
+    assert_eq!(
+        evidence.len(),
+        reported.len(),
+        "unexpected finding count: {evidence:#?}",
+    );
+    for (location, text) in &reported {
+        assert!(
+            evidence
+                .iter()
+                .any(|l| l.contains(location) && l.ends_with(text)),
+            "evidence must flag {location} as {text}: {evidence:#?}",
+        );
+    }
+
+    // A column is as load-bearing as a line here: the interior's start column
+    // applies to its own first line and nothing after the first newline, so an
+    // inverted rule reports the wrong character on exactly the multi-line
+    // macros this matcher exists to catch.
+    for forbidden in [
+        ":34:", ":38:", ":43:", ":50:", ":51:", ":52:", ":53:", ":58:", ":67:", ":78:", ":79:",
+        ":87:",
+    ] {
+        assert!(
+            !evidence.iter().any(|l| l.contains(forbidden)),
+            "line {forbidden} must stay unreported: {evidence:#?}",
+        );
+    }
+}
+
+#[test]
+fn test_macro_interiors_fixture_include_tests_lifts_the_gate() {
+    let evidence = code_unwrap_evidence("macro-interiors", &["--include-tests"]);
+
+    assert_eq!(
+        evidence.len(),
+        8,
+        "--include-tests must add the cfg(test)-gated assert_eq!: {evidence:#?}",
+    );
+    assert!(
+        evidence
+            .iter()
+            .any(|l| l.contains("/lib.rs:67:20") && l.ends_with("v.unwrap()")),
+        "the gated macro argument at lib.rs:67 must appear with --include-tests: {evidence:#?}",
+    );
+    // Lifting the gate must not relax the matcher: the literals and the
+    // sibling method names stay clean.
+    for forbidden in [
+        ":34:", ":38:", ":43:", ":50:", ":52:", ":58:", ":78:", ":87:",
+    ] {
+        assert!(
+            !evidence.iter().any(|l| l.contains(forbidden)),
+            "line {forbidden} must stay unreported under --include-tests: {evidence:#?}",
+        );
+    }
+}
+
 // ── Bare invocation test ──────────────────────────────────────────
 
 #[test]
@@ -532,14 +719,8 @@ fn test_bare_invocation_prints_help() {
 #[test]
 fn test_default_subcommand_dot_matches_explicit_audit() {
     // `anc .` and `anc audit .` must produce the same JSON scorecard.
-    let implicit = cmd()
-        .args([".", "--output", "json"])
-        .output()
-        .expect("implicit run should execute");
-    let explicit = cmd()
-        .args(["audit", ".", "--output", "json"])
-        .output()
-        .expect("explicit run should execute");
+    let implicit = self_audit(&[".", "--output", "json"]);
+    let explicit = self_audit(&["audit", ".", "--output", "json"]);
 
     assert_eq!(
         implicit.status.code(),
@@ -561,8 +742,7 @@ fn test_default_subcommand_dot_matches_explicit_audit() {
 #[test]
 fn test_default_subcommand_preserves_global_flag_before_path() {
     // `anc -q .` — global flag precedes the path argument.
-    cmd()
-        .args(["-q", "."])
+    self_audit(&["-q", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("[PASS]").not())
@@ -572,8 +752,7 @@ fn test_default_subcommand_preserves_global_flag_before_path() {
 #[test]
 fn test_default_subcommand_preserves_global_long_flag_before_path() {
     // `anc --quiet .` — long-form global flag precedes the path.
-    cmd()
-        .args(["--quiet", "."])
+    self_audit(&["--quiet", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("[PASS]").not());
@@ -582,7 +761,7 @@ fn test_default_subcommand_preserves_global_long_flag_before_path() {
 #[test]
 fn test_default_subcommand_passes_trailing_flags_through() {
     // `anc . --output json` — the injected subcommand must carry trailing flags.
-    let assert = cmd().args([".", "--output", "json"]).assert();
+    let assert = self_audit(&[".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let parsed: serde_json::Value =
         serde_json::from_slice(&output).expect("output should be valid JSON");
@@ -623,8 +802,7 @@ fn test_default_subcommand_does_not_fire_for_version() {
 #[test]
 fn test_explicit_subcommand_still_works() {
     // `anc audit .` — must still pass through unchanged.
-    cmd()
-        .args(["audit", "."])
+    self_audit(&["audit", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("audits:"));
@@ -659,6 +837,38 @@ fn test_command_flag_resolves_path_and_runs_behavioral_only() {
                 "--command should produce only behavioral results, got {layer}"
             );
         }
+    }
+}
+
+/// `anc audit --help` prints the exit table every verb shares, byte for
+/// byte, so an agent reading either verb's help branches on the same codes.
+#[test]
+fn test_audit_help_prints_the_shared_exit_table() {
+    let assert = cmd().args(["audit", "--help"]).assert().code(0);
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+    assert!(
+        stdout.contains(agentnative::exit_codes::EXIT_TABLE),
+        "`anc audit --help` lacks the shared exit table:\n{stdout}"
+    );
+}
+
+/// The text report closes by naming the code the process returns.
+#[test]
+fn test_audit_text_report_closes_on_the_exit_code_it_returns() {
+    #[cfg(unix)]
+    {
+        let assert = cmd().args(["audit", "--command", "ls"]).assert();
+        let code = assert.get_output().status.code().expect("an exit code");
+        let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();
+        let last = stdout
+            .lines()
+            .rev()
+            .find(|l| !l.is_empty())
+            .unwrap_or_default();
+        assert!(
+            last.starts_with(&format!("exit {code}: ")),
+            "the report's last line does not name exit {code}:\n{stdout}"
+        );
     }
 }
 
@@ -732,8 +942,7 @@ fn test_command_flag_unknown_binary_errors() {
 #[test]
 fn test_command_flag_conflicts_with_path() {
     // `anc audit --command ls .` — clap rejects both arguments.
-    cmd()
-        .args(["audit", "--command", "ls", "."])
+    self_audit(&["audit", "--command", "ls", "."])
         .assert()
         .code(2)
         .stderr(predicate::str::contains("cannot be used with"));
@@ -850,8 +1059,7 @@ fn test_command_flag_value_matching_subcommand_name() {
 fn test_double_dash_separator_with_path() {
     // `anc -- .` should run audit against `.` (POSIX convention treats
     // everything after `--` as positional).
-    cmd()
-        .args(["--", "."])
+    self_audit(&["--", "."])
         .assert()
         .code(predicate::in_iter([0, 1, 2]))
         .stdout(predicate::str::contains("audits:"));
@@ -923,8 +1131,7 @@ fn test_broken_python_fixture() {
 fn test_audit_profile_rejects_unknown_value() {
     // clap's value_enum rejects unknown values with exit code 2 — no
     // custom validation needed.
-    cmd()
-        .args(["audit", ".", "--audit-profile", "not-a-real-category"])
+    self_audit(&["audit", ".", "--audit-profile", "not-a-real-category"])
         .assert()
         .code(2)
         .stderr(predicate::str::contains("audit-profile"));
@@ -932,16 +1139,15 @@ fn test_audit_profile_rejects_unknown_value() {
 
 #[test]
 fn test_audit_profile_echoed_in_json_output() {
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "human-tui",
-            "--output",
-            "json",
-        ])
-        .assert();
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "human-tui",
+        "--output",
+        "json",
+    ])
+    .assert();
     // Non-zero exit OK — anc has warnings on itself; we're asserting the
     // scorecard shape, not the pass/fail verdict.
     let output = assert.get_output().stdout.clone();
@@ -953,16 +1159,15 @@ fn test_audit_profile_echoed_in_json_output() {
 
 #[test]
 fn test_audit_profile_suppresses_listed_audits() {
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "human-tui",
-            "--output",
-            "json",
-        ])
-        .assert();
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "human-tui",
+        "--output",
+        "json",
+    ])
+    .assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -993,7 +1198,7 @@ fn test_audit_profile_suppresses_listed_audits() {
 fn test_audit_profile_absent_emits_null() {
     // No --audit-profile flag: scorecard should echo null, preserving
     // v0.1.2 behavior for consumers that feature-detect.
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1005,16 +1210,15 @@ fn test_audit_profile_shrinks_audience_denominator() {
     // When --audit-profile human-tui suppresses p1-non-interactive (one
     // of the 4 audience signal audits), the classifier can't form a 4-way
     // verdict. Expect audience: null per R2.
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "human-tui",
-            "--output",
-            "json",
-        ])
-        .assert();
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "human-tui",
+        "--output",
+        "json",
+    ])
+    .assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1038,7 +1242,7 @@ fn test_audience_non_null_on_self_dogfood() {
     // label isn't the contract. What matters is that `audience` is a
     // non-null string (classifier actually ran) and that `audience_reason`
     // is absent (no gap to explain).
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1066,9 +1270,7 @@ fn test_principle_filter_forces_audience_null() {
     // the run loop. Since the 4 audience signals span P1, P2, P6, P7,
     // three of them disappear — audience must be null with
     // `audience_reason: "insufficient_signal"`.
-    let assert = cmd()
-        .args(["audit", ".", "--principle", "2", "--output", "json"])
-        .assert();
+    let assert = self_audit(&["audit", ".", "--principle", "2", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1093,7 +1295,7 @@ fn test_scorecard_json_has_stable_top_level_keys() {
     // Enforcing "no unexpected keys" too (bidirectional check) means an
     // accidental extra key also fails — which is the correct behavior
     // for a versioned schema contract.
-    let assert = cmd().args(["audit", ".", "--output", "json"]).assert();
+    let assert = self_audit(&["audit", ".", "--output", "json"]).assert();
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");
@@ -1148,17 +1350,16 @@ fn test_audit_profile_diagnostic_does_not_panic_on_self() {
     // requirement-row, so the suppressed probe surfaces under its row id
     // `p5-must-dry-run` (covered by the `p5-dry-run` audit) with
     // `audit_id: "p5-dry-run"` for provenance.
-    let assert = cmd()
-        .args([
-            "audit",
-            ".",
-            "--audit-profile",
-            "diagnostic-only",
-            "--output",
-            "json",
-        ])
-        .assert()
-        .code(predicate::in_iter([0, 1, 2]));
+    let assert = self_audit(&[
+        "audit",
+        ".",
+        "--audit-profile",
+        "diagnostic-only",
+        "--output",
+        "json",
+    ])
+    .assert()
+    .code(predicate::in_iter([0, 1, 2]));
     let output = assert.get_output().stdout.clone();
     let json_str = String::from_utf8(output).expect("utf8 stdout");
     let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("valid JSON");

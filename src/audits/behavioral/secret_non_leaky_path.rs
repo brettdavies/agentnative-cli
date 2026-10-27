@@ -18,6 +18,7 @@
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::HelpOutput;
+use crate::runner::help_probe::Flag;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Flag-name fragments that strongly imply the flag receives secret material.
@@ -87,6 +88,7 @@ impl Audit for SecretNonLeakyPathAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
@@ -94,7 +96,12 @@ impl Audit for SecretNonLeakyPathAudit {
 /// Core unit for tests. Walks the parsed flag list, identifies secret-bearing
 /// flags, and verifies each one has a non-leaky companion.
 pub(crate) fn audit_secret_non_leaky_path(help: &HelpOutput) -> AuditStatus {
-    let flag_long_names: Vec<String> = help.flags().iter().filter_map(|f| f.long.clone()).collect();
+    let flag_long_names: Vec<String> = help
+        .flags()
+        .iter()
+        .flat_map(Flag::long_names)
+        .map(str::to_string)
+        .collect();
 
     let secret_flags: Vec<&str> = flag_long_names
         .iter()
@@ -145,6 +152,27 @@ fn is_secret_flag(long: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const GO_STYLE_TOKEN_HELP: &str = "Usage of tool:\n  -addr string\n    \tServer address\n  -token string\n    \tAPI token used for authentication\n";
+
+    const JAVA_STYLE_PASSWORD_HELP: &str = "Options:\n    -password <pass>   Keystore password\n    --help             Print this help message\n";
+
+    #[test]
+    fn a_single_dash_secret_word_is_scanned_in_a_help_without_double_dash_names() {
+        let help = HelpOutput::from_raw(GO_STYLE_TOKEN_HELP);
+        match audit_secret_non_leaky_path(&help) {
+            AuditStatus::Fail(msg) => {
+                assert!(msg.contains("companion or stdin path: -token."), "{msg}")
+            }
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_secret_word_beside_double_dash_names_is_left_out() {
+        let help = HelpOutput::from_raw(JAVA_STYLE_PASSWORD_HELP);
+        assert_eq!(audit_secret_non_leaky_path(&help), AuditStatus::Pass);
+    }
 
     const HELP_TOKEN_WITH_FILE: &str = r#"Usage: tool [OPTIONS]
 

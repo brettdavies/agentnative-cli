@@ -5,6 +5,31 @@ use clap_complete::Shell;
 use crate::principles::registry::ExceptionCategory;
 use crate::skill_install::SkillHost;
 
+const TOP_AFTER_HELP: &str = "Examples:
+  anc audit .                          # human scorecard for the current project
+  anc audit . --output json            # JSON envelope for agents (--json works too)
+  anc audit --command rg               # audit a PATH-resolved binary by name
+  anc emit coverage-matrix             # emit the spec coverage matrix
+  anc emit schema                      # print the scorecard JSON Schema
+  anc skill install claude_code          # install the bundle into Claude Code
+
+When the first argument is not a subcommand, `audit` is inserted automatically:
+  anc .                  ≡  anc audit .
+  anc --command rg       ≡  anc audit --command rg
+
+Exit codes:
+  0  clean   1  warnings only   2  failures or usage error   3  could not check
+
+Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
+that prevents recursive self-invocation when agentnative audits itself.";
+
+const EMIT_AFTER_HELP: &str = "Examples:
+  anc emit coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
+  anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
+  anc emit coverage-matrix --out /tmp/cov.md          # custom output path
+  anc emit schema                                     # print the scorecard JSON Schema to stdout
+  anc emit schema | jq '.title'                       # pipe into jq for inspection";
+
 #[derive(Parser)]
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
@@ -17,20 +42,8 @@ Default output format is text; color and progress affordances auto-detect the TT
 
 Input model: targets are passed as positional path arguments or via `--command <name>`. Stdin is not consumed; `-` is reserved and behaves like a literal filename rather than a stdin sentinel."
 )]
-#[command(after_help = "Examples:
-  anc audit .                          # human scorecard for the current project
-  anc audit . --output json            # JSON envelope for agents (--json works too)
-  anc audit --command ripgrep          # audit a PATH-resolved binary by name
-  anc emit coverage-matrix             # emit the spec coverage matrix
-  anc emit schema                      # print the scorecard JSON Schema
-  anc skill install claude_code          # install the bundle into Claude Code
-
-When the first argument is not a subcommand, `audit` is inserted automatically:
-  anc .                  ≡  anc audit .
-  anc --command ripgrep  ≡  anc audit --command ripgrep
-
-Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative audits itself.")]
+#[command(after_help = TOP_AFTER_HELP)]
+#[derive(Debug)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -76,7 +89,7 @@ pub struct Cli {
     /// Color control for text output. `auto` (default) emits ANSI styling
     /// when stdout is a terminal and `NO_COLOR` is unset. `always` forces
     /// styling on; `never` strips it. Honors the `NO_COLOR` environment
-    /// variable in `auto` mode (https://no-color.org/).
+    /// variable in `auto` mode (<https://no-color.org/>).
     #[arg(
         long,
         global = true,
@@ -119,7 +132,7 @@ fn existing_dir(value: &str) -> Result<std::path::PathBuf, String> {
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Audit a CLI project or binary for agent-readiness
     ///
@@ -129,18 +142,20 @@ pub enum Commands {
     /// Pass the target as a positional argument or via `--command <name>`
     /// to resolve from PATH. `-` is reserved and behaves like any other
     /// path argument (no special stdin meaning).
-    #[command(after_help = "Examples:
+    #[command(after_help = concat!("Examples:
   anc audit .                                  # default: project at cwd
   anc audit . --output json                    # JSON envelope for agents
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
-  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit --command rg                       # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
   anc audit --command xr --repo ./xr-src       # .anc.toml from a repo you fetched
   anc audit . --bin xr                         # one of several built binaries
 
 Defaults: path = `.`, output = text, no principle filter.
 
-Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml")]
+Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml
+
+", crate::exit_table!()))]
     Audit {
         /// Path to project directory or binary
         #[arg(default_value = ".")]
@@ -214,12 +229,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
         shell: Shell,
     },
     /// Render build artifacts (coverage matrix, scorecard schema)
-    #[command(after_help = "Examples:
-  anc emit coverage-matrix                            # write docs/coverage-matrix.md + coverage/matrix.json
-  anc emit coverage-matrix --check                    # CI drift guard (non-zero on mismatch)
-  anc emit coverage-matrix --out /tmp/cov.md          # custom output path
-  anc emit schema                                     # print the scorecard JSON Schema to stdout
-  anc emit schema | jq '.title'                       # pipe into jq for inspection")]
+    #[command(after_help = EMIT_AFTER_HELP)]
     Emit {
         #[command(subcommand)]
         artifact: EmitKind,
@@ -241,7 +251,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum SkillCmd {
     /// Install the skill bundle into a host's canonical skills directory.
     ///
@@ -249,7 +259,9 @@ pub enum SkillCmd {
     /// the manual fallback printed by `--dry-run` for any known host and
     /// substitute the destination path:
     ///
-    ///     git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
+    /// ```text
+    /// git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git <dest>
+    /// ```
     Install {
         /// Target host (claude_code, codex, cursor, opencode). Required
         /// unless `--all` is set.
@@ -287,7 +299,7 @@ pub enum SkillCmd {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum EmitKind {
     /// Render the spec coverage matrix (registry → audits → artifact).
     CoverageMatrix {
@@ -316,7 +328,7 @@ pub enum EmitKind {
     Schema,
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
     Text,
     Json,

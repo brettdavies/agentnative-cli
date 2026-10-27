@@ -14,8 +14,10 @@
 //! See [`super::EnvHint`] for the emitted shape and
 //! [`super::EnvHintSource`] for the provenance tag each pattern attaches.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 
+use super::flags::{definition_lines, is_section_heading};
 use super::{EnvHint, EnvHintSource};
 
 /// Shell/system env vars we never want to flag as flag-bound. Tools
@@ -38,6 +40,10 @@ const PATTERN2_WINDOW: usize = 4;
 /// shell-environment blacklist and requires tool-scoped shape (uppercase,
 /// digits, underscores; length ≥ 3).
 ///
+/// A definition line is scanned as a terminal shows it, without its own
+/// names and placeholders: `--iconv=CONVERT_SPEC` names a value, not a
+/// variable the tool reads. A `$NAME` among them is.
+///
 /// Strips `[env: ...]` annotations before scanning — those belong to
 /// Pattern 1. Salvaging tokens from rejected annotations (e.g.,
 /// `[env: 1ABC]` contributing `ABC`) would undermine Pattern 1's
@@ -49,11 +55,7 @@ const PATTERN2_WINDOW: usize = 4;
 pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     let stripped = strip_clap_env_annotations(raw);
     let lines: Vec<&str> = stripped.lines().collect();
-    let flag_line_indices: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter_map(|(i, l)| is_flag_line(l).then_some(i))
-        .collect();
+    let definitions = definition_lines(&stripped);
     let env_section_range = find_env_section(&lines);
 
     // Track each line's matching source. ENV-section wins over
@@ -62,9 +64,9 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
     // weaker (just "the token showed up near a flag line"). Apply
     // Proximity first, then overwrite with EnvSection where it applies.
     let mut line_source: Vec<Option<EnvHintSource>> = vec![None; lines.len()];
-    for &idx in &flag_line_indices {
-        let lo = idx.saturating_sub(PATTERN2_WINDOW);
-        let hi = (idx + PATTERN2_WINDOW + 1).min(lines.len());
+    for definition in &definitions {
+        let lo = definition.index.saturating_sub(PATTERN2_WINDOW);
+        let hi = (definition.index + PATTERN2_WINDOW + 1).min(lines.len());
         for slot in line_source[lo..hi].iter_mut() {
             *slot = Some(EnvHintSource::Proximity);
         }
@@ -81,7 +83,15 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
         let Some(source) = line_source[i] else {
             continue;
         };
-        for token in extract_env_tokens(line) {
+        let header = definitions
+            .iter()
+            .find(|definition| definition.index == i)
+            .and_then(|definition| definition.header.as_ref());
+        let scanned = match header {
+            Some((shown, header_len)) => Cow::Owned(without_header(shown, *header_len)),
+            None => Cow::Borrowed(*line),
+        };
+        for token in extract_env_tokens(&scanned) {
             if SHELL_ENV_BLACKLIST.contains(&token.as_str()) {
                 continue;
             }
@@ -91,6 +101,26 @@ pub(super) fn parse_env_hints_bash_style(raw: &str) -> Vec<EnvHint> {
         }
     }
     hints
+}
+
+/// A definition line with its first `header_len` bytes, the names and
+/// placeholders, blanked, so a value placeholder (`--iconv=CONVERT_SPEC`) is
+/// not read as a variable the tool reads. A `$NAME` among them stays
+/// (`--token=$GITHUB_TOKEN`), and so does a variable named in the description
+/// after them.
+fn without_header(line: &str, header_len: usize) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut in_variable = false;
+    for c in line[..header_len].chars() {
+        in_variable = c == '$' || (in_variable && is_variable_char(c));
+        out.push(if in_variable { c } else { ' ' });
+    }
+    out.push_str(&line[header_len..]);
+    out
+}
+
+fn is_variable_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '{' | '}')
 }
 
 /// Replace `[env: ...]` annotations with spaces so Pattern 2 doesn't
@@ -116,31 +146,6 @@ fn strip_clap_env_annotations(raw: &str) -> String {
     out
 }
 
-/// A "flag line" for proximity-window purposes: leading whitespace, then
-/// a dash (clap's canonical shape). Mirrors `parse_flags` but returns a
-/// bool so the caller can keep line indices in a Vec<usize>.
-fn is_flag_line(line: &str) -> bool {
-    if !line.starts_with(' ') {
-        return false;
-    }
-    let trimmed = line.trim_start();
-    trimmed.starts_with('-') && !trimmed.starts_with("---")
-}
-
-/// True when a line looks like a top-level help section header:
-/// non-indented, non-empty, trims to something ending in `:`, and
-/// contains at least one uppercase letter. Examples: `OPTIONS:`,
-/// `ENVIRONMENT:`, `DOCKER_CONFIG:` (if a tool happens to name a section
-/// after an env var). Used to terminate `ENVIRONMENT` sections AND to
-/// exclude the header line itself from Pattern 2's token scan — headers
-/// are never env-var references.
-fn is_section_header_line(line: &str) -> bool {
-    !line.is_empty()
-        && !line.starts_with(' ')
-        && line.trim().ends_with(':')
-        && line.chars().any(|c| c.is_ascii_uppercase())
-}
-
 /// Locate an `ENVIRONMENT` / `ENV VARS` / `ENVIRONMENT VARIABLES` section
 /// in the help output, returning the line-index range (exclusive upper).
 /// Tools like `gh` use this convention; `ripgrep` uses free prose instead
@@ -162,7 +167,7 @@ fn find_env_section(lines: &[&str]) -> Option<(usize, usize)> {
     // Section ends at the next top-level header or end-of-text.
     let end = lines[start + 1..]
         .iter()
-        .position(|l| is_section_header_line(l))
+        .position(|l| is_section_heading(l))
         .map(|offset| start + 1 + offset)
         .unwrap_or(lines.len());
     Some((start, end))
@@ -190,7 +195,7 @@ fn find_env_section(lines: &[&str]) -> Option<(usize, usize)> {
 /// entirely: a header that happens to contain an underscored uppercase
 /// token is not a prose reference to an env var.
 fn extract_env_tokens(line: &str) -> Vec<String> {
-    if is_section_header_line(line) {
+    if is_section_heading(line) {
         return Vec::new();
     }
     let mut out = Vec::new();
@@ -286,6 +291,87 @@ OPTIONS:
           is read from $RIPGREP_CONFIG_PATH. Respects RIPGREP_COLOR env
           variable when rendering output.
 ";
+
+    fn names(raw: &str) -> Vec<String> {
+        parse_env_hints_bash_style(raw)
+            .into_iter()
+            .map(|hint| hint.var)
+            .collect()
+    }
+
+    #[test]
+    fn a_flag_s_own_placeholder_is_not_an_environment_variable() {
+        // rsync 3.5.1, and a bare placeholder after a short name.
+        for help in [
+            "Options\n--iconv=CONVERT_SPEC     request charset conversion of filenames\n--checksum-seed=NUM      set block/file checksum seed (advanced)\n",
+            "Options:\n  -o OUTPUT_FILE    Write the result here\n  -h, --help        Show help\n",
+        ] {
+            assert_eq!(names(help), Vec::<String>::new(), "{help}");
+        }
+        assert_eq!(
+            names(&crate::runner::help_probe::fixture_snapshots::fixture(
+                "rsync__--help.txt"
+            )),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_variable_beside_the_names_still_counts() {
+        assert_eq!(
+            names("Options:\n      --token=$GITHUB_TOKEN   API token\n"),
+            ["GITHUB_TOKEN"]
+        );
+        assert_eq!(
+            names("Options:\n      --token ${GITHUB_TOKEN}   API token\n"),
+            ["GITHUB_TOKEN"]
+        );
+    }
+
+    #[test]
+    fn a_placeholder_in_a_column_of_its_own_is_not_a_variable() {
+        assert!(
+            names("Options:\n  --config-file  -c  CONFIG_FILE  Path to the config\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_placeholder_on_a_tab_indented_line_is_not_a_variable() {
+        assert!(
+            names("Options:\n\t--iconv=CONVERT_SPEC     request charset conversion\n").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_placeholder_in_a_box_table_row_is_not_a_variable() {
+        assert!(names("│ --config-file  -c  CONFIG_FILE  Path to the config │\n").is_empty());
+        assert_eq!(
+            names("│ --token  -t  API_TOKEN  Token; also read from GH_TOKEN │\n"),
+            ["GH_TOKEN"]
+        );
+    }
+
+    #[test]
+    fn a_tab_indented_line_keeps_the_variable_its_description_names() {
+        assert_eq!(
+            names("Options:\n\t-t TOKEN  reads API_TOKEN\n"),
+            ["API_TOKEN"]
+        );
+    }
+
+    #[test]
+    fn a_variable_named_in_a_description_still_counts() {
+        assert_eq!(
+            names(
+                "Options:\n      --config FILE    Config file (default: TOOL_CONFIG, then $XDG_CONFIG_HOME)\n"
+            ),
+            ["TOOL_CONFIG", "XDG_CONFIG_HOME"]
+        );
+        assert_eq!(
+            names("Options:\n      --token GITHUB_TOKEN    Token; also read from GITHUB_TOKEN\n"),
+            ["GITHUB_TOKEN"]
+        );
+    }
 
     #[test]
     fn pattern2_captures_gh_environment_section() {

@@ -25,6 +25,7 @@ const CLAMP_PATTERNS: &[&str] = &["$RECV.take($LIMIT)", "$RECV.clamp($$$ARGS)"];
 const CLAMP_STRINGS: &[&str] = &["--limit", "--max", "limit", "max_results", "page_size"];
 
 /// Audit trait implementation for output clamping detection.
+#[derive(Debug)]
 pub struct OutputClampingAudit;
 
 impl Audit for OutputClampingAudit {
@@ -93,6 +94,7 @@ impl Audit for OutputClampingAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

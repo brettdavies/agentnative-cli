@@ -53,8 +53,11 @@ The standard feature → PR → squash-merge flow remains required for everythin
 
 ## PR body
 
-Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six sections, no inventions:
-`## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`, `## Files Modified`, `## Testing`.
+Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` verbatim. Six required sections, in
+template order, no inventions: `## Summary`, `## Changelog`, `## Type of Change`, `## Related Issues/Stories`,
+`## Testing`, `## Files Modified`. The template's other sections (`## Key Features`, `## Benefits`,
+`## Breaking Changes`, `## Deployment Notes`, `## Screenshots/Recordings`, `## Checklist`, `## Additional Context`) are
+optional: fill `## Breaking Changes` on a major, delete the rest when they do not apply.
 
 - **No explainer prose anywhere in the body.** User-facing substance only.
 - **Summary describes the net diff only**: what merged `main` looks like vs the base branch. Not commit history,
@@ -62,8 +65,10 @@ Every PR (feature, fix, docs, release) uses `.github/pull_request_template.md` v
 - **Zero verification artifacts in the body.** No triple-diff stats, leak-check output ("`guard-main-docs` runs clean"),
   patch-id cherry-check counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
   push, not audit-trailed.
-- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation`): 1-5 bullets each, delete
-  empty subsections, each bullet starts with a verb.
+- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation` from the template, plus
+  `### Breaking changes` or `### Deprecated` when a change needs one; the generator orders all six): 1-5 bullets each,
+  delete empty subsections, each bullet starts with a verb. A `## Changelog` heading left standing with no bullets under
+  it says the PR ships nothing user-facing, and `generate-changelog.py` adds nothing for it, whatever the PR title says.
 - **Type of Change**: one checkbox. Prefer `feat`/`fix` over `chore` for any user-observable change.
 - **Related Issues/Stories**: four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four required
   even when empty (`- None.` / `n/a`).
@@ -91,74 +96,61 @@ version from the branch name.
 in history even as their content converges. Reconciling that with a merge, or a branch cut from `dev`, produces a pile
 of rename/delete and lockfile conflicts that are artifacts of the lineage, not of the content shipping. The release
 branch is therefore built as a **clean descendant of `main`** with `dev`'s tree overlaid on top, asserting the desired
-end-state directly:
+end-state directly. `scripts/release/cut-release-branch.sh` builds it:
 
 ```bash
-# 0. Nothing on main that dev never received (security PRs, hotfixes, config). Exits 1 while drift exists.
-scripts/release/drift.sh
+# 1. Build the branch: drift gate, branch from main, overlay dev's tree, strip the
+#    guarded paths, generate CHANGELOG.md, and run checks A, B, and D. Stops
+#    before committing; --dry-run prints the plan and touches nothing.
+scripts/release/cut-release-branch.sh 0.2.0
 
-# 1. Branch from main, NOT dev.
-git fetch origin
-git checkout -B release/v0.2.0 origin/main
+# 2. Bump the version carriers and refresh the generated artifacts, in the order
+#    § Project specifics lists.
 
-# 2. Overlay dev's entire tracked tree onto the main base. `checkout -- .` writes dev's
-#    paths but does not delete files that exist on main and are absent on dev, so remove
-#    those next (the 'D' rows are main-only files dev deleted or moved). `--no-renames`
-#    lists a moved file as a deletion; rename detection would show `src/x.rs` becoming
-#    `src/x/mod.rs` as an R row, and the stale `src/x.rs` left behind breaks the build.
-git checkout origin/dev -- .
-git diff --no-renames --name-status origin/main origin/dev | grep '^D'
-trash <each main-only file listed above>
-
-# 3. Strip the paths guard-main-docs forbids on main. The set resolves from the workflow;
-#    never restate it inline, because every hand-kept copy drifted from what CI enforces.
-GUARDED="$(scripts/release/guarded-paths.sh)"
-git ls-files | grep -E "$GUARDED" | xargs -r trash
-git add -A                                                      # stages adds, mods, AND deletions
-
-# 4. Bump the version in Cargo.toml and refresh Cargo.lock.
-sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
-cargo update -p agentnative
-
-# 5. Regenerate completions (catches any subcommand/flag changes missed during dev).
-./scripts/generate-completions.sh
-
-# 6. Refresh the skill.json fixture from upstream and review the diff.
-bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
-
-# 7. Generate CHANGELOG.md from the PRs merged into dev since the previous release. The
-#    overlay commit carries no per-PR history, so the section is built from dev's PRs, not
-#    from this branch's commits. Then scrub it via Vale + LanguageTool + unslop (see
-#    § Prose scrubbing); fix findings on upstream PR bodies and regenerate, never by hand.
-scripts/generate-changelog.py --from-dev-prs
+# 3. Commit the overlay as one commit sitting directly on top of main, then run the
+#    preflight gates against it.
 git add -A
-
-# 8. Verify before committing.
-#    A: staged tree equals dev's minus the version files, the regenerated artifacts, and
-#       the stripped guarded paths. Anything else printed here is a mistake.
-git diff --cached --name-only origin/dev | grep -Ev "$GUARDED" \
-  | grep -Ev '^(Cargo\.toml|Cargo\.lock|CHANGELOG\.md|completions/|src/skill_install/skill\.json$)' \
-  && echo "unexpected delta above; investigate" || echo "(clean: only intended deltas)"
-#    B: no guarded path in the release tree.
-git diff --cached --name-only origin/main | grep -E "$GUARDED" \
-  && echo "LEAKED a guarded path: reset and redo" || echo "(no guarded paths)"
-#    D: what this release ADDS to main. The leak check screens against the registered
-#       set, so it is blind to a category nobody registered yet. Every docs/ entry and
-#       every added markdown file needs a reason to ship, or it needs registering in the
-#       workflow's extra_paths and removing from the branch.
-#       `--no-renames` lists a doc moved from one main carries as added; rename detection
-#       would report it as R, and the A filter would drop it.
-git diff --cached --no-renames --diff-filter=A --name-only origin/main | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
-
-# 9. Commit the overlay as one commit sitting directly on top of main, then run the
-#    preflight gates against it (build the release binary first: cargo build --release).
 git commit
+cargo build --release
 scripts/release/preflight.sh all
 
-# 10. Push and open the PR. Scrub body in /tmp/ first.
+# 4. Push and open the PR. Scrub the body in /tmp/ first.
 git push -u origin release/v0.2.0
 gh pr create --base main --head release/v0.2.0 --title "release: v0.2.0" --body-file /tmp/body.md
 ```
+
+The script asserts `dev`'s tree onto the `main` base with `git read-tree -u --reset`, one operation that carries the
+deletions too, so a file `main` carries and `dev` deleted or moved cannot ship. It strips the paths `guard-main-docs`
+forbids, resolved from the workflow by `scripts/release/guarded-paths.sh` rather than from any restated copy, and writes
+`CHANGELOG.md` with `scripts/generate-changelog.py --from-dev-prs --tag v<version>`. The overlay commit carries no
+per-PR history, so the section is built from the PRs merged into `dev` since the previous release; scrub it per § Prose
+scrubbing, fixing findings on the upstream PR bodies and regenerating, never by hand. Then it runs three checks:
+
+| Check                                    | Asserts                                                                                                                                                                           | On failure                                                                                                     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| A: staged tree vs `origin/dev`           | nothing differs but the version carriers (`Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`) and the stripped guarded paths                                                              | fails, naming each unexpected path                                                                             |
+| B: guarded paths vs `origin/main`        | no guarded path is added or modified (`--diff-filter=ACMR`, so removing a guarded doc `main` still carries reads as cleanup, not a leak)                                          | fails, naming each leak                                                                                        |
+| D: unguarded docs added to `origin/main` | every added `docs/` entry or markdown file is meant to ship (`--no-renames`, so a doc moved from one `main` carries lists as added rather than as a rename the filter would drop) | reports, never fails: each needs a reason to ship, or registering in the workflow's `extra_paths` and removing |
+
+The worktree must be clean before it runs, because the overlay resets the index and working tree. Only exit 0 leads to
+step 2:
+
+| Exit | Meaning                                                                                    | Next                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| 0    | The branch is staged and every check passed; the script prints the commit steps.           | Step 2.                                                                                       |
+| 1    | The drift gate, the changelog step, or a check failed.                                     | Never commit the branch. A drift failure stops before branching; any other recovers as below. |
+| 2    | Setup error: a dirty worktree, an unknown ref, a missing tool, or no guarded-path pattern. | Fix what it names. Only the guarded-path error stops after branching; it recovers as below.   |
+
+A cut that stopped after branching, at a failed check or at any failing step, leaves the overlay staged on the release
+branch and prints the way back instead of the commit steps. The worktree was clean when the cut started, so everything
+staged is the script's own output, and discarding it loses nothing:
+
+```bash
+git checkout -f dev
+git branch -D release/v0.2.0
+```
+
+Then fix the cause and re-run; the script refuses the dirty worktree a failed cut leaves behind.
 
 The result is a single commit whose diff against `main` is the release, with `main` as an ancestor, so the PR merges
 with zero conflicts. The merge publishes nothing: no workflow in this repo triggers on a push to `main`, and every
@@ -178,6 +170,11 @@ The overlay is the release construction for every repo on this flow. Cherry-pick
 from `dev` either way. When cherry-picking, run the triple-diff verification:
 
 ```bash
+# 1. Nothing on main that dev never received, then branch from main, NOT dev.
+scripts/release/drift.sh
+git fetch origin
+git checkout -B release/v0.2.0 origin/main
+
 # 2. List the dev commits not yet on main.
 git log --oneline dev --not origin/main
 
@@ -191,12 +188,14 @@ git diff origin/main..HEAD --stat                                              #
 git diff HEAD..origin/dev --name-only | grep -Ev "$GUARDED" || echo "(none)"   # B: no missed picks
 git diff origin/dev..origin/main --stat | tail -5                              # C: phantom-commits sanity
 
-# Re-confirm no guarded paths leaked.
-git diff origin/main..HEAD --name-only \
+# Re-confirm no guarded paths leaked. --diff-filter=ACMR for the same reason as the
+# overlay's check B: a deletion of a guarded path main still carries is cleanup, not a
+# leak, and an unfiltered grep aborts a correct release over it.
+git diff origin/main..HEAD --diff-filter=ACMR --name-only \
   | grep -E "$GUARDED" \
   && echo "LEAKED: reset and redo" || echo "(clean)"
 
-# D: what this release ADDS to main (see step 8 above for why).
+# D: what this release ADDS to main (see the overlay's check D for why).
 # `--no-renames` lists a doc moved from one main carries as added; rename detection
 # would report it as R, and the A filter would drop it.
 git diff --no-renames origin/main..HEAD --diff-filter=A --name-only | grep -E '(^docs/|\.md$)' | grep -Ev "$GUARDED" || echo "(none unguarded)"
@@ -206,8 +205,9 @@ git cherry HEAD origin/dev | grep '^+' || echo "(none)"
 ```
 
 Cherry-picks of PRs that touched guarded paths hit modify/delete or rename/delete conflicts, since those paths live on
-`dev` but are blocked from `main`; resolve them per the next section. Steps 4 to 10 of the overlay recipe then apply
-unchanged.
+`dev` but are blocked from `main`; resolve them per the next section. Then generate the changelog the way the cut script
+does (`scripts/generate-changelog.py --from-dev-prs --tag v0.2.0`), and finish with steps 2 to 4 of the overlay
+procedure.
 
 → Triple-diff false-positive triage:
 [`RELEASES-RATIONALE.md` § Triple-diff verification](./RELEASES-RATIONALE.md#triple-diff-verification).
@@ -227,8 +227,6 @@ Resolution (the standard `git rm` is denied by repo policy; use the plumbing for
 git update-index --remove $(git diff --name-only --diff-filter=U)
 
 # 2. Trash the orphan worktree files left by the rename target side.
-#    `trash` is a zsh alias to `gio trash`; xargs does not expand aliases,
-#    so call `gio trash` directly when piping or batching.
 gio trash docs/plans/<leftover-paths>.md
 
 # 3. Continue the cherry-pick.
@@ -236,9 +234,9 @@ git cherry-pick --continue --no-edit
 ```
 
 Repeat per conflicting commit. After all picks land, run `git ls-files docs/plans/ docs/brainstorms/`. If anything
-remains, drop it with the same two-step pattern and commit as `chore(release): drop stray plan spikes from cherry-pick
-rename detection` before the leak check. Rename detection occasionally re-adds a path under the rename target's new
-name; the post-pick `ls-files` check catches that.
+remains, drop it with the same two-step pattern and commit as
+`chore(release): drop stray plan spikes from cherry-pick rename detection` before the leak check. Rename detection
+occasionally re-adds a path under the rename target's new name; the post-pick `ls-files` check catches that.
 
 ## Tagging and publishing
 
@@ -253,17 +251,26 @@ git push origin main --tags
 Always use annotated tags (`-a -m`). The tag push triggers `.github/workflows/release.yml`, which calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
-| Step            | What                                                                                                                                                                                                                                                                                            |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check-version` | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
-| `audit`         | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
-| `build`         | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
-| `publish-crate` | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                |
-| `release`       | Create a **non-draft** GitHub Release with `make_latest: false`. Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                     |
-| `homebrew`      | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                          |
+| Step                  | What                                                                                                                                                                                                                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-version`       | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
+| `audit`               | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
+| `build`               | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
+| `sbom`                | Generate a CycloneDX SBOM of `anc` from the tagged lockfile, with a read-only token.                                                                                                                                                                                                            |
+| `attest`              | Sign what `build` uploaded, before anything is published: build provenance for all 7 archives and `sha256sum.txt`, and the SBOM against the archives. A failure here or in `sbom` publishes nothing (gate).                                                                                     |
+| `publish-crate`       | `cargo publish` to crates.io via Trusted Publishing (OIDC, no static token after first publish).                                                                                                                                                                                                |
+| `release`             | Create a **non-draft** GitHub Release with `make_latest: false`. Includes all 7 archives + `sha256sum.txt`.                                                                                                                                                                                     |
+| `verify-attestations` | Download every published file and verify it against its attestation with `gh attestation verify --signer-workflow`. A failure withholds the Homebrew dispatch (gate).                                                                                                                           |
+| `homebrew`            | Dispatch `update-formula` to `brettdavies/homebrew-tap` (formula name: `agentnative`, installs `anc`).                                                                                                                                                                                          |
 
-After the homebrew-tap workflow uploads bottles to this repo's release assets, it dispatches `finalize-release` back to
-this repo, which idempotently flips `make_latest: true`.
+The tap's formula installs this release's archives. Its `update-formula` workflow downloads the four it names (the two
+`apple-darwin` and the two `linux-musl` archives), verifies each against the attestation `attest` made, and pins its
+checksum; an archive with no attestation stops the bump, so `attest: true` in `release.yml` is what lets a release reach
+Homebrew. The tap then installs and tests the formula from those archives on four platforms and lands the bump on its
+`main`. It builds no bottle: the binaries are compiled once, by `release.yml`, and `brew install` downloads the archive.
+
+After the homebrew-tap workflow lands the formula bump, it dispatches `finalize-release` back to this repo, which
+idempotently flips `make_latest: true`.
 
 → Rationale (`make_latest` flow, musl hard-block, annotated-tag gotcha):
 [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
@@ -291,16 +298,25 @@ other path `main` and `dev` disagree about, guarded paths excepted, is classifie
 discovered path; the version carriers and changelog are synced either way. Resolve anything left out by hand.
 
 The offline lock refresh needs every crate in the local registry cache. When the lock does not resolve, the script stops
-with exit 70 before committing and leaves `dev` as it found it; run `cargo fetch` and re-run. After committing, when the
-sync carried `CHANGELOG.md` and `git-cliff` is installed, the script runs `scripts/generate-changelog.py --dry-run` and
-warns with the generator's own reason if the regenerated changelog would differ (a PR body edited after the release, or
-a difference in line wrapping only). The warning does not block the backport.
+with exit 70 before committing and leaves `dev` as it found it; run `cargo fetch` and re-run. Without `cargo` on `PATH`
+it stops with exit 69. Guarded paths never enter discovery, so the sync cannot remove `dev`-only content. After
+committing, when the sync carried `CHANGELOG.md` and `git-cliff` is installed, the script runs
+`scripts/generate-changelog.py --dry-run` and warns with the generator's own reason if the regenerated changelog would
+differ (a PR body edited after the release, or a difference in line wrapping only). The warning does not block the
+backport.
 
 The script opens a PR against `dev`; merge it once CI is green. The postflight backport gate looks for that merged PR.
 Never merge `main` into `dev` or push to `dev` directly: the squash-merged histories share no recent ancestry, so the
 merge conflicts on every file both sides touched, and a direct push bypasses `dev`'s required checks.
 
-The backport is idempotent: re-running on a `dev` already in sync exits 0 without creating a branch or PR.
+The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.
+
+After it merges, confirm the branches actually converged. This is what catches a contested path nobody resolved:
+
+```bash
+git fetch origin
+git diff --name-only origin/dev origin/main | grep -Ev "$(scripts/release/guarded-paths.sh)" || echo "(converged)"
+```
 
 → Rationale: [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).
 
@@ -323,23 +339,20 @@ Three release-flow artifacts live outside any automated prose check and need a m
 - `CHANGELOG.md` (a generated artifact built from upstream PR bodies).
 - Release-PR bodies (composed after `CHANGELOG.md` has been generated).
 
-The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
-[`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-This repo's `main` branch does not ship a local copy; point Vale at the spec checkout via `--config` (see the example
-below).
+This repository maintains its Vale configuration (`.vale.ini`), rule packs (`styles/`), and orchestrator
+(`scripts/prose-check.sh`) on `dev`; `main` does not carry them. Point Vale at a `dev` checkout's `.vale.ini` via
+`--config` (see the example below), after `vale sync` in that checkout has downloaded the packages `.vale.ini` lists.
 
 ```bash
 # 1. Save the artifact to /tmp/.
 gh pr view <num> --json body --jq .body > /tmp/body.md         # for PR body edits
 # cp CHANGELOG.md /tmp/body.md                                 # for changelog scrub
 
-# 2. Vale (against the spec's rule packs).
-vale --no-global --config ~/dev/agentnative-spec/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
+# 2. Vale (against this repo's rule packs, from a dev checkout).
+vale --no-global --config ~/dev/agentnative-cli/.vale.ini --output=line --minAlertLevel=error /tmp/body.md
 
 # 3. LanguageTool grammar check via lt_check (~/dotfiles/config/shell/languagetool.sh).
-#    Skips cleanly if LT is unreachable. Inspect: `lt_rules`, `lt_info`. See
-#    ~/dev/agentnative-spec/CONTRIBUTING.md § Voice enforcement for the
-#    install-vs-required nuance.
+#    Skips cleanly if LT is unreachable. Inspect: `lt_rules`, `lt_info`.
 lt_check /tmp/body.md
 
 # 4. unslop (em-dash density and AI-unique structural patterns).
@@ -362,12 +375,24 @@ drift the next regeneration overwrites.
 
 Two rulesets are committed under `.github/rulesets/` and applied to the repo via the GitHub API:
 
-- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks (`ci /
-  Fmt, clippy, test`, `ci / Package check`, `ci / Security audit (bans licenses sources)`, `ci / Changelog`, `guard-docs
-  / check-forbidden-docs`, `guard-provenance / check-provenance`, `guard-release / check-release-branch-name`),
-  creation/deletion blocked, non-fast-forward blocked).
-- `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked). PR-only norm is convention +
+- `protect-main.json` (required signatures, linear history, squash-only merges via PR, required status checks
+  (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
+  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`, `ci / Changelog`,
+  `guard-docs / check-forbidden-docs`, `guard-provenance / check-provenance`,
+  `guard-release / check-release-branch-name`), creation/deletion blocked, non-fast-forward blocked).
+- `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked, required status checks
+  (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
+  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`)). PR-only norm is convention +
   `guard-release-branch` on the main side.
+
+`dev` requires only the checks that report on every PR. `ci / Changelog`, the three guards, and `Release matrix check`
+stay off its list: each runs on some PRs and not others, and a required check that never reports leaves a PR pending
+forever. `dev` also does not require a branch to be up to date before it merges, so a merge does not re-run every open
+PR behind it. The repository-admin bypass is what lets a planning document push to `dev` directly.
+
+`ci / Security audit (advisories)` is required on both branches, and `ci.yml` passes `advisories_blocking: true` so the
+run itself goes red. An advisory published against a dependency therefore blocks unrelated merges until the dependency
+moves or the advisory is acknowledged in `deny.toml`.
 
 ### Applying changes
 
@@ -384,17 +409,40 @@ gh api -X PUT repos/brettdavies/agentnative-cli/rulesets/<id> --input .github/ru
 
 ## Project specifics
 
-Operational ship-channel details for `agentnative`: secrets, channels, targets, bootstrap, rollback. Not rationale, not
-pre-cut checks.
+Operational ship-channel details for `agentnative`: version carriers, secrets, channels, targets, bootstrap, rollback.
+Not rationale, not pre-cut checks.
+
+### Version carriers
+
+`cut-release-branch.sh` leaves the version carriers alone and writes only `CHANGELOG.md`. On the staged branch, before
+the commit, in this order:
+
+```bash
+# 1. Bump the crate to the version the cut was given, and refresh its lockfile entry.
+sed -i 's/^version = ".*"/version = "0.2.0"/' Cargo.toml
+cargo update -p agentnative
+
+# 2. Regenerate the completions, which catches any subcommand or flag change missed
+#    during dev.
+./scripts/generate-completions.sh
+
+# 3. Refresh the skill.json fixture from upstream and review the diff.
+bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
+```
+
+A difference from these steps is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
+brings it to `dev` after the release. `scripts/release/preflight.sh mechanics` checks the `Cargo.toml` version against
+`anc --version` and the top section of `CHANGELOG.md`.
 
 ### Required secrets
 
 | Secret                 | Purpose                                                                                                           | Lifecycle                                      |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `CI_RELEASE_TOKEN`     | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually.                              |
-| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Remove after Trusted Publishing is configured. |
+| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Removed after Trusted Publishing was enforced. |
 
-`GITHUB_TOKEN` is automatic; CI (`ci.yml`) only needs `contents: read` and uses no extra secrets.
+`GITHUB_TOKEN` is automatic; CI (`ci.yml`) needs `contents: read` and `pull-requests: read`, the latter for the
+changelog check that reads a PR's files, and uses no extra secrets.
 
 ### Distribution channels
 
@@ -409,12 +457,24 @@ pre-cut checks.
 
 Seven targets, listed in the `build` row of [§ Tagging and publishing](#tagging-and-publishing). The two musl rows are
 hard-blocking (`linux_musl_required: true`) and the x86_64-musl binary is exec-verified inside `alpine:latest`
-(`linux_musl_verify_alpine: true`).
+(`linux_musl_verify_alpine: true`). A release compiles the seven rows once, on the tag push. `release-matrix-check.yml`
+builds the same rows on a PR to `dev` that changes `Cargo.toml`, `Cargo.lock`, or `rust-toolchain.toml`, since those
+are the changes that break a cross-compiled row, so a broken row surfaces on the change that broke it. It does not run
+for a release branch, a release PR, or the backport of a release's version bump; `gh workflow run
+release-matrix-check.yml --ref release/v<version>` runs it on a release branch when a release wants a rehearsal.
+
+Four of the archives are also what Homebrew installs. `Formula/agentnative.rb` in `brettdavies/homebrew-tap` names
+`agentnative-aarch64-apple-darwin.tar.gz`, `agentnative-x86_64-apple-darwin.tar.gz`,
+`agentnative-aarch64-unknown-linux-musl.tar.gz`, and `agentnative-x86_64-unknown-linux-musl.tar.gz`, and installs the
+`anc` at the top of each archive's single directory. The musl builds are the Linux ones because they are static and run
+against any glibc, Homebrew's included. An archive name, the place of `anc` inside it, and those four targets are
+therefore a contract with the formula: change one and the tap's bump for the next release fails, so the formula changes
+in the same step.
 
 ### First-time publish (one-time)
 
 The initial crate publish requires a regular crates.io API token (Trusted Publishing needs the crate to exist first).
-Steps for `v0.1.0`:
+`agentnative` completed this step; its first crates.io version is `0.1.0-alpha.1`. The steps it ran:
 
 1. Verify your email on crates.io (`https://crates.io/settings/profile`).
 2. `cargo publish` locally with `CARGO_REGISTRY_TOKEN` set.
@@ -441,9 +501,10 @@ cargo yank --version "${BAD#v}" agentnative
 gh release edit "$PREV" --latest
 gh release edit "$BAD" --prerelease
 
-# Homebrew: revert the formula bump on the tap so `brew install` resolves the last-good bottle.
+# Homebrew: revert the formula bump on the tap so `brew install` resolves the last-good version.
 gh api repos/brettdavies/homebrew-tap/commits --jq '.[0:5][] | .sha[0:7] + " " + .commit.message'
-# then revert the `agentnative: add <version> bottle.` and formula-bump commits via a PR to the tap's main.
+# then revert the formula-bump commit via a PR to the tap's main. A release the tap published with a
+# bottle (0.6.0 and earlier) also has an `agentnative: add <version> bottle.` commit to revert first.
 ```
 
 Un-yank with `cargo yank --undo --version <version> agentnative` if the yank was wrong. A yanked crate version cannot be

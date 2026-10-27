@@ -121,13 +121,14 @@ where
         false
     };
 
-    let inject_audit = |args: Vec<OsString>| -> Vec<OsString> {
+    let inject = |args: Vec<OsString>, subcommand: &str| -> Vec<OsString> {
         let mut injected = Vec::with_capacity(args.len() + 1);
         injected.push(args[0].clone());
-        injected.push(OsString::from("audit"));
+        injected.push(OsString::from(subcommand));
         injected.extend(args.into_iter().skip(1));
         injected
     };
+    let inject_audit = |args: Vec<OsString>| -> Vec<OsString> { inject(args, "audit") };
 
     let mut i = 1;
     let mut saw_subcommand_flag = false;

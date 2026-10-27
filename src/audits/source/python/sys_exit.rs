@@ -13,6 +13,7 @@ use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
 /// Audit trait implementation for sys.exit() outside __main__ guard.
+#[derive(Debug)]
 pub struct SysExitAudit;
 
 impl Audit for SysExitAudit {
@@ -67,6 +68,7 @@ impl Audit for SysExitAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

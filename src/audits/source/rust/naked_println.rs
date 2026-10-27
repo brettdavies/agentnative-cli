@@ -17,6 +17,7 @@ const PRINTLN_PATTERN: &str = "println!($$$ARGS)";
 const PRINT_PATTERN: &str = "print!($$$ARGS)";
 
 /// Audit trait implementation for naked println detection.
+#[derive(Debug)]
 pub struct NakedPrintlnAudit;
 
 impl Audit for NakedPrintlnAudit {
@@ -78,6 +79,7 @@ impl Audit for NakedPrintlnAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

@@ -11,6 +11,10 @@ mod common;
 fn cmd() -> Command {
     let mut cmd = Command::cargo_bin("anc").expect("anc binary should exist");
     cmd.env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config());
+    // The fixtures hold their builds in cargo's default `target`, which the
+    // caller's CARGO_TARGET_DIR or a target-dir in their cargo config moves.
+    cmd.env_remove("CARGO_TARGET_DIR")
+        .env("CARGO_BUILD_TARGET_DIR", "target");
     cmd
 }
 
@@ -360,6 +364,10 @@ fn no_built_binary_warns_with_the_declared_bins_and_the_ways_forward() {
             "the warning names `{way}`: {warning}"
         );
     }
+    assert!(
+        warning.contains("(searched cargo's target directory `target`)"),
+        "the warning names the target directory searched: {warning}"
+    );
     let card = json_of(&output.stdout);
     assert!(
         card["results"]
@@ -368,6 +376,107 @@ fn no_built_binary_warns_with_the_declared_bins_and_the_ways_forward() {
             .iter()
             .any(|row| row["layer"] == "source"),
         "source audits still run: {card}"
+    );
+}
+
+const TOOL_CRATE: &str = "[package]\nname = \"tool\"\nversion = \"1.0.0\"\nedition = \"2024\"\n";
+
+/// A one-binary crate named `tool` at `root`, unbuilt.
+fn tool_crate(root: &Path) {
+    write(root, "Cargo.toml", TOOL_CRATE);
+    write(root, "src/main.rs", "fn main() {}\n");
+}
+
+/// Assert `card` graded the `tool` binary and labeled its audience.
+#[cfg(unix)]
+fn assert_graded_tool(card: &serde_json::Value) {
+    assert_eq!(card["tool"]["binary"], "tool", "{card}");
+    assert!(card["audience"].is_string(), "a concrete audience: {card}");
+    assert!(card.get("audience_reason").is_none(), "{card}");
+}
+
+#[test]
+#[cfg(unix)]
+fn a_build_in_cargo_target_dir_outside_the_project_is_graded() {
+    let project = tempfile::tempdir().expect("tempdir");
+    tool_crate(project.path());
+    let outside = tempfile::tempdir().expect("tempdir");
+    fixture_cli(&outside.path().join("debug/tool"), "1.0.0");
+
+    let output = cmd()
+        .current_dir(project.path())
+        .env("CARGO_TARGET_DIR", outside.path())
+        .args(["audit", ".", "--output", "json"])
+        .output()
+        .expect("spawn anc");
+
+    assert_graded_tool(&json_of(&output.stdout));
+}
+
+#[test]
+#[cfg(unix)]
+fn a_relative_cargo_target_dir_is_read_from_the_current_directory() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    tool_crate(&project);
+    fixture_cli(&tmp.path().join("shared/release/tool"), "1.0.0");
+
+    let output = cmd()
+        .current_dir(&project)
+        .env("CARGO_TARGET_DIR", "../shared")
+        .args(["audit", ".", "--output", "json"])
+        .output()
+        .expect("spawn anc");
+
+    assert_graded_tool(&json_of(&output.stdout));
+}
+
+#[test]
+#[cfg(unix)]
+fn a_target_dir_in_the_projects_cargo_config_is_where_the_build_is_found() {
+    let project = tempfile::tempdir().expect("tempdir");
+    tool_crate(project.path());
+    write(
+        project.path(),
+        ".cargo/config.toml",
+        "[build]\ntarget-dir = \"out\"\n",
+    );
+    fixture_cli(&project.path().join("out/debug/tool"), "1.0.0");
+
+    let output = cmd()
+        .current_dir(project.path())
+        .env_remove("CARGO_BUILD_TARGET_DIR")
+        .args(["audit", ".", "--output", "json"])
+        .output()
+        .expect("spawn anc");
+
+    assert_graded_tool(&json_of(&output.stdout));
+}
+
+#[test]
+fn a_cargo_target_dir_without_the_build_is_named_in_the_warning() {
+    let project = tempfile::tempdir().expect("tempdir");
+    tool_crate(project.path());
+    let outside = tempfile::tempdir().expect("tempdir");
+
+    let output = cmd()
+        .current_dir(project.path())
+        .env("CARGO_TARGET_DIR", outside.path())
+        .args(["audit", "."])
+        .output()
+        .expect("spawn anc");
+
+    let stderr = stderr_of(&output);
+    let searched = format!(
+        "(searched cargo's target directory `{}`)",
+        outside.path().display()
+    );
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line.starts_with("warning: no binary here is built")
+                && line.contains(&searched)),
+        "the warning names {searched}; stderr: {stderr}"
     );
 }
 

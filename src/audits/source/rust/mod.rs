@@ -4,6 +4,7 @@ pub mod error_types;
 pub mod exit_codes;
 pub mod global_flags;
 pub mod headless_auth;
+pub mod macro_interior;
 pub mod naked_println;
 pub mod no_color;
 pub mod no_pager;

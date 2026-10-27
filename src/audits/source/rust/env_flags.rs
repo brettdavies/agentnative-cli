@@ -20,6 +20,7 @@ const AGENTIC_FLAGS: &[&str] = &[
 ];
 
 /// Audit trait implementation for env-backed flag detection.
+#[derive(Debug)]
 pub struct EnvFlagsAudit;
 
 impl Audit for EnvFlagsAudit {
@@ -86,6 +87,7 @@ impl Audit for EnvFlagsAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

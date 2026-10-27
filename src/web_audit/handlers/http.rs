@@ -7,8 +7,8 @@ use serde_json::{Map, Value, json};
 
 use super::assert::{AliasVerdict, ExpectBlock, assert_http, classify_alias_probe};
 use super::shared::{
-    Miss, is_missing_status, item, resolve_url, same_origin_recovery_link, substitute_endpoint,
-    worst,
+    Miss, is_missing_status, item, resolve_url, retry_shaped_why, same_origin_recovery_link,
+    substitute_endpoint, worst,
 };
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
@@ -151,6 +151,26 @@ pub fn run_http(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
                 &fetched
             }
         };
+        // Settled ahead of the assertion, as on every other probe of the MCP
+        // endpoint: an expectation like `status_below: 500` would read a busy
+        // answer as the fast refusal it asks for.
+        let busy = if raw_path.contains("{mcp_endpoint}") {
+            retry_shaped_why(resp.status)
+        } else {
+            None
+        };
+        if let Some(busy) = busy {
+            evidence.push(item([
+                ("url", json!(url)),
+                ("status", json!(resp.status)),
+                ("ok", json!(false)),
+                ("why", json!([busy])),
+                ("elapsed_ms", json!(resp.elapsed_ms)),
+                ("error", json!(resp.error)),
+            ]));
+            misses.push(Miss::Error);
+            continue;
+        }
         let (ok, row) = assess_response(check, &url, resp, &w, &expect, &ctx.base);
         evidence.push(row);
         if ok {

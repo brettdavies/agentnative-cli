@@ -432,6 +432,147 @@ fn cors_without_an_endpoint_is_a_reasonless_na_that_probes_nothing() {
     assert!(transport.requests().is_empty());
 }
 
+const RETRY_SHAPED: [(u16, &str); 2] = [(408, "Request Timeout"), (429, "Too Many Requests")];
+
+fn busy(status: u16, headers: &[(&str, &str)]) -> MockResponse {
+    let mut all = vec![("retry-after", "30")];
+    all.extend_from_slice(headers);
+    MockResponse::ok(status, &all, b"slow down")
+}
+
+const ACAO: [(&str, &str); 1] = [("access-control-allow-origin", "*")];
+
+fn preflight_acao(status: u16) -> MockResponse {
+    MockResponse::ok(status, &ACAO, b"")
+}
+
+fn bare() -> MockResponse {
+    MockResponse::ok(200, &[], b"")
+}
+
+/// Classify one surface of the pair from these two answers.
+fn classify(surface: &str, preflight: MockResponse, post: MockResponse) -> ProbeOutcome {
+    let transport = Arc::new(MockTransport::new(
+        vec![
+            MockRule::new("OPTIONS", MCP).response(preflight),
+            MockRule::new("POST", MCP).response(post),
+        ],
+        MockResponse::error("unmatched"),
+    ));
+    let mut ctx = context(transport);
+    ctx.mcp_endpoint = Some(MCP.to_string());
+    let id = if surface == "preflight" {
+        "mcp-cors-preflight"
+    } else {
+        "mcp-cors-actual"
+    };
+    run_cors_preflight(check(id), &ctx)
+}
+
+#[test]
+fn http_reads_a_retry_shaped_answer_on_the_mcp_endpoint_as_an_operational_error() {
+    for (status, reason) in RETRY_SHAPED {
+        let transport = Arc::new(MockTransport::new(vec![], busy(status, &[])));
+        let mut ctx = context(transport);
+        ctx.mcp_endpoint = Some(MCP.to_string());
+        let outcome = run_http(check("mcp-get-fast-fail"), &ctx);
+        assert_eq!(
+            format!("{status}:{:?}", outcome.status),
+            format!("{status}:{:?}", ProbeStatus::Error)
+        );
+        assert_eq!(
+            why(&outcome),
+            [format!(
+                "the target answered HTTP {status} {reason}; not scored"
+            )]
+        );
+        assert_eq!(outcome.evidence[0].get("ok"), Some(&json!(false)));
+
+        // A document off the MCP endpoint keeps its own classification.
+        let off = run_http(check("llms-txt"), &ctx);
+        assert_eq!(
+            format!("{status}:{:?}", off.status),
+            format!("{status}:{:?}", ProbeStatus::Broken)
+        );
+    }
+}
+
+#[test]
+fn cors_leaves_a_row_unscored_when_its_own_probe_is_retry_shaped_whatever_headers_ride_it() {
+    for (status, reason) in RETRY_SHAPED {
+        let line = [format!(
+            "the target answered HTTP {status} {reason}; not scored"
+        )];
+        for preflight in [busy(status, &[]), busy(status, &ACAO)] {
+            let pre = classify("preflight", preflight, MockResponse::ok(200, &ACAO, b""));
+            assert_eq!(
+                format!("{status}:{:?}", pre.status),
+                format!("{status}:{:?}", ProbeStatus::Error)
+            );
+            assert_eq!(why(&pre), line);
+        }
+        for post in [busy(status, &[]), busy(status, &ACAO)] {
+            let act = classify("actual", preflight_acao(204), post);
+            assert_eq!(
+                format!("{status}:{:?}", act.status),
+                format!("{status}:{:?}", ProbeStatus::Error)
+            );
+            assert_eq!(why(&act), line);
+        }
+    }
+}
+
+#[test]
+fn cors_a_retry_shaped_sibling_cannot_settle_a_row_without_its_own_allow_origin() {
+    for (status, reason) in RETRY_SHAPED {
+        assert_eq!(
+            classify("preflight", preflight_acao(204), busy(status, &[])).status,
+            ProbeStatus::Pass
+        );
+        assert_eq!(
+            classify("preflight", preflight_acao(500), busy(status, &[])).status,
+            ProbeStatus::Broken
+        );
+        assert_eq!(
+            classify(
+                "actual",
+                busy(status, &[]),
+                MockResponse::ok(200, &ACAO, b"")
+            )
+            .status,
+            ProbeStatus::Pass
+        );
+
+        // A busy answer's headers describe the load, not the posture.
+        for sibling in [busy(status, &[]), busy(status, &ACAO)] {
+            let pre = classify("preflight", bare(), sibling.clone());
+            assert_eq!(
+                format!("{status}:{:?}", pre.status),
+                format!("{status}:{:?}", ProbeStatus::Error)
+            );
+            assert_eq!(pre.na_reason, None);
+            assert_eq!(
+                why(&pre),
+                [format!(
+                    "the POST probe answered HTTP {status} {reason}, so the no-CORS posture cannot be confirmed"
+                )]
+            );
+            let act = classify("actual", sibling, bare());
+            assert_eq!(
+                format!("{status}:{:?}", act.status),
+                format!("{status}:{:?}", ProbeStatus::Error)
+            );
+            assert_eq!(act.na_reason, None);
+            assert_eq!(
+                why(&act),
+                [format!(
+                    "the preflight probe answered HTTP {status} {reason}, so the no-CORS posture cannot be confirmed"
+                )]
+            );
+        }
+    }
+}
+
 #[test]
 fn dns_queries_encode_the_record_name_and_fall_back_per_resolver() {
     let google = "https://dns.google/resolve?name=_index._agents.example.com&type=SVCB";

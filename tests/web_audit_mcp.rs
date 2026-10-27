@@ -398,3 +398,80 @@ fn initialize_records_the_handshake_facts_the_antecedents_read() {
         Some(&json!("Bearer realm=\"x\""))
     );
 }
+
+const RETRY_SHAPED: [(u16, &str); 2] = [(408, "Request Timeout"), (429, "Too Many Requests")];
+
+fn answered(status: u16, body: &str) -> MockResponse {
+    MockResponse::ok(
+        status,
+        &[("content-type", "application/json"), ("retry-after", "30")],
+        body.as_bytes(),
+    )
+}
+
+fn rpc_error_body(code: i64) -> String {
+    json!({ "jsonrpc": "2.0", "id": 1, "error": { "code": code, "message": "nope" } }).to_string()
+}
+
+#[test]
+fn a_retry_shaped_answer_is_an_operational_error_on_every_mcp_row_whatever_rides_it() {
+    let bodies = [
+        String::new(),
+        "slow down".to_string(),
+        rpc_error_body(-32000),
+        rpc_error_body(-32601),
+        json!({ "jsonrpc": "2.0", "id": 1, "result": { "tools": [] } }).to_string(),
+    ];
+    // mcp-auth-enforced's op is the unported enforcement family (site #397).
+    for c in CHECKS
+        .iter()
+        .filter(|c| c.handler == HandlerBinding::Mcp && c.id != "mcp-auth-enforced")
+    {
+        for (status, reason) in RETRY_SHAPED {
+            for body in &bodies {
+                let (outcome, requests) = probe(c.id, answered(status, body), None);
+                assert_eq!(
+                    format!("{} at {status} with {body:?}: {:?}", c.id, outcome.status),
+                    format!(
+                        "{} at {status} with {body:?}: {:?}",
+                        c.id,
+                        ProbeStatus::Error
+                    ),
+                );
+                assert_eq!(
+                    why(&outcome),
+                    [format!(
+                        "the target answered HTTP {status} {reason}; not scored"
+                    )],
+                    "{} at {status}",
+                    c.id
+                );
+                assert_eq!(outcome.evidence[0].get("status"), Some(&json!(status)));
+                assert_eq!(requests.len(), 1, "{}", c.id);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_rate_limit_code_still_reads_first_and_a_5xx_keeps_its_outcome() {
+    let (outcome, _) = probe(
+        "mcp-initialize",
+        answered(429, &rpc_error_body(-32099)),
+        None,
+    );
+    assert_eq!(outcome.status, ProbeStatus::Error);
+    assert_eq!(why(&outcome), ["rate limited by the target"]);
+
+    let (outcome, _) = probe("mcp-initialize", answered(503, ""), None);
+    assert_eq!(outcome.status, ProbeStatus::Broken);
+    assert_eq!(why(&outcome), ["no parseable JSON-RPC response"]);
+
+    // A session-required code at a 5xx reports load, not an era.
+    let (outcome, _) = probe(
+        "mcp-server-discover",
+        answered(503, &rpc_error_body(-32000)),
+        None,
+    );
+    assert_eq!(outcome.status, ProbeStatus::Broken);
+}

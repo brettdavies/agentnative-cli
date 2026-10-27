@@ -11,7 +11,9 @@ use std::thread;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::shared::{item, resolve_url, substitute_endpoint};
+use super::shared::{
+    item, resolve_url, retry_shaped_answer, retry_shaped_why, substitute_endpoint,
+};
 use crate::web_audit::engine::mcp_wire::{legacy_probe_headers, legacy_tools_list_body};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::body::STATUS_ONLY_BODY_BYTES;
@@ -149,29 +151,34 @@ pub fn run_cors_preflight(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcom
         vec![post_row, pre_row]
     };
 
-    // A transport failure on the sibling probe cannot suppress a check
-    // whose own probe answered, but an unverifiable no-CORS pair is an
-    // operational unknown, not a declared opt-out.
-    let own_error = if is_preflight {
-        &pre.error
+    // A sibling probe that failed or was asked to retry cannot suppress a
+    // check whose own probe answered. The sibling is still needed to read
+    // the pair as a posture, so when its answer is unusable the surface's
+    // own Allow-Origin classifies and a pair without one is an operational
+    // unknown, not a declared opt-out. A busy answer's headers describe the
+    // layer reporting the load, so they are never read as either surface's
+    // posture.
+    let (own, sibling) = if is_preflight {
+        (&pre, &post)
     } else {
-        &post.error
+        (&post, &pre)
     };
-    if own_error.is_some() {
+    if own.error.is_some() {
         return ProbeOutcome::new(ProbeStatus::Error, evidence);
     }
-    let sibling_error = if is_preflight {
-        &post.error
-    } else {
-        &pre.error
+    if let Some(busy) = retry_shaped_why(own.status) {
+        evidence[0].insert("why".to_string(), json!([busy]));
+        return ProbeOutcome::new(ProbeStatus::Error, evidence);
+    }
+    let sibling_unusable = match (&sibling.error, retry_shaped_answer(sibling.status)) {
+        (Some(error), _) => Some(format!("failed ({error})")),
+        (None, Some(busy)) => Some(format!("answered {busy}")),
+        (None, None) => None,
     };
-    let sibling_unknown = |label: &str| {
+    let sibling_unknown = |label: &str, unusable: &str| {
         (
             ProbeStatus::Error,
-            format!(
-                "the {label} probe failed ({}), so the no-CORS posture cannot be confirmed",
-                sibling_error.as_deref().unwrap_or("")
-            ),
+            format!("the {label} probe {unusable}, so the no-CORS posture cannot be confirmed"),
         )
     };
 
@@ -191,14 +198,14 @@ pub fn run_cors_preflight(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcom
                     ),
                 )
             }
+        } else if let Some(unusable) = &sibling_unusable {
+            sibling_unknown("POST", unusable)
         } else if post_acao.is_some() {
             (
                 ProbeStatus::Broken,
                 "the POST carries Allow-Origin but the preflight does not: inconsistent posture"
                     .to_string(),
             )
-        } else if sibling_error.is_some() {
-            sibling_unknown("POST")
         } else {
             (ProbeStatus::Na, POSTURE_WHY.to_string())
         }
@@ -207,13 +214,13 @@ pub fn run_cors_preflight(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcom
             ProbeStatus::Pass,
             "the POST response carries Allow-Origin".to_string(),
         )
+    } else if let Some(unusable) = &sibling_unusable {
+        sibling_unknown("preflight", unusable)
     } else if pre_acao.is_some() {
         (
             ProbeStatus::Broken,
             "the preflight declares CORS but the POST omits Allow-Origin".to_string(),
         )
-    } else if sibling_error.is_some() {
-        sibling_unknown("preflight")
     } else {
         (ProbeStatus::Na, POSTURE_WHY.to_string())
     };

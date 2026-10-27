@@ -85,7 +85,8 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
             return why;
         }
         let op = with_op(check);
-        if op.as_deref() == Some("initialize") {
+        // An errored handshake never answered, so it has no serverInfo to name.
+        if op.as_deref() == Some("initialize") && outcome.status != ProbeStatus::Error {
             return match server_info_name(first) {
                 Some(name) => format!(
                     "serverInfo {name}, protocol {}",
@@ -335,6 +336,16 @@ mod tests {
         assert_eq!(
             summarize_evidence(init, &no_info),
             "no serverInfo in initialize result"
+        );
+        let busy = outcome(
+            ProbeStatus::Error,
+            vec![
+                json!({"url": "https://x/mcp", "status": 408, "error": null, "why": ["the target answered HTTP 408 Request Timeout; not scored"]}),
+            ],
+        );
+        assert_eq!(
+            summarize_evidence(init, &busy),
+            "https://x/mcp -> 408 (the target answered HTTP 408 Request Timeout; not scored)"
         );
         let refused = outcome(
             ProbeStatus::Absent,

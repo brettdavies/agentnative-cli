@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use super::discovery_documents::RetainedDocuments;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::locality::{ClassifyError, Locality, Resolver, classify_host};
-use crate::web_audit::scorecard::{EvidenceItem, NaReason, ScorecardStatus};
+use crate::web_audit::scorecard::{EvidenceItem, NaReason, RowAdvisory, ScorecardStatus};
 use crate::web_audit::transport::Transport;
 
 /// A handler's verdict before the engine finalizes it.
@@ -65,6 +65,8 @@ pub struct ProbeOutcome {
     pub na_reason: Option<NaReason>,
     /// The row settled without a request, from an antecedent the run observed.
     pub unprobed: bool,
+    /// How a passing row passed, when that is worth a note.
+    pub advisory: Option<RowAdvisory>,
     /// The handler exhausted the remaining budget mid-probe.
     pub incomplete: bool,
 }
@@ -77,6 +79,7 @@ impl ProbeOutcome {
             evidence,
             na_reason: None,
             unprobed: false,
+            advisory: None,
             incomplete: false,
         }
     }

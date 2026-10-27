@@ -14,6 +14,7 @@ pub mod llms_txt_quality;
 pub mod markdown_frontmatter;
 pub mod mcp;
 pub mod scoped_llms;
+pub mod server_card;
 pub mod shared;
 pub mod webmcp;
 
@@ -40,6 +41,7 @@ pub fn stateless_handlers() -> HandlerSet {
         )
         .register("llms-txt-quality", llms_txt_quality::run_llms_txt_quality)
         .register("api-hygiene", api_hygiene::run_api_hygiene)
+        .register("server-card", server_card::run_server_card)
         .register_eval("legacy-alias-redirects", http::run_legacy_alias_redirects)
         .register_eval("retained-document", http::run_retained_document);
     set

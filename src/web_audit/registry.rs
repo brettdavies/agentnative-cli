@@ -158,7 +158,7 @@ mod tests {
             .collect();
         assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
         assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
-        assert_eq!(HANDLER_KINDS.len(), 11);
+        assert_eq!(HANDLER_KINDS.len(), 12);
         assert_eq!(EVAL_RULES.len(), 3);
     }
 
@@ -170,10 +170,7 @@ mod tests {
             .filter(|c| matches!(c.handler, HandlerBinding::Unsupported(_)))
             .map(|c| c.handler.as_str())
             .collect();
-        assert_eq!(
-            handlers,
-            BTreeSet::from(["protected-resource", "server-card"])
-        );
+        assert_eq!(handlers, BTreeSet::from(["protected-resource"]));
         let evals: BTreeSet<&str> = CHECKS
             .iter()
             .filter_map(|c| match c.eval {

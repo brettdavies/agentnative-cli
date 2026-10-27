@@ -6,9 +6,10 @@
 //! a build here instead of being misread at runtime. Every number is an
 //! integer type, because the site emits only half-up rounded integers and
 //! `JSON.stringify` prints `85` where a float mirror would print `85.0`.
-//! Field order is the site's emission order, `na_reason` and `unprobed` are
-//! absent rather than null when unset, and `evidence` is null when empty,
-//! so a scorecard serialized here is byte-comparable to one the site emits.
+//! Field order is the site's emission order, `na_reason`, `unprobed` and
+//! `advisory` are absent rather than null when unset, and `evidence` is null
+//! when empty, so a scorecard serialized here is byte-comparable to one the
+//! site emits.
 
 use std::fmt;
 
@@ -365,6 +366,8 @@ pub struct EngineResult {
     pub na_reason: Option<NaReason>,
     /// The row settled from an antecedent rather than its own request.
     pub unprobed: bool,
+    /// How a passing row passed, when that is worth a note.
+    pub advisory: Option<RowAdvisory>,
     /// Compact human-readable evidence line; empty when there is none.
     pub evidence: String,
     /// Full structured evidence.
@@ -428,7 +431,7 @@ pub fn build_web_scorecard(
             status: r.status,
             na_reason: r.na_reason,
             unprobed: r.unprobed,
-            advisory: None,
+            advisory: r.advisory,
             evidence: if r.evidence.is_empty() {
                 None
             } else {

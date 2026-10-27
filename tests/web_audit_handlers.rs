@@ -16,8 +16,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use agentnative::web_audit::engine::discovery_documents::{API_CATALOG_DOCUMENT, RetainedDocument};
-use agentnative::web_audit::engine::{ProbeOutcome, ProbeStatus, RunOutcome};
+use agentnative::web_audit::engine::discovery_documents::{
+    API_CATALOG_DOCUMENT, RetainedDocument, SERVER_CARD_DOCUMENT, card_shape, parse_json_object,
+};
+use agentnative::web_audit::engine::summary::summarize_evidence;
+use agentnative::web_audit::engine::{
+    Dispatch, HandlerContext, ProbeOutcome, ProbeStatus, RunOutcome,
+};
 use agentnative::web_audit::fetch::ProbeResponse;
 use agentnative::web_audit::handlers::api_hygiene::derive_api_probe_url;
 use agentnative::web_audit::handlers::assert::compiled;
@@ -26,11 +31,12 @@ use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::handlers::dns_doh::run_dns_doh;
 use agentnative::web_audit::handlers::http::{run_http, run_retained_document};
 use agentnative::web_audit::handlers::llms_txt_quality::run_llms_txt_quality;
+use agentnative::web_audit::handlers::server_card::run_server_card;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Locality;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::check_by_id;
-use agentnative::web_audit::scorecard::NaReason;
+use agentnative::web_audit::scorecard::{NaReason, RowAdvisory};
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use common::corpus::{Golden, corpus_dir, describe, diff_rows, load_cases, replay};
 use common::handler_context::{BASE, check, context};
@@ -276,6 +282,173 @@ fn retained_document_scores_the_kept_api_catalog_without_a_request() {
     assert_eq!(
         run_retained_document(check, &ctx).status,
         ProbeStatus::Absent
+    );
+    assert!(transport.requests().is_empty());
+}
+
+fn kept_card(url: &str, content_type: &str, body: &str) -> RetainedDocument {
+    let response = ProbeResponse {
+        status: Some(200),
+        headers: Headers::from_pairs([("content-type", content_type)]),
+        body: body.to_string(),
+        error: None,
+        elapsed_ms: 0,
+        truncated: false,
+        refused: None,
+    };
+    RetainedDocument {
+        url: url.to_string(),
+        shape: Some(card_shape(parse_json_object(&response).as_ref())),
+        response,
+    }
+}
+
+fn with_card(ctx: &mut HandlerContext, card: RetainedDocument) {
+    ctx.retained_documents = Arc::new(HashMap::from([(SERVER_CARD_DOCUMENT, card)]));
+}
+
+const SEP_2127_CARD: &str = r#"{"$schema":"https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json","name":"io.example/mcp","description":"Example","version":"1.0.0","remotes":[{"type":"streamable-http","url":"https://example.com/mcp"}]}"#;
+
+/// The card row dispatches to the server-card handler, scores the card
+/// discovery kept, and writes the site's evidence line, all without a
+/// request of its own.
+#[test]
+fn the_card_row_scores_the_kept_card_without_a_request() {
+    let check = check("mcp-server-card");
+    let transport = Arc::new(MockTransport::new(
+        vec![],
+        MockResponse::error("unexpected"),
+    ));
+    let handlers = default_handlers();
+    let mut ctx = context(transport.clone());
+    let row = |ctx: &HandlerContext| match handlers.dispatch(check, ctx) {
+        Dispatch::Outcome(outcome) => {
+            let line = summarize_evidence(check, &outcome);
+            (outcome.status, line)
+        }
+        Dispatch::Unported(kind) => panic!("the card row is unported: {kind}"),
+    };
+    assert_eq!(
+        row(&ctx),
+        (
+            ProbeStatus::Absent,
+            "discovery found no server card".to_string()
+        )
+    );
+    with_card(
+        &mut ctx,
+        kept_card(
+            "https://example.com/mcp/server-card",
+            "application/json",
+            SEP_2127_CARD,
+        ),
+    );
+    assert_eq!(
+        row(&ctx),
+        (
+            ProbeStatus::Pass,
+            "https://example.com/mcp/server-card -> 200".to_string()
+        )
+    );
+    with_card(
+        &mut ctx,
+        kept_card(
+            "https://example.com/mcp/server-card",
+            "application/json",
+            r#"{"description":"x","version":"1","remotes":[{"type":"streamable-http"}]}"#,
+        ),
+    );
+    assert_eq!(
+        row(&ctx),
+        (
+            ProbeStatus::Broken,
+            "https://example.com/mcp/server-card -> 200 (missing required fields $schema, name; remotes[0] missing required field url)".to_string()
+        )
+    );
+    with_card(
+        &mut ctx,
+        kept_card(
+            "https://example.com/.well-known/mcp/server-card.json",
+            "application/json",
+            "{not json",
+        ),
+    );
+    assert_eq!(
+        row(&ctx),
+        (
+            ProbeStatus::Broken,
+            "https://example.com/.well-known/mcp/server-card.json -> 200 (the card is not a JSON object)".to_string()
+        )
+    );
+    assert!(transport.requests().is_empty());
+}
+
+#[test]
+fn a_sep_1649_card_passes_with_the_superseded_advisory_and_a_sep_2127_card_without() {
+    let check = check("mcp-server-card");
+    let transport = Arc::new(MockTransport::new(
+        vec![],
+        MockResponse::error("unexpected"),
+    ));
+    let mut ctx = context(transport.clone());
+    let legacy = [
+        r#"{"name":"x","transport":{"type":"streamable-http","url":"/mcp"}}"#,
+        r#"{"serverInfo":{"name":"x","version":"1"}}"#,
+    ];
+    for body in legacy {
+        with_card(
+            &mut ctx,
+            kept_card(
+                "https://example.com/.well-known/mcp.json",
+                "application/json",
+                body,
+            ),
+        );
+        let outcome = run_server_card(check, &ctx);
+        assert_eq!(outcome.status, ProbeStatus::Pass, "{body}");
+        assert_eq!(outcome.advisory, Some(RowAdvisory::Superseded), "{body}");
+        assert_eq!(outcome.evidence[0]["shape"], "sep-1649", "{body}");
+    }
+    with_card(
+        &mut ctx,
+        kept_card(
+            "https://example.com/mcp/server-card",
+            "application/mcp-server-card+json",
+            SEP_2127_CARD,
+        ),
+    );
+    let modern = run_server_card(check, &ctx);
+    assert_eq!(modern.status, ProbeStatus::Pass);
+    assert_eq!(modern.advisory, None);
+    assert_eq!(modern.evidence[0]["shape"], "sep-2127");
+    // A card of neither shape is held to SEP-2127.
+    with_card(
+        &mut ctx,
+        kept_card(
+            "https://example.com/mcp/server-card",
+            "application/json",
+            r#"{"name":7}"#,
+        ),
+    );
+    let neither = run_server_card(check, &ctx);
+    assert_eq!(neither.status, ProbeStatus::Broken);
+    assert_eq!(
+        why(&neither),
+        ["missing required fields $schema, description, version; name is not string"]
+    );
+    let mut cut = kept_card(
+        "https://example.com/mcp/server-card",
+        "application/json",
+        SEP_2127_CARD,
+    );
+    cut.response.truncated = true;
+    with_card(&mut ctx, cut);
+    let truncated = run_server_card(check, &ctx);
+    assert_eq!(truncated.status, ProbeStatus::Broken);
+    assert_eq!(truncated.evidence[0]["truncated"], true);
+    assert_eq!(
+        why(&truncated),
+        ["the card was cut at the 256 KiB read cap"]
     );
     assert!(transport.requests().is_empty());
 }

@@ -61,6 +61,22 @@ pub struct FetchOptions {
     pub max_redirects: usize,
     /// When false a 3xx is returned as-is with its `Location` header.
     pub follow_redirects: bool,
+    /// When true a redirect answer is a failure naming its target and no hop
+    /// is taken: a URL pinned by proof of control must not hand the auditor
+    /// to a location nothing confirmed.
+    pub refuse_redirects: bool,
+    /// When set, only hops that keep the scheme, host and port are taken,
+    /// so the method and body are never re-sent to another origin.
+    pub cross_origin_redirects: Option<CrossOriginRedirects>,
+}
+
+/// What a chain does with a redirect to another origin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CrossOriginRedirects {
+    /// The redirect is the answer, status and `Location` as sent.
+    Return,
+    /// The redirect is a failure naming its target.
+    Refuse,
 }
 
 impl Default for FetchOptions {
@@ -70,6 +86,8 @@ impl Default for FetchOptions {
             max_body_bytes: None,
             max_redirects: redirect::DEFAULT_MAX_REDIRECTS,
             follow_redirects: true,
+            refuse_redirects: false,
+            cross_origin_redirects: None,
         }
     }
 }
@@ -210,6 +228,8 @@ impl<'a> Fetcher<'a> {
             deadline: started + opts.timeout,
             max_body_bytes: opts.max_body_bytes,
             follow_redirects: opts.follow_redirects,
+            refuse_redirects: opts.refuse_redirects,
+            cross_origin_redirects: opts.cross_origin_redirects,
             max_redirects: opts.max_redirects,
         };
         let answer = match redirect::follow(&chain, target) {

@@ -397,6 +397,8 @@ pub struct ScorecardMeta {
     pub site_type: Option<DeclaredSiteType>,
     /// The public-listing opt-in.
     pub public_listing: bool,
+    /// The run followed the hosts the site declares.
+    pub follow_declarations: bool,
     /// The declared-hosts trail.
     pub declared_hosts: Vec<EvidenceItem>,
 }
@@ -480,7 +482,7 @@ pub fn build_web_scorecard(
             network: "public".to_string(),
             credentialed: false,
         },
-        follow_declarations: true,
+        follow_declarations: meta.follow_declarations,
         declared_hosts: meta.declared_hosts.clone(),
         summary,
         coverage_summary: coverage,

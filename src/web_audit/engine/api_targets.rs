@@ -10,12 +10,13 @@
 
 use url::Url;
 
-use super::api_catalog::{ApiKind, CatalogAnchor};
-use super::api_follow::{ApiFollowResult, Fetched};
-use super::api_trail::{
-    DeclaredHostReason, Outcome, TrailEntry, declaration_key, declared_host_reason,
-};
+use super::api_catalog::CatalogAnchor;
+use super::api_follow::ApiFollowResult;
 use super::discovery_documents::same_origin;
+use super::follow_requests::Fetched;
+use super::follow_trail::{
+    DeclaredHostReason, Kind, Outcome, TrailEntry, declaration_key, declared_host_reason,
+};
 use crate::web_audit::handlers::shared::PlaintextReason;
 
 /// How a description the catalog declares is evaluated.
@@ -120,7 +121,7 @@ pub fn api_targets(
     if api.is_empty() {
         return None;
     }
-    let reach = |kind: ApiKind, url: &str| -> Reach {
+    let reach = |kind: Kind, url: &str| -> Reach {
         if same_origin(url, base) {
             return Reach::AuditedOrigin;
         }
@@ -145,9 +146,9 @@ pub fn api_targets(
     let mut origins: Vec<(String, bool, Vec<Reach>, Vec<HostAnchor>)> = Vec::new();
     for anchor in api {
         let declared = anchor.description.as_ref().map_or("", |d| d.url.as_str());
-        let key = declaration_key(ApiKind::Description, declared);
+        let key = declaration_key(Kind::ApiDescription, declared);
         if !descriptions.iter().any(|(k, _)| *k == key) {
-            let target = match reach(ApiKind::Description, declared) {
+            let target = match reach(Kind::ApiDescription, declared) {
                 Reach::Omit => None,
                 Reach::AuditedOrigin => Some(DescriptionReach::OnOrigin),
                 Reach::Evaluate => follow
@@ -175,7 +176,7 @@ pub fn api_targets(
             }
         };
         let group = &mut origins[index];
-        group.2.push(reach(ApiKind::Anchor, &anchor.link.url));
+        group.2.push(reach(Kind::ApiAnchor, &anchor.link.url));
         group.3.push(HostAnchor {
             url: anchor.link.url.clone(),
             description: declared.to_string(),

@@ -100,9 +100,15 @@ pub struct Scenario {
     pub target: String,
     pub site_type: Option<String>,
     pub spec_version: String,
+    #[serde(default = "following")]
+    pub follow_declarations: bool,
     pub unmatched: Recorded,
     pub allow_unmatched: bool,
     pub exchanges: Vec<Exchange>,
+}
+
+fn following() -> bool {
+    true
 }
 
 /// A `scorecard.json`: the site's scorecard, or the unreachable reason.
@@ -206,6 +212,7 @@ pub fn replay_on(
         _ => None,
     };
     input.spec_version = scenario.spec_version.clone();
+    input.follow_declarations = scenario.follow_declarations;
     input.per_check_timeout = Duration::from_secs(2);
     input.per_audit_deadline = Duration::from_secs(20);
     agentnative::web_audit::engine::run_web_audit(input)

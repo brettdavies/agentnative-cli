@@ -355,7 +355,7 @@ one package that declares a binary; when several do, those audits skip and name 
 `anc web <target>` runs the [anc.dev](https://anc.dev) web-audit registry against a site from this machine. The hosted
 auditor refuses a target it cannot reach, which is every localhost port, every private address and every internal
 hostname; this is the same engine, the same 65 checks and the same verdicts, run from where the site is reachable. No
-runtime to install, no browser, and the only host contacted is the target.
+runtime to install, no browser, and nothing contacted beyond the target and the hosts it declares.
 
 `anc web` is built with the `web` cargo feature, which is off by default. The Homebrew formula, the cargo-binstall and
 GitHub Release binaries, and a plain `cargo install agentnative` do not include it. Build it with
@@ -438,11 +438,21 @@ Every probe identifies itself with the same `anc-web-audit/…` User-Agent the h
 checks whose question *is* how a site treats a named client (a bare `curl`, an AI fetcher), which send that client's
 User-Agent because that is what they measure.
 
-The audit contacts the target and nothing else, with one exception a flag controls. The `dns-aid` check queries public
-DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so for a local or private target that
-row reports `n_a` with its reason stated rather than querying. `--external-dns` opts in. Redirects are followed but
-never off the target's own class: a hop from a local target to a public host, or to a cloud metadata address, is refused
-and recorded rather than taken.
+The audit contacts the target, the hosts the target declares, and nothing else. A declared host is one the target's
+discovery documents name off its own origin: an MCP endpoint a server card or the AI catalog names, a card document the
+catalog lists by URL, an API host or description the api-catalog anchors, or where the target's MCP path redirects its
+POSTs. An MCP endpoint on a declared host gets GETs for the documents that could confirm it (a card at
+`<endpoint>/server-card`, its host's `/.well-known/ai-catalog.json`, RFC 9728 protected-resource metadata) and receives
+wire probes only after one of those documents on its own host names that exact endpoint; a POST is never re-sent to
+another origin. Following stops at 4 hosts and 12 requests inside a 6-second window, takes at most one redirect hop per
+declared URL, and never reaches a host of another class than the target's. The scorecard's `declared_hosts` trail
+records how each declared URL was treated. `--no-follow` audits the target alone: rows that depend on a declared host
+then report `n_a` (`follow-disabled`).
+
+The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
+for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
+in. Redirects are followed but never off the target's own class: a hop from a local target to a public host, or to a
+cloud metadata address, is refused and recorded rather than taken.
 
 Every request is HTTPS, at every vantage, local targets included; anc sends no plaintext request. A scheme-less target
 defaults to `https`. An explicit `http://` target, or a root that redirects to `http`, ends the run as `insecure-scheme`

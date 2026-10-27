@@ -25,6 +25,7 @@ pub fn context(transport: Arc<dyn Transport + Send + Sync>) -> HandlerContext {
         base: BASE.to_string(),
         host: "example.com".to_string(),
         mcp_endpoint: None,
+        mcp_endpoint_followed: false,
         protocol_version: "2025-06-18",
         default_timeout: Duration::from_secs(2),
         root: None,

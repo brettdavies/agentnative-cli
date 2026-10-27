@@ -27,7 +27,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use agentnative::web_audit::fetch::memo::{MemoStats, RequestMemo};
-use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse, Refusal};
+use agentnative::web_audit::fetch::{
+    CrossOriginRedirects, FetchInit, FetchOptions, Fetcher, ProbeResponse, Refusal,
+};
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
@@ -110,6 +112,7 @@ struct Opts {
     timeout_ms: Option<u64>,
     max_body_bytes: Option<usize>,
     follow_redirects: Option<bool>,
+    cross_origin: Option<CrossOriginRedirects>,
 }
 
 fn fetch(transport: &Shared, memo: Option<&RequestMemo>, url: &str, opts: Opts) -> ProbeResponse {
@@ -127,6 +130,7 @@ fn fetch_with(
         timeout: Duration::from_millis(opts.timeout_ms.unwrap_or(8_000)),
         max_body_bytes: opts.max_body_bytes,
         follow_redirects: opts.follow_redirects.unwrap_or(true),
+        cross_origin_redirects: opts.cross_origin,
         ..FetchOptions::default()
     };
     let fetcher = match memo {
@@ -536,6 +540,43 @@ fn a_redirect_one_caller_followed_answers_callers_that_keep_it_with_or_without_i
     assert_eq!(
         (with_body.body.as_str(), transport.requests().len()),
         ("Moved", 2)
+    );
+}
+
+#[test]
+fn a_redirect_one_caller_followed_answers_a_caller_that_may_keep_cross_origin_redirects() {
+    let endpoint = "https://example.com/mcp";
+    let slash = format!("{endpoint}/");
+    let transport = Arc::new(MockTransport::new(
+        vec![
+            MockRule::new("GET", endpoint).response(MockResponse::ok(
+                308,
+                &[("location", slash.as_str())],
+                b"Moved",
+            )),
+            MockRule::new("GET", &slash).response(MockResponse::ok(200, &[], b"{\"ok\":true}")),
+        ],
+        MockResponse::error("unmatched"),
+    ));
+    let shared: Shared = transport.clone();
+    let memo = RequestMemo::new();
+    fetch(&shared, Some(&memo), endpoint, Opts::default());
+    let returning = fetch(
+        &shared,
+        Some(&memo),
+        endpoint,
+        Opts {
+            cross_origin: Some(CrossOriginRedirects::Return),
+            ..Opts::default()
+        },
+    );
+    assert_eq!(
+        (returning.status, returning.body.as_str()),
+        (Some(200), "{\"ok\":true}")
+    );
+    assert_eq!(
+        received(&transport),
+        [format!("GET {endpoint}"), format!("GET {slash}")]
     );
 }
 
@@ -977,6 +1018,41 @@ fn a_memo_held_redirect_to_http_is_refused_for_a_follower_and_kept_as_sent_for_a
         (Some(301), "Moved", None, None)
     );
     assert_eq!(received(&transport), [format!("GET {card}")]);
+}
+
+#[test]
+fn a_cross_origin_redirect_one_caller_kept_is_refused_for_a_caller_that_refuses_cross_origin_hops()
+{
+    let endpoint = "https://example.com/mcp";
+    let elsewhere = "https://other.example.net/mcp";
+    let (transport, shared) = mock(MockResponse::ok(307, &[("location", elsewhere)], b""));
+    let memo = RequestMemo::new();
+    let returned = fetch(
+        &shared,
+        Some(&memo),
+        endpoint,
+        Opts {
+            cross_origin: Some(CrossOriginRedirects::Return),
+            ..Opts::default()
+        },
+    );
+    let refused = fetch(
+        &shared,
+        Some(&memo),
+        endpoint,
+        Opts {
+            cross_origin: Some(CrossOriginRedirects::Refuse),
+            ..Opts::default()
+        },
+    );
+    assert_eq!(
+        (returned.status, refused.error),
+        (
+            Some(307),
+            Some(format!("redirect refused: 307 to {elsewhere}"))
+        )
+    );
+    assert_eq!(received(&transport), [format!("GET {endpoint}")]);
 }
 
 #[test]

@@ -226,6 +226,9 @@ pub struct HandlerContext {
     pub host: String,
     /// Discovered MCP endpoint, if any.
     pub mcp_endpoint: Option<String>,
+    /// The endpoint is on a declared host, pinned by proof of control, so
+    /// no probe of it or of a document on its origin takes a redirect.
+    pub mcp_endpoint_followed: bool,
     /// The legacy protocol version the registry pins.
     pub protocol_version: &'static str,
     /// Per-request timeout when a check sets none, already bounded by the budget.

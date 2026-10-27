@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-use super::api_trail::host_of;
+use super::follow_trail::host_of;
 use super::types::ProbeStatus;
 use crate::web_audit::handlers::targets::worst_target_status;
 use crate::web_audit::scorecard::{EvidenceItem, NaReason, RowHost, ScorecardStatus};

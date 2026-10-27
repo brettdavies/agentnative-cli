@@ -244,9 +244,13 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// Runs the anc.dev web-audit registry against a target from this
     /// machine, so a localhost, private or internal site the hosted
     /// auditor cannot reach is auditable where it runs. Every probe is
-    /// issued from here; the only host contacted is the target (plus the
-    /// public DNS resolvers the `dns-aid` check queries, which are
-    /// withheld for a local target unless `--external-dns` is set).
+    /// issued from here. Besides the target, it contacts the hosts the
+    /// target declares (an MCP endpoint a server card names, wire-probed
+    /// only after that host publishes a document naming it; an API host the
+    /// api-catalog anchors), at most 4 hosts and 12 follow requests in a
+    /// 6-second window, unless `--no-follow` is set; and the public DNS
+    /// resolvers the `dns-aid` check queries, which are withheld for a
+    /// local target unless `--external-dns` is set.
     ///
     /// Each run reports two scores: relative scores the site relative to
     /// the checks that apply to this site; global measures it against a
@@ -258,6 +262,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
   anc web anc.dev --output json                # the scorecard on stdout, nothing else
   anc web anc.dev --check llms-txt             # gate a script on one check
   anc web anc.dev --site-type api              # score only the checks an API answers for
+  anc web anc.dev --no-follow                  # the site alone, no host it declares
   anc web intranet.test --ca-cert ca.pem       # also trust a private CA's root
   anc emit web-checks                          # every check id, offline
   anc emit web-remediation                     # the whole fix catalog, offline
@@ -297,6 +302,13 @@ Exit codes (shared with `anc audit`):
         /// party.
         #[arg(long)]
         external_dns: bool,
+
+        /// Audit only the target: leave unrequested every host its
+        /// discovery documents declare. Rows that depend on a declared
+        /// host report `n_a` (`follow-disabled`), and the scorecard records
+        /// `follow_declarations: false`.
+        #[arg(long)]
+        no_follow: bool,
 
         /// Also trust the root certificates in this PEM file, for any
         /// target. Repeat for several files. A local or private target

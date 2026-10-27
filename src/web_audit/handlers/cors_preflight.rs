@@ -12,7 +12,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::shared::{
-    item, resolve_url, retry_shaped_answer, retry_shaped_why, substitute_endpoint,
+    endpoint_redirects, item, resolve_url, retry_shaped_answer, retry_shaped_why,
+    substitute_endpoint,
 };
 use crate::web_audit::engine::mcp_wire::{legacy_probe_headers, legacy_tools_list_body};
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
@@ -74,10 +75,15 @@ pub fn run_cors_preflight(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcom
         .origin
         .clone()
         .unwrap_or_else(|| "https://example.com".to_string());
-    let opts = FetchOptions {
-        max_body_bytes: Some(STATUS_ONLY_BODY_BYTES),
-        ..ctx.fetch_options(w.timeout)
-    };
+    let opts = endpoint_redirects(
+        FetchOptions {
+            max_body_bytes: Some(STATUS_ONLY_BODY_BYTES),
+            ..ctx.fetch_options(w.timeout)
+        },
+        &w.path,
+        ctx.mcp_endpoint_followed,
+        "POST",
+    );
     let mut post_headers = legacy_probe_headers();
     post_headers.push(("Origin".to_string(), origin.clone()));
     if let Some(session) = ctx.mcp_session_id.as_deref().filter(|s| !s.is_empty()) {

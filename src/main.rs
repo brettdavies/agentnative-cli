@@ -182,6 +182,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             site_type,
             check,
             external_dns,
+            no_follow,
             ca_cert,
             output,
         }) => {
@@ -190,6 +191,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 site_type,
                 check,
                 external_dns,
+                follow_declarations: !no_follow,
                 ca_cert,
                 output: if json_alias {
                     OutputFormat::Json
@@ -1079,6 +1081,7 @@ struct WebRun {
     site_type: Option<SiteType>,
     check: Option<String>,
     external_dns: bool,
+    follow_declarations: bool,
     ca_cert: Vec<std::path::PathBuf>,
     output: OutputFormat,
     quiet: bool,
@@ -1175,6 +1178,7 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     input.site_type = run.site_type.map(Into::into);
     input.spec_version = SPEC_VERSION.to_string();
     input.external_dns = run.external_dns;
+    input.follow_declarations = run.follow_declarations;
     if show_progress {
         input.progress = Some(&mut progress);
     }

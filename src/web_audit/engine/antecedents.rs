@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::api_catalog::MCP_TARGET_RE;
+use super::follow_trail::DeclaredHostReason;
 use super::mcp_wire::advertises_resources;
 use super::types::{ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::ProbeResponse;
@@ -37,12 +38,15 @@ pub fn is_wave1(id: &str) -> bool {
 }
 
 /// What the wave-1 evidence says about a token.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Resolution {
     /// The check applies and is probed.
     Apply,
     /// The check does not apply; the row is `n_a`.
     NotApplicable,
+    /// The check needs an endpoint a declared host kept from being
+    /// evaluated; the row is `n_a` for that reason and reads as that host.
+    DeclaredHost(DeclaredHostReason),
     /// The antecedent cannot be resolved because the root never answered.
     Error,
 }
@@ -62,6 +66,16 @@ pub struct AntecedentContext<'a> {
     pub sources: &'a HashMap<String, ProbeOutcome>,
     /// The retained API catalog lists an anchor the API category evaluates.
     pub api_anchors: bool,
+    /// Why the declared host behind a missing endpoint was not evaluated.
+    pub follow_unmet: Option<&'a DeclaredHostReason>,
+}
+
+/// `n_a` for a check that needs the MCP endpoint there is none of, naming
+/// the declared host behind that when one is.
+fn no_mcp_endpoint(ctx: &AntecedentContext<'_>) -> Resolution {
+    ctx.follow_unmet.map_or(Resolution::NotApplicable, |unmet| {
+        Resolution::DeclaredHost(unmet.clone())
+    })
 }
 
 /// The declared-site-type gate, applied before the antecedent token.
@@ -89,11 +103,15 @@ pub fn resolve(token: AntecedentToken, ctx: &AntecedentContext<'_>) -> Resolutio
             _ => Resolution::Error,
         },
         T::HtmlRoot => html_root_gate(ctx).unwrap_or(Resolution::Apply),
-        T::McpPresent | T::McpSession => apply_if(ctx.mcp_endpoint.is_some()),
-        T::McpAuthRequired => Resolution::NotApplicable,
+        T::McpPresent | T::McpSession if ctx.mcp_endpoint.is_none() => no_mcp_endpoint(ctx),
+        T::McpPresent | T::McpSession => Resolution::Apply,
+        T::McpAuthRequired => match no_mcp_endpoint(ctx) {
+            unmet @ Resolution::DeclaredHost(_) if ctx.mcp_endpoint.is_none() => unmet,
+            _ => Resolution::NotApplicable,
+        },
         T::McpAuth => {
             if ctx.mcp_endpoint.is_none() {
-                return Resolution::NotApplicable;
+                return no_mcp_endpoint(ctx);
             }
             apply_if(
                 evidence_shows_auth_challenge(source_evidence(ctx, "mcp-initialize"))
@@ -102,7 +120,7 @@ pub fn resolve(token: AntecedentToken, ctx: &AntecedentContext<'_>) -> Resolutio
         }
         T::McpResources => {
             if ctx.mcp_endpoint.is_none() {
-                return Resolution::NotApplicable;
+                return no_mcp_endpoint(ctx);
             }
             apply_if(
                 advertises_resources(source_evidence(ctx, "mcp-initialize"))
@@ -359,6 +377,7 @@ mod tests {
             root,
             sources,
             api_anchors: false,
+            follow_unmet: None,
         }
     }
 

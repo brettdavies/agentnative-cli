@@ -10,6 +10,7 @@ use serde_json::{Map, Value, json};
 
 use super::types::{FetchHandle, McpModernLane, ProbeOutcome};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
+use crate::web_audit::handlers::shared::mcp_endpoint_redirects;
 use crate::web_audit::scorecard::EvidenceItem;
 
 /// The modern protocol revision the header-routed probes claim.
@@ -96,6 +97,7 @@ pub fn notify_mcp_initialized(
     endpoint: &str,
     session_id: &str,
     timeout: Duration,
+    followed: bool,
 ) {
     let mut headers = legacy_probe_headers();
     headers.push(("Mcp-Session-Id".to_string(), session_id.to_string()));
@@ -104,10 +106,14 @@ pub fn notify_mcp_initialized(
         headers,
         body: Some(initialized_body().into_bytes()),
     };
-    let opts = FetchOptions {
-        timeout,
-        ..FetchOptions::default()
-    };
+    let opts = mcp_endpoint_redirects(
+        FetchOptions {
+            timeout,
+            ..FetchOptions::default()
+        },
+        followed,
+        "POST",
+    );
     fetch.fetch(endpoint, &init, &opts);
 }
 

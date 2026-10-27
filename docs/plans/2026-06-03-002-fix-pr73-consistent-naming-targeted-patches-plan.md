@@ -74,7 +74,7 @@ not make those harder to land.
 - **R1**: When `probe_subcommand_children` returns an empty children vec because the probe itself failed (any
   `RunStatus` other than `Ok`, or `Ok` with empty stdout+stderr that cannot be parsed as a clap help), the affected
   top-level subcommand classifies as `Classification::Mixed`. The audit's evidence string names the offending subcommand
-  and the probe-failure reason. Source: `src/audits/behavioral/consistent_naming.rs:142-156`.
+  and the probe-failure reason. Source: `src/audits/behavioral/consistent_naming.rs:142-159`.
 
 - **R2**: A non-verb top-level subcommand classifies as `Classification::TopLevelVerb` only when the probe succeeded AND
   the parsed children vec is empty. An empty children vec from a failed probe routes per R1. Source:
@@ -125,7 +125,7 @@ test pinned in R4 verifies the removal.
 
 ### U4. Add four adversarial unit tests
 
-Tests live in `src/audits/behavioral/consistent_naming.rs` alongside the existing 10 tests. Mock the probe via a
+Tests live in `src/audits/behavioral/consistent_naming.rs` alongside the existing 11 tests. Mock the probe via a
 trait-bound stand-in or by constructing `ProbeResult` directly in test setup.
 
 ## Open questions

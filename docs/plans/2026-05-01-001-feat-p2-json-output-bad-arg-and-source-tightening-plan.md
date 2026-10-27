@@ -23,12 +23,13 @@ matrix that lands **before** the detection widens.
 
 ## Problem Frame
 
-The dominant cause of `anc`'s self-cap (~97% project / ~89% binary) is `p2-json-output` emitting Warn whenever its
-safe-suffix probes (`--help` / `--version`) cannot validate JSON — which is the dominant case across the leaderboard.
-Two structural facts shape the remedy: (1) a third safe-probe shape (bad-arg-VALUE) is universally side-effect-safe
-because the parser rejects the value before any subcommand handler runs, and (2) the Rust source audit already covers
-the same requirement (`p2-must-output-flag`) but stops at "enum exists" — source layer can do strictly more than
-behavioral via reachability and flow analysis. See origin:
+`p2-json-output` reaches JSON only through its safe-suffix probes (`--help` / `--version`), which most CLIs answer in
+text whatever the output flag says. When no safe probe prints JSON, the row is Skip and unscored, and a `[p2]
+json_probe` declaration in `.anc.toml` runs a declared probe in its place (#147, #178). A tool with no declaration gets
+no behavioral evidence for its JSON mode. Two structural facts shape the remedy: (1) a third safe-probe shape
+(bad-arg-VALUE) is universally side-effect-safe because the parser rejects the value before any subcommand handler
+runs, and (2) the Rust source audit already covers the same requirement (`p2-must-output-flag`) but stops at "enum
+exists" — source layer can do strictly more than behavioral via reachability and flow analysis. See origin:
 `docs/brainstorms/2026-05-01-p2-json-output-upgrade-requirements.md`.
 
 ---
@@ -43,7 +44,7 @@ Carried verbatim from origin requirements doc. R-IDs stable.
 - R2. Verdict semantics shift in-place (same audit ID, same `covers()`). Pass at `Confidence::Medium` when the
   value-enum echo confirms `json` is a declared accepted value (`p1-env-hints` v0.1.3 widening precedent — widening
   detection does not raise confidence).
-- R3. When the bad-arg-VALUE probe cannot fire, fall back to the existing safe-suffix probes and emit the existing Warn
+- R3. When the bad-arg-VALUE probe cannot fire, fall back to the existing safe-suffix probes and emit the existing Skip
   evidence message. No regression on currently-passing tools.
 - R4. Replace the binary "enum exists or not" detection in `p2-structured-output` (Rust) with a tiered model: Strong
   (Confidence::High) when the OutputFormat enum has a `Json` variant AND a clap-derive field references it AND a
@@ -63,11 +64,11 @@ Carried verbatim from origin requirements doc. R-IDs stable.
 - R10. `src/scorecard/audience.rs::SIGNAL_AUDIT_IDS` is unchanged. Verdict shifts on `p2-json-output` cause natural
   re-derivation of audience labels. Changelog and PR description enumerate which currently-scored tools shift labels and
   which way.
-- R11. No scorecard schema bump. `schema_version` stays at `"0.5"`.
-- R12. A parser-family fixture matrix anchors verdict shifts before merge: behavioral fixtures cover currently-warn-
-  capped tools across clap, cobra, argparse, and click parser families; source fixtures cover Rust tools at each tier
-  (Strong / Medium / Weak) and Python tools at each tier. Each fixture documents its expected verdict and Confidence
-  before the detection lands.
+- R11. No scorecard schema bump. `schema_version` stays at its current value.
+- R12. A parser-family fixture matrix anchors verdict shifts before merge: behavioral fixtures cover currently
+  unverified tools across clap, cobra, argparse, and click parser families; source fixtures cover Rust tools at each
+  tier (Strong / Medium / Weak) and Python tools at each tier. Each fixture documents its expected verdict and
+  Confidence before the detection lands.
 - R13. `tests/dogfood.rs` updates to reflect the new verdict for `p2-json-output` against `anc` itself (Pass at
   `Confidence::Medium`) and the tier `p2-structured-output` resolves to. **The concrete Confidence value for
   `p2-structured-output` depends on the Strong-tier resolution from `Open Questions → Deferred from Document Review`** —
@@ -85,7 +86,7 @@ Carried from origin. Anything below is explicitly NOT in this plan.
 - No new requirement IDs added to `agentnative-spec`. A+B' attest the existing `p2-must-output-flag` MUST more
   rigorously; no spec PR.
 - No `agentnative-spec` version bump. Vendored spec text unchanged.
-- No scorecard schema bump (stays `"0.5"`). Envelope contract unchanged.
+- No scorecard schema bump. Envelope contract unchanged.
 - No self-declared manifest field opt-in (`[package.metadata.agentnative]` — ideation D). Deferred.
 - No `<tool> agentnative-probe` spec convention (ideation F). Long-term ecosystem move.
 - No spec MUST rewriting (ideation E, adversarial-rejected: doctrine downgrades prose to preference, not level of MUST).
@@ -197,9 +198,9 @@ during implementation unless contradicting evidence surfaces.**
 ### Deferred to Implementation
 
 - **Concrete tool list for the fixture matrix** (origin Outstanding §1, R12). Resolve at the start of U4 by querying the
-  latest leaderboard data and grouping by parser family. The R12 minimum is one tool per family covering the warn-capped
+  latest leaderboard data and grouping by parser family. The R12 minimum is one tool per family covering the unverified
   case; expansion to additional tools is allowed if leaderboard inspection surfaces edge-case error-message shapes
-  within a family. **Empty-family fallback** (per U4 Approach): if a parser family has no warn-capped leaderboard tool,
+  within a family. **Empty-family fallback** (per U4 Approach): if a parser family has no unverified leaderboard tool,
   the family fixture uses a synthetic minimal tool committed alongside the fixture (~20-line clap crate / ~10-line
   argparse script / equivalent), captured via the same `NO_COLOR=1 LANG=C COLUMNS=80` env, labeled
   `source: synthetic-minimal-tool` in the fixture's `README.md`, and called out in the PR description.
@@ -364,11 +365,11 @@ the probe cannot extract a value list, fall through to the existing safe-suffix 
 - *Happy path — click-shape echo.* sh-script fixture emits click's shape
   `Error: Invalid value for '--output': 'foo' is not one of 'text', 'json', 'yaml'.`; audit returns `Pass`.
 - *Edge — bad-arg-VALUE response missing `json`.* Fixture echoes `must be of [text, yaml]` (no json); audit falls back
-  to safe-suffix probes; emits the existing Warn. **Covers AE2.**
+  to safe-suffix probes; emits the existing Skip. **Covers AE2.**
 - *Edge — bad-arg-VALUE returns free-form error without enumeration.* Fixture emits `Error: unknown output format`; the
-  value-extraction regex fails; falls back to existing Warn message. **Covers AE2 / R3 (no regression).**
+  value-extraction regex fails; falls back to existing Skip message. **Covers AE2 / R3 (no regression).**
 - *Edge — flag exists but binary errors before parse.* Fixture exits non-zero with no stderr enumeration; falls back to
-  existing Warn.
+  existing Skip.
 - *Regression — already-passing tool stays Pass.* Existing `json_output_pass_with_valid_json` test must still pass after
   the change (with the Confidence shift to Medium).
 - *Regression — already-Warn tool stays Warn.* Existing `json_output_fail_with_invalid_json` test must still produce
@@ -620,8 +621,8 @@ during U1-U3 implementation. This is the load-bearing failure-mode mitigation fo
   value-enumeration shape (the substring U1's regex depends on) — byte-for-byte equality is deliberately not the
   contract; the smoke test asserts substring containment, not byte parity, since drift on ANSI / version / `argv[0]` /
   locale doesn't affect U1's detection.
-- **Empty-parser-family fallback rule (synthetic minimal tool).** If the leaderboard query reveals zero currently-warn-
-  capped tools for a parser family, build a synthetic minimal tool of that family inside the fixture directory — a
+- **Empty-parser-family fallback rule (synthetic minimal tool).** If the leaderboard query reveals zero currently
+  unverified tools for a parser family, build a synthetic minimal tool of that family inside the fixture directory — a
   ~20-line clap-derive Cargo crate, a ~10-line argparse Python script, or the equivalent — and capture its
   `expected-stderr.txt` from that synthetic tool the same way (`NO_COLOR=1 LANG=C COLUMNS=80 …`). Label the fixture's
   `README.md` as `source: synthetic-minimal-tool` with the synthetic tool's source path, the parser library version
@@ -722,7 +723,7 @@ verdicts).
 - Dogfood guards extend the existing `tests/dogfood.rs` `dogfood_no_p2_fail_after_skill_subcommand` test with two
   additional assertions: `p2-json-output` resolves to Pass with `confidence == "medium"`, `p2-structured-output`
   resolves to Pass with `confidence == "high"`. R13 explicit.
-- Coverage matrix regen is mechanical: `cargo run -- generate coverage-matrix` writes the artifacts; the existing
+- Coverage matrix regen is mechanical: `cargo run -- emit coverage-matrix` writes the artifacts; the existing
   `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` integration test verifies parity. R14.
 - The audience-classifier shift enumeration (R10) is a manual research step at the end of this unit: run `anc audit`
   against each currently-scored leaderboard member with the new detection, diff the `audience` field against the
@@ -759,14 +760,14 @@ verdicts).
 - *Coverage matrix drift — committed artifacts agree with registry + audits.*
   `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts` continues to pass after the regen. **Covers
   R14.**
-- *Schema parity — scorecard JSON `schema_version` stays `"0.5"`.* `tests/scorecard_schema_v05.rs` continues to pass
+- *Schema parity — scorecard JSON `schema_version` stays unchanged.* `tests/scorecard_schema_v05.rs` continues to pass
   unchanged (R11).
 
 **Verification:**
 
 - `cargo test --test integration` passes for the new fixture-matrix assertions.
 - `cargo test --test dogfood` passes for the strengthened guards.
-- `cargo run -- generate coverage-matrix --check` exits 0.
+- `cargo run -- emit coverage-matrix --check` exits 0.
 - `cargo test --test scorecard_schema_v05` passes.
 - The audience-shift list in `CHANGELOG.md` enumerates every currently-scored tool whose label changes — verifiable by
   cross-referencing against the pre-merge baseline.
@@ -780,7 +781,7 @@ verdicts).
   `BinaryRunner::run` outside the audit; no risk of fork-bomb regression because the probe argv is not bare.
 - **Error propagation:** U1's probe failure modes (parser rejects with non-recognizable format, binary times out, binary
   crashes) all route through `runner.run`'s existing `RunStatus` taxonomy (`Crash`, `Timeout`, `Error`). Each case
-  fall-throughs to U1's existing safe-suffix probes; if those also fail, the existing Warn message is emitted. No new
+  fall-throughs to U1's existing safe-suffix probes; if those also fail, the existing Skip message is emitted. No new
   error type, no new propagation surface.
 - **State lifecycle risks:** None. Source audits and behavioral audits both operate on per-invocation state (parsed
   files / runner output) with no shared mutable state. Coverage-matrix regen is the only persistent-write step, and the
@@ -788,7 +789,7 @@ verdicts).
 - **API surface parity:** No change to the scorecard envelope shape, the CLI surface, or any exported type. The
   `Confidence` field on `p2-json-output` shifts from `High` (line 62 of json_output.rs) to `Medium` for **all** Pass
   paths — this is a deliberate honesty fix that downstream consumers need only feature-detect via the existing
-  `confidence` JSON field. R11 stipulates schema_version stays `"0.5"`; consumers reading the field get accurate
+  `confidence` JSON field. R11 stipulates schema_version stays unchanged; consumers reading the field get accurate
   Confidence.
 - **Integration coverage:** The U4 fixture matrix is the integration backbone for U1/U2/U3. Each fixture exercises the
   full audit pipeline (detection → AuditStatus → AuditResult → JSON envelope → consumer). Mocks alone would not catch
@@ -797,7 +798,7 @@ verdicts).
 - **Unchanged invariants:**
 - `src/scorecard/audience.rs::SIGNAL_AUDIT_IDS` is unchanged. Audience labels re-derive naturally from the new verdicts;
   the classifier rules are unchanged. R10 explicit.
-- `schema_version` stays `"0.5"`. R11 explicit.
+- `schema_version` stays unchanged. R11 explicit.
 - `p2-json-output` and `p2-structured-output` retain their existing IDs and `covers()` declarations. No new requirement
   IDs added to `src/principles/registry.rs`. R6, R9 explicit.
 - `arg_required_else_help = true` on `Cli` is preserved (CLAUDE.md "Dogfooding Safety"). The bad-arg-VALUE probe does

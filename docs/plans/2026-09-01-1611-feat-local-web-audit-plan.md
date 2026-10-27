@@ -1,7 +1,8 @@
 ---
 title: Local Web Audit - Plan
 type: feat
-status: active
+status: blocked
+blocked_on: "the owner's go-ahead for the commit that turns the web feature on by default (the parity commit, which carries task T1's release NASM and cmake), and agentnative-site committing the U15 vendoring contract that U16 re-pins to"
 prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229"]
 date: 2026-09-01
 deepened: 2026-09-01
@@ -290,8 +291,10 @@ planned here, with no separate site plan).
   type folded into the CLI's `NextStep` contract (#202) land in the same stack. The divergence ledger holds no entry:
   the engine reproduces every scenario of the vendored corpus.
 - U14 (`ANC_WEB_TOKEN` and `--token-stdin`) is the credentialed side the corpus does not exercise.
-- The commit that turns `web` on by default is the parity commit. No release ships `anc web` before it.
-- U16 adopts the U15 contract at a later re-pin.
+- The commit that turns `web` on by default is the parity commit, and task T1's release NASM and `Cross.toml` cmake
+  ride with it. It waits on the owner's go-ahead, and no release ships `anc web` before it.
+- U16 waits on U15: it re-pins once `agentnative-site` commits the vendoring contract under
+  `src/data/web-audit/contract/`, which site `dev` does not carry.
 
 ### Dependencies / Assumptions
 
@@ -1224,9 +1227,10 @@ cmake needs no provisioning, since every hosted runner image already carries it)
 - **Approach:**
   1. Read the token from `ANC_WEB_TOKEN` or `--token-stdin` (R18); reject an empty value with the structured error
      contract; never echo it, and redact it from every error and debug path.
-  2. Attach `Authorization: Bearer` only to the audited endpoint's handshake and session requests. The enforcement
-     probe, metadata reads, followed hosts, and every non-MCP check stay token-less, so a credentialed run still scores
-     token-less refusal.
+  2. Attach `Authorization: Bearer` only to the endpoint of record's handshake and session requests
+     (`engine::mcp_wire::post_as_client`), which can sit on a declared host. The follow slice's own requests, metadata
+     reads, sign-in servers, the enforcement probe, and every non-MCP check stay token-less, so a credentialed run still
+     scores token-less refusal.
   3. Write `vantage` from the run: `network` from the locality classifier (KTD10), `credentialed` from R18. A
      credentialed run's session and handshake rows are evaluated rather than read auth-required, so a correctly
      protected server can reach 100 global locally while its anc.dev score keeps those rows in the global maximum.

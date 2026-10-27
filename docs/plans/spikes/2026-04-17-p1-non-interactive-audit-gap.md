@@ -35,6 +35,19 @@ principle gap, or a real P1-compliant case that only *looks* wrong from the outs
   flag-existence audit, an env-var-hint scan, and an auth-subcommand headless-flag scan) before trying harder things
   like PTY probing.
 
+## Outcome
+
+- The spec settles the doctrine question at the end of this report. P1's MUST is worded as observable behavior, and the
+  spec's decision record
+  [`docs/decisions/p1-behavioral-must.md`](https://github.com/brettdavies/agentnative/blob/main/docs/decisions/p1-behavioral-must.md)
+  names the verification boundary: automated audits verify behavior under non-TTY stdin, and TTY-driving agents fall
+  under the MUST without a PTY probe.
+- Every P1 MUST has an audit: `p1-must-no-interactive` (`p1-non-interactive`, `p1-flag-existence`,
+  `p1-non-interactive-source`), `p1-must-env-var` (`p1-env-hints`, `p1-env-flags-source`), `p1-must-no-browser`
+  (`p1-headless-auth`, a Rust source audit), and `p1-must-secret-non-leaky-path` (`p1-secret-non-leaky-path`).
+  `p1-non-interactive-source` stays Rust-only, and no PTY probe exists. The gap analysis below describes the audit set
+  this spike probed.
+
 ## Methodology
 
 All probes run on the real binary, not the shell wrapper:

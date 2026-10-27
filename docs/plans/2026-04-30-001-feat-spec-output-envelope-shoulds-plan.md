@@ -21,14 +21,16 @@ itself (dogfood loop).
 
 The `anc skill install` work shipped a uniform JSON envelope (success and error sharing one schema, typed `reason` on
 error, `--output {text,json}` honored on every code path) and pinned dogfood guards via `tests/dogfood.rs`. The contract
-is captured in prose at `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`, but no
-agent-native-spec requirement names it and no `Audit` verifies it. Per the institutional learning *audit-scripts-as-
-documentation-immune-system* (`docs/solutions/best-practices/`), prose without enforcement rots silently while the
-linter reports green. This plan closes that gap.
+is captured in prose at `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`. Per the
+institutional learning *audit-scripts-as-documentation-immune-system* (`docs/solutions/best-practices/`), prose without
+enforcement rots silently while the linter reports green.
 
-The closest existing P2 requirement (`p2-must-json-errors`) sits in `UNVERIFIED_MUSTS`
-(`src/principles/matrix.rs:476-487`) because no behavioral audit probes error paths. The four new SHOULDs are the first
-behavioral audits that *induce* an error path and inspect the envelope — genuinely new ground for this codebase.
+Existing requirements and audits cover part of the contract. Five behavioral audits share one bad-flag probe
+(`src/audits/behavioral/error_probe.rs`) under the JSON mode the help declares. Among them, `consistent_envelope.rs`
+compares the success and error key sets for `p2-should-consistent-envelope`, `json_error_output.rs` checks that an
+error parses as JSON for `p4-should-json-error-output`, and `json_errors.rs` checks the error envelope for a
+discriminant, a type identifier, and a message for `p2-must-json-errors`. No requirement or audit covers `--output` on
+every subcommand or a typed `reason` field on errors.
 
 ---
 
@@ -46,8 +48,8 @@ behavioral audits that *induce* an error path and inspect the envelope — genui
 - R3. Tag a new `agentnative-spec` release that includes the four new SHOULDs. The tag is the single propagation point —
   this repo's `scripts/sync-spec.sh` resolves the latest `v*` tag remotely.
 - R4. Re-vendor the spec into `src/principles/spec/`. Bump the two drift counters in
-  `src/principles/registry.rs::tests`: `registry_size_matches_spec` (46 → 50) and `level_counts_match_spec` (Should: 16
-  → 20).
+  `src/principles/registry.rs::tests`: `registry_size_matches_spec` (60 → 64) and `level_counts_match_spec` (Should: 22
+  → 26).
 - R5. Land four behavioral audits in `src/audits/behavioral/`, one per new SHOULD, each declaring its own single-element
   `covers()` slice. SRP-style — no bundled "envelope conformance" audit (per
   *reliable-static-analysis-compliance-auditors*).
@@ -75,8 +77,7 @@ behavioral audits that *induce* an error path and inspect the envelope — genui
 - No spec-version major or minor bump beyond what additive SHOULD additions require. The spec is at `0.x` and uses
   additive evolution; consumers feature-detect new requirement IDs.
 - No subcommand-discovery infrastructure beyond what `output-applies-to-every-subcommand` needs.
-  `parse_subcommand_names()` (`src/audits/behavioral/json_output.rs:100-137`) is the existing primitive — reuse it, do
-  not extract a general-purpose subcommand-introspection module yet.
+  `HelpOutput::subcommands()` (`src/runner/help_probe/mod.rs`) is the existing primitive; reuse it.
 - No envelope-pattern documentation in `docs/solutions/` — that's the parallel `/ce-compound` work in the same task
   queue, separate from this plan.
 - No `coverage_summary` schema changes in the scorecard. New requirement IDs flow through automatically.
@@ -86,15 +87,13 @@ behavioral audits that *induce* an error path and inspect the envelope — genui
 
 - **Reconciliation of `p2-must-json-errors` ("on stderr") with the as-shipped convention (envelope on stdout).** The
   existing MUST says errors emit JSON to stderr; `anc`'s shipped `feat/skill-install` envelope goes to stdout (matching
-  every other `--output json` surface). The MUST is currently unverified; the new SHOULD `json-envelope-on-error` is
-  more permissive (says "envelope appears" without pinning the stream). Reconciling the MUST text is a separate
-  spec-edit PR; flagged here so a future plan picks it up. Not in scope because the user-named scope is "add four
-  SHOULDs", not "rewrite an existing MUST".
+  every other `--output json` surface). The MUST's audit accepts the envelope on either stream; the new SHOULD
+  `json-envelope-on-error` is more permissive (says "envelope appears" without pinning the stream). Reconciling the
+  MUST text is a separate spec-edit PR; flagged here so a future plan picks it up. Not in scope because the user-named
+  scope is "add four SHOULDs", not "rewrite an existing MUST".
 - **Source-layer fallbacks for the four audits.** Behavioral probing covers the binary; an ast-grep source-layer
   companion (e.g., detecting `#[serde(skip_serializing_if)]` on envelope structs) would extend coverage to projects
   whose binaries fail to launch. Defer until usage shows behavioral audits miss real cases.
-- **Subcommand-introspection module extraction.** If a third or fourth audit needs to enumerate subcommands, lifting
-  `parse_subcommand_names()` into a reusable module is the natural cleanup. Defer until that demand exists.
 
 ---
 
@@ -105,11 +104,11 @@ behavioral audits that *induce* an error path and inspect the envelope — genui
 - `src/audit.rs` — `Audit` trait. New audits implement `id`, `label`, `group`, `layer`, `applicable`, `run`, and declare
   `covers()` returning a `&'static [&'static str]` of new requirement IDs.
 - `src/audits/behavioral/json_output.rs` — canonical behavioral P2 audit shape. Subcommand enumeration via
-  `parse_subcommand_names()` (lines 100-137). Probes use `--help`/`--version` only (safe-probing rule, lines 165-170).
-  JSON parsing via `serde_json::from_str::<serde_json::Value>(...)`.
-- `src/audits/behavioral/bad_args.rs` — only existing precedent for inducing an error path. Injects
-  `--this-flag-does-not-exist-agentnative-probe` to force exit-2. Pattern reuses across the four new behavioral audits
-  (combine bad-arg trigger with `--output json`).
+  `HelpOutput::subcommands()` (`src/runner/help_probe/mod.rs`). Probes use `--help`/`--version` only (safe-probing
+  rule). JSON parsing via `serde_json::from_str::<serde_json::Value>(...)`.
+- `src/audits/behavioral/error_probe.rs`: the shared bad-flag probe (`BAD_FLAG`, `--this-flag-does-not-exist-anc`)
+  and JSON-mode gate behind the five error-battery audits. The four new behavioral audits reuse it (bad-flag trigger
+  under the declared JSON mode).
 - `src/audits/behavioral/mod.rs` (lines 61-115) — `test_project_with_sh_script(script)` test helper that materializes a
   temp `/bin/sh` script with `case "$*" in ... esac` branches simulating CLI behavior. Use for unit tests.
 - `src/principles/registry.rs` — drift counters at lines 337-345. ID format enforced by tests at lines 280-301.
@@ -175,13 +174,13 @@ None — internal/cross-repo work, no external doc gathering needed.
   matches the success envelope. The audit IDs follow `p2-output-every-subcommand`, `p2-json-envelope-on-error`,
   `p2-envelope-schema-uniform`, `p4-typed-error-reason` — concise IDs that don't echo `should-` (since that level is
   carried by the registry entry, not the audit ID per existing convention).
-- **Use `parse_subcommand_names()` as-is** for `output-applies-to-every-subcommand`. Iterate every parsed subcommand and
-  probe each with `--output json --help` (safe). Aggregate per-subcommand verdicts: pass when every subcommand accepts
-  `--output`, fail when any one rejects, skip when no subcommands or no `--output` on the root.
-- **Error-path elicitation via clap-rejected bad arg.** Combine the existing `bad_args.rs` injection
-  (`--this-flag-does-not-exist-agentnative-probe`) with `--output json` to elicit the error envelope. Universally safe:
-  clap rejects before any subcommand handler runs, no side-effecting code path is entered. This is the load- bearing
-  innovation of the four audits — the first time `anc` probes an error path.
+- **Use `HelpOutput::subcommands()` as-is** for `output-applies-to-every-subcommand`. Iterate every parsed subcommand
+  and probe each with `--output json --help` (safe). Aggregate per-subcommand verdicts: pass when every subcommand
+  accepts `--output`, fail when any one rejects, skip when no subcommands or no `--output` on the root.
+- **Error-path elicitation via clap-rejected bad arg.** Reuse the shared bad flag from `error_probe.rs`
+  (`--this-flag-does-not-exist-anc`) under the declared JSON mode to elicit the error envelope. Universally safe: clap
+  rejects before any subcommand handler runs, no side-effecting code path is entered. The five error-battery audits
+  probe error paths the same way.
 - **`output-applies-to-every-subcommand` is `Conditional`.** Gate: `if: CLI uses subcommands`. Same shape as
   `p6-must-global-flags` (`src/principles/spec/principles/p6-composable-predictable-command-structure.md`). The other
   three SHOULDs are `Universal` — every CLI has an error path; the JSON envelope contract is universal once
@@ -331,7 +330,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 
   **Approach:**
 - Probe root help; if no `--output` flag detected, return `Skip` with evidence "root CLI does not accept --output".
-- Use `parse_subcommand_names()` to enumerate. If empty, `Skip` with "no subcommands detected".
+- Use `HelpOutput::subcommands()` to enumerate. If empty, `Skip` with "no subcommands detected".
 - For each subcommand, probe `<subcmd> --help` (safe — never bare). Look for `--output` in the help text.
 - Aggregate: `Pass` when every subcommand has `--output`. `Fail` when at least one rejects. Evidence names the failing
   subcommand(s).
@@ -369,8 +368,8 @@ None — internal/cross-repo work, no external doc gathering needed.
   **Approach:**
 - First, probe `<root> --help` to confirm `--output` is accepted. If not, `Skip` with "tool does not accept --output
   json".
-- Inject the bad-arg trigger from `bad_args.rs`: `--this-flag-does-not-exist-agentnative-probe` plus `--output json`.
-  Capture stdout and stderr.
+- Inject the bad-arg trigger from `error_probe.rs` (`BAD_FLAG`) under the declared JSON mode. Capture stdout and
+  stderr.
 - Try `serde_json::from_str::<serde_json::Value>` on stdout; on failure, try stderr. Pass if either parses to a JSON
   object. Fail if neither parses.
 - Evidence on Pass names the stream that carried the envelope (informational). Evidence on Fail includes a short excerpt
@@ -378,7 +377,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 - `applicable()` returns `project.runner.is_some()`.
 - `covers()` returns `&["p2-should-json-envelope-on-error"]`.
 
-  **Patterns to follow:** `src/audits/behavioral/bad_args.rs` for error-induction; `json_output.rs:211-217` for JSON
+  **Patterns to follow:** `src/audits/behavioral/error_probe.rs` for error-induction; `json_output.rs:211-217` for JSON
   parsing.
 
   **Test scenarios:**
@@ -547,13 +546,13 @@ None — internal/cross-repo work, no external doc gathering needed.
 
 | Risk                                                                                                                                                                                                                                           | Mitigation                                                                                                                                                                                                                                           |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The four new behavioral audits are the first to induce error paths in target binaries; the bad-arg injection technique has only been used in `bad_args.rs` for exit-code probing, never combined with `--output json`.                         | The combination is structurally safe (clap rejects before any subcommand handler runs), and `RunStatus::Crash` is handled explicitly. Each audit's test suite includes a crash-handling scenario.                                                    |
+| The four new behavioral audits induce error paths in target binaries through the shared bad-flag probe in `error_probe.rs`, which five audits already run under the declared JSON mode.                                                        | The combination is structurally safe (clap rejects before any subcommand handler runs), and `RunStatus::Crash` is handled explicitly. Each audit's test suite includes a crash-handling scenario.                                                    |
 | `anc` itself fails one of the new audits against itself, breaking the dogfood claim before the PR can land.                                                                                                                                    | The four SHOULDs codify behavior `anc skill install` already implements. If a new audit fails against `anc`, that's a real bug to fix in the same PR (not a reason to weaken the audit). The dogfood guards in `tests/dogfood.rs` catch this loudly. |
 | `output-applies-to-every-subcommand` aggregates per-subcommand verdicts; the aggregation rule (fail-on-first vs allow-some-skip) affects how the audit reports.                                                                                | Documented decision: fail when ANY subcommand rejects `--output`, name the offender(s) in evidence. Skip when there are no subcommands or no `--output` on root. The aggregation is conservative and human-readable.                                 |
 | Existing `p2-must-json-errors` says "errors emitted as JSON to stderr"; `anc`'s actual envelope goes to stdout. The new SHOULD `json-envelope-on-error` is more permissive (envelope on either stream) but the MUST-vs-SHOULD tension is real. | Explicitly deferred — see Scope Boundaries. The new SHOULD permits either stream during the reconciliation window. A future spec PR reconciles the MUST text.                                                                                        |
 | Counter-bumps in `registry_size_matches_spec` and `level_counts_match_spec` are easy to forget.                                                                                                                                                | CLAUDE.md notes the deliberate-act intent; U2 explicitly enumerates both counters; failing tests guide the implementer.                                                                                                                              |
 | Coverage-matrix regen is an easy step to forget at PR time.                                                                                                                                                                                    | Existing CI integration test fails the PR if either artifact is stale. The regen step is U7's last task.                                                                                                                                             |
-| `parse_subcommand_names()` parses help text heuristically; some CLI help formats may not match the patterns it recognizes.                                                                                                                     | The audit returns `Skip` with structured evidence ("no subcommands detected") rather than `Fail` when enumeration fails. This biases conservative — better a missed `Pass` than a false `Fail`.                                                      |
+| `HelpOutput::subcommands()` parses help text heuristically; some CLI help formats may not match the patterns it recognizes.                                                                                                                    | The audit returns `Skip` with structured evidence ("no subcommands detected") rather than `Fail` when enumeration fails. This biases conservative — better a missed `Pass` than a false `Fail`.                                                      |
 
 ---
 

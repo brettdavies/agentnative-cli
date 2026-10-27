@@ -24,8 +24,9 @@ releases. The site's sync mechanism (a `sync-scorecard-schema.sh` script paralle
 `sync-coverage-matrix.sh`) pulls the file at site-build time and renames it per the canonical archive convention. That
 cross-repo plumbing is documented here but executed in the site repo.
 
-This plan is the deliverable for the kickoff session that produced it; **execution begins in a follow-up session** per
-`## Implementation Units` below.
+PR #54 ships a hand-written first cut: `anc emit schema` (U5) and the committed `schema/scorecard.schema.json` (U7),
+kept current by hand through schema 0.9. The schemars derive and build-time generation (U2 to U4), the drift and
+round-trip tests (U6), the discovery docs (U8) and the site companion (U9) are not built.
 
 ---
 
@@ -417,8 +418,9 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
   **Goal:** expose the embedded schema via the documented verb.
 
-  `anc emit schema` ships (#54) and prints the hand-written `schema/scorecard.schema.json` embedded with
-  `include_str!`; the schemars derive in U2–U4 is what would generate that document.
+  `anc emit schema` ships (#54 adds it as `anc schema`, #58 moves it under `emit`) and prints the hand-written
+  `schema/scorecard.schema.json` embedded with `include_str!`; the schemars derive in U2–U4 is what would generate that
+  document.
 
   **Requirements:** R4.
 
@@ -465,6 +467,11 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 - [ ] U6. **Drift + round-trip integration tests.**
 
   **Goal:** CI fails when schema and binary disagree.
+
+  Neither test exists. Partial guards stand in for them: `tests/scorecard_schema_v05.rs` checks the committed schema
+  against live scorecards (the `$id` version, the status enum, the `Summary` and row required keys, the `config_hint`
+  row field), and gate 3 of `scripts/release/smoke.sh` validates real scorecards with `check-jsonschema` at release
+  preflight. No `cargo test` runs a JSON Schema validator, and with no generated schema there is nothing to drift-check.
 
   **Requirements:** R7, R8.
 
@@ -539,6 +546,10 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Goal:** discoverability — readers landing on `anc --help` see the new verb and a one-line description; CLAUDE.md
 - AGENTS.md mention the artifact.
 
+  `anc emit --help` lists `schema`, and the README's JSON Output section names `anc emit schema` and
+  `schema/scorecard.schema.json`. The AGENTS.md entry, the README link to the versioned `$id` URL, and the CLAUDE.md
+  lifecycle section do not exist.
+
   **Requirements:** R10 (the schema's own `title`/`description`), AGENTS-side discovery.
 
   **Dependencies:** U5.
@@ -568,6 +579,9 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
   **Goal:** trigger the site-side work to consume the new artifact (sync script, archive page, eventual validator
   tooling).
+
+  No site-side plan exists. The site serves a prose page at `/scorecard-schema`, and the schema's `$id`,
+  `https://anc.dev/scorecard-v0.9.schema.json`, returns 404.
 
   **Requirements:** Cross-repo coordination (R9 implies the site honors the `$id` URL).
 

@@ -34,6 +34,11 @@ This work pays off in three ways:
 3. **It documents the spec's actual contract.** The audits become readable as English assertions about agent experience,
    not regex against a particular library's API.
 
+**Delivery.** #79 ships U3, with the role classifier inline in the audit (part of U1): `p2-must-json-errors` accepts any
+envelope whose values fill the discriminant, type-identifier, and message roles, whatever the field names. U2 and U4 to
+U8 are not started, so `p1-must-env-var`, `p6-must-global-flags`, `p7-naked-println`, and `code-unwrap` still match on
+vocabulary.
+
 ---
 
 ## Problem Frame
@@ -501,6 +506,9 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U1. `src/role_check.rs` — the role classifier
 
+- **Status.** Partly shipped in #79. The classifier lives inside `src/audits/behavioral/json_errors.rs` (`RoleSet`,
+  `classify_envelope`, and the role predicates), with its tests in that file's test module; the shared
+  `src/role_check.rs` module and the `tests/role_check_tests.rs` table do not exist.
 - **Goal.** Ship the `RoleClassifier` (KTD1) with full test coverage of pass/fail/edge cases. No audit changes yet —
   this is the foundation.
 - **Requirements.** R1, R2, R10.
@@ -548,6 +556,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U2. `src/audits/probe_or_source.rs` — the tiered audit wrapper
 
+- **Status.** Not started.
 - **Goal.** Ship the `ProbeOrSource` wrapper (KTD2) with the tiered policy. No audit migrations yet — this is the second
   foundation piece.
 - **Requirements.** R3, R5.
@@ -585,6 +594,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U3. Reframe `p2-must-json-errors`
 
+- **Status.** Shipped in #79.
 - **Goal.** Replace the hardcoded-keys check in `src/audits/behavioral/json_errors.rs` with a call to
   `RoleClassifier::classify`. Preserve the behavioral probe (run `tool --bogus-flag --output json`); only the validation
   logic changes.
@@ -619,6 +629,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U4. Reframe `p1-must-env-var` as probe-or-source
 
+- **Status.** Not started.
 - **Goal.** Migrate the env-var check to behavioral-first per KTD3, with the existing source-grep as Skip-class
   fallback.
 - **Requirements.** R3, R5, R6.
@@ -649,6 +660,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U5. Reframe `p6-must-global-flags` as probe-or-source
 
+- **Status.** Not started.
 - **Goal.** Migrate the global-flag check per KTD5.
 - **Requirements.** R3, R5, R6.
 - **Dependencies.** U2.
@@ -668,6 +680,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U6. Reframe `p7-naked-println` as probe-or-source
 
+- **Status.** Not started.
 - **Goal.** Migrate the naked-println check per KTD4.
 - **Requirements.** R3, R5, R6.
 - **Dependencies.** U2.
@@ -691,6 +704,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U7. Reframe `code-unwrap` as probe-or-source
 
+- **Status.** Not started.
 - **Goal.** Migrate the unwrap check per KTD6. The cfg-test exemption from PR #77 stays in place for the source
   fallback.
 - **Requirements.** R3, R5, R6.
@@ -716,6 +730,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U8. Documentation pass — rewrite reframed audits' module rustdoc as English assertions
 
+- **Status.** Not started.
 - **Goal.** R10. Each reframed audit's `//!` block (module-level doc comment) becomes a plain-English description of
   what it asserts and why, with code links to the implementation.
 - **Requirements.** R10.

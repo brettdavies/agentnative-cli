@@ -153,16 +153,16 @@ correctness regression independent of philosophy.
   yes, where is the spec PR?" — should this live in `.github/pull_request_template.md`, or is it CLAUDE.md /
   CONTRIBUTING territory? The aim is to make the spec-first sequence enforceable at review time.
 
-- **File-walk-level test exclusion has asymmetric coverage.** `src/project.rs:318` excludes the `tests/` directory at
-  file-walk time, before any audit runs. But `examples/`, `benches/`, and arbitrary `*_test.rs` files anywhere in the
-  tree are walked and audited. Surfaced during plan #004 execution when answering "do we treat inline tests differently
-  from dedicated test files?" — the answer in outcome is no, but the mechanism is inconsistent and the gap shows up in
-  two real places:
+- **File-walk-level test exclusion has asymmetric coverage.** `src/project/scan.rs` excludes the `tests/` directory,
+  and an `examples/` directory beside a manifest or at the root, at file-walk time, before any audit runs (#121). But
+  `benches/` and arbitrary `*_test.rs` files anywhere in the tree are walked and audited. Surfaced during plan #004
+  execution when answering "do we treat inline tests differently from dedicated test files?" — the answer in outcome is
+  no, but the mechanism is inconsistent and the gap shows up in two real places:
 
-1. `examples/` and `benches/` directories are canonically allowed to panic in idiomatic Rust style; flagging `.unwrap()`
-   (and most other code-quality audits) in them is probably wrong. The narrow fix is small (extend the `name == "tests"`
-   check to include `examples` and `benches`), but should be a deliberate decision documented as part of the philosophy
-   work, not an ad-hoc patch.
+1. `benches/` directories are canonically allowed to panic in idiomatic Rust style; flagging `.unwrap()` (and most
+   other code-quality audits) in them is probably wrong. The narrow fix is small (extend the skip that covers `tests`
+   and `examples` to `benches`), but should be a deliberate decision documented as part of the philosophy work, not an
+   ad-hoc patch.
 2. `*_test.rs` files in `src/` (a non-Cargo-canonical but used convention) are walked and audited. Treating them as test
    code requires either filename pattern matching (fragile, vocabulary-style — exactly what this plan argues against) or
    honoring Cargo's `[[test]]` / `[[example]]` / `[[bench]]` target declarations in `Cargo.toml` (structural, durable).

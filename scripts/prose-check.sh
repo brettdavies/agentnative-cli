@@ -3,14 +3,16 @@
 #
 # Pre-push prose-check orchestrator.
 #
-# Walks the in-scope *.md set, runs Vale (custom Brand+Spec packs +
-# write-good + proselint baseline) at MinAlertLevel=warning with JSON
-# output, splits severity orchestrator-side, then probes LanguageTool
-# over Tailscale and runs grammar checks if reachable. Vale errors and
+# Walks the in-scope *.md set, runs Vale (brand pack + write-good +
+# proselint baseline) at MinAlertLevel=warning with JSON output, splits
+# severity orchestrator-side, then probes LanguageTool over Tailscale
+# and runs grammar checks if reachable. Vale errors and
 # category-whitelisted LT matches block the push; warnings annotate but
 # do not block. When LT is unreachable, the LT stage skips with a
 # notice and the push proceeds on Vale's verdict alone (R9 graceful
-# skip).
+# skip). When Vale cannot run (a package `vale sync` has not
+# downloaded, a config error), the script exits 2 instead of passing,
+# as it does under --lt-only when LT is unreachable.
 #
 # Downstream LLM-judgment step: `unslop`.
 #
@@ -147,12 +149,29 @@ fi
 BLOCKING=0
 WARNING=0
 OUT_FILE="$(mktemp)"
-trap 'rm -f "$OUT_FILE"' EXIT
+VALE_ERR="$(mktemp)"
+trap 'rm -f "$OUT_FILE" "$VALE_ERR"' EXIT
 
 # --- Vale stage ---
 if (( RUN_VALE )); then
-  VALE_JSON="$(vale --no-global --output=JSON --minAlertLevel=warning "${MD_FILES[@]}" 2>/dev/null || true)"
+  for tool in vale jaq; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "prose-check: $tool not found on PATH (brew install $tool)" >&2; exit 2; }
+  done
+  # Vale exits 1 when it reports error-level alerts and 2 when it cannot run
+  # at all (a style missing from the StylesPath, a bad config), which it
+  # reports on stderr as JSON.
+  VALE_RC=0
+  VALE_JSON="$(vale --no-global --output=JSON --minAlertLevel=warning "${MD_FILES[@]}" 2>"$VALE_ERR")" || VALE_RC=$?
+  if (( VALE_RC > 1 )); then
+    VALE_MSG="$(jaq -r '.Text // empty' "$VALE_ERR" 2>/dev/null || true)"
+    echo "prose-check: vale exited $VALE_RC without checking any file: ${VALE_MSG:-$(cat "$VALE_ERR")}" >&2
+    if [[ "$VALE_MSG" == *StylesPath* ]]; then
+      echo "prose-check: run \`vale sync\` to download the packages .vale.ini lists, then rerun" >&2
+    fi
+    exit 2
+  fi
   if [[ -n "$VALE_JSON" && "$VALE_JSON" != "{}" ]]; then
+    VALE_TSV="$(jaq -r 'to_entries[] | .key as $f | .value[] | [$f, .Line, .Span[0], .Severity, .Check, .Message] | @tsv' <<<"$VALE_JSON")"
     while IFS=$'\t' read -r file line col sev rule msg; do
       [[ -z "$file" ]] && continue
       if [[ "$sev" == "error" ]]; then
@@ -164,19 +183,24 @@ if (( RUN_VALE )); then
           printf '[warn] %s:%s:%s:%s: %s\n' "$file" "$line" "$col" "$rule" "$msg" >> "$OUT_FILE"
         fi
       fi
-    done < <(jaq -r 'to_entries[] | .key as $f | .value[] | [$f, .Line, .Span[0], .Severity, .Check, .Message] | @tsv' <<<"$VALE_JSON")
+    done <<<"$VALE_TSV"
   fi
 fi
 
 # --- LanguageTool stage ---
 if (( RUN_LT )); then
   LT_OUT="$(mktemp)"
-  trap 'rm -f "$OUT_FILE" "$LT_OUT"' EXIT
+  trap 'rm -f "$OUT_FILE" "$VALE_ERR" "$LT_OUT"' EXIT
   LT_RC=0
   lt_check "${MD_FILES[@]}" > "$LT_OUT" || LT_RC=$?
   case "$LT_RC" in
     0|1) ;;  # findings (if any) are in LT_OUT
-    2) echo "prose-check: skipping grammar check (see lt_check notice above)" >&2 ;;
+    2)
+      if (( ! RUN_VALE )); then
+        echo "prose-check: LanguageTool is unreachable and --lt-only skips Vale, so nothing was checked" >&2
+        exit 2
+      fi
+      echo "prose-check: skipping grammar check (see lt_check notice above)" >&2 ;;
     *) echo "prose-check: lt_check returned unexpected exit $LT_RC" >&2; exit 2 ;;
   esac
   while IFS= read -r ln; do

@@ -26,10 +26,12 @@ independent release cadence, no governance window.
   to compare against; U4's CI gate and U6's Rust extraction are not pursued under this plan either.
 - **Sync removed.** #236 removes the U1 sync script from this repository. The files it vendored are this repository's
   own and are maintained in place: `BRAND.md`, `styles/brand/` (rule pack and README), `styles/config/` (brand vocab
-  accept and reject lists), `scripts/test-prose-check.mjs`, and `scripts/generate-pack-readme.mjs`. `.vale.ini` and
-  `scripts/prose-check.sh` are authored here; the spec's `.vale.ini` references the `spec` pack.
+  accept and reject lists), and `scripts/generate-pack-readme.mjs`, which runs by hand. `.vale.ini` and
+  `scripts/prose-check.sh` are authored here; the spec's `.vale.ini` references the `spec` pack. #236 also deletes the
+  vendored `scripts/test-prose-check.mjs`: its fixtures are not in this repository and nothing runs it.
 - **Downloaded packs.** `styles/proselint/` and `styles/write-good/` are not committed. `vale sync` downloads them from
-  the `Packages = ...` line in `.vale.ini`, and `.gitignore` excludes them.
+  the `Packages = ...` line in `.vale.ini`, and `.gitignore` excludes them. `scripts/prose-check.sh` exits 2 when they
+  are missing rather than reporting a clean Vale stage.
 - **Orchestrator.** This repository owns `scripts/prose-check.sh`, path exclusions included, so Risk #1's upstream
   parameterization is not needed.
 - **Coverage limit.** Prose-check covers markdown only: every `*.md` outside the planning, fixture, vendored-spec, and

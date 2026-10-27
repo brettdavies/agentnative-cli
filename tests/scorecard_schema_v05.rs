@@ -7,6 +7,7 @@
 //! actually spawn a child, the `badge` block must be derived from the live
 //! tool slug, etc.
 
+use agentnative::scorecard::{BADGE_ELIGIBILITY_FLOOR_PCT, SCHEMA_VERSION};
 use assert_cmd::Command;
 use serde_json::Value;
 
@@ -298,10 +299,9 @@ fn schema_v05_badge_block_reflects_live_tool_slug() {
 
 #[test]
 fn schema_v05_badge_eligibility_flag_matches_score() {
-    // Whatever the live score, `badge.eligible` must agree with
-    // `score_pct >= 80`. A regression that flipped the comparison or
-    // hard-coded `eligible: true` would slip the floor — caught here.
-    let path = fixture_path("perfect-rust");
+    // The fixture scores in the 70s, at or above the floor, so a wrong floor
+    // or a flipped comparison changes `eligible` and fails here.
+    let path = fixture_path("badge-floor/test.sh");
     let output = cmd()
         .args(["audit", &path, "--output", "json"])
         .output()
@@ -315,10 +315,16 @@ fn schema_v05_badge_eligibility_flag_matches_score() {
     let eligible = parsed["badge"]["eligible"]
         .as_bool()
         .expect("eligible is boolean");
+    assert!(
+        pct >= BADGE_ELIGIBILITY_FLOOR_PCT,
+        "the badge-floor fixture must reach the floor ({BADGE_ELIGIBILITY_FLOOR_PCT}) to exercise \
+         the eligibility rule; got pct={pct}",
+    );
     assert_eq!(
         eligible,
-        pct >= 80,
-        "badge.eligible must equal (score_pct >= 80); got pct={pct}, eligible={eligible}",
+        pct >= BADGE_ELIGIBILITY_FLOOR_PCT,
+        "badge.eligible must equal (score_pct >= {BADGE_ELIGIBILITY_FLOOR_PCT}); \
+         got pct={pct}, eligible={eligible}",
     );
 
     // Embed snippet contract: present iff eligible. A non-eligible tool
@@ -359,6 +365,32 @@ fn rt_schema_id_pins_to_published_schema_version() {
     assert!(
         id.contains("scorecard-v0.9"),
         "schema $id must pin to the current SCHEMA_VERSION (0.9), got: {id}",
+    );
+}
+
+#[test]
+fn rt_schema_description_names_the_schema_version() {
+    let schema = schema_doc();
+    let description = schema["description"]
+        .as_str()
+        .expect("root description is a string");
+    let expected = format!("schema version {SCHEMA_VERSION}");
+    assert!(
+        description.contains(&expected),
+        "the schema's root description must say `{expected}`, got: {description}",
+    );
+}
+
+#[test]
+fn rt_schema_badge_description_names_the_eligibility_floor() {
+    let schema = schema_doc();
+    let description = schema["$defs"]["BadgeInfo"]["description"]
+        .as_str()
+        .expect("BadgeInfo description is a string");
+    let expected = format!("`score_pct >= {BADGE_ELIGIBILITY_FLOOR_PCT}`");
+    assert!(
+        description.contains(&expected),
+        "the BadgeInfo description must state the floor as {expected}, got: {description}",
     );
 }
 

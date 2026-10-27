@@ -93,10 +93,11 @@ fixture vs upstream drift.
 
 ## Agent-facing JSON surface
 
-`anc audit <target> --output json` emits a `schema_version: "0.5"` scorecard. The schema is at `0.x` while `anc` is
-pre-launch: shape may evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the
-norm; consumers should feature-detect new keys rather than pinning to an exact value. The current shape includes the
-following scorecard-level fields beyond the base `results` / `summary`:
+`anc audit <target> --output json` emits a scorecard whose `schema_version` names its shape, and `anc emit schema`
+prints the JSON Schema (draft 2020-12) that describes it. The schema is at `0.x` while `anc` is pre-launch: shape may
+evolve before first public release, when it locks at `1.0`. During `0.x`, additive fields are the norm; consumers should
+feature-detect new keys rather than pinning to an exact value. The current shape includes the following scorecard-level
+fields beyond the base `results` / `summary`:
 
 - `audience`: `"agent-optimized"` / `"mixed"` / `"human-primary"` / `null`. Derived from 4 signal behavioral audits
   (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Informational only; never gates totals

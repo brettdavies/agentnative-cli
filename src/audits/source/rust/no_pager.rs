@@ -7,13 +7,29 @@
 //!   Trigger: source references pager crate or spawns less/more
 //!   Requirement: a `--no-pager` flag must exist
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::has_pattern;
+use crate::source::has_any;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Pager-related patterns to detect in source text.
 const PAGER_INDICATORS: &[&str] = &["pager::Pager", "Pager::new", "Pager::with_pager"];
+
+static PAGER_COMMANDS: LazyLock<[Pattern; 2]> = LazyLock::new(|| {
+    [
+        Pattern::new(r#"Command::new("less")"#, Rust),
+        Pattern::new(r#"Command::new("more")"#, Rust),
+    ]
+});
+
+const MISSING_FLAG: &str = "Pager code detected but no --no-pager flag found. \
+                            Pagers block agents; provide --no-pager to disable.";
 
 /// Audit trait implementation for no-pager detection.
 #[derive(Debug)]
@@ -44,41 +60,23 @@ impl Audit for NoPagerAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
-        let mut has_pager = false;
-        let mut has_no_pager_flag = false;
-
-        for (_path, parsed_file) in parsed.iter() {
-            match &audit_no_pager(&parsed_file.source) {
-                // Pass + pager code present means both are true: has pager, has --no-pager flag
-                AuditStatus::Pass if source_has_pager_code(&parsed_file.source) => {
-                    has_pager = true;
-                    has_no_pager_flag = true;
-                }
-                AuditStatus::Warn(_) => {
-                    has_pager = true;
-                }
-                _ => {}
-            }
-        }
-
-        let status = if !has_pager || has_no_pager_flag {
-            AuditStatus::Pass
-        } else {
-            AuditStatus::Warn(
-                "Pager code detected but no --no-pager flag found. \
-                 Pagers block agents; provide --no-pager to disable."
-                    .to_string(),
-            )
-        };
+        let files = pass::findings(project, Language::Rust, Rust, self);
+        let has_pager = files.iter().any(|(_, file)| file.pager_code);
+        let has_no_pager_flag = files
+            .iter()
+            .any(|(_, file)| file.pager_code && file.no_pager_flag);
 
         Ok(AuditResult {
             id: self.id().to_string(),
             label: self.label().into(),
             group: self.group(),
             layer: self.layer(),
-            status,
+            status: verdict(has_pager, has_no_pager_flag),
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
@@ -87,46 +85,50 @@ impl Audit for NoPagerAudit {
     }
 }
 
-/// Audit whether source has pager-related code.
-fn source_has_pager_code(source: &str) -> bool {
-    // String search for pager indicators
-    let has_indicator = PAGER_INDICATORS.iter().any(|p| source.contains(p));
+impl SourceScan<Rust> for NoPagerAudit {
+    type Finding = PagerUse;
 
-    // ast-grep search for Command::new("less") and Command::new("more")
-    let has_less = has_pattern(source, r#"Command::new("less")"#);
-    let has_more = has_pattern(source, r#"Command::new("more")"#);
-
-    // Audit for pager crate usage via `use pager`
-    let has_pager_crate = source.contains("use pager") || source.contains("extern crate pager");
-
-    has_indicator || has_less || has_more || has_pager_crate
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> PagerUse {
+        pager_use(file)
+    }
 }
 
-/// Audit a single source string for pager code and --no-pager flag.
-pub(crate) fn audit_no_pager(source: &str) -> AuditStatus {
-    let has_pager = source_has_pager_code(source);
+/// What one file shows about pagers.
+#[derive(Debug, Clone, Copy)]
+pub struct PagerUse {
+    pager_code: bool,
+    no_pager_flag: bool,
+}
 
-    if !has_pager {
-        return AuditStatus::Pass;
+fn pager_use(file: &SourceFile<'_, Rust>) -> PagerUse {
+    let source = file.source();
+    let pager_code = PAGER_INDICATORS.iter().any(|p| source.contains(p))
+        || source.contains("use pager")
+        || source.contains("extern crate pager")
+        || has_any(&file.root(), &*PAGER_COMMANDS);
+    PagerUse {
+        pager_code,
+        no_pager_flag: source.contains("no-pager") || source.contains("no_pager"),
     }
+}
 
-    // Audit for --no-pager flag
-    let has_flag = source.contains("no-pager") || source.contains("no_pager");
-
-    if has_flag {
+fn verdict(has_pager: bool, has_no_pager_flag: bool) -> AuditStatus {
+    if !has_pager || has_no_pager_flag {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
-            "Pager code detected but no --no-pager flag found. \
-             Pagers block agents; provide --no-pager to disable."
-                .to_string(),
-        )
+        AuditStatus::Warn(MISSING_FLAG.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The verdict a project made of this one file gets.
+    fn audit_no_pager(file: &SourceFile<'_, Rust>) -> AuditStatus {
+        let found = pager_use(file);
+        verdict(found.pager_code, found.pager_code && found.no_pager_flag)
+    }
 
     #[test]
     fn pass_when_no_pager_code() {
@@ -135,7 +137,7 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let status = audit_no_pager(source);
+        let status = audit_no_pager(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -150,7 +152,7 @@ fn setup_pager(no_pager: bool) {
     }
 }
 "#;
-        let status = audit_no_pager(source);
+        let status = audit_no_pager(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -163,7 +165,7 @@ fn setup() {
     Pager::new().setup();
 }
 "#;
-        let status = audit_no_pager(source);
+        let status = audit_no_pager(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("no --no-pager"));
@@ -179,7 +181,7 @@ fn show_output(text: &str) {
     Command::new("less").spawn().expect("spawn less");
 }
 "#;
-        let status = audit_no_pager(source);
+        let status = audit_no_pager(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
     }
 
@@ -192,7 +194,7 @@ fn show_output(text: &str) {
     Command::new("more").spawn().expect("spawn more");
 }
 "#;
-        let status = audit_no_pager(source);
+        let status = audit_no_pager(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
     }
 
@@ -209,7 +211,7 @@ fn show_output(text: &str, no_pager: bool) {
     }
 }
 "#;
-        let status = audit_no_pager(source);
+        let status = audit_no_pager(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

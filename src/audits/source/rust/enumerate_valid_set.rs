@@ -232,6 +232,7 @@ fn main() {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            prepared_findings: Default::default(),
             anc_config: Default::default(),
             inventory: Default::default(),
         };
@@ -253,6 +254,7 @@ fn main() {
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            prepared_findings: Default::default(),
             anc_config: Default::default(),
             inventory: Default::default(),
         };

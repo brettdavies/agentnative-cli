@@ -3,6 +3,7 @@
 // same text, and each such site carries an `expect` naming the scan.
 #![deny(clippy::string_slice)]
 
+pub mod pass;
 pub mod python;
 pub mod rust;
 

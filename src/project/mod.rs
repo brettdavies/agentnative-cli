@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::anc_toml::ResolvedConfig;
+use crate::audits::source::pass::PreparedFindings;
 use crate::runner::{BinaryRunner, HelpOutput};
 
 pub use bins::Candidate;
@@ -94,6 +95,8 @@ pub struct Project {
     pub include_tests: bool,
     pub(crate) parsed_files: OnceLock<HashMap<Language, SourceFiles>>,
     pub(crate) help_output: OnceLock<Option<HelpOutput>>,
+    /// Source-audit findings the shared pass prepared for this run.
+    pub(crate) prepared_findings: PreparedFindings,
     /// The merged `.anc.toml` chain for this target, resolved once per run.
     pub anc_config: ResolvedConfig,
     /// Every package under a directory target; empty for a binary target.
@@ -157,6 +160,7 @@ impl Project {
                 include_tests,
                 parsed_files: OnceLock::new(),
                 help_output: OnceLock::new(),
+                prepared_findings: PreparedFindings::default(),
                 anc_config: ResolvedConfig::default(),
                 inventory: Inventory::default(),
             });
@@ -180,6 +184,7 @@ impl Project {
             include_tests,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            prepared_findings: PreparedFindings::default(),
             anc_config: ResolvedConfig::default(),
             inventory,
         })

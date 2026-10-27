@@ -2,8 +2,9 @@
 // a known char boundary; previews are bounded by character count.
 #![deny(clippy::string_slice)]
 
-use ast_grep_core::Pattern;
+use ast_grep_core::matcher::MatcherExt;
 use ast_grep_core::tree_sitter::LanguageExt;
+use ast_grep_core::{Doc, Matcher, Node, Pattern};
 use ast_grep_language::{Python, Rust};
 
 use crate::project::Language;
@@ -75,6 +76,51 @@ pub fn evidence_preview(text: &str, max_chars: usize) -> String {
     } else {
         preview
     }
+}
+
+/// Whether any of `patterns` matches anywhere under `root`, found in one walk.
+pub fn has_any<D: Doc>(root: &Node<'_, D>, patterns: &[Pattern]) -> bool {
+    let kinds: Vec<_> = patterns.iter().map(Matcher::potential_kinds).collect();
+    root.dfs().any(|node| {
+        patterns.iter().zip(&kinds).any(|(pattern, kinds)| {
+            kinds
+                .as_ref()
+                .is_none_or(|kinds| kinds.contains(node.kind_id().into()))
+                && pattern.match_node(node.clone()).is_some()
+        })
+    })
+}
+
+/// Every match of each of `patterns` under `root`, labeled `file`, from one
+/// walk: one list per pattern in `patterns` order, each in tree order, the
+/// same lists one `find_all` per pattern returns.
+pub fn locations_each<D: Doc>(
+    root: &Node<'_, D>,
+    patterns: &[Pattern],
+    file: &str,
+) -> Vec<Vec<SourceLocation>> {
+    let kinds: Vec<_> = patterns.iter().map(Matcher::potential_kinds).collect();
+    let mut found: Vec<Vec<SourceLocation>> = patterns.iter().map(|_| Vec::new()).collect();
+    for node in root.dfs() {
+        for ((pattern, kinds), out) in patterns.iter().zip(&kinds).zip(found.iter_mut()) {
+            if kinds
+                .as_ref()
+                .is_some_and(|kinds| !kinds.contains(node.kind_id().into()))
+            {
+                continue;
+            }
+            if let Some(m) = pattern.match_node(node.clone()) {
+                let pos = m.start_pos();
+                out.push(SourceLocation {
+                    file: file.to_string(),
+                    line: pos.line() + 1,
+                    column: pos.column(&m) + 1,
+                    text: m.text().to_string(),
+                });
+            }
+        }
+    }
+    found
 }
 
 fn has_pattern_with<L>(source: &str, pattern_str: &str, lang: L) -> bool

@@ -175,6 +175,7 @@ mod tests {
             include_tests: false,
             parsed_files: OnceLock::from(HashMap::from([(Language::Rust, parsed)])),
             help_output: OnceLock::new(),
+            prepared_findings: Default::default(),
             anc_config: Default::default(),
             inventory: Default::default(),
         }

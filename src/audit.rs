@@ -1,3 +1,4 @@
+use crate::audits::source::pass::Scanner;
 use crate::project::Project;
 use crate::types::{AuditGroup, AuditLayer, AuditResult};
 
@@ -47,5 +48,11 @@ pub trait Audit {
     /// The registry validator fails if an ID here is not registered.
     fn covers(&self) -> &'static [&'static str] {
         &[]
+    }
+
+    /// The per-file scan this audit contributes to its language's shared
+    /// source pass; `None` for every audit that does not parse source.
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        None
     }
 }

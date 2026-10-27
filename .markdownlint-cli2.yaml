@@ -86,6 +86,11 @@ ignores:
   # contradict "never hand-edit CHANGELOG.md" and make the generator's
   # --dry-run drift gate fail on its own output.
   - "CHANGELOG.md"
+  # Vendored byte for byte from agentnative-spec by scripts/sync-spec.sh, and it
+  # carries the same one-logical-line-per-bullet shape as the changelog above.
+  # Reformatting it to MD013 would make the vendored copy differ from upstream,
+  # which is the one property the sync exists to preserve.
+  - "src/principles/spec/CHANGELOG.md"
 
 # Fix automatically when --fix is used
 fix: true

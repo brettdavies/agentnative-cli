@@ -10,6 +10,7 @@ use crate::project::{Language, Project};
 use crate::source::has_pattern_in;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
+#[derive(Debug)]
 pub struct EnumerateValidSetPythonAudit;
 
 impl Audit for EnumerateValidSetPythonAudit {
@@ -75,6 +76,7 @@ impl Audit for EnumerateValidSetPythonAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

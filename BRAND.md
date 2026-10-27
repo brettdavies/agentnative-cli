@@ -4,9 +4,8 @@ Source of truth for the voice and identity of the agentnative standard. Shared a
 the skill bundle, and any future channel. Each channel inherits from this document and adds channel-specific register
 and artifacts in its own `PRODUCT.md`.
 
-> **Source of truth: `agentnative-spec/BRAND.md`.** This file is vendored into each channel repo (`agentnative-site`,
-> `agentnative-cli`, `agentnative-skill`) via `scripts/sync-prose-tooling.sh`. Edits in
-> a consumer repo will be overwritten on the next sync. File issues and PRs against this repo.
+> **This repository keeps its own copy.** `agentnative-cli` maintains this brand voice standard for the CLI channel.
+> Propose changes through a pull request against this repository.
 
 ## Brand identity
 
@@ -80,12 +79,12 @@ The shared identity above applies to every channel. Each channel adds register a
 
 Each channel's repo carries its own narrow stack on top of this universal `BRAND.md`. The canonical layout:
 
-| Channel      | `PRODUCT.md` location          | Deep tier-3                                            | Vale rule pack            | How `BRAND.md` arrives          |
-| ------------ | ------------------------------ | ------------------------------------------------------ | ------------------------- | ------------------------------- |
-| Spec         | `agentnative-spec/PRODUCT.md`  | `principles/`, `docs/architecture/`, `docs/decisions/` | `styles/spec/` (dev-only) | (origin — this repo)            |
-| Site         | `agentnative-site/PRODUCT.md`  | `DESIGN.md` (root)                                     | (none yet)                | `scripts/sync-prose-tooling.sh` |
-| CLI (`anc`)  | `agentnative-cli/PRODUCT.md`   | `src/` (Rust source IS the artifact)                   | (planned)                 | `scripts/sync-prose-tooling.sh` |
-| Skill bundle | `agentnative-skill/PRODUCT.md` | `bundle/`                                              | (planned)                 | `scripts/sync-prose-tooling.sh` |
+| Channel      | `PRODUCT.md` location          | Deep tier-3                                            | Vale rule pack            | `BRAND.md` copy                   |
+| ------------ | ------------------------------ | ------------------------------------------------------ | ------------------------- | --------------------------------- |
+| Spec         | `agentnative-spec/PRODUCT.md`  | `principles/`, `docs/architecture/`, `docs/decisions/` | `styles/spec/` (dev-only) | that repository's own arrangement |
+| Site         | `agentnative-site/PRODUCT.md`  | `DESIGN.md` (root)                                     | (none yet)                | that repository's own arrangement |
+| CLI (`anc`)  | `agentnative-cli/PRODUCT.md`   | `src/` (Rust source IS the artifact)                   | (planned)                 | maintained in this repository     |
+| Skill bundle | `agentnative-skill/PRODUCT.md` | `bundle/`                                              | (planned)                 | that repository's own arrangement |
 
 Every channel has earned a `PRODUCT.md` today: each holds channel-specific decisions (visual system, error rubric,
 instructional voice, etc.) that the universal `BRAND.md` cannot carry.
@@ -95,13 +94,10 @@ instructional voice, etc.) that the universal `BRAND.md` cannot carry.
 traversal. Future deep companions (e.g., a hypothetical `GOVERNANCE.md`) follow the same pattern. Only research
 artifacts and historical plans live under `docs/`.
 
-## Sync
+## Maintenance
 
-This document is the source of truth. Each consumer channel (`agentnative-site`, `agentnative-cli`, `agentnative-skill`)
-vendors a copy via its own `scripts/sync-prose-tooling.sh`, decoupled from `scripts/sync-spec.sh` (which vendors
-`principles/p*-*.md`, `VERSION`, and `CHANGELOG.md` into each consumer's `spec/`). The split exists because brand prose
-and the principle contract release on different cadences.
-
-`sync-prose-tooling.sh` tracks this repo's `main` HEAD, not tagged releases. Prose tooling is shared infrastructure
-across channels, not pinned per-version. Edits land here first; consumer repos pick up the change in a follow-on commit
-(batched into a release branch or maintenance PR).
+This repository maintains this document together with the prose tooling that enforces it: the Vale configuration
+(`.vale.ini`), the brand rule pack (`styles/brand/`), the vocabularies (`styles/config/`), the orchestrator
+(`scripts/prose-check.sh`), and the pack README generator (`scripts/generate-pack-readme.mjs`). `scripts/sync-spec.sh`
+vendors only the principle contract (`principles/p*-*.md`, `VERSION`, and `CHANGELOG.md`) into `src/principles/spec/`;
+it does not touch this document or the prose tooling.

@@ -4,6 +4,26 @@ All notable changes to this repository are documented here: governance, validato
 
 Changes to the standard itself (principle MUST/SHOULD/MAY tier moves, requirement IDs added/removed/renamed, applicability shifts) are tracked per-principle in `principles/p*-*.md` via the `last-revised:` calver frontmatter field and the `## Pressure test notes` section appended to each file.
 
+## [0.6.0] - 2026-10-05
+
+### Added
+
+- Add `p3-should-unprefixed-command-list` (SHOULD, applies when the CLI uses subcommands): command-list entries name the command directly rather than repeating the binary name as a prefix. by @brettdavies in [#53](https://github.com/brettdavies/agentnative/pull/53)
+
+### Changed
+
+- Vale rule packs (`styles/brand/`, `styles/spec/`), `.vale.ini`, and `scripts/prose-check.sh` are now dev-only contributor tooling. `BRAND.md` and `PRODUCT.md` are named as the authoritative voice contract in their place; the packs enforce on contributor PRs against `dev` and do not ship to `main`. by @brettdavies in [#45](https://github.com/brettdavies/agentnative/pull/45)
+- `scripts/hooks/pre-push` gracefully skips the prose-check stage with a warning when the stack is absent (normal on `main`), instead of failing.
+- `.github/workflows/guard-main-docs.yml` passes `styles/,.vale.ini,scripts/prose-check.sh` as `extra_paths` to the reusable `brettdavies/.github` guard-main-docs workflow (`@main`, after `brettdavies/.github` PR #31 released the input). The prose-check stack is now blocked from `main` PRs by the global guard rather than a local inline job.
+- `RELEASES.md` documents the dev-direct commit exception covering engineering docs (`docs/architecture/`, `docs/plans/`, etc.) and the prose-check stack.
+- `scripts/generate-changelog.py` (consolidated Python) replaces `scripts/generate-changelog.sh`. Same flags (`[--tag vX.Y.Z]`, `--check`, `--dry-run`), same git-cliff + PR-body pipeline, plus duplicate-section guard. by @brettdavies in [#48](https://github.com/brettdavies/agentnative/pull/48)
+
+### Documentation
+
+- Release docs and `cliff.toml` / `publish.yml` comments name `generate-changelog.py` as the entry point. by @brettdavies in [#48](https://github.com/brettdavies/agentnative/pull/48)
+
+**Full Changelog**: [v0.5.0...v0.6.0](https://github.com/brettdavies/agentnative/compare/v0.5.0...v0.6.0)
+
 ## [0.5.0] - 2026-05-30
 
 ### Added

@@ -12,6 +12,7 @@ use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
 /// Audit trait implementation for bare-except detection.
+#[derive(Debug)]
 pub struct BareExceptAudit;
 
 impl Audit for BareExceptAudit {
@@ -61,6 +62,7 @@ impl Audit for BareExceptAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

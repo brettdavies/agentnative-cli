@@ -1,0 +1,54 @@
+Usage: terraform [global options] test [options]
+
+  Executes automated integration tests against the current Terraform
+  configuration.
+
+  Terraform will search for .tftest.hcl files within the current configuration
+  and testing directories. Terraform will then execute the testing run blocks
+  within any testing files in order, and verify conditional checks and
+  assertions against the created infrastructure.
+
+  This command creates real infrastructure and will attempt to clean up the
+  testing infrastructure on completion. Monitor the output carefully to ensure
+  this cleanup process is successful.
+
+Options:
+
+  -cloud-run=source     If specified, Terraform will execute this test run 
+                        remotely using HCP Terraform or Terraform Enterprise. 
+						You must specify the source of a module registered in 
+						a private module registry as the argument to this flag. 
+						This allows Terraform to associate the cloud run with 
+						the correct HCP Terraform or Terraform Enterprise module 
+						and organization.
+
+  -filter=testfile      If specified, Terraform will only execute the test files
+                        specified by this flag. You can use this option multiple
+                        times to execute more than one test file.
+
+  -json                 If specified, machine readable output will be printed in
+                        JSON format
+
+  -junit-xml=path       Saves a test report in JUnit XML format to the specified
+                        file. This is currently incompatible with remote test
+                        execution using the -cloud-run option. The file path
+                        must be relative or absolute.
+
+  -no-color             If specified, output won't contain any color.
+
+  -parallelism=n        Limit the number of concurrent operations within the 
+  						plan/apply operation of a test run. Defaults to 10.
+
+  -test-directory=path	Set the Terraform test directory, defaults to "tests".
+
+  -var 'foo=bar'        Set a value for one of the input variables in the root
+                        module of the configuration. Use this option more than
+                        once to set more than one variable.
+
+  -var-file=filename    Load variable values from the given file, in addition
+                        to the default files terraform.tfvars and *.auto.tfvars.
+                        Use this option more than once to include more than one
+                        variables file.
+
+  -verbose              Print the plan or state for each test run block as it
+                        executes.

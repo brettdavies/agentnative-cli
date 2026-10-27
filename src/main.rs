@@ -1,23 +1,3 @@
-mod anc_toml;
-mod argv;
-mod audit;
-mod audits;
-mod build_info;
-mod cli;
-mod color;
-mod error;
-mod json_error;
-mod output;
-mod principles;
-mod project;
-mod runner;
-mod scorecard;
-mod skill_install;
-mod source;
-mod types;
-#[allow(dead_code)]
-mod web_audit;
-
 use std::time::{Duration, Instant};
 
 use clap::Parser as _;
@@ -25,24 +5,27 @@ use clap_complete::generate;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use argv::{format_invocation, inject_default_subcommand};
-use audit::Audit;
-use audits::behavioral::all_behavioral_audits;
-use audits::project::all_project_audits;
-use audits::source::all_source_audits;
-use build_info::ANC_VERSION;
-use cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
-use error::AppError;
-use principles::matrix;
-use principles::registry::{ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses};
-use project::Project;
-use project::select::{self, Choice, Unselected};
-use runner::{BinaryRunner, RunStatus};
-use scorecard::{
+use agentnative::argv::{format_invocation, inject_default_subcommand};
+use agentnative::audit::Audit;
+use agentnative::audits::behavioral::all_behavioral_audits;
+use agentnative::audits::project::all_project_audits;
+use agentnative::audits::source::all_source_audits;
+use agentnative::build_info::ANC_VERSION;
+use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
+use agentnative::error::AppError;
+use agentnative::principles::matrix;
+use agentnative::principles::registry::{
+    ExceptionCategory, SUPPRESSION_EVIDENCE_PREFIX, suppresses,
+};
+use agentnative::project::Project;
+use agentnative::project::select::{self, Choice, Unselected};
+use agentnative::runner::{BinaryRunner, RunStatus};
+use agentnative::scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
-use types::{AuditGroup, AuditResult, AuditStatus, Confidence};
+use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
+use agentnative::{anc_toml, argv, audits, color, json_error, output, skill_install};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
 
@@ -267,9 +250,15 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         if has_binary {
             all_audits.extend(all_behavioral_audits());
         } else if !project.inventory.unbuilt.is_empty() {
+            let target_dirs: Vec<String> = project
+                .inventory
+                .target_dirs
+                .iter()
+                .map(|dir| select::relative_path(&project.path, dir))
+                .collect();
             eprintln!(
                 "warning: {}",
-                unbuilt_warning(&project.inventory.unbuilt, binary_only)
+                unbuilt_warning(&project.inventory.unbuilt, &target_dirs, binary_only)
             );
         } else if binary_only {
             eprintln!("warning: --binary specified but no binary found");
@@ -321,6 +310,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 confidence: Confidence::High,
                 mitigation: None,
                 config_hint: None,
+                pass_evidence: None,
             });
             continue;
         }
@@ -335,6 +325,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 confidence: Confidence::High,
                 mitigation: None,
                 config_hint: None,
+                pass_evidence: None,
             },
         };
         results.push(result);
@@ -427,7 +418,7 @@ Examples:
   anc audit .                                  # default: project at cwd
   anc audit . --output json                    # JSON envelope (agent-friendly)
   anc audit . --output json --principle 2      # filter to P2 (Structured Output)
-  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit --command rg                       # PATH-resolved binary
   anc audit ./target/release/anc --binary      # behavioral audits only
   anc emit coverage-matrix                     # emit the spec coverage matrix
   anc emit schema                              # print the scorecard JSON Schema
@@ -835,15 +826,22 @@ fn audit_usage() -> String {
         .unwrap_or_default()
 }
 
-/// The no-binary warning when packages declare bins that are not built.
-fn unbuilt_warning(names: &[String], binary_only: bool) -> String {
+/// The no-binary warning when packages declare bins that are not built,
+/// naming the cargo target directories searched for the Rust ones.
+fn unbuilt_warning(names: &[String], target_dirs: &[String], binary_only: bool) -> String {
     let outcome = if binary_only {
         "nothing to audit with --binary"
     } else {
         "running source and project audits only"
     };
+    let quoted: Vec<String> = target_dirs.iter().map(|dir| format!("`{dir}`")).collect();
+    let searched = match quoted.as_slice() {
+        [] => String::new(),
+        [one] => format!(" (searched cargo's target directory {one})"),
+        many => format!(" (searched cargo's target directories {})", many.join(", ")),
+    };
     format!(
-        "no binary here is built: the packages declare {}. To grade one, build it, audit a built binary by path (`anc audit <path>`), or audit an installed one (`anc audit --command <name>`); {outcome}",
+        "no binary here is built: the packages declare {}{searched}. To grade one, build it, audit a built binary by path (`anc audit <path>`), or audit an installed one (`anc audit --command <name>`); {outcome}",
         names.join(", ")
     )
 }
@@ -855,12 +853,10 @@ fn unbuilt_warning(names: &[String], binary_only: bool) -> String {
 fn resolve_command_on_path(name: &str) -> Result<std::path::PathBuf, AppError> {
     let locator = if cfg!(windows) { "where" } else { "which" };
 
-    let output = std::process::Command::new(locator)
-        .arg(name)
-        .output()
-        .map_err(|e| {
-            AppError::ProjectDetection(anyhow::anyhow!("failed to invoke `{locator}`: {e}"))
-        })?;
+    let mut cmd = std::process::Command::new(locator);
+    let output = cmd.arg(name).output().map_err(|e| {
+        AppError::ProjectDetection(anyhow::anyhow!("failed to invoke `{locator}`: {e}"))
+    })?;
 
     if !output.status.success() {
         return Err(AppError::ProjectDetection(anyhow::anyhow!(

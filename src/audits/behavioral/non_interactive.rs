@@ -1,12 +1,13 @@
 use crate::audit::Audit;
+use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::project::Project;
-use crate::runner::RunStatus;
+use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-/// Agentic flag markers in `--help` output that signal the tool exposes a
-/// headless path. Matching any one satisfies P1's "no blocking-interactive
-/// surface" requirement even if bare invocation doesn't itself exit cleanly.
-const AGENTIC_FLAG_MARKERS: &[&str] = &[
+/// Flags that signal the tool exposes a headless path. A `--help` that
+/// declares any one satisfies P1's "no blocking-interactive surface"
+/// requirement even if bare invocation doesn't itself exit cleanly.
+const AGENTIC_FLAGS: &[&str] = &[
     "--no-interactive",
     "--non-interactive",
     "--batch",
@@ -15,12 +16,20 @@ const AGENTIC_FLAG_MARKERS: &[&str] = &[
     "--no-input",
     "--no-browser",
     "--device-code",
-    "-y,",
-    "-y ",
-    " -p,",
-    " -p ",
+    "-y",
+    "-p",
     "--print",
 ];
+
+/// What `-y` and `-p` must mean to count as a non-interactive flag. `-p` is
+/// also `--profile` (codex), `--pretty` (rg) and `--full-path` (fd); `-y` is
+/// `--ctime` in dust. The words are the accepted long names' own, plus
+/// "Assume yes" and "skip confirmation prompts".
+pub(super) const NON_INTERACTIVE: Meaning = Meaning {
+    what: "non-interactive",
+    long_names: &[],
+    words: &["yes", "confirmation", "non-interactive", "headless"],
+};
 
 /// Help-output markers on the bare invocation. `arg_required_else_help`
 /// in clap prints a "Usage:" block and exits non-zero — this is the
@@ -55,50 +64,11 @@ impl Audit for NonInteractiveAudit {
     }
 
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let runner = project.runner_ref();
-
-        // P1 Option-ε gate: the audit passes when ANY of three conditions
-        // evidences agent-safe behavior:
-        //   1. help-on-bare-invocation — binary prints Usage and exits
-        //      (clap `arg_required_else_help`). This is what `anc` itself
-        //      does; without this clause the linter warns itself.
-        //   2. agentic-flag-present — `--help` advertises `--no-interactive`
-        //      (or equivalent). The tool honors non-interactive callers
-        //      even if bare invocation does something else.
-        //   3. stdin-as-primary-input — binary exits cleanly when stdin is
-        //      /dev/null. POSIX utilities (jq, sed) satisfy P1 vacuously.
-        //
         // BinaryRunner already pipes /dev/null as stdin, so the probe is
         // safe even when the target is agentnative itself.
-        let bare = runner.run(&[], &[]);
+        let bare = project.runner_ref().run(&[], &[]);
         let bare_output = format!("{}{}", bare.stdout, bare.stderr);
-        let help_on_bare = matches_any(&bare_output, HELP_ON_BARE_MARKERS);
-
-        let help = runner.run(&["--help"], &[]);
-        let help_output = format!("{}{}", help.stdout, help.stderr);
-        let agentic_flag = matches_any(&help_output, AGENTIC_FLAG_MARKERS);
-
-        let stdin_clean_exit = matches!(bare.status, RunStatus::Ok);
-
-        let status = match bare.status {
-            RunStatus::Timeout if !agentic_flag => {
-                AuditStatus::Warn("binary may be waiting for interactive input".into())
-            }
-            RunStatus::Crash { signal } if !agentic_flag => AuditStatus::Warn(format!(
-                "binary crashed on bare invocation (signal {signal})"
-            )),
-            _ => {
-                if help_on_bare || agentic_flag || stdin_clean_exit {
-                    AuditStatus::Pass
-                } else {
-                    // Bare exited without a status that clearly evidences
-                    // agent-safety. Surface as Warn so the operator sees it.
-                    AuditStatus::Warn(
-                        "no help-on-bare, agentic flag, or clean-exit signal detected".into(),
-                    )
-                }
-            }
-        };
+        let status = audit_non_interactive(&bare.status, &bare_output, project.help_output());
 
         Ok(AuditResult {
             id: self.id().to_string(),
@@ -109,12 +79,63 @@ impl Audit for NonInteractiveAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }
 
-fn matches_any(haystack: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|n| haystack.contains(n))
+/// Core unit. P1 Option-ε gate: the audit passes when ANY of three
+/// conditions evidences agent-safe behavior:
+///   1. help-on-bare-invocation — binary prints Usage and exits (clap
+///      `arg_required_else_help`). This is what `anc` itself does; without
+///      this clause the linter warns itself.
+///   2. agentic-flag-present — `--help` declares `--no-interactive` (or
+///      another of [`AGENTIC_FLAGS`]). The tool honors non-interactive
+///      callers even if bare invocation does something else.
+///   3. stdin-as-primary-input — binary exits cleanly when stdin is
+///      /dev/null. POSIX utilities (jq, sed) satisfy P1 vacuously.
+pub(crate) fn audit_non_interactive(
+    bare: &RunStatus,
+    bare_output: &str,
+    help: Option<&HelpOutput>,
+) -> AuditStatus {
+    if help.is_some_and(|help| flag_meaning::find(help, AGENTIC_FLAGS, &NON_INTERACTIVE).is_some())
+    {
+        return AuditStatus::Pass;
+    }
+    let cause = match bare {
+        RunStatus::Ok => return AuditStatus::Pass,
+        RunStatus::Timeout => {
+            "bare invocation timed out, so the binary may be waiting for interactive input".into()
+        }
+        RunStatus::Crash { signal } => {
+            format!("binary crashed on bare invocation (signal {signal})")
+        }
+        _ if prints_usage(bare_output) => return AuditStatus::Pass,
+        _ => "bare invocation gave no help-on-bare or clean-exit signal".to_string(),
+    };
+    let message = format!("{cause}, and {}", no_flag_declared(AGENTIC_FLAGS));
+    AuditStatus::Warn(match help {
+        Some(help) => flag_meaning::noting(help, AGENTIC_FLAGS, &NON_INTERACTIVE, &message),
+        None => message,
+    })
+}
+
+/// Whether a bare invocation's output is the tool's usage.
+pub(super) fn prints_usage(bare_output: &str) -> bool {
+    HELP_ON_BARE_MARKERS
+        .iter()
+        .any(|marker| bare_output.contains(marker))
+}
+
+/// What a deny says when no definition declares any of `flags`, the
+/// non-interactive flags an audit accepts.
+pub(super) fn no_flag_declared(flags: &[&str]) -> String {
+    format!(
+        "no option definition in --help declares a non-interactive flag (one of: {}); a flag \
+         named only in a usage line does not count.",
+        flags.join(", ")
+    )
 }
 
 #[cfg(test)]
@@ -164,28 +185,168 @@ exit 2
     }
 
     #[test]
-    fn non_interactive_passes_when_help_advertises_agentic_flag() {
-        // Simulates a tool where bare invocation does something non-obvious
-        // but `--help` advertises `--no-interactive` — that's the contract.
+    fn non_interactive_passes_when_help_declares_an_agentic_flag() {
+        // Bare invocation crashes, and `--help` declares `--no-interactive`.
         let script = r#"
 if [ "$1" = "--help" ]; then
-    echo "Usage: foo [--no-interactive]"
+    echo "Options:"
+    echo "      --no-interactive    Never prompt"
     exit 0
 fi
-echo "running default action"
+kill -11 $$
 "#;
         let project = test_project_with_sh_script(script);
         let result = NonInteractiveAudit.run(&project).expect("audit should run");
         assert_eq!(result.status, AuditStatus::Pass);
     }
 
+    /// The verdict for a bare invocation that timed out, given `help`.
+    fn blocked(help: &str) -> AuditStatus {
+        audit_non_interactive(&RunStatus::Timeout, "", Some(&HelpOutput::from_raw(help)))
+    }
+
+    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --headless, --yes, --no-input, --no-browser, --device-code, -y, -p, --print); a flag named only in a usage line does not count.";
+
     #[test]
-    fn matches_any_finds_marker() {
-        assert!(matches_any("Usage: foo [OPTIONS]", HELP_ON_BARE_MARKERS));
-        assert!(matches_any(
-            "  --no-interactive   skip prompts",
-            AGENTIC_FLAG_MARKERS
-        ));
-        assert!(!matches_any("just some text", AGENTIC_FLAG_MARKERS));
+    fn a_declared_agentic_flag_passes_a_bare_call_that_blocks() {
+        for help in [
+            "Options:\n  -p, --print       Print the response and exit.\n  -h, --help        Show help.\n",
+            "Options:\n  -y, --yes         Assume yes.\n  -h, --help        Show help.\n",
+            "Options:\n      --no-input    Never prompt.\n  -h, --help        Show help.\n",
+            "Options:\n  -y                Assume yes.\n  -h, --help        Show help.\n",
+        ] {
+            assert_eq!(blocked(help), AuditStatus::Pass, "{help}");
+        }
+    }
+
+    /// Help that names an agentic flag without declaring it.
+    const NOT_DECLARED: &[(&str, &str)] = &[
+        (
+            "opencode 1.18.34: a longer flag that starts with the name",
+            "Options:\n  -h, --help          show help                                                            [boolean]\n      --print-logs    print logs to stderr                                                 [boolean]\n",
+        ),
+        (
+            "longer flags that start with --batch and --yes",
+            "Options:\n      --batch-size <N>           Rows per request.\n      --yes-i-really-mean-it     Skip the safety check.\n  -h, --help                     Show help.\n",
+        ),
+        (
+            "a usage line",
+            "Usage: foo [--no-interactive] <file>\n\nOptions:\n  -h, --help    Show help.\n",
+        ),
+        (
+            "an example",
+            "Options:\n  -h, --help    Show help.\n\nExamples:\n  foo -p \"summarize this\"\n",
+        ),
+        (
+            "a sentence",
+            "Pass -y to skip the confirmation.\n\nOptions:\n  -h, --help    Show help.\n",
+        ),
+    ];
+
+    #[test]
+    fn an_agentic_flag_named_but_not_declared_does_not_pass() {
+        let passed: Vec<&str> = NOT_DECLARED
+            .iter()
+            .filter(|(_, help)| blocked(help) == AuditStatus::Pass)
+            .map(|(what, _)| *what)
+            .collect();
+        assert!(passed.is_empty(), "{passed:?}");
+    }
+
+    #[test]
+    fn an_agentic_letter_that_means_something_else_warns_and_says_why() {
+        // rg 15.1's `-p` and dust 1.2's `-y`.
+        for (help, letter, definition) in [
+            (
+                "OPTIONS:\n    -p, --pretty\n        Alias for colors, headings and line numbers.\n",
+                "-p",
+                "-p, --pretty  Alias for colors, headings and line numbers.",
+            ),
+            (
+                "Options:\n  -y, --ctime <CTIME>  Just like -mtime, but based on file change time\n",
+                "-y",
+                "-y, --ctime <CTIME>  Just like -mtime, but based on file change time",
+            ),
+        ] {
+            match blocked(help) {
+                AuditStatus::Warn(msg) => assert!(
+                    msg.ends_with(&format!(
+                        "`{letter}` is declared, but its definition (`{definition}`) does not \
+                         mean non-interactive."
+                    )),
+                    "{msg}"
+                ),
+                other => panic!("expected Warn, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_lone_agentic_letter_with_no_description_does_not_pass() {
+        match blocked("Options:\n  -p\n  -h, --help        Show help.\n") {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with(
+                    "`-p` is declared, but its definition (`-p`) does not mean non-interactive."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_single_dash_word_passes_in_a_help_without_double_dash_names() {
+        let help = "Usage of tool:\n  -batch\n    \tRun without prompting\n  -version\n    \tShow version\n";
+        assert_eq!(blocked(help), AuditStatus::Pass);
+    }
+
+    #[test]
+    fn a_single_dash_print_beside_double_dash_names_warns_and_says_why() {
+        // GNU findutils 4.10.0 declares `--help` and `--version`, and names
+        // its actions with one dash.
+        let help = "Options:\n      --help       display this help and exit\n      --version    output version information and exit\n  -print           print the full file name\n";
+        match blocked(help) {
+            AuditStatus::Warn(msg) => assert!(
+                msg.ends_with("`-print` is declared, but this help also declares double-dash names, so it does not count as `--print`."),
+                "{msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn each_warn_says_what_the_bare_call_did_and_what_was_searched() {
+        let help = HelpOutput::from_raw("Options:\n  -h, --help    Show help.\n");
+        let warn = |bare: RunStatus| match audit_non_interactive(&bare, "", Some(&help)) {
+            AuditStatus::Warn(msg) => msg,
+            other => panic!("expected Warn, got {other:?}"),
+        };
+        assert_eq!(
+            warn(RunStatus::Timeout),
+            format!(
+                "bare invocation timed out, so the binary may be waiting for interactive input, and {SEARCHED}"
+            )
+        );
+        assert_eq!(
+            warn(RunStatus::Crash { signal: 11 }),
+            format!("binary crashed on bare invocation (signal 11), and {SEARCHED}")
+        );
+        assert_eq!(
+            warn(RunStatus::Error("spawn failed".into())),
+            format!("bare invocation gave no help-on-bare or clean-exit signal, and {SEARCHED}")
+        );
+    }
+
+    #[test]
+    fn a_bare_call_that_exits_or_prints_usage_passes_without_a_flag() {
+        let help = HelpOutput::from_raw("Options:\n  -h, --help    Show help.\n");
+        assert_eq!(
+            audit_non_interactive(&RunStatus::Ok, "", Some(&help)),
+            AuditStatus::Pass
+        );
+        assert_eq!(
+            audit_non_interactive(&RunStatus::Ok, "", None),
+            AuditStatus::Pass
+        );
     }
 }

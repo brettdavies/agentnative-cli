@@ -21,7 +21,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
 
     $completions = @(switch ($command) {
         'anc' {
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -47,7 +47,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             [CompletionResult]::new('--principle', '--principle', [CompletionResultType]::ParameterName, 'Filter audits by principle number (1-8)')
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format')
             [CompletionResult]::new('--audit-profile', '--audit-profile', [CompletionResultType]::ParameterName, 'Exemption category for the target. Suppresses audits that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed audits emit `Skip` with structured evidence so readers see what was excluded')
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('--binary', '--binary', [CompletionResultType]::ParameterName, 'Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin')
             [CompletionResult]::new('--source', '--source', [CompletionResultType]::ParameterName, 'Run only source audits (skip behavioral)')
             [CompletionResult]::new('--include-tests', '--include-tests', [CompletionResultType]::ParameterName, 'Include test code in source analysis')
@@ -63,7 +63,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             break
         }
         'anc;completions' {
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -76,7 +76,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             break
         }
         'anc;emit' {
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -94,7 +94,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         'anc;emit;coverage-matrix' {
             [CompletionResult]::new('--out', '--out', [CompletionResultType]::ParameterName, 'Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`')
             [CompletionResult]::new('--json-out', '--json-out', [CompletionResultType]::ParameterName, 'Path for the JSON artifact. Defaults to `coverage/matrix.json`')
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('--check', '--check', [CompletionResultType]::ParameterName, 'Exit non-zero when committed artifacts differ from rendered output. CI drift guard')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -108,7 +108,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             break
         }
         'anc;emit;schema' {
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -136,7 +136,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
             break
         }
         'anc;skill' {
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
             [CompletionResult]::new('-v', '-v', [CompletionResultType]::ParameterName, 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -153,7 +153,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         }
         'anc;skill;install' {
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format for the result envelope')
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('--all', '--all', [CompletionResultType]::ParameterName, 'Install into every known host in one invocation')
             [CompletionResult]::new('--dry-run', '--dry-run', [CompletionResultType]::ParameterName, 'Print the resolved git command without spawning. Captures cleanly via `eval $(anc skill install --dry-run <host>)`')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')
@@ -169,7 +169,7 @@ Register-ArgumentCompleter -Native -CommandName 'anc' -ScriptBlock {
         }
         'anc;skill;update' {
             [CompletionResult]::new('--output', '--output', [CompletionResultType]::ParameterName, 'Output format for the result envelope')
-            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)')
+            [CompletionResult]::new('--color', '--color', [CompletionResultType]::ParameterName, 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)')
             [CompletionResult]::new('--all', '--all', [CompletionResultType]::ParameterName, 'Refresh every known host in one invocation')
             [CompletionResult]::new('--dry-run', '--dry-run', [CompletionResultType]::ParameterName, 'Print the resolved commands without spawning')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty')

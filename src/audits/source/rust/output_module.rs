@@ -16,6 +16,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 // Rust source audit — lives in source/rust because the content patterns
 // (fn format_, impl Display, std::fmt::Write) are Rust-specific.
 
+#[derive(Debug)]
 pub struct OutputModuleAudit;
 
 impl Audit for OutputModuleAudit {
@@ -61,6 +62,7 @@ impl Audit for OutputModuleAudit {
                     confidence: Confidence::High,
                     mitigation: None,
                     config_hint: None,
+                    pass_evidence: None,
                 });
             }
         }
@@ -78,6 +80,7 @@ impl Audit for OutputModuleAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

@@ -35,12 +35,14 @@ fn unguarded_spawns(source: &str) -> Vec<usize> {
 #[test]
 fn every_audit_spawning_helper_sets_the_home_config() {
     let tests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
-    let this_file = Path::new(file!()).file_name().expect("guard file name");
     let mut unguarded: Vec<String> = Vec::new();
     for entry in fs::read_dir(&tests_dir).expect("read tests/") {
         let path = entry.expect("tests/ entry").path();
         let name = path.file_name().expect("file name");
-        if name == this_file || path.extension().is_none_or(|ext| ext != "rs") {
+        // A guard holds the spawn forms it scans for, and sample sources, as data.
+        if name.to_string_lossy().ends_with("_guard.rs")
+            || path.extension().is_none_or(|ext| ext != "rs")
+        {
             continue;
         }
         let source = fs::read_to_string(&path).expect("read test source");

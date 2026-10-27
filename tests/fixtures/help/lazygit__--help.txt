@@ -1,0 +1,27 @@
+
+lazygit
+
+  Usage:
+    lazygit [git-arg]
+
+  Positional Variables:
+    git-arg   Panel to focus upon opening lazygit. Accepted values (based on git terminology): status, branch, log, stash. Ignored if --filter arg is passed.
+
+  Subcommands:
+    completion   Generate shell completion script for bash or zsh.
+
+  Flags:
+    -h    --help               Displays help with available flag, subcommand, and positional value parameters.
+    -p    --path               Path of git repo. (equivalent to --work-tree=<path> --git-dir=<path>/.git/)
+    -f    --filter             Path to filter on in `git log -- <path>`. When in filter mode, the commits, reflog, and stash are filtered based on the given path, and some operations are restricted
+    -v    --version            Print the current version
+    -d    --debug              Run in debug mode with logging (see --logs flag below). Use the LOG_LEVEL env var to set the log level (debug/info/warn/error)
+    -l    --logs               Tail lazygit logs (intended to be used when `lazygit --debug` is called in a separate terminal tab)
+          --profile            Start the profiler and serve it on http port 6060. See CONTRIBUTING.md for more info.
+    -c    --config             Print the default config
+    -cd   --print-config-dir   Print the config directory
+    -ucd  --use-config-dir     override default config directory with provided directory
+    -w    --work-tree          equivalent of the --work-tree git argument
+    -g    --git-dir            equivalent of the --git-dir git argument
+    -ucf  --use-config-file    Comma separated list to custom config file(s)
+    -sm   --screen-mode        The initial screen-mode, which determines the size of the focused panel. Valid options: 'normal' (default), 'half', 'full'

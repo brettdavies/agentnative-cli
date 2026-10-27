@@ -14,6 +14,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 const PATTERNS: &[&str] = &["$RECV.parse().unwrap()"];
 
 /// Audit trait implementation for parse-unwrap detection.
+#[derive(Debug)]
 pub struct TryParseAudit;
 
 impl Audit for TryParseAudit {
@@ -67,6 +68,7 @@ impl Audit for TryParseAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

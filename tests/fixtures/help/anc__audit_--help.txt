@@ -1,0 +1,94 @@
+Audit a CLI project or binary for agent-readiness
+
+Reads the target's manifests and workspace declarations (Cargo, npm, yarn, pnpm, Go, uv), the languages present, and the built binary to grade. Stdin is not consumed. Pass the target as a positional argument or via `--command <name>` to resolve from PATH. `-` is reserved and behaves like any other path argument (no special stdin meaning).
+
+Usage: anc audit [OPTIONS] [PATH]
+
+Arguments:
+  [PATH]
+          Path to project directory or binary
+          
+          [default: .]
+
+Options:
+      --command <NAME>
+          Resolve a command from PATH and run behavioral audits against it
+
+      --binary
+          Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin
+
+      --bin <NAME>
+          Grade this binary when the directory builds several: a bin name, or the path anc prints for it. Unrelated to --binary, which runs only behavioral audits
+          
+          [env: AGENTNATIVE_BIN=]
+
+      --repo <PATH>
+          Read `.anc.toml` from this directory instead of the target's repository. For a repo you fetched for a tool installed elsewhere: anc reads `<PATH>/.anc.toml` over `~/.anc.toml` and never fetches
+          
+          [env: AGENTNATIVE_REPO=]
+
+  -q, --quiet
+          Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty
+          
+          [env: AGENTNATIVE_QUIET=]
+
+      --source
+          Run only source audits (skip behavioral)
+
+      --principle <PRINCIPLE>
+          Filter audits by principle number (1-8)
+
+  -v, --verbose
+          Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty
+          
+          [env: AGENTNATIVE_VERBOSE=]
+
+      --examples
+          Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body
+
+      --output <OUTPUT>
+          Output format
+          
+          [default: text]
+          [possible values: text, json]
+
+      --include-tests
+          Include test code in source analysis
+
+      --json
+          Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum
+
+      --audit-profile <CATEGORY>
+          Exemption category for the target. Suppresses audits that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed audits emit `Skip` with structured evidence so readers see what was excluded
+
+          Possible values:
+          - human-tui:       TUI-by-design tools (lazygit, k9s, btop). Suppresses interactive-prompt MUSTs and SIGPIPE — their contract is the TTY
+          - file-traversal:  File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those audits land
+          - posix-utility:   POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs satisfied vacuously via stdin-primary input
+          - diagnostic-only: Diagnostic tools (nvidia-smi, vmstat). No write operations, so the P5 mutation-boundary MUSTs do not apply
+
+      --color <WHEN>
+          Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)
+          
+          [env: AGENTNATIVE_COLOR=]
+          [default: auto]
+          [possible values: auto, always, never]
+
+      --raw
+          Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+Examples:
+  anc audit .                                  # default: project at cwd
+  anc audit . --output json                    # JSON envelope for agents
+  anc audit . --output json --principle 2      # filter to P2 (Structured Output)
+  anc audit --command ripgrep                  # PATH-resolved binary
+  anc audit ./target/release/anc --binary      # behavioral audits only
+  anc audit --command xr --repo ./xr-src       # .anc.toml from a repo you fetched
+  anc audit . --bin xr                         # one of several built binaries
+
+Defaults: path = `.`, output = text, no principle filter.
+
+Config: anc applies every `.anc.toml` from the target's repository root down to the target, over `~/.anc.toml`. A binary is located by its real file, symlinks resolved. AGENTNATIVE_HOME_CONFIG relocates `~/.anc.toml`. Where anc looks, merging, and the hint: https://github.com/brettdavies/agentnative-cli#configuration-anctoml

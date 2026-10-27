@@ -1,5 +1,6 @@
 //! JSON envelope renderer for clap-level errors, help, and version output
-//! when the user requests JSON mode at the top level.
+//! when the user requests JSON mode at the top level, and for the errors
+//! every verb raises at run time. Every verb shares one [`NextStep`] shape.
 //!
 //! Clap intercepts `--help`, `--version`, and parse failures before our
 //! orchestration sees them, so the only way to honor `--output json` for

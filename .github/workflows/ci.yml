@@ -22,6 +22,26 @@ permissions:
   contents: read
   pull-requests: read
 
+# Crate downloads on hosted runners, Linux and Windows alike, fail with curl
+# error 16 ("Error in the HTTP2 framing layer"), which cargo does not retry;
+# HTTP/1.1 avoids it. The reusable workflow sets the same for its own jobs.
+env:
+  CARGO_HTTP_MULTIPLEXING: "false"
+
 jobs:
   ci:
     uses: brettdavies/.github/.github/workflows/rust-ci.yml@main
+    with:
+      # An advisory turns this run red rather than leaving it green with one
+      # failed job. The rulesets already block the merge; this is so the run's
+      # colour matches what a human scanning the Actions tab should act on.
+      advisories_blocking: true
+      # completions/ ships with the crate and is generated from the clap
+      # definition; the job fails when a help string changes without a
+      # regeneration.
+      completions: true
+      # Cargo.toml declares rust-version; this compiles every feature on it.
+      msrv: true
+      # docs.rs builds the published docs with every feature; this fails a
+      # broken intra-doc link at the PR instead of after publish.
+      docs: true

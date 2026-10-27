@@ -26,6 +26,22 @@ cargo binstall agentnative
 # https://github.com/brettdavies/agentnative-cli/releases
 ```
 
+The Homebrew formula installs the pre-built archive the release publishes for your platform, checked against the
+checksum the formula pins, and compiles nothing. The tap pins a checksum only after it has verified the archive against
+the release's build-provenance attestation;
+[Verifying an archive](https://github.com/brettdavies/homebrew-tap#verifying-an-archive) in the tap's README has the
+command that repeats the check.
+
+Each release archive carries a build-provenance attestation and an attested SBOM, signed by the release workflow. To
+check that an archive you downloaded was built by it, from this repository:
+
+```bash
+gh attestation verify agentnative-x86_64-unknown-linux-gnu.tar.gz --repo brettdavies/agentnative-cli \
+  --signer-workflow brettdavies/.github/.github/workflows/rust-release.yml
+```
+
+Releases up to 0.6.0 carry no attestation; compare those against the release's `sha256sum.txt`.
+
 ## Install the skill
 
 `anc` ships a companion skill bundle (`agentnative-skill`) that teaches AI coding agents how to operate the linter and
@@ -72,7 +88,7 @@ anc .
 anc ./target/release/mycli
 
 # Resolve a command on PATH and run behavioral audits against it
-anc --command ripgrep
+anc --command rg
 
 # Run only behavioral audits (skip source analysis)
 anc . --binary
@@ -98,13 +114,79 @@ anc . -q
 
 ## Configuration (`.anc.toml`)
 
-`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI. It carries one setting today,
-`[p6] domain_verbs`, which adds verbs to the standard list that `p6-may-standard-names` checks subcommand names against:
+`.anc.toml` declares a CLI's own vocabulary so audits stop counting it against the CLI:
 
 ```toml
+[p2]
+json_probe = ["version", "--client", "-o", "json"]
+schema_command = ["explain"]
+
+[p5]
+confirm_flags = ["--noconfirm"]
+not_destructive = ["clean"]
+
 [p6]
 domain_verbs = ["post", "like", "repost", "timeline"]
 ```
+
+| Setting                | Audit                   | What it declares                                                           |
+| ---------------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `[p2] json_probe`      | `p2-must-output-flag`   | A read-only call that prints JSON, for anc to run and check                |
+| `[p2] schema_command`  | `p2-must-schema-print`  | The subcommand that prints the output schema, when it is not `schema`      |
+| `[p5] confirm_flags`   | `p5-must-force-yes`     | Flags that confirm a destructive subcommand, beside the built-in names     |
+| `[p5] not_destructive` | `p5-must-force-yes`     | Subcommands whose names read as destructive but are not                    |
+| `[p6] domain_verbs`    | `p6-may-standard-names` | Verbs added to the standard list that subcommand names are checked against |
+
+### The settings
+
+`json_probe`: `p2-must-output-flag` accepts an output flag that takes a format, `--output`, `--format`, or
+`--output-format` where its definition names `json`, and the `--json` and `--jsonl` aliases the spec names, when an
+option definition in the help declares one. It checks the flag by passing `json` to it (an alias goes alone), spelled as
+the help prints it, beside `--help` and `--version`, the only calls `anc` makes unprompted. A `--json` that takes a
+value, such as a field list, is not the alias. Most tools answer those calls in text, and then the row is `skip`: `anc`
+could not check, so the row is not scored. A declared probe is the call `anc` runs instead, exactly as written: no
+shell, with the timeout, closed stdin, and `NO_COLOR=1` of every other probe. The row passes when the call exits 0 and
+its stdout parses as JSON, and fails otherwise, with evidence naming the call and the file:
+`` `kubectl version --client -o json` printed JSON; probe declared via .anc.toml [p2].json_probe ``. Declare a call that
+only reads and exits on its own; `kubectl version -o json` contacts a cluster and exits 1 without one, while
+`version --client` stays local. A probe that prints JSON also shows `p2-must-schema-print` that the tool emits
+structured output when its help does not say so. The probe never stands in for the flag: when no option definition in
+the help declares one of those flags, the row stays `opt_out`. The nearest file that declares `json_probe` supplies it,
+and an empty list declares nothing.
+
+`schema_command`: `p2-must-schema-print` looks for a `schema` subcommand or a `--schema` flag, at the top level and one
+level down. A tool whose schema surface has another name, such as kubectl's `explain`, declares the subcommand path, one
+token per level (`["emit", "schema"]` for `<bin> emit schema`). The declared path counts when each token is listed in
+its parent's `--help`; `anc` reads a parent's help with `--help` and never runs the command itself. The row then passes,
+and its evidence names the command and the file:
+`` `kubectl explain` is the schema command declared via .anc.toml [p2].schema_command ``. A declared path the help does
+not list leaves the row failing, and the evidence says so. A built-in `schema` surface takes priority. Entries are
+lowercase. The nearest file that declares `schema_command` supplies it, and an empty list declares nothing.
+
+`confirm_flags`: `p5-must-force-yes` requires each destructive subcommand's own `--help` to list a confirmation flag.
+The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assume-yes`, and `--confirm`. A declared
+flag counts beside them, and only where the subcommand's `--help` lists it, so a declaration names the flag and cannot
+stand in for one. Built-in and declared names match whole: `-f` does not match `-force-copy`. In a help that declares no
+double-dash name, a single-dash name matches its double-dash spelling, so terraform's `-auto-approve` meets the built-in
+`--auto-approve` without a declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. An entry written
+without dashes is read as a flag: `noconfirm` is `--noconfirm`, and `y` is `-y`. A pass that needed a declared flag says
+so in the row's evidence, naming the subcommand, the flag, and the file:
+`destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`.
+
+`not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`, `clean`,
+and names built on them). A tool whose `clean` clears regenerable caches, for one, declares it here, and the audit
+leaves it out of the destructive set. Entries are lowercase; they are compared with the lowercased subcommand name. The
+row's evidence names each subcommand left out and the file that declared it:
+`declared not destructive: clean via .anc.toml [p5].not_destructive`. When every destructive subcommand is declared, the
+row is `skip`, as for a tool with none. A declared subcommand still counts as a write for
+`p5-must-read-write-distinction`, because clearing a cache changes state.
+
+`domain_verbs`: `p6-may-standard-names` passes when most subcommand names are standard verbs. A declared verb counts
+beside the built-in list. Entries are lowercase; they are compared with the lowercased subcommand name. A pass that
+needed a declared verb carries `using_domain_verbs` and `domain_match_count` on the row.
+
+A key `anc` does not know is ignored. A known key with a value of the wrong type, such as
+`confirm_flags = "--noconfirm"`, is a parse error.
 
 ### Where `anc` looks
 
@@ -119,13 +201,15 @@ lowest precedence first:
 | Any target outside a repository, outside `~` | `~/.anc.toml`, then the `.anc.toml` in the target's directory                    |
 | Any target with `--repo <PATH>`              | `~/.anc.toml`, then `<PATH>/.anc.toml`                                           |
 
-A binary counts the same whether you pass its path or `--command` resolves it on `PATH`, and symlinks resolve first,
-so a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding
-a `.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
+A binary counts the same whether you pass its path or `--command` resolves it on `PATH`, and symlinks resolve first, so
+a dev build linked onto `PATH` keeps its repository's config. The repository root is the nearest directory holding a
+`.git` entry, so a linked `git worktree` checkout or a submodule is its own root.
 
-The files merge: each one's `domain_verbs` adds to the ones above it, and a verb listed twice keeps its first position.
-If any file in the chain cannot be read or parsed, no config applies, and the `p6-may-standard-names` warning names the
-failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`.
+The files merge. A list setting gathers every file's entries, each file's after the ones above it, and an entry listed
+twice keeps its first position; evidence credits it to the nearer file, so a flag both your `~/.anc.toml` and the tool's
+repository declare reads as the repository's. If any file in the chain cannot be read or parsed, no config applies: the
+`p6-may-standard-names` warning names the failing file, such as `could not parse .anc.toml at crates/cli/.anc.toml`, and
+a row another setting could have shaped ends its evidence with `No .anc.toml setting applied:` and the same message.
 
 ### `~/.anc.toml`
 
@@ -133,7 +217,8 @@ The file in your home directory applies under every audit, inside repositories t
 vocabulary there. Two machines with different home files can score the same tool differently; CI runners have none.
 `AGENTNATIVE_HOME_CONFIG` relocates the file. Evidence and the hint then name it `$AGENTNATIVE_HOME_CONFIG`, never the
 path it holds, and when it names a file that does not exist, `anc` prints a `warning:` line on stderr and applies no
-user-level file.
+user-level file. A `json_probe` or `schema_command` here applies to every tool you audit, so point
+`AGENTNATIVE_HOME_CONFIG` at a one-off file to declare either for a single run.
 
 ### A repository you fetched: `--repo`
 
@@ -164,8 +249,8 @@ The repository's `.anc.toml` is where a tool's own vocabulary belongs: it travel
 repository applies it. For a target inside a repository or under `--repo`, the line names that repository's root. For a
 target outside any repository, such as the installed tool above, it names the tool's own repository root, which `anc`
 reads from a checkout or through `--repo`. `~/.anc.toml` holds your own vocabulary and applies to every tool you audit,
-so a verb added there for one tool passes for all of them. `--output json` carries the same hint as `config_hint` on
-the row.
+so a verb added there for one tool passes for all of them. `--output json` carries the same hint as `config_hint` on the
+row.
 
 ## What a directory audit grades
 
@@ -190,14 +275,20 @@ package. A workspace file `anc` cannot read prints a `warning:` line, and the sc
 A candidate is a bin that a package declares and that exists at its language's build location. Nothing counts just for
 sitting in `node_modules/.bin`, `dist/`, or `build/`.
 
-| Language | Declared bins                                                                                                                                                         | Built location                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Rust     | `[[bin]]` names; `src/main.rs` gives the package name; `src/bin/<name>.rs` and `src/bin/<name>/main.rs` give `<name>`; `autobins = false` turns the implicit ones off | `target/release/<name>` or `target/debug/<name>` in the package, then at the audit root; the newer of the two |
-| Node     | a `bin` string gives the package name without its scope; a `bin` object gives its keys                                                                                | the declared file when executable, else `node_modules/.bin/<name>` in the package, then at the audit root     |
-| Python   | `[project.scripts]` keys                                                                                                                                              | `.venv/bin/<name>` in the package, then at the audit root                                                     |
-| Go       | each directory holding `package main` gives its directory name                                                                                                        | `<name>` in that directory, then at the module root                                                           |
+| Language | Declared bins                                                                                                                                                         | Built location                                                                                            |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Rust     | `[[bin]]` names; `src/main.rs` gives the package name; `src/bin/<name>.rs` and `src/bin/<name>/main.rs` give `<name>`; `autobins = false` turns the implicit ones off | `release/<name>` or `debug/<name>` in cargo's target directory; the newer of the two                      |
+| Node     | a `bin` string gives the package name without its scope; a `bin` object gives its keys                                                                                | the declared file when executable, else `node_modules/.bin/<name>` in the package, then at the audit root |
+| Python   | `[project.scripts]` keys                                                                                                                                              | `.venv/bin/<name>` in the package, then at the audit root                                                 |
+| Go       | each directory holding `package main` gives its directory name                                                                                                        | `<name>` in that directory, then at the module root                                                       |
 
 On Windows, Rust, Go, and Python names end in `.exe`, and the virtual environment's directory is `Scripts`.
+
+The target directory is the one cargo builds into: `CARGO_TARGET_DIR` when it is set (a relative value is relative to
+the current directory); otherwise the `target_directory` that `cargo metadata` reports at the audit root, which follows
+`build.target-dir` in cargo's config files and the workspace the root belongs to; otherwise `target` at the audit root,
+when cargo is not installed or gives no answer within 5 seconds. Without `CARGO_TARGET_DIR`, a package below the audit
+root is looked for in its own `target` first, where cargo builds a crate outside the root's workspace.
 
 ### One binary, several, or none
 
@@ -213,18 +304,19 @@ error: found 2 built binaries here, and anc grades one per run; run one of these
 Usage: anc audit [OPTIONS] [PATH]
 ```
 
-That holds for a single crate with several `[[bin]]` targets too: a repository or crate that builds more than one
-binary exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so
-`anc audit . --principle 6` offers `anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage
-envelope with `"error": "binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit
-root), and `command`, and a `next_step` of `choose-bin` whose `template` ends in `--bin <name>`. When two candidates
-share a name, each is offered by its path.
+That holds for a single crate with several `[[bin]]` targets too: a repository or crate that builds more than one binary
+exits 2 until `--bin` names one. Each printed command keeps the flags you passed, so `anc audit . --principle 6` offers
+`anc audit . --principle 6 --bin xr`. Under `--output json` the error is the usage envelope with
+`"error": "binary-ambiguous"`, a `candidates` array of `name`, `package`, `path` (relative to the audit root when the
+build is under it), and `command`, and a `next_step` of `choose-bin` whose `template` ends in `--bin <name>`. When two
+candidates share a name, each is offered by its path.
 
 `--source` runs no binary, so it needs no choice: with several candidates and no `--bin`, the source and project audits
 run with nothing graded.
 
 With none, the source and project audits run, and the warning names any bins the packages declare but have not built,
-with the ways forward: build one, audit a built binary by path, or audit an installed one with `--command`.
+the cargo target directories searched for the Rust ones, and the ways forward: build one, audit a built binary by path,
+or audit an installed one with `--command`.
 
 `--bin <NAME>`, or `AGENTNATIVE_BIN`, picks a candidate by name or by the path `anc` printed for it. It is unrelated to
 `--binary`, which runs only the behavioral audits:
@@ -316,6 +408,106 @@ agentnative uses three layers to analyze your CLI:
 `--binary` and `--source` are useful when one layer regresses and you want a focused gate (CI step for source quality,
 release-gate against the compiled artifact). Without either flag, all three layers run together.
 
+### How behavioral audits read `--help`
+
+Several behavioral audits ask whether a help declares a flag (`--quiet`, `--force`, `--output`). `anc` answers from
+definition lines: lines that start with a flag name and, usually, describe it. A usage synopsis, an example, or a
+sentence that mentions a flag mid-line declares nothing, so a flag that appears only in `usage: tool [-q]` does not
+count.
+
+To have a flag count, print it on a line of its own, names first, with its description set off by two or more spaces or
+a marker (`#`, `=`, `--`, or a colon), and spell it the way the requirement does. One dash stands for two only in a help
+that declares no double-dash name, and a single letter counts only where its own description says what the audit asks
+for. The rest of this section is the detail behind those rules.
+
+Every name on a definition line is kept whole and spelled as the help prints it, and a row that names a flag quotes that
+spelling:
+
+| Help line                                                                           | Names read                                    |
+| ----------------------------------------------------------------------------------- | --------------------------------------------- |
+| `-force-copy             Suppress prompts about copying state data` (terraform)     | `-force-copy`                                 |
+| `-n, --quiet, --silent` (GNU sed)                                                   | `-n`, `--quiet`, `--silent`                   |
+| `-q, --[no-]quiet      suppress summary after successful commit` (git)              | `-q`, `--quiet`, `--no-quiet`                 |
+| `-h,-H,--help,-help,-usage,/? = Print usage information and exit.` (cmake)          | `-h`, `-H`, `--help`, `-help`, `-usage`, `/?` |
+| `-W<category>                 = Enable the specified category of warnings.` (cmake) | `-W`                                          |
+| `-0, --http1.0                     Use HTTP/1.0` (curl)                             | `-0`, `--http1.0`                             |
+| `-cd   --print-config-dir   Print the config directory` (lazygit)                   | `-cd`, `--print-config-dir`                   |
+| `-f FORMAT, -r FORMAT  --from=FORMAT, --read=FORMAT` (pandoc)                       | `-f`, `-r`, `--from`, `--read`                |
+| `--ignore-files-only   --ignore option only ignores files` (files-to-prompt)        | `--ignore-files-only`                         |
+
+A value placeholder (`<FILE>`, `=false`, `N`, `[=WHEN]`) is never part of a name. A single letter matches only the same
+letter: `-f` is not `-force-copy`, and `-v` is not `-version`. A single letter also counts for an audit only when its
+own definition means what the audit asks for, through a long name the audit accepts on the same line or a description
+that names the meaning: `-v  Increase verbosity` is a verbose flag, and `-v, --version  Print version` is not. A row
+that sets a declared letter aside quotes the definition it read.
+
+Names can sit in a second column with no comma between the columns, as lazygit and pandoc print them. After a gap, text
+that leads with a flag name and holds only names and placeholders is another column; text that reads on as a sentence is
+the description, so the files-to-prompt line above declares one name. A description can also be set off by a marker in
+place of a gap: `#` (Thor), `=` (cmake), `--` (ffmpeg), `-`, or a colon that ends the names, as in nmap's
+`-iL <inputfilename>: Input from list of hosts/networks`.
+
+A wrapped description line is not a definition, even when it starts with a dash. A line indented to the description
+column of the definition above it carries on that description, so docker's `-1 for unlimited)` and the second line of
+
+```text
+  -v, --verbose...     Increase logging verbosity (-v for warnings, -vv for info, -vvv for debug,
+                       -vvvv for trace)
+```
+
+declare nothing. The same holds for a description that starts on the line after its definition, as clap's long help, the
+Go `flag` package and kubectl print it, and it holds across blank lines, because a description can run over several
+paragraphs. A line left of the description column ends it. A flag that a help mentions only inside another flag's
+description is not declared. Under a definition with no description, a line that declares a name at a column where names
+start is a definition, not that description: `-x, --long` puts the long name four columns right of the short, so
+`--format <FORMAT>` under an undescribed `-x` declares `--format`.
+
+A definition can sit at any indent. rsync, ffmpeg and Miller print theirs at column 0, typer and broot print them as
+rows of a box table with the short name in a cell of its own (typer marks a required option with `*` in a first cell,
+which is not part of the name), Thor brackets its long names (`-f, [--force]`), and fzf has shorts that start with a
+plus (`+x, --no-extended`). Text is read as a terminal shows it: without ANSI escapes, with groff's overstruck bold
+collapsed, and with TABs expanded.
+
+Two shapes need more than a leading dash, because usage lines wrap into them. Dash-led text at column 0 is a definition
+only when a gap or a marker sets a description off from its names, or its description starts at the column the
+definition above it uses; `--hide-secret flag. Please carefully consider ...` at column 0 is prose, and python's
+`--help-all: print complete help information and exit` is a definition. A line that starts with a bracketed flag is a
+definition only with a description set off the same way, so `[--recursive]` on a synopsis line of its own declares
+nothing.
+
+Three more dash-led shapes are text, not definitions, at any indent. A line under one that ends in a backslash carries
+on an example command, so the `--recursive` under `aws s3 ls s3://amzn-s3-demo-bucket \` declares nothing. A line
+indented to the arguments of the `usage:` line above it carries on the synopsis, where argparse and git wrap a long one,
+unless a gap or a marker sets off a description of its own. A line that reads on as a sentence, directly under prose at
+the same indent that has not ended its sentence, is the rest of that sentence:
+`--human-readable and --summarize options. ...`. A row whose description a gap or a marker sets off is not a sentence,
+so nmap's colon-described rows under its `Ex: ...` line are definitions.
+
+One dash and two are the same name only where the help's own convention makes them so. In a help that declares no
+double-dash name, the Go `flag` convention, a single-dash word meets an audit that asks for its double-dash spelling:
+terraform's `-force` on `force-unlock` counts as `--force`. In a help that declares any double-dash name, a single-dash
+word is a name of its own, and a row that misses for that reason says so:
+`` `-verbose` is declared, but this help also declares double-dash names, so it does not count as `--verbose`. ``
+
+These layouts are read the way they look rather than the way the tool means them:
+
+- A paragraph that opens with a flag and reads as a sentence is read as a definition of the flags it opens with:
+  terraform's `-state, state-out, and -backup are legacy options supported for the local` declares `-state`. No audit
+  asks for those flags.
+- An example command at definition indent, with no backslash on the line above it, is read as a definition.
+- python3's rows with a placeholder and a spaced colon, such as `-c cmd : program passed in as string`, are not read,
+  because `cmd` opens like a sentence at column 0.
+- A synopsis printed on a line of its own under `Usage:`, and argparse's wrap of a long program name to column 7,
+  declare their dash-led lines.
+- `p1-must-env-var` does not count an environment variable printed bare in a column between a flag's names and its
+  description (`--token   GH_TOKEN   API token`), because a value placeholder prints the same way
+  (`--config-file  -c  CONFIG_FILE  Path`). `$GH_TOKEN` in that column, `[env: GH_TOKEN]`, or the name in the
+  description counts.
+
+If `anc` misreads your tool's help, file a
+[false positive / false negative report](https://github.com/brettdavies/agentnative-cli/issues/new?template=false-positive.yml)
+with the output of `<tool> --help`. The help text becomes a test fixture.
+
 ## Scoring
 
 The public score reflects **shipped-binary behavior only**: only behavioral-layer audits enter the formula. Source- and
@@ -370,7 +562,7 @@ nor hurt the score.
 ## CLI Reference
 
 When the first non-flag argument is not a recognized subcommand, `audit` is inserted automatically. `anc .`, `anc -q .`,
-and `anc --command ripgrep` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
+and `anc --command rg` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
 deliberate fork-bomb guard for when agentnative dogfoods itself.
 
 ```text
@@ -408,15 +600,25 @@ mapping lives in `coverage/matrix.json` under `audit_profiles[]`. Agents should 
 
 ### Exit Codes
 
-| Code | Meaning                           |
-| ---- | --------------------------------- |
-| 0    | All audits passed                 |
-| 1    | Warnings present (no failures)    |
-| 2    | Failures, errors, or usage errors |
+One table for every verb: each returns the same four codes, and every text report closes by naming the code it returns
+and what earned it.
 
-Exit 2 covers both audit failures (a real `[FAIL]` or `[ERROR]` result) and usage errors (bare `anc`, unknown flag,
-mutually exclusive flags). Agents distinguishing the two should parse `stderr` (usage errors print `Usage:`) or call
-`anc --help` first to confirm the invocation shape.
+| Code | Meaning                                                                                                           |
+| ---- | ----------------------------------------------------------------------------------------------------------------- |
+| 0    | Clean: every applicable check passed                                                                              |
+| 1    | Warnings only: a SHOULD or MAY check missed                                                                       |
+| 2    | Failures present: a MUST check missed, or a usage error                                                           |
+| 3    | Could not check: an audit or probe errored or was cut short, or nothing applied                                   |
+
+On `anc audit`, each audit reports `fail` or `warn` itself; an audit that errored returns 3 even when another failed,
+and a suppressed (`--audit-profile`) or not-applicable audit counts toward no code.
+
+Exit 2 also covers usage errors (bare `anc`, an unknown flag, mutually exclusive flags). Agents distinguishing a usage
+error from a check failure should parse `stderr`, where a usage error prints `Usage:` in text mode and a typed envelope
+in `--output json` mode, or call `anc --help` first to confirm the invocation shape.
+
+Exit 3 separates a run that could not reach a verdict from one that found failures, which is the distinction a CI gate
+needs.
 
 ### Errors under `--output json`
 
@@ -424,11 +626,11 @@ Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `
 `message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
 is one of a closed set, and a newer release can add to it:
 
-| `action`     | Carries                                                                                      | Raised by                                       |
-| ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `show-help`  | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error` |
-| `choose-bin` | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`               |
-| `rerun`      | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                           |
+| `action`     | Carries                                                                                      | Raised by                                                 |
+| ------------ | -------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `show-help`  | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error`           |
+| `choose-bin` | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                         |
+| `rerun`      | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                     |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
@@ -558,6 +760,10 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   a slug exists, even below the floor, so the site renders an SVG for every scored tool (a regression below the floor
   shifts color rather than 404s). `convention_url` always points at `https://anc.dev/badge`. Schema `0.5` addition.
 
+- `evidence` on a `pass` row: what the audit matched, for an audit that names it (`p7-limit` names each list command and
+  its limit flag), then, when an `.anc.toml` setting decided the pass, the setting, what it contributed, and the file
+  that supplied it, such as `destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`. The two parts are joined by
+  a semicolon. `null` when the pass carries neither. See [Configuration](#configuration-anctoml).
 - `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `files`
   lists where the setting can go, each as `{file, scope}`: `file` is `.anc.toml`, `~/.anc.toml`, or
   `$AGENTNATIVE_HOME_CONFIG` (never an absolute path), and `scope` is `repository` (the root of the repository this
@@ -576,7 +782,7 @@ Three shapes of contribution, in order of cost:
 
 1. **Signal** (false-positive report, scoring bug, feature request, registry submission): file an issue with the
    matching template at
-   [github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
+[github.com/brettdavies/agentnative-cli/issues/new/choose](https://github.com/brettdavies/agentnative-cli/issues/new/choose).
 2. **Proposal** (new language auditor, scoring-engine rework, registry expansion): open a design issue first; the
    maintainer signs off before code lands.
 3. **Code**: PR against `dev` (per branch discipline).

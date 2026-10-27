@@ -38,6 +38,7 @@ const WRITE_KEYWORDS: &[&str] = &[
 /// Patterns indicating a --dry-run flag exists.
 const DRY_RUN_PATTERNS: &[&str] = &["dry-run", "dry_run", "dryrun"];
 
+#[derive(Debug)]
 pub struct DryRunAudit;
 
 impl Audit for DryRunAudit {
@@ -116,6 +117,7 @@ impl Audit for DryRunAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

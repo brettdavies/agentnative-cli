@@ -7,6 +7,7 @@ use crate::audit::Audit;
 use crate::project::Project;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
+#[derive(Debug)]
 pub struct AgentsMdAudit;
 
 impl Audit for AgentsMdAudit {
@@ -52,6 +53,7 @@ impl Audit for AgentsMdAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            pass_evidence: None,
         })
     }
 }

@@ -1,5 +1,9 @@
 //! Helpers shared by the integration tests.
 
+#![allow(dead_code)]
+
+pub mod self_audit;
+
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 

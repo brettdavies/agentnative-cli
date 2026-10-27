@@ -8,12 +8,15 @@ mod color_flag;
 mod consistent_envelope;
 mod consistent_naming;
 mod cursor_pagination;
+mod declared_probe;
 mod defaults_in_help;
 mod destructive_ops;
 mod env_hints;
 mod error_probe;
 mod examples_subcommand;
 mod flag_existence;
+mod flag_meaning;
+mod flag_presence;
 mod force_yes;
 mod help;
 mod install_all;
@@ -27,6 +30,7 @@ mod more_formats;
 mod no_color;
 mod no_pager_behavioral;
 mod non_interactive;
+mod output_flags;
 mod paired_examples;
 mod quiet;
 mod raw_flag;
@@ -38,6 +42,7 @@ mod sigpipe;
 pub(crate) mod standard_names;
 mod stdin_input;
 mod structured_exit_codes;
+mod subcommand_arguments;
 mod subcommand_examples;
 mod subcommand_help;
 mod subcommand_operations;
@@ -105,10 +110,32 @@ pub(crate) mod tests {
     use crate::project::Project;
     use crate::runner::BinaryRunner;
 
-    /// Create a test project backed by the given binary path.
+    /// A fresh directory for one test project, so nothing a test writes into
+    /// `project.path` reaches the checkout.
+    fn test_project_dir() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        // Use unique dir per call — counter + timestamp to avoid collisions
+        let dir = std::env::temp_dir().join(format!(
+            "agentnative-test-{}-{id}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time after UNIX epoch")
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
+
+    /// Create a test project backed by the given binary path, rooted in a
+    /// fresh directory.
     pub fn test_project_with_runner(binary: &str) -> Project {
         Project {
-            path: PathBuf::from("."),
+            path: test_project_dir(),
             language: None,
             binary_paths: vec![PathBuf::from(binary)],
             manifest_path: None,
@@ -127,25 +154,11 @@ pub(crate) mod tests {
     /// Create a test project backed by `/bin/sh -c "<script>"`.
     ///
     /// This works by creating a temporary shell script file and pointing
-    /// the runner at it.
+    /// the runner at it. The project is rooted in the script's own
+    /// directory, so a test that writes into `project.path` cannot touch the
+    /// checkout.
     pub fn test_project_with_sh_script(script: &str) -> Project {
-        use std::fs;
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-
-        // Use unique dir per call — counter + timestamp to avoid collisions
-        let dir = std::env::temp_dir().join(format!(
-            "agentnative-test-{}-{id}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system time after UNIX epoch")
-                .as_nanos(),
-        ));
-        fs::create_dir_all(&dir).expect("create test dir");
-
+        let dir = test_project_dir();
         let script_path = dir.join("test.sh");
         let content = format!("#!/bin/sh\n{script}\n");
 
@@ -168,10 +181,10 @@ pub(crate) mod tests {
         }
 
         #[cfg(not(unix))]
-        fs::write(&script_path, content).expect("write test script");
+        std::fs::write(&script_path, content).expect("write test script");
 
         Project {
-            path: PathBuf::from("."),
+            path: dir,
             language: None,
             binary_paths: vec![script_path.clone()],
             manifest_path: None,
@@ -184,5 +197,19 @@ pub(crate) mod tests {
             anc_config: Default::default(),
             inventory: Default::default(),
         }
+    }
+
+    #[test]
+    fn a_test_project_is_rooted_in_its_own_directory() {
+        let project = test_project_with_sh_script("true");
+        assert_eq!(
+            Some(project.path.as_path()),
+            project.binary_paths[0].parent()
+        );
+        let cwd = std::env::current_dir().expect("current dir");
+        assert_ne!(
+            project.path.canonicalize().expect("project dir exists"),
+            cwd.canonicalize().expect("cwd exists")
+        );
     }
 }

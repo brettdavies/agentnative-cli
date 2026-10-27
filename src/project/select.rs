@@ -49,7 +49,7 @@ pub fn select<'a>(
 pub struct Choice {
     pub name: String,
     pub package: String,
-    /// The built binary, relative to the audit root.
+    /// The built binary, relative to the audit root when it is under it.
     pub path: String,
     /// The caller's invocation with `--bin <name>`, runnable as printed.
     pub command: String,
@@ -86,9 +86,38 @@ pub fn choices(candidates: &[Candidate], root: &Path, rerun: &[OsString]) -> Vec
         .collect()
 }
 
-/// `path` relative to `root`, with forward slashes.
-fn relative_path(root: &Path, path: &Path) -> String {
-    let rel = path.strip_prefix(root).unwrap_or(path);
+/// `path` relative to `root`, with forward slashes, or all of `path` when it
+/// is not under `root`.
+pub fn relative_path(root: &Path, path: &Path) -> String {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return path.display().to_string();
+    };
     let parts: Vec<_> = rel.iter().map(|part| part.to_string_lossy()).collect();
     parts.join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_under_the_root_is_relative_with_forward_slashes() {
+        let root = Path::new("/work/project");
+        let built = root.join("target").join("debug").join("tool");
+
+        assert_eq!(relative_path(root, &built), "target/debug/tool");
+    }
+
+    #[test]
+    fn a_path_outside_the_root_is_given_whole() {
+        let built = std::env::temp_dir()
+            .join("shared")
+            .join("debug")
+            .join("tool");
+
+        assert_eq!(
+            relative_path(Path::new("/work/project"), &built),
+            built.display().to_string()
+        );
+    }
 }

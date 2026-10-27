@@ -2,6 +2,114 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-10-27
+
+### Breaking changes
+
+- Change `anc audit` to exit 3 when an audit errored (was 2) or when no audit applied (was 0). Exit 2 now means failures or a usage error, and an errored audit outranks a failure, so a script that gates on `anc audit` reads 3 as "could not check the tool". by @brettdavies in [#227](https://github.com/brettdavies/agentnative-cli/pull/227)
+
+### Added
+
+- Add `[p5] confirm_flags` to `.anc.toml`: confirmation flags under other names (`-auto-approve`) count for `p5-force-yes` when the destructive subcommand's own `--help` lists them. by @brettdavies in [#147](https://github.com/brettdavies/agentnative-cli/pull/147)
+- Add `[p5] not_destructive` to `.anc.toml`: subcommands a tool declares are not destructive (a cache `clean`) are left out of `p5-force-yes`.
+- Add `[p2] json_probe` to `.anc.toml`: a safe read-only invocation anc runs to verify JSON output when its own probes cannot.
+- Add `[p2] schema_command` to `.anc.toml`: a schema command under another name (`explain`) counts for `p2-schema-print`.
+- Add build-provenance attestations for every release archive and `sha256sum.txt`, and an attested CycloneDX SBOM of `anc`. Verify a downloaded archive with `gh attestation verify <archive> --repo brettdavies/agentnative-cli --signer-workflow brettdavies/.github/.github/workflows/rust-release.yml`. by @brettdavies in [#154](https://github.com/brettdavies/agentnative-cli/pull/154)
+
+### Changed
+
+- Change `p3-subcommand-examples` to exempt subcommands that take no arguments or options of their own (no operand, no nested commands, no flag beyond `--help` and the top-level flags), naming the exempt subcommands in the evidence. A tool whose every probed subcommand is exempt reads `skip`. by @brettdavies in [#142](https://github.com/brettdavies/agentnative-cli/pull/142)
+- Change passing rows of these audits to carry evidence naming the subcommands and flags they matched. by @brettdavies in [#143](https://github.com/brettdavies/agentnative-cli/pull/143)
+- Change `p5-force-yes` to accept `--auto-approve`, `--assume-yes`, and `--confirm` as confirmation flags. by @brettdavies in [#147](https://github.com/brettdavies/agentnative-cli/pull/147)
+- Change `p2-json-output` to read `skip` instead of `warn` when an output flag exists but no safe probe can validate JSON.
+- Change a passing row's evidence to name the `.anc.toml` setting the pass relied on, after what the audit matched.
+- Change how flag names in `--help` match: in a help that declares no double-dash name, a single-dash name such as terraform's `-force` or actionlint's `-color` counts as its double-dash spelling; in a help that declares any double-dash name it does not, and the row's evidence says which declared name did not count. by @brettdavies in [#165](https://github.com/brettdavies/agentnative-cli/pull/165)
+- Change `.anc.toml` `confirm_flags` to follow the same rule, so terraform's `-auto-approve` meets the built-in `--auto-approve` without a declaration.
+- `p7-must-quiet` warn evidence now reads `no option definition in --help declares --quiet or -q; usage lines are not read.` by @brettdavies in [#171](https://github.com/brettdavies/agentnative-cli/pull/171)
+- `p1-flag-existence` warn evidence now reads `no option definition in --help declares a non-interactive flag (one of: ...); usage lines are not read.` by @brettdavies in [#172](https://github.com/brettdavies/agentnative-cli/pull/172)
+- `p1-non-interactive` warn evidence now says what the bare call did and what was searched, for example `bare invocation timed out, so the binary may be waiting for interactive input, and no option definition in --help declares a non-interactive flag (one of: ...); usage lines are not read.` by @brettdavies in [#173](https://github.com/brettdavies/agentnative-cli/pull/173)
+- `p2-must-output-flag` skip evidence names the flag and the help that declares it, and opt_out evidence names what was searched. `p2-must-schema-print` quotes the same text when it follows that row. by @brettdavies in [#178](https://github.com/brettdavies/agentnative-cli/pull/178)
+- `p8-may-install-all` warn evidence now reads ``no option definition in `skill install --help` declares `--all`; usage lines are not read.`` by @brettdavies in [#179](https://github.com/brettdavies/agentnative-cli/pull/179)
+- The `p4-should-structured-enum` warning lists every path the audit looked for, in `src/` and one directory below it. by @brettdavies in [#191](https://github.com/brettdavies/agentnative-cli/pull/191)
+- Raise the minimum supported Rust version for building `anc` from source to 1.89. by @brettdavies in [#194](https://github.com/brettdavies/agentnative-cli/pull/194)
+- `p2-must-output-flag` accepts `--output-format` where its definition names `json`, and the boolean `--json` and `--jsonl` aliases the spec names. A `--json` that takes a value, such as a field list or a request body, does not count. by @brettdavies in [#195](https://github.com/brettdavies/agentnative-cli/pull/195)
+- The evidence of the three JSON error rows quotes the JSON-mode arguments the probe used. by @brettdavies in [#196](https://github.com/brettdavies/agentnative-cli/pull/196)
+- A row that rejects a declared single letter for its meaning quotes the definition and says why. by @brettdavies in [#197](https://github.com/brettdavies/agentnative-cli/pull/197)
+- The flag-presence rows' evidence says a flag named only in a usage line does not count. by @brettdavies in [#200](https://github.com/brettdavies/agentnative-cli/pull/200)
+- `anc audit`'s text report closes by naming its exit code and what earned it, and `anc audit --help` prints the exit table. by @brettdavies in [#227](https://github.com/brettdavies/agentnative-cli/pull/227)
+
+### Fixed
+
+- Stamp the generated `CHANGELOG.md` section header in UTC, so `--from-dev-prs` and the git-cliff path agree on a release's date instead of differing by a day depending on the operator's timezone. by @brettdavies in [#137](https://github.com/brettdavies/agentnative-cli/pull/137)
+- Fix `anc audit` missing a Rust project's binary when `CARGO_TARGET_DIR` or `build.target-dir` points outside the project: discovery looks where cargo builds, so the behavioral audits run and the scorecard gets an audience label instead of `insufficient_signal`. by @brettdavies in [#139](https://github.com/brettdavies/agentnative-cli/pull/139)
+- Fix the no-binary warning to name the cargo target directories `anc` searched, so a missing build says where `anc` looked.
+- Fix `p7-limit`, `p7-cursor-pagination`, `p7-timeout-behavioral`, and `p6-stdin-input` reading only the top-level `--help`: they read the subcommands that need the flag and name those subcommands in the evidence. by @brettdavies in [#143](https://github.com/brettdavies/agentnative-cli/pull/143)
+- Fix `p7-limit` passing on a `-n` that is not a count, such as `-n, --namespace` or `-n, --dry-run`.
+- Fix the list-command check counting every `show` and `get` subcommand as a list operation.
+- Fix `p3-unprefixed-command-list` flagging a default-command line that carries only argument placeholders, such as `opencode [project]`.
+- The `--command` example in `anc --help`, `anc --examples`, and `anc audit --help` now names `rg`, which resolves on PATH. It previously named `ripgrep`, the package name rather than the binary, so copying the advertised example exited 2 instead of producing a scorecard. by @brettdavies in [#146](https://github.com/brettdavies/agentnative-cli/pull/146)
+- `code-unwrap` now reports `.unwrap()` calls written inside macro arguments and item-position macro bodies, such as `write!`, `format!`, `assert_eq!`, `log::info!`, `lazy_static!` and `thread_local!`. A passing row previously said nothing about those lines. by @brettdavies in [#149](https://github.com/brettdavies/agentnative-cli/pull/149)
+- `code-unwrap` leaves the arguments of macros that never evaluate them alone, so `stringify!`, `concat!`, `cfg!` and `quote!` bodies are not reported, and a `macro_rules!` transcriber is exempt whether it is written at item position or nested inside another macro.
+- A `.unwrap()` in test-only code stays exempt on the macro-interior surface: inside a `#[cfg(test)]`-gated macro body such as `thread_local!` or `lazy_static!`, inside a `cfg_if!` test branch, and when a comment or doc comment sits between `#[cfg(test)]` and the item it gates. `--include-tests` reports all of them. by @brettdavies in [#150](https://github.com/brettdavies/agentnative-cli/pull/150)
+- A comment between `#[cfg(test)]` and the item it decorates no longer drops the exemption for that item's whole body, so a documented test module is exempt as an undocumented one already was.
+- `code-unwrap` reports a `.unwrap()` written in a macro DSL that pairs keys with values, such as `serde_json::json!({ "id": v.unwrap() })`. Coverage no longer depends on where in the macro the call sits. by @brettdavies in [#159](https://github.com/brettdavies/agentnative-cli/pull/159)
+- `code-unwrap` reads a nested macro's arguments in the same pass as its enclosing macro, so auditing deeply nested or generated macro code no longer costs time proportional to the square of its nesting depth.
+- Read a help list's grouped command headings, so a tool that sorts its commands into sections (kubectl's `Basic Commands (Beginner):`, `Subcommands provided by plugins:`) has its whole command list graded rather than only the sections whose heading ends in `Commands:`. by @brettdavies in [#161](https://github.com/brettdavies/agentnative-cli/pull/161)
+- Run every probe with a fixed `TERM`, `COLUMNS` and `PAGER` instead of inheriting the caller's shell, so a tool's score no longer depends on the terminal it was audited from. A tool that pages its help no longer blocks the probe.
+- Fix single-dash flags being read by their first letter: `-force-copy` no longer counts as `-f`, `-no-color` as `-n`, or `-version` as `-v`, so terraform and cmake no longer pass `p7-should-verbose` through `-version`. by @brettdavies in [#165](https://github.com/brettdavies/agentnative-cli/pull/165)
+- Fix aliases, `--[no-]x` pairs, dotted names and punctuation shorts being lost or truncated: `-n, --quiet, --silent` keeps all three names, `--[no-]quiet` declares `--quiet` and `--no-quiet`, and `--http1.0` and `--http1.1` stay distinct.
+- Fix flag names in a second column being read as description text: lazygit's `-cd   --print-config-dir` declares both names, and pandoc's and shellcheck's `--format`, `--output` and `--color` are found. by @brettdavies in [#167](https://github.com/brettdavies/agentnative-cli/pull/167)
+- Fix descriptions set off by a marker or a TAB being lost or keeping the marker: cmake's `= Explicitly specify a source directory.` reads as the description, as does the text after the TAB on a Go `flag` bool row.
+- Fix wrapped description lines that start with a dash being read as flag definitions: docker's `-1 for unlimited)` and delta's mention of git's `--color-moved` no longer declare flags, and a flag named only inside another flag's description no longer counts as declared. by @brettdavies in [#168](https://github.com/brettdavies/agentnative-cli/pull/168)
+- Fix descriptions that start on the line after their flag being lost: clap's long help, Go `flag` output and kubectl's TAB-indented descriptions are read as the flag's description.
+- Fix flags going unread in help that does not indent its options with spaces: column-0 options (rsync, ffmpeg, Miller), box tables (typer, rich-click, broot), Thor's bracketed long names, fzf's `+x` shorts, and TAB-indented Go `flag` output are now read. by @brettdavies in [#169](https://github.com/brettdavies/agentnative-cli/pull/169)
+- Fix ANSI escape sequences and groff overstrike in help output hiding flag names: broot's coloured table and `aws ... help` pages are read as a terminal shows them.
+- Fix `p5-must-force-yes` crediting a flag declared in `.anc.toml [p5] confirm_flags` when the subcommand's help names it only in another flag's wrapped description. A declared flag confirms a subcommand when that subcommand's help defines it. by @brettdavies in [#170](https://github.com/brettdavies/agentnative-cli/pull/170)
+- Fix `p7-must-quiet` passing for tools with no quiet flag. The row passed when `-q` appeared anywhere in `--help`, including inside `--no-quotes` or `--qps` and in a usage line. It now passes only when an option definition declares `--quiet` or `-q`. by @brettdavies in [#171](https://github.com/brettdavies/agentnative-cli/pull/171)
+- Fix `p1-flag-existence` passing when a non-interactive flag such as `-y` or `--batch` appears only in a usage line, a sentence, or another flag's description. It passes when an option definition declares one. by @brettdavies in [#172](https://github.com/brettdavies/agentnative-cli/pull/172)
+- Fix `p1-flag-existence` missing a gate flag in Go `flag` help, where `-batch` is printed with one dash.
+- Fix `p1-non-interactive` passing a tool whose bare call blocks because its help contains a headless flag's characters: inside a longer flag (`--print-logs`, `--batch-size`), in a usage line, in an example, or in a sentence. A headless flag counts when an option definition declares it. by @brettdavies in [#173](https://github.com/brettdavies/agentnative-cli/pull/173)
+- Fix `p1-non-interactive` missing a headless flag in Go `flag` help, where `-batch` is printed with one dash.
+- Fix `p2-must-output-flag` treating a longer flag such as `--output-format`, `--output-file` or `--formatter` as `--output` or `--format`, and then probing with a flag the tool does not have. An output flag counts when an option definition declares `--output` or `--format`. by @brettdavies in [#178](https://github.com/brettdavies/agentnative-cli/pull/178)
+- Fix `p2-must-output-flag` missing Go `flag` help that declares `-format` or `-output` with one dash. The safe probes now pass the flag as the help spells it.
+- Fix `p8-may-install-all` passing when `skill install --help` only mentions `--all`: inside a longer flag such as `--allow`, in a usage line, or in another argument's description. It passes when an option definition declares `--all`. by @brettdavies in [#179](https://github.com/brettdavies/agentnative-cli/pull/179)
+- Fix flags being read from a wrapped `usage:` synopsis, from an example command continued with a backslash, and from a sentence that wraps onto a flag name. None of those lines declares a flag. by @brettdavies in [#181](https://github.com/brettdavies/agentnative-cli/pull/181)
+- Fix long-only flags going unread under a short flag that has no description, as clap prints an undocumented `-x` above `--format <FORMAT>`.
+- Fix flags at column 0 going unread when a colon, not a gap, sets off their description, as python3 prints `--help-env: print help about Python environment variables and exit`.
+- Fix `p7-must-quiet` passing on the partial output of a `--help` that crashed or timed out. The row warns that `--help` could not be run. by @brettdavies in [#182](https://github.com/brettdavies/agentnative-cli/pull/182)
+- Fix `.anc.toml` `[p5] confirm_flags` entries written without dashes (`"noconfirm"`, `"y"`) no longer matching a flag.
+- Fix required options going unread in typer and rich-click help, where the row is marked `*` in its first cell. by @brettdavies in [#183](https://github.com/brettdavies/agentnative-cli/pull/183)
+- Fix `p1-must-env-var` passing when the only uppercase name near a flag is that flag's own value placeholder, as in `--iconv=CONVERT_SPEC`. A placeholder is not an environment variable; a `$NAME` beside the flag and a variable named in the flag's description still count. by @brettdavies in [#184](https://github.com/brettdavies/agentnative-cli/pull/184)
+- Fix `p4-should-structured-enum` warning on a project whose error module is a directory (`src/error/mod.rs`, or a Python `src/errors/__init__.py` package). by @brettdavies in [#191](https://github.com/brettdavies/agentnative-cli/pull/191)
+- Fix `p2-must-json-errors`, `p4-should-json-error-output` and `p2-should-consistent-envelope` probing with `--output json` on a tool whose help declares no such flag. They run when an option definition declares a JSON mode, an output flag whose definition names `json` or a `--json` alias, and probe with that flag as the help spells it. by @brettdavies in [#196](https://github.com/brettdavies/agentnative-cli/pull/196)
+- Fix single-letter flags counting for an audit whatever their definition says: `-v, --version` no longer passes `p7-should-verbose`, and `-f, --file` no longer passes `p5-must-force-yes`. A letter counts when its definition declares a long name the audit accepts or its description names what the audit asks for. by @brettdavies in [#197](https://github.com/brettdavies/agentnative-cli/pull/197)
+- Fix the three P8 skill-bundle rows passing, with no evidence, for a tool that ships no bundle when it is audited by command or binary path. They are n_a without a bundle file or a `skill` subcommand in `--help`, which lowers `badge.score_pct` for such tools. by @brettdavies in [#198](https://github.com/brettdavies/agentnative-cli/pull/198)
+- Fix `p6-must-no-pager` reading "unless", "regardless" or "for more information" as a pager. `less` and `more` count only where the help names them as a pager. by @brettdavies in [#199](https://github.com/brettdavies/agentnative-cli/pull/199)
+- Fix subcommands going unread from a help that lists them under capitalized headings with no colon and names each one with a trailing colon, as gh does. Subcommand-driven rows now evaluate on gh, and its `skill` subcommand counts for the P8 bundle rows. by @brettdavies in [#203](https://github.com/brettdavies/agentnative-cli/pull/203)
+- Fix subcommands going unread from a help that lists them under a title-case or one-word heading with no colon (trivy, cf) or under an underlined heading with column-0 entries (direnv). Subcommand-driven rows now evaluate on those tools. by @brettdavies in [#206](https://github.com/brettdavies/agentnative-cli/pull/206)
+- Fix the shell completions shipped in `completions/` describing `--color` with a link form the help no longer prints. by @brettdavies in [#228](https://github.com/brettdavies/agentnative-cli/pull/228)
+- Fix the scorecard JSON Schema that `anc emit schema` prints: its root description named schema version 0.7, and its `BadgeInfo` description gave a `pass / (pass + warn + fail)` score and an 80 badge floor instead of the credit-weighted score and the floor of 70. by @brettdavies in [#239](https://github.com/brettdavies/agentnative-cli/pull/239)
+
+### Documentation
+
+- Document how to verify a download: `brew verify brettdavies/tap/agentnative` for a Homebrew bottle, and `gh attestation verify` with `--signer-workflow` for a release archive. Releases up to 0.6.0 carry no attestation. by @brettdavies in [#156](https://github.com/brettdavies/agentnative-cli/pull/156)
+- Document the full-corpus before/after a maintainer runs before a scoring-engine change merges, beside the three-tool before/after contributors attach. by @brettdavies in [#164](https://github.com/brettdavies/agentnative-cli/pull/164)
+- Document how behavioral audits read `--help` in the README: which lines declare a flag, that names are read whole, the dash rule, and how to report a misread. by @brettdavies in [#165](https://github.com/brettdavies/agentnative-cli/pull/165)
+- Document name columns and description markers in the README's section on how behavioral audits read `--help`. by @brettdavies in [#167](https://github.com/brettdavies/agentnative-cli/pull/167)
+- Document wrapped and next-line descriptions in the README's section on how behavioral audits read `--help`. by @brettdavies in [#168](https://github.com/brettdavies/agentnative-cli/pull/168)
+- Document which lines count as definitions at any indent, and the gap a column-0 or bracket-led line needs, in the README's section on how behavioral audits read `--help`. by @brettdavies in [#169](https://github.com/brettdavies/agentnative-cli/pull/169)
+- Document that the Homebrew formula installs the release's archive directly, with no bottle, and where to verify an archive against its attestation. by @brettdavies in [#176](https://github.com/brettdavies/agentnative-cli/pull/176)
+- Document that a release does not wait on `agentnative-site`, which catches up after a scorecard schema change.
+- The README's `json_probe` section says the output flag is read from option definitions, is passed as the help spells it, and that a longer flag such as `--output-format` is a different name. by @brettdavies in [#178](https://github.com/brettdavies/agentnative-cli/pull/178)
+- The README's section on how behavioral audits read `--help` names the three text shapes, the long-column rule, and the colon among the description markers. by @brettdavies in [#181](https://github.com/brettdavies/agentnative-cli/pull/181)
+- The README's `confirm_flags` section says an entry without dashes is read as a flag. by @brettdavies in [#182](https://github.com/brettdavies/agentnative-cli/pull/182)
+- The README's section on how behavioral audits read `--help` notes that typer's `*` marker is not part of a name. by @brettdavies in [#183](https://github.com/brettdavies/agentnative-cli/pull/183)
+- The README's `json_probe` section lists the accepted flags and the alias rule. by @brettdavies in [#195](https://github.com/brettdavies/agentnative-cli/pull/195)
+- The README states the single-letter rule with an example. by @brettdavies in [#197](https://github.com/brettdavies/agentnative-cli/pull/197)
+- The README says how to declare a flag so `anc` reads it, and lists the help layouts it reads the way they look rather than the way the tool means them. by @brettdavies in [#200](https://github.com/brettdavies/agentnative-cli/pull/200)
+
+**Full Changelog**: [v0.6.0...v0.7.0](https://github.com/brettdavies/agentnative-cli/compare/v0.6.0...v0.7.0)
+
 ## [0.6.0] - 2026-10-02
 
 ### Added

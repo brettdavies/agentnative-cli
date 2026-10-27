@@ -3,7 +3,80 @@
 # Use as a pre-push hook or run manually before pushing.
 #
 # Exit codes: 0 = all pass, 1 = failure
+#
+# Requires bash >= 4.4 (mapfile, and empty-array expansion under `set -u`). The
+# guard re-execs under Homebrew's bash when `#!/usr/bin/env bash` found an older
+# one, such as the macOS /bin/bash 3.2, and otherwise stops with the install hint.
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  for b in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [ -x "$b" ] && exec "$b" "$0" "$@"
+  done
+  echo "ERROR: needs bash >= 4.4 (running $BASH_VERSION); install it with: brew install bash" >&2
+  exit 1
+fi
+
+# A linked worktree can find core.hooksPath set to the main checkout's
+# absolute path (worktree tooling writes it), and git then runs the main
+# checkout's copy of this hook with the worktree as its working directory.
+# Hand off to the copy that worktree has checked out, so a push or commit is
+# gated by the hook its own branch carries.
+hook_self_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
+hook_worktree_root=$(pwd -P)
+hook_own_copy="$hook_worktree_root/scripts/hooks/$(basename "${BASH_SOURCE[0]}")"
+if [[ "$hook_worktree_root" != "$hook_self_root" && -x "$hook_own_copy" ]]; then
+  exec "$hook_own_copy" "$@"
+fi
+
+# From a linked worktree git exports GIT_DIR, which sends a tool's git calls in
+# any directory to this repository: cargo-deny 0.19.1 through 0.19.5 reset the
+# pushed branch during the advisory fetch (fixed in 0.19.6,
+# https://github.com/EmbarkStudios/cargo-deny/pull/858). Pre-push has no
+# temporary index, and discovery from the hook's cwd (the worktree root) finds
+# the same repository.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE
+
 set -euo pipefail
+
+# push_only_deletes: true when every ref line git hands pre-push on stdin,
+# `<local ref> <local sha> <remote ref> <remote sha>`, deletes a remote ref.
+# A delete carries an all-zero local sha (40 zeros, or 64 in a SHA-256
+# repository) and delivers no commit for any check to read.
+#
+# False, so the checks run, when stdin is a terminal (the hook run by hand),
+# when it carries no ref lines, and when it stays open for
+# HOOK_STDIN_WAIT_SECONDS (default 5) with no next line. Git writes its lines
+# and closes stdin at once, so a real push never waits.
+#
+# The same function github-repo-setup's hooks library ships, inline because
+# this hook sources no library.
+push_only_deletes() {
+  local wait_s="${HOOK_STDIN_WAIT_SECONDS:-5}" line local_ref local_sha rc deletes=0 others=0
+  HOOK_PUSH_REFS=''
+  [ -t 0 ] && return 1
+  while :; do
+    rc=0
+    IFS= read -r -t "$wait_s" line || rc=$?
+    # At end of input read returns 1 but still fills line with a last line
+    # that has no newline, which counts like any other.
+    [ "$rc" -eq 0 ] || { [ "$rc" -le 128 ] && [ -n "$line" ]; } || break
+    HOOK_PUSH_REFS+="$line"$'\n'
+    read -r local_ref local_sha _ <<<"$line"
+    [ -n "$local_ref" ] || continue
+    if [[ "$local_sha" =~ ^0+$ ]]; then
+      deletes=$((deletes + 1))
+    else
+      others=$((others + 1))
+    fi
+  done
+  # read returns above 128 on a timeout and 1 at end of input.
+  [ "$rc" -le 128 ] && [ "$deletes" -gt 0 ] && [ "$others" -eq 0 ]
+}
+
+if push_only_deletes; then
+  echo "Nothing to check: the push only deletes."
+  exit 0
+fi
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,13 +98,23 @@ pass "toolchain ($(rustc --version 2>/dev/null | awk '{print $2}' || echo unknow
 cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check"
 pass "fmt"
 
-# 2. Clippy with warnings-as-errors (matches CI's RUSTFLAGS=-Dwarnings)
-RUSTFLAGS="-Dwarnings" cargo clippy --quiet 2>&1 || fail "cargo clippy -Dwarnings"
+# 2. Clippy with warnings-as-errors: CI's RUSTFLAGS=-Dwarnings as a clippy
+# argument, since cargo keys every dependency build on RUSTFLAGS.
+cargo clippy --quiet -- -D warnings 2>&1 || fail "cargo clippy -- -D warnings"
 pass "clippy"
 
-# 3. Tests
+# 3. Tests.
 cargo test --quiet 2>&1 || fail "cargo test"
 pass "test"
+
+# 3b. Doc build — the crate publishes a library whose docs.rs page starts
+# with the README, so a broken intra-doc link, an unclosed code fence or a
+# bare URL is a rendering bug on a published page.
+# RUSTDOCFLAGS=-D warnings makes every doc warning a failure, and
+# `#![deny(missing_docs)]` in src/lib.rs makes an undocumented public item
+# one too.
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet 2>&1 || fail "cargo doc --no-deps (RUSTDOCFLAGS=-D warnings)"
+pass "doc"
 
 # 4. Security audit (licenses + advisories) — skip if cargo-deny not installed
 if cargo deny --version &>/dev/null; then
@@ -89,14 +172,13 @@ fi
 # Requirements (one-time setup):
 #   sudo apt install mingw-w64                          # the C linker tree-sitter needs
 #   rustup target add x86_64-pc-windows-gnu             # the Windows std library
-#
-# If either is missing the step is skipped with a one-line note rather than
-# failing — but local Windows coverage is then absent, and CI's Windows job
-# becomes the only backstop. Install both to close that gap.
+# If a tool is missing its step is skipped with a one-line note rather than
+# failing — but local Windows coverage is then absent, and CI's Windows jobs
+# become the only backstop. Install all of them to close that gap.
 if command -v x86_64-w64-mingw32-gcc &>/dev/null \
     && rustup target list --installed 2>/dev/null | grep -q '^x86_64-pc-windows-gnu$'; then
-    RUSTFLAGS="-Dwarnings" cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet 2>&1 \
-        || fail "cargo clippy --target x86_64-pc-windows-gnu -Dwarnings"
+    cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet -- -D warnings 2>&1 \
+        || fail "cargo clippy --target x86_64-pc-windows-gnu -- -D warnings"
     pass "windows clippy (cross-target)"
 else
     echo "  - windows clippy (skipped: install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\` to enable)"

@@ -98,6 +98,6 @@ artifacts and historical plans live under `docs/`.
 
 This repository maintains this document together with the prose tooling that enforces it: the Vale configuration
 (`.vale.ini`), the brand rule pack (`styles/brand/`), the vocabularies (`styles/config/`), the orchestrator
-(`scripts/prose-check.sh`), the rule-pack tests (`scripts/test-prose-check.mjs`), and the pack README generator
-(`scripts/generate-pack-readme.mjs`). `scripts/sync-spec.sh` vendors only the principle contract (`principles/p*-*.md`,
-`VERSION`, and `CHANGELOG.md`) into `src/principles/spec/`; it does not touch this document or the prose tooling.
+(`scripts/prose-check.sh`), and the pack README generator (`scripts/generate-pack-readme.mjs`). `scripts/sync-spec.sh`
+vendors only the principle contract (`principles/p*-*.md`, `VERSION`, and `CHANGELOG.md`) into `src/principles/spec/`;
+it does not touch this document or the prose tooling.

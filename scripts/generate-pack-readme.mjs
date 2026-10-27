@@ -5,9 +5,9 @@
 //
 // For each pack under styles/<Pack>/, reads every *.yml, extracts the
 // rule definitions, and renders a markdown README listing the literal
-// phrases / regex each pack enforces. Pre-push runs this in --check
-// mode and refuses to push when a generated README has drifted from
-// its source pack.
+// phrases / regex each pack enforces. No hook or CI job runs it: run it
+// by hand after editing a pack's YAML, and use --check to confirm a
+// committed README still matches its source pack.
 //
 // Usage:
 //   bun scripts/generate-pack-readme.mjs            write mode (defaults: Brand)
@@ -19,7 +19,9 @@
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import yaml from "js-yaml";
+// The repository has no package.json, so Bun auto-installs this pinned
+// version; js-yaml 5 drops the default export this import uses.
+import yaml from "js-yaml@4.1.0";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const STYLES_DIR = path.join(REPO_ROOT, "styles");

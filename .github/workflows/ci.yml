@@ -36,6 +36,15 @@ jobs:
       # failed job. The rulesets already block the merge; this is so the run's
       # colour matches what a human scanning the Actions tab should act on.
       advisories_blocking: true
+      # completions/ ships with the crate and is generated from the clap
+      # definition; the job fails when a help string changes without a
+      # regeneration.
+      completions: true
+      # Cargo.toml declares rust-version; this compiles every feature on it.
+      msrv: true
+      # docs.rs builds the published docs with every feature; this fails a
+      # broken intra-doc link at the PR instead of after publish.
+      docs: true
 
   # The reusable workflow above builds the default feature set. The local web
   # audit is the `web` feature, off by default, so these jobs hold that build

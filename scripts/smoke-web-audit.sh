@@ -18,8 +18,6 @@ readonly BINARY="${1:-target/release/anc}"
 # Ten times the measured local run, and well inside the promise, so this
 # fails on a hang rather than on a slow runner.
 readonly BUDGET_SECONDS=30
-# The registry's check count: a run that reports fewer has lost rows.
-readonly EXPECTED_ROWS=65
 
 if [[ ! -x "$BINARY" ]]; then
   printf 'error: %s not found or not executable; run "cargo build --release --features web" first\n' "$BINARY" >&2
@@ -120,13 +118,22 @@ fi
 if ((code > 2)); then
   printf 'error: the run returned %s; expected a verdict (0, 1 or 2). anc wrote:\n' "$code" >&2
   sed 's/^/  /' "$stderr_log" >&2
+  # Exit 3 with a scorecard on stdout means rows errored or were cut short
+  # by the deadline rather than the target going unanswered; name them.
+  if [[ -s "$scorecard" ]]; then
+    jaq -r '.results[] | select(.status == "error") | "  error row: \(.id): \(.evidence // "")"' \
+      <"$scorecard" >&2 || true
+  fi
   exit 1
 fi
 
+# The registry the binary carries says how many rows a run reports; a run
+# that reports fewer has lost rows.
+expected_rows=$("$BINARY" emit web-checks | jaq '.checks | length')
 rows=$(jaq '.results | length' <"$scorecard")
 passed=$(jaq '.summary.pass' <"$scorecard")
-if [[ "$rows" != "$EXPECTED_ROWS" ]]; then
-  printf 'error: the scorecard carries %s rows; expected %s\n' "$rows" "$EXPECTED_ROWS" >&2
+if [[ "$rows" != "$expected_rows" ]]; then
+  printf 'error: the scorecard carries %s rows; expected %s\n' "$rows" "$expected_rows" >&2
   exit 1
 fi
 if ((passed < 1)); then

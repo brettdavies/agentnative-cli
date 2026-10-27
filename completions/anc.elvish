@@ -42,6 +42,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --repo 'Read `.anc.toml` from this directory instead of the target''s repository. For a repo you fetched for a tool installed elsewhere: anc reads `<PATH>/.anc.toml` over `~/.anc.toml` and never fetches'
             cand --principle 'Filter audits by principle number (1-8)'
             cand --output 'Output format'
+            cand --jobs 'Threads that read source files for source analysis, at least 1. Default: one per available core, capped to bound memory, and never more than the files read'
             cand --audit-profile 'Exemption category for the target. Suppresses audits that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed audits emit `Skip` with structured evidence so readers see what was excluded'
             cand --color 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)'
             cand --binary 'Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin'

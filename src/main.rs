@@ -151,6 +151,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         principle,
         output,
         include_tests,
+        jobs,
         audit_profile,
     ) = match cli.command {
         Some(Commands::Audit {
@@ -163,6 +164,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             principle,
             output,
             include_tests,
+            jobs,
             audit_profile,
         }) => (
             path,
@@ -174,6 +176,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             principle,
             output,
             include_tests,
+            jobs.and_then(|n| std::num::NonZeroUsize::new(n.into())),
             audit_profile,
         ),
         Some(Commands::Completions { shell }) => {
@@ -346,7 +349,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                         && !exception_category.is_some_and(|cat| suppresses(audit.id(), cat))
                 })
                 .collect();
-            audits::source::pass::prepare(&project, *lang, &runnable);
+            audits::source::pass::prepare(&project, *lang, &runnable, jobs);
             all_audits.extend(source_audits);
         }
         if languages.is_empty() && source_only {

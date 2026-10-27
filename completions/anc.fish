@@ -45,6 +45,7 @@ complete -c anc -n "__fish_anc_using_subcommand audit" -l repo -d 'Read `.anc.to
 complete -c anc -n "__fish_anc_using_subcommand audit" -l principle -d 'Filter audits by principle number (1-8)' -r
 complete -c anc -n "__fish_anc_using_subcommand audit" -l output -d 'Output format' -r -f -a "text\t''
 json\t''"
+complete -c anc -n "__fish_anc_using_subcommand audit" -l jobs -d 'Threads that read source files for source analysis, at least 1. Default: one per available core, capped to bound memory, and never more than the files read' -r
 complete -c anc -n "__fish_anc_using_subcommand audit" -l audit-profile -d 'Exemption category for the target. Suppresses audits that do not apply to this class of tool — e.g., TUI apps legitimately intercept the TTY, so `--audit-profile human-tui` skips the interactive-prompt MUSTs. Suppressed audits emit `Skip` with structured evidence so readers see what was excluded' -r -f -a "human-tui\t'TUI-by-design tools (lazygit, k9s, btop). Suppresses interactive-prompt MUSTs and SIGPIPE — their contract is the TTY'
 file-traversal\t'File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those audits land'
 posix-utility\t'POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs satisfied vacuously via stdin-primary input'

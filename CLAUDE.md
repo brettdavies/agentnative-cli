@@ -371,9 +371,10 @@ agentnative. Three rules guard the probe:
 
 **Tests that audit this repository** go through `self_audit` in `tests/common/self_audit.rs`. A probe never audits: one
 `anc audit .` runs its probes one at a time, each `--help`, `-h`, `--version`, `-V`, the bad flag, or bare. The cost is
-the source layer, about 25 CPU-seconds per audit in a debug build, and libtest runs one test per core. `self_audit` runs
-each distinct invocation once per test binary and holds one of `SLOTS` (4) lock files in the system temp directory while
-it runs, so audits of this repository run four at a time across every test run on the machine.
+the source layer, about 7 CPU-seconds per audit in a debug build, and libtest runs one test per core. `self_audit` runs
+each distinct invocation once per test binary, with `AGENTNATIVE_JOBS=1` so the source layer reads on one thread, and
+holds one of `SLOTS` (4) lock files in the system temp directory while it runs, so audits of this repository run four at
+a time across every test run on the machine.
 `tests/self_audit_guard.rs` fails on a spawn that passes `"."` from the package root without it.
 
 ## CI and Quality

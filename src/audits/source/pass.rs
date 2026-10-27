@@ -3,15 +3,19 @@
 //! A source audit that matches patterns implements [`SourceScan`]: a per-file
 //! `scan` over a [`SourceFile`] parsed once, returning a typed finding. Before
 //! the audit loop, [`prepare`] parses each file of a language once and runs
-//! every runnable audit's scan on it, then drops the tree, so memory holds one
-//! tree at a time. Each audit's `run()` takes its findings with [`findings`]
-//! and aggregates them; with nothing prepared (a unit test, a direct caller),
-//! [`findings`] runs the same scan over that audit alone.
+//! every runnable audit's scan on it, then drops the tree. The files are split
+//! into contiguous runs across [`workers`] threads, each holding one tree at a
+//! time, and their findings are joined back in path order. Each audit's
+//! `run()` takes its findings with [`findings`] and aggregates them; with
+//! nothing prepared (a unit test, a direct caller), [`findings`] runs the same
+//! scan over that audit alone.
 
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::thread;
 
 use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
 use ast_grep_core::{AstGrep, Node};
@@ -134,49 +138,146 @@ impl std::fmt::Debug for PreparedFindings {
     }
 }
 
+/// The most workers a run starts unless `--jobs` asks for more. Each worker
+/// holds one parsed tree, so peak memory grows with the count. A release build
+/// reading 28.7 MB of Rust on a 16-core host took 6.9 s at 56 MB peak RSS on
+/// one worker; 2.2 s at 74-77 MB on 4; 1.7 s at 82-83 MB on 5; and 1.3-1.4 s
+/// at 95-97 MB on 8. Four is the largest count that stays clearly within 1.5x
+/// the one-worker peak.
+const DEFAULT_MAX_WORKERS: usize = 4;
+
+/// A worker's stack: the 8 MiB a Linux main thread gets. Several scans recurse
+/// once per tree level, and a spawned thread's 2 MiB default overflows on
+/// deeply nested files the main thread audits.
+const WORKER_STACK_BYTES: usize = 8 * 1024 * 1024;
+
+/// How many threads scan `files` files: `jobs` when set, else the smaller of
+/// the `available` cores and [`DEFAULT_MAX_WORKERS`]; never more than the
+/// files, and at least one.
+pub fn workers(jobs: Option<NonZeroUsize>, available: usize, files: usize) -> usize {
+    jobs.map_or(available.min(DEFAULT_MAX_WORKERS), NonZeroUsize::get)
+        .min(files)
+        .max(1)
+}
+
 /// Parse each `language` file once and run every scan `audits` contribute,
 /// storing each audit's findings in path order for its `run()` to take.
-pub fn prepare(project: &Project, language: Language, audits: &[&dyn Audit]) {
+/// `jobs` overrides the default worker count ([`workers`]).
+pub fn prepare(
+    project: &Project,
+    language: Language,
+    audits: &[&dyn Audit],
+    jobs: Option<NonZeroUsize>,
+) {
     match language {
         Language::Rust => {
             let scanners = audits.iter().filter_map(|audit| match audit.scanner() {
                 Some(Scanner::Rust(scan)) => Some((audit.id(), scan)),
                 _ => None,
             });
-            prepare_with(project, language, Rust, scanners.collect());
+            prepare_with(project, language, Rust, scanners.collect(), jobs);
         }
         Language::Python => {
             let scanners = audits.iter().filter_map(|audit| match audit.scanner() {
                 Some(Scanner::Python(scan)) => Some((audit.id(), scan)),
                 _ => None,
             });
-            prepare_with(project, language, Python, scanners.collect());
+            prepare_with(project, language, Python, scanners.collect(), jobs);
         }
         _ => {}
     }
 }
 
-fn prepare_with<L: LanguageExt + Copy>(
+fn prepare_with<L: LanguageExt + Copy + Send>(
     project: &Project,
     language: Language,
     lang: L,
     scanners: Vec<(&str, &dyn ErasedScan<L>)>,
+    jobs: Option<NonZeroUsize>,
 ) {
-    let mut found: Vec<Vec<Finding>> = scanners.iter().map(|_| Vec::new()).collect();
-    if !scanners.is_empty() {
-        for (path, parsed) in project.parsed_files(language) {
-            let file = SourceFile::parse(path, &parsed.source, lang, project.include_tests);
-            for ((_, scan), out) in scanners.iter().zip(found.iter_mut()) {
-                out.push(scan.scan_erased(&file));
-            }
-        }
-    }
+    let scans: Vec<&dyn ErasedScan<L>> = scanners.iter().map(|(_, scan)| *scan).collect();
+    let found = if scans.is_empty() {
+        Vec::new()
+    } else {
+        let files: Vec<(&Path, &str)> = project
+            .parsed_files(language)
+            .iter()
+            .map(|(path, parsed)| (path.as_path(), parsed.source.as_str()))
+            .collect();
+        let available = thread::available_parallelism().map_or(1, NonZeroUsize::get);
+        let workers = workers(jobs, available, files.len());
+        scan_files(&files, lang, project.include_tests, &scans, workers)
+    };
     let store = &project.prepared_findings;
     let mut by_audit = store.by_audit.borrow_mut();
     for ((id, _), findings) in scanners.into_iter().zip(found) {
         by_audit.insert((language, id.to_string()), findings);
     }
     store.languages.borrow_mut().insert(language);
+}
+
+/// Each scan's findings over `files`, in file order, from `workers` threads
+/// that each take one contiguous run of files.
+fn scan_files<L: LanguageExt + Copy + Send>(
+    files: &[(&Path, &str)],
+    lang: L,
+    include_tests: bool,
+    scans: &[&dyn ErasedScan<L>],
+    workers: usize,
+) -> Vec<Vec<Finding>> {
+    if workers <= 1 {
+        return scan_run(files, lang, include_tests, scans);
+    }
+    let run_len = files.len().div_ceil(workers);
+    let runs: Vec<Vec<Vec<Finding>>> = thread::scope(|scope| {
+        let handles: Vec<_> = files
+            .chunks(run_len)
+            .map(|run| {
+                thread::Builder::new()
+                    .stack_size(WORKER_STACK_BYTES)
+                    .spawn_scoped(scope, move || scan_run(run, lang, include_tests, scans))
+                    .expect("spawn a source-audit worker")
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    });
+    let mut found: Vec<Vec<Finding>> = scans
+        .iter()
+        .map(|_| Vec::with_capacity(files.len()))
+        .collect();
+    for run in runs {
+        for (out, part) in found.iter_mut().zip(run) {
+            out.extend(part);
+        }
+    }
+    found
+}
+
+/// Each scan's findings over `files`, in order, on the calling thread.
+fn scan_run<L: LanguageExt + Copy>(
+    files: &[(&Path, &str)],
+    lang: L,
+    include_tests: bool,
+    scans: &[&dyn ErasedScan<L>],
+) -> Vec<Vec<Finding>> {
+    let mut found: Vec<Vec<Finding>> = scans
+        .iter()
+        .map(|_| Vec::with_capacity(files.len()))
+        .collect();
+    for (path, source) in files {
+        let file = SourceFile::parse(path, source, lang, include_tests);
+        for (scan, out) in scans.iter().zip(found.iter_mut()) {
+            out.push(scan.scan_erased(&file));
+        }
+    }
+    found
 }
 
 /// `audit`'s findings for every `language` file, in path order: the ones
@@ -320,12 +421,58 @@ mod tests {
             .collect()
     }
 
+    fn jobs(n: usize) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(n)
+    }
+
+    #[test]
+    fn workers_take_the_requested_jobs_up_to_the_file_count() {
+        assert_eq!(workers(jobs(3), 16, 100), 3);
+        assert_eq!(workers(jobs(3), 1, 100), 3, "jobs is not held to the cores");
+        assert_eq!(workers(jobs(32), 16, 100), 32, "nor to the default cap");
+        assert_eq!(workers(jobs(3), 16, 2), 2);
+    }
+
+    #[test]
+    fn default_workers_are_the_cores_up_to_the_cap_and_the_file_count() {
+        assert_eq!(workers(None, 2, 100), 2);
+        assert_eq!(workers(None, 64, 100), DEFAULT_MAX_WORKERS);
+        assert_eq!(workers(None, 16, 1), 1, "one file starts one worker");
+        assert_eq!(workers(None, 16, 0), 1);
+    }
+
+    #[test]
+    fn findings_from_several_workers_stay_in_path_order() {
+        let files = [
+            ("a.rs", "// a"),
+            ("b.rs", "// b"),
+            ("c.rs", "// c"),
+            ("d.rs", "// d"),
+            ("e.rs", "// e"),
+        ];
+        let project = project_with("workers", &files);
+        let audit = Counted::new("x", Language::Rust);
+        prepare(&project, Language::Rust, &[&audit], jobs(3));
+        let found = findings(&project, Language::Rust, Rust, &audit);
+        assert_eq!(audit.scans(), 5);
+        assert_eq!(
+            names(&found),
+            [
+                "a.rs=// a",
+                "b.rs=// b",
+                "c.rs=// c",
+                "d.rs=// d",
+                "e.rs=// e"
+            ]
+        );
+    }
+
     #[test]
     fn prepare_scans_each_file_once_for_runnable_audits_only() {
         let project = project_with("runnable", &[("a.rs", "// a"), ("b.rs", "// b")]);
         let runnable = Counted::new("x", Language::Rust);
         let excluded = Counted::new("y", Language::Rust);
-        prepare(&project, Language::Rust, &[&runnable]);
+        prepare(&project, Language::Rust, &[&runnable], None);
         assert_eq!(runnable.scans(), 2);
         assert_eq!(excluded.scans(), 0);
     }
@@ -335,7 +482,7 @@ mod tests {
         let files = [("a.rs", "// a"), ("b.rs", "// b")];
         let prepared_project = project_with("prepared", &files);
         let audit = Counted::new("x", Language::Rust);
-        prepare(&prepared_project, Language::Rust, &[&audit]);
+        prepare(&prepared_project, Language::Rust, &[&audit], None);
         let prepared = findings(&prepared_project, Language::Rust, Rust, &audit);
         assert_eq!(
             audit.scans(),
@@ -359,8 +506,8 @@ mod tests {
         let project = project_with("shared-id", &[("a.rs", "// rust"), ("b.py", "# python")]);
         let rust_audit = Counted::new("p6-no-color", Language::Rust);
         let python_audit = Counted::new("p6-no-color", Language::Python);
-        prepare(&project, Language::Rust, &[&rust_audit]);
-        prepare(&project, Language::Python, &[&python_audit]);
+        prepare(&project, Language::Rust, &[&rust_audit], None);
+        prepare(&project, Language::Python, &[&python_audit], None);
 
         let rust_found = findings(&project, Language::Rust, Rust, &rust_audit);
         let python_found = findings(&project, Language::Python, Python, &python_audit);

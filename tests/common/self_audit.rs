@@ -1,12 +1,12 @@
 //! Audits of this repository, run once per invocation and a few at a time.
 //!
 //! An audit of this repository is the heaviest spawn in the suite: its source
-//! layer parses every file in the crate, about 25 CPU-seconds in a debug
+//! layer parses every file in the crate, about 7 CPU-seconds in a debug
 //! build. libtest runs one test per core, and parallel agents run several test
 //! runs on one machine at once, so unbounded these audits stack up by the
 //! hundreds on a shared server. [`self_audit`] runs each distinct invocation
-//! once per test binary and holds one of [`SLOTS`] machine-wide slots while it
-//! runs.
+//! once per test binary, on one source-audit thread, and holds one of
+//! [`SLOTS`] machine-wide slots while it runs.
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions, TryLockError};
@@ -62,6 +62,8 @@ fn slot_dir() -> PathBuf {
 
 /// `anc <args>` from the package root, which is this repository under
 /// `cargo test`. Every test asking for the same arguments shares one run.
+/// The run reads source on one thread (`AGENTNATIVE_JOBS=1`), so a slot holds
+/// one core and [`SLOTS`] bounds the cores these audits take.
 pub fn self_audit(args: &[&str]) -> Output {
     self_audit_with_env(args, &[])
 }
@@ -89,6 +91,7 @@ pub fn self_audit_with_env(args: &[&str], envs: &[(&str, &str)]) -> Output {
         Command::cargo_bin("anc")
             .expect("anc binary should exist")
             .env("AGENTNATIVE_HOME_CONFIG", super::empty_home_config())
+            .env("AGENTNATIVE_JOBS", "1")
             .envs(envs.iter().copied())
             .args(args)
             .output()

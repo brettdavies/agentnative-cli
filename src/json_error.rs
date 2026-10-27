@@ -1,5 +1,7 @@
 //! JSON envelope renderer for clap-level errors, help, and version output
-//! when the user requests JSON mode at the top level.
+//! when the user requests JSON mode at the top level, and for the errors
+//! `anc audit` and `anc web` raise at run time. Both verbs share one
+//! [`NextStep`] shape.
 //!
 //! Clap intercepts `--help`, `--version`, and parse failures before our
 //! orchestration sees them, so the only way to honor `--output json` for
@@ -69,6 +71,10 @@ pub const CLI_REFERENCE_DOCS: &str = "https://github.com/brettdavies/agentnative
 pub const BIN_SELECTION_DOCS: &str =
     "https://github.com/brettdavies/agentnative-cli#one-binary-several-or-none";
 
+/// The README section on `anc web`, linked from its failure steps.
+pub const WEB_AUDIT_DOCS: &str =
+    "https://github.com/brettdavies/agentnative-cli#auditing-a-website";
+
 /// What the caller does next, carried by every error envelope as
 /// `next_step`. A step carries `command`, runnable verbatim by a non-TTY
 /// caller, or `template`, whose angle-bracket placeholder only the caller
@@ -96,6 +102,14 @@ pub enum NextAction {
     ChooseBin,
     /// Run `command`, the same invocation corrected.
     Rerun,
+    /// Run `command` once the target is up: the same `anc web` target with
+    /// `--verbose`, which reports each probe.
+    Retry,
+    /// Pass a target `anc web` can read: `command` prints the forms it
+    /// accepts.
+    FixTarget,
+    /// Pick a real check id: `command` lists every id this build scores.
+    ListChecks,
 }
 
 impl NextStep {
@@ -123,6 +137,27 @@ impl NextStep {
             command: Some(command),
             template: None,
             docs: Some(BIN_SELECTION_DOCS),
+        }
+    }
+
+    pub fn retry(command: String) -> Self {
+        Self::web(NextAction::Retry, command)
+    }
+
+    pub fn fix_target(command: String) -> Self {
+        Self::web(NextAction::FixTarget, command)
+    }
+
+    pub fn list_checks(command: String) -> Self {
+        Self::web(NextAction::ListChecks, command)
+    }
+
+    fn web(action: NextAction, command: String) -> Self {
+        Self {
+            action,
+            command: Some(command),
+            template: None,
+            docs: Some(WEB_AUDIT_DOCS),
         }
     }
 }
@@ -193,46 +228,6 @@ pub fn clap_offending_fields(error: &clap::Error) -> serde_json::Map<String, ser
         fields.insert("value".into(), value.into());
     }
     fields
-}
-
-/// The action a consumer takes after an `anc web` failure: a closed-set
-/// verb, a verbatim command safe to run headless, and a docs URL when one
-/// exists. Unlike [`NextStep`], it always serializes `docs`, as `null` when
-/// no page exists.
-#[cfg(feature = "web")]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FailureStep {
-    /// What to do, from a closed set (`retry`, `fix-target`, `list-checks`).
-    pub action: &'static str,
-    /// The exact invocation to try next.
-    pub command: String,
-    /// Where to read more, when a page exists.
-    pub docs: Option<&'static str>,
-}
-
-/// Render a JSON failure envelope with a `next_step`: the error envelope's
-/// keys plus `{action, command, docs}` so an agent can act on a dead end
-/// without parsing the message.
-#[cfg(feature = "web")]
-pub fn render_failure(
-    kind: &str,
-    error: &str,
-    message: &str,
-    exit_code: i32,
-    next_step: &FailureStep,
-) -> String {
-    json!({
-        "kind": kind,
-        "error": error,
-        "message": message,
-        "exit_code": exit_code,
-        "next_step": {
-            "action": next_step.action,
-            "command": next_step.command,
-            "docs": next_step.docs,
-        },
-    })
-    .to_string()
 }
 
 /// Render a JSON help envelope wrapping clap's rendered text.
@@ -382,6 +377,9 @@ mod tests {
             NextStep::show_help("anc --help".into()),
             NextStep::choose_bin("anc audit . --bin <name>".into()),
             NextStep::rerun("anc audit ./x".into()),
+            NextStep::retry("anc web localhost:8787 --verbose".into()),
+            NextStep::fix_target("anc web --help".into()),
+            NextStep::list_checks("anc emit web-checks".into()),
         ];
         for step in steps {
             assert!(
@@ -389,6 +387,37 @@ mod tests {
                 "{step:?}"
             );
         }
+    }
+
+    #[test]
+    fn web_and_audit_command_steps_serialize_the_same_keys() {
+        let keys = |step: &NextStep| -> Vec<String> {
+            serde_json::to_value(step)
+                .expect("a step serializes")
+                .as_object()
+                .expect("a step is a JSON object")
+                .keys()
+                .cloned()
+                .collect()
+        };
+        let audit = keys(&NextStep::show_help("anc audit --help".into()));
+        assert_eq!(audit, ["action", "command", "docs"]);
+        for step in [
+            NextStep::rerun("anc audit ./x".into()),
+            NextStep::retry("anc web localhost:8787 --verbose".into()),
+            NextStep::fix_target("anc web --help".into()),
+            NextStep::list_checks("anc emit web-checks".into()),
+        ] {
+            assert_eq!(keys(&step), audit, "{step:?}");
+        }
+    }
+
+    #[test]
+    fn web_actions_serialize_kebab_case() {
+        let action = |step: NextStep| serde_json::to_value(step).unwrap()["action"].clone();
+        assert_eq!(action(NextStep::retry("x".into())), "retry");
+        assert_eq!(action(NextStep::fix_target("x".into())), "fix-target");
+        assert_eq!(action(NextStep::list_checks("x".into())), "list-checks");
     }
 
     #[test]

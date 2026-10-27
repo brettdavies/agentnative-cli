@@ -96,6 +96,7 @@ fn an_invalid_target_and_an_unknown_check_fail_before_any_connection() {
     let err = stderr_of(assert.get_output());
     assert!(err.contains("no such check: no-such-check"), "{err}");
     assert!(err.contains("anc emit web-checks"), "{err}");
+    assert!(err.trim_end().ends_with("exit 2: usage error"), "{err}");
     assert!(server.hits().is_empty(), "an unknown id must probe nothing");
 
     let assert = anc()
@@ -115,5 +116,88 @@ fn an_invalid_target_and_an_unknown_check_fail_before_any_connection() {
     assert_eq!(
         envelope["next_step"]["command"],
         Value::from("anc emit web-checks")
+    );
+}
+
+/// The `next_step` keys, in order, of a failing `--output json` run.
+fn next_step_keys(args: &[&str]) -> Vec<String> {
+    let output = anc().args(args).output().expect("spawn anc");
+    assert!(!output.status.success(), "{output:?}");
+    let envelope: Value = serde_json::from_str(stderr_of(&output).trim()).unwrap();
+    envelope["next_step"]
+        .as_object()
+        .unwrap_or_else(|| panic!("no next_step object: {envelope}"))
+        .keys()
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn anc_web_and_anc_audit_errors_carry_the_same_next_step_keys() {
+    let audit = next_step_keys(&["audit", "/nonexistent/anc-target", "--output", "json"]);
+    assert_eq!(audit, ["action", "command", "docs"]);
+    for web in [
+        &["web", "127.0.0.1:9", "--output", "json"][..],
+        &["web", "ftp://example.test/x", "--output", "json"][..],
+        &[
+            "web",
+            "127.0.0.1:9",
+            "--check",
+            "no-such-check",
+            "--output",
+            "json",
+        ][..],
+    ] {
+        assert_eq!(next_step_keys(web), audit, "{web:?}");
+    }
+}
+
+#[test]
+fn the_web_failure_envelopes_pin_their_bytes() {
+    let stderr = |args: &[&str]| stderr_of(&anc().args(args).output().expect("spawn anc"));
+    let docs = "https://github.com/brettdavies/agentnative-cli#auditing-a-website";
+    assert_eq!(
+        stderr(&["web", "127.0.0.1:9", "--output", "json"]),
+        format!(
+            "{}{docs}{}\n",
+            r#"{"kind":"runtime","error":"target-unreachable","message":"http://127.0.0.1:9/ did not answer any probe","exit_code":3,"next_step":{"action":"retry","command":"anc web 127.0.0.1:9 --verbose","docs":""#,
+            r#""},"argument":"<TARGET>","value":"http://127.0.0.1:9/"}"#,
+        )
+    );
+    assert_eq!(
+        stderr(&["web", "ftp://example.test/x", "--output", "json"]),
+        format!(
+            "{}{docs}{}\n",
+            r#"{"kind":"runtime","error":"invalid-target","message":"cannot audit ftp://example.test/x: unsupported scheme: only http and https targets can be audited","exit_code":3,"next_step":{"action":"fix-target","command":"anc web --help","docs":""#,
+            r#""},"argument":"<TARGET>","value":"ftp://example.test/x"}"#,
+        )
+    );
+    assert_eq!(
+        stderr(&[
+            "web",
+            "127.0.0.1:9",
+            "--check",
+            "no-such-check",
+            "--output",
+            "json"
+        ]),
+        format!(
+            "{}{docs}{}\n",
+            r#"{"kind":"runtime","error":"unknown-check","message":"no such check: no-such-check","exit_code":2,"next_step":{"action":"list-checks","command":"anc emit web-checks","docs":""#,
+            r#""},"argument":"--check <ID>","value":"no-such-check"}"#,
+        )
+    );
+}
+
+#[test]
+fn a_retry_command_quotes_a_target_a_shell_would_split() {
+    let assert = anc()
+        .args(["web", "http://127.0.0.1:9/?a=1&b=2", "--output", "json"])
+        .assert()
+        .code(3);
+    let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+    assert_eq!(
+        envelope["next_step"]["command"],
+        Value::from("anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose")
     );
 }

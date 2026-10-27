@@ -733,15 +733,19 @@ Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `
 `message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
 is one of a closed set, and a newer release can add to it:
 
-| `action`     | Carries                                                                                      | Raised by                                       |
-| ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `show-help`  | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error` |
-| `choose-bin` | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`               |
-| `rerun`      | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                           |
+| `action`      | Carries                                                                                      | Raised by                                       |
+| ------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error` |
+| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`               |
+| `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                           |
+| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                            |
+| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`                                |
+| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                 |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
-`bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them.
+`bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
+error, where `value` is the target (the URL probed, for `target-unreachable`) or the `--check` id.
 
 ### Shell Completions
 

@@ -1,5 +1,6 @@
-//! The `http` handler and the `legacy-alias-redirects` eval rule, a
-//! mirror of the site's `handlers/http.ts`.
+//! The `http` handler and the `legacy-alias-redirects` and
+//! `retained-document` eval rules, a mirror of the site's
+//! `handlers/http.ts`.
 
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -12,6 +13,7 @@ use super::shared::{
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::registry::WebCheck;
+use crate::web_audit::scorecard::EvidenceItem;
 
 /// The `with` block of an `http` check.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -31,6 +33,9 @@ pub struct HttpWith {
     pub timeout: Option<f64>,
     /// Keep the passing body on the evidence row.
     pub retain_body: Option<bool>,
+    /// `retained-document` checks only: the document discovery kept that the
+    /// check scores.
+    pub retained: Option<String>,
 }
 
 /// Header pairs from a `with.headers` object, string values only.
@@ -63,6 +68,45 @@ fn classify_miss(resp: &ProbeResponse, expect: &ExpectBlock, has_explicit_timeou
     } else {
         Miss::Absent
     }
+}
+
+/// One response asserted against the check's expectations, as its
+/// evidence row, and whether it passed.
+fn assess_response(
+    check: &WebCheck,
+    url: &str,
+    resp: &ProbeResponse,
+    w: &HttpWith,
+    expect: &ExpectBlock,
+    base: &str,
+) -> (bool, EvidenceItem) {
+    let asserted = assert_http(check, expect, resp);
+    let (recovery_ok, recovery_why) =
+        if asserted.ok && expect.same_origin_recovery_link == Some(true) {
+            same_origin_recovery_link(&resp.body, base)
+        } else {
+            (true, String::new())
+        };
+    let ok = asserted.ok && recovery_ok;
+    let mut reasons = asserted.reasons;
+    if !recovery_why.is_empty() {
+        reasons.push(recovery_why);
+    }
+    let mut row = item([
+        ("url", json!(url)),
+        ("status", json!(resp.status)),
+        ("ok", json!(ok)),
+        ("why", json!(reasons)),
+        ("elapsed_ms", json!(resp.elapsed_ms)),
+        ("error", json!(resp.error)),
+    ]);
+    if resp.truncated {
+        row.insert("truncated".to_string(), json!(true));
+    }
+    if w.retain_body == Some(true) && ok {
+        row.insert("body".to_string(), json!(resp.body));
+    }
+    (ok, row)
 }
 
 /// Resolve `path` or each `path_any` candidate, issue the method with the
@@ -107,29 +151,7 @@ pub fn run_http(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
                 &fetched
             }
         };
-        let asserted = assert_http(check, &expect, resp);
-        let (recovery_ok, recovery_why) =
-            if asserted.ok && expect.same_origin_recovery_link == Some(true) {
-                same_origin_recovery_link(&resp.body, &ctx.base)
-            } else {
-                (true, String::new())
-            };
-        let ok = asserted.ok && recovery_ok;
-        let mut reasons = asserted.reasons;
-        if !recovery_why.is_empty() {
-            reasons.push(recovery_why);
-        }
-        let mut row = item([
-            ("url", json!(url)),
-            ("status", json!(resp.status)),
-            ("ok", json!(ok)),
-            ("why", json!(reasons)),
-            ("elapsed_ms", json!(resp.elapsed_ms)),
-            ("error", json!(resp.error)),
-        ]);
-        if w.retain_body == Some(true) && ok {
-            row.insert("body".to_string(), json!(resp.body));
-        }
+        let (ok, row) = assess_response(check, &url, resp, &w, &expect, &ctx.base);
         evidence.push(row);
         if ok {
             return ProbeOutcome::new(ProbeStatus::Pass, evidence);
@@ -140,6 +162,32 @@ pub fn run_http(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
         return ProbeOutcome::na("no resolvable probe URL");
     }
     ProbeOutcome::new(worst(&misses), evidence)
+}
+
+/// Score a document discovery already read against the check's `expect`,
+/// exactly as the same response fetched live would score, with no request
+/// of its own. Discovery keeps a document only when it read one, so a
+/// document it did not keep is absent.
+pub fn run_retained_document(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
+    let w: HttpWith = serde_json::from_str(check.with_json).unwrap_or_default();
+    let key = w.retained.clone().unwrap_or_default();
+    let Some(doc) = ctx.retained_documents.get(key.as_str()) else {
+        return ProbeOutcome::new(
+            ProbeStatus::Absent,
+            vec![item([
+                ("retained", json!(key)),
+                ("why", json!([format!("discovery kept no {key} document")])),
+            ])],
+        );
+    };
+    let expect = w.expect.clone().unwrap_or_default();
+    let (ok, mut row) = assess_response(check, &doc.url, &doc.response, &w, &expect, &ctx.base);
+    row.insert("retained".to_string(), json!(key));
+    if ok {
+        return ProbeOutcome::new(ProbeStatus::Pass, vec![row]);
+    }
+    let status = worst(&[classify_miss(&doc.response, &expect, w.timeout.is_some())]);
+    ProbeOutcome::new(status, vec![row])
 }
 
 /// One legacy alias: a path, or a path with request headers.

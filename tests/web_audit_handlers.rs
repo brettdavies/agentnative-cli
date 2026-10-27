@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use agentnative::web_audit::engine::discovery_documents::{API_CATALOG_DOCUMENT, RetainedDocument};
 use agentnative::web_audit::engine::{
     FetchHandle, HandlerContext, McpLaneEvidence, ProbeOutcome, ProbeStatus, RunOutcome,
 };
@@ -25,7 +26,7 @@ use agentnative::web_audit::handlers::assert::compiled;
 use agentnative::web_audit::handlers::cors_preflight::run_cors_preflight;
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::handlers::dns_doh::run_dns_doh;
-use agentnative::web_audit::handlers::http::run_http;
+use agentnative::web_audit::handlers::http::{run_http, run_retained_document};
 use agentnative::web_audit::handlers::llms_txt_quality::run_llms_txt_quality;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Locality;
@@ -215,6 +216,7 @@ fn context(transport: Arc<dyn Transport + Send + Sync>) -> HandlerContext {
         root: None,
         scoped_dirs: Arc::new(Vec::new()),
         retained_bodies: Arc::new(HashMap::new()),
+        retained_documents: Arc::new(HashMap::new()),
         fetch: FetchHandle::new(transport, Arc::new(PublicResolver), "test-ua"),
         mcp_session_id: None,
         mcp_lanes: McpLaneEvidence::default(),
@@ -253,6 +255,53 @@ fn why(outcome: &ProbeOutcome) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[test]
+fn retained_document_scores_the_kept_api_catalog_without_a_request() {
+    let check = check_by_id("api-catalog").unwrap();
+    let transport = Arc::new(MockTransport::new(
+        vec![],
+        MockResponse::error("unexpected"),
+    ));
+    let mut ctx = context(transport.clone());
+    let none = run_retained_document(check, &ctx);
+    assert_eq!(none.status, ProbeStatus::Absent);
+    assert_eq!(why(&none), ["discovery kept no api-catalog document"]);
+
+    let kept = |status: u16, body: &str| RetainedDocument {
+        url: "https://example.com/.well-known/api-catalog".to_string(),
+        response: ProbeResponse {
+            status: Some(status),
+            headers: Headers::from_pairs([("content-type", "application/linkset+json")]),
+            body: body.to_string(),
+            error: None,
+            elapsed_ms: 0,
+            truncated: false,
+        },
+        shape: None,
+    };
+    ctx.retained_documents = Arc::new(HashMap::from([(
+        API_CATALOG_DOCUMENT,
+        kept(200, r#"{"linkset":[]}"#),
+    )]));
+    let pass = run_retained_document(check, &ctx);
+    assert_eq!(pass.status, ProbeStatus::Pass);
+    assert_eq!(
+        pass.evidence[0].get("retained"),
+        Some(&Value::from("api-catalog"))
+    );
+    ctx.retained_documents = Arc::new(HashMap::from([(API_CATALOG_DOCUMENT, kept(200, "{}"))]));
+    assert_eq!(
+        run_retained_document(check, &ctx).status,
+        ProbeStatus::Broken
+    );
+    ctx.retained_documents = Arc::new(HashMap::from([(API_CATALOG_DOCUMENT, kept(404, ""))]));
+    assert_eq!(
+        run_retained_document(check, &ctx).status,
+        ProbeStatus::Absent
+    );
+    assert!(transport.requests().is_empty());
 }
 
 #[test]

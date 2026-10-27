@@ -17,9 +17,13 @@
 /// MCP endpoint discovery configuration (the registry's `mcp_discovery` block).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct McpDiscovery {
-    /// Well-known card paths probed first, in order.
+    /// The AI catalog path, read with the well-known cards.
+    pub ai_catalog: &'static str,
+    /// The path SEP-2127 appends to an endpoint to locate its card.
+    pub card_suffix: &'static str,
+    /// SEP-1649 well-known card paths, read in the first document round.
     pub well_known: &'static [&'static str],
-    /// Common endpoint paths probed with JSON-RPC when no card names one.
+    /// Common endpoint paths POSTed to when no card names an endpoint.
     pub common_paths: &'static [&'static str],
     /// The MCP protocol version the legacy `initialize` probe claims.
     pub protocol_version: &'static str,
@@ -155,7 +159,7 @@ mod tests {
         assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
         assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
         assert_eq!(HANDLER_KINDS.len(), 11);
-        assert_eq!(EVAL_RULES.len(), 2);
+        assert_eq!(EVAL_RULES.len(), 3);
     }
 
     /// The unported set is exact, so each port that lands shrinks it here.
@@ -177,10 +181,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(
-            evals,
-            BTreeSet::from(["api-description", "retained-document"])
-        );
+        assert_eq!(evals, BTreeSet::from(["api-description"]));
     }
 
     #[test]

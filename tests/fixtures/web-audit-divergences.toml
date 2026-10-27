@@ -24,16 +24,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "alias-inline-copy-noncompliant"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "alias-inline-copy-noncompliant"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "alias-inline-copy-noncompliant"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -66,16 +56,6 @@ owner = "#458"
 scenario = "alias-non-permanent-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "alias-non-permanent-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "alias-non-permanent-broken"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "alias-non-permanent-broken"
@@ -114,16 +94,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "alias-redirect-away-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "alias-redirect-away-broken"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "alias-redirect-away-broken"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -159,16 +129,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "alias-redirect-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "alias-redirect-pass"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "alias-redirect-pass"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -201,16 +161,6 @@ owner = "#458"
 scenario = "alias-unpublished-optional-absent"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "alias-unpublished-optional-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "alias-unpublished-optional-absent"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "alias-unpublished-optional-absent"
@@ -250,16 +200,6 @@ owner = "#401"
 [[divergence]]
 scenario = "api-anchor-hosts"
 element = "declared_hosts"
-owner = "#401"
-
-[[divergence]]
-scenario = "api-anchor-hosts"
-element = "mcp_discovery"
-owner = "#401"
-
-[[divergence]]
-scenario = "api-anchor-hosts"
-element = "row:api-catalog"
 owner = "#401"
 
 [[divergence]]
@@ -324,16 +264,6 @@ owner = "#412"
 
 [[divergence]]
 scenario = "api-description-over-cap"
-element = "mcp_discovery"
-owner = "#412"
-
-[[divergence]]
-scenario = "api-description-over-cap"
-element = "row:api-catalog"
-owner = "#412"
-
-[[divergence]]
-scenario = "api-description-over-cap"
 element = "row:json-errors"
 owner = "#412"
 
@@ -389,16 +319,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "api-hygiene-fallback-path"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "api-hygiene-fallback-path"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "api-hygiene-fallback-path"
 element = "row:openapi"
 owner = "#393"
 
@@ -426,16 +346,6 @@ owner = "#458"
 scenario = "api-hygiene-html-error"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "api-hygiene-html-error"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "api-hygiene-html-error"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "api-hygiene-html-error"
@@ -499,16 +409,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "api-hygiene-json-200"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "api-hygiene-json-200"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "api-hygiene-json-200"
 element = "row:json-errors"
 owner = "#393"
 
@@ -566,16 +466,6 @@ owner = "#458"
 scenario = "api-hygiene-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "api-hygiene-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "api-hygiene-pass"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "api-hygiene-pass"
@@ -639,16 +529,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-bare-401"
-element = "mcp_discovery"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-bare-401"
-element = "row:api-catalog"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-bare-401"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -699,17 +579,7 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-declared-endpoint"
-element = "mcp_discovery"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-declared-endpoint"
 element = "mcp_endpoint"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-declared-endpoint"
-element = "row:api-catalog"
 owner = "#397"
 
 [[divergence]]
@@ -889,16 +759,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-echo-unanswered"
-element = "mcp_discovery"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-echo-unanswered"
-element = "row:api-catalog"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-echo-unanswered"
 element = "row:mcp-accept-json"
 owner = "#397"
 
@@ -1034,16 +894,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-echoing-gateway"
-element = "mcp_discovery"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-echoing-gateway"
-element = "row:api-catalog"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-echoing-gateway"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -1095,11 +945,6 @@ owner = "#397"
 [[divergence]]
 scenario = "auth-enforcement-defects"
 element = "mcp_endpoint"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-enforcement-defects"
-element = "row:api-catalog"
 owner = "#397"
 
 [[divergence]]
@@ -1279,16 +1124,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-later-401"
-element = "mcp_discovery"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-later-401"
-element = "row:api-catalog"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-later-401"
 element = "row:mcp-accept-json"
 owner = "#397"
 
@@ -1359,16 +1194,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "auth-md-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "auth-md-absent"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "auth-md-absent"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -1411,16 +1236,6 @@ owner = "#458"
 scenario = "auth-md-bare-heading"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "auth-md-bare-heading"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "auth-md-bare-heading"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "auth-md-bare-heading"
@@ -1469,16 +1284,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "auth-md-html-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "auth-md-html-broken"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "auth-md-html-broken"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -1521,16 +1326,6 @@ owner = "#458"
 scenario = "auth-md-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "auth-md-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "auth-md-pass"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "auth-md-pass"
@@ -1585,11 +1380,6 @@ owner = "#397"
 [[divergence]]
 scenario = "auth-modern-only"
 element = "mcp_endpoint"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-modern-only"
-element = "row:api-catalog"
 owner = "#397"
 
 [[divergence]]
@@ -1769,16 +1559,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "auth-open-endpoint"
-element = "mcp_discovery"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-open-endpoint"
-element = "row:api-catalog"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-open-endpoint"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -1825,11 +1605,6 @@ owner = "#397"
 [[divergence]]
 scenario = "auth-own-endpoint"
 element = "mcp_endpoint"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-own-endpoint"
-element = "row:api-catalog"
 owner = "#397"
 
 [[divergence]]
@@ -2015,11 +1790,6 @@ owner = "#397"
 [[divergence]]
 scenario = "auth-servers-mixed"
 element = "mcp_endpoint"
-owner = "#397"
-
-[[divergence]]
-scenario = "auth-servers-mixed"
-element = "row:api-catalog"
 owner = "#397"
 
 [[divergence]]
@@ -2196,16 +1966,6 @@ owner = "#458"
 scenario = "content-non-2xx-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "content-non-2xx-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "content-non-2xx-broken"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "content-non-2xx-broken"
@@ -2251,16 +2011,6 @@ owner = "#458"
 scenario = "content-rich-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "content-rich-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "content-rich-pass"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "content-rich-pass"
@@ -2306,16 +2056,6 @@ owner = "#458"
 scenario = "content-thin-absent"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "content-thin-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "content-thin-absent"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "content-thin-absent"
@@ -2361,16 +2101,6 @@ owner = "#458"
 scenario = "content-thin-dead-links-absent"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "content-thin-dead-links-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "content-thin-dead-links-absent"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "content-thin-dead-links-absent"
@@ -2416,16 +2146,6 @@ owner = "#458"
 scenario = "content-thin-twin-na"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "content-thin-twin-na"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "content-thin-twin-na"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "content-thin-twin-na"
@@ -2471,16 +2191,6 @@ owner = "#458"
 scenario = "cors-full-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-full-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-full-pass"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-full-pass"
@@ -2516,16 +2226,6 @@ owner = "#458"
 scenario = "cors-post-only"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-post-only"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-post-only"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-post-only"
@@ -2560,16 +2260,6 @@ owner = "#402"
 [[divergence]]
 scenario = "cors-post-rate-limited-no-cors"
 element = "coverage_summary"
-owner = "#402"
-
-[[divergence]]
-scenario = "cors-post-rate-limited-no-cors"
-element = "mcp_discovery"
-owner = "#402"
-
-[[divergence]]
-scenario = "cors-post-rate-limited-no-cors"
-element = "row:api-catalog"
 owner = "#402"
 
 [[divergence]]
@@ -2616,16 +2306,6 @@ owner = "#458"
 scenario = "cors-post-transport-failure-no-cors"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-post-transport-failure-no-cors"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-post-transport-failure-no-cors"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-post-transport-failure-no-cors"
@@ -2661,16 +2341,6 @@ owner = "#458"
 scenario = "cors-posture-consistent"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-posture-consistent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-posture-consistent"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-posture-consistent"
@@ -2706,16 +2376,6 @@ owner = "#458"
 scenario = "cors-preflight-500-with-acao"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-500-with-acao"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-preflight-500-with-acao"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-preflight-500-with-acao"
@@ -2751,16 +2411,6 @@ owner = "#458"
 scenario = "cors-preflight-only"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-only"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-preflight-only"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-preflight-only"
@@ -2796,16 +2446,6 @@ owner = "#458"
 scenario = "cors-preflight-transport-failure"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "cors-preflight-transport-failure"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "cors-preflight-transport-failure"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "cors-preflight-transport-failure"
@@ -2840,16 +2480,6 @@ owner = "#394"
 [[divergence]]
 scenario = "discovery-card-generations-auth"
 element = "coverage_summary"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-card-generations-auth"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-card-generations-auth"
-element = "row:api-catalog"
 owner = "#394"
 
 [[divergence]]
@@ -2891,16 +2521,6 @@ owner = "#418"
 scenario = "discovery-catalog-card"
 element = "coverage_summary"
 owner = "#418"
-
-[[divergence]]
-scenario = "discovery-catalog-card"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-catalog-card"
-element = "row:api-catalog"
-owner = "#394"
 
 [[divergence]]
 scenario = "discovery-catalog-card"
@@ -2944,16 +2564,6 @@ owner = "#395"
 
 [[divergence]]
 scenario = "discovery-catalog-declarations"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-catalog-declarations"
-element = "row:api-catalog"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-catalog-declarations"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -2989,16 +2599,6 @@ owner = "#418"
 
 [[divergence]]
 scenario = "discovery-catalog-inline-card"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-catalog-inline-card"
-element = "row:api-catalog"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-catalog-inline-card"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -3030,16 +2630,6 @@ owner = "#394"
 [[divergence]]
 scenario = "discovery-legacy-card"
 element = "coverage_summary"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-legacy-card"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-legacy-card"
-element = "row:api-catalog"
 owner = "#394"
 
 [[divergence]]
@@ -3079,16 +2669,6 @@ owner = "#418"
 
 [[divergence]]
 scenario = "discovery-suffix-card"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-suffix-card"
-element = "row:api-catalog"
-owner = "#394"
-
-[[divergence]]
-scenario = "discovery-suffix-card"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -3120,16 +2700,6 @@ owner = "#418"
 [[divergence]]
 scenario = "discovery-suffix-card-no-remotes"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-suffix-card-no-remotes"
-element = "mcp_discovery"
-owner = "#418"
-
-[[divergence]]
-scenario = "discovery-suffix-card-no-remotes"
-element = "row:api-catalog"
 owner = "#418"
 
 [[divergence]]
@@ -3166,16 +2736,6 @@ owner = "#458"
 scenario = "dns-aid-nxdomain"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "dns-aid-nxdomain"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "dns-aid-nxdomain"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "dns-aid-nxdomain"
@@ -3224,16 +2784,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "dns-aid-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "dns-aid-pass"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "dns-aid-pass"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -3279,16 +2829,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "dns-aid-resolver-fallback"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "dns-aid-resolver-fallback"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "dns-aid-resolver-fallback"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -3331,16 +2871,6 @@ owner = "#458"
 scenario = "dns-aid-resolvers-unreachable"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "dns-aid-resolvers-unreachable"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "dns-aid-resolvers-unreachable"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "dns-aid-resolvers-unreachable"
@@ -3400,11 +2930,6 @@ owner = "#418"
 [[divergence]]
 scenario = "follow-card-admit"
 element = "mcp_endpoint"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-card-admit"
-element = "row:api-catalog"
 owner = "#395"
 
 [[divergence]]
@@ -3559,17 +3084,7 @@ owner = "#418"
 
 [[divergence]]
 scenario = "follow-catalog-card-document"
-element = "mcp_discovery"
-owner = "#418"
-
-[[divergence]]
-scenario = "follow-catalog-card-document"
 element = "mcp_endpoint"
-owner = "#418"
-
-[[divergence]]
-scenario = "follow-catalog-card-document"
-element = "row:api-catalog"
 owner = "#418"
 
 [[divergence]]
@@ -3729,16 +3244,6 @@ owner = "#395"
 
 [[divergence]]
 scenario = "follow-disabled"
-element = "mcp_discovery"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-disabled"
-element = "row:api-catalog"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-disabled"
 element = "row:mcp-accept-json"
 owner = "#395"
 
@@ -3905,16 +3410,6 @@ owner = "#395"
 [[divergence]]
 scenario = "follow-host-cap"
 element = "declared_hosts"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-host-cap"
-element = "mcp_discovery"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-host-cap"
-element = "row:api-catalog"
 owner = "#395"
 
 [[divergence]]
@@ -4099,11 +3594,6 @@ owner = "#418"
 
 [[divergence]]
 scenario = "follow-host-catalog-card"
-element = "row:api-catalog"
-owner = "#418"
-
-[[divergence]]
-scenario = "follow-host-catalog-card"
 element = "row:mcp-accept-json"
 owner = "#418"
 
@@ -4254,16 +3744,6 @@ owner = "#413"
 
 [[divergence]]
 scenario = "follow-http-declarations"
-element = "mcp_discovery"
-owner = "#413"
-
-[[divergence]]
-scenario = "follow-http-declarations"
-element = "row:api-catalog"
-owner = "#413"
-
-[[divergence]]
-scenario = "follow-http-declarations"
 element = "row:json-errors"
 owner = "#413"
 
@@ -4330,11 +3810,6 @@ owner = "#395"
 [[divergence]]
 scenario = "follow-own-redirect-admit"
 element = "mcp_endpoint"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-own-redirect-admit"
-element = "row:api-catalog"
 owner = "#395"
 
 [[divergence]]
@@ -4480,11 +3955,6 @@ owner = "#395"
 [[divergence]]
 scenario = "follow-own-redirect-refused"
 element = "mcp_discovery"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-own-redirect-refused"
-element = "row:api-catalog"
 owner = "#395"
 
 [[divergence]]
@@ -4655,16 +4125,6 @@ owner = "#395"
 [[divergence]]
 scenario = "follow-reciprocity-refused"
 element = "declared_hosts"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-reciprocity-refused"
-element = "mcp_discovery"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-reciprocity-refused"
-element = "row:api-catalog"
 owner = "#395"
 
 [[divergence]]
@@ -4849,11 +4309,6 @@ owner = "#395"
 
 [[divergence]]
 scenario = "follow-redirect-hop"
-element = "row:api-catalog"
-owner = "#395"
-
-[[divergence]]
-scenario = "follow-redirect-hop"
 element = "row:mcp-accept-json"
 owner = "#395"
 
@@ -4999,16 +4454,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "frontmatter-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "frontmatter-absent"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "frontmatter-absent"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5051,16 +4496,6 @@ owner = "#458"
 scenario = "frontmatter-crlf-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "frontmatter-crlf-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "frontmatter-crlf-pass"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "frontmatter-crlf-pass"
@@ -5109,16 +4544,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "frontmatter-no-key-line-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "frontmatter-no-key-line-broken"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "frontmatter-no-key-line-broken"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5164,16 +4589,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "frontmatter-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "frontmatter-pass"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "frontmatter-pass"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5216,16 +4631,6 @@ owner = "#458"
 scenario = "frontmatter-unterminated-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "frontmatter-unterminated-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "frontmatter-unterminated-broken"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "frontmatter-unterminated-broken"
@@ -5271,16 +4676,6 @@ owner = "#458"
 scenario = "http-404-markdown-no-recovery"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-404-markdown-no-recovery"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-404-markdown-no-recovery"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-404-markdown-no-recovery"
@@ -5326,16 +4721,6 @@ owner = "#458"
 scenario = "http-404-markdown-recovery"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-404-markdown-recovery"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-404-markdown-recovery"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-404-markdown-recovery"
@@ -5374,11 +4759,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "http-affordance-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-affordance-absent"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5401,16 +4781,6 @@ owner = "#458"
 scenario = "http-challenge-interstitial"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-challenge-interstitial"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-challenge-interstitial"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-challenge-interstitial"
@@ -5456,16 +4826,6 @@ owner = "#458"
 scenario = "http-content-type-mismatch"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-content-type-mismatch"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-content-type-mismatch"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-content-type-mismatch"
@@ -5518,11 +4878,6 @@ element = "summary"
 owner = "#397"
 
 [[divergence]]
-scenario = "http-discovery-cards"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
 scenario = "http-discovery-cards-broken"
 element = "categories"
 owner = "#458"
@@ -5531,16 +4886,6 @@ owner = "#458"
 scenario = "http-discovery-cards-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-discovery-cards-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-discovery-cards-broken"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-discovery-cards-broken"
@@ -5589,16 +4934,6 @@ owner = "#462"
 
 [[divergence]]
 scenario = "http-get-fast-fail-html-broken"
-element = "mcp_discovery"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-html-broken"
-element = "row:api-catalog"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-html-broken"
 element = "row:mcp-server-card"
 owner = "#462"
 
@@ -5634,16 +4969,6 @@ owner = "#462"
 
 [[divergence]]
 scenario = "http-get-fast-fail-markdown-broken"
-element = "mcp_discovery"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-markdown-broken"
-element = "row:api-catalog"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-markdown-broken"
 element = "row:mcp-server-card"
 owner = "#462"
 
@@ -5675,16 +5000,6 @@ owner = "#462"
 [[divergence]]
 scenario = "http-get-fast-fail-sse-pass"
 element = "coverage_summary"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-sse-pass"
-element = "mcp_discovery"
-owner = "#462"
-
-[[divergence]]
-scenario = "http-get-fast-fail-sse-pass"
-element = "row:api-catalog"
 owner = "#462"
 
 [[divergence]]
@@ -5721,16 +5036,6 @@ owner = "#458"
 scenario = "http-get-fast-fail-timeout-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-get-fast-fail-timeout-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-get-fast-fail-timeout-broken"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-get-fast-fail-timeout-broken"
@@ -5769,16 +5074,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-header-regex-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-header-regex-absent"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-header-regex-absent"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5821,16 +5116,6 @@ owner = "#458"
 scenario = "http-header-regex-pass"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-header-regex-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-header-regex-pass"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-header-regex-pass"
@@ -5879,16 +5164,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-llms-txt-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-llms-txt-absent"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-llms-txt-absent"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5934,16 +5209,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-llms-txt-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-llms-txt-pass"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-llms-txt-pass"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -5986,16 +5251,6 @@ owner = "#458"
 scenario = "http-mixed-candidates-broken"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-mixed-candidates-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-mixed-candidates-broken"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-mixed-candidates-broken"
@@ -6041,16 +5296,6 @@ owner = "#458"
 scenario = "http-path-any-second-candidate"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-path-any-second-candidate"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-path-any-second-candidate"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-path-any-second-candidate"
@@ -6104,16 +5349,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-robots-ai-rules"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-robots-ai-rules"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-robots-ai-rules"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6159,16 +5394,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-robots-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-robots-broken"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-robots-broken"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6211,16 +5436,6 @@ owner = "#458"
 scenario = "http-robots-no-ai-rules"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-robots-no-ai-rules"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-robots-no-ai-rules"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-robots-no-ai-rules"
@@ -6269,16 +5484,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-soft-404"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-soft-404"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-soft-404"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6321,16 +5526,6 @@ owner = "#458"
 scenario = "http-transport-timeout-error"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "http-transport-timeout-error"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-transport-timeout-error"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "http-transport-timeout-error"
@@ -6379,16 +5574,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-ua-negotiation"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-ua-negotiation"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-ua-negotiation"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6434,16 +5619,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "http-ua-negotiation-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "http-ua-negotiation-absent"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "http-ua-negotiation-absent"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6485,16 +5660,6 @@ owner = "#458"
 [[divergence]]
 scenario = "llms-quality-angle-bracket-pass"
 element = "coverage_summary"
-owner = "#458"
-
-[[divergence]]
-scenario = "llms-quality-angle-bracket-pass"
-element = "mcp_discovery"
-owner = "#458"
-
-[[divergence]]
-scenario = "llms-quality-angle-bracket-pass"
-element = "row:api-catalog"
 owner = "#458"
 
 [[divergence]]
@@ -6541,16 +5706,6 @@ owner = "#458"
 scenario = "llms-quality-broken-link"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "llms-quality-broken-link"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "llms-quality-broken-link"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "llms-quality-broken-link"
@@ -6604,16 +5759,6 @@ owner = "#413"
 
 [[divergence]]
 scenario = "llms-quality-dead-and-http-link"
-element = "mcp_discovery"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-dead-and-http-link"
-element = "row:api-catalog"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-dead-and-http-link"
 element = "row:llms-txt-links"
 owner = "#413"
 
@@ -6656,16 +5801,6 @@ owner = "#458"
 scenario = "llms-quality-dead-link"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "llms-quality-dead-link"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "llms-quality-dead-link"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "llms-quality-dead-link"
@@ -6719,16 +5854,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "llms-quality-h1-only"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "llms-quality-h1-only"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "llms-quality-h1-only"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6770,16 +5895,6 @@ owner = "#413"
 [[divergence]]
 scenario = "llms-quality-http-link"
 element = "coverage_summary"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-http-link"
-element = "mcp_discovery"
-owner = "#413"
-
-[[divergence]]
-scenario = "llms-quality-http-link"
-element = "row:api-catalog"
 owner = "#413"
 
 [[divergence]]
@@ -6834,16 +5949,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "llms-quality-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "llms-quality-pass"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "llms-quality-pass"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -6886,16 +5991,6 @@ owner = "#458"
 scenario = "mcp-capabilities-empty"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-capabilities-empty"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-capabilities-empty"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-capabilities-empty"
@@ -6931,16 +6026,6 @@ owner = "#458"
 scenario = "mcp-card-no-endpoint-field"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-card-no-endpoint-field"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-card-no-endpoint-field"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-card-no-endpoint-field"
@@ -6984,16 +6069,6 @@ owner = "#395"
 
 [[divergence]]
 scenario = "mcp-card-off-origin"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-card-off-origin"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-card-off-origin"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7025,16 +6100,6 @@ owner = "#399"
 [[divergence]]
 scenario = "mcp-discover-rate-limited"
 element = "coverage_summary"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "mcp_discovery"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-discover-rate-limited"
-element = "row:api-catalog"
 owner = "#399"
 
 [[divergence]]
@@ -7109,16 +6174,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-dual-stack"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-dual-stack"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-dual-stack"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7150,16 +6205,6 @@ owner = "#402"
 [[divergence]]
 scenario = "mcp-edges-rate-limited"
 element = "coverage_summary"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-edges-rate-limited"
-element = "mcp_discovery"
-owner = "#402"
-
-[[divergence]]
-scenario = "mcp-edges-rate-limited"
-element = "row:api-catalog"
 owner = "#402"
 
 [[divergence]]
@@ -7204,16 +6249,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-garbage-responses"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-garbage-responses"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-garbage-responses"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7245,16 +6280,6 @@ owner = "#399"
 [[divergence]]
 scenario = "mcp-http-rate-limited"
 element = "coverage_summary"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "mcp_discovery"
-owner = "#399"
-
-[[divergence]]
-scenario = "mcp-http-rate-limited"
-element = "row:api-catalog"
 owner = "#399"
 
 [[divergence]]
@@ -7379,16 +6404,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-legacy-lane"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-legacy-lane"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-legacy-lane"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7421,16 +6436,6 @@ owner = "#458"
 scenario = "mcp-modern-lane"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-modern-lane"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-modern-lane"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-modern-lane"
@@ -7469,16 +6474,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-negotiation-defects"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-negotiation-defects"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-negotiation-defects"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7514,16 +6509,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-open-stream"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-open-stream"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-open-stream"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7556,16 +6541,6 @@ owner = "#458"
 scenario = "mcp-rate-limited"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-rate-limited"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-rate-limited"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-rate-limited"
@@ -7614,16 +6589,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-resources-empty-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-resources-empty-broken"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-resources-empty-broken"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7656,16 +6621,6 @@ owner = "#458"
 scenario = "mcp-resources-unadvertised"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-resources-unadvertised"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-resources-unadvertised"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-resources-unadvertised"
@@ -7704,16 +6659,6 @@ owner = "#418"
 
 [[divergence]]
 scenario = "mcp-server-card-html-200"
-element = "mcp_discovery"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-html-200"
-element = "row:api-catalog"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-html-200"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7749,16 +6694,6 @@ owner = "#418"
 
 [[divergence]]
 scenario = "mcp-server-card-missing-field"
-element = "mcp_discovery"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-missing-field"
-element = "row:api-catalog"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-missing-field"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7790,16 +6725,6 @@ owner = "#418"
 [[divergence]]
 scenario = "mcp-server-card-unparseable"
 element = "coverage_summary"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-unparseable"
-element = "mcp_discovery"
-owner = "#418"
-
-[[divergence]]
-scenario = "mcp-server-card-unparseable"
-element = "row:api-catalog"
 owner = "#418"
 
 [[divergence]]
@@ -7836,16 +6761,6 @@ owner = "#458"
 scenario = "mcp-sse-framing"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-sse-framing"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-sse-framing"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-sse-framing"
@@ -7884,16 +6799,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "mcp-stateful-session"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-stateful-session"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "mcp-stateful-session"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -7926,16 +6831,6 @@ owner = "#458"
 scenario = "mcp-typed-http-refusals"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-typed-http-refusals"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-typed-http-refusals"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-typed-http-refusals"
@@ -7971,16 +6866,6 @@ owner = "#458"
 scenario = "mcp-wrong-error-codes"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "mcp-wrong-error-codes"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-wrong-error-codes"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-wrong-error-codes"
@@ -8016,16 +6901,6 @@ owner = "#397"
 scenario = "mcp-www-authenticate"
 element = "coverage_summary"
 owner = "#397"
-
-[[divergence]]
-scenario = "mcp-www-authenticate"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "mcp-www-authenticate"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "mcp-www-authenticate"
@@ -8139,16 +7014,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "run-all-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-all-pass"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "run-all-pass"
 element = "row:json-errors"
 owner = "#393"
 
@@ -8194,11 +7059,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "run-antecedent-unmet"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-antecedent-unmet"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -8221,16 +7081,6 @@ owner = "#458"
 scenario = "run-body-over-cap"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "run-body-over-cap"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-body-over-cap"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "run-body-over-cap"
@@ -8394,16 +7244,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "run-healthy"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-healthy"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "run-healthy"
 element = "row:json-errors"
 owner = "#393"
 
@@ -8459,16 +7299,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "run-redirects"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-redirects"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "run-redirects"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -8504,11 +7334,6 @@ owner = "#397"
 
 [[divergence]]
 scenario = "run-root-401"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-root-401"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -8521,11 +7346,6 @@ owner = "#397"
 scenario = "run-root-401"
 element = "row:mcp-auth-servers"
 owner = "#397"
-
-[[divergence]]
-scenario = "run-root-not-html"
-element = "mcp_discovery"
-owner = "#394"
 
 [[divergence]]
 scenario = "run-root-not-html"
@@ -8559,16 +7379,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "run-site-type-api"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-site-type-api"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "run-site-type-api"
 element = "row:json-errors"
 owner = "#393"
 
@@ -8624,11 +7434,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "run-site-type-content"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "run-site-type-content"
 element = "row:mcp-server-card"
 owner = "#418"
 
@@ -8648,26 +7453,6 @@ element = "summary"
 owner = "#397"
 
 [[divergence]]
-scenario = "scoped-llms-absent"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "scoped-llms-broken"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "scoped-llms-pass"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "scoped-llms-sitemap-dirs"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
 scenario = "scoped-llms-sitemap-dirs"
 element = "row:llms-txt-links"
 owner = "#413"
@@ -8684,16 +7469,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "webmcp-mention-only"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "webmcp-mention-only"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "webmcp-mention-only"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -8739,16 +7514,6 @@ owner = "#458"
 
 [[divergence]]
 scenario = "webmcp-model-context"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "webmcp-model-context"
-element = "row:api-catalog"
-owner = "#393"
-
-[[divergence]]
-scenario = "webmcp-model-context"
 element = "row:mcp-auth-challenge"
 owner = "#397"
 
@@ -8791,16 +7556,6 @@ owner = "#458"
 scenario = "webmcp-script-asset"
 element = "coverage_summary"
 owner = "#458"
-
-[[divergence]]
-scenario = "webmcp-script-asset"
-element = "mcp_discovery"
-owner = "#394"
-
-[[divergence]]
-scenario = "webmcp-script-asset"
-element = "row:api-catalog"
-owner = "#393"
 
 [[divergence]]
 scenario = "webmcp-script-asset"

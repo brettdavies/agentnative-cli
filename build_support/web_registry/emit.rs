@@ -94,7 +94,9 @@ pub fn emit_rust(
     src.push_str("];\n");
     src.push_str("/// MCP endpoint discovery configuration.\n");
     src.push_str(&format!(
-        "pub const MCP_DISCOVERY: McpDiscovery = McpDiscovery {{ well_known: {}, common_paths: {}, protocol_version: {:?} }};\n",
+        "pub const MCP_DISCOVERY: McpDiscovery = McpDiscovery {{ ai_catalog: {:?}, card_suffix: {:?}, well_known: {}, common_paths: {}, protocol_version: {:?} }};\n",
+        reg.mcp_discovery.ai_catalog,
+        reg.mcp_discovery.card_suffix,
         str_slice(&reg.mcp_discovery.well_known),
         str_slice(&reg.mcp_discovery.common_paths),
         reg.mcp_discovery.protocol_version

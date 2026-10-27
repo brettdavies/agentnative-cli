@@ -13,6 +13,9 @@ use std::io::{self, Read};
 pub const STATUS_ONLY_BODY_BYTES: usize = 0;
 /// Cap for probes that inspect a short body: JSON errors, twin text, cards.
 pub const AUDIT_PROBE_MAX_BODY_BYTES: usize = 64 * 1024;
+/// Cap for a discovery document the audit keeps: a server card, the AI
+/// catalog, the API catalog.
+pub const DOCUMENT_MAX_BODY_BYTES: usize = 256 * 1024;
 /// Ceiling on an uncapped read. The site reads the root document in full
 /// within Workers memory; the local engine draws a line here so a huge page
 /// cannot exhaust the host.

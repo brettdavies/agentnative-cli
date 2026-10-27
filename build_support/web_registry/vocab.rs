@@ -15,7 +15,11 @@ pub const HANDLER_KINDS: &[&str] = &[
     "api-hygiene",
 ];
 /// Eval rules the Rust engine ports.
-pub const EVAL_RULES: &[&str] = &["legacy-alias-redirects", "scoped-discovery"];
+pub const EVAL_RULES: &[&str] = &[
+    "legacy-alias-redirects",
+    "retained-document",
+    "scoped-discovery",
+];
 pub(super) const SITE_TYPES: &[&str] = &["content", "api", "mcp", "all"];
 pub(super) const ANTECEDENTS: &[&str] = &[
     "none",

@@ -11,7 +11,9 @@ use serde_json::{Value, json};
 use url::Url;
 
 use crate::web_audit::engine::ProbeStatus;
-use crate::web_audit::fetch::{NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal};
+use crate::web_audit::fetch::{
+    CrossOriginRedirects, FetchOptions, NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal,
+};
 use crate::web_audit::scorecard::EvidenceItem;
 
 pub use crate::web_audit::engine::discovery::resolve_url;
@@ -20,12 +22,61 @@ pub use crate::web_audit::engine::discovery::resolve_url;
 /// for the handler patterns the site writes with `\s` and `\S`.
 pub const JS_SPACE: &str = r"\t\n\x0B\x0C\r \u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}";
 
-/// Replace the `{mcp_endpoint}` token; empty when the endpoint is unknown.
+/// Replace the `{mcp_endpoint}` token and the `{mcp_origin}` token (the
+/// endpoint's scheme, host, and port); each yields `""` when the endpoint
+/// is unknown.
 pub fn substitute_endpoint(value: &str, mcp_endpoint: Option<&str>) -> String {
-    if !value.contains("{mcp_endpoint}") {
+    if !value.contains("{mcp_endpoint}") && !value.contains("{mcp_origin}") {
         return value.to_string();
     }
-    value.replace("{mcp_endpoint}", mcp_endpoint.unwrap_or(""))
+    let origin = mcp_endpoint
+        .and_then(|e| Url::parse(e).ok())
+        .map(|u| u.origin().ascii_serialization())
+        .unwrap_or_default();
+    value
+        .replace("{mcp_endpoint}", mcp_endpoint.unwrap_or(""))
+        .replace("{mcp_origin}", &origin)
+}
+
+/// Redirect handling for a request to the MCP endpoint. No probe of it
+/// reaches a host nothing confirmed: on a declared host no redirect is
+/// taken, and on the audited origin only hops that stay on it are. There a
+/// GET gets the hop it may not take back as its answer, since a redirect is
+/// a valid answer to a GET; any other method fails on it.
+pub fn mcp_endpoint_redirects(opts: FetchOptions, followed: bool, method: &str) -> FetchOptions {
+    if followed {
+        return FetchOptions {
+            refuse_redirects: true,
+            ..opts
+        };
+    }
+    let cross_origin = if matches!(method, "GET" | "HEAD") {
+        CrossOriginRedirects::Return
+    } else {
+        CrossOriginRedirects::Refuse
+    };
+    FetchOptions {
+        cross_origin_redirects: Some(cross_origin),
+        ..opts
+    }
+}
+
+/// Redirect handling for a probe of `raw_path`: the MCP endpoint's when the
+/// path targets it. A document on a declared endpoint's host takes no
+/// redirect either; on the audited origin it keeps the default.
+pub fn endpoint_redirects(
+    opts: FetchOptions,
+    raw_path: &str,
+    followed: bool,
+    method: &str,
+) -> FetchOptions {
+    if raw_path.contains("{mcp_endpoint}") {
+        return mcp_endpoint_redirects(opts, followed, method);
+    }
+    FetchOptions {
+        refuse_redirects: raw_path.contains("{mcp_origin}") && followed,
+        ..opts
+    }
 }
 
 /// Replace the `{host}` token used by DoH record names.

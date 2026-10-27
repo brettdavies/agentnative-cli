@@ -28,17 +28,16 @@
 
 use std::time::{Duration, Instant};
 
-use serde_json::json;
 use url::Url;
 
 use super::discovery_documents::{
-    AI_CATALOG_DOCUMENT, API_CATALOG_DOCUMENT, CardRead, CatalogCardEntry, MCP_SERVER_CARD_TYPE,
-    RetainedDocument, RetainedDocuments, SERVER_CARD_DOCUMENT, ai_catalog_shape, api_catalog_shape,
-    card_has_auth_field, card_item, card_suffix_url, catalog_card_entries, document_item,
-    is_card_of_either_generation, parse_json_object, preferred_card, read_card, retained_card,
-    same_origin, unparseable_published_card,
+    AI_CATALOG_DOCUMENT, API_CATALOG_DOCUMENT, CatalogCardEntry, MCP_SERVER_CARD_TYPE,
+    RetainedDocument, RetainedDocuments, ai_catalog_shape, api_catalog_shape, card_suffix_url,
+    catalog_card_entries, document_item, parse_json_object, preferred_card, read_card, same_origin,
 };
 use super::discovery_posts::{Candidate, probe_common_paths};
+use super::discovery_walk::{CatalogSlot, Walk};
+use super::follow_trail::Declaration;
 use super::pool::run_bounded;
 use super::types::FetchHandle;
 use crate::web_audit::fetch::body::DOCUMENT_MAX_BODY_BYTES;
@@ -63,6 +62,11 @@ pub struct DiscoveryResult {
     pub endpoint: Option<String>,
     /// The `mcp_discovery` trail: every document read, then the POSTs.
     pub evidence: Vec<EvidenceItem>,
+    /// What the documents declare, in SEP-2127 order.
+    pub declarations: Vec<Declaration>,
+    /// Where common paths redirected their POSTs off the audited origin, in
+    /// probe order.
+    pub redirected: Vec<Declaration>,
     /// The documents later checks score, by retained-document key.
     pub documents: RetainedDocuments,
     /// When the document reads ended, before any POST: where the site's
@@ -136,162 +140,20 @@ fn card_request() -> FetchInit {
     }
 }
 
-/// One server-card entry of the AI catalog, as discovery settled it.
-enum CatalogSlot {
-    /// Read inline or from the audited origin.
-    Read(Box<CardRead>),
-    /// A card URL on another origin, never requested.
-    Declaration { index: usize, url: String },
-    /// An entry naming no card URL or data.
-    Neither { index: usize },
+/// Discovery after its document reads, before any POST.
+pub struct DiscoveryDocuments<'a> {
+    walk: Walk<'a>,
+    fetch: &'a FetchHandle,
+    timeout: Duration,
+    deadline_at: Instant,
+    spent: bool,
 }
 
-impl CatalogSlot {
-    fn read(&self) -> Option<&CardRead> {
-        match self {
-            CatalogSlot::Read(read) => Some(read),
-            _ => None,
-        }
-    }
-}
-
-/// The endpoint a card names on the audited origin, catalog cards first.
-fn card_endpoint_of(catalog: &[&CardRead], well_known: &[CardRead]) -> Option<String> {
-    catalog
-        .iter()
-        .copied()
-        .chain(well_known)
-        .find_map(|r| r.endpoint.clone())
-}
-
-/// What discovery has read so far.
-struct Walk<'a> {
-    cfg: &'a McpDiscovery,
-    well_known: Vec<CardRead>,
-    document_items: Vec<EvidenceItem>,
-    catalog_slots: Vec<CatalogSlot>,
-    post_items: Vec<EvidenceItem>,
-    post_endpoint: Option<String>,
-    suffix: Option<CardRead>,
-    deadline_hit: bool,
-    documents: RetainedDocuments,
-    documents_read: Option<Instant>,
-}
-
-impl<'a> Walk<'a> {
-    fn new(cfg: &'a McpDiscovery) -> Self {
-        Walk {
-            cfg,
-            well_known: Vec::new(),
-            document_items: Vec::new(),
-            catalog_slots: Vec::new(),
-            post_items: Vec::new(),
-            post_endpoint: None,
-            suffix: None,
-            deadline_hit: false,
-            documents: RetainedDocuments::new(),
-            documents_read: None,
-        }
-    }
-
-    fn catalog_reads(&self) -> Vec<&CardRead> {
-        self.catalog_slots
-            .iter()
-            .filter_map(CatalogSlot::read)
-            .collect()
-    }
-
-    fn card_endpoint(&self) -> Option<String> {
-        card_endpoint_of(&self.catalog_reads(), &self.well_known)
-    }
-
-    fn exhausted(mut self) -> DiscoveryResult {
-        self.deadline_hit = true;
-        self.finish()
-    }
-
-    fn finish(self) -> DiscoveryResult {
-        let Walk {
-            cfg,
-            well_known,
-            document_items,
-            catalog_slots,
-            post_items,
-            post_endpoint,
-            suffix,
-            deadline_hit,
-            mut documents,
-            documents_read,
-        } = self;
-        let catalog: Vec<&CardRead> = catalog_slots.iter().filter_map(CatalogSlot::read).collect();
-        let known: Vec<&CardRead> = well_known.iter().collect();
-        let endpoint = card_endpoint_of(&catalog, &well_known).or(post_endpoint);
-        // The suffix URL is a guess the site never published, and an MCP
-        // handler can answer it with any JSON object, a JSON-RPC error
-        // included.
-        let suffix_card = suffix
-            .as_ref()
-            .filter(|s| is_card_of_either_generation(s.card.as_ref()));
-        let published: Vec<&CardRead> = catalog.iter().chain(&known).copied().collect();
-        let record = preferred_card(&catalog)
-            .or(suffix_card)
-            .or_else(|| preferred_card(&known))
-            .or_else(|| unparseable_published_card(&published));
-        if let Some(record) = record {
-            documents.insert(
-                SERVER_CARD_DOCUMENT,
-                retained_card(&record.url, &record.response),
-            );
-        }
-        // SEP-2127 cards carry no auth field, so the declaration comes from
-        // whichever card of either generation names the discovered endpoint.
-        let auth_card = endpoint.as_ref().and_then(|endpoint| {
-            catalog
-                .iter()
-                .copied()
-                .chain(suffix.as_ref())
-                .chain(&well_known)
-                .find(|r| {
-                    r.endpoint.as_ref() == Some(endpoint)
-                        && r.card.as_ref().is_some_and(card_has_auth_field)
-                })
-        });
-        let is = |a: Option<&CardRead>, b: &CardRead| a.is_some_and(|a| std::ptr::eq(a, b));
-        let item = |read: &CardRead| card_item(read, is(record, read), is(auth_card, read));
-        let catalog_item = |slot: &CatalogSlot| -> EvidenceItem {
-            let value = match slot {
-                CatalogSlot::Read(read) => return item(read),
-                CatalogSlot::Declaration { index, url } => json!({
-                    "source": format!("{}#/entries/{index}", cfg.ai_catalog),
-                    "card_url": url,
-                    "blocked": "off-origin card declaration",
-                }),
-                CatalogSlot::Neither { index } => json!({
-                    "source": format!("{}#/entries/{index}", cfg.ai_catalog),
-                    "note": "catalog entry names no card url or data",
-                }),
-            };
-            value.as_object().cloned().unwrap_or_default()
-        };
-        let mut evidence: Vec<EvidenceItem> = well_known.iter().map(item).collect();
-        evidence.extend(document_items);
-        evidence.extend(catalog_slots.iter().map(catalog_item));
-        evidence.extend(post_items);
-        evidence.extend(suffix.as_ref().map(item));
-        if deadline_hit {
-            evidence.push(
-                json!({ "note": "per-audit deadline exceeded during discovery" })
-                    .as_object()
-                    .cloned()
-                    .unwrap_or_default(),
-            );
-        }
-        DiscoveryResult {
-            endpoint,
-            evidence,
-            documents,
-            follow_opened: Some(documents_read.unwrap_or_else(Instant::now)),
-        }
+impl std::fmt::Debug for DiscoveryDocuments<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscoveryDocuments")
+            .field("spent", &self.spent)
+            .finish_non_exhaustive()
     }
 }
 
@@ -303,12 +165,33 @@ pub fn discover_mcp_endpoint(
     timeout: Duration,
     deadline: Instant,
 ) -> DiscoveryResult {
+    read_discovery_documents(fetch, base, cfg, timeout, deadline).probe_endpoint()
+}
+
+fn slice_left(timeout: Duration, deadline_at: Instant) -> Option<Duration> {
+    let slice = timeout.min(deadline_at.saturating_duration_since(Instant::now()));
+    (!slice.is_zero()).then_some(slice)
+}
+
+/// The document reads that open discovery: the SEP-1649 cards, the AI
+/// catalog and the API catalog, then the catalog's card entries.
+pub fn read_discovery_documents<'a>(
+    fetch: &'a FetchHandle,
+    base: &'a str,
+    cfg: &'a McpDiscovery,
+    timeout: Duration,
+    deadline: Instant,
+) -> DiscoveryDocuments<'a> {
     let deadline_at = deadline.min(Instant::now() + DISCOVERY_BUDGET);
-    let pass_budget = || -> Option<Duration> {
-        let slice = timeout.min(deadline_at.saturating_duration_since(Instant::now()));
-        (!slice.is_zero()).then_some(slice)
+    let pass_budget = || slice_left(timeout, deadline_at);
+    let done = |walk: Walk<'a>, spent: bool| DiscoveryDocuments {
+        walk,
+        fetch,
+        timeout,
+        deadline_at,
+        spent,
     };
-    let mut walk = Walk::new(cfg);
+    let mut walk = Walk::new(cfg, base);
 
     // Document reads: the SEP-1649 cards, the AI catalog, the API catalog.
     let well_known: Vec<(&str, String)> = cfg
@@ -320,7 +203,7 @@ pub fn discover_mcp_endpoint(
     let catalog_url = resolve_url(base, cfg.ai_catalog);
     let api_catalog_url = resolve_url(base, API_CATALOG_PATH);
     let Some(document_pass) = pass_budget() else {
-        return walk.exhausted();
+        return done(walk, true);
     };
     let mut requests: Vec<(String, FetchInit)> = well_known
         .iter()
@@ -343,6 +226,7 @@ pub fn discover_mcp_endpoint(
     };
     let api_catalog_shape = (api_catalog_resp.status == Some(200))
         .then(|| api_catalog_shape(parse_json_object(&api_catalog_resp).as_ref()));
+    walk.document_statuses = vec![catalog_resp.status, api_catalog_resp.status];
     walk.document_items.push(document_item(
         cfg.ai_catalog,
         AI_CATALOG_DOCUMENT,
@@ -394,7 +278,7 @@ pub fn discover_mcp_endpoint(
         Vec::new()
     } else {
         let Some(card_pass) = pass_budget() else {
-            return walk.exhausted();
+            return done(walk, true);
         };
         let requests = fetched
             .iter()
@@ -439,45 +323,86 @@ pub fn discover_mcp_endpoint(
     }
 
     walk.documents_read = Some(Instant::now());
+    done(walk, false)
+}
 
-    // POST probing, only when no card named an endpoint on the audited origin.
-    let candidates: Vec<Candidate> = cfg
-        .common_paths
-        .iter()
-        .map(|path| Candidate {
-            path,
-            url: resolve_url(base, path),
-        })
-        .filter(|c| !c.url.is_empty())
-        .collect();
-    if walk.card_endpoint().is_none() && !candidates.is_empty() {
-        let Some(post_pass) = pass_budget() else {
-            return walk.exhausted();
-        };
-        let probed = probe_common_paths(fetch, &candidates, cfg.protocol_version, post_pass);
-        walk.post_items = probed.items;
-        walk.post_endpoint = probed.endpoint;
+impl DiscoveryDocuments<'_> {
+    /// What the documents declare so far, in SEP-2127 order; a suffix card
+    /// read later can add more.
+    pub fn declarations(&self) -> Vec<Declaration> {
+        self.walk.declarations()
     }
 
-    // With no catalog card, the endpoint's own card outranks a SEP-1649 card.
-    let endpoint = walk.card_endpoint().or_else(|| walk.post_endpoint.clone());
-    if let Some(endpoint) = endpoint
-        && preferred_card(&walk.catalog_reads()).is_none()
-    {
-        let Some(suffix_pass) = pass_budget() else {
-            return walk.exhausted();
-        };
-        let url = card_suffix_url(&endpoint, cfg.card_suffix);
-        let response = fetch_all(
+    /// An endpoint a card names on the audited origin, which no POST can displace.
+    pub fn card_endpoint(&self) -> Option<String> {
+        self.walk.card_endpoint()
+    }
+
+    /// The status of every document read; `None` where it got no answer.
+    pub fn statuses(&self) -> Vec<Option<u16>> {
+        self.walk.statuses()
+    }
+
+    /// A document read so far, by retained-document key.
+    pub fn document(&self, key: &str) -> Option<&RetainedDocument> {
+        self.walk.documents.get(key)
+    }
+
+    /// The common-path POSTs and the suffix-card read that finish discovery.
+    pub fn probe_endpoint(self) -> DiscoveryResult {
+        let DiscoveryDocuments {
+            mut walk,
             fetch,
-            vec![(url.clone(), card_request())],
-            &document_options(suffix_pass),
-        )
-        .pop()
-        .unwrap_or_else(unanswered);
-        walk.suffix = Some(read_card(&path_of(&url), &url, response, false, base));
+            timeout,
+            deadline_at,
+            spent,
+        } = self;
+        if spent {
+            return walk.exhausted();
+        }
+        let pass_budget = || slice_left(timeout, deadline_at);
+        let (cfg, base) = (walk.cfg, walk.base);
+
+        // POST probing, only when no card named an endpoint on the audited origin.
+        let candidates: Vec<Candidate> = cfg
+            .common_paths
+            .iter()
+            .map(|path| Candidate {
+                path,
+                url: resolve_url(base, path),
+            })
+            .filter(|c| !c.url.is_empty())
+            .collect();
+        if walk.card_endpoint().is_none() && !candidates.is_empty() {
+            let Some(post_pass) = pass_budget() else {
+                return walk.exhausted();
+            };
+            let probed = probe_common_paths(fetch, &candidates, cfg.protocol_version, post_pass);
+            walk.post_items = probed.items;
+            walk.post_endpoint = probed.endpoint;
+            walk.post_redirected = probed.redirected;
+        }
+
+        // With no catalog card, the endpoint's own card outranks a SEP-1649 card.
+        let endpoint = walk.card_endpoint().or_else(|| walk.post_endpoint.clone());
+        if let Some(endpoint) = endpoint
+            && preferred_card(&walk.catalog_reads()).is_none()
+        {
+            let Some(suffix_pass) = pass_budget() else {
+                return walk.exhausted();
+            };
+            let url = card_suffix_url(&endpoint, cfg.card_suffix);
+            let response = fetch_all(
+                fetch,
+                vec![(url.clone(), card_request())],
+                &document_options(suffix_pass),
+            )
+            .pop()
+            .unwrap_or_else(unanswered);
+            walk.suffix = Some(read_card(&path_of(&url), &url, response, false, base));
+        }
+        walk.finish()
     }
-    walk.finish()
 }
 
 #[cfg(test)]
@@ -487,6 +412,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::web_audit::engine::discovery_documents::SERVER_CARD_DOCUMENT;
     use crate::web_audit::locality::Resolver;
     use crate::web_audit::mock::{MockResponse, MockRule, MockTransport};
     use crate::web_audit::transport::Request;

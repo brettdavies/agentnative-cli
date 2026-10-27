@@ -1,27 +1,79 @@
-//! The declared-hosts trail for the API catalog, a mirror of the site's
-//! `follow-trail.ts` and of `declaredHostReason` in `endpoint-of-record.ts`:
-//! the closed vocabulary of how the audit treated a declared URL, the
-//! refusals settled before any request, and the reason a row reads when a
-//! declared host kept it from being evaluated.
+//! The declared-hosts trail, a mirror of the site's `follow-trail.ts` and of
+//! `declaredHostReason` in `endpoint-of-record.ts`: one entry per URL the
+//! audited site declares off its origin, the closed vocabulary of how the
+//! audit treated it, and the reason a row reads when a declared host kept
+//! it from being evaluated. The refusals settled before any request live
+//! in `follow_refusals`.
 
 use serde_json::json;
 use url::Url;
 
-use super::api_catalog::{ApiDeclaration, ApiKind};
-use super::discovery_documents::is_templated_url;
-use super::types::FetchHandle;
-use crate::web_audit::locality::Locality;
+use super::discovery_documents::same_origin;
 use crate::web_audit::scorecard::{EvidenceItem, NaReason};
 
-// The auditor's own zone, which a declaration never reaches.
-const SELF_ZONE: &str = "anc.dev";
+/// What a declaration names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// An MCP endpoint a card names, or where a POST was redirected.
+    McpEndpoint,
+    /// A server card the AI catalog names by URL.
+    CardDocument,
+    /// A linkset anchor: an API host.
+    ApiAnchor,
+    /// The description an API anchor declares.
+    ApiDescription,
+}
+
+impl Kind {
+    /// The trail spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::McpEndpoint => "mcp-endpoint",
+            Kind::CardDocument => "card-document",
+            Kind::ApiAnchor => "api-anchor",
+            Kind::ApiDescription => "api-description",
+        }
+    }
+
+    /// An MCP declaration rather than an API one.
+    pub fn is_mcp(self) -> bool {
+        matches!(self, Kind::McpEndpoint | Kind::CardDocument)
+    }
+}
+
+/// A URL a discovery document names, which the follow slice settles when
+/// it is off the audited origin.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Declaration {
+    /// What it names.
+    pub kind: Kind,
+    /// The declared URL, resolved, or as written when templated.
+    pub url: String,
+    /// Where it was declared: a path on the audited origin, or a document
+    /// entry as a JSON Pointer.
+    pub source: String,
+    /// Settled not followed for this reason before the slice runs.
+    pub not_followed: Option<&'static str>,
+}
+
+impl Declaration {
+    /// A declaration the slice may request.
+    pub fn new(kind: Kind, url: String, source: String) -> Self {
+        Declaration {
+            kind,
+            url,
+            source,
+            not_followed: None,
+        }
+    }
+}
 
 /// How the audit treated a declared URL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// Admitted, and read when it is a description.
+    /// Admitted, and read when it is a document.
     Followed,
-    /// Nothing the audit can request.
+    /// Nothing the audit can request, or nothing on the host confirmed it.
     ReciprocityRefused,
     /// Left alone, for the entry's reason.
     NotFollowed,
@@ -54,6 +106,8 @@ pub struct Settled {
     pub final_url: Option<String>,
     /// The outcome.
     pub outcome: Outcome,
+    /// The artifact that admitted an endpoint, on `followed`.
+    pub admitted_by: Option<&'static str>,
     /// What stopped it, on `budget-exceeded`.
     pub cause: Option<&'static str>,
     /// Why, on `not-followed`.
@@ -65,6 +119,7 @@ impl Settled {
         Settled {
             final_url: None,
             outcome,
+            admitted_by: None,
             cause: None,
             reason: None,
         }
@@ -83,22 +138,39 @@ impl Settled {
             ..Settled::of(Outcome::BudgetExceeded)
         }
     }
+
+    pub(super) fn landed(final_url: Option<String>, outcome: Outcome) -> Self {
+        Settled {
+            final_url,
+            ..Settled::of(outcome)
+        }
+    }
 }
 
 /// One declared URL and how the audit treated it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrailEntry {
-    /// What the catalog declares there.
-    pub kind: ApiKind,
+    /// What the document declares there.
+    pub kind: Kind,
     /// The declared URL.
     pub url: String,
-    /// Where the catalog declares it.
+    /// Where it is declared.
     pub source: String,
     /// How it settled.
     pub settled: Settled,
 }
 
 impl TrailEntry {
+    /// The entry for a declaration.
+    pub fn of(declaration: &Declaration, settled: Settled) -> Self {
+        TrailEntry {
+            kind: declaration.kind,
+            url: declaration.url.clone(),
+            source: declaration.source.clone(),
+            settled,
+        }
+    }
+
     /// The `declared_hosts` item, in the site's key order.
     pub fn to_item(&self) -> EvidenceItem {
         let mut item = EvidenceItem::new();
@@ -112,6 +184,9 @@ impl TrailEntry {
             item.insert("final_url".into(), json!(final_url));
         }
         item.insert("outcome".into(), json!(self.settled.outcome.as_str()));
+        if let Some(by) = self.settled.admitted_by {
+            item.insert("admitted_by".into(), json!(by));
+        }
         if let Some(cause) = self.settled.cause {
             item.insert("cause".into(), json!(cause));
         }
@@ -132,62 +207,38 @@ pub fn host_of(url: &str) -> Option<String> {
     })
 }
 
+/// RFC 3986 syntax normalization as the WHATWG parser applies it, fragment
+/// dropped; `None` when the value is not an absolute URL.
+pub fn normalize_endpoint_url(raw: &str) -> Option<String> {
+    let mut url = Url::parse(raw).ok()?;
+    url.set_fragment(None);
+    Some(url.to_string())
+}
+
 /// One trail entry per declared URL: the key a declaration and its entry share.
-pub fn declaration_key(kind: ApiKind, url: &str) -> String {
-    let normalized = Url::parse(url).map(|mut u| {
-        u.set_fragment(None);
-        u.to_string()
-    });
+pub fn declaration_key(kind: Kind, url: &str) -> String {
+    let normalized = normalize_endpoint_url(url);
     format!("{} {}", kind.as_str(), normalized.as_deref().unwrap_or(url))
 }
 
-/// Where the URL may not be requested at all, or `None` when it may: only
-/// https, never an IP literal or a host the guard refuses, never the
-/// auditor's own zone.
-pub(super) fn refusal(
-    url: &str,
-    fetch: &FetchHandle,
-    target_locality: Option<Locality>,
-) -> Option<Settled> {
-    let parsed = match Url::parse(url) {
-        Ok(u) if matches!(u.scheme(), "http" | "https") => u,
-        _ => return Some(Settled::of(Outcome::ReciprocityRefused)),
-    };
-    match fetch.validate(url) {
-        Err(reason) if reason.starts_with("blocked") => return Some(Settled::of(Outcome::Blocked)),
-        Err(_) => return Some(Settled::of(Outcome::ReciprocityRefused)),
-        Ok(class) if target_locality.is_some_and(|t| t != class) => {
-            return Some(Settled::of(Outcome::Blocked));
-        }
-        Ok(_) => {}
-    }
-    if matches!(parsed.host(), Some(url::Host::Ipv4(_) | url::Host::Ipv6(_))) {
-        return Some(Settled::of(Outcome::Blocked));
-    }
-    if parsed.scheme() != "https" {
-        return Some(Settled::not_followed("insecure-scheme"));
-    }
-    let host = parsed.host_str().unwrap_or("").to_ascii_lowercase();
-    let host = host.trim_end_matches('.');
-    if host == SELF_ZONE || host.ends_with(&format!(".{SELF_ZONE}")) {
-        return Some(Settled::not_followed("self-path"));
-    }
-    None
+/// A declaration names a host other than the audited one.
+pub fn declares_host(declaration: &Declaration, base: &str) -> bool {
+    !same_origin(&declaration.url, base)
 }
 
-/// How a declaration settles before any request, or `None` when it must be requested.
-pub(super) fn upfront(
-    d: &ApiDeclaration,
-    fetch: &FetchHandle,
-    target_locality: Option<Locality>,
-) -> Option<Settled> {
-    if d.no_service_desc {
-        return Some(Settled::not_followed("no-service-desc"));
-    }
-    if is_templated_url(&d.url) {
-        return Some(Settled::not_followed("templated-url"));
-    }
-    refusal(&d.url, fetch, target_locality)
+/// The declarations in order, each URL kept at its first place.
+pub fn unique(declarations: &[Declaration]) -> Vec<Declaration> {
+    let mut keys: Vec<String> = Vec::new();
+    declarations
+        .iter()
+        .filter(|d| {
+            let key = declaration_key(d.kind, &d.url);
+            let first = !keys.contains(&key);
+            keys.push(key);
+            first
+        })
+        .cloned()
+        .collect()
 }
 
 /// A declared host a row could not be evaluated at, and why.

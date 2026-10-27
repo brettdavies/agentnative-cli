@@ -12,6 +12,7 @@ use serde_json::{Map, Value, json};
 use url::Url;
 
 use super::discovery::resolve_url;
+use super::follow_trail::{Declaration, Kind};
 use crate::web_audit::fetch::ProbeResponse;
 use crate::web_audit::scorecard::EvidenceItem;
 
@@ -128,6 +129,27 @@ fn card_standing(card: Option<&JsonObject>) -> u8 {
     }
 }
 
+/// The first of `items` whose card stands highest.
+pub fn strongest_card<T>(items: Vec<T>, card_of: impl Fn(&T) -> Option<JsonObject>) -> Option<T> {
+    let mut best: Option<(T, u8)> = None;
+    for item in items {
+        let standing = card_standing(card_of(&item).as_ref());
+        if best.as_ref().is_none_or(|(_, b)| standing > *b) {
+            best = Some((item, standing));
+        }
+    }
+    best.map(|(item, _)| item)
+}
+
+/// Whether `candidate` stands higher as the card of record than `record`;
+/// any card outranks none.
+pub fn outranks(candidate: &RetainedDocument, record: Option<&RetainedDocument>) -> bool {
+    record.is_none_or(|record| {
+        card_standing(parse_json_object(&candidate.response).as_ref())
+            > card_standing(parse_json_object(&record.response).as_ref())
+    })
+}
+
 /// A card of either generation, which an arbitrary JSON object, a JSON-RPC
 /// error included, is not.
 pub fn is_card_of_either_generation(card: Option<&JsonObject>) -> bool {
@@ -183,6 +205,34 @@ pub fn card_endpoint(card: &JsonObject) -> Option<String> {
     .filter_map(Value::as_str)
     .find(|s| !s.is_empty())
     .map(str::to_string)
+}
+
+/// A SEP-2127 card's remotes other than the one [`card_endpoint`] takes:
+/// one card names one endpoint of record, so these are never followed.
+pub fn other_remotes(card: &JsonObject, source: &str, base: &str) -> Vec<Declaration> {
+    let Some(remotes) = card.get("remotes").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let primary = remotes
+        .iter()
+        .position(|r| streamable_remote_url(r).is_some());
+    remotes
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| Some(*index) != primary)
+        .filter_map(|(_, remote)| remote.as_object()?.get("url")?.as_str())
+        .filter_map(|written| {
+            let url = if is_templated_url(written) {
+                written.to_string()
+            } else {
+                resolve_url(base, written)
+            };
+            (!url.is_empty()).then(|| Declaration {
+                not_followed: Some("beyond-endpoint-of-record"),
+                ..Declaration::new(Kind::McpEndpoint, url, source.to_string())
+            })
+        })
+        .collect()
 }
 
 /// A card declares authentication the way SEP-1649 cards spell it.
@@ -353,6 +403,22 @@ pub fn read_card(
         declaration,
         endpoint,
     }
+}
+
+/// What a card read declares: the endpoint it names, then its other remotes.
+pub fn card_declarations(read: &CardRead, base: &str) -> Vec<Declaration> {
+    let mut out: Vec<Declaration> = read
+        .declaration
+        .iter()
+        .map(|d| Declaration {
+            not_followed: d.templated.then_some("templated-url"),
+            ..Declaration::new(Kind::McpEndpoint, d.url.clone(), read.source.clone())
+        })
+        .collect();
+    if let Some(card) = &read.card {
+        out.extend(other_remotes(card, &read.source, base));
+    }
+    out
 }
 
 /// The card that names an audited-origin endpoint, else the strongest that

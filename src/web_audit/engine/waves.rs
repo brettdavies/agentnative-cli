@@ -10,11 +10,11 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 use super::antecedents::{self, AntecedentContext, Resolution};
-use super::api_catalog::{api_declarations, catalog_anchors};
-use super::api_follow::{ApiFollowResult, SliceInput, settle_api_declarations};
+use super::api_catalog::catalog_anchors;
 use super::api_targets::api_targets;
-use super::discovery::{DiscoveryResult, discover_mcp_endpoint};
+use super::discovery::{DiscoveryResult, read_discovery_documents};
 use super::discovery_documents::API_CATALOG_DOCUMENT;
+use super::endpoint_of_record::{Settle, settle_endpoint_of_record};
 use super::handlers::{Dispatch, HandlerSet};
 use super::mcp_wire::{
     advertised_capabilities, modern_lane_from, notify_mcp_initialized, session_id_from,
@@ -75,6 +75,8 @@ pub struct RunInput<'a> {
     pub per_audit_deadline: Duration,
     /// Let checks that query external DNS resolvers run against a local target.
     pub external_dns: bool,
+    /// Follow the off-origin hosts the site declares.
+    pub follow_declarations: bool,
     /// The run's transport, resolver and identity.
     pub fetch: FetchHandle,
     /// The probe handlers.
@@ -93,6 +95,7 @@ impl std::fmt::Debug for RunInput<'_> {
             .field("per_check_timeout", &self.per_check_timeout)
             .field("per_audit_deadline", &self.per_audit_deadline)
             .field("external_dns", &self.external_dns)
+            .field("follow_declarations", &self.follow_declarations)
             .field("handlers", &self.handlers)
             .finish_non_exhaustive()
     }
@@ -109,6 +112,7 @@ impl<'a> RunInput<'a> {
             per_check_timeout: DEFAULT_PER_CHECK_TIMEOUT,
             per_audit_deadline: DEFAULT_PER_AUDIT_DEADLINE,
             external_dns: false,
+            follow_declarations: true,
             fetch,
             handlers,
             progress: None,
@@ -423,22 +427,44 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         input.per_check_timeout
     };
 
-    let discovery = discover_mcp_endpoint(
+    let documents = read_discovery_documents(
         &input.fetch,
         &base,
         &MCP_DISCOVERY,
         per_check_timeout,
         deadline,
     );
-    if let Some(sink) = input.progress.as_deref_mut() {
-        sink.discovery(discovery.endpoint.as_deref());
-    }
-
-    // Nothing from the target itself answered: unreachable from this vantage
-    // point. Any real response, even a 401 or 404, is auditable evidence.
     let root_from_target = root
         .as_ref()
         .is_some_and(|r| !is_edge_error_status(r.status));
+    let answered = |status: &Option<u16>| status.is_some_and(|s| !is_edge_error_status(Some(s)));
+    let site_answered = root_from_target || documents.statuses().iter().any(answered);
+    // The API catalog's anchors decide where the API rows evaluate. Its
+    // off-origin declarations are followed only when an API row can apply
+    // to the declared site type.
+    let anchors = catalog_anchors(documents.document(API_CATALOG_DOCUMENT));
+    let (discovery, declared) = {
+        let settle = Settle {
+            base: &base,
+            enabled: input.follow_declarations,
+            site_answered,
+            api_rows_apply: matches!(input.site_type, None | Some(DeclaredSiteType::Api)),
+            discovery: &MCP_DISCOVERY,
+            fetch: &input.fetch,
+            target_locality,
+            timeout: per_check_timeout,
+            deadline,
+        };
+        settle_endpoint_of_record(documents, &anchors, &settle)
+    };
+    if let Some(sink) = input.progress.as_deref_mut() {
+        sink.discovery(declared.endpoint.as_deref());
+    }
+
+    // Nothing from the target itself answered: unreachable from this vantage
+    // point. Any real response, even a 401 or 404, is auditable evidence. A
+    // declared host's answer is not the site's, so only discovery's
+    // evidence counts.
     let discovery_status = |item: &EvidenceItem| {
         item.get("status")
             .and_then(|s| s.as_u64())
@@ -474,24 +500,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         };
     }
 
-    // The API catalog's anchors decide where the API rows evaluate. Its
-    // off-origin declarations are followed only when an API row can apply
-    // to the declared site type.
-    let anchors = catalog_anchors(discovery.documents.get(API_CATALOG_DOCUMENT));
-    let api_follow = if matches!(input.site_type, None | Some(DeclaredSiteType::Api)) {
-        let slice = SliceInput {
-            base: &base,
-            fetch: &input.fetch,
-            target_locality,
-            timeout: per_check_timeout,
-            deadline,
-            opened: discovery.follow_opened.unwrap_or_else(Instant::now),
-        };
-        settle_api_declarations(&slice, &api_declarations(&anchors))
-    } else {
-        ApiFollowResult::default()
-    };
-    let api = api_targets(&base, &anchors, &api_follow).map(Arc::new);
+    let api = api_targets(&base, &anchors, &declared.api).map(Arc::new);
     let host_probes = Arc::new(HostProbes::default());
 
     let mut incomplete = false;
@@ -504,7 +513,8 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
                        lanes: McpLaneEvidence| HandlerContext {
         base: base.clone(),
         host: host.clone(),
-        mcp_endpoint: discovery.endpoint.clone(),
+        mcp_endpoint: declared.endpoint.clone(),
+        mcp_endpoint_followed: declared.followed,
         protocol_version: MCP_DISCOVERY.protocol_version,
         default_timeout: per_check_timeout.min(
             deadline
@@ -601,13 +611,19 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
                 .map_or(&[][..], |o| o.evidence.as_slice()),
         ),
     };
-    if let (Some(session_id), Some(endpoint)) = (&session, &discovery.endpoint) {
+    if let (Some(session_id), Some(endpoint)) = (&session, &declared.endpoint) {
         let timeout = per_check_timeout.min(
             deadline
                 .saturating_duration_since(Instant::now())
                 .max(Duration::from_millis(1)),
         );
-        notify_mcp_initialized(&input.fetch, endpoint, session_id, timeout);
+        notify_mcp_initialized(
+            &input.fetch,
+            endpoint,
+            session_id,
+            timeout,
+            declared.followed,
+        );
         if Instant::now() >= deadline {
             incomplete = true;
         }
@@ -615,8 +631,9 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
 
     let actx = AntecedentContext {
         site_type: input.site_type,
-        mcp_endpoint: discovery.endpoint.as_deref(),
+        mcp_endpoint: declared.endpoint.as_deref(),
         discovery_evidence: &discovery.evidence,
+        follow_unmet: declared.unmet.as_ref(),
         root: root.as_deref(),
         sources: &sources,
         api_anchors: anchors.iter().any(|a| a.is_api()),
@@ -636,6 +653,16 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
                 NaReason::AntecedentUnmet,
                 antecedents::unmet_evidence(check.antecedent),
             )),
+            Resolution::DeclaredHost(unmet) => {
+                let mut result = na_result(check, unmet.reason, &unmet.url);
+                for item in &mut result.raw_evidence {
+                    item.insert(
+                        "host".to_string(),
+                        serde_json::Value::String(unmet.host.clone()),
+                    );
+                }
+                Some(result)
+            }
             Resolution::Error => Some(error_result(
                 check,
                 "antecedent unresolvable: root fetch failed",
@@ -721,12 +748,13 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     let meta = ScorecardMeta {
         target_url: base.clone(),
         domain,
-        mcp_endpoint: discovery.endpoint.clone(),
+        mcp_endpoint: declared.endpoint.clone(),
         discovery_evidence: discovery.evidence.clone(),
         spec_version: input.spec_version.clone(),
         site_type: input.site_type,
         public_listing: false,
-        declared_hosts: api_follow.entries.iter().map(|e| e.to_item()).collect(),
+        follow_declarations: input.follow_declarations,
+        declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
     };
     let scorecard = build_web_scorecard(
         &results,

@@ -7,8 +7,8 @@ use serde_json::{Map, Value, json};
 
 use super::assert::{AliasVerdict, ExpectBlock, assert_http, classify_alias_probe};
 use super::shared::{
-    Miss, is_missing_status, item, redirects_to_http, redirects_to_http_item, resolve_url,
-    retry_shaped_why, same_origin_recovery_link, substitute_endpoint, worst,
+    Miss, endpoint_redirects, is_missing_status, item, redirects_to_http, redirects_to_http_item,
+    resolve_url, retry_shaped_why, same_origin_recovery_link, substitute_endpoint, worst,
 };
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
@@ -137,11 +137,15 @@ pub fn run_http(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     let method = w.method.as_deref().unwrap_or("GET");
     let headers = header_pairs(w.headers.as_ref());
     let expect = w.expect.clone().unwrap_or_default();
-    let opts = ctx.fetch_options(w.timeout);
-
     let mut evidence = Vec::new();
     let mut misses: Vec<Miss> = Vec::new();
     for raw_path in &paths {
+        let opts = endpoint_redirects(
+            ctx.fetch_options(w.timeout),
+            raw_path,
+            ctx.mcp_endpoint_followed,
+            method,
+        );
         let url = resolve_url(
             &ctx.base,
             &substitute_endpoint(raw_path, ctx.mcp_endpoint.as_deref()),

@@ -25,7 +25,7 @@ use serde_json::{Map, Value, json};
 use self::negotiation::{framing_of, is_json_rpc_envelope, negotiation_for};
 use self::ops::{Era, Family, McpOp};
 use self::probes::{TYPED_REFUSAL_STATUSES, conformance_for};
-use super::shared::{item, retry_shaped_why, why};
+use super::shared::{item, mcp_endpoint_redirects, retry_shaped_why, why};
 use crate::web_audit::engine::mcp_wire::{
     json_rpc_error_code, legacy_initialize_body, legacy_probe_headers, legacy_tools_list_body,
     modern_probe_body, modern_probe_headers, parse_json_rpc,
@@ -231,11 +231,15 @@ pub fn run_mcp(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     // shared probe cap bounds what a hostile endpoint can make the auditor
     // buffer.
     let timeout = ctx.timeout_for(w.timeout);
-    let opts = FetchOptions {
-        timeout,
-        max_body_bytes: Some(AUDIT_PROBE_MAX_BODY_BYTES),
-        ..FetchOptions::default()
-    };
+    let opts = mcp_endpoint_redirects(
+        FetchOptions {
+            timeout,
+            max_body_bytes: Some(AUDIT_PROBE_MAX_BODY_BYTES),
+            ..FetchOptions::default()
+        },
+        ctx.mcp_endpoint_followed,
+        "POST",
+    );
     // The re-ask is a second hop on one row's budget.
     let deadline_at = Instant::now() + timeout;
     let post = |headers: Vec<(String, String)>, opts: &FetchOptions| {

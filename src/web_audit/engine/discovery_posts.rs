@@ -3,22 +3,26 @@
 //! modern `tools/list` POSTs go to every path at once under one timeout,
 //! and a legacy answer wins.
 //!
-//! The site hands a POST redirected off the audited origin back as a
-//! declaration its follow slice settles. The local engine has no follow
-//! slice, so a redirected POST is followed like any other probe's, which is
-//! the only way it finds such an endpoint.
+//! A POST is never re-sent off the audited origin. A common path that
+//! answers with a redirect to another origin is recorded with its target,
+//! and the target is declared like a card's off-origin endpoint, so it is
+//! probed only once its own host confirms it.
 
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use url::Url;
 
 use super::discovery::fetch_all;
+use super::discovery_documents::same_origin;
+use super::follow_trail::{Declaration, Kind};
 use super::mcp_wire::{
     legacy_initialize_body, legacy_probe_headers, modern_probe_body, modern_probe_headers,
     parse_json_rpc,
 };
 use super::types::FetchHandle;
-use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
+use crate::web_audit::fetch::redirect::is_redirect;
+use crate::web_audit::fetch::{CrossOriginRedirects, FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::scorecard::EvidenceItem;
 
 /// A common path and the URL it resolved to.
@@ -37,17 +41,51 @@ pub struct PostProbing {
     pub endpoint: Option<String>,
     /// One row per response read, legacy lane first.
     pub items: Vec<EvidenceItem>,
+    /// Where POSTs were redirected off the audited origin, in probe order.
+    pub redirected: Vec<Declaration>,
 }
 
 fn row(value: Value) -> EvidenceItem {
     value.as_object().cloned().unwrap_or_default()
 }
 
-fn miss(candidate: &Candidate, resp: &ProbeResponse, probed: &str, why: &str) -> EvidenceItem {
+/// Where a POST answer redirected off the audited origin, as the URL a hop
+/// would request.
+fn off_origin_redirect(url: &str, resp: &ProbeResponse) -> Option<String> {
+    let location = resp.headers.get("location")?;
+    if !resp.status.is_some_and(is_redirect) {
+        return None;
+    }
+    let target = Url::parse(url).ok()?.join(location).ok()?.to_string();
+    (!same_origin(&target, url)).then_some(target)
+}
+
+fn miss(
+    candidate: &Candidate,
+    resp: &ProbeResponse,
+    probed: &str,
+    why: &str,
+    redirected: &mut Vec<Declaration>,
+) -> EvidenceItem {
+    let Some(target) = off_origin_redirect(&candidate.url, resp) else {
+        return row(json!({
+            "source": candidate.path,
+            "status": resp.status,
+            "probed": format!("{probed} ({why})"),
+        }));
+    };
+    if !redirected.iter().any(|d| d.url == target) {
+        redirected.push(Declaration::new(
+            Kind::McpEndpoint,
+            target.clone(),
+            candidate.path.to_string(),
+        ));
+    }
     row(json!({
         "source": candidate.path,
         "status": resp.status,
-        "probed": format!("{probed} ({why})"),
+        "probed": format!("{probed} (off-origin redirect)"),
+        "redirect": target,
     }))
 }
 
@@ -79,12 +117,14 @@ pub fn probe_common_paths(
         .collect();
     let opts = FetchOptions {
         timeout,
+        cross_origin_redirects: Some(CrossOriginRedirects::Return),
         ..FetchOptions::default()
     };
     let responses = fetch_all(fetch, requests, &opts);
     let (legacy, modern) = responses.split_at(candidates.len());
 
     let mut items = Vec::new();
+    let mut redirected = Vec::new();
     for (candidate, resp) in candidates.iter().zip(legacy) {
         let has_server_info = parse_json_rpc(resp)
             .as_ref()
@@ -97,9 +137,16 @@ pub fn probe_common_paths(
             return PostProbing {
                 endpoint: Some(candidate.url.clone()),
                 items,
+                redirected,
             };
         }
-        items.push(miss(candidate, resp, "initialize", "no serverInfo"));
+        items.push(miss(
+            candidate,
+            resp,
+            "initialize",
+            "no serverInfo",
+            &mut redirected,
+        ));
     }
     for (candidate, resp) in candidates.iter().zip(modern) {
         let has_tools = parse_json_rpc(resp)
@@ -112,13 +159,21 @@ pub fn probe_common_paths(
             return PostProbing {
                 endpoint: Some(candidate.url.clone()),
                 items,
+                redirected,
             };
         }
-        items.push(miss(candidate, resp, "modern-tools-list", "no tools"));
+        items.push(miss(
+            candidate,
+            resp,
+            "modern-tools-list",
+            "no tools",
+            &mut redirected,
+        ));
     }
     PostProbing {
         endpoint: None,
         items,
+        redirected,
     }
 }
 

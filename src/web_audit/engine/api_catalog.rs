@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use super::discovery::{API_CATALOG_PATH, resolve_url};
 use super::discovery_documents::{RetainedDocument, is_templated_url, parse_json_object};
+use super::follow_trail::{Declaration, Kind};
 
 /// A link target that is an MCP surface (a card, the endpoint, its usage
 /// doc) rather than an API description.
@@ -49,38 +50,6 @@ impl CatalogAnchor {
     pub fn is_api(&self) -> bool {
         self.description.is_some()
     }
-}
-
-/// What a declaration names.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ApiKind {
-    /// A linkset anchor: an API host.
-    Anchor,
-    /// The description an API anchor declares.
-    Description,
-}
-
-impl ApiKind {
-    /// The trail spelling.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ApiKind::Anchor => "api-anchor",
-            ApiKind::Description => "api-description",
-        }
-    }
-}
-
-/// One URL the catalog declares, in the order the API follow admits it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ApiDeclaration {
-    /// Anchor or description.
-    pub kind: ApiKind,
-    /// The declared URL.
-    pub url: String,
-    /// Where the catalog declares it.
-    pub source: String,
-    /// An anchor with no API description is never requested.
-    pub no_service_desc: bool,
 }
 
 fn catalog_url(raw: Option<&Value>, base: &str) -> String {
@@ -146,21 +115,19 @@ pub fn catalog_anchors(catalog: Option<&RetainedDocument>) -> Vec<CatalogAnchor>
 
 /// What the catalog declares, in the order the follow admits it: every
 /// anchor, then each API description.
-pub fn api_declarations(anchors: &[CatalogAnchor]) -> Vec<ApiDeclaration> {
-    let declared = |kind, link: &CatalogLink, no_service_desc| ApiDeclaration {
-        kind,
-        url: link.url.clone(),
-        source: link.source.clone(),
-        no_service_desc,
+pub fn api_declarations(anchors: &[CatalogAnchor]) -> Vec<Declaration> {
+    let declared = |kind, link: &CatalogLink, no_service_desc: bool| Declaration {
+        not_followed: no_service_desc.then_some("no-service-desc"),
+        ..Declaration::new(kind, link.url.clone(), link.source.clone())
     };
-    let mut out: Vec<ApiDeclaration> = anchors
+    let mut out: Vec<Declaration> = anchors
         .iter()
-        .map(|a| declared(ApiKind::Anchor, &a.link, !a.is_api()))
+        .map(|a| declared(Kind::ApiAnchor, &a.link, !a.is_api()))
         .collect();
     out.extend(anchors.iter().filter_map(|a| {
         a.description
             .as_ref()
-            .map(|d| declared(ApiKind::Description, d, false))
+            .map(|d| declared(Kind::ApiDescription, d, false))
     }));
     out
 }
@@ -238,7 +205,7 @@ mod tests {
         );
         let kinds: Vec<(&str, bool)> = api_declarations(&anchors)
             .iter()
-            .map(|d| (d.kind.as_str(), d.no_service_desc))
+            .map(|d| (d.kind.as_str(), d.not_followed.is_some()))
             .collect();
         assert_eq!(
             kinds,

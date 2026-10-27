@@ -6,17 +6,24 @@
 //! carrying the reason in `error`. The layer injects the audit User-Agent
 //! when the caller set none, follows redirects through [`redirect`] so every
 //! hop is classified first, and reads the body under the regime in [`body`].
+//! With an audit's [`memo::RequestMemo`], an identical request reads the
+//! answer the audit already received instead of reaching the target again.
 
 pub mod body;
+pub mod hop;
+pub mod memo;
 pub mod proxy;
 pub mod redirect;
 pub mod trust;
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::headers::Headers;
 use super::locality::Resolver;
-use super::transport::{Response, Transport, TransportError};
+use super::transport::Transport;
+use memo::RequestMemo;
+use redirect::HopSender;
 
 /// Per-request deadline when the caller sets none.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(8_000);
@@ -119,7 +126,7 @@ impl ProbeResponse {
 /// The guarded fetch bound to one transport, one resolver and one identity.
 #[derive(Clone, Copy)]
 pub struct Fetcher<'a> {
-    transport: &'a dyn Transport,
+    sender: HopSender<'a>,
     resolver: &'a dyn Resolver,
     user_agent: &'a str,
 }
@@ -128,6 +135,7 @@ impl std::fmt::Debug for Fetcher<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Fetcher")
             .field("user_agent", &self.user_agent)
+            .field("memo", &matches!(self.sender, HopSender::Memo(..)))
             .finish_non_exhaustive()
     }
 }
@@ -140,7 +148,22 @@ impl<'a> Fetcher<'a> {
         user_agent: &'a str,
     ) -> Self {
         Fetcher {
-            transport,
+            sender: HopSender::Direct(transport),
+            resolver,
+            user_agent,
+        }
+    }
+
+    /// Bind the fetch layer to one audit's request memo, which sends each
+    /// distinct request through `transport` once.
+    pub fn memoized(
+        transport: &'a Arc<dyn Transport + Send + Sync>,
+        resolver: &'a dyn Resolver,
+        user_agent: &'a str,
+        memo: &'a RequestMemo,
+    ) -> Self {
+        Fetcher {
+            sender: HopSender::Memo(memo, transport),
             resolver,
             user_agent,
         }
@@ -158,6 +181,11 @@ impl<'a> Fetcher<'a> {
         let elapsed =
             |started: Instant| u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
+        if let HopSender::Memo(memo, _) = self.sender
+            && memo.is_ended()
+        {
+            return ProbeResponse::failed("audit ended".to_string(), 0);
+        }
         let target = match redirect::validate_target(url, self.resolver) {
             Ok(target) => target,
             Err(reason) => return ProbeResponse::failed(reason, elapsed(started)),
@@ -173,25 +201,23 @@ impl<'a> Fetcher<'a> {
             headers.push(("user-agent".to_string(), self.user_agent.to_string()));
         }
         let chain = redirect::ChainRequest {
-            transport: self.transport,
+            sender: self.sender,
             resolver: self.resolver,
             method: &init.method,
             headers: &headers,
             body: init.body.as_deref(),
-            timeout: opts.timeout,
+            started,
+            deadline: started + opts.timeout,
+            max_body_bytes: opts.max_body_bytes,
             follow_redirects: opts.follow_redirects,
             max_redirects: opts.max_redirects,
         };
-        let Response {
-            status,
-            headers,
-            body,
-        } = match redirect::follow(&chain, target) {
-            Ok(redirect::ChainEnd::Answer(response)) => response,
-            Ok(redirect::ChainEnd::InsecureRedirect { response, error }) => {
+        let answer = match redirect::follow(&chain, target) {
+            Ok(redirect::ChainEnd::Answer(answer)) => answer,
+            Ok(redirect::ChainEnd::InsecureRedirect { answer, error }) => {
                 return ProbeResponse {
-                    status: Some(response.status),
-                    headers: response.headers,
+                    status: Some(answer.status),
+                    headers: answer.headers,
                     body: String::new(),
                     error: Some(error),
                     elapsed_ms: elapsed(started),
@@ -201,16 +227,17 @@ impl<'a> Fetcher<'a> {
             }
             Err(reason) => return ProbeResponse::failed(reason, elapsed(started)),
         };
-        let read = match body::read_capped(body, opts.max_body_bytes) {
-            Ok(read) => read,
-            Err(e) => {
-                let reason = TransportError::from(ureq::Error::from(e)).to_string();
-                return ProbeResponse::failed(reason, elapsed(started));
-            }
+        // The hop answers only with a record that serves this caller's cap,
+        // so a body this caller cannot read is a body read that failed.
+        let Some(read) = hop::body_of(&answer, opts.max_body_bytes) else {
+            let reason = answer
+                .body_error
+                .map_or_else(|| "body unavailable".to_string(), |e| e.message);
+            return ProbeResponse::failed(reason, elapsed(started));
         };
         ProbeResponse {
-            status: Some(status),
-            headers,
+            status: Some(answer.status),
+            headers: answer.headers,
             body: String::from_utf8_lossy(&read.bytes).into_owned(),
             error: None,
             elapsed_ms: elapsed(started),

@@ -317,9 +317,8 @@ Three release-flow artifacts live outside any automated prose check and need a m
 - **Release-PR bodies.** The `release/v<version>` PR to `main` carries contributor-authored wrap-up text composed after
   `CHANGELOG.md` has been generated, and the same out-of-repo gap applies.
 
-The canonical Vale + LanguageTool rule packs and orchestrator behavior live in the spec repo at
-[`~/dev/agentnative-spec/docs/architecture/voice-enforcement.md`](../agentnative-spec/docs/architecture/voice-enforcement.md).
-This repo does not vendor a local copy of those packs; point Vale at the spec checkout via `--config`.
+This repository maintains its Vale configuration, rule packs, and orchestrator on `dev`, and `guard-main-docs` keeps
+them off `main`, so the scrub points Vale at a `dev` checkout's `.vale.ini` via `--config`.
 
 Scrub-before-submit (author in `/tmp/`, scrub there, submit via `--body-file`) avoids the round-trip of "submit, scrub,
 edit, scrub again". Every fix lands locally and the public PR sees only clean text. The auto-format hook skips `/tmp/`

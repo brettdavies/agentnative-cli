@@ -1,9 +1,11 @@
 ---
 title: "feat: Import shared prose tooling and author linter-channel design context"
 type: feat
-status: active
+status: released
 prs: ["#52"]
 date: 2026-05-07
+completed: 2026-05-21
+released_in: v0.4.0
 ---
 
 # feat: Import shared prose tooling and author linter-channel design context
@@ -11,40 +13,29 @@ date: 2026-05-07
 ## Summary
 
 Vendor the shared prose-linting tooling from `agentnative-spec` (`BRAND.md`, vale config + brand rule pack + brand
-vocab, `prose-check.sh`, test harness, generator) into `agentnative-cli` via a new `scripts/sync-prose-tooling.sh`,
-author a fresh CLI-channel `.impeccable.md` codifying linter-channel voice (distinct from spec-channel RFC-2119
-register), wire prose-check into CI on every PR, and lay down a constrained design brief for ast-grep-based in-code
-prose extraction so future passes can lint clap help text, error messages, and panic strings. Sibling to the v0.4.0 spec
-sync (PR A); independent release cadence, no governance window.
+vocab, `prose-check.sh`, test harness, generator) into `agentnative-cli` via a new sync script, author a fresh
+CLI-channel `.impeccable.md` codifying linter-channel voice (distinct from spec-channel RFC-2119 register), wire
+prose-check into CI on every PR, and lay down a constrained design brief for ast-grep-based in-code prose extraction so
+future passes can lint clap help text, error messages, and panic strings. Sibling to the v0.4.0 spec sync (PR A);
+independent release cadence, no governance window.
 
 ## Where the shipped units differ from this plan
 
-- **Scope split.** U1, U2, and U3 ship in #52. U4 (CI gate), U5 (drift workflow + manifest test), and U6 (ast-grep Rust
-  extraction) are separate follow-ups, so the pipeline is proven against a handful of markdown files before it points at
-  the Rust sources U6 would extract from.
-- **Sync tracks spec `main`, not `dev`.** The Key Technical Decision below says "Sync source ref is `dev`, not a tag";
-  the script resolves the HEAD of agentnative-spec's `main` instead, from the remote first and a local checkout as the
-  fallback. Prose tooling is shared infrastructure with a faster cadence than the principle contract, so consumers do
-  not pin it to a tag; tag-pinning belongs to the principle contract through `scripts/sync-spec.sh`.
-- **Manifest reality.** The plan calls for vendoring `styles/proselint/` and
-  `styles/write-good/`. These directories exist in the spec's working tree but are gitignored upstream — vale's
-  `Packages = ...` line in `.vale.ini` downloads them at runtime. Following the upstream pattern, this repo's
-  `.gitignore` excludes them and vale auto-fetches on first invocation. The vendored manifest is `BRAND.md`,
-  `styles/brand/` (rule pack and README), `styles/config/` (brand vocab accept and reject lists),
-  `scripts/test-prose-check.mjs`, and `scripts/generate-pack-readme.mjs`. `.vale.ini` is authored here, because
-  upstream's config references the `spec` pack.
-
-- **Upstream parameterization not landed.** Risk #1 holds: upstream `prose-check.sh` does not support
-  env-var-configurable file globs. Rather than an upstream PR first, the CLI owns `scripts/prose-check.sh` itself (the
-  orchestrator is un-vendored in #52) instead of carrying a divergence block in a vendored copy. Upstream todo is
-  `agentnative-spec/.context/compound-engineering/todos/010-pending-p0-prose-check-consumer-exclusion-config.md` (Phase
-  1: `--exclude PATTERN` flag). When that ships, the orchestrator can be re-vendored.
-- **Coverage limit.** With U1, U2, and U3 shipped, prose-check covers markdown only: every `*.md` outside the planning,
-  fixture, vendored-spec, and generated paths, such as `README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, and
-  `PRODUCT.md` (see the filename note below). The
-  high-leverage prose — clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, audit `label()` returns —
-  is **NOT** covered until U6 ships. U6 is the unit that makes the CLI itself speak brand voice; U1+U2+U3 only ensures
-  contributor- and consumer-facing docs do.
+- **Scope.** U1, U2, and U3 ship in #52, released in v0.4.0. U4 to U6 are out of scope: this repository maintains the
+  prose tooling itself and does not sync it from `agentnative-spec`. With no sync, U5's drift workflow has no upstream
+  to compare against; U4's CI gate and U6's Rust extraction are not pursued under this plan either.
+- **Sync removed.** #236 removes the U1 sync script from this repository. The files it vendored are this repository's
+  own and are maintained in place: `BRAND.md`, `styles/brand/` (rule pack and README), `styles/config/` (brand vocab
+  accept and reject lists), `scripts/test-prose-check.mjs`, and `scripts/generate-pack-readme.mjs`. `.vale.ini` and
+  `scripts/prose-check.sh` are authored here; the spec's `.vale.ini` references the `spec` pack.
+- **Downloaded packs.** `styles/proselint/` and `styles/write-good/` are not committed. `vale sync` downloads them from
+  the `Packages = ...` line in `.vale.ini`, and `.gitignore` excludes them.
+- **Orchestrator.** This repository owns `scripts/prose-check.sh`, path exclusions included, so Risk #1's upstream
+  parameterization is not needed.
+- **Coverage limit.** Prose-check covers markdown only: every `*.md` outside the planning, fixture, vendored-spec, and
+  generated paths, such as `README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, and `PRODUCT.md` (see the
+  filename note below). Clap help text, `eprintln!`/`anyhow::bail!` messages, panic strings, and audit `label()` returns
+  are not covered.
 - **Filename: `PRODUCT.md`, not `.impeccable.md`.** The `impeccable` skill standardizes on `PRODUCT.md` / `DESIGN.md`
   and renames the legacy `.impeccable.md` at first invocation, so the linter-channel voice doc is `PRODUCT.md`. Read
   every `.impeccable.md` reference below as `PRODUCT.md`; `AGENTS.md` points at `PRODUCT.md`.
@@ -69,7 +60,7 @@ because there's no sync mechanism.
 
 ## Requirements
 
-- R1. A new `scripts/sync-prose-tooling.sh` exists and follows the same shape as `scripts/sync-spec.sh`: remote-first
+- R1. A new prose-tooling sync script exists and follows the same shape as `scripts/sync-spec.sh`: remote-first
   resolution, `git show <ref>:<path>` extraction (no working-tree perturbation), local fallback, `--check` drift mode.
 - R2. The script vendors `BRAND.md`, `.vale.ini`, four vale style packs (`styles/{brand,config,proselint,write-good}/`),
   `scripts/prose-check.sh`, and `scripts/test-prose-check.mjs` from `agentnative-spec`. The `styles/spec/` pack is
@@ -82,7 +73,7 @@ because there's no sync mechanism.
   name what failed + why + what to do; help text follows clap conventions).
 - R5. A new CI workflow `.github/workflows/prose-check.yml` runs `scripts/prose-check.sh` on every PR touching a
   prose-bearing file. Workflow uses pinned-SHA actions per global supply-chain policy.
-- R6. A new CI workflow `.github/workflows/prose-tooling-drift.yml` runs `sync-prose-tooling.sh --check` on push to
+- R6. A new CI workflow `.github/workflows/prose-tooling-drift.yml` runs the sync script's `--check` mode on push to
   `dev`/`main` and on a weekly schedule. Catches drift between vendored copies and the upstream `agentnative-spec`.
 - R7. A constrained design brief exists for ast-grep-based in-code prose extraction (`scripts/prose-check-rust.sh`) with
   implementation landing in this PR. Extracts clap `about=`/`long_about=`/`help=` strings, panic strings,
@@ -119,10 +110,10 @@ because there's no sync mechanism.
 
 ### Relevant Code and Patterns
 
-- `scripts/sync-spec.sh` — canonical template for the new `sync-prose-tooling.sh`. Remote-first resolution
-  (`git ls-remote --tags`, then `git clone --depth 1 --branch`), local fallback via `SPEC_ROOT` env var,
-  `git show <ref>:<path> > dest` extraction. Trap-based cleanup. **Does NOT take a `--check` mode currently** — pattern
-  for that comes from `scripts/sync-skill-fixture.sh --check` (the skill fixture drift script).
+- `scripts/sync-spec.sh` — canonical template for the new sync script. Remote-first resolution (`git ls-remote --tags`,
+  then `git clone --depth 1 --branch`), local fallback via `SPEC_ROOT` env var, `git show <ref>:<path> > dest`
+  extraction. Trap-based cleanup. **Does NOT take a `--check` mode currently** — pattern for that comes from
+  `scripts/sync-skill-fixture.sh --check` (the skill fixture drift script).
 - `scripts/sync-skill-fixture.sh` — second template, especially for `--check` drift mode (clones upstream, `cmp`s blob
   by blob, exits non-zero on diff). The new prose-tooling sync extends to multiple files but uses the same shape.
 - `scripts/SYNCS.md` (18.5K) — existing index of sync scripts; the new script registers here.
@@ -215,10 +206,10 @@ because there's no sync mechanism.
 
 ## Implementation Units
 
-### U1. Author `scripts/sync-prose-tooling.sh` (new sync script with `--check` mode)
+### U1. Author the prose-tooling sync script (with `--check` mode)
 
-**Status:** Complete (#52). The script tracks agentnative-spec's `main` HEAD and vendors the manifest listed in the
-section above; `--check` mode compares the vendored files against that ref.
+**Status:** Complete (#52). #236 removes the sync script; the files it vendored are maintained in this repository (see
+the section above).
 
 **Goal:** Land the cross-repo sync mechanism that vendors prose tooling from `agentnative-spec`. Remote-first, local
 fallback, `--check` drift mode. No content vendored yet — script only.
@@ -229,7 +220,7 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 **Files:**
 
-- Create: `scripts/sync-prose-tooling.sh`
+- Create: the sync script under `scripts/`
 - Modify: `scripts/SYNCS.md` (register the new script alongside `sync-spec.sh` / `sync-skill-fixture.sh`)
 - Test: ad-hoc — invoke the script with `--check` against a known-clean state (no vendored files yet → drift report
   exits 1 because nothing matches; that's expected pre-U2 state).
@@ -256,9 +247,8 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 **Test scenarios:**
 
-- *Happy path*: Run `bash scripts/sync-prose-tooling.sh` with a clean upstream; vendored files appear; exit 0.
-- *Happy path*: Run `bash scripts/sync-prose-tooling.sh --check` immediately after; exit 0 (just-vendored bytes
-  byte-equal upstream).
+- *Happy path*: Run the sync script with a clean upstream; vendored files appear; exit 0.
+- *Happy path*: Run it with `--check` immediately after; exit 0 (just-vendored bytes byte-equal upstream).
 - *Edge case*: Upstream unreachable + `SYNC_PROSE_ROOT` unset → exits 1 with clear error pointing at the env var.
 - *Edge case*: Upstream unreachable + `SYNC_PROSE_ROOT` points at a clean local checkout → falls back successfully.
 - *Failure path*: Edit a vendored file by hand to introduce drift; run `--check` → exit 1 with diff report.
@@ -266,7 +256,7 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 **Verification:**
 
-- `shellcheck scripts/sync-prose-tooling.sh` clean.
+- `shellcheck` clean on the sync script.
 - Script runs successfully against the live `agentnative-spec` `dev` branch.
 - `--check` mode exits 1 before U2 runs (nothing vendored yet) and exits 0 after U2.
 
@@ -274,7 +264,8 @@ fallback, `--check` drift mode. No content vendored yet — script only.
 
 ### U2. Vendor initial prose tooling + adapt `prose-check.sh` for CLI prose surfaces
 
-**Status:** Complete (#52). `scripts/prose-check.sh` is consumer-owned rather than a byte-equivalent vendored copy.
+**Status:** Complete (#52). `scripts/prose-check.sh` is this repository's own script, not a byte-equivalent vendored
+copy.
 
 **Goal:** Run U1's script for the first time, then adapt the vendored `scripts/prose-check.sh` for CLI prose surfaces.
 Adaptation is path/glob changes only — rule logic stays untouched (any logic divergence breaks the byte-equivalence
@@ -302,7 +293,7 @@ contract on next sync).
 
 **Approach:**
 
-- Run `bash scripts/sync-prose-tooling.sh` to write all vendored files. Verify the diff matches expected manifest.
+- Run the U1 sync script to write all vendored files. Verify the diff matches expected manifest.
 - Adapt `prose-check.sh` path globs by editing the file's "files to lint" section. The CLI surfaces: `README.md`,
   `AGENTS.md`, `RELEASES.md`, `CHANGELOG.md`, `.impeccable.md` (will exist post-U3), `docs/**/*.md`. Spec-side globs
   (`principles/*.md`) are removed.
@@ -327,7 +318,7 @@ contract on next sync).
 
 **Test scenarios:**
 
-- *Happy path*: Vendored files exist after script run; `bash scripts/sync-prose-tooling.sh --check` exits 0.
+- *Happy path*: Vendored files exist after script run; the sync script's `--check` mode exits 0.
 - *Happy path*: `bash scripts/prose-check-cli.sh` runs end-to-end without crashing; produces a prose-findings report.
 - *Edge case*: A markdown file with no prose findings → script exits 0 with "OK" output.
 - *Failure path*: A markdown file with deliberate slop (e.g., `It's not a feature, it's a way of life`) → script exits
@@ -410,7 +401,8 @@ explicitly diverges from spec-channel rules where the register differs.
 
 ### U4. Add CI workflow for prose-check on every PR
 
-**Status:** Not started.
+**Status:** Not pursued. U4 to U6 are out of scope: this repository maintains the prose tooling itself and does not sync
+it from `agentnative-spec`.
 
 **Goal:** Ship the CI gate so prose-check fires on every PR that touches a prose-bearing file. Pinned-SHA actions per
 global supply-chain policy. Workflow scopes to dev/main as base branches.
@@ -463,11 +455,11 @@ global supply-chain policy. Workflow scopes to dev/main as base branches.
 
 ### U5. Add drift-detection workflow + manifest test
 
-**Status:** Not started. `--check` mode ships with U1; this unit is the workflow that calls it on a schedule and a
-push trigger.
+**Status:** Not pursued (see U4). With no sync, a drift check has no upstream to compare against.
 
-**Goal:** Wire `sync-prose-tooling.sh --check` into a scheduled workflow + push trigger so drift between vendored copies
-and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises the script's manifest list end-to-end.
+**Goal:** Wire the sync script's `--check` mode into a scheduled workflow + push trigger so drift between vendored
+copies and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises the script's manifest list
+end-to-end.
 
 **Requirements:** R6.
 
@@ -477,7 +469,7 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 
 - Create: `.github/workflows/prose-tooling-drift.yml`
 - Create: `tests/prose_tooling_manifest.rs` — Rust integration test (since the project's test harness is `cargo test`)
-  that shell-invokes `sync-prose-tooling.sh --check` and asserts exit 0.
+  that shell-invokes the sync script's `--check` mode and asserts exit 0.
 
 **Approach:**
 
@@ -486,7 +478,7 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 - Single job:
 
 1. Checkout pinned.
-2. Run `bash scripts/sync-prose-tooling.sh --check`.
+2. Run the sync script with `--check`.
 3. On failure, post a GitHub issue (or comment on a tracking issue) summarizing the drift. Use existing
    `actions/github-script` or similar — pinned per supply-chain policy.
 
@@ -503,7 +495,7 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 - *Happy path*: Vendored files match upstream → workflow succeeds; Rust test passes.
 - *Failure path*: Hand-edit a vendored file to simulate drift → the workflow fails on next run.
 - *Edge case (workflow)*: Upstream renames `BRAND.md` → workflow fails with clear error (manifest mismatch); the failure
-  is the signal to update `sync-prose-tooling.sh`'s manifest.
+  is the signal to update the sync script's manifest.
 - *Edge case (Rust test)*: A vendored file is accidentally deleted from git → test fails locally and in CI.
 
 **Verification:**
@@ -516,11 +508,7 @@ and upstream `agentnative-spec` surfaces fast. Add a smoke test that exercises t
 
 ### U6. Implement ast-grep-based in-code prose extraction (`scripts/prose-check-rust.sh`)
 
-**Status:** Not started. **This is the unit that makes the CLI
-itself speak brand voice** — U1-U5 only cover markdown. Without U6, prose-check is "voice consistency for docs" rather
-than "the tool's output speaks brand voice." Local pre-flight: `ast-grep` CLI is not installed locally (the repo uses
-`ast-grep-core` Rust library, not the binary); `brew install ast-grep` before U6 starts, or pivot U6 to a Rust binary
-that uses the already-vendored `ast-grep-core` directly.
+**Status:** Not pursued (see U4). Prose-check covers markdown only.
 
 **Goal:** Extract prose from Rust source — clap macro arguments, panic strings, `eprintln!`/`println!` literals,
 `anyhow::bail!`/`Error::msg` literals — into a transient markdown file, then feed it through the existing
@@ -656,7 +644,7 @@ that uses the already-vendored `ast-grep-core` directly.
 - `AGENTS.md` gets a one-line pointer to `.impeccable.md` so agents loading AGENTS.md discover voice rules.
 - New CI workflows show up in the repo's status checks page; document their purpose in a CONTRIBUTING.md note (or
   `.github/workflows/README.md` if one exists).
-- Post-merge, run `scripts/sync-prose-tooling.sh --check` locally on `dev` to confirm stability.
+- Post-merge, run the sync script's `--check` mode locally on `dev` to confirm stability.
 - The follow-up sequence after this PR ships:
 
 1. Address the prose-check backlog on existing prose surfaces (separate PR or PRs).

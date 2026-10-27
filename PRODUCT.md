@@ -8,13 +8,13 @@ Read that first.
 
 The linter channel sits in a three-tier waterfall. Each tier owns a different concern; nothing duplicates.
 
-1. **Universal, [`BRAND.md`](BRAND.md).** Shared identity, voice anchor, audiences, universal anti-patterns. The
-   authoritative copy lives in `agentnative-spec`; a vendored mirror sits on this repo's `dev` branch.
+1. **Universal, [`BRAND.md`](BRAND.md).** Shared identity, voice anchor, audiences, universal anti-patterns. This
+   repository maintains its own copy.
 2. **Channel delta, this file (`PRODUCT.md`).** Second-person imperative register, the three-part error shape (what
    failed, why, what to do next), 80-column help-text discipline, neutral diagnostics, stdout/stderr separation. The
-   authoritative voice contract for the linter channel; the Vale rule pack maintained in `agentnative-spec` (mirrored to
-   `dev` here) enforces the literal phrases on contributor PRs against `dev`. The pack is dev-only tooling and does not
-   ship to `main`.
+   authoritative voice contract for the linter channel; the Vale rule pack this repository maintains in `styles/`
+   enforces the literal phrases on contributor PRs against `dev`. The pack is dev-only tooling and does not ship to
+   `main`.
 3. **Implementation, `src/`.** The Rust source for `anc`. Behavioral audits executed against compiled binaries; the
    principle registry codegen'd from `src/principles/spec/` (vendored from `agentnative-spec` via
    [`scripts/sync-spec.sh`](scripts/sync-spec.sh)).
@@ -45,9 +45,9 @@ on without re-reading.
 
 ## Register
 
-The narrative below is the authoritative voice contract for the linter channel. The Vale rule pack maintained in
-`agentnative-spec` (mirrored to `dev` here) encodes the literal phrases for enforcement on contributor PRs; the pack is
-dev-only tooling and does not ship to `main`.
+The narrative below is the authoritative voice contract for the linter channel. The Vale rule pack this repository
+maintains in `styles/` encodes the literal phrases for enforcement on contributor PRs; the pack is dev-only tooling and
+does not ship to `main`.
 
 - **Second-person imperative IS the register.** "Run `anc audit`", "Set `--audit-profile human-tui`", "Pipe the output
   to `jq`". This is the linter channel's defining departure from the spec channel: the spec describes contracts in
@@ -106,10 +106,6 @@ This file is the linter channel's `PRODUCT.md`. The spec channel's equivalent at
 the RFC-2119 contract register; the site channel's at `agentnative-site/PRODUCT.md` covers visual-system decisions;
 cross-channel content lives in [`BRAND.md`](BRAND.md).
 
-Coverage today: markdown surfaces only (`README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, this file). The
-high-leverage surface is not yet linted: clap `about=` / `help=` / `long_about=` literals, `eprintln!` / `anyhow::bail!`
-messages, panic strings, and audit `label()` returns. The deferred U6 unit of
-[`docs/plans/2026-05-07-002-feat-prose-tooling-import-plan.md`](docs/plans/2026-05-07-002-feat-prose-tooling-import-plan.md)
-introduces ast-grep-based extraction of those literals into a transient markdown file and runs them through this same
-rule set. When U6 ships, the linter channel's voice rules apply to everything `anc` says, not just everything it
-documents.
+Coverage: markdown surfaces only (`README.md`, `RELEASES.md`, `CLAUDE.md`, `scripts/SYNCS.md`, this file). The
+high-leverage surface is not linted: clap `about=` / `help=` / `long_about=` literals, `eprintln!` / `anyhow::bail!`
+messages, panic strings, and audit `label()` returns.

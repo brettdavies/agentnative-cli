@@ -475,6 +475,33 @@ fn http_reuses_the_root_fetch_only_for_a_plain_get_of_the_base() {
     assert_eq!(header(&requests[0], "accept"), Some("text/markdown"));
 }
 
+/// The `robots` row and the `robots-present` antecedent already establish
+/// the document, so a missing directive inside it is an absence. Scoring it
+/// broken would rank an ordinary robots.txt below having none.
+#[test]
+fn http_reads_a_robots_txt_without_ai_rules_or_content_signal_as_both_rows_absent() {
+    let transport = Arc::new(MockTransport::new(
+        vec![],
+        MockResponse::ok(
+            200,
+            &[("content-type", "text/plain")],
+            b"User-agent: Googlebot\nDisallow: /private\n\nSitemap: https://example.com/sitemap.xml\n",
+        ),
+    ));
+    let ctx = context(transport);
+    let statuses: Vec<(&str, ProbeStatus)> = ["robots-ai-rules", "content-signals"]
+        .into_iter()
+        .map(|id| (id, run_http(check(id), &ctx).status))
+        .collect();
+    assert_eq!(
+        statuses,
+        [
+            ("robots-ai-rules", ProbeStatus::Absent),
+            ("content-signals", ProbeStatus::Absent),
+        ]
+    );
+}
+
 #[test]
 fn http_timeouts_are_broken_only_under_an_explicit_hang_budget() {
     let transport = Arc::new(MockTransport::new(

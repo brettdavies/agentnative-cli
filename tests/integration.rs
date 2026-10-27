@@ -1153,6 +1153,39 @@ fn test_broken_python_fixture() {
     );
 }
 
+#[test]
+fn test_mixed_language_source_pass_folds_shared_audits() {
+    // Rust and Python each run an audit under these ids. A source audit that
+    // takes findings its language was never prepared with trips a debug
+    // assertion, which this debug binary turns into a panic.
+    let path = fixture_path("mixed-no-root");
+    let output = cmd()
+        .args(["audit", &path, "--source", "--output", "json"])
+        .output()
+        .expect("anc should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_ne!(
+        output.status.code(),
+        Some(RUST_PANIC_EXIT_CODE),
+        "anc panicked: {stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "anc panicked: {stderr}");
+
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let results = parsed["results"]
+        .as_array()
+        .expect("results should be an array");
+    for audit_id in ["p6-no-color", "p4-enumerate-valid-set", "p6-sigterm"] {
+        let rows = results
+            .iter()
+            .filter(|r| r["audit_id"].as_str() == Some(audit_id))
+            .count();
+        assert_eq!(rows, 1, "{audit_id} must fold into one row, got {rows}");
+    }
+}
+
 /// Convention enforcement: audit_x() functions must return AuditStatus, not AuditResult.
 ///
 /// The Audit trait's run() method is the sole constructor of AuditResult. If audit_x()

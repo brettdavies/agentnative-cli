@@ -7,14 +7,36 @@
 //! (not Fail) when NO_COLOR is absent — many libraries (rich, click, colorama)
 //! handle NO_COLOR transparently without explicit lookups in user code.
 
+use std::sync::LazyLock;
+
 use ast_grep_core::Pattern;
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Python;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::has_string_literal_in;
+use crate::source::has_any;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+/// Recognized env-var access patterns, then the fallback: a `"NO_COLOR"` or
+/// `'NO_COLOR'` string literal anywhere in the AST.
+static NO_COLOR_PATTERNS: LazyLock<[Pattern; 12]> = LazyLock::new(|| {
+    [
+        r#"os.environ.get("NO_COLOR")"#,
+        r#"os.environ.get('NO_COLOR')"#,
+        r#"os.getenv("NO_COLOR")"#,
+        r#"os.getenv('NO_COLOR')"#,
+        r#"os.environ["NO_COLOR"]"#,
+        r#"os.environ['NO_COLOR']"#,
+        r#"environ.get("NO_COLOR")"#,
+        r#"environ.get('NO_COLOR')"#,
+        r#"getenv("NO_COLOR")"#,
+        r#"getenv('NO_COLOR')"#,
+        r#""NO_COLOR""#,
+        "'NO_COLOR'",
+    ]
+    .map(|pattern| Pattern::new(pattern, Python))
+});
 
 /// Audit trait implementation for NO_COLOR detection in Python.
 #[derive(Debug)]
@@ -45,16 +67,14 @@ impl Audit for NoColorPythonAudit {
         project.has_language(Language::Python)
     }
 
-    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Python);
-        let mut found_any = false;
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Python(self))
+    }
 
-        for (_path, parsed_file) in parsed.iter() {
-            if source_handles_no_color(&parsed_file.source) {
-                found_any = true;
-                break;
-            }
-        }
+    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
+        let found_any = pass::findings(project, Language::Python, Python, self)
+            .iter()
+            .any(|(_, found)| *found);
 
         let status = if found_any {
             AuditStatus::Pass
@@ -81,34 +101,18 @@ impl Audit for NoColorPythonAudit {
     }
 }
 
-/// Returns true if the source references NO_COLOR via a recognized Python
-/// env-var access pattern, or as a string literal anywhere in the AST.
-pub(crate) fn source_handles_no_color(source: &str) -> bool {
-    let root = Python.ast_grep(source);
+impl SourceScan<Python> for NoColorPythonAudit {
+    type Finding = bool;
 
-    // Common explicit access patterns — parse source once, audit all patterns.
-    let access_patterns = [
-        r#"os.environ.get("NO_COLOR")"#,
-        r#"os.environ.get('NO_COLOR')"#,
-        r#"os.getenv("NO_COLOR")"#,
-        r#"os.getenv('NO_COLOR')"#,
-        r#"os.environ["NO_COLOR"]"#,
-        r#"os.environ['NO_COLOR']"#,
-        r#"environ.get("NO_COLOR")"#,
-        r#"environ.get('NO_COLOR')"#,
-        r#"getenv("NO_COLOR")"#,
-        r#"getenv('NO_COLOR')"#,
-    ];
-    for p_str in access_patterns {
-        if let Ok(pattern) = Pattern::try_new(p_str, Python)
-            && root.root().find(&pattern).is_some()
-        {
-            return true;
-        }
+    fn scan(&self, file: &SourceFile<'_, Python>) -> bool {
+        source_handles_no_color(file)
     }
+}
 
-    // Fallback: any string literal "NO_COLOR" or 'NO_COLOR' in the AST.
-    has_string_literal_in(source, "NO_COLOR", Language::Python)
+/// Returns true if the file references NO_COLOR via a recognized Python
+/// env-var access pattern, or as a string literal anywhere in the AST.
+pub(crate) fn source_handles_no_color(file: &SourceFile<'_, Python>) -> bool {
+    has_any(&file.root(), &*NO_COLOR_PATTERNS)
 }
 
 #[cfg(test)]
@@ -124,7 +128,7 @@ def setup():
     if os.environ.get(\"NO_COLOR\"):
         disable_color()
 ";
-        assert!(source_handles_no_color(source));
+        assert!(source_handles_no_color(&pass::python(source, "src/app.py")));
     }
 
     #[test]
@@ -135,7 +139,7 @@ import os
 if os.getenv('NO_COLOR') is not None:
     disable_color()
 ";
-        assert!(source_handles_no_color(source));
+        assert!(source_handles_no_color(&pass::python(source, "src/app.py")));
     }
 
     #[test]
@@ -144,7 +148,7 @@ if os.getenv('NO_COLOR') is not None:
 import os
 val = os.environ[\"NO_COLOR\"]
 ";
-        assert!(source_handles_no_color(source));
+        assert!(source_handles_no_color(&pass::python(source, "src/app.py")));
     }
 
     #[test]
@@ -153,7 +157,7 @@ val = os.environ[\"NO_COLOR\"]
 from os import environ
 val = environ.get('NO_COLOR')
 ";
-        assert!(source_handles_no_color(source));
+        assert!(source_handles_no_color(&pass::python(source, "src/app.py")));
     }
 
     #[test]
@@ -166,7 +170,7 @@ def disable():
     import os
     return os.environ.get(NO_COLOR_ENV)
 ";
-        assert!(source_handles_no_color(source));
+        assert!(source_handles_no_color(&pass::python(source, "src/app.py")));
     }
 
     #[test]
@@ -175,7 +179,10 @@ def disable():
 def main():
     print(\"hello\")
 ";
-        assert!(!source_handles_no_color(source));
+        assert!(!source_handles_no_color(&pass::python(
+            source,
+            "src/app.py"
+        )));
     }
 
     #[test]
@@ -186,13 +193,16 @@ def main():
 def main():
     print('hi')
 ";
-        assert!(!source_handles_no_color(source));
+        assert!(!source_handles_no_color(&pass::python(
+            source,
+            "src/app.py"
+        )));
     }
 
     #[test]
     fn pass_with_bare_string_literal_only() {
         let source = "CONST = \"NO_COLOR\"\n";
-        assert!(source_handles_no_color(source));
+        assert!(source_handles_no_color(&pass::python(source, "src/app.py")));
     }
 
     #[test]

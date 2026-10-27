@@ -32,18 +32,55 @@ pub struct BodyRead {
     pub truncated: bool,
 }
 
+/// The read stopped because its deadline passed between chunks.
+#[derive(Debug)]
+pub struct DeadlinePassed;
+
+impl std::fmt::Display for DeadlinePassed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("deadline exceeded")
+    }
+}
+
+impl std::error::Error for DeadlinePassed {}
+
+impl DeadlinePassed {
+    /// Whether an I/O error is a read stopped at its deadline.
+    pub fn is(err: &io::Error) -> bool {
+        err.get_ref()
+            .is_some_and(|inner| inner.is::<DeadlinePassed>())
+    }
+}
+
 /// Read under a cap. `None` means the root ceiling.
-pub fn read_capped<R: Read>(mut reader: R, cap: Option<usize>) -> io::Result<BodyRead> {
+pub fn read_capped<R: Read>(reader: R, cap: Option<usize>) -> io::Result<BodyRead> {
+    read_capped_until(reader, cap, || true)
+}
+
+/// Read under a cap, asking `in_time` after every chunk whether the read may
+/// go on; when it says no, the read stops with a [`DeadlinePassed`] error.
+pub fn read_capped_until<R: Read>(
+    mut reader: R,
+    cap: Option<usize>,
+    mut in_time: impl FnMut() -> bool,
+) -> io::Result<BodyRead> {
     let limit = match cap {
         Some(STATUS_ONLY_BODY_BYTES) => return Ok(BodyRead::default()),
         Some(n) => n,
         None => AUDIT_ROOT_MAX_BODY_BYTES,
     };
+    let mut check = |n: usize| {
+        if in_time() {
+            Ok(n)
+        } else {
+            Err(io::Error::new(io::ErrorKind::TimedOut, DeadlinePassed))
+        }
+    };
     let mut bytes = Vec::new();
     let mut buf = [0u8; CHUNK];
     while bytes.len() < limit {
         let want = (limit - bytes.len()).min(CHUNK);
-        let n = read_some(&mut reader, &mut buf[..want])?;
+        let n = check(read_some(&mut reader, &mut buf[..want])?)?;
         if n == 0 {
             return Ok(BodyRead {
                 bytes,
@@ -53,7 +90,7 @@ pub fn read_capped<R: Read>(mut reader: R, cap: Option<usize>) -> io::Result<Bod
         bytes.extend_from_slice(&buf[..n]);
     }
     let mut probe = [0u8; 1];
-    let truncated = read_some(&mut reader, &mut probe)? > 0;
+    let truncated = check(read_some(&mut reader, &mut probe)?)? > 0;
     Ok(BodyRead { bytes, truncated })
 }
 

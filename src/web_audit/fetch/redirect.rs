@@ -6,7 +6,7 @@
 //!       |                                   '--> blocked: ... (no request made)
 //!       |-- not https (after the above) ---> not requested: not https
 //!       v
-//! hop 0 .. hop N   send one request through the transport
+//! hop 0 .. hop N   one request, through the audit's request memo when it has one
 //!       |
 //!       |-- not a redirect, or following is off --> return the response
 //!       |
@@ -23,16 +23,24 @@
 //! cloud-metadata range is refused outright, and a hop whose class differs
 //! from the resolved target's class is refused too, so a run the user believes
 //! is local never follows a redirect off the local network, and a public
-//! target never steers the auditor into a private range.
+//! target never steers the auditor into a private range. The memo answers a
+//! hop before this check runs, so a redirect it holds is checked for every
+//! caller that would follow it.
 
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use url::Url;
 
+use super::hop::{self, HopAnswer, HopContext, HopRecord};
+use super::memo::RequestMemo;
 use super::proxy;
 use super::trust::TrustClass;
 use crate::web_audit::locality::{Locality, Resolver, classify_host};
-use crate::web_audit::transport::{Request, Response, Transport};
+use crate::web_audit::transport::{Request, Transport};
+
+/// The shortest timeout a hop is sent with, however little budget is left.
+const MIN_HOP_TIMEOUT: Duration = Duration::from_millis(1);
 
 /// Hops followed before the chain is abandoned.
 pub const DEFAULT_MAX_REDIRECTS: usize = 4;
@@ -104,10 +112,29 @@ fn validate_url(
     Ok(Validated { url, class })
 }
 
+/// Where a chain's hops go.
+#[derive(Clone, Copy)]
+pub enum HopSender<'a> {
+    /// Straight to the transport, one request per hop.
+    Direct(&'a dyn Transport),
+    /// Through the audit's request memo, which answers an identical request
+    /// from its record and sends the rest on their own threads.
+    Memo(&'a RequestMemo, &'a Arc<dyn Transport + Send + Sync>),
+}
+
+impl std::fmt::Debug for HopSender<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HopSender::Direct(_) => f.write_str("Direct"),
+            HopSender::Memo(memo, _) => f.debug_tuple("Memo").field(memo).finish(),
+        }
+    }
+}
+
 /// One request shape, re-sent at every hop of a chain.
 pub struct ChainRequest<'a> {
-    /// The transport every hop goes through.
-    pub transport: &'a dyn Transport,
+    /// Where every hop goes.
+    pub sender: HopSender<'a>,
     /// The resolver hop classification consults for names.
     pub resolver: &'a dyn Resolver,
     /// HTTP method.
@@ -116,8 +143,12 @@ pub struct ChainRequest<'a> {
     pub headers: &'a [(String, String)],
     /// Request body, sent unchanged at every hop.
     pub body: Option<&'a [u8]>,
-    /// Per-request deadline.
-    pub timeout: Duration,
+    /// When the fetch began; the first hop's budget runs from here.
+    pub started: Instant,
+    /// The deadline for the whole chain.
+    pub deadline: Instant,
+    /// The caller's cap for the body of the response it keeps.
+    pub max_body_bytes: Option<usize>,
     /// Whether a 3xx is followed or returned as-is.
     pub follow_redirects: bool,
     /// Hops followed before the chain is abandoned.
@@ -126,10 +157,11 @@ pub struct ChainRequest<'a> {
 
 impl std::fmt::Debug for ChainRequest<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = self.headers.iter().map(|(n, _)| n.as_str()).collect();
         f.debug_struct("ChainRequest")
             .field("method", &self.method)
-            .field("headers", &self.headers)
-            .field("timeout", &self.timeout)
+            .field("headers", &names)
+            .field("max_body_bytes", &self.max_body_bytes)
             .field("follow_redirects", &self.follow_redirects)
             .field("max_redirects", &self.max_redirects)
             .finish_non_exhaustive()
@@ -139,45 +171,72 @@ impl std::fmt::Debug for ChainRequest<'_> {
 /// How a chain that produced a response ended.
 #[derive(Debug)]
 pub enum ChainEnd {
-    /// The final response, a 3xx included when following is off.
-    Answer(Response),
+    /// The answer the caller keeps, its body read as far as the caller's
+    /// cap; a 3xx included when following is off.
+    Answer(HopAnswer),
     /// A redirect to `http` the chain would otherwise follow: the redirect
-    /// itself, never followed, and the refusal in the site's wording.
+    /// itself, never followed, and the refusal in the site's wording. The
+    /// memo holds the redirect as the target sent it; the refusal is this
+    /// caller's reading of it.
     InsecureRedirect {
         /// The 3xx that named the `http` location.
-        response: Response,
+        answer: HopAnswer,
         /// `redirect refused: <status> to <location>: not https`.
         error: String,
     },
 }
 
-/// Run the chain from a validated target to its final response.
+/// Run the chain from a validated target to the answer the caller keeps.
 pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, String> {
     let via_proxy = proxy::routes_via_proxy(target.class);
     let trust = TrustClass::for_locality(target.class);
     let mut current = target.url;
     for hop in 0..=chain.max_redirects {
+        // A first hop's budget runs from the same instant as the deadline,
+        // so callers with the same timeout compare equal; a later hop gets
+        // what is left of it.
+        let started = if hop == 0 {
+            chain.started
+        } else {
+            Instant::now()
+        };
+        let ctx = HopContext {
+            started,
+            deadline: chain.deadline,
+            body_cap: chain.max_body_bytes,
+            keeps_redirect: !chain.follow_redirects,
+        };
         let request = Request {
             method: chain.method.to_string(),
             url: current.to_string(),
             headers: chain.headers.to_vec(),
             body: chain.body.map(<[u8]>::to_vec),
-            timeout: chain.timeout,
+            timeout: chain
+                .deadline
+                .saturating_duration_since(started)
+                .max(MIN_HOP_TIMEOUT),
             via_proxy,
             trust,
         };
-        let response = chain.transport.send(&request).map_err(|e| e.to_string())?;
+        let record = match chain.sender {
+            HopSender::Direct(transport) => hop::take(transport, &request, &ctx),
+            HopSender::Memo(memo, transport) => memo.take(transport, request, ctx),
+        };
+        let answer = match record {
+            HopRecord::Answer(answer) => answer,
+            HopRecord::Failure(error) => return Err(error.message),
+        };
         if chain.follow_redirects
-            && is_redirect(response.status)
-            && let Some(location) = response.headers.get("location")
+            && is_redirect(answer.status)
+            && let Some(location) = answer.headers.get("location")
         {
             let next = validate_hop(location, &current, target.class, hop + 1, chain.resolver)?;
             if next.url.scheme() != "https" {
                 let error = format!(
                     "redirect refused: {} to {location}: not https",
-                    response.status
+                    answer.status
                 );
-                return Ok(ChainEnd::InsecureRedirect { response, error });
+                return Ok(ChainEnd::InsecureRedirect { answer, error });
             }
             if hop == chain.max_redirects {
                 return Err(limit_exceeded(chain.max_redirects));
@@ -185,7 +244,7 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
             current = next.url;
             continue;
         }
-        return Ok(ChainEnd::Answer(response));
+        return Ok(ChainEnd::Answer(answer));
     }
     Err(limit_exceeded(chain.max_redirects))
 }

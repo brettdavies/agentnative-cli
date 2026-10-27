@@ -19,6 +19,7 @@ use super::pool::run_bounded;
 use super::retained::enumerate_scoped_dirs;
 use super::summary::summarize_evidence;
 use super::types::{FetchHandle, HandlerContext, McpLaneEvidence, ProbeOutcome, why_item};
+use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{
     FetchInit, FetchOptions, NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal,
 };
@@ -355,6 +356,14 @@ fn run_wave(
         .collect()
 }
 
+struct CloseOnDrop(RequestMemo);
+
+impl Drop for CloseOnDrop {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
 /// Run the audit.
 pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     let Some(Base { base, host, domain }) = normalize_base(&input.url) else {
@@ -365,6 +374,11 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         };
     };
     let deadline = Instant::now() + input.per_audit_deadline;
+    // One memo per audit, closed on every way out of the run, so each
+    // distinct request goes out once and nothing it holds outlives the run.
+    let memo = RequestMemo::new();
+    let _close_memo = CloseOnDrop(memo.clone());
+    input.fetch = input.fetch.with_memo(memo);
     let target_locality = input.fetch.classify(&host).ok();
     let local_target = target_locality == Some(Locality::Local);
 

@@ -21,6 +21,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence,
 const AGENTIC_FLAGS: &[&str] = &["output", "quiet", "verbose", "no_color", "no-color"];
 
 /// Audit trait implementation for global flags detection.
+#[derive(Debug)]
 pub struct GlobalFlagsAudit;
 
 impl Audit for GlobalFlagsAudit {

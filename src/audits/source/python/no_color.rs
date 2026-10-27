@@ -1,7 +1,7 @@
 //! Audit: Detect NO_COLOR environment variable handling in Python source.
 //!
 //! Principle: P6 (Composable Structure) — CLIs must respect NO_COLOR.
-//! See https://no-color.org/
+//! See <https://no-color.org/>
 //!
 //! The behavioral audit is the primary gate; this source audit returns Warn
 //! (not Fail) when NO_COLOR is absent — many libraries (rich, click, colorama)
@@ -17,6 +17,7 @@ use crate::source::has_string_literal_in;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Audit trait implementation for NO_COLOR detection in Python.
+#[derive(Debug)]
 pub struct NoColorPythonAudit;
 
 impl Audit for NoColorPythonAudit {

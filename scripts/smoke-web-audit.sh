@@ -76,6 +76,9 @@ handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=dire
 class Quiet(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+    # The audit opens its probes concurrently; socketserver's default
+    # backlog of 5 lets a busy runner drop the connections past it.
+    request_queue_size = 64
 
     def handle_error(self, request, client_address):
         pass
@@ -100,9 +103,10 @@ target="127.0.0.1:$port"
 printf 'auditing the fixture site at http://%s/\n' "$target"
 
 scorecard="$fixture/scorecard.json"
+stderr_log="$fixture/stderr.log"
 started=$(date +%s)
 set +e
-timeout "$BUDGET_SECONDS" "$BINARY" web "$target" --output json >"$scorecard"
+timeout "$BUDGET_SECONDS" "$BINARY" web "$target" --output json >"$scorecard" 2>"$stderr_log"
 code=$?
 set -e
 elapsed=$(($(date +%s) - started))
@@ -114,7 +118,8 @@ fi
 # 0, 1 and 2 are verdicts; 3 means nothing answered, which for a fixture
 # this script just started is a failure of the run, not of the fixture.
 if ((code > 2)); then
-  printf 'error: the run returned %s; expected a verdict (0, 1 or 2)\n' "$code" >&2
+  printf 'error: the run returned %s; expected a verdict (0, 1 or 2). anc wrote:\n' "$code" >&2
+  sed 's/^/  /' "$stderr_log" >&2
   exit 1
 fi
 

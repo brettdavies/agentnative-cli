@@ -25,11 +25,11 @@
 //! audit. Built-ins stay conservative across all CLIs; a CLI whose
 //! vocabulary diverges from them (an X CLI shipping `post` / `like` /
 //! `repost`, pacman's `--noconfirm`) declares it here instead of being
-//! penalized for its native terminology. [`settings`] holds the shape.
+//! penalized for its native terminology. `settings` holds the shape.
 //!
 //! Loader contract ([`load_for_target`]):
 //!
-//! - The files that apply form a [`chain::Chain`]: `~/.anc.toml`, then every
+//! - The files that apply form a `chain::Chain`: `~/.anc.toml`, then every
 //!   `.anc.toml` from the target's repository root down to the target. A
 //!   binary target starts from the directory holding it.
 //! - No file anywhere returns [`AncConfigLoad::Absent`] — the loader is

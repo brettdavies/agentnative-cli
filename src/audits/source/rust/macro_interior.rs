@@ -10,7 +10,7 @@
 //! call the source does not hold: the interior `"{}", v.unwrap()` parses as one
 //! `call_expression` whose receiver glues the string literal, the comma and `v`
 //! together. Its text is verbatim in the file, so no range comparison rejects
-//! it. [`unwrap_calls_in_interior`] therefore discards a candidate whose own
+//! it. `unwrap_calls_in_interior` therefore discards a candidate whose own
 //! subtree rests on error recovery or whose receiver is a macro fragment
 //! reference.
 //!
@@ -19,7 +19,7 @@
 //! template, and the arguments of a macro that never evaluates them.
 //!
 //! Only the outermost token tree of an invocation is re-parsed. The interior is
-//! first read through [`read_as_expressions`], which makes a nested macro's
+//! first read through `read_as_expressions`, which makes a nested macro's
 //! arguments ordinary call arguments, so one parse reaches every nesting level.
 //! Re-parsing each level separately would cost a parse per enclosing tree, and
 //! a deeply nested interior would pay for its own depth twice over.

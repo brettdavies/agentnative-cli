@@ -9,6 +9,7 @@ use crate::audit::Audit;
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
+#[derive(Debug)]
 pub struct CompletionsAudit;
 
 impl Audit for CompletionsAudit {

@@ -12,6 +12,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 /// Interactive prompt libraries that conflict with agent-native operation.
 const PROMPT_LIBS: &[&str] = &["dialoguer", "inquire", "rustyline", "crossterm"];
 
+#[derive(Debug)]
 pub struct NonInteractiveSourceAudit;
 
 impl Audit for NonInteractiveSourceAudit {

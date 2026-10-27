@@ -279,6 +279,7 @@ fn retained_document_scores_the_kept_api_catalog_without_a_request() {
             error: None,
             elapsed_ms: 0,
             truncated: false,
+            refused: None,
         },
         shape: None,
     };

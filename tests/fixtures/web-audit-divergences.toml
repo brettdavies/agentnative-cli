@@ -7139,11 +7139,6 @@ owner = "#413"
 
 [[divergence]]
 scenario = "run-document-redirects-to-http"
-element = "mcp_discovery"
-owner = "#413"
-
-[[divergence]]
-scenario = "run-document-redirects-to-http"
 element = "row:api-catalog"
 owner = "#413"
 

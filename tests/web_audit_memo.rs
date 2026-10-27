@@ -27,7 +27,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use agentnative::web_audit::fetch::memo::{MemoStats, RequestMemo};
-use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
+use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse, Refusal};
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
@@ -896,6 +896,37 @@ fn a_memo_held_redirect_off_the_targets_network_is_refused_for_a_caller_that_fol
     assert_eq!(
         followed.error.as_deref(),
         Some("blocked: ipv4 10.0.0.5 is in blocked range 10.0.0.0/8 (redirect hop 1)")
+    );
+    assert_eq!(received(&transport), [format!("GET {card}")]);
+}
+
+#[test]
+fn a_memo_held_redirect_to_http_is_refused_for_a_follower_and_kept_as_sent_for_a_keeper() {
+    let card = "https://example.com/.well-known/mcp.json";
+    let plain = "http://example.com/.well-known/mcp.json";
+    let (transport, shared) = mock(MockResponse::ok(301, &[("location", plain)], b"Moved"));
+    let memo = RequestMemo::new();
+    let followed = fetch(&shared, Some(&memo), card, Opts::default());
+    let kept = fetch(
+        &shared,
+        Some(&memo),
+        card,
+        Opts {
+            follow_redirects: Some(false),
+            ..Opts::default()
+        },
+    );
+    assert_eq!(
+        (followed.status, followed.error.as_deref(), followed.refused),
+        (
+            Some(301),
+            Some("redirect refused: 301 to http://example.com/.well-known/mcp.json: not https"),
+            Some(Refusal::InsecureScheme)
+        )
+    );
+    assert_eq!(
+        (kept.status, kept.body.as_str(), kept.error, kept.refused),
+        (Some(301), "Moved", None, None)
     );
     assert_eq!(received(&transport), [format!("GET {card}")]);
 }

@@ -15,5 +15,7 @@ jobs:
   lint:
     uses: brettdavies/.github/.github/workflows/lint-basics.yml@main
     with:
-      plans: true
+      # A release branch strips docs/plans/, and the plans job fails when its
+      # glob matches no file, so it runs on PRs to dev only.
+      plans: ${{ github.base_ref == 'dev' }}
       plans-globs: 'docs/plans/**/*.md'

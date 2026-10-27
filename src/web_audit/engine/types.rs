@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::discovery_documents::RetainedDocuments;
+use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::locality::{ClassifyError, Locality, Resolver, classify_host};
 use crate::web_audit::scorecard::{EvidenceItem, NaReason, RowAdvisory, ScorecardStatus};
@@ -138,18 +139,21 @@ impl Default for McpLaneEvidence {
     }
 }
 
-/// The transport, resolver and identity every probe in a run shares.
+/// The transport, resolver and identity every probe in a run shares, and
+/// the run's request memo once the run opens one.
 #[derive(Clone)]
 pub struct FetchHandle {
     transport: Arc<dyn Transport + Send + Sync>,
     resolver: Arc<dyn Resolver + Send + Sync>,
     user_agent: Arc<str>,
+    memo: Option<RequestMemo>,
 }
 
 impl std::fmt::Debug for FetchHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FetchHandle")
             .field("user_agent", &self.user_agent)
+            .field("memo", &self.memo)
             .finish_non_exhaustive()
     }
 }
@@ -165,13 +169,28 @@ impl FetchHandle {
             transport,
             resolver,
             user_agent: Arc::from(user_agent),
+            memo: None,
+        }
+    }
+
+    /// This handle with every fetch going through `memo`.
+    pub fn with_memo(&self, memo: RequestMemo) -> Self {
+        FetchHandle {
+            memo: Some(memo),
+            ..self.clone()
         }
     }
 
     /// Fetch through the guard. Never fails; failures come back as a
     /// response with `status: None`.
     pub fn fetch(&self, url: &str, init: &FetchInit, opts: &FetchOptions) -> ProbeResponse {
-        Fetcher::new(&*self.transport, &*self.resolver, &self.user_agent).fetch(url, init, opts)
+        let fetcher = match &self.memo {
+            Some(memo) => {
+                Fetcher::memoized(&self.transport, &*self.resolver, &self.user_agent, memo)
+            }
+            None => Fetcher::new(&*self.transport, &*self.resolver, &self.user_agent),
+        };
+        fetcher.fetch(url, init, opts)
     }
 
     /// Classify a host with the run's resolver.

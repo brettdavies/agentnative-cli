@@ -188,7 +188,16 @@ pub fn transport_for(scenario: &Scenario) -> Arc<MockTransport> {
 
 /// Run the engine over a scenario with the given handlers.
 pub fn replay(scenario: &Scenario, handlers: Arc<HandlerSet>) -> RunOutcome {
-    let transport = transport_for(scenario);
+    replay_on(scenario, handlers, transport_for(scenario))
+}
+
+/// Run the engine over a scenario through a transport the caller keeps, so
+/// it can read back the requests the run sent.
+pub fn replay_on(
+    scenario: &Scenario,
+    handlers: Arc<HandlerSet>,
+    transport: Arc<MockTransport>,
+) -> RunOutcome {
     let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), AUDIT_USER_AGENT);
     let mut input = RunInput::new(&scenario.target, fetch, handlers);
     input.site_type = match scenario.site_type.as_deref() {

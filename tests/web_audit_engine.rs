@@ -749,12 +749,16 @@ fn a_tarpit_that_never_returns_is_abandoned_at_the_deadline() {
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
     assert_eq!(report.results.len(), 68);
     assert!(!report.complete);
-    // Nothing past the root and discovery ever returned.
+    // No stalled request ever returned: each caller reported its timeout at
+    // its own deadline, and the checks still queued at the audit's deadline
+    // were skipped.
     assert!(deadline_skips(&report) >= 9, "{}", deadline_skips(&report));
-    assert_eq!(row(&report, "robots").status, ScorecardStatus::Skip);
-    assert_eq!(
-        row(&report, "robots").raw_evidence[0].get("why"),
-        Some(&json!(["per-audit deadline exceeded"]))
+    let robots = row(&report, "robots");
+    assert_eq!(robots.status, ScorecardStatus::Error);
+    assert!(
+        robots.evidence.contains("TimeoutError: deadline exceeded"),
+        "{}",
+        robots.evidence
     );
 }
 

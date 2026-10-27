@@ -16,6 +16,9 @@
 
 #![cfg(feature = "web")]
 
+mod common;
+
+use std::collections::{BTreeMap, HashMap};
 use std::io::{self, Cursor, Read};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -25,10 +28,12 @@ use std::time::{Duration, Instant};
 
 use agentnative::web_audit::fetch::memo::{MemoStats, RequestMemo};
 use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
+use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
+use common::corpus::{load_cases, replay_on, transport_for};
 
 const URL_A: &str = "https://example.com/robots.txt";
 const DEADLINE: &str = "TimeoutError: deadline exceeded";
@@ -901,6 +906,52 @@ fn without_a_memo_every_call_reaches_the_target() {
     fetch(&shared, None, URL_A, Opts::default());
     fetch(&shared, None, URL_A, Opts::default());
     assert_eq!(transport.requests().len(), 2);
+}
+
+/// Method, URL, sorted headers and body of one outgoing request: what the
+/// target sees.
+fn request_of(request: &Request) -> String {
+    let mut headers: Vec<String> = request
+        .headers
+        .iter()
+        .map(|(name, value)| format!("{}: {value}", name.to_ascii_lowercase()))
+        .collect();
+    headers.sort();
+    let body = String::from_utf8_lossy(request.body.as_deref().unwrap_or_default());
+    serde_json::json!([
+        request.method.to_ascii_uppercase(),
+        request.url,
+        headers,
+        body
+    ])
+    .to_string()
+}
+
+#[test]
+fn no_conformance_scenario_sends_a_request_it_already_sent() {
+    let mut repeated: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for case in load_cases() {
+        let transport = transport_for(&case.scenario);
+        replay_on(
+            &case.scenario,
+            Arc::new(default_handlers()),
+            transport.clone(),
+        );
+        let mut sent: HashMap<String, usize> = HashMap::new();
+        for request in transport.requests() {
+            *sent.entry(request_of(&request)).or_default() += 1;
+        }
+        let mut again: Vec<String> = sent
+            .into_iter()
+            .filter(|(_, count)| *count > 1)
+            .map(|(request, count)| format!("x{count} {request}"))
+            .collect();
+        again.sort();
+        if !again.is_empty() {
+            repeated.insert(case.name, again);
+        }
+    }
+    assert!(repeated.is_empty(), "{repeated:#?}");
 }
 
 #[test]

@@ -52,6 +52,7 @@ fn context(transport: Arc<dyn Transport + Send + Sync>) -> HandlerContext {
         root: None,
         scoped_dirs: Arc::new(Vec::new()),
         retained_bodies: Arc::new(HashMap::new()),
+        retained_documents: Arc::new(HashMap::new()),
         fetch: FetchHandle::new(transport, Arc::new(PublicResolver), "test-ua"),
         mcp_session_id: None,
         mcp_lanes: McpLaneEvidence::default(),

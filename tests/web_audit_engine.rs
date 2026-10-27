@@ -244,14 +244,16 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     assert_eq!(ids, registry, "results follow registry order");
     assert_eq!(report.scorecard.results.len(), 68);
     assert!(report.complete);
-    // The eval rules the d5772289 pin names that no port has landed for yet;
-    // the protected-resource rows settle n_a on their antecedent first.
+    // The stand-in set registers handler kinds only, so the eval rules that
+    // reach dispatch are unported here, as is server-card, which no port has
+    // landed for; the protected-resource rows settle n_a on their antecedent
+    // first.
     let mut unported: Vec<&str> = report.unported.iter().map(|u| u.kind).collect();
     unported.sort_unstable();
     unported.dedup();
     assert_eq!(
         unported,
-        ["api-description", "retained-document"],
+        ["api-description", "retained-document", "server-card"],
         "{:?}",
         report.unported
     );
@@ -364,7 +366,7 @@ fn unmet_antecedents_cascade_and_absent_mays_become_optional() {
     let report = complete(run_web_audit(input(transport, stand_in_handlers())));
 
     assert_eq!(report.scorecard.mcp_endpoint, None);
-    assert_eq!(report.scorecard.mcp_discovery.len(), 6);
+    assert_eq!(report.scorecard.mcp_discovery.len(), 10);
     let expect_unmet = |id: &str, evidence: &str| {
         let r = row(&report, id);
         assert_eq!(r.status, ScorecardStatus::NA, "{id}");
@@ -458,7 +460,7 @@ fn silence_and_edge_errors_are_unreachable_but_any_real_status_audits() {
     match run_web_audit(input(silent, stand_in_handlers())) {
         RunOutcome::Unreachable { reason, discovery } => {
             assert!(reason.starts_with("https://example.com/ did not answer any probe (no HTTP response from the root fetch or MCP discovery)."), "{reason}");
-            assert_eq!(discovery.len(), 6);
+            assert_eq!(discovery.len(), 10);
             assert_eq!(discovery[0].get("status"), Some(&Value::Null));
         }
         RunOutcome::Complete(_) => panic!("a silent target scored"),

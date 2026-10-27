@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::discovery_documents::RetainedDocuments;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::locality::{ClassifyError, Locality, Resolver, classify_host};
 use crate::web_audit::scorecard::{EvidenceItem, NaReason, ScorecardStatus};
@@ -189,6 +190,8 @@ pub struct HandlerContext {
     pub scoped_dirs: Arc<Vec<String>>,
     /// Wave-1 bodies keyed by check id.
     pub retained_bodies: Arc<HashMap<String, String>>,
+    /// The documents discovery kept, by retained-document key.
+    pub retained_documents: Arc<RetainedDocuments>,
     /// The run's transport, resolver and identity.
     pub fetch: FetchHandle,
     /// Session id from wave-1 `initialize`, when the server issued one.

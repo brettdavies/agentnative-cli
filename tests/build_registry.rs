@@ -226,7 +226,7 @@ fn vendored_registry_counters() {
         .collect();
     assert_eq!(
         unported_evals,
-        BTreeSet::from(["api-description", "retained-document"]),
+        BTreeSet::from(["api-description"]),
         "unported eval rules (shrink as each port lands)"
     );
     assert_eq!(reg.mcp_lanes.len(), 4, "MCP lanes (bump deliberately)");
@@ -352,7 +352,7 @@ fn known_handler_and_eval_bind_supported() {
     assert!(reg.checks[0].handler_supported);
     assert!(reg.checks[0].eval_supported);
     assert_eq!(HANDLER_KINDS.len(), 11);
-    assert_eq!(EVAL_RULES.len(), 2);
+    assert_eq!(EVAL_RULES.len(), 3);
 }
 
 // ---------------------------------------------------------------------------

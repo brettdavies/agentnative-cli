@@ -6,6 +6,8 @@
 
 pub mod antecedents;
 pub mod discovery;
+pub mod discovery_documents;
+pub mod discovery_posts;
 pub mod handlers;
 pub mod mcp_wire;
 pub mod pool;

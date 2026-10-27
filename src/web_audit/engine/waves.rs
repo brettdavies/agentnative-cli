@@ -428,6 +428,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
 
     let mut incomplete = false;
     let mut unported: Vec<Unported> = Vec::new();
+    let retained_documents = Arc::new(discovery.documents.clone());
     let handler_ctx = |scoped_dirs: Arc<Vec<String>>,
                        retained: Arc<HashMap<String, String>>,
                        session: Option<String>,
@@ -444,6 +445,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         root: root.clone(),
         scoped_dirs,
         retained_bodies: retained,
+        retained_documents: Arc::clone(&retained_documents),
         fetch: input.fetch.clone(),
         mcp_session_id: session,
         mcp_lanes: lanes,

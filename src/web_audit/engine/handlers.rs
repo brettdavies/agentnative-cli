@@ -1,8 +1,10 @@
 //! The seam between the engine and the probe handlers.
 //!
 //! A check dispatches by its handler kind, unless it carries the
-//! `legacy-alias-redirects` eval rule, which has its own entry point in
-//! the site engine. A kind or rule nothing has registered is unported: the
+//! `legacy-alias-redirects` eval rule or the `retained-document` rule on
+//! an `http` check, which have their own entry points in the site engine;
+//! a `retained-document` check on any other handler scores the document
+//! with that handler. A kind or rule nothing has registered is unported: the
 //! engine reports the row as a skip naming the kind, and the run's score is
 //! flagged as not comparable with anc.dev.
 
@@ -82,8 +84,14 @@ impl HandlerSet {
                     None => Dispatch::Unported("legacy-alias-redirects"),
                 };
             }
+            Some(EvalBinding::RetainedDocument) if check.handler == HandlerBinding::Http => {
+                return match self.evals.get("retained-document") {
+                    Some(handler) => Dispatch::Outcome(handler(check, ctx)),
+                    None => Dispatch::Unported("retained-document"),
+                };
+            }
             Some(EvalBinding::Unsupported(rule)) => return Dispatch::Unported(rule),
-            Some(EvalBinding::ScopedDiscovery) | None => {}
+            Some(EvalBinding::RetainedDocument | EvalBinding::ScopedDiscovery) | None => {}
         }
         let kind = match check.handler {
             HandlerBinding::Unsupported(kind) => return Dispatch::Unported(kind),

@@ -19,7 +19,8 @@ pub mod webmcp;
 
 use crate::web_audit::engine::HandlerSet;
 
-/// Every stateless handler kind and the `legacy-alias-redirects` rule,
+/// Every stateless handler kind and the `legacy-alias-redirects` and
+/// `retained-document` rules,
 /// registered under their registry spellings.
 pub fn stateless_handlers() -> HandlerSet {
     let mut set = HandlerSet::new();
@@ -39,7 +40,8 @@ pub fn stateless_handlers() -> HandlerSet {
         )
         .register("llms-txt-quality", llms_txt_quality::run_llms_txt_quality)
         .register("api-hygiene", api_hygiene::run_api_hygiene)
-        .register_eval("legacy-alias-redirects", http::run_legacy_alias_redirects);
+        .register_eval("legacy-alias-redirects", http::run_legacy_alias_redirects)
+        .register_eval("retained-document", http::run_retained_document);
     set
 }
 
@@ -63,6 +65,13 @@ mod tests {
             assert_eq!(stateless.supports_kind(kind), *kind != "mcp", "{kind}");
             assert!(default.supports_kind(kind), "{kind}");
         }
-        assert_eq!(EVAL_RULES, &["legacy-alias-redirects", "scoped-discovery"]);
+        assert_eq!(
+            EVAL_RULES,
+            &[
+                "legacy-alias-redirects",
+                "retained-document",
+                "scoped-discovery"
+            ]
+        );
     }
 }

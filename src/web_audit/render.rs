@@ -452,6 +452,18 @@ pub fn unknown_check_failure(id: &str) -> Failure {
     }
 }
 
+impl Failure {
+    /// The envelope's `kind`: `usage` for a failure that exits as a usage
+    /// error, `runtime` for one that could not check.
+    pub fn kind(&self) -> &'static str {
+        if self.exit_code == EXIT_FAILURES {
+            "usage"
+        } else {
+            "runtime"
+        }
+    }
+}
+
 /// The text rendering of a failure: the problem, then the cause and the
 /// next thing to try, then the code and what earned it.
 pub fn format_failure(failure: &Failure) -> String {

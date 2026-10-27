@@ -183,7 +183,7 @@ fn the_web_failure_envelopes_pin_their_bytes() {
         ]),
         format!(
             "{}{docs}{}\n",
-            r#"{"kind":"runtime","error":"unknown-check","message":"no such check: no-such-check","exit_code":2,"next_step":{"action":"list-checks","command":"anc emit web-checks","docs":""#,
+            r#"{"kind":"usage","error":"unknown-check","message":"no such check: no-such-check","exit_code":2,"next_step":{"action":"list-checks","command":"anc emit web-checks","docs":""#,
             r#""},"argument":"--check <ID>","value":"no-such-check"}"#,
         )
     );

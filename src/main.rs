@@ -1091,7 +1091,7 @@ fn emit_web_failure(failure: &render::Failure, json: bool) -> i32 {
         eprintln!(
             "{}",
             json_error::render_error_with(
-                "runtime",
+                failure.kind(),
                 failure.slug,
                 &failure.message,
                 failure.exit_code,

@@ -16,6 +16,8 @@
 )]
 
 #[cfg(feature = "web")]
+pub mod credential;
+#[cfg(feature = "web")]
 pub mod emit;
 #[cfg(feature = "web")]
 pub mod engine;

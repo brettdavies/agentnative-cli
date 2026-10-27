@@ -37,6 +37,7 @@ use super::hop::{self, HopAnswer, HopContext, HopRecord};
 use super::memo::RequestMemo;
 use super::proxy;
 use super::trust::TrustClass;
+use crate::web_audit::credential::AUTHORIZATION;
 use crate::web_audit::locality::{Locality, Resolver, classify_host};
 use crate::web_audit::transport::{Request, Transport};
 
@@ -140,7 +141,8 @@ pub struct ChainRequest<'a> {
     pub resolver: &'a dyn Resolver,
     /// HTTP method.
     pub method: &'a str,
-    /// Request headers, sent unchanged at every hop.
+    /// Request headers, sent at every hop on the first hop's origin; a hop
+    /// to another origin goes without a credential.
     pub headers: &'a [(String, String)],
     /// Request body, sent unchanged at every hop.
     pub body: Option<&'a [u8]>,
@@ -219,7 +221,7 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
         let request = Request {
             method: chain.method.to_string(),
             url: current.to_string(),
-            headers: chain.headers.to_vec(),
+            headers: hop_headers(chain.headers, current.origin() == origin),
             body: chain.body.map(<[u8]>::to_vec),
             timeout: chain
                 .deadline
@@ -273,6 +275,16 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
         return Ok(ChainEnd::Answer(answer));
     }
     Err(limit_exceeded(chain.max_redirects))
+}
+
+/// A hop's headers: a credential presented to the first hop's origin
+/// never reaches another, whatever the call's redirect policy.
+fn hop_headers(headers: &[(String, String)], same_origin: bool) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter(|(name, _)| same_origin || !name.eq_ignore_ascii_case(AUTHORIZATION))
+        .cloned()
+        .collect()
 }
 
 fn refused(status: u16, location: &str) -> String {

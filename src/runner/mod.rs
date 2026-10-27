@@ -14,6 +14,8 @@ use std::time::Duration;
 use anyhow::Context;
 use anyhow::{Result, bail};
 
+use crate::spawn_env::withhold_anc_secrets;
+
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -149,7 +151,8 @@ impl BinaryRunner {
     /// handle (triggering SIGPIPE on the child). Not cached.
     pub fn run_partial(&self, args: &[&str], read_bytes: usize) -> RunResult {
         let mut cmd = Command::new(&self.binary);
-        cmd.args(args)
+        withhold_anc_secrets(&mut cmd)
+            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -206,7 +209,8 @@ impl BinaryRunner {
 
     fn spawn_and_wait(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> RunResult {
         let mut cmd = Command::new(&self.binary);
-        cmd.args(args)
+        withhold_anc_secrets(&mut cmd)
+            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

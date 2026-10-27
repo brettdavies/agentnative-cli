@@ -48,6 +48,8 @@ pub mod skill_install;
 #[doc(hidden)]
 pub mod source;
 #[doc(hidden)]
+pub mod spawn_env;
+#[doc(hidden)]
 pub mod types;
 
 pub mod web_audit;

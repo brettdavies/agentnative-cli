@@ -22,7 +22,7 @@ use super::mcp_wire::{
 };
 use super::pool::run_bounded;
 use super::retained::enumerate_scoped_dirs;
-use super::sign_in::{DirectSource, SignInResolver, settle_mcp_auth};
+use super::sign_in::{DirectSource, SignInResolver, is_wire_probe, settle_mcp_auth};
 use super::summary::summarize_evidence;
 use super::types::{FetchHandle, HandlerContext, McpLaneEvidence, ProbeOutcome, why_item};
 use crate::web_audit::fetch::memo::RequestMemo;
@@ -280,6 +280,40 @@ fn finalize_optional(check: &WebCheck, mut result: EngineResult) -> EngineResult
         result.na_reason = Some(NaReason::OptionalAbsent);
     }
     result
+}
+
+/// The wave-1 wire probes asked again by a client without the run's
+/// token, and whether that cut the run short. A credentialed run's own
+/// handshakes say only what its token opened, so whether the endpoint
+/// requires sign-in is read from these, as the public engine reads its own.
+fn ask_without_token(
+    wave1: &[&'static WebCheck],
+    ctx: &HandlerContext,
+    input: &RunInput<'_>,
+    deadline: Instant,
+    local_target: bool,
+) -> (HashMap<String, ProbeOutcome>, bool) {
+    let wire = wave1
+        .iter()
+        .copied()
+        .filter(|c| is_wire_probe(c.id))
+        .collect();
+    let mut incomplete = false;
+    let mut asked = HashMap::new();
+    for probed in run_wave(
+        wire,
+        ctx,
+        &input.handlers,
+        input.concurrency,
+        deadline,
+        local_target,
+    ) {
+        incomplete |= probed.incomplete;
+        if let Some(outcome) = probed.outcome {
+            asked.insert(probed.check.id.to_string(), outcome);
+        }
+    }
+    (asked, incomplete)
 }
 
 struct Probed {
@@ -602,7 +636,22 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             deadline_at: deadline,
         },
     ));
-    let mcp_auth = settle_mcp_auth(declared.challenge.as_ref(), &sources, &resolver);
+    let token_less = if input.fetch.credentialed() {
+        let ctx = HandlerContext {
+            fetch: ctx1.fetch.without_credential(),
+            ..ctx1.clone()
+        };
+        let asked = ask_without_token(&wave1, &ctx, &input, deadline, local_target);
+        incomplete |= asked.1;
+        Some(asked.0)
+    } else {
+        None
+    };
+    let mcp_auth = settle_mcp_auth(
+        declared.challenge.as_ref(),
+        token_less.as_ref().unwrap_or(&sources),
+        &resolver,
+    );
     for check in wave1
         .iter()
         .filter(|c| mcp_auth.is_some() && c.handler == HandlerBinding::Mcp)
@@ -680,6 +729,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         follow_unmet: declared.unmet.as_ref(),
         root: root.as_deref(),
         sources: &sources,
+        token_less: token_less.as_ref().unwrap_or(&sources),
         api_anchors: anchors.iter().any(|a| a.is_api()),
         mcp_auth: mcp_auth.as_deref(),
         mcp_lane: None,
@@ -810,7 +860,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
         vantage: WebVantage {
             network: if local_target { "local" } else { "public" }.to_string(),
-            credentialed: false,
+            credentialed: input.fetch.credentialed(),
         },
     };
     let scorecard = build_web_scorecard(

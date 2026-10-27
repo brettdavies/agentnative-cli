@@ -17,7 +17,7 @@ pub use exit::{
 };
 pub use failure::{
     Failure, ca_cert_failure, format_failure, insecure_scheme_failure, invalid_target_failure,
-    unknown_check_failure, unreachable_failure, untrusted_certificate_failure,
+    token_failure, unknown_check_failure, unreachable_failure, untrusted_certificate_failure,
 };
 pub use progress::{StderrProgress, progress_enabled};
 pub use rows::prefix_for;

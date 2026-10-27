@@ -32,6 +32,7 @@ use std::time::{Duration, Instant};
 
 use url::Url;
 
+use super::CrossOriginRedirects;
 use super::hop::{self, HopAnswer, HopContext, HopRecord};
 use super::memo::RequestMemo;
 use super::proxy;
@@ -151,6 +152,10 @@ pub struct ChainRequest<'a> {
     pub max_body_bytes: Option<usize>,
     /// Whether a 3xx is followed or returned as-is.
     pub follow_redirects: bool,
+    /// Whether a 3xx is a failure naming its target.
+    pub refuse_redirects: bool,
+    /// What a hop to another origin does, when hops are kept on the origin.
+    pub cross_origin_redirects: Option<CrossOriginRedirects>,
     /// Hops followed before the chain is abandoned.
     pub max_redirects: usize,
 }
@@ -163,6 +168,8 @@ impl std::fmt::Debug for ChainRequest<'_> {
             .field("headers", &names)
             .field("max_body_bytes", &self.max_body_bytes)
             .field("follow_redirects", &self.follow_redirects)
+            .field("refuse_redirects", &self.refuse_redirects)
+            .field("cross_origin_redirects", &self.cross_origin_redirects)
             .field("max_redirects", &self.max_redirects)
             .finish_non_exhaustive()
     }
@@ -190,7 +197,10 @@ pub enum ChainEnd {
 pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, String> {
     let via_proxy = proxy::routes_via_proxy(target.class);
     let trust = TrustClass::for_locality(target.class);
+    let origin = target.url.origin();
     let mut current = target.url;
+    let keeps_redirect = !chain.follow_redirects
+        || chain.cross_origin_redirects == Some(CrossOriginRedirects::Return);
     for hop in 0..=chain.max_redirects {
         // A first hop's budget runs from the same instant as the deadline,
         // so callers with the same timeout compare equal; a later hop gets
@@ -204,7 +214,7 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
             started,
             deadline: chain.deadline,
             body_cap: chain.max_body_bytes,
-            keeps_redirect: !chain.follow_redirects,
+            keeps_redirect,
         };
         let request = Request {
             method: chain.method.to_string(),
@@ -226,10 +236,26 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
             HopRecord::Answer(answer) => answer,
             HopRecord::Failure(error) => return Err(error.message),
         };
-        if chain.follow_redirects
-            && is_redirect(answer.status)
-            && let Some(location) = answer.headers.get("location")
+        let location = is_redirect(answer.status)
+            .then(|| answer.headers.get("location").map(str::to_string))
+            .flatten();
+        if let Some(location) = &location
+            && chain.refuse_redirects
         {
+            return Err(refused(answer.status, location));
+        }
+        if chain.follow_redirects
+            && let Some(location) = location.as_deref()
+        {
+            let joined = current
+                .join(location)
+                .map_err(|_| format!("blocked: unparseable redirect target {location}"))?;
+            if chain.cross_origin_redirects.is_some() && joined.origin() != origin {
+                if chain.cross_origin_redirects == Some(CrossOriginRedirects::Refuse) {
+                    return Err(refused(answer.status, location));
+                }
+                return Ok(ChainEnd::Answer(answer));
+            }
             let next = validate_hop(location, &current, target.class, hop + 1, chain.resolver)?;
             if next.url.scheme() != "https" {
                 let error = format!(
@@ -247,6 +273,10 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
         return Ok(ChainEnd::Answer(answer));
     }
     Err(limit_exceeded(chain.max_redirects))
+}
+
+fn refused(status: u16, location: &str) -> String {
+    format!("redirect refused: {status} to {location}")
 }
 
 fn limit_exceeded(max: usize) -> String {

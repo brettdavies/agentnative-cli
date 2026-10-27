@@ -9,11 +9,10 @@ date: 2026-04-30
 
 ## Summary
 
-Add four new SHOULDs to `agentnative-spec` (three in P2, one in P4) that codify the output-envelope contract `anc`
-itself already enforces, then land matching behavioral audits here so the linter verifies them. Cross-repo: spec tag
-lands first (producer side); this repo re-vendors via `scripts/sync-spec.sh`, grows the registry by four IDs, adds four
-audits under `src/audits/behavioral/`, and regenerates the coverage matrix. `anc` must pass all four audits against
-itself (dogfood loop).
+Add two SHOULDs (one in P2, one in P4) that codify the parts of the output-envelope contract `anc` itself enforces and
+no requirement covers, then land matching behavioral audits here so the linter verifies them. The registry grows by two
+IDs, two audits land under `src/audits/behavioral/`, and the coverage matrix regenerates. `anc` must pass both audits
+against itself (dogfood loop).
 
 ---
 
@@ -29,35 +28,35 @@ Existing requirements and audits cover part of the contract. Five behavioral aud
 (`src/audits/behavioral/error_probe.rs`) under the JSON mode the help declares. Among them, `consistent_envelope.rs`
 compares the success and error key sets for `p2-should-consistent-envelope`, `json_error_output.rs` checks that an
 error parses as JSON for `p4-should-json-error-output`, and `json_errors.rs` checks the error envelope for a
-discriminant, a type identifier, and a message for `p2-must-json-errors`. No requirement or audit covers `--output` on
-every subcommand or a typed `reason` field on errors.
+discriminant, a type identifier, and a message for `p2-must-json-errors`. `p4-should-json-error-output` covers a JSON
+envelope on the error path and `p2-should-consistent-envelope` covers one envelope schema across success and error, so
+this plan adds neither. No requirement or audit covers `--output` on every subcommand or a typed `reason` field on
+errors.
 
 ---
 
 ## Requirements
 
-- R1. Add four new SHOULDs to `agentnative-spec` covering output-envelope behavior:
+- R1. Add two SHOULDs covering output-envelope behavior:
 - P2 `output-applies-to-every-subcommand` (Conditional: `if: CLI uses subcommands`).
-- P2 `json-envelope-on-error` (Universal).
-- P2 `output-envelope-schema-uniform` (Universal). Distinct from existing `p2-should-consistent-envelope` which
-  addresses cross-command consistency; this new SHOULD addresses success-vs-error consistency *within* a single
-  command's envelope.
 - P4 `json-error-includes-typed-reason` (Universal).
 - R2. Phrase each SHOULD behaviorally per *behavioral-vs-structural-must* — observable behavior under a stated
   condition, not enumerated subcommands or library lists.
-- R3. Tag a new `agentnative-spec` release that includes the four new SHOULDs. The tag is the single propagation point —
-  this repo's `scripts/sync-spec.sh` resolves the latest `v*` tag remotely.
+- R3. The two IDs need requirement text in the vendored spec. `build.rs` generates `REQUIREMENTS` from
+  `src/principles/spec/principles/`, `dangling_cover_ids` fails the build for a `covers()` ID the registry lacks, and
+  `scripts/sync-spec.sh` vendors the spec from the latest `agentnative-spec` `v*` tag. Both SHOULDs therefore need text
+  in `agentnative-spec` and a tag that carries it before either audit can merge here.
 - R4. Re-vendor the spec into `src/principles/spec/`. Bump the two drift counters in
-  `src/principles/registry.rs::tests`: `registry_size_matches_spec` (60 → 64) and `level_counts_match_spec` (Should: 22
-  → 26).
-- R5. Land four behavioral audits in `src/audits/behavioral/`, one per new SHOULD, each declaring its own single-element
+  `src/principles/registry.rs::tests`: `registry_size_matches_spec` (60 → 62) and `level_counts_match_spec` (Should: 22
+  → 24).
+- R5. Land two behavioral audits in `src/audits/behavioral/`, one per new SHOULD, each declaring its own single-element
   `covers()` slice. SRP-style — no bundled "envelope conformance" audit (per
   *reliable-static-analysis-compliance-auditors*).
 - R6. Update `SUPPRESSION_TABLE` in `src/principles/registry.rs` for any audit that should be excluded under an existing
   audit-profile category. Specifically: `output-applies-to-every-subcommand` joins the empty `FileTraversal` slot
-  reserved for "subcommand-structure SHOULDs" (`src/principles/registry.rs:196-201`). Verify the other three against
+  reserved for "subcommand-structure SHOULDs" (`src/principles/registry.rs:196-201`). Verify the other one against
   each existing category and document the mapping decision.
-- R7. Extend `tests/dogfood.rs` to pin all four new IDs against the `anc` binary itself — `anc audit . --output json`
+- R7. Extend `tests/dogfood.rs` to pin both new IDs against the `anc` binary itself — `anc audit . --output json`
   must show no `fail` on any of the new audit IDs.
 - R8. Regenerate `docs/coverage-matrix.md` and `coverage/matrix.json` via `anc emit coverage-matrix`. CI's existing
   `--check` integration test
@@ -87,11 +86,10 @@ every subcommand or a typed `reason` field on errors.
 
 - **Reconciliation of `p2-must-json-errors` ("on stderr") with the as-shipped convention (envelope on stdout).** The
   existing MUST says errors emit JSON to stderr; `anc`'s shipped `feat/skill-install` envelope goes to stdout (matching
-  every other `--output json` surface). The MUST's audit accepts the envelope on either stream; the new SHOULD
-  `json-envelope-on-error` is more permissive (says "envelope appears" without pinning the stream). Reconciling the
-  MUST text is a separate spec-edit PR; flagged here so a future plan picks it up. Not in scope because the user-named
-  scope is "add four SHOULDs", not "rewrite an existing MUST".
-- **Source-layer fallbacks for the four audits.** Behavioral probing covers the binary; an ast-grep source-layer
+  every other `--output json` surface). The MUST's audit accepts the envelope on either stream, as
+  `p4-should-json-error-output` does. Reconciling the MUST text is a separate spec-edit PR. Not in scope because this
+  plan adds two SHOULDs and rewrites no existing MUST.
+- **Source-layer fallbacks for the two audits.** Behavioral probing covers the binary; an ast-grep source-layer
   companion (e.g., detecting `#[serde(skip_serializing_if)]` on envelope structs) would extend coverage to projects
   whose binaries fail to launch. Defer until usage shows behavioral audits miss real cases.
 
@@ -107,7 +105,7 @@ every subcommand or a typed `reason` field on errors.
   `HelpOutput::subcommands()` (`src/runner/help_probe/mod.rs`). Probes use `--help`/`--version` only (safe-probing
   rule). JSON parsing via `serde_json::from_str::<serde_json::Value>(...)`.
 - `src/audits/behavioral/error_probe.rs`: the shared bad-flag probe (`BAD_FLAG`, `--this-flag-does-not-exist-anc`)
-  and JSON-mode gate behind the five error-battery audits. The four new behavioral audits reuse it (bad-flag trigger
+  and JSON-mode gate behind the five error-battery audits. The two new behavioral audits reuse it (bad-flag trigger
   under the declared JSON mode).
 - `src/audits/behavioral/mod.rs` (lines 61-115) — `test_project_with_sh_script(script)` test helper that materializes a
   temp `/bin/sh` script with `case "$*" in ... esac` branches simulating CLI behavior. Use for unit tests.
@@ -116,10 +114,10 @@ every subcommand or a typed `reason` field on errors.
 - `src/principles/matrix.rs` — `dangling_cover_ids()` (lines 330-340) fails the build when a `covers()` ID is missing
   from `REQUIREMENTS`. `UNVERIFIED_MUSTS` table (lines 469-486) — note the existing `p2-must-json-errors` and
   `p4-must-actionable-errors` entries; the new SHOULDs do not move those out (different requirement IDs).
-- `src/principles/spec/principles/p2-structured-parseable-output.md` — target file for three of the four new SHOULDs.
-- `src/principles/spec/principles/p4-fail-fast-actionable-errors.md` — target file for the fourth SHOULD.
+- `src/principles/spec/principles/p2-structured-parseable-output.md` — target file for the P2 SHOULD.
+- `src/principles/spec/principles/p4-fail-fast-actionable-errors.md` — target file for the P4 SHOULD.
 - `tests/dogfood.rs` — extension point for dogfood guards. Existing tests pin `p2-*` and `p5-*` collectively; add new
-  assertions naming the four new IDs explicitly so a future regression names the broken contract.
+  assertions naming the two new IDs explicitly so a future regression names the broken contract.
 - `tests/integration.rs` (lines 66-75) — `test_generate_coverage_matrix_drift_check_passes_on_committed_artifacts`. Will
   fail CI if `docs/coverage-matrix.md` or `coverage/matrix.json` are stale at PR time.
 - `scripts/sync-spec.sh` — vendor the new spec tag remote-first. Mirrors the `scripts/sync-skill-fixture.sh` shape.
@@ -128,11 +126,12 @@ every subcommand or a typed `reason` field on errors.
 ### Institutional Learnings
 
 - **anc CLI output envelope pattern**
-  (`docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`) — anticipates these four
-  SHOULDs by name. The canonical statement of the convention; cite as the rationale source in spec-edit PR descriptions.
+  (`docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`) — names these SHOULDs and
+  the two that `p4-should-json-error-output` and `p2-should-consistent-envelope` cover. The canonical statement of the
+  convention; cite as the rationale source in spec-edit PR descriptions.
 - **Consistent JSON schema across success and error paths**
-  (`docs/solutions/best-practices/consistent-json-schema-across-success-and-error-paths-2026-04-20.md`) — direct
-  rationale for the `output-envelope-schema-uniform` SHOULD. Provides a "every JSON path has these fields" contract-
+  (`docs/solutions/best-practices/consistent-json-schema-across-success-and-error-paths-2026-04-20.md`) — the
+  rationale `p2-should-consistent-envelope` carries. Provides a "every JSON path has these fields" contract-
   test pattern.
 - **CLI structure for machines: typed JSON fields, not English in display strings**
   (`docs/solutions/best-practices/cli-structure-for-machines-typed-json-fields-over-display-strings-2026-04-20.md`) —
@@ -140,8 +139,8 @@ every subcommand or a typed `reason` field on errors.
   (`rg -n '"[A-Z][a-z]+ [a-z]+ [a-z]+'` flags sentence-shaped JSON values).
 - **Agent-native CLIs: semantic JSON fields, not stderr warnings**
   (`docs/solutions/best-practices/agent-native-semantic-json-fields-over-stderr-warnings-2026-04-20.md`) — sister doc
-  clarifying that `--quiet` suppresses stderr human echo, not stdout envelope. New `json-envelope-on-error` audit must
-  respect this distinction.
+  clarifying that `--quiet` suppresses stderr human echo, not stdout envelope. The new audits respect this
+  distinction.
 - **SoT contract for spec repos with downstream consumers**
   (`docs/solutions/best-practices/sot-contract-for-spec-repos-with-downstream-consumers-2026-04-22.md`) — sequencing is
   dictated: tag the spec first, vendor here, then add registry rows. Decoupled versioning means lag is honest and
@@ -154,7 +153,7 @@ every subcommand or a typed `reason` field on errors.
   behavioral audits: no bare subcommand probes; do not remove `arg_required_else_help`. The error-induction technique
   (clap-rejected bad arg) is the safe path because it's universally side-effect-free.
 - **Reliable static-analysis compliance auditors — SRP scripts, no multi-signal scoring**
-  (`docs/solutions/best-practices/reliable-static-analysis-compliance-auditors-20260327.md`) — four distinct audits, not
+  (`docs/solutions/best-practices/reliable-static-analysis-compliance-auditors-20260327.md`) — two distinct audits, not
   one bundled. Each requirement independently visible in `anc audit .` output.
 - **Audit scripts are documentation's immune system**
   (`docs/solutions/best-practices/audit-scripts-as-documentation-immune-system-2026-04-20.md`) — strongest argument for
@@ -169,10 +168,10 @@ None — internal/cross-repo work, no external doc gathering needed.
 
 ## Key Technical Decisions
 
-- **Behavioral layer for all four audits.** Each SHOULD describes observable runtime behavior of the target CLI;
+- **Behavioral layer for both audits.** Each SHOULD describes observable runtime behavior of the target CLI;
   source-layer probes can't generally tell whether `--output json` is honored on a path or whether the error envelope
-  matches the success envelope. The audit IDs follow `p2-output-every-subcommand`, `p2-json-envelope-on-error`,
-  `p2-envelope-schema-uniform`, `p4-typed-error-reason` — concise IDs that don't echo `should-` (since that level is
+  matches the success envelope. The audit IDs follow `p2-output-every-subcommand` and
+  `p4-typed-error-reason`, concise IDs that don't echo `should-` (since that level is
   carried by the registry entry, not the audit ID per existing convention).
 - **Use `HelpOutput::subcommands()` as-is** for `output-applies-to-every-subcommand`. Iterate every parsed subcommand
   and probe each with `--output json --help` (safe). Aggregate per-subcommand verdicts: pass when every subcommand
@@ -182,19 +181,18 @@ None — internal/cross-repo work, no external doc gathering needed.
   rejects before any subcommand handler runs, no side-effecting code path is entered. The five error-battery audits
   probe error paths the same way.
 - **`output-applies-to-every-subcommand` is `Conditional`.** Gate: `if: CLI uses subcommands`. Same shape as
-  `p6-must-global-flags` (`src/principles/spec/principles/p6-composable-predictable-command-structure.md`). The other
-  three SHOULDs are `Universal` — every CLI has an error path; the JSON envelope contract is universal once
-  `--output json` is honored.
+  `p6-must-global-flags` (`src/principles/spec/principles/p6-composable-predictable-command-structure.md`). The P4
+  SHOULD is `Universal`: every CLI has an error path, and the typed-reason contract is universal once `--output json`
+  is honored.
 - **`SUPPRESSION_TABLE` mapping.** `output-applies-to-every-subcommand` enters the currently-empty `FileTraversal` slot
-  (the slot was reserved for subcommand-structure SHOULDs at `registry.rs:196-201` — exact fit). The other three do not
+  (the slot was reserved for subcommand-structure SHOULDs at `registry.rs:196-201` — exact fit). The P4 audit does not
   suppress under any current category by default; declare that explicitly in the table comment so future audit-profile
   reviewers don't assume an oversight. Drift tests in `registry.rs` will validate.
-- **Distinguish `output-envelope-schema-uniform` from existing `p2-should-consistent-envelope`.** The existing SHOULD is
-  *cross-command* ("every command has a predictable envelope shape"). The new SHOULD is *within-command,
-  success-vs-error* ("a given action's envelope keys are uniform across success and error"). Both apply, on different
-  axes. The new SHOULD's prose must call out the distinction so reviewers don't read it as a duplicate.
+- **No SHOULD for the covered envelope checks.** `consistent_envelope.rs` compares the success and error envelopes'
+  top-level key sets for `p2-should-consistent-envelope`, and `json_error_output.rs` checks that an error under the
+  declared JSON mode parses as JSON for `p4-should-json-error-output`, on either stream.
 - **Dogfood guards by ID, not aggregate.** Existing `tests/dogfood.rs` asserts no fail on `p2-*` / `p5-*` collectively.
-  Add four new test functions, one per new audit ID, so a regression names the broken contract — collective assertions
+  Add two new test functions, one per new audit ID, so a regression names the broken contract — collective assertions
   hide which audit newly broke.
 - **Land coverage-matrix regen in the same PR.** Both `docs/coverage-matrix.md` and `coverage/matrix.json` are committed
   artifacts. `tests/integration.rs` runs `anc emit coverage-matrix --check` and fails when stale. The PR cannot merge
@@ -206,15 +204,14 @@ None — internal/cross-repo work, no external doc gathering needed.
 
 ### Resolved During Planning
 
-- **Should the new `output-envelope-schema-uniform` consolidate with the existing `p2-should-consistent-envelope`?** No
-  — they address distinct axes (cross-command vs within-command success-vs-error). Both stay. The new SHOULD's prose
-  explicitly calls out the distinction.
+- **Do a uniform-schema SHOULD and an error-envelope SHOULD still need new IDs?** No. `p2-should-consistent-envelope`
+  and `p4-should-json-error-output` cover them.
 - **Do new SHOULDs require new audit-profile categories?** No. `output-applies-to-every-subcommand` slots into
-  `FileTraversal`; the other three apply universally without suppression.
+  `FileTraversal`; the P4 SHOULD applies universally without suppression.
 - **Spec versioning?** Additive — agentnative-spec's `0.x` schema treats new requirement IDs as additive. The version
   bumps to the next minor; consumers feature-detect new IDs.
 - **Should the registry counters bump and the audit additions land as separate PRs?** No — atomic PR after the spec tag
-  lands. Splitting would leave four `**UNCOVERED**` SHOULDs in the matrix transiently; one merge keeps the matrix
+  lands. Splitting would leave two `**UNCOVERED**` SHOULDs in the matrix transiently; one merge keeps the matrix
   coherent at every commit.
 
 ### Deferred to Implementation
@@ -223,7 +220,7 @@ None — internal/cross-repo work, no external doc gathering needed.
   agentnative-spec authoring AGENTS.md prescribes a pressure-test protocol; final prose emerges from running that
   protocol against draft text. Plan-time we know the *shape* (behavioral phrasing, condition gates) but not the exact
   words.
-- **The `audience` classifier interaction.** None of the four new SHOULDs are obvious signal candidates (signals are
+- **The `audience` classifier interaction.** Neither new SHOULD is an obvious signal candidate (signals are
   binary capability indicators: `p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Verify
   during implementation that `audience::SIGNAL_AUDIT_IDS` does not need extension. If it does, that's a separate
   decision and would need its own test extension.
@@ -235,9 +232,9 @@ None — internal/cross-repo work, no external doc gathering needed.
 
 ## Implementation Units
 
-- U1. **`agentnative-spec`: add four new SHOULDs and tag a release**
+- U1. **`agentnative-spec`: add two SHOULDs and tag a release**
 
-  **Goal:** Land the four new SHOULDs in `agentnative-spec/principles/p2-structured-parseable-output.md` and
+  **Goal:** Land the two SHOULDs in `agentnative-spec/principles/p2-structured-parseable-output.md` and
   `p4-fail-fast-actionable-errors.md`, then tag a new `v*` release so `scripts/sync-spec.sh` here can pull them.
 
   **Target repo:** `agentnative-spec` (separate repo at `~/dev/agentnative-spec`).
@@ -247,7 +244,7 @@ None — internal/cross-repo work, no external doc gathering needed.
   **Dependencies:** None.
 
   **Files:**
-- Modify (in `agentnative-spec`): `principles/p2-structured-parseable-output.md` — add three new SHOULDs.
+- Modify (in `agentnative-spec`): `principles/p2-structured-parseable-output.md` — add one SHOULD.
 - Modify (in `agentnative-spec`): `principles/p4-fail-fast-actionable-errors.md` — add one new SHOULD.
 - Modify (in `agentnative-spec`): `VERSION` — bump to next minor.
 
@@ -256,7 +253,7 @@ None — internal/cross-repo work, no external doc gathering needed.
   mirroring the format of existing SHOULDs (`id`, `level: should`, `applicability`, `summary`, plus optional `examples`
   / `how-to-verify` if the existing siblings include them).
 - `output-applies-to-every-subcommand` carries `applicability: { if: "CLI uses subcommands" }` (same prose as
-  `p6-must-global-flags`'s gate). The other three carry `applicability: universal`.
+  `p6-must-global-flags`'s gate). The P4 SHOULD carries `applicability: universal`.
 - Run the AGENTS.md per-file pressure-test protocol on each draft summary before committing.
 - Tag with an annotated `v*` tag (`git tag -a -m "..."`); push tags. The producer side's release automation handles
   distribution.
@@ -277,7 +274,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 - U2. **Sync vendored spec + bump drift counters**
 
   **Goal:** Pull the new spec tag into `src/principles/spec/`, fix the build by bumping the two registry-size
-  counter tests, and confirm the four new IDs appear in `REQUIREMENTS`.
+  counter tests, and confirm the two new IDs appear in `REQUIREMENTS`.
 
   **Requirements:** R4.
 
@@ -287,8 +284,8 @@ None — internal/cross-repo work, no external doc gathering needed.
 - Modify: `src/principles/spec/principles/p2-structured-parseable-output.md` (overwrite via `sync-spec.sh`).
 - Modify: `src/principles/spec/principles/p4-fail-fast-actionable-errors.md` (same).
 - Modify: `src/principles/spec/VERSION` (same).
-- Modify: `src/principles/registry.rs` — bump `registry_size_matches_spec` count from 46 to 50 and
-  `level_counts_match_spec` Should count from 16 to 20 (`registry.rs:337,342-344`).
+- Modify: `src/principles/registry.rs` — bump `registry_size_matches_spec` count from 60 to 62 and
+  `level_counts_match_spec` Should count from 22 to 24.
 
   **Approach:**
 - Run `bash scripts/sync-spec.sh` to vendor the new tag's content. The script is remote-first; pulls the latest `v*` tag
@@ -298,8 +295,8 @@ None — internal/cross-repo work, no external doc gathering needed.
 - Run `cargo test --bin anc principles::registry::tests::registry_size_matches_spec
   principles::registry::tests::level_counts_match_spec` first to confirm they fail (proving the new IDs were parsed).
   Then bump the counters.
-- At this point the four new SHOULDs appear in `docs/coverage-matrix.md` as `**UNCOVERED**` rows. That is expected and
-  resolves in U3-U6.
+- At this point the two new SHOULDs appear in `docs/coverage-matrix.md` as `**UNCOVERED**` rows. That is expected and
+  resolves in U3 and U6.
 
   **Patterns to follow:** the existing spec-vendor flow already in use at this repo. No new mechanism.
 
@@ -307,13 +304,13 @@ None — internal/cross-repo work, no external doc gathering needed.
 - **Happy path:** `cargo test --bin anc principles::registry::tests` passes after counter bumps.
 - **Edge case:** Forgetting to bump `level_counts_match_spec` while bumping `registry_size_matches_spec` — both must
   move together. The plan calls this out explicitly so the implementer doesn't half-bump.
-- **Drift signal:** `docs/coverage-matrix.md` rendered locally shows four new `**UNCOVERED**` rows for the new SHOULD
+- **Drift signal:** `docs/coverage-matrix.md` rendered locally shows two new `**UNCOVERED**` rows for the new SHOULD
   IDs — proof the spec sync worked.
 
   **Verification:**
 - All registry tests pass.
-- `cargo run -- generate coverage-matrix` runs without dangling-cover-id errors.
-- The four new requirement IDs appear in `coverage/matrix.json` (as uncovered rows for now).
+- `cargo run -- emit coverage-matrix` runs without dangling-cover-id errors.
+- The two new requirement IDs appear in `coverage/matrix.json` (as uncovered rows for now).
 
 - U3. **`p2-output-every-subcommand` audit**
 
@@ -351,85 +348,11 @@ None — internal/cross-repo work, no external doc gathering needed.
 - `cargo test --bin anc behavioral::output_every_subcommand::tests` passes.
 - `anc audit . --output json` includes the new ID in `results[]`.
 
-- U4. **`p2-json-envelope-on-error` audit**
+- U4. **Not in scope: an error-envelope audit.** `p4-should-json-error-output` (`json_error_output.rs`) checks that an
+  error under the declared JSON mode parses as JSON on stdout or stderr.
 
-  **Goal:** Verify that when `--output json` is set and the CLI hits an error path, a JSON envelope is emitted
-  (on either stdout or stderr) — not human-only stderr text.
-
-  **Requirements:** R5; covers `p2-should-json-envelope-on-error`.
-
-  **Dependencies:** U2.
-
-  **Files:**
-- Create: `src/audits/behavioral/json_envelope_on_error.rs` (~100 LOC).
-- Modify: `src/audits/behavioral/mod.rs` — register.
-- Test: in-file `#[cfg(test)] mod tests`.
-
-  **Approach:**
-- First, probe `<root> --help` to confirm `--output` is accepted. If not, `Skip` with "tool does not accept --output
-  json".
-- Inject the bad-arg trigger from `error_probe.rs` (`BAD_FLAG`) under the declared JSON mode. Capture stdout and
-  stderr.
-- Try `serde_json::from_str::<serde_json::Value>` on stdout; on failure, try stderr. Pass if either parses to a JSON
-  object. Fail if neither parses.
-- Evidence on Pass names the stream that carried the envelope (informational). Evidence on Fail includes a short excerpt
-  of stderr to help the user reproduce.
-- `applicable()` returns `project.runner.is_some()`.
-- `covers()` returns `&["p2-should-json-envelope-on-error"]`.
-
-  **Patterns to follow:** `src/audits/behavioral/error_probe.rs` for error-induction; `json_output.rs:211-217` for JSON
-  parsing.
-
-  **Test scenarios:**
-- **Happy path:** Tool emits JSON envelope on stdout on bad-arg + `--output json` → `Pass`, evidence "envelope on
-  stdout".
-- **Happy path:** Tool emits JSON envelope on stderr → `Pass`, evidence "envelope on stderr". (Anticipates the existing
-  `p2-must-json-errors` text; supports either stream during the reconciliation window — see Scope Boundaries deferred
-  item.)
-- **Error path:** Tool emits human stderr only with no JSON anywhere → `Fail` with stderr excerpt.
-- **Skip:** Tool's `--help` text doesn't mention `--output` → `Skip`.
-- **Edge case:** `RunStatus::Crash` from the probe → `Skip` with `"probe crashed: <signal>"`.
-
-  **Verification:** `cargo test` passes; `anc audit .` emits the new ID.
-
-- U5. **`p2-envelope-schema-uniform` audit**
-
-  **Goal:** Verify that a given action's JSON envelope keys are uniform across success and error — only the `status`
-  value and the optional typed-reason key differ.
-
-  **Requirements:** R5; covers `p2-should-output-envelope-schema-uniform`.
-
-  **Dependencies:** U2, U4 (reuses error-induction technique).
-
-  **Files:**
-- Create: `src/audits/behavioral/envelope_schema_uniform.rs` (~120 LOC).
-- Modify: `src/audits/behavioral/mod.rs` — register.
-- Test: in-file `#[cfg(test)] mod tests`.
-
-  **Approach:**
-- Probe `<root> --help` to audit `--output` support; `Skip` if absent.
-- Run a known-success invocation: typically `<root> --help --output json` (gracefully handles when `--help` overrides
-  `--output`; if so, `Skip` with "could not elicit success envelope safely"). Parse stdout JSON. Capture its top-level
-  key set.
-- Run an error invocation: bad-arg trigger + `--output json`. Parse the envelope wherever it appears (per U4 logic).
-  Capture its top-level key set.
-- Compare key sets. The error set must equal the success set, with up to two permitted differences: a `status` value
-  change and the addition of a `reason` (or equivalent typed-error) key. Other key drift fails the audit.
-- Evidence on Fail lists the keys present in one envelope but not the other.
-- `applicable()` returns `project.runner.is_some()`.
-- `covers()` returns `&["p2-should-output-envelope-schema-uniform"]`.
-
-  **Patterns to follow:** `json_output.rs` for parsing; U4 for error-induction. Set comparison via
-  `std::collections::HashSet`.
-
-  **Test scenarios:**
-- **Happy path:** Success and error envelopes share the same key set modulo `status` and `reason` → `Pass`.
-- **Error path:** Error envelope adds three new keys not present in success → `Fail` listing the divergent keys.
-- **Error path:** Success envelope has key `data` that error envelope drops → `Fail` listing the missing key.
-- **Edge case:** Success probe couldn't elicit a usable envelope (some tools refuse `--help --output json`) → `Skip`.
-- **Skip:** Tool doesn't accept `--output` → `Skip`.
-
-  **Verification:** `cargo test` passes; new ID in `anc audit .` output.
+- U5. **Not in scope: a uniform-schema audit.** `p2-should-consistent-envelope` (`consistent_envelope.rs`) compares the
+  success and error envelopes' top-level key sets.
 
 - U6. **`p4-typed-error-reason` audit**
 
@@ -438,7 +361,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 
   **Requirements:** R5; covers `p4-should-json-error-includes-typed-reason`.
 
-  **Dependencies:** U2, U4 (reuses error-induction).
+  **Dependencies:** U2.
 
   **Files:**
 - Create: `src/audits/behavioral/typed_error_reason.rs` (~80 LOC).
@@ -446,7 +369,7 @@ None — internal/cross-repo work, no external doc gathering needed.
 - Test: in-file `#[cfg(test)] mod tests`.
 
   **Approach:**
-- Reuse error-induction from U4 to capture the error envelope.
+- Reuse the bad-flag probe in `error_probe.rs` under the declared JSON mode to capture the error envelope.
 - Walk the JSON top-level keys looking for any of: `reason`, `error_code`, `code`, `kind`, `error_kind`. Take the first
   match.
 - Validate the field is a string and matches a typed-identifier pattern: lowercase ASCII alphanumeric plus `-`/`_`, no
@@ -478,25 +401,24 @@ None — internal/cross-repo work, no external doc gathering needed.
 
   **Requirements:** R6, R7, R8.
 
-  **Dependencies:** U3-U6 all merged (or at least the new IDs and audit IDs are stable).
+  **Dependencies:** U3 and U6 merged (or at least the new IDs and audit IDs are stable).
 
   **Files:**
 - Modify: `src/principles/registry.rs` — add `output_every_subcommand` audit ID to the `FileTraversal` entry of
-  `SUPPRESSION_TABLE` (lines 196-201). Document the other three audits as intentionally unsuppressed via a comment
+  `SUPPRESSION_TABLE` (lines 196-201). Document the P4 audit as intentionally unsuppressed via a comment
   naming them. Test `every_suppression_table_audit_id_exists` (or equivalent — verify exact name during implementation)
   confirms the entry.
-- Modify: `tests/dogfood.rs` — add four new test functions: `dogfood_no_p2_should_output_every_subcommand_fail`,
-  `dogfood_no_p2_should_json_envelope_on_error_fail`, `dogfood_no_p2_should_envelope_schema_uniform_fail`,
+- Modify: `tests/dogfood.rs` — add two new test functions: `dogfood_no_p2_should_output_every_subcommand_fail` and
   `dogfood_no_p4_should_json_error_typed_reason_fail`. Each spawns `anc audit . --output json` and asserts no `fail`
   status on the named audit ID. Mirrors existing `dogfood_no_p2_fail_after_skill_subcommand` shape but names the audit
   ID specifically.
 - Modify: `docs/coverage-matrix.md` — regenerated by `anc emit coverage-matrix`. Manual prose summary at the top updates
-  the requirement counts and notes the four new SHOULDs.
+  the requirement counts and notes the two new SHOULDs.
 - Modify: `coverage/matrix.json` — regenerated by `anc emit coverage-matrix`.
 
   **Approach:**
-- Run `cargo run -- generate coverage-matrix` to regenerate both artifacts. Review `git diff coverage/matrix.json` for
-  the four new rows (now covered, not uncovered).
+- Run `cargo run -- emit coverage-matrix` to regenerate both artifacts. Review `git diff coverage/matrix.json` for
+  the two new rows (now covered, not uncovered).
 - For dogfood guards: each test follows the existing `dogfood_no_p2_fail_after_skill_subcommand` pattern at
   `tests/dogfood.rs:53-65` but filters results by exact audit ID, not prefix. The exact-ID assertion is the intentional
   change — collective `p2-*` assertions hide which audit newly fails.
@@ -505,15 +427,15 @@ None — internal/cross-repo work, no external doc gathering needed.
   regeneration step.
 
   **Test scenarios:**
-- **Happy path:** All four new dogfood tests pass against the current `anc` binary (proves the dogfood loop —
-  `anc skill install` already implements all four contracts).
+- **Happy path:** Both new dogfood tests pass against the current `anc` binary (proves the dogfood loop —
+  `anc skill install` already implements both contracts).
 - **Drift catch:** `anc emit coverage-matrix --check` exits 0 after the regen commit; exits 2 if either artifact is
   stale.
 
   **Verification:**
 - `cargo test` passes (all 519+ tests, including new dogfood tests).
 - `anc emit coverage-matrix --check` exits 0.
-- `anc audit . --output json` shows all four new audit IDs at status `pass` (or appropriately `skip`/`warn`).
+- `anc audit . --output json` shows both new audit IDs at status `pass` (or appropriately `skip`/`warn`).
 
 ---
 
@@ -537,8 +459,8 @@ None — internal/cross-repo work, no external doc gathering needed.
   bomb-safety rule).
 - The four committed audit-profile categories. No fifth category.
 - The schema 0.4 scorecard envelope. New requirement IDs flow through `coverage_summary` automatically.
-- `audience` classifier signal IDs (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). None
-  of the four new audits are signal candidates.
+- `audience` classifier signal IDs (`p1-non-interactive`, `p2-json-output`, `p7-quiet`, `p6-no-color-behavioral`). Neither
+  new audit is a signal candidate.
 
 ---
 
@@ -546,10 +468,10 @@ None — internal/cross-repo work, no external doc gathering needed.
 
 | Risk                                                                                                                                                                                                                                           | Mitigation                                                                                                                                                                                                                                           |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The four new behavioral audits induce error paths in target binaries through the shared bad-flag probe in `error_probe.rs`, which five audits already run under the declared JSON mode.                                                        | The combination is structurally safe (clap rejects before any subcommand handler runs), and `RunStatus::Crash` is handled explicitly. Each audit's test suite includes a crash-handling scenario.                                                    |
-| `anc` itself fails one of the new audits against itself, breaking the dogfood claim before the PR can land.                                                                                                                                    | The four SHOULDs codify behavior `anc skill install` already implements. If a new audit fails against `anc`, that's a real bug to fix in the same PR (not a reason to weaken the audit). The dogfood guards in `tests/dogfood.rs` catch this loudly. |
+| The two new behavioral audits induce error paths in target binaries through the shared bad-flag probe in `error_probe.rs`, which five audits already run under the declared JSON mode.                                                         | The combination is structurally safe (clap rejects before any subcommand handler runs), and `RunStatus::Crash` is handled explicitly. Each audit's test suite includes a crash-handling scenario.                                                    |
+| `anc` itself fails one of the new audits against itself, breaking the dogfood claim before the PR can land.                                                                                                                                    | The two SHOULDs codify behavior `anc skill install` already implements. If a new audit fails against `anc`, that's a real bug to fix in the same PR (not a reason to weaken the audit). The dogfood guards in `tests/dogfood.rs` catch this loudly.  |
 | `output-applies-to-every-subcommand` aggregates per-subcommand verdicts; the aggregation rule (fail-on-first vs allow-some-skip) affects how the audit reports.                                                                                | Documented decision: fail when ANY subcommand rejects `--output`, name the offender(s) in evidence. Skip when there are no subcommands or no `--output` on root. The aggregation is conservative and human-readable.                                 |
-| Existing `p2-must-json-errors` says "errors emitted as JSON to stderr"; `anc`'s actual envelope goes to stdout. The new SHOULD `json-envelope-on-error` is more permissive (envelope on either stream) but the MUST-vs-SHOULD tension is real. | Explicitly deferred — see Scope Boundaries. The new SHOULD permits either stream during the reconciliation window. A future spec PR reconciles the MUST text.                                                                                        |
+| Existing `p2-must-json-errors` says "errors emitted as JSON to stderr"; `anc`'s actual envelope goes to stdout. `p4-should-json-error-output` accepts either stream, so the MUST-vs-SHOULD tension is real.                                    | Deferred: see Scope Boundaries. A spec PR outside this plan reconciles the MUST text.                                                                                                                                                                |
 | Counter-bumps in `registry_size_matches_spec` and `level_counts_match_spec` are easy to forget.                                                                                                                                                | CLAUDE.md notes the deliberate-act intent; U2 explicitly enumerates both counters; failing tests guide the implementer.                                                                                                                              |
 | Coverage-matrix regen is an easy step to forget at PR time.                                                                                                                                                                                    | Existing CI integration test fails the PR if either artifact is stale. The regen step is U7's last task.                                                                                                                                             |
 | `HelpOutput::subcommands()` parses help text heuristically; some CLI help formats may not match the patterns it recognizes.                                                                                                                    | The audit returns `Skip` with structured evidence ("no subcommands detected") rather than `Fail` when enumeration fails. This biases conservative — better a missed `Pass` than a false `Fail`.                                                      |
@@ -558,10 +480,10 @@ None — internal/cross-repo work, no external doc gathering needed.
 
 ## Documentation / Operational Notes
 
-- The four new requirement IDs become external API surface as soon as the spec tag publishes. Any rename later requires
+- The two new requirement IDs become external API surface as soon as the spec tag publishes. Any rename later requires
   a deliberate spec edit and consumer coordination (`agentnative-site` `/coverage` page reads the IDs from
   `coverage/matrix.json`; tools may pin against them in `--audit-profile` configurations).
-- CLAUDE.md's "Principle Registry" section may grow a paragraph about the four new audits once they ship — the
+- CLAUDE.md's "Principle Registry" section may grow a paragraph about the two new audits once they ship — the
   hand-maintained prose summary at the top of `docs/coverage-matrix.md` updates per the existing convention.
 - Pre-release checklist (`RELEASES.md`) does not gain a new step. The existing
   `bash scripts/sync-spec.sh && git diff src/principles/spec/` step covers the new SHOULDs automatically.

@@ -1,7 +1,8 @@
 ---
 title: "fix: PR #73 follow-up — probe-failure, leaf-noun, emit removal in p6-consistent-naming"
 type: fix
-status: proposed
+status: superseded
+superseded_by: docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md
 priority: P1
 date: 2026-06-03
 origin: "Adversarial review of merged PR #73 (commit 91c5a798) surfaced 8 findings; this plan ships the three
@@ -25,6 +26,12 @@ vocabulary check entirely, whether to add a cross-group consistency check, and h
 stop the audit from actively passing surfaces the spec describes as anti-patterns, plus four adversarial tests.
 
 PR reference: <https://github.com/brettdavies/agentnative-cli/pull/73> (merged 2026-06-01).
+
+**Status.** Superseded by the audit-philosophy plan
+(`docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md`), which carries the
+`p6-consistent-naming` redesign forward. PR #73's three-bucket classification ships; this plan's patches do not. `emit`
+is in `COMMON_VERBS` (`src/audits/behavioral/consistent_naming.rs`), a failed probe and a leaf non-verb still classify
+as `TopLevelVerb`, and the four adversarial tests do not exist.
 
 ## Findings inventory
 

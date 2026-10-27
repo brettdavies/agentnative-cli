@@ -1,7 +1,7 @@
 ---
 title: "feat: Go, Ruby, and TypeScript source audits"
 type: feat
-status: active
+status: proposed
 date: 2026-04-17
 ---
 
@@ -767,7 +767,8 @@ table to reflect the new coverage.
 ### Phase 1 — Spike
 
 - Unit 1 lands as a single doc PR. No code changes. Purpose: unblock Units 2–5 with validated assumptions. Phase 1 is
-  complete: the spike report recommends proceeding to Unit 2. Phases 2 to 4 are not started.
+  complete: the spike report recommends proceeding to Unit 2. Phases 2 to 4 are a future option, with nothing in
+  flight.
 
 ### Phase 2 — Infrastructure
 

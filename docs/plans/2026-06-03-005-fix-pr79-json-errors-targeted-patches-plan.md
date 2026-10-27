@@ -1,7 +1,8 @@
 ---
 title: "fix: PR #79 follow-up — close the three worst bypasses in p2-must-json-errors role-based validator"
 type: fix
-status: proposed
+status: superseded
+superseded_by: docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md
 priority: P1
 date: 2026-06-03
 origin: "Adversarial review of merged PR #79 (commit 34b94175) surfaced 9 findings, including a self-acknowledged
@@ -34,6 +35,13 @@ literal-keys, kept with full name-role coupling, or redesigned around contract-s
 verify shape consistency).
 
 PR reference: <https://github.com/brettdavies/agentnative-cli/pull/79> (merged 2026-06-03).
+
+**Status.** Superseded by the audit-philosophy plan
+(`docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md`), which carries the
+`p2-must-json-errors` redesign forward. PR #79's role-based validator ships, and #82 removes an `.unwrap()` from its
+`is_type_id_value`; this plan's three patches do not. A numeric value on a discriminant-named field still passes, the
+success guard is the original closed set of 8 strings, and no outer-success guard exists
+(`src/audits/behavioral/json_errors.rs`).
 
 ## Findings inventory
 

@@ -1,7 +1,8 @@
 ---
 title: "refactor: Role-based audit validators — stop hardcoding field names and CLI dialects"
-status: active
-prs: ["#79"]
+status: superseded
+superseded_by: docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md
+prs: ["#79", "#82"]
 date: 2026-06-02
 type: refactor
 origin: handoff from xurl-rs anc-100%-compliance work (compound friction surfaced 2026-06-02)
@@ -35,9 +36,11 @@ This work pays off in three ways:
    not regex against a particular library's API.
 
 **Delivery.** #79 ships U3, with the role classifier inline in the audit (part of U1): `p2-must-json-errors` accepts any
-envelope whose values fill the discriminant, type-identifier, and message roles, whatever the field names. U2 and U4 to
-U8 are not started, so `p1-must-env-var`, `p6-must-global-flags`, `p7-naked-println`, and `code-unwrap` still match on
-vocabulary.
+envelope whose values fill the discriminant, type-identifier, and message roles, whatever the field names. #82 removes
+an `.unwrap()` from `is_type_id_value` in that code. The audit-philosophy plan
+(`docs/plans/2026-06-03-001-refactor-audit-philosophy-structure-over-vocabulary-plan.md`) supersedes this one and
+carries the design forward. U2 and U4 to U8 are not built, so `p1-must-env-var`, `p6-must-global-flags`,
+`p7-naked-println`, and `code-unwrap` still match on vocabulary.
 
 ---
 
@@ -556,7 +559,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U2. `src/audits/probe_or_source.rs` — the tiered audit wrapper
 
-- **Status.** Not started.
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Ship the `ProbeOrSource` wrapper (KTD2) with the tiered policy. No audit migrations yet — this is the second
   foundation piece.
 - **Requirements.** R3, R5.
@@ -629,7 +632,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U4. Reframe `p1-must-env-var` as probe-or-source
 
-- **Status.** Not started.
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the env-var check to behavioral-first per KTD3, with the existing source-grep as Skip-class
   fallback.
 - **Requirements.** R3, R5, R6.
@@ -660,7 +663,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U5. Reframe `p6-must-global-flags` as probe-or-source
 
-- **Status.** Not started.
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the global-flag check per KTD5.
 - **Requirements.** R3, R5, R6.
 - **Dependencies.** U2.
@@ -680,7 +683,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U6. Reframe `p7-naked-println` as probe-or-source
 
-- **Status.** Not started.
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the naked-println check per KTD4.
 - **Requirements.** R3, R5, R6.
 - **Dependencies.** U2.
@@ -704,7 +707,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U7. Reframe `code-unwrap` as probe-or-source
 
-- **Status.** Not started.
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** Migrate the unwrap check per KTD6. The cfg-test exemption from PR #77 stays in place for the source
   fallback.
 - **Requirements.** R3, R5, R6.
@@ -730,7 +733,7 @@ Probes have a hard timeout (3 seconds default; configurable per audit). A timed-
 
 ### U8. Documentation pass — rewrite reframed audits' module rustdoc as English assertions
 
-- **Status.** Not started.
+- **Status.** Not built; the audit-philosophy plan carries the design forward.
 - **Goal.** R10. Each reframed audit's `//!` block (module-level doc comment) becomes a plain-English description of
   what it asserts and why, with code links to the implementation.
 - **Requirements.** R10.

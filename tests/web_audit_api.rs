@@ -2,20 +2,23 @@
 //! mock transport with the real handlers: the OpenAPI row scores each
 //! description where the catalog declares it, the hygiene rows probe each
 //! anchor host once, the follow's host slots and refusals settle what the
-//! declared-hosts trail records, and a description larger than the read
-//! cap counts as present only when it is shaped like one.
+//! declared-hosts trail records, the follow's clock starts where the site
+//! starts it, and a description larger than the read cap counts as present
+//! only when it is shaped like one.
 
 #![cfg(feature = "web")]
 
 use std::net::IpAddr;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, RunReport, run_web_audit};
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
+use agentnative::web_audit::registry::MCP_DISCOVERY;
 use agentnative::web_audit::scorecard::{EngineResult, NaReason, ResultRow, ScorecardStatus};
+use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use serde_json::{Value, json};
 
 const BASE: &str = "https://example.com/";
@@ -60,7 +63,7 @@ fn catalog(contexts: &[(&str, &str)]) -> MockRule {
     )
 }
 
-fn run(mut rules: Vec<MockRule>) -> (Box<RunReport>, Arc<MockTransport>) {
+fn mock(mut rules: Vec<MockRule>) -> MockTransport {
     rules.insert(
         0,
         get(
@@ -68,17 +71,51 @@ fn run(mut rules: Vec<MockRule>) -> (Box<RunReport>, Arc<MockTransport>) {
             ok("text/html; charset=utf-8", "<html><body>hi</body></html>"),
         ),
     );
-    let transport = Arc::new(MockTransport::new(
+    MockTransport::new(
         rules,
         MockResponse::ok(404, &[("content-type", "text/html")], b"<html>nope</html>"),
-    ));
-    let fetch = FetchHandle::new(transport.clone(), Arc::new(PublicResolver), "anc-test/0");
+    )
+}
+
+fn run_on(transport: Arc<dyn Transport + Send + Sync>) -> Box<RunReport> {
+    let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), "anc-test/0");
     let mut input = RunInput::new(BASE, fetch, Arc::new(default_handlers()));
     input.per_check_timeout = Duration::from_secs(2);
     input.per_audit_deadline = Duration::from_secs(20);
     match run_web_audit(input) {
-        RunOutcome::Complete(report) => (report, transport),
+        RunOutcome::Complete(report) => report,
         RunOutcome::Unreachable { reason, .. } => panic!("unreachable: {reason}"),
+    }
+}
+
+fn run(rules: Vec<MockRule>) -> (Box<RunReport>, Arc<MockTransport>) {
+    let transport = Arc::new(mock(rules));
+    (run_on(transport.clone()), transport)
+}
+
+/// A mock that holds each POST and records when every request was sent and
+/// when its answer came back.
+struct Timed {
+    inner: MockTransport,
+    post_delay: Duration,
+    log: Mutex<Vec<(String, String, Instant, Instant)>>,
+}
+
+impl Transport for Timed {
+    fn send(&self, request: &Request) -> Result<Response, TransportError> {
+        let sent = Instant::now();
+        if request.method == "POST" {
+            std::thread::sleep(self.post_delay);
+        }
+        let answer = self.inner.send(request);
+        let entry = (
+            request.method.clone(),
+            request.url.clone(),
+            sent,
+            Instant::now(),
+        );
+        self.log.lock().unwrap().push(entry);
+        answer
     }
 }
 
@@ -348,4 +385,58 @@ fn the_follow_admits_four_hosts_and_refuses_what_it_may_not_request() {
     let openapi = result(&report, "openapi");
     assert_eq!(openapi.status, ScorecardStatus::NA);
     assert_eq!(openapi.na_reason, Some(NaReason::DeclaredHostBlocked));
+}
+
+#[test]
+fn the_follow_clock_starts_after_the_document_reads_and_before_the_posts() {
+    let transport = Arc::new(Timed {
+        inner: mock(vec![catalog(&[(
+            "https://api.test/",
+            "https://api.test/openapi.json",
+        )])]),
+        post_delay: Duration::from_millis(300),
+        log: Mutex::new(Vec::new()),
+    });
+    let report = run_on(transport.clone());
+    let opened = report
+        .discovery
+        .follow_opened
+        .expect("discovery opened the follow");
+    let log = transport.log.lock().unwrap();
+    let mut documents: Vec<String> = MCP_DISCOVERY
+        .well_known
+        .iter()
+        .chain([&MCP_DISCOVERY.ai_catalog])
+        .map(|path| format!("https://example.com{path}"))
+        .collect();
+    documents.push(CATALOG.to_string());
+    let read = log
+        .iter()
+        .filter(|(method, url, ..)| method == "GET" && documents.contains(url))
+        .map(|(.., answered)| *answered)
+        .max()
+        .expect("the document reads");
+    let first_post = log
+        .iter()
+        .filter(|(method, ..)| method == "POST")
+        .map(|(_, _, sent, _)| *sent)
+        .min()
+        .expect("discovery POSTed to the common paths");
+    assert!(
+        read <= opened,
+        "the clock started before a document read answered"
+    );
+    assert!(
+        opened <= first_post,
+        "the clock started after the first POST went out"
+    );
+    let described = log
+        .iter()
+        .find(|(_, url, ..)| url == "https://api.test/openapi.json")
+        .map(|(_, _, sent, _)| *sent)
+        .expect("the description read");
+    assert!(
+        described >= first_post + Duration::from_millis(300),
+        "the API batch settles after the POSTs"
+    );
 }

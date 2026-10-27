@@ -485,6 +485,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             target_locality,
             timeout: per_check_timeout,
             deadline,
+            opened: discovery.follow_opened.unwrap_or_else(Instant::now),
         };
         settle_api_declarations(&slice, &api_declarations(&anchors))
     } else {

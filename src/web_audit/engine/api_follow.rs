@@ -9,8 +9,10 @@
 //! A description host that gives no response, or whose answer is a
 //! redirect the slice does not take (its one redirect hop redirecting
 //! again), records unreachable; any other answer records followed. The
-//! local engine follows no MCP declaration, so the API batch is the slice's
-//! only batch and has its slots and requests to itself.
+//! slice opens where the site's does, once discovery's document reads are
+//! done and before its POSTs, and the API batch settles after those POSTs
+//! on what is left of the slice's clock. The local engine follows no MCP
+//! declaration, so the API batch has the slots and requests to itself.
 
 use std::time::{Duration, Instant};
 
@@ -66,6 +68,8 @@ pub struct SliceInput<'a> {
     pub timeout: Duration,
     /// The per-audit deadline.
     pub deadline: Instant,
+    /// When the slice opened; its clock runs from here.
+    pub opened: Instant,
 }
 
 /// The request gate: host slots, the request cap, and the slice clock.
@@ -241,7 +245,7 @@ pub fn settle_api_declarations(
         .collect();
     let mut gate = Gate {
         input,
-        deadline_at: input.deadline.min(Instant::now() + FOLLOW_SLICE),
+        deadline_at: input.deadline.min(input.opened + FOLLOW_SLICE),
         hosts: Vec::new(),
         requests: 0,
     };
@@ -293,4 +297,71 @@ pub fn settle_api_declarations(
         result.entries.push(entry(d, settled));
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::IpAddr;
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::web_audit::locality::Resolver;
+    use crate::web_audit::mock::{MockResponse, MockTransport};
+
+    struct PublicResolver;
+
+    impl Resolver for PublicResolver {
+        fn resolve(&self, _host: &str) -> Result<Vec<IpAddr>, String> {
+            Ok(vec!["93.184.216.34".parse().unwrap()])
+        }
+    }
+
+    fn declared(kind: ApiKind, url: &str) -> ApiDeclaration {
+        ApiDeclaration {
+            kind,
+            url: url.to_string(),
+            source: "/.well-known/api-catalog#/linkset/0".to_string(),
+            no_service_desc: false,
+        }
+    }
+
+    #[test]
+    fn the_clock_runs_from_when_the_slice_opened_not_from_the_api_batch() {
+        let transport = Arc::new(MockTransport::new(
+            vec![],
+            MockResponse::ok(200, &[], b"{}"),
+        ));
+        let fetch = FetchHandle::new(transport.clone(), Arc::new(PublicResolver), "anc-test/0");
+        let now = Instant::now();
+        let input = SliceInput {
+            base: "https://example.com/",
+            fetch: &fetch,
+            target_locality: None,
+            timeout: Duration::from_secs(2),
+            deadline: now + Duration::from_secs(20),
+            opened: now
+                .checked_sub(FOLLOW_SLICE)
+                .expect("an instant six seconds back"),
+        };
+        let result = settle_api_declarations(
+            &input,
+            &[
+                declared(ApiKind::Anchor, "https://api.test/"),
+                declared(ApiKind::Description, "https://api.test/openapi.json"),
+            ],
+        );
+        let settled: Vec<(Outcome, Option<&str>)> = result
+            .entries
+            .iter()
+            .map(|e| (e.settled.outcome, e.settled.cause))
+            .collect();
+        assert_eq!(
+            settled,
+            [
+                (Outcome::BudgetExceeded, Some("slice")),
+                (Outcome::BudgetExceeded, Some("slice")),
+            ]
+        );
+        assert!(transport.requests().is_empty());
+    }
 }

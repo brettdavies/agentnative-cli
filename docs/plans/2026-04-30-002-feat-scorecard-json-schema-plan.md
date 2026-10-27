@@ -1,8 +1,9 @@
 ---
 title: "feat: scorecard JSON Schema — derive, embed, expose, publish"
 type: feat
-status: active
-prs: ["#54"]
+status: merged
+prs: ["#54", "#238"]
+completed: 2026-10-27
 date: 2026-04-30
 ---
 
@@ -24,9 +25,12 @@ releases. The site's sync mechanism (a `sync-scorecard-schema.sh` script paralle
 `sync-coverage-matrix.sh`) pulls the file at site-build time and renames it per the canonical archive convention. That
 cross-repo plumbing is documented here but executed in the site repo.
 
-PR #54 ships a hand-written first cut: `anc emit schema` (U5) and the committed `schema/scorecard.schema.json` (U7),
-kept current by hand through schema 0.9. The schemars derive and build-time generation (U2 to U4), the drift and
-round-trip tests (U6), the discovery docs (U8) and the site companion (U9) are not built.
+The hand-written `schema/scorecard.schema.json` is the contract: PR #54 ships it with `anc emit schema` (U5, U7), and it
+carries what a derive cannot (descriptions, closed value sets, formats, `additionalProperties: false`, examples). A unit
+test derives the shape from the serialized types with `schemars` and fails when the file drifts from it (U6, PR #238).
+The derive-and-generate design below (U2 to U4) is not pursued, per the spike
+`docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md`. The site archive behind the versioned `$id` URLs (U9)
+is agentnative-site's.
 
 ---
 
@@ -241,8 +245,14 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 ### Resolved during planning
 
-- **Derive vs hand-write?** Derive (Brett's call).
-- **Embed prebuilt vs generate at runtime?** Embed prebuilt (Brett's call). `build.rs` does the work.
+- **Derive vs hand-write?** Hand-written, held by a derived drift test. `schema/scorecard.schema.json` is the
+  contract, and `scorecard::schema_drift` derives the shape from the serialized types and fails when the file
+  disagrees on a property name, a `required` list, or a type. The spike
+  `docs/plans/spikes/2026-10-27-scorecard-schema-derive-spike.md` settles it: a bare derive rejects 4 of 24
+  contract-breaking mutations against the hand-written file's 23, and matching the file takes about 60 schemars
+  attributes on the scorecard types.
+- **Embed prebuilt vs generate at runtime?** Embed prebuilt (Brett's call): `anc emit schema` prints the committed
+  file through `include_str!`.
 - **Single-version vs multi-version in binary?** Single (Brett's call). Site archives.
 - **Filename / `$id` URL convention?** Repo: `schemas/scorecard.schema.json` (always-current). Site: per-version
   archive, `$id` carries the canonical versioned URL the site publishes at. Brett's "follow best practices" deferred to
@@ -291,6 +301,9 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 - [ ] U2. **Add `schemars` build-dep + version research.**
 
+  **Not pursued.** `schemars` 1.2.3 is a dev-dependency only, for the U6 drift test; nothing generates
+  the shipped schema.
+
   **Goal:** pin the right schemars version and confirm the JSON Schema draft it emits.
 
   **Requirements:** R2, Q1.
@@ -323,6 +336,11 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 ---
 
 - [ ] U3. **Derive `JsonSchema` on every scorecard struct + enum.**
+
+  **Not pursued.** The scorecard types derive `JsonSchema` under `cfg(test)` for the U6 drift test,
+  with no schemars attributes. A derived document that matches the hand-written one needs about 60 attributes, and
+  four of its closed value sets would still be written out by hand, because `AuditResultView` stores them as
+  `String` (spike, "Options and costs").
 
   **Goal:** make the existing scorecard types generate a coherent baseline schema with no hand-edits.
 
@@ -369,6 +387,10 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 ---
 
 - [ ] U4. **`build.rs` codegen + `include_str!` in the runtime.**
+
+  **Not pursued.** Cargo builds and runs `build.rs` before the crate it belongs to, so the build script
+  cannot name `Scorecard`; build-time generation would need the scorecard types in a separate crate. The schema
+  stays hand-written.
 
   **Goal:** prebuild the schema at compile time, embed in the binary.
 
@@ -464,14 +486,17 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 ---
 
-- [ ] U6. **Drift + round-trip integration tests.**
+- [x] U6. **Drift + round-trip integration tests.**
 
   **Goal:** CI fails when schema and binary disagree.
 
-  Neither test exists. Partial guards stand in for them: `tests/scorecard_schema_v05.rs` checks the committed schema
-  against live scorecards (the `$id` version, the status enum, the `Summary` and row required keys, the `config_hint`
-  row field), and gate 3 of `scripts/release/smoke.sh` validates real scorecards with `check-jsonschema` at release
-  preflight. No `cargo test` runs a JSON Schema validator, and with no generated schema there is nothing to drift-check.
+  The drift test is `hand_written_schema_matches_the_serialized_shape` in `src/scorecard/schema_drift.rs` (#238). It
+  derives the shape with `schemars` and compares it with `schema/scorecard.schema.json` at every depth: property
+  names, `required` lists, and the JSON types each property admits. Round-trip validation stays where it is:
+  `tests/scorecard_schema_v05.rs` checks live scorecards against the schema's required keys, status enum, and row
+  properties, and pins its root description to `SCHEMA_VERSION` and its `BadgeInfo` description to the badge floor;
+  gate 3 of `scripts/release/smoke.sh` validates real scorecards with `check-jsonschema` at release preflight. The
+  validator crate and the `--check` verb below are not pursued, since nothing generates the file.
 
   **Requirements:** R7, R8.
 
@@ -541,14 +566,15 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
 
 ---
 
-- [ ] U8. **`anc emit --help` parity + AGENTS.md / README updates.**
+- [x] U8. **`anc emit --help` parity + AGENTS.md / README updates.**
 
   **Goal:** discoverability — readers landing on `anc --help` see the new verb and a one-line description; CLAUDE.md
 - AGENTS.md mention the artifact.
 
   `anc emit --help` lists `schema`, and the README's JSON Output section names `anc emit schema` and
-  `schema/scorecard.schema.json`. The AGENTS.md entry, the README link to the versioned `$id` URL, and the CLAUDE.md
-  lifecycle section do not exist.
+  `schema/scorecard.schema.json`. AGENTS.md's agent-facing JSON section points at `anc emit schema`, and CLAUDE.md's
+  "Scorecard JSON fields" section describes the hand-written file and its drift test (#238). The README link to the
+  versioned `$id` URL is not pursued: the URL returns 404 until agentnative-site serves the archive (U9).
 
   **Requirements:** R10 (the schema's own `title`/`description`), AGENTS-side discovery.
 
@@ -580,8 +606,9 @@ post-implementation if any non-obvious schemars behavior bites (e.g., enum repre
   **Goal:** trigger the site-side work to consume the new artifact (sync script, archive page, eventual validator
   tooling).
 
-  No site-side plan exists. The site serves a prose page at `/scorecard-schema`, and the schema's `$id`,
-  `https://anc.dev/scorecard-v0.9.schema.json`, returns 404.
+  **Not pursued here.** The archive and the URLs it serves belong to agentnative-site, so this plan does not hold
+  them. No site-side plan exists; the site serves a prose page at `/scorecard-schema`, and the schema's `$id`,
+  `https://anc.dev/scorecard-v0.9.schema.json`, returns 404, as does `https://anc.dev/web-scorecard-v0.5.schema.json`.
 
   **Requirements:** Cross-repo coordination (R9 implies the site honors the `$id` URL).
 

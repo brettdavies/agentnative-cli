@@ -24,7 +24,7 @@ function __fish_anc_using_subcommand
     contains -- $cmd[1] $argv
 end
 
-complete -c anc -n "__fish_anc_needs_command" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_needs_command" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_needs_command" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
@@ -49,7 +49,7 @@ complete -c anc -n "__fish_anc_using_subcommand audit" -l audit-profile -d 'Exem
 file-traversal\t'File-traversal utilities (fd, find). Reserved for subcommand-structure relaxations as those audits land'
 posix-utility\t'POSIX utilities (cat, sed, awk). P1 interactive-prompt MUSTs satisfied vacuously via stdin-primary input'
 diagnostic-only\t'Diagnostic tools (nvidia-smi, vmstat). No write operations, so the P5 mutation-boundary MUSTs do not apply'"
-complete -c anc -n "__fish_anc_using_subcommand audit" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand audit" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand audit" -l binary -d 'Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin'
@@ -61,7 +61,7 @@ complete -c anc -n "__fish_anc_using_subcommand audit" -l examples -d 'Print a c
 complete -c anc -n "__fish_anc_using_subcommand audit" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand audit" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
 complete -c anc -n "__fish_anc_using_subcommand audit" -s h -l help -d 'Print help (see more with \'--help\')'
-complete -c anc -n "__fish_anc_using_subcommand completions" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand completions" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand completions" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
@@ -70,7 +70,7 @@ complete -c anc -n "__fish_anc_using_subcommand completions" -l examples -d 'Pri
 complete -c anc -n "__fish_anc_using_subcommand completions" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand completions" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
 complete -c anc -n "__fish_anc_using_subcommand completions" -s h -l help -d 'Print help'
-complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
@@ -84,7 +84,7 @@ complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcom
 complete -c anc -n "__fish_anc_using_subcommand emit; and not __fish_seen_subcommand_from coverage-matrix schema help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l out -d 'Path for the Markdown artifact. Defaults to `docs/coverage-matrix.md`' -r -F
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l json-out -d 'Path for the JSON artifact. Defaults to `coverage/matrix.json`' -r -F
-complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l check -d 'Exit non-zero when committed artifacts differ from rendered output. CI drift guard'
@@ -94,7 +94,7 @@ complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l json -d 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -l raw -d 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from coverage-matrix" -s h -l help -d 'Print help'
-complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from schema" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
@@ -106,7 +106,7 @@ complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from help" -f -a "coverage-matrix" -d 'Render the spec coverage matrix (registry → audits → artifact)'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from help" -f -a "schema" -d 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
 complete -c anc -n "__fish_anc_using_subcommand emit; and __fish_seen_subcommand_from help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
-complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -s q -l quiet -d 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
@@ -120,7 +120,7 @@ complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subco
 complete -c anc -n "__fish_anc_using_subcommand skill; and not __fish_seen_subcommand_from install update help" -f -a "help" -d 'Print this message or the help of the given subcommand(s)'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l output -d 'Output format for the result envelope' -r -f -a "text\t''
 json\t''"
-complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -l all -d 'Install into every known host in one invocation'
@@ -133,7 +133,7 @@ complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcomman
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from install" -s h -l help -d 'Print help (see more with \'--help\')'
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l output -d 'Output format for the result envelope' -r -f -a "text\t''
 json\t''"
-complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (https://no-color.org/)' -r -f -a "auto\t''
+complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l color -d 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)' -r -f -a "auto\t''
 always\t''
 never\t''"
 complete -c anc -n "__fish_anc_using_subcommand skill; and __fish_seen_subcommand_from update" -l all -d 'Refresh every known host in one invocation'

@@ -1,8 +1,9 @@
 //! The seam between the engine and the probe handlers.
 //!
 //! A check dispatches by its handler kind, unless it carries the
-//! `legacy-alias-redirects` eval rule or the `retained-document` rule on
-//! an `http` check, which have their own entry points in the site engine;
+//! `api-description` or `legacy-alias-redirects` eval rule or the
+//! `retained-document` rule on an `http` check, which have their own entry
+//! points in the site engine;
 //! a `retained-document` check on any other handler scores the document
 //! with that handler. A kind or rule nothing has registered is unported: the
 //! engine reports the row as a skip naming the kind, and the run's score is
@@ -77,21 +78,20 @@ impl HandlerSet {
 
     /// Run the handler a check binds to.
     pub fn dispatch(&self, check: &WebCheck, ctx: &HandlerContext) -> Dispatch {
-        match check.eval {
-            Some(EvalBinding::LegacyAliasRedirects) => {
-                return match self.evals.get("legacy-alias-redirects") {
-                    Some(handler) => Dispatch::Outcome(handler(check, ctx)),
-                    None => Dispatch::Unported("legacy-alias-redirects"),
-                };
-            }
+        let rule = match check.eval {
+            Some(EvalBinding::ApiDescription) => Some("api-description"),
+            Some(EvalBinding::LegacyAliasRedirects) => Some("legacy-alias-redirects"),
             Some(EvalBinding::RetainedDocument) if check.handler == HandlerBinding::Http => {
-                return match self.evals.get("retained-document") {
-                    Some(handler) => Dispatch::Outcome(handler(check, ctx)),
-                    None => Dispatch::Unported("retained-document"),
-                };
+                Some("retained-document")
             }
             Some(EvalBinding::Unsupported(rule)) => return Dispatch::Unported(rule),
-            Some(EvalBinding::RetainedDocument | EvalBinding::ScopedDiscovery) | None => {}
+            Some(EvalBinding::RetainedDocument | EvalBinding::ScopedDiscovery) | None => None,
+        };
+        if let Some(rule) = rule {
+            return match self.evals.get(rule) {
+                Some(handler) => Dispatch::Outcome(handler(check, ctx)),
+                None => Dispatch::Unported(rule),
+            };
         }
         let kind = match check.handler {
             HandlerBinding::Unsupported(kind) => return Dispatch::Unported(kind),

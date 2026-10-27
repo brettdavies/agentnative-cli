@@ -217,14 +217,19 @@ pub fn summarize_evidence(check: &WebCheck, outcome: &ProbeOutcome) -> String {
         );
     }
 
-    let item = if outcome.status == ProbeStatus::Pass {
-        outcome
+    // A row over several targets names the target that decided it.
+    let decisive = outcome
+        .evidence
+        .iter()
+        .find(|e| e.get("target_status").and_then(Value::as_str) == Some(outcome.status.as_str()));
+    let item = match decisive {
+        Some(item) => item,
+        None if outcome.status == ProbeStatus::Pass => outcome
             .evidence
             .iter()
             .find(|e| truthy(e.get("ok")))
-            .unwrap_or(first)
-    } else {
-        first
+            .unwrap_or(first),
+        None => first,
     };
     if truthy(item.get("error")) {
         return format!("{}: {}", js_str(item.get("url")), js_str(item.get("error")));

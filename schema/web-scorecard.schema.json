@@ -311,6 +311,8 @@
             "posture-consistent",
             "auth-required",
             "declared-host-blocked",
+            "declared-host-unreachable",
+            "declared-host-budget-exceeded",
             "follow-disabled",
             "reciprocity-refused"
           ],
@@ -365,6 +367,8 @@
             "posture-consistent",
             "auth-required",
             "declared-host-blocked",
+            "declared-host-unreachable",
+            "declared-host-budget-exceeded",
             "follow-disabled",
             "reciprocity-refused"
           ],

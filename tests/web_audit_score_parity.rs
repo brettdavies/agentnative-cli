@@ -297,6 +297,45 @@ fn the_committed_schema_describes_exactly_what_the_mirror_serializes() {
     }
 }
 
+/// The site's `NA_REASONS` (`src/shared/web-audit-findings.ts`) at the pin.
+const SITE_NA_REASONS: [&str; 9] = [
+    "antecedent-unmet",
+    "optional-absent",
+    "posture-consistent",
+    "follow-disabled",
+    "reciprocity-refused",
+    "declared-host-unreachable",
+    "declared-host-blocked",
+    "declared-host-budget-exceeded",
+    "auth-required",
+];
+
+#[test]
+fn the_schema_and_the_mirror_carry_every_na_reason_the_site_emits() {
+    let schema: Value = serde_json::from_str(
+        &fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("schema/web-scorecard.schema.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let site: BTreeSet<&str> = SITE_NA_REASONS.into_iter().collect();
+    for def in ["ResultRow", "RowHost"] {
+        let listed: BTreeSet<&str> = schema["$defs"][def]["properties"]["na_reason"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(listed, site, "{def}");
+    }
+    for reason in SITE_NA_REASONS {
+        let parsed: NaReason = serde_json::from_value(Value::String(reason.into()))
+            .unwrap_or_else(|e| panic!("{reason}: {e}"));
+        assert_eq!(serde_json::to_value(parsed).unwrap(), reason);
+    }
+}
+
 #[test]
 fn keywords_and_tiers_serialize_under_their_registry_spelling() {
     assert_eq!(serde_json::to_value(WebCheckKeyword::Must).unwrap(), "must");

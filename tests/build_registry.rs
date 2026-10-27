@@ -224,10 +224,9 @@ fn vendored_registry_counters() {
         .filter(|c| !c.eval_supported)
         .filter_map(|c| c.eval.as_deref())
         .collect();
-    assert_eq!(
-        unported_evals,
-        BTreeSet::from(["api-description"]),
-        "unported eval rules (shrink as each port lands)"
+    assert!(
+        unported_evals.is_empty(),
+        "unported eval rules (shrink as each port lands): {unported_evals:?}"
     );
     assert_eq!(reg.mcp_lanes.len(), 4, "MCP lanes (bump deliberately)");
     assert_eq!(reg.retired.len(), 1, "retired ids (bump deliberately)");
@@ -352,7 +351,7 @@ fn known_handler_and_eval_bind_supported() {
     assert!(reg.checks[0].handler_supported);
     assert!(reg.checks[0].eval_supported);
     assert_eq!(HANDLER_KINDS.len(), 12);
-    assert_eq!(EVAL_RULES.len(), 3);
+    assert_eq!(EVAL_RULES.len(), 4);
 }
 
 // ---------------------------------------------------------------------------

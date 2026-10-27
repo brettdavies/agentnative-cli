@@ -5,9 +5,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::api_targets::ApiTargets;
 use super::discovery_documents::RetainedDocuments;
 use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
+use crate::web_audit::handlers::api_hygiene::HostProbes;
 use crate::web_audit::locality::{ClassifyError, Locality, Resolver, classify_host};
 use crate::web_audit::scorecard::{EvidenceItem, NaReason, RowAdvisory, ScorecardStatus};
 use crate::web_audit::transport::Transport;
@@ -30,6 +32,16 @@ pub enum ProbeStatus {
 }
 
 impl ProbeStatus {
+    /// Every verdict, as the site lists its `ProbeStatus` values.
+    pub const ALL: [ProbeStatus; 6] = [
+        ProbeStatus::Pass,
+        ProbeStatus::Noncompliant,
+        ProbeStatus::Broken,
+        ProbeStatus::Absent,
+        ProbeStatus::Na,
+        ProbeStatus::Error,
+    ];
+
     /// The site's `ProbeStatus` spelling, which evidence items carry.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -226,6 +238,13 @@ pub struct HandlerContext {
     pub retained_bodies: Arc<HashMap<String, String>>,
     /// The documents discovery kept, by retained-document key.
     pub retained_documents: Arc<RetainedDocuments>,
+    /// Where the API rows evaluate; `None` when the API catalog lists no
+    /// API anchor and they evaluate the audited origin.
+    pub api_targets: Option<Arc<ApiTargets>>,
+    /// The descriptions the OpenAPI row retained, by declared URL.
+    pub api_description_bodies: Arc<HashMap<String, String>>,
+    /// The anchor-host GETs both hygiene rows share.
+    pub api_host_probes: Arc<HostProbes>,
     /// The run's transport, resolver and identity.
     pub fetch: FetchHandle,
     /// Session id from wave-1 `initialize`, when the server issued one.

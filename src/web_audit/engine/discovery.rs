@@ -65,6 +65,9 @@ pub struct DiscoveryResult {
     pub evidence: Vec<EvidenceItem>,
     /// The documents later checks score, by retained-document key.
     pub documents: RetainedDocuments,
+    /// When the document reads ended, before any POST: where the site's
+    /// engine opens its follow slice, whose clock runs from here.
+    pub follow_opened: Option<Instant>,
 }
 
 /// Join a path to the base, or pass an absolute URL through unchanged; empty
@@ -172,6 +175,7 @@ struct Walk<'a> {
     suffix: Option<CardRead>,
     deadline_hit: bool,
     documents: RetainedDocuments,
+    documents_read: Option<Instant>,
 }
 
 impl<'a> Walk<'a> {
@@ -186,6 +190,7 @@ impl<'a> Walk<'a> {
             suffix: None,
             deadline_hit: false,
             documents: RetainedDocuments::new(),
+            documents_read: None,
         }
     }
 
@@ -216,6 +221,7 @@ impl<'a> Walk<'a> {
             suffix,
             deadline_hit,
             mut documents,
+            documents_read,
         } = self;
         let catalog: Vec<&CardRead> = catalog_slots.iter().filter_map(CatalogSlot::read).collect();
         let known: Vec<&CardRead> = well_known.iter().collect();
@@ -284,6 +290,7 @@ impl<'a> Walk<'a> {
             endpoint,
             evidence,
             documents,
+            follow_opened: Some(documents_read.unwrap_or_else(Instant::now)),
         }
     }
 }
@@ -430,6 +437,8 @@ pub fn discover_mcp_endpoint(
         };
         walk.catalog_slots.push(slot);
     }
+
+    walk.documents_read = Some(Instant::now());
 
     // POST probing, only when no card named an endpoint on the audited origin.
     let candidates: Vec<Candidate> = cfg

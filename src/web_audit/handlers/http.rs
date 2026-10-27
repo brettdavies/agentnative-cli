@@ -54,7 +54,11 @@ pub fn header_pairs(headers: Option<&Map<String, Value>>) -> Vec<(String, String
 /// unless the check opted into an explicit hang budget. A redirect to http
 /// is absent: anc never takes that hop, and a surface served only over
 /// plaintext earns no more than a missing one.
-fn classify_miss(resp: &ProbeResponse, expect: &ExpectBlock, has_explicit_timeout: bool) -> Miss {
+pub(crate) fn classify_miss(
+    resp: &ProbeResponse,
+    expect: &ExpectBlock,
+    has_explicit_timeout: bool,
+) -> Miss {
     if redirects_to_http(resp) {
         return Miss::Absent;
     }
@@ -78,7 +82,7 @@ fn classify_miss(resp: &ProbeResponse, expect: &ExpectBlock, has_explicit_timeou
 /// One response asserted against the check's expectations, as its
 /// evidence row, and whether it passed. A redirect to http is never
 /// asserted: nothing it serves is readable over https.
-fn assess_response(
+pub(crate) fn assess_response(
     check: &WebCheck,
     url: &str,
     resp: &ProbeResponse,

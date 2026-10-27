@@ -1,24 +1,28 @@
 //! The `api-hygiene` handler, a mirror of the site's
-//! `handlers/api-hygiene.ts`: JSON error bodies and rate-limit headers.
-//! Derives one non-mutating GET URL from the retained wave-1 OpenAPI body
-//! (a documented 4xx example, else the first safe GET) and falls back to a
-//! well-known nonsense path when the body is missing or unusable.
+//! `handlers/api-hygiene.ts`: JSON error bodies and rate-limit headers, at
+//! the URL `api_probe_url` derives on a host. With no API anchor in the API
+//! catalog, the one host is the audited origin and each row sends its own
+//! GET. With anchors, each anchor host receives one GET, which both rows
+//! read, and each row aggregates its hosts, so when every anchor is off the
+//! audited origin no probe reaches it. A GET to an anchor host off the
+//! audited origin takes no redirect to another origin.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use regex::Regex;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use url::Url;
 
-use super::shared::{JS_SPACE, item, why};
+use super::api_probe_url::{ProbeUrl, derive_api_probe_url, derive_host_probe_url};
+use super::shared::{JS_SPACE, item, plaintext_item, resolve_url, why};
+use super::targets::{TargetOutcome, aggregate_targets};
+use crate::web_audit::engine::api_targets::ApiHostTarget;
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::body::{AUDIT_PROBE_MAX_BODY_BYTES, STATUS_ONLY_BODY_BYTES};
+use crate::web_audit::fetch::redirect::{DEFAULT_MAX_REDIRECTS, is_redirect};
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::registry::WebCheck;
-
-/// The path probed when no OpenAPI operation can be derived.
-pub const API_HYGIENE_FALLBACK_PATH: &str = "/anc-web-audit-no-such-api";
 
 const RATE_LIMIT_HEADERS: [&str; 8] = [
     "ratelimit-limit",
@@ -41,9 +45,28 @@ pub struct ApiHygieneWith {
     pub timeout: Option<f64>,
 }
 
-static PATH_PARAM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{[^}]+\}").unwrap());
-static CLIENT_ERROR_CODE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(4\d\d|4XX)$").unwrap());
+/// The anchor-host GETs a run has sent, one per URL, shared by both rows.
+#[derive(Debug, Default)]
+pub struct HostProbes(Mutex<Vec<(String, Arc<OnceLock<ProbeResponse>>)>>);
+
+impl HostProbes {
+    /// The response for `url`, sending it only when no row has.
+    fn get(&self, url: &str, send: impl FnOnce() -> ProbeResponse) -> ProbeResponse {
+        let cell = {
+            let mut sent = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            match sent.iter().find(|(sent_url, _)| sent_url == url) {
+                Some((_, cell)) => Arc::clone(cell),
+                None => {
+                    let cell = Arc::new(OnceLock::new());
+                    sent.push((url.to_string(), Arc::clone(&cell)));
+                    cell
+                }
+            }
+        };
+        cell.get_or_init(send).clone()
+    }
+}
+
 static HTML_CT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)html").unwrap());
 static HTML_BODY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?i)^[{JS_SPACE}]*<(!doctype|html|head|body)\b")).unwrap()
@@ -51,96 +74,6 @@ static HTML_BODY: LazyLock<Regex> = LazyLock::new(|| {
 
 fn is_client_error(status: u16) -> bool {
     (400..500).contains(&status)
-}
-
-fn fill_path(path: &str) -> String {
-    PATH_PARAM
-        .replace_all(path, "anc-web-audit-no-such")
-        .into_owned()
-}
-
-struct OpenApiOp<'a> {
-    path: &'a str,
-    responses: Vec<&'a str>,
-}
-
-fn operations_from(spec: &Map<String, Value>) -> Vec<OpenApiOp<'_>> {
-    let Some(paths) = spec.get("paths").and_then(Value::as_object) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for (path, entry) in paths {
-        let Some(methods) = entry.as_object().filter(|_| path.starts_with('/')) else {
-            continue;
-        };
-        for (method, op) in methods {
-            if !matches!(method.to_lowercase().as_str(), "get" | "head") {
-                continue;
-            }
-            let responses = op
-                .as_object()
-                .and_then(|o| o.get("responses"))
-                .and_then(Value::as_object)
-                .map(|r| r.keys().map(String::as_str).collect())
-                .unwrap_or_default();
-            out.push(OpenApiOp { path, responses });
-        }
-    }
-    out
-}
-
-fn resolve_same_origin(base: &str, path: &str) -> Option<String> {
-    Url::parse(base)
-        .ok()?
-        .join(&fill_path(path))
-        .ok()
-        .map(|u| u.to_string())
-}
-
-/// The single GET URL both hygiene checks share, and where it came from.
-pub fn derive_api_probe_url(openapi_body: &str, ctx: &HandlerContext) -> (String, &'static str) {
-    let fallback = || {
-        (
-            resolve_same_origin(&ctx.base, API_HYGIENE_FALLBACK_PATH).unwrap_or_default(),
-            "fallback",
-        )
-    };
-    if openapi_body.is_empty() {
-        return fallback();
-    }
-    let Ok(Value::Object(spec)) = serde_json::from_str::<Value>(openapi_body) else {
-        return fallback();
-    };
-    let ops = operations_from(&spec);
-    let documented_4xx = ops.iter().find(|op| {
-        op.responses
-            .iter()
-            .any(|code| CLIENT_ERROR_CODE.is_match(code))
-    });
-    let Some(chosen) = documented_4xx.or(ops.first()) else {
-        return fallback();
-    };
-    let Some(url) = resolve_same_origin(&ctx.base, chosen.path) else {
-        return fallback();
-    };
-    if ctx.validate_nested(&url).is_err() {
-        return fallback();
-    }
-    let same_origin = match (Url::parse(&url), Url::parse(&ctx.base)) {
-        (Ok(u), Ok(b)) => u.origin() == b.origin(),
-        _ => false,
-    };
-    if !same_origin {
-        return fallback();
-    }
-    (
-        url,
-        if documented_4xx.is_some() {
-            "openapi-4xx"
-        } else {
-            "openapi-get"
-        },
-    )
 }
 
 fn is_html(resp: &ProbeResponse) -> bool {
@@ -164,87 +97,60 @@ fn rate_limit_header(resp: &ProbeResponse) -> Option<&'static str> {
         .find(|name| resp.headers.contains(name))
 }
 
-/// Probe the derived API URL for the op's hygiene signal.
-pub fn run_api_hygiene(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
-    let w: ApiHygieneWith = serde_json::from_str(check.with_json).unwrap_or_default();
-    let op = w.op.as_deref().unwrap_or("json-errors");
-    let rate_limit = op == "rate-limit";
-    let openapi = ctx
-        .retained_bodies
-        .get("openapi")
-        .map(String::as_str)
-        .unwrap_or("");
-    let (url, source) = derive_api_probe_url(openapi, ctx);
-    if let Err(reason) = ctx.validate_nested(&url) {
-        return ProbeOutcome::new(
-            ProbeStatus::Error,
-            vec![item([
-                ("url", json!(url)),
-                ("blocked", json!(reason)),
-                ("source", json!(source)),
-            ])],
-        );
+fn probe_once(
+    rate_limit: bool,
+    derived: &ProbeUrl,
+    ctx: &HandlerContext,
+    get: impl FnOnce(&str) -> ProbeResponse,
+) -> TargetOutcome {
+    let (url, source) = (&derived.url, derived.source);
+    let outcome = |status, item| TargetOutcome {
+        status,
+        na_reason: None,
+        evidence: vec![item],
+    };
+    if let Err(reason) = ctx.validate_nested(url) {
+        let row = item([
+            ("url", json!(url)),
+            ("blocked", json!(reason)),
+            ("source", json!(source)),
+        ]);
+        return outcome(ProbeStatus::Error, row);
     }
-
-    let resp = ctx.fetch.fetch(
-        &url,
-        &FetchInit::default(),
-        &FetchOptions {
-            max_body_bytes: Some(if rate_limit {
-                STATUS_ONLY_BODY_BYTES
-            } else {
-                AUDIT_PROBE_MAX_BODY_BYTES
-            }),
-            ..ctx.fetch_options(w.timeout)
-        },
-    );
+    let resp = get(url);
     let Some(status) = resp.status.filter(|_| resp.error.is_none()) else {
-        return ProbeOutcome::new(
-            ProbeStatus::Error,
-            vec![item([
-                ("url", json!(url)),
-                ("status", json!(resp.status)),
-                ("error", json!(resp.error)),
-                ("source", json!(source)),
-            ])],
-        );
+        let row = item([
+            ("url", json!(url)),
+            ("status", json!(resp.status)),
+            ("error", json!(resp.error)),
+            ("source", json!(source)),
+        ]);
+        return outcome(ProbeStatus::Error, row);
+    };
+    let verdict = |ok: bool, verdict, lines: &[&str]| {
+        let row = item([
+            ("url", json!(url)),
+            ("status", json!(status)),
+            ("ok", json!(ok)),
+            ("source", json!(source)),
+            ("why", why(lines)),
+        ]);
+        outcome(verdict, row)
     };
 
     if rate_limit {
-        let header = rate_limit_header(&resp);
-        let line = match header {
-            Some(name) => format!("rate-limit header {name}"),
-            None => "no rate-limit header".to_string(),
+        return match rate_limit_header(&resp) {
+            Some(name) => verdict(
+                true,
+                ProbeStatus::Pass,
+                &[&format!("rate-limit header {name}")],
+            ),
+            None => verdict(false, ProbeStatus::Absent, &["no rate-limit header"]),
         };
-        return ProbeOutcome::new(
-            if header.is_some() {
-                ProbeStatus::Pass
-            } else {
-                ProbeStatus::Absent
-            },
-            vec![item([
-                ("url", json!(url)),
-                ("status", json!(status)),
-                ("ok", json!(header.is_some())),
-                ("source", json!(source)),
-                ("why", why(&[&line])),
-            ])],
-        );
     }
-
     if is_client_error(status) && is_json_body(&resp) {
-        return ProbeOutcome::new(
-            ProbeStatus::Pass,
-            vec![item([
-                ("url", json!(url)),
-                ("status", json!(status)),
-                ("ok", json!(true)),
-                ("source", json!(source)),
-                ("why", why(&["client-error JSON body"])),
-            ])],
-        );
+        return verdict(true, ProbeStatus::Pass, &["client-error JSON body"]);
     }
-
     let html = is_html(&resp);
     let shape = if html {
         "HTML error body"
@@ -253,51 +159,127 @@ pub fn run_api_hygiene(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     } else {
         "non-JSON error body"
     };
-    let status_line = format!("status {status}");
-    let verdict = if status >= 500 || html || is_client_error(status) {
+    let miss = if status >= 500 || html || is_client_error(status) {
         ProbeStatus::Broken
     } else {
         ProbeStatus::Absent
     };
-    ProbeOutcome::new(
-        verdict,
-        vec![item([
-            ("url", json!(url)),
-            ("status", json!(status)),
-            ("ok", json!(false)),
-            ("source", json!(source)),
-            ("why", why(&[&status_line, shape])),
-        ])],
+    verdict(false, miss, &[&format!("status {status}"), shape])
+}
+
+fn origin_of(url: &str) -> Option<String> {
+    Url::parse(url)
+        .ok()
+        .map(|u| u.origin().ascii_serialization())
+}
+
+/// A GET whose redirect to another origin comes back as its answer.
+fn same_origin_get(ctx: &HandlerContext, url: &str, opts: &FetchOptions) -> ProbeResponse {
+    let origin = origin_of(url);
+    let opts = FetchOptions {
+        follow_redirects: false,
+        ..opts.clone()
+    };
+    let mut current = url.to_string();
+    for hop in 0..=DEFAULT_MAX_REDIRECTS {
+        let resp = ctx.fetch.fetch(&current, &FetchInit::default(), &opts);
+        let location = resp.headers.get("location").map(str::to_string);
+        let (Some(status), Some(location)) = (resp.status, location) else {
+            return resp;
+        };
+        let next = resolve_url(&current, &location);
+        if !is_redirect(status) || origin_of(&next) != origin {
+            return resp;
+        }
+        if hop == DEFAULT_MAX_REDIRECTS {
+            break;
+        }
+        current = next;
+    }
+    ProbeResponse::failed(
+        format!("redirect limit exceeded ({DEFAULT_MAX_REDIRECTS} hops)"),
+        0,
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn path_parameters_are_filled_and_client_error_codes_recognized() {
-        assert_eq!(
-            fill_path("/users/{id}/posts/{postId}"),
-            "/users/anc-web-audit-no-such/posts/anc-web-audit-no-such"
-        );
-        assert!(CLIENT_ERROR_CODE.is_match("404"));
-        assert!(CLIENT_ERROR_CODE.is_match("4xx"));
-        assert!(!CLIENT_ERROR_CODE.is_match("500"));
+fn probe_host(
+    rate_limit: bool,
+    target: &ApiHostTarget,
+    opts: &FetchOptions,
+    ctx: &HandlerContext,
+) -> TargetOutcome {
+    if let Some(unmet) = &target.unmet {
+        return TargetOutcome {
+            status: ProbeStatus::Na,
+            na_reason: Some(unmet.reason),
+            evidence: vec![item([
+                ("host", json!(unmet.host)),
+                ("why", json!([unmet.url])),
+            ])],
+        };
     }
-
-    #[test]
-    fn operations_keep_spec_order_and_safe_methods_only() {
-        let spec: Value = serde_json::json!({
-            "paths": {
-                "/b": { "post": { "responses": { "404": {} } }, "get": { "responses": { "200": {} } } },
-                "/a": { "head": { "responses": { "4XX": {} } } },
-                "relative": { "get": {} }
+    if let Some(reason) = target.plaintext {
+        let mut row = item([("url", json!(target.anchors.first().map(|a| &a.url)))]);
+        row.extend(plaintext_item(reason));
+        return TargetOutcome {
+            status: ProbeStatus::Absent,
+            na_reason: None,
+            evidence: vec![row],
+        };
+    }
+    let allowed = |url: &str| ctx.validate_nested(url).is_ok();
+    let derived = derive_host_probe_url(target, &ctx.api_description_bodies, &allowed);
+    probe_once(rate_limit, &derived, ctx, |url| {
+        ctx.api_host_probes.get(url, || {
+            if target.declared {
+                same_origin_get(ctx, url, opts)
+            } else {
+                ctx.fetch.fetch(url, &FetchInit::default(), opts)
             }
-        });
-        let ops = operations_from(spec.as_object().unwrap());
-        let seen: Vec<(&str, Vec<&str>)> =
-            ops.iter().map(|o| (o.path, o.responses.clone())).collect();
-        assert_eq!(seen, [("/b", vec!["200"]), ("/a", vec!["4XX"])]);
+        })
+    })
+}
+
+/// Probe the derived API URL, or each API anchor host, for the op's signal.
+pub fn run_api_hygiene(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
+    let w: ApiHygieneWith = serde_json::from_str(check.with_json).unwrap_or_default();
+    let rate_limit = w.op.as_deref() == Some("rate-limit");
+    let Some(targets) = ctx.api_targets.as_deref() else {
+        let openapi = ctx
+            .retained_bodies
+            .get("openapi")
+            .map_or("", String::as_str);
+        let allowed = |url: &str| ctx.validate_nested(url).is_ok();
+        let derived = derive_api_probe_url(openapi, &ctx.base, &allowed);
+        let opts = FetchOptions {
+            max_body_bytes: Some(if rate_limit {
+                STATUS_ONLY_BODY_BYTES
+            } else {
+                AUDIT_PROBE_MAX_BODY_BYTES
+            }),
+            ..ctx.fetch_options(w.timeout)
+        };
+        let get = |url: &str| ctx.fetch.fetch(url, &FetchInit::default(), &opts);
+        let one = probe_once(rate_limit, &derived, ctx, get);
+        return ProbeOutcome::new(one.status, one.evidence);
+    };
+    if targets.hosts.is_empty() {
+        return ProbeOutcome::na("no API anchor host the audit can probe");
     }
+    let opts = FetchOptions {
+        max_body_bytes: Some(AUDIT_PROBE_MAX_BODY_BYTES),
+        ..ctx.fetch_options(w.timeout)
+    };
+    let outcomes: Vec<TargetOutcome> = std::thread::scope(|scope| {
+        let handles: Vec<_> = targets
+            .hosts
+            .iter()
+            .map(|t| scope.spawn(|| probe_host(rate_limit, t, &opts, ctx)))
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| h.join().expect("a host probe does not panic"))
+            .collect()
+    });
+    aggregate_targets(outcomes)
 }

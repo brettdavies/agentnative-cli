@@ -10,7 +10,11 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 use super::antecedents::{self, AntecedentContext, Resolution};
+use super::api_catalog::{api_declarations, catalog_anchors};
+use super::api_follow::{ApiFollowResult, SliceInput, settle_api_declarations};
+use super::api_targets::api_targets;
 use super::discovery::{DiscoveryResult, discover_mcp_endpoint};
+use super::discovery_documents::API_CATALOG_DOCUMENT;
 use super::handlers::{Dispatch, HandlerSet};
 use super::mcp_wire::{
     advertised_capabilities, modern_lane_from, notify_mcp_initialized, session_id_from,
@@ -23,6 +27,8 @@ use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{
     FetchInit, FetchOptions, NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal,
 };
+use crate::web_audit::handlers::api_description::api_description_bodies;
+use crate::web_audit::handlers::api_hygiene::HostProbes;
 use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::{
     CATEGORIES, CATEGORY_ORDER, CHECKS, HandlerBinding, MCP_DISCOVERY, WebCheck, WebCheckKeyword,
@@ -177,7 +183,7 @@ fn normalize_base(raw: &str) -> Option<Base> {
 // Cloudflare answers on the origin's behalf with these when the origin never
 // spoke: 52x for connection and timeout failures, 530 when the host does not
 // resolve. They carry the auditor's edge, not the target.
-fn is_edge_error_status(status: Option<u16>) -> bool {
+pub(crate) fn is_edge_error_status(status: Option<u16>) -> bool {
     matches!(status, Some(530) | Some(520..=527))
 }
 
@@ -468,11 +474,32 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         };
     }
 
+    // The API catalog's anchors decide where the API rows evaluate. Its
+    // off-origin declarations are followed only when an API row can apply
+    // to the declared site type.
+    let anchors = catalog_anchors(discovery.documents.get(API_CATALOG_DOCUMENT));
+    let api_follow = if matches!(input.site_type, None | Some(DeclaredSiteType::Api)) {
+        let slice = SliceInput {
+            base: &base,
+            fetch: &input.fetch,
+            target_locality,
+            timeout: per_check_timeout,
+            deadline,
+            opened: discovery.follow_opened.unwrap_or_else(Instant::now),
+        };
+        settle_api_declarations(&slice, &api_declarations(&anchors))
+    } else {
+        ApiFollowResult::default()
+    };
+    let api = api_targets(&base, &anchors, &api_follow).map(Arc::new);
+    let host_probes = Arc::new(HostProbes::default());
+
     let mut incomplete = false;
     let mut unported: Vec<Unported> = Vec::new();
     let retained_documents = Arc::new(discovery.documents.clone());
     let handler_ctx = |scoped_dirs: Arc<Vec<String>>,
                        retained: Arc<HashMap<String, String>>,
+                       descriptions: Arc<HashMap<String, String>>,
                        session: Option<String>,
                        lanes: McpLaneEvidence| HandlerContext {
         base: base.clone(),
@@ -488,6 +515,9 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         scoped_dirs,
         retained_bodies: retained,
         retained_documents: Arc::clone(&retained_documents),
+        api_targets: api.clone(),
+        api_description_bodies: descriptions,
+        api_host_probes: Arc::clone(&host_probes),
         fetch: input.fetch.clone(),
         mcp_session_id: session,
         mcp_lanes: lanes,
@@ -507,6 +537,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         .collect();
     let ctx1 = handler_ctx(
         Arc::new(Vec::new()),
+        Arc::new(HashMap::new()),
         Arc::new(HashMap::new()),
         None,
         McpLaneEvidence::default(),
@@ -551,6 +582,11 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     if !openapi_body.is_empty() {
         retained.insert("openapi".to_string(), openapi_body);
     }
+    let descriptions = Arc::new(api_description_bodies(
+        sources
+            .get("openapi")
+            .map_or(&[][..], |o| o.evidence.as_slice()),
+    ));
     let session = session_id_from(sources.get("mcp-initialize"));
     let lanes = McpLaneEvidence {
         modern: modern_lane_from(sources.get("mcp-server-discover")),
@@ -583,6 +619,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         discovery_evidence: &discovery.evidence,
         root: root.as_deref(),
         sources: &sources,
+        api_anchors: anchors.iter().any(|a| a.is_api()),
     };
     // Gate: declared-type filter first, then the antecedent token.
     let gate = |check: &'static WebCheck| -> Option<EngineResult> {
@@ -648,7 +685,13 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             None => applicable.push(check),
         }
     }
-    let ctx2 = handler_ctx(scoped_dirs, Arc::new(retained), session, lanes);
+    let ctx2 = handler_ctx(
+        scoped_dirs,
+        Arc::new(retained),
+        descriptions,
+        session,
+        lanes,
+    );
     for probed in run_wave(
         applicable,
         &ctx2,
@@ -683,6 +726,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         spec_version: input.spec_version.clone(),
         site_type: input.site_type,
         public_listing: false,
+        declared_hosts: api_follow.entries.iter().map(|e| e.to_item()).collect(),
     };
     let scorecard = build_web_scorecard(
         &results,

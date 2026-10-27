@@ -14,7 +14,6 @@ use common::web_cli::{anc, api_site, fixture_site, host_of, stderr_of, stdout_of
 use serde_json::Value;
 
 #[test]
-#[ignore = "openapi binds the unported api-description eval at site d5772289 (site #401/#412), so it skips; the API port restores it"]
 fn a_must_miss_is_a_failure_and_a_clean_run_is_zero() {
     let server = api_site();
     let assert = anc()
@@ -83,7 +82,6 @@ fn the_single_check_form_returns_that_rows_code() {
 /// gate in, because the declaration is what satisfies it. So this pins
 /// which rows carry the declared-type line rather than counting them.
 #[test]
-#[ignore = "openapi binds the unported api-description eval at site d5772289 (site #401/#412), so it skips; the API port restores it"]
 fn the_declared_site_type_scopes_the_run() {
     use agentnative::web_audit::scorecard::{DeclaredSiteType, ScorecardStatus as S};
 

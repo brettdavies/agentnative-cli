@@ -16,6 +16,8 @@ use std::fmt;
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 
+#[cfg(feature = "web")]
+use super::engine::provenance::row_host_fields;
 use super::registry::{WebCheck, WebCheckKeyword, WebCheckTier};
 #[cfg(feature = "web")]
 use super::score::{self, ScoreConfig};
@@ -94,6 +96,10 @@ pub enum NaReason {
     FollowDisabled,
     /// The declared host did not confirm the endpoint.
     ReciprocityRefused,
+    /// The declared host gave no response the audit could read.
+    DeclaredHostUnreachable,
+    /// A cap or the follow slice's clock kept the declared host from being requested.
+    DeclaredHostBudgetExceeded,
 }
 
 /// How a passing row passed.
@@ -391,6 +397,8 @@ pub struct ScorecardMeta {
     pub site_type: Option<DeclaredSiteType>,
     /// The public-listing opt-in.
     pub public_listing: bool,
+    /// The declared-hosts trail.
+    pub declared_hosts: Vec<EvidenceItem>,
 }
 
 /// Assemble the scorecard from finalized rows, the site's `buildWebScorecard`.
@@ -440,19 +448,8 @@ pub fn build_web_scorecard(
             host: None,
             hosts: Vec::new(),
         });
-        let hosts = row_hosts(&r.raw_evidence);
         let row = rows.last_mut().expect("just pushed");
-        if hosts.len() == 1 {
-            row.host = Some(hosts[0].clone());
-        }
-        row.hosts = hosts
-            .into_iter()
-            .map(|host| RowHost {
-                host,
-                status: None,
-                na_reason: None,
-            })
-            .collect();
+        (row.hosts, row.host) = row_host_fields(&r.raw_evidence);
     }
     let universe_max = score::universe_max(registry_keywords, config);
     let scored = score::score_web_audit(
@@ -484,7 +481,7 @@ pub fn build_web_scorecard(
             credentialed: false,
         },
         follow_declarations: true,
-        declared_hosts: Vec::new(),
+        declared_hosts: meta.declared_hosts.clone(),
         summary,
         coverage_summary: coverage,
         score_pct: scored.relative,
@@ -495,38 +492,6 @@ pub fn build_web_scorecard(
         categories,
         results: rows,
     }
-}
-
-/// The distinct hosts the evidence items were requested from, in order: an
-/// item with a `blocked` marker reached no host; a string `url` counts its
-/// WHATWG host (port kept), else a non-empty string `host`.
-#[cfg(feature = "web")]
-fn row_hosts(evidence: &[EvidenceItem]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for item in evidence {
-        if item.contains_key("blocked") {
-            continue;
-        }
-        let host = match item.get("url").and_then(serde_json::Value::as_str) {
-            Some(u) => url::Url::parse(u).ok().and_then(|p| {
-                p.host_str().map(|h| match p.port() {
-                    Some(port) => format!("{h}:{port}"),
-                    None => h.to_string(),
-                })
-            }),
-            None => item
-                .get("host")
-                .and_then(serde_json::Value::as_str)
-                .filter(|h| !h.is_empty())
-                .map(str::to_string),
-        };
-        if let Some(h) = host
-            && !out.contains(&h)
-        {
-            out.push(h);
-        }
-    }
-    out
 }
 
 /// Serialize a scorecard exactly as the site prints it: two-space pretty

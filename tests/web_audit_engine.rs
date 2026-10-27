@@ -111,6 +111,7 @@ fn stand_in_handlers() -> Arc<HandlerSet> {
     for kind in HANDLER_KINDS {
         set.register(kind, probe);
     }
+    set.register_eval("api-description", probe);
     set.register("scoped-llms", |check, ctx| {
         probe_with(check, ctx, |ctx, item| {
             item.insert("scoped_dirs".to_string(), json!(*ctx.scoped_dirs));
@@ -244,32 +245,27 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     assert_eq!(ids, registry, "results follow registry order");
     assert_eq!(report.scorecard.results.len(), 68);
     assert!(report.complete);
-    // The stand-in set registers handler kinds only, so the eval rules that
-    // reach dispatch are unported here; the protected-resource rows settle
-    // n_a on their antecedent first.
+    // The stand-in set registers handler kinds and the api-description rule,
+    // so retained-document is unported here; the protected-resource rows
+    // settle n_a on their antecedent first.
     let mut unported: Vec<&str> = report.unported.iter().map(|u| u.kind).collect();
     unported.sort_unstable();
     unported.dedup();
-    assert_eq!(
-        unported,
-        ["api-description", "retained-document"],
-        "{:?}",
-        report.unported
-    );
+    assert_eq!(unported, ["retained-document"], "{:?}", report.unported);
     assert_eq!(report.target_locality, Some(Locality::Public));
     assert_eq!(
         report.scorecard.mcp_endpoint.as_deref(),
         Some("https://example.com/mcp")
     );
     assert_eq!(
-        report.scorecard.summary.pass, 61,
+        report.scorecard.summary.pass, 62,
         "{:?}",
         report.scorecard.summary
     );
     assert_eq!(report.scorecard.summary.n_a, 5);
     assert_eq!(
-        report.scorecard.summary.skip, 2,
-        "the two unported eval rows"
+        report.scorecard.summary.skip, 1,
+        "the unported retained-document row"
     );
     assert_eq!(report.scorecard.score.relative, 100);
     let auth = row(&report, "oauth-protected-resource");
@@ -288,9 +284,10 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
             "# X\n- [Guide](/docs/guide.md)\n- [Ref](/api/v1/ref)\n"
         ))
     );
-    // openapi binds the unported api-description eval (site #401/#412), so
-    // it skips and retains no description for json-errors.
-    assert_eq!(raw(&report, "json-errors", "retained"), Some(&Value::Null));
+    assert_eq!(
+        raw(&report, "json-errors", "retained"),
+        Some(&json!("{\"openapi\":\"3.1.0\"}"))
+    );
     assert_eq!(
         raw(&report, "mcp-tools-list", "session"),
         Some(&json!("sess-1"))
@@ -412,7 +409,6 @@ fn unmet_antecedents_cascade_and_absent_mays_become_optional() {
 }
 
 #[test]
-#[ignore = "openapi binds the unported api-description eval at site d5772289 (site #401/#412), so it skips; the API port restores it"]
 fn the_declared_site_type_gates_before_antecedents_and_a_discovered_mcp_overrides_it() {
     let transport = healthy_transport();
     let mut content = input(transport, stand_in_handlers());

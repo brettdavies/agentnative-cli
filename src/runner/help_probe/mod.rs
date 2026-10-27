@@ -412,13 +412,27 @@ fn without_name_colon(invocation: &str) -> &str {
     }
 }
 
-/// A heading printed in capitals at column 0 with no closing colon, as gh
-/// prints `CORE COMMANDS` and `ADDITIONAL COMMANDS`.
-fn is_uppercase_command_heading(line: &str) -> bool {
+/// A heading with no closing colon, alone at column 0: up to three words that
+/// start with a capital and end in `commands` or `subcommands`, as gh prints
+/// `CORE COMMANDS`, supabase `SUBCOMMANDS`, trivy `Scanning Commands` and
+/// direnv `Available commands`.
+fn is_bare_command_heading(line: &str) -> bool {
     let line = line.trim_end();
+    let words: Vec<&str> = line.split(' ').collect();
     !line.starts_with(char::is_whitespace)
-        && line.ends_with("COMMANDS")
-        && line.chars().all(|c| c.is_ascii_uppercase() || c == ' ')
+        && line.starts_with(|c: char| c.is_ascii_uppercase())
+        && words.len() <= 3
+        && words
+            .iter()
+            .all(|word| !word.is_empty() && word.chars().all(|c| c.is_ascii_alphabetic()))
+        && words.last().is_some_and(|last| {
+            last.eq_ignore_ascii_case("commands") || last.eq_ignore_ascii_case("subcommands")
+        })
+}
+
+/// A rule of dashes or equals signs, which direnv prints under its heading.
+fn is_underline(trimmed: &str) -> bool {
+    trimmed.len() >= 3 && (trimmed.chars().all(|c| c == '-') || trimmed.chars().all(|c| c == '='))
 }
 
 /// Collect every command block: a header, then the indented lines that
@@ -431,9 +445,13 @@ fn parse_command_blocks(raw: &str, candidates: &[String]) -> Vec<CommandBlock> {
     let mut blocks: Vec<CommandBlock> = Vec::new();
     let mut entry_indent: Option<usize> = None;
     let mut in_block = false;
+    // Under an underlined heading, as direnv prints it, each entry sits at
+    // column 0 and ends in a colon, with its details indented beneath it.
+    let mut after_heading = false;
+    let mut underlined = false;
     for line in raw.lines() {
         let trimmed = line.trim();
-        if is_command_header(trimmed) || is_uppercase_command_heading(line) {
+        if is_command_header(trimmed) || is_bare_command_heading(line) {
             blocks.push(CommandBlock {
                 header: trimmed.to_string(),
                 entries: Vec::new(),
@@ -441,8 +459,24 @@ fn parse_command_blocks(raw: &str, candidates: &[String]) -> Vec<CommandBlock> {
             });
             entry_indent = None;
             in_block = true;
-        } else if !in_block {
+            after_heading = true;
+            underlined = false;
             continue;
+        }
+        let first_after_heading = std::mem::replace(&mut after_heading, false);
+        if !in_block {
+            continue;
+        } else if first_after_heading && is_underline(trimmed) {
+            underlined = true;
+        } else if underlined {
+            if trimmed.is_empty() {
+                in_block = false;
+            } else if !line.starts_with(char::is_whitespace) {
+                match (trimmed.strip_suffix(':'), blocks.last_mut()) {
+                    (Some(entry), Some(block)) => block.entries.push(entry.to_string()),
+                    _ => in_block = false,
+                }
+            }
         } else if trimmed.is_empty() || !line.starts_with(char::is_whitespace) {
             in_block = false;
         } else if let Some(block) = blocks.last_mut() {
@@ -534,14 +568,42 @@ mod tests {
         );
     }
 
+    // Excerpts of trivy 0.69's and direnv 2.38's `--help`.
+    const TRIVY_HELP: &str = "Usage:\n  trivy [command]\n\nScanning Commands\n  config      Scan config files for misconfigurations\n  image       Scan a container image\n\nManagement Commands\n  module      Manage modules\n\nUtility Commands\n  clean       Remove cached files\n  help        Help about any command\n";
+    const DIRENV_HELP: &str = "direnv v2.38.2\nUsage: direnv COMMAND [...ARGS]\n\nAvailable commands\n------------------\nallow [PATH_TO_RC]:\n  aliases: permit, grant\n  Grants direnv permission to load the given .envrc or .env file.\nexec DIR COMMAND [...ARGS]:\n  Executes a command after loading the first .envrc or .env found in DIR\nprune:\n  Removes old allowed and required files\n";
+
     #[test]
-    fn a_capital_line_is_a_heading_only_at_column_0_and_ending_in_commands() {
-        assert!(is_uppercase_command_heading("CORE COMMANDS"));
-        assert!(is_uppercase_command_heading("GITHUB ACTIONS COMMANDS  "));
-        assert!(!is_uppercase_command_heading("  CORE COMMANDS"));
-        assert!(!is_uppercase_command_heading("USAGE"));
-        assert!(!is_uppercase_command_heading("Core Commands"));
-        assert!(!is_uppercase_command_heading("COMMANDS AND FLAGS"));
+    fn title_case_headings_without_a_colon_are_command_blocks() {
+        let help = HelpOutput::from_raw_for_binary(TRIVY_HELP, "trivy");
+        assert_eq!(
+            help.subcommands(),
+            ["config", "image", "module", "clean", "help"]
+        );
+        assert_eq!(
+            help.subcommand_summary("image"),
+            Some("Scan a container image")
+        );
+    }
+
+    #[test]
+    fn an_underlined_heading_reads_column_0_entries_that_end_in_a_colon() {
+        let help = HelpOutput::from_raw_for_binary(DIRENV_HELP, "direnv");
+        assert_eq!(help.subcommands(), ["allow", "exec", "prune"]);
+    }
+
+    #[test]
+    fn a_bare_heading_is_short_capitalized_and_ends_in_commands() {
+        assert!(is_bare_command_heading("CORE COMMANDS"));
+        assert!(is_bare_command_heading("GITHUB ACTIONS COMMANDS  "));
+        assert!(is_bare_command_heading("SUBCOMMANDS"));
+        assert!(is_bare_command_heading("Scanning Commands"));
+        assert!(is_bare_command_heading("Available commands"));
+        assert!(!is_bare_command_heading("  CORE COMMANDS"));
+        assert!(!is_bare_command_heading("USAGE"));
+        assert!(!is_bare_command_heading("COMMANDS AND FLAGS"));
+        assert!(!is_bare_command_heading("run these commands"));
+        assert!(!is_bare_command_heading("Run all of these commands"));
+        assert!(!is_bare_command_heading("See: commands"));
     }
 
     // A fixture modeled on ripgrep's `--help` — short+long flags, env hint.

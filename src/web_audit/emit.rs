@@ -191,6 +191,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::web_audit::registry::RETIRED_CHECK_IDS;
 
     #[test]
     fn the_checks_document_lists_every_registry_id_in_order() {
@@ -205,7 +206,7 @@ mod tests {
             .collect();
         let registry: Vec<&str> = CHECKS.iter().map(|c| c.id).collect();
         assert_eq!(ids, registry);
-        assert_eq!(ids.len(), 65);
+        assert_eq!(ids.len(), 68);
         assert_eq!(parsed["registry_version"], Value::from(REGISTRY_VERSION));
         assert_eq!(parsed["site_sha"], Value::from(SITE_SHA));
         assert_eq!(
@@ -232,12 +233,16 @@ mod tests {
         let rendered = render_remediation();
         let parsed: Value = serde_json::from_str(&rendered).unwrap();
         let entries = parsed["remediation"].as_array().unwrap();
-        assert_eq!(entries.len(), CHECKS.len());
+        assert_eq!(entries.len(), CHECKS.len() + RETIRED_CHECK_IDS.len());
         let mut ids: Vec<&str> = entries
             .iter()
             .map(|e| e["check_id"].as_str().unwrap())
             .collect();
-        let mut registry: Vec<&str> = CHECKS.iter().map(|c| c.id).collect();
+        let mut registry: Vec<&str> = CHECKS
+            .iter()
+            .map(|c| c.id)
+            .chain(RETIRED_CHECK_IDS.iter().copied())
+            .collect();
         ids.sort_unstable();
         registry.sort_unstable();
         assert_eq!(ids, registry);

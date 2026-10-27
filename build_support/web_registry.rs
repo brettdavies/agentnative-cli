@@ -45,7 +45,9 @@ const ANTECEDENTS: &[&str] = &[
     "http-root",
     "html-root",
     "mcp-present",
+    "mcp-session",
     "mcp-auth",
+    "mcp-auth-required",
     "mcp-resources",
     "api-surface",
     "schemas-ref",
@@ -62,6 +64,54 @@ const TIERS: &[(&str, &str)] = &[
     ("optional", "may"),
 ];
 const CORS_SURFACES: &[&str] = &["preflight", "actual"];
+const PROTECTED_RESOURCE_OPS: &[&str] = &["challenge", "metadata"];
+/// Documents discovery keeps for a `retained-document` check, mirroring the
+/// site's `RETAINED_DOCUMENT_KEYS` (`src/shared/web-audit-documents.ts`).
+const RETAINED_DOCUMENT_KEYS: &[&str] = &["ai-catalog", "api-catalog", "server-card"];
+/// Handlers that score a retained document instead of issuing a request.
+const RETAINED_DOCUMENT_HANDLERS: &[&str] = &["http", "server-card"];
+/// `with` parameters the build splices into a server-card check from the
+/// vendored schema; hand-authoring one is a build error.
+const CARD_FIELD_PARAMS: &[&str] = &["required", "remote_required"];
+const TOP_LEVEL_KEYS: &[&str] = &[
+    "version",
+    "mcp_discovery",
+    "category_order",
+    "categories",
+    "mcp_lanes",
+    "retired",
+    "alternatives",
+    "checks",
+];
+const DISCOVERY_KEYS: &[&str] = &[
+    "ai_catalog",
+    "card_suffix",
+    "well_known",
+    "common_paths",
+    "protocol_version",
+];
+const CHECK_KEYS: &[&str] = &[
+    "id",
+    "category",
+    "tier",
+    "principle",
+    "site_types",
+    "antecedent",
+    "eval",
+    "lane",
+    "weight",
+    "title",
+    "breadcrumb",
+    "hint",
+    "handler",
+    "with",
+];
+const LANE_FIELDS: &[&str] = &["label", "note"];
+const RETIRED_FIELDS: &[&str] = &["successor", "reason"];
+const GROUP_FIELDS: &[&str] = &["group", "variants"];
+const VARIANT_FIELDS: &[&str] = &["antecedents", "presented_by"];
+/// The category whose checks group under a protocol lane.
+const LANE_CATEGORY: &str = "mcp";
 const BREADCRUMB_MAX: usize = 40;
 /// Regex-bearing `with` values: path inside `with`, short field name, and the
 /// JavaScript flags `assert.ts` evaluates the value under.
@@ -74,6 +124,8 @@ const PATTERN_FIELDS: &[(&[&str], &str, &str)] = &[
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpDiscovery {
+    pub ai_catalog: String,
+    pub card_suffix: String,
     pub well_known: Vec<String>,
     pub common_paths: Vec<String>,
     pub protocol_version: String,
@@ -102,6 +154,8 @@ pub struct NormalizedCheck {
     pub title: String,
     pub breadcrumb: String,
     pub hint: String,
+    /// The `mcp_lanes` key an `mcp`-category check groups under (display only).
+    pub lane: Option<String>,
     pub handler: String,
     pub handler_supported: bool,
     pub with_json: String,
@@ -116,6 +170,41 @@ pub struct NormalizedRegistry {
     /// `(slug, display name)` in `category_order` order.
     pub categories: Vec<(String, String)>,
     pub checks: Vec<NormalizedCheck>,
+    /// `mcp_lanes` in declaration order (display only).
+    pub mcp_lanes: Vec<McpLane>,
+    /// Retired check ids, outside `checks`; remediation keeps an entry for each.
+    pub retired: Vec<RetiredCheck>,
+    /// Alternative site designs the global score counts one variant of.
+    pub alternatives: Vec<AlternativeGroup>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpLane {
+    pub id: String,
+    pub label: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetiredCheck {
+    pub id: String,
+    pub successor: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlternativeVariant {
+    pub name: String,
+    pub antecedents: Vec<String>,
+    /// The tokens whose applied check presents this variant; defaults to
+    /// `antecedents`.
+    pub presented_by: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlternativeGroup {
+    pub group: String,
+    pub variants: Vec<AlternativeVariant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,10 +227,12 @@ pub struct RemediationEntry {
 // ---------------------------------------------------------------------------
 
 /// Validate and normalize the registry YAML text. `ua_tokens` is the vendored
-/// `{ua:...}` map from `ts_consts`.
+/// `{ua:...}` map from `ts_consts`; `card_schema` is the vendored server-card
+/// JSON Schema text, parsed only when a `server-card` check needs it.
 pub fn normalize_registry(
     yaml: &str,
     ua_tokens: &[(String, String)],
+    card_schema: &str,
 ) -> Result<NormalizedRegistry, String> {
     let doc = yaml::from_str::<yaml::StringKeyed>(yaml)
         .map_err(|e| format!("web-audit registry: YAML parse error: {e}"))?
@@ -149,6 +240,11 @@ pub fn normalize_registry(
     let doc = doc.as_object().ok_or_else(|| {
         "web-audit registry: expected a YAML mapping at the top level".to_string()
     })?;
+    if let Some(key) = unknown_key(doc, TOP_LEVEL_KEYS) {
+        return Err(format!(
+            "web-audit registry: unknown top-level key \"{key}\""
+        ));
+    }
 
     let mcp_discovery = normalize_discovery(doc)?;
     let categories_map = doc
@@ -202,10 +298,19 @@ pub fn normalize_registry(
         .ok_or_else(|| {
             "web-audit registry: expected a non-empty top-level \"checks\" array".to_string()
         })?;
+    let mcp_lanes = normalize_lanes(doc.get("mcp_lanes"))?;
+    let lane_ids: Vec<&str> = mcp_lanes.iter().map(|l| l.id.as_str()).collect();
+    let mut card_fields: Option<Mapping> = None;
     let mut seen: Vec<String> = Vec::new();
     let mut normalized = Vec::with_capacity(checks.len());
     for check in checks {
-        let check = normalize_check(check, &category_keys, ua_tokens)?;
+        let mut card = || -> Result<Mapping, String> {
+            if card_fields.is_none() {
+                card_fields = Some(card_requirements(card_schema)?);
+            }
+            Ok(card_fields.clone().unwrap_or_default())
+        };
+        let check = normalize_check(check, &category_keys, &lane_ids, ua_tokens, &mut card)?;
         if seen.contains(&check.id) {
             return Err(format!(
                 "web-audit registry: duplicate check id \"{}\"",
@@ -222,13 +327,333 @@ pub fn normalize_registry(
             "web-audit registry: version must be a non-negative integer".to_string()
         })?,
     };
+    let retired = normalize_retired(doc.get("retired"), &normalized)?;
+    let alternatives = normalize_alternatives(doc.get("alternatives"), &normalized)?;
     Ok(NormalizedRegistry {
         version,
         mcp_discovery,
         category_order,
         categories,
         checks: normalized,
+        mcp_lanes,
+        retired,
+        alternatives,
     })
+}
+
+fn unknown_key<'a>(map: &'a Mapping, allowed: &[&str]) -> Option<&'a str> {
+    map.keys()
+        .map(String::as_str)
+        .find(|k| !allowed.contains(k))
+}
+
+fn normalize_lanes(raw: Option<&Value>) -> Result<Vec<McpLane>, String> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let lanes = raw.as_object().ok_or_else(|| {
+        "web-audit registry: mcp_lanes must be a mapping of lane to { label, note }".to_string()
+    })?;
+    lanes
+        .iter()
+        .map(|(id, spec)| {
+            let err = || {
+                format!(
+                    "web-audit registry: mcp_lanes entry \"{id}\" needs a string label and note"
+                )
+            };
+            let spec = spec.as_object().ok_or_else(err)?;
+            if let Some(field) = unknown_key(spec, LANE_FIELDS) {
+                return Err(format!(
+                    "web-audit registry: mcp_lanes entry \"{id}\" carries unknown field \"{field}\""
+                ));
+            }
+            let label = spec
+                .get("label")
+                .and_then(Value::as_str)
+                .filter(|l| !l.is_empty())
+                .ok_or_else(err)?;
+            let note = spec.get("note").and_then(Value::as_str).ok_or_else(err)?;
+            Ok(McpLane {
+                id: id.clone(),
+                label: label.to_string(),
+                note: note.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn normalize_retired(
+    raw: Option<&Value>,
+    checks: &[NormalizedCheck],
+) -> Result<Vec<RetiredCheck>, String> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let retired = raw.as_object().ok_or_else(|| {
+        "web-audit registry: retired must be a mapping of check id to { successor, reason }"
+            .to_string()
+    })?;
+    let live = |id: &str| checks.iter().any(|c| c.id == id);
+    retired
+        .iter()
+        .map(|(id, entry)| {
+            if !is_check_id(id) {
+                return Err(format!(
+                    "web-audit registry: retired id \"{id}\" must match /^[a-z0-9][a-z0-9-]*$/"
+                ));
+            }
+            if live(id) {
+                return Err(format!(
+                    "web-audit registry: retired id \"{id}\" is still a registry check"
+                ));
+            }
+            let entry = entry.as_object().ok_or_else(|| {
+                format!(
+                    "web-audit registry: retired id \"{id}\" must map to {{ successor, reason }}"
+                )
+            })?;
+            if let Some(field) = unknown_key(entry, RETIRED_FIELDS) {
+                return Err(format!(
+                    "web-audit registry: retired id \"{id}\" carries unknown field \"{field}\""
+                ));
+            }
+            let successor = entry
+                .get("successor")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if !live(successor) {
+                return Err(format!(
+                    "web-audit registry: retired id \"{id}\" names successor {}, which is not a registry check",
+                    yaml_display(entry.get("successor"))
+                ));
+            }
+            let reason = entry
+                .get("reason")
+                .and_then(Value::as_str)
+                .filter(|r| !r.is_empty())
+                .ok_or_else(|| {
+                    format!("web-audit registry: retired id \"{id}\" needs a reason")
+                })?;
+            Ok(RetiredCheck {
+                id: id.clone(),
+                successor: successor.to_string(),
+                reason: reason.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn variant_tokens(value: Option<&Value>, name: &str, field: &str) -> Result<Vec<String>, String> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let items = value.as_array().filter(|a| !a.is_empty()).ok_or_else(|| {
+        format!(
+            "web-audit registry: alternatives variant \"{name}\" {field} needs a non-empty array of tokens"
+        )
+    })?;
+    items
+        .iter()
+        .map(|token| match token.as_str() {
+            Some(t) if ANTECEDENTS.contains(&t) => Ok(t.to_string()),
+            _ => Err(format!(
+                "web-audit registry: alternatives variant \"{name}\" names unknown antecedent {}",
+                yaml_display(Some(token))
+            )),
+        })
+        .collect()
+}
+
+/// Mirror of the site's `normalizeAlternatives`: a variant's checks are those
+/// gated on its `antecedents`, it is presented when a check gated on one of
+/// its `presented_by` tokens applied, and no token belongs to two variants.
+fn normalize_alternatives(
+    raw: Option<&Value>,
+    checks: &[NormalizedCheck],
+) -> Result<Vec<AlternativeGroup>, String> {
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    let groups = raw
+        .as_array()
+        .ok_or_else(|| "web-audit registry: alternatives must be an array of groups".to_string())?;
+    let gates = |tokens: &[String]| checks.iter().any(|c| tokens.contains(&c.antecedent));
+    let mut group_ids: Vec<String> = Vec::new();
+    let mut claimed: Vec<(String, String)> = Vec::new();
+    let mut out = Vec::with_capacity(groups.len());
+    for entry in groups {
+        let group = entry
+            .get("group")
+            .and_then(Value::as_str)
+            .filter(|g| is_check_id(g))
+            .ok_or_else(|| {
+                format!(
+                    "web-audit registry: alternatives group {} must match /^[a-z0-9][a-z0-9-]*$/",
+                    yaml_display(entry.get("group"))
+                )
+            })?
+            .to_string();
+        if let Some(field) = entry.as_object().and_then(|m| unknown_key(m, GROUP_FIELDS)) {
+            return Err(format!(
+                "web-audit registry: alternatives group \"{group}\" carries unknown field \"{field}\""
+            ));
+        }
+        if group_ids.contains(&group) {
+            return Err(format!(
+                "web-audit registry: duplicate alternatives group \"{group}\""
+            ));
+        }
+        group_ids.push(group.clone());
+        let variants = entry
+            .get("variants")
+            .and_then(Value::as_object)
+            .filter(|v| v.len() >= 2)
+            .ok_or_else(|| {
+                format!(
+                    "web-audit registry: alternatives group \"{group}\" needs at least two variants"
+                )
+            })?;
+        let mut normalized = Vec::with_capacity(variants.len());
+        for (variant, spec) in variants {
+            let name = format!("{group}.{variant}");
+            if !is_check_id(variant) {
+                return Err(format!(
+                    "web-audit registry: alternatives variant \"{name}\" must match /^[a-z0-9][a-z0-9-]*$/"
+                ));
+            }
+            let spec = spec.as_object().ok_or_else(|| {
+                format!("web-audit registry: alternatives variant \"{name}\" must be a mapping")
+            })?;
+            if let Some(field) = unknown_key(spec, VARIANT_FIELDS) {
+                return Err(format!(
+                    "web-audit registry: alternatives variant \"{name}\" carries unknown field \"{field}\""
+                ));
+            }
+            let antecedents = variant_tokens(spec.get("antecedents"), &name, "antecedents")?;
+            let presented_by = match spec.get("presented_by") {
+                None => antecedents.clone(),
+                some => variant_tokens(some, &name, "presented_by")?,
+            };
+            if !antecedents.is_empty() && !gates(&antecedents) {
+                return Err(format!(
+                    "web-audit registry: alternatives variant \"{name}\" gates no check"
+                ));
+            }
+            if !gates(&presented_by) {
+                return Err(format!(
+                    "web-audit registry: alternatives variant \"{name}\" is presented by no check"
+                ));
+            }
+            let mut tokens: Vec<&String> = antecedents.iter().chain(&presented_by).collect();
+            tokens.sort();
+            tokens.dedup();
+            for token in tokens {
+                if let Some((_, prior)) = claimed.iter().find(|(t, _)| t == token) {
+                    return Err(format!(
+                        "web-audit registry: antecedent \"{token}\" belongs to both \"{prior}\" and \"{name}\""
+                    ));
+                }
+                claimed.push((token.clone(), name.clone()));
+            }
+            normalized.push(AlternativeVariant {
+                name: variant.clone(),
+                antecedents,
+                presented_by,
+            });
+        }
+        if normalized.iter().all(|v| v.antecedents.is_empty()) {
+            return Err(format!(
+                "web-audit registry: alternatives group \"{group}\" has no variant with checks of its own"
+            ));
+        }
+        out.push(AlternativeGroup {
+            group,
+            variants: normalized,
+        });
+    }
+    Ok(out)
+}
+
+/// The fields a SEP-2127 server card must carry at its top level and in each
+/// `remotes[]` item, with their JSON types, read from the vendored schema the
+/// way the site's `web-audit-card-schema.mjs` reads them.
+fn card_requirements(schema_text: &str) -> Result<Mapping, String> {
+    let schema: Value = serde_json::from_str(schema_text).map_err(|e| {
+        format!(
+            "web-audit registry: server card schema is not JSON ({e}); run scripts/sync-web-audit.sh"
+        )
+    })?;
+    let defs = schema.get("$defs").and_then(Value::as_object);
+    let card = defs
+        .and_then(|d| d.get("ServerCard"))
+        .filter(|c| c.is_object())
+        .ok_or_else(|| {
+            "web-audit registry: server card schema has no $defs.ServerCard".to_string()
+        })?;
+    let remote = card
+        .pointer("/properties/remotes/items/$ref")
+        .and_then(Value::as_str)
+        .and_then(|r| r.strip_prefix("#/$defs/"))
+        .filter(|name| !name.contains('/'))
+        .and_then(|name| defs.and_then(|d| d.get(name)))
+        .ok_or_else(|| {
+            "web-audit registry: server card schema's ServerCard.remotes items name no local $defs entry"
+                .to_string()
+        })?;
+    let mut out = Mapping::new();
+    out.insert(
+        "required".to_string(),
+        required_fields(card, "$defs.ServerCard")?,
+    );
+    out.insert(
+        "remote_required".to_string(),
+        required_fields(remote, "ServerCard.remotes[]")?,
+    );
+    Ok(out)
+}
+
+fn required_fields(def: &Value, label: &str) -> Result<Value, String> {
+    const JSON_TYPES: &[&str] = &[
+        "string", "number", "integer", "boolean", "object", "array", "null",
+    ];
+    let required = def
+        .get("required")
+        .and_then(Value::as_array)
+        .filter(|r| !r.is_empty())
+        .ok_or_else(|| {
+            format!("web-audit registry: server card schema carries no required array at {label}")
+        })?;
+    required
+        .iter()
+        .map(|field| {
+            let name = field.as_str();
+            let declared = name.and_then(|n| def.get("properties")?.get(n)?.get("type"));
+            let types: Vec<Value> = match declared {
+                Some(Value::Array(a)) => a.clone(),
+                Some(v) => vec![v.clone()],
+                None => Vec::new(),
+            };
+            let typed = !types.is_empty()
+                && types
+                    .iter()
+                    .all(|t| t.as_str().is_some_and(|t| JSON_TYPES.contains(&t)));
+            match name {
+                Some(name) if typed => {
+                    let mut entry = Mapping::new();
+                    entry.insert("field".to_string(), Value::String(name.to_string()));
+                    entry.insert("type".to_string(), Value::Array(types));
+                    Ok(Value::Object(entry))
+                }
+                _ => Err(format!(
+                    "web-audit registry: server card schema field {label}.{} declares no JSON type (got {})",
+                    name.unwrap_or("?"),
+                    yaml_display(declared)
+                )),
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Value::Array)
 }
 
 fn normalize_discovery(doc: &Mapping) -> Result<McpDiscovery, String> {
@@ -239,6 +664,20 @@ fn normalize_discovery(doc: &Mapping) -> Result<McpDiscovery, String> {
         .get("mcp_discovery")
         .and_then(Value::as_object)
         .ok_or_else(err)?;
+    if let Some(key) = unknown_key(discovery, DISCOVERY_KEYS) {
+        return Err(format!(
+            "web-audit registry: mcp_discovery carries unknown key \"{key}\""
+        ));
+    }
+    let path = |key: &str| -> Result<String, String> {
+        match discovery.get(key) {
+            Some(Value::String(p)) if p.starts_with('/') => Ok(p.clone()),
+            other => Err(format!(
+                "web-audit registry: mcp_discovery.{key} must be a path starting with \"/\" (got {})",
+                yaml_display(other)
+            )),
+        }
+    };
     let strings = |key: &str| -> Result<Vec<String>, String> {
         discovery
             .get(key)
@@ -249,6 +688,8 @@ fn normalize_discovery(doc: &Mapping) -> Result<McpDiscovery, String> {
             .collect()
     };
     Ok(McpDiscovery {
+        ai_catalog: path("ai_catalog")?,
+        card_suffix: path("card_suffix")?,
         well_known: strings("well_known")?,
         common_paths: strings("common_paths")?,
         protocol_version: discovery
@@ -273,7 +714,9 @@ fn required_str(check: &Mapping, id: &str, key: &str) -> Result<String, String> 
 fn normalize_check(
     raw: &Value,
     category_keys: &[String],
+    lane_ids: &[&str],
     ua_tokens: &[(String, String)],
+    card_fields: &mut dyn FnMut() -> Result<Mapping, String>,
 ) -> Result<NormalizedCheck, String> {
     let check = raw
         .as_object()
@@ -322,6 +765,15 @@ fn normalize_check(
             "hand-authors a keyword field: keyword is derived from tier at build time",
         ));
     }
+    if check.contains_key("applies_to") {
+        return Err(check_err(
+            &id,
+            "carries the retired applies_to field: use site_types + antecedent",
+        ));
+    }
+    if let Some(key) = unknown_key(check, CHECK_KEYS) {
+        return Err(check_err(&id, format!("carries unknown field \"{key}\"")));
+    }
     let principle = check
         .get("principle")
         .and_then(Value::as_str)
@@ -336,12 +788,6 @@ fn normalize_check(
             )
         })?
         .to_string();
-    if check.contains_key("applies_to") {
-        return Err(check_err(
-            &id,
-            "carries the retired applies_to field: use site_types + antecedent",
-        ));
-    }
     let site_types: Vec<String> = check
         .get("site_types")
         .and_then(Value::as_array)
@@ -413,10 +859,82 @@ fn normalize_check(
         .ok_or_else(|| check_err(&id, "missing handler"))?
         .to_string();
     let handler_supported = HANDLER_KINDS.contains(&handler.as_str());
+    let lane = match (category == LANE_CATEGORY, check.get("lane")) {
+        (true, Some(Value::String(lane))) if lane_ids.contains(&lane.as_str()) => {
+            Some(lane.clone())
+        }
+        (true, other) => {
+            return Err(check_err(
+                &id,
+                format!(
+                    "needs a lane from mcp_lanes ({}), got {}",
+                    lane_ids.join(", "),
+                    yaml_display(other)
+                ),
+            ));
+        }
+        (false, None) => None,
+        (false, Some(_)) => {
+            return Err(check_err(
+                &id,
+                format!("carries a lane, which only {LANE_CATEGORY} checks take"),
+            ));
+        }
+    };
     let with = check
         .get("with")
         .and_then(Value::as_object)
         .ok_or_else(|| check_err(&id, "missing \"with\" handler parameters"))?;
+    let retained = with.get("retained").and_then(Value::as_str);
+    if eval.as_deref() == Some("retained-document") {
+        if !retained.is_some_and(|r| RETAINED_DOCUMENT_KEYS.contains(&r)) {
+            return Err(check_err(
+                &id,
+                format!(
+                    "declares retained-document, so with.retained must name a document discovery keeps ({}), got {}",
+                    RETAINED_DOCUMENT_KEYS.join(", "),
+                    yaml_display(with.get("retained"))
+                ),
+            ));
+        }
+        if !RETAINED_DOCUMENT_HANDLERS.contains(&handler.as_str()) {
+            return Err(check_err(
+                &id,
+                format!(
+                    "declares retained-document, so its handler must score a retained document ({}), got \"{handler}\"",
+                    RETAINED_DOCUMENT_HANDLERS.join(", ")
+                ),
+            ));
+        }
+    }
+    if handler == "server-card" {
+        if eval.as_deref() != Some("retained-document") || retained != Some("server-card") {
+            return Err(check_err(
+                &id,
+                "uses the server-card handler, so it needs eval retained-document and with.retained \"server-card\"",
+            ));
+        }
+        if let Some(param) = CARD_FIELD_PARAMS.iter().find(|p| with.contains_key(**p)) {
+            return Err(check_err(
+                &id,
+                format!(
+                    "hand-authors with.{param}, which the build reads from the vendored server card schema; remove it"
+                ),
+            ));
+        }
+    }
+    if handler == "protected-resource" {
+        let op = with.get("op").and_then(Value::as_str);
+        if !op.is_some_and(|o| PROTECTED_RESOURCE_OPS.contains(&o)) {
+            return Err(check_err(
+                &id,
+                format!(
+                    "needs with.op \"challenge\" or \"metadata\" (got {})",
+                    yaml_display(with.get("op"))
+                ),
+            ));
+        }
+    }
     if handler == "cors-preflight" {
         let surface = with.get("surface").and_then(Value::as_str);
         if !surface.is_some_and(|s| CORS_SURFACES.contains(&s)) {
@@ -429,7 +947,13 @@ fn normalize_check(
             ));
         }
     }
-    let with = expand_probe_user_agent(&id, with, ua_tokens)?;
+    let with = if handler == "server-card" {
+        let mut spliced = with.clone();
+        spliced.extend(card_fields()?);
+        spliced
+    } else {
+        expand_probe_user_agent(&id, with, ua_tokens)?
+    };
     let patterns = collect_patterns(&id, &with)?;
     let with_json = serde_json::to_string(&Value::Object(with))
         .map_err(|e| check_err(&id, format!("with cannot serialize as JSON: {e}")))?;
@@ -448,6 +972,7 @@ fn normalize_check(
         title,
         breadcrumb,
         hint,
+        lane,
         handler,
         handler_supported,
         with_json,
@@ -562,6 +1087,7 @@ fn collect_patterns(id: &str, with: &Mapping) -> Result<Vec<PatternSpec>, String
 pub fn normalize_remediation(
     yaml: &str,
     check_ids: &[&str],
+    retired_ids: &[&str],
 ) -> Result<Vec<RemediationEntry>, String> {
     let doc = yaml::from_str::<yaml::StringKeyed>(yaml)
         .map_err(|e| format!("web-audit remediation.yaml: YAML parse error: {e}"))?
@@ -638,7 +1164,7 @@ pub fn normalize_remediation(
         }
     }
     for entry in &out {
-        if !check_ids.contains(&entry.id.as_str()) {
+        if !check_ids.contains(&entry.id.as_str()) && !retired_ids.contains(&entry.id.as_str()) {
             return Err(format!(
                 "web-audit remediation: orphan remediation \"{}\" matches no check",
                 entry.id
@@ -868,7 +1394,13 @@ pub fn emit_rust(
     }
     src.push_str("];\n\n");
 
-    src.push_str("/// Fix catalog, one entry per check, sorted by id.\n");
+    src.push_str("/// Retired check ids: outside `CHECKS`, each keeps its fix-catalog entry.\n");
+    let retired: Vec<String> = reg.retired.iter().map(|r| r.id.clone()).collect();
+    src.push_str(&format!(
+        "pub const RETIRED_CHECK_IDS: &[&str] = {};\n",
+        str_slice(&retired)
+    ));
+    src.push_str("/// Fix catalog, one entry per check and per retired id, sorted by id.\n");
     src.push_str("pub const REMEDIATION: &[WebRemediation] = &[\n");
     for r in remediation {
         src.push_str("    WebRemediation {\n");

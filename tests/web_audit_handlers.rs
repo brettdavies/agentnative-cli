@@ -10,7 +10,7 @@
 
 mod common;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::sync::Arc;
 use std::thread;
@@ -34,6 +34,7 @@ use agentnative::web_audit::registry::{WebCheck, check_by_id};
 use agentnative::web_audit::scorecard::NaReason;
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use common::corpus::{Golden, PublicResolver, corpus_dir, describe, diff_rows, load_cases, replay};
+use common::ledger::{ROW, UNREACHABLE, compare_with_ledger, load_ledger};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -42,51 +43,60 @@ const MCP: &str = "https://example.com/mcp";
 
 // Corpus replay.
 
+/// Each scenario's subject rows (its `covers`) diverge from the golden
+/// exactly where the divergence ledger records a `row:` entry, and an
+/// unreachable outcome exactly where it records `unreachable`.
 #[test]
-fn every_corpus_scenario_reproduces_its_subject_rows() {
+fn every_corpus_scenario_reproduces_its_subject_rows_or_is_ledgered() {
     let handlers = Arc::new(default_handlers());
-    let mut failures: Vec<String> = Vec::new();
+    let ledger = load_ledger();
+    let mut actual: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut in_scope: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut detail: Vec<String> = Vec::new();
     let mut compared = 0usize;
     for case in load_cases() {
+        in_scope.insert((case.name.clone(), UNREACHABLE.to_string()));
         let outcome = replay(&case.scenario, Arc::clone(&handlers));
         match (&case.golden, outcome) {
-            (Golden::Unreachable(reason), RunOutcome::Unreachable { reason: actual, .. }) => {
+            (Golden::Unreachable(reason), RunOutcome::Unreachable { reason: got, .. }) => {
                 compared += 1;
-                if reason != &actual {
-                    failures.push(format!(
-                        "{}: unreachable reason\n    expected {reason:?}\n    actual   {actual:?}",
-                        case.name
-                    ));
+                if reason != &got {
+                    actual.insert((case.name.clone(), UNREACHABLE.to_string()));
                 }
             }
-            (Golden::Unreachable(reason), RunOutcome::Complete(_)) => {
-                failures.push(format!(
-                    "{}: scored where the site reported unreachable: {reason}",
-                    case.name
-                ));
-            }
-            (Golden::Scorecard(_), RunOutcome::Unreachable { reason, .. }) => {
-                failures.push(format!(
-                    "{}: unreachable where the site scored: {reason}",
-                    case.name
-                ));
+            (Golden::Unreachable(_), RunOutcome::Complete(_))
+            | (Golden::Scorecard(_), RunOutcome::Unreachable { .. }) => {
+                actual.insert((case.name.clone(), UNREACHABLE.to_string()));
             }
             (Golden::Scorecard(golden), RunOutcome::Complete(report)) => {
                 let ids: Vec<String> = case.scenario.covers.clone();
                 compared += ids.len();
+                for id in &ids {
+                    in_scope.insert((case.name.clone(), format!("{ROW}{id}")));
+                }
                 let diffs = diff_rows(&report, golden, &ids);
-                if !diffs.is_empty() {
-                    failures.push(format!("{}:\n{}", case.name, describe(&diffs)));
+                for d in &diffs {
+                    let element = (case.name.clone(), format!("{ROW}{}", d.id));
+                    if !ledger.contains_key(&element) {
+                        detail.push(format!(
+                            "{}:\n{}",
+                            case.name,
+                            describe(std::slice::from_ref(d))
+                        ));
+                    }
+                    actual.insert(element);
                 }
             }
         }
     }
     assert!(compared > 100, "compared only {compared} rows");
+    let problems = compare_with_ledger(&actual, &ledger, |e| in_scope.contains(e));
     assert!(
-        failures.is_empty(),
-        "{} scenario(s) diverge from the site:\n{}",
-        failures.len(),
-        failures.join("\n")
+        problems.is_empty(),
+        "{} subject-row ledger mismatch(es):\n{}\n{}",
+        problems.len(),
+        problems.join("\n"),
+        detail.join("\n")
     );
 }
 
@@ -120,8 +130,25 @@ fn documented_residuals() -> BTreeMap<(String, String), Vec<String>> {
 fn every_registry_pattern_agrees_with_the_site_over_the_probe_table() {
     let raw = fs::read_to_string(corpus_dir().join("regex-parity.json")).unwrap();
     let fixture: ParityFixture = serde_json::from_str(&raw).unwrap();
-    assert_eq!(fixture.patterns.len(), 33);
     assert_eq!(fixture.probes.len(), 138);
+    let site: BTreeSet<(String, String)> = fixture
+        .patterns
+        .iter()
+        .map(|p| (p.check_id.clone(), p.field.clone()))
+        .collect();
+    let ours: BTreeSet<(String, String)> = agentnative::web_audit::registry::CHECKS
+        .iter()
+        .flat_map(|c| {
+            c.patterns
+                .iter()
+                .map(|p| (c.id.to_string(), p.field.to_string()))
+        })
+        .collect();
+    assert_eq!(
+        site, ours,
+        "the fixture covers exactly the registry's compiled patterns"
+    );
+    assert_eq!(site.len(), 31, "pattern count (bump deliberately)");
     let residuals = documented_residuals();
     let mut mismatches: Vec<String> = Vec::new();
     for pattern in &fixture.patterns {

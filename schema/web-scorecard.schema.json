@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://anc.dev/web-scorecard-v0.4.schema.json",
+  "$id": "https://anc.dev/web-scorecard-v0.5.schema.json",
   "title": "agentnative web scorecard",
-  "description": "JSON Schema for `anc web --output json` scorecards (web schema version 0.4). The shape is the one anc.dev emits for a website audit: six visible categories, a seven-state status per check, and the two-score model (relative over the site's applicable checks, global over the whole registry). Independent of the CLI scorecard schema.",
+  "description": "JSON Schema for `anc web --output json` scorecards (web schema version 0.5). The shape is the one anc.dev emits for a website audit: six visible categories, a seven-state status per check, and the two-score model (relative over the site's applicable checks, global over the whole registry). Independent of the CLI scorecard schema.",
   "type": "object",
   "required": [
     "schema_version",
@@ -15,6 +15,9 @@
     "audit_profile",
     "site_type",
     "public_listing",
+    "vantage",
+    "follow_declarations",
+    "declared_hosts",
     "summary",
     "coverage_summary",
     "score_pct",
@@ -27,7 +30,7 @@
     "schema_version": {
       "type": "string",
       "description": "Version of the web-scorecard envelope. Pre-launch additive; consumers feature-detect new fields rather than pin an exact value.",
-      "examples": ["0.4"]
+      "examples": ["0.5"]
     },
     "spec_version": {
       "type": "string",
@@ -44,9 +47,13 @@
     "mcp_discovery": {
       "type": "array",
       "description": "The discovery trail: each well-known card or common-path probe attempted, and what it returned.",
-      "items": { "$ref": "#/$defs/EvidenceItem" }
+      "items": {
+        "$ref": "#/$defs/EvidenceItem"
+      }
     },
-    "tool": { "$ref": "#/$defs/ToolIdentity" },
+    "tool": {
+      "$ref": "#/$defs/ToolIdentity"
+    },
     "audience": {
       "type": "null",
       "description": "Always null for a web target; the audience classifier is a CLI concept."
@@ -64,24 +71,48 @@
       "type": "boolean",
       "description": "The submitter's opt-in to the public board listing. Always false for a local run."
     },
-    "summary": { "$ref": "#/$defs/StatusTally" },
-    "coverage_summary": { "$ref": "#/$defs/CoverageSummary" },
+    "vantage": {
+      "$ref": "#/$defs/Vantage"
+    },
+    "follow_declarations": {
+      "type": "boolean",
+      "description": "Whether the audit followed the hosts the target declares (an api-catalog anchor, an MCP server card's remotes) beyond the audited origin."
+    },
+    "declared_hosts": {
+      "type": "array",
+      "description": "The declared-hosts trail: each host the target declared, the surface that declared it, and whether the audit admitted it. Assembled from target-supplied values, so a consumer treats it as untrusted text.",
+      "items": {
+        "$ref": "#/$defs/EvidenceItem"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/StatusTally"
+    },
+    "coverage_summary": {
+      "$ref": "#/$defs/CoverageSummary"
+    },
     "score_pct": {
       "type": "integer",
       "minimum": 0,
       "maximum": 100,
       "description": "The headline relative score. Equals score.relative."
     },
-    "score": { "$ref": "#/$defs/Score" },
+    "score": {
+      "$ref": "#/$defs/Score"
+    },
     "categories": {
       "type": "array",
       "description": "Per-category passed/counted rollups in display order.",
-      "items": { "$ref": "#/$defs/CategoryRollup" }
+      "items": {
+        "$ref": "#/$defs/CategoryRollup"
+      }
     },
     "results": {
       "type": "array",
       "description": "One row per check, in registry order.",
-      "items": { "$ref": "#/$defs/ResultRow" }
+      "items": {
+        "$ref": "#/$defs/ResultRow"
+      }
     }
   },
   "$defs": {
@@ -95,8 +126,14 @@
       "required": ["name", "url"],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "description": "The audited host." },
-        "url": { "type": "string", "description": "The normalized audited URL. Matches target_url." }
+        "name": {
+          "type": "string",
+          "description": "The audited host."
+        },
+        "url": {
+          "type": "string",
+          "description": "The normalized audited URL. Matches target_url."
+        }
       }
     },
     "StatusTally": {
@@ -105,13 +142,34 @@
       "required": ["pass", "noncompliant", "broken", "absent", "n_a", "skip", "error"],
       "additionalProperties": false,
       "properties": {
-        "pass": { "type": "integer", "minimum": 0 },
-        "noncompliant": { "type": "integer", "minimum": 0 },
-        "broken": { "type": "integer", "minimum": 0 },
-        "absent": { "type": "integer", "minimum": 0 },
-        "n_a": { "type": "integer", "minimum": 0 },
-        "skip": { "type": "integer", "minimum": 0 },
-        "error": { "type": "integer", "minimum": 0 }
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "noncompliant": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "broken": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "absent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_a": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "CoverageLevel": {
@@ -119,8 +177,16 @@
       "required": ["total", "verified"],
       "additionalProperties": false,
       "properties": {
-        "total": { "type": "integer", "minimum": 0, "description": "Scored rows at this level (n_a, skip and error excluded)." },
-        "verified": { "type": "integer", "minimum": 0, "description": "Passing rows at this level." }
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Scored rows at this level (n_a, skip and error excluded)."
+        },
+        "verified": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Passing rows at this level."
+        }
       }
     },
     "CoverageSummary": {
@@ -128,9 +194,15 @@
       "required": ["must", "should", "may"],
       "additionalProperties": false,
       "properties": {
-        "must": { "$ref": "#/$defs/CoverageLevel" },
-        "should": { "$ref": "#/$defs/CoverageLevel" },
-        "may": { "$ref": "#/$defs/CoverageLevel" }
+        "must": {
+          "$ref": "#/$defs/CoverageLevel"
+        },
+        "should": {
+          "$ref": "#/$defs/CoverageLevel"
+        },
+        "may": {
+          "$ref": "#/$defs/CoverageLevel"
+        }
       }
     },
     "Score": {
@@ -139,8 +211,16 @@
       "required": ["relative", "global"],
       "additionalProperties": false,
       "properties": {
-        "relative": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "global": { "type": "integer", "minimum": 0, "maximum": 100 }
+        "relative": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "global": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
       }
     },
     "CategoryRollup": {
@@ -148,25 +228,76 @@
       "required": ["id", "name", "passed", "counted"],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "description": "Category slug." },
-        "name": { "type": "string", "description": "Display name." },
-        "passed": { "type": "integer", "minimum": 0 },
-        "counted": { "type": "integer", "minimum": 0, "description": "Scored rows in the category; a category of only n_a rows reads 0." }
+        "id": {
+          "type": "string",
+          "description": "Category slug."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "counted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Scored rows in the category; a category of only n_a rows reads 0."
+        }
       }
     },
     "ResultRow": {
       "type": "object",
-      "required": ["id", "label", "category", "group", "layer", "keyword", "tier", "principle", "status", "evidence"],
+      "required": [
+        "id",
+        "label",
+        "category",
+        "group",
+        "layer",
+        "keyword",
+        "tier",
+        "principle",
+        "status",
+        "evidence",
+        "hosts"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "description": "The check id from the registry; also the remediation-catalog key." },
-        "label": { "type": "string", "description": "Human-readable check title." },
-        "category": { "type": "string", "description": "The visible category slug, one of categories[].id." },
-        "group": { "type": "string", "description": "Mirrors principle." },
-        "layer": { "type": "string", "enum": ["web"] },
-        "keyword": { "type": "string", "enum": ["must", "should", "may"], "description": "Derived from tier." },
-        "tier": { "type": "string", "enum": ["required", "recommended", "optional"] },
-        "principle": { "type": "string", "pattern": "^P[1-8]$", "description": "Internal principle tag, kept as data." },
+        "id": {
+          "type": "string",
+          "description": "The check id from the registry; also the remediation-catalog key."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable check title."
+        },
+        "category": {
+          "type": "string",
+          "description": "The visible category slug, one of categories[].id."
+        },
+        "group": {
+          "type": "string",
+          "description": "Mirrors principle."
+        },
+        "layer": {
+          "type": "string",
+          "enum": ["web"]
+        },
+        "keyword": {
+          "type": "string",
+          "enum": ["must", "should", "may"],
+          "description": "Derived from tier."
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["required", "recommended", "optional"]
+        },
+        "principle": {
+          "type": "string",
+          "pattern": "^P[1-8]$",
+          "description": "Internal principle tag, kept as data."
+        },
         "status": {
           "type": "string",
           "enum": ["pass", "noncompliant", "broken", "absent", "n_a", "skip", "error"],
@@ -174,7 +305,15 @@
         },
         "na_reason": {
           "type": "string",
-          "enum": ["antecedent-unmet", "optional-absent", "posture-consistent"],
+          "enum": [
+            "antecedent-unmet",
+            "optional-absent",
+            "posture-consistent",
+            "auth-required",
+            "declared-host-blocked",
+            "follow-disabled",
+            "reciprocity-refused"
+          ],
           "description": "Present only on n_a rows that carry a reason."
         },
         "unprobed": {
@@ -182,9 +321,69 @@
           "const": true,
           "description": "Present only when true: the row settled from an antecedent the audit observed rather than from its own request."
         },
+        "advisory": {
+          "type": "string",
+          "enum": ["superseded"],
+          "description": "Present only on a pass worth a note: superseded marks a server card in the SEP-1649 shape."
+        },
         "evidence": {
           "type": ["string", "null"],
           "description": "A compact summary of what the probe observed. Assembled from target-supplied values, so a consumer treats it as untrusted text."
+        },
+        "hosts": {
+          "type": "array",
+          "description": "The distinct hosts the row's evidence was requested from, in evidence order; empty when no request counted.",
+          "items": {
+            "$ref": "#/$defs/RowHost"
+          }
+        },
+        "host": {
+          "type": "string",
+          "description": "Present only when hosts holds exactly one entry, holding that entry's host."
+        }
+      }
+    },
+    "RowHost": {
+      "type": "object",
+      "required": ["host"],
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "The WHATWG host, port kept."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "noncompliant", "broken", "absent", "n_a", "skip", "error"],
+          "description": "On a row over several targets, this host's own outcome."
+        },
+        "na_reason": {
+          "type": "string",
+          "enum": [
+            "antecedent-unmet",
+            "optional-absent",
+            "posture-consistent",
+            "auth-required",
+            "declared-host-blocked",
+            "follow-disabled",
+            "reciprocity-refused"
+          ],
+          "description": "Why this host's outcome is n_a."
+        }
+      }
+    },
+    "Vantage": {
+      "type": "object",
+      "required": ["network", "credentialed"],
+      "additionalProperties": false,
+      "description": "Where the audit ran and whether it presented a credential: a score covers what an agent at that vantage can verify.",
+      "properties": {
+        "network": {
+          "type": "string",
+          "enum": ["public", "local"]
+        },
+        "credentialed": {
+          "type": "boolean"
         }
       }
     }

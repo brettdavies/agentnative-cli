@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn counters_match_the_vendored_registry() {
-        assert_eq!(CHECKS.len(), 65, "check count (bump deliberately)");
+        assert_eq!(CHECKS.len(), 68, "check count (bump deliberately)");
         assert_eq!(
             CATEGORY_ORDER.len(),
             6,
@@ -147,31 +147,40 @@ mod tests {
         );
         assert_eq!(CATEGORIES.len(), CATEGORY_ORDER.len());
         let handlers: BTreeSet<&str> = CHECKS.iter().map(|c| c.handler.as_str()).collect();
-        assert_eq!(handlers.len(), 11, "handler kinds (bump deliberately)");
+        assert_eq!(handlers.len(), 13, "handler kinds (bump deliberately)");
         let evals: BTreeSet<&str> = CHECKS
             .iter()
             .filter_map(|c| c.eval.map(|e| e.as_str()))
             .collect();
-        assert_eq!(evals.len(), 2, "eval rules (bump deliberately)");
+        assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
+        assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
         assert_eq!(HANDLER_KINDS.len(), 11);
         assert_eq!(EVAL_RULES.len(), 2);
     }
 
+    /// The unported set is exact, so each port that lands shrinks it here.
     #[test]
-    fn every_vendored_binding_is_ported() {
-        for c in CHECKS {
-            assert!(
-                !matches!(c.handler, HandlerBinding::Unsupported(_)),
-                "{}: handler {} is not ported",
-                c.id,
-                c.handler.as_str()
-            );
-            assert!(
-                !matches!(c.eval, Some(EvalBinding::Unsupported(_))),
-                "{}: eval rule is not ported",
-                c.id
-            );
-        }
+    fn the_unported_bindings_are_exactly_the_known_ones() {
+        let handlers: BTreeSet<&str> = CHECKS
+            .iter()
+            .filter(|c| matches!(c.handler, HandlerBinding::Unsupported(_)))
+            .map(|c| c.handler.as_str())
+            .collect();
+        assert_eq!(
+            handlers,
+            BTreeSet::from(["protected-resource", "server-card"])
+        );
+        let evals: BTreeSet<&str> = CHECKS
+            .iter()
+            .filter_map(|c| match c.eval {
+                Some(EvalBinding::Unsupported(name)) => Some(name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            evals,
+            BTreeSet::from(["api-description", "retained-document"])
+        );
     }
 
     #[test]
@@ -206,7 +215,10 @@ mod tests {
 
     #[test]
     fn remediation_is_one_to_one_and_sorted() {
-        assert_eq!(REMEDIATION.len(), CHECKS.len());
+        assert_eq!(REMEDIATION.len(), CHECKS.len() + RETIRED_CHECK_IDS.len());
+        for id in RETIRED_CHECK_IDS {
+            assert!(remediation_for(id).is_some(), "{id}: no remediation");
+        }
         for c in CHECKS {
             let r = remediation_for(c.id).unwrap_or_else(|| panic!("{}: no remediation", c.id));
             assert!(!r.goal.is_empty() && !r.fix.is_empty());

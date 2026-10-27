@@ -120,8 +120,7 @@ fn credit_for(status: ScorecardStatus, config: &ScoreConfig) -> Option<f64> {
 fn pct(earned: f64, max: f64) -> u32 {
     if max > 0.0 {
         let rounded = round_half_up((100.0 * earned) / max).max(0.0);
-        // The value is a non-negative integer no larger than 100 by
-        // construction, so the conversion cannot truncate.
+        // A non-negative integer-valued float; `as` saturates, never wraps.
         rounded as u32
     } else {
         0
@@ -153,7 +152,10 @@ where
     }
     WebScore {
         relative: pct(earned, applicable_max),
-        global: pct(earned, universe_max),
+        // A run can earn past the universe it is measured against (a row
+        // outside the universe's tiers still credits `earned`); the site
+        // caps global, never relative.
+        global: pct(earned, universe_max).min(100),
         earned: round_half_up(earned * 10.0) / 10.0,
     }
 }

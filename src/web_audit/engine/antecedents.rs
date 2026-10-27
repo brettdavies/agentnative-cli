@@ -86,7 +86,8 @@ pub fn resolve(token: AntecedentToken, ctx: &AntecedentContext<'_>) -> Resolutio
             _ => Resolution::Error,
         },
         T::HtmlRoot => html_root_gate(ctx).unwrap_or(Resolution::Apply),
-        T::McpPresent => apply_if(ctx.mcp_endpoint.is_some()),
+        T::McpPresent | T::McpSession => apply_if(ctx.mcp_endpoint.is_some()),
+        T::McpAuthRequired => Resolution::NotApplicable,
         T::McpAuth => {
             if ctx.mcp_endpoint.is_none() {
                 return Resolution::NotApplicable;
@@ -145,7 +146,8 @@ pub fn unmet_evidence(token: AntecedentToken) -> &'static str {
         T::None => "not applicable",
         T::HttpRoot => "root did not answer",
         T::HtmlRoot => "root is not an HTML document",
-        T::McpPresent => "no MCP endpoint discovered",
+        T::McpPresent | T::McpSession => "no MCP endpoint discovered",
+        T::McpAuthRequired => "MCP endpoint does not require sign-in",
         T::McpAuth => "MCP endpoint does not challenge for auth",
         T::McpResources => {
             "neither initialize nor server/discover advertises capabilities.resources"

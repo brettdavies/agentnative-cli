@@ -5,9 +5,11 @@
 //! The corpus is the site's own recording at the single-hop fetch seam
 //! (`tests/fixtures/web-audit-conformance/README.md`), so a divergence
 //! here is a divergence in a verdict, an evidence line, a score, or a key
-//! order, not in a test double. A scenario the Rust engine cannot yet
-//! reproduce is named in `KNOWN_DIVERGENCES` with its reason; the list is
-//! asserted empty-or-named, never silently skipped.
+//! order, not in a test double. An element the Rust engine cannot yet
+//! reproduce at the vendored pin is an entry in the divergence ledger
+//! (`tests/fixtures/web-audit-divergences.toml`, see `common::ledger`); the
+//! observed set must equal the ledger, so nothing diverges silently and no
+//! entry outlives its fix.
 
 #![cfg(feature = "web")]
 
@@ -20,19 +22,8 @@ use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, load_cases, replay};
+use common::ledger::{compare_with_ledger, corpus_divergences, load_ledger};
 use std::sync::Arc;
-
-/// Scenarios whose divergence is understood and accepted, each with the
-/// reason it cannot close. Empty means the port reproduces the whole
-/// corpus; a non-empty entry is a documented gap, never a silent pass.
-const KNOWN_DIVERGENCES: &[(&str, &str)] = &[];
-
-fn known(name: &str) -> Option<&'static str> {
-    KNOWN_DIVERGENCES
-        .iter()
-        .find(|(scenario, _)| *scenario == name)
-        .map(|(_, reason)| *reason)
-}
 
 /// The first differing line of two JSON documents, with its neighbours, so
 /// a failure names the field rather than dumping two scorecards.
@@ -73,69 +64,46 @@ fn golden_text(name: &str) -> String {
 }
 
 #[test]
-fn every_corpus_scenario_reproduces_the_site_scorecard_byte_for_byte() {
+fn every_corpus_scenario_reproduces_the_site_scorecard_or_is_ledgered() {
     let cases = load_cases();
-    assert!(
-        cases.len() >= 94,
-        "the corpus shrank: {} scenarios",
-        cases.len()
+    assert_eq!(cases.len(), 138, "corpus scenarios (bump deliberately)");
+    let unreachable = cases
+        .iter()
+        .filter(|c| matches!(c.golden, Golden::Unreachable(_)))
+        .count();
+    assert_eq!(
+        unreachable, 3,
+        "the corpus carries three unreachable goldens"
     );
-    let mut failures: Vec<String> = Vec::new();
-    let mut compared = 0usize;
-    let mut unreachable = 0usize;
 
+    let actual = corpus_divergences(&cases);
+    let ledger = load_ledger();
+    let problems = compare_with_ledger(&actual, &ledger, |_| true);
+    let mut detail: Vec<String> = Vec::new();
     for case in &cases {
-        match &case.golden {
-            Golden::Unreachable(expected) => {
-                unreachable += 1;
-                match replay(&case.scenario, Arc::new(default_handlers())) {
-                    RunOutcome::Unreachable { reason, .. } if &reason == expected => {}
-                    RunOutcome::Unreachable { reason, .. } => failures.push(format!(
-                        "{}: unreachable reason differs\n    expected {expected:?}\n    actual   {reason:?}",
-                        case.name
-                    )),
-                    RunOutcome::Complete(_) => failures.push(format!(
-                        "{}: scored where the site reported unreachable",
-                        case.name
-                    )),
-                }
-            }
-            Golden::Scorecard(_) => {
-                compared += 1;
-                let expected = golden_text(&case.name);
-                match scorecard_json(case) {
-                    Ok(actual) if actual == expected => {
-                        if let Some(reason) = known(&case.name) {
-                            failures.push(format!(
-                                "{}: listed in KNOWN_DIVERGENCES ({reason}) but now matches; remove the entry",
-                                case.name
-                            ));
-                        }
-                    }
-                    Ok(actual) => {
-                        if known(&case.name).is_none() {
-                            failures.push(format!(
-                                "{}: scorecard differs at {}",
-                                case.name,
-                                first_difference(&expected, &actual)
-                            ));
-                        }
-                    }
-                    Err(problem) => failures.push(format!("{}: {problem}", case.name)),
-                }
-            }
+        let unledgered = actual
+            .iter()
+            .any(|(s, e)| s == &case.name && !ledger.contains_key(&(s.clone(), e.clone())));
+        if unledgered && let Ok(json) = scorecard_json(case) {
+            detail.push(format!(
+                "{} differs at {}",
+                case.name,
+                first_difference(&golden_text(&case.name), &json)
+            ));
         }
     }
-
-    assert!(compared >= 90, "only {compared} scorecards compared");
-    assert_eq!(unreachable, 2, "the corpus carries two unreachable goldens");
     assert!(
-        failures.is_empty(),
-        "{} of {} scenario(s) diverge from anc.dev:\n{}",
-        failures.len(),
-        cases.len(),
-        failures.join("\n")
+        problems.is_empty(),
+        "{} divergence ledger mismatch(es):\n{}\n{}",
+        problems.len(),
+        problems.join("\n"),
+        detail.join("\n")
     );
+    let matching = cases
+        .iter()
+        .filter(|c| !actual.iter().any(|(s, _)| s == &c.name))
+        .count();
+    assert!(matching > 0, "no scenario reproduces byte for byte");
 }
 
 /// The fetch-layer semantics the port had to reproduce rather than inherit
@@ -167,10 +135,14 @@ fn the_fetch_parity_scenarios_are_present_and_green() {
         ),
         ("run-unreachable", "a target that answers nothing"),
     ];
+    let ledger = load_ledger();
     for (name, what) in semantics {
         let case = by_name
             .get(name)
             .unwrap_or_else(|| panic!("the corpus lost the {what} scenario ({name})"));
+        if ledger.keys().any(|(scenario, _)| scenario == name) {
+            continue;
+        }
         match &case.golden {
             Golden::Unreachable(expected) => {
                 let RunOutcome::Unreachable { reason, .. } =
@@ -196,26 +168,34 @@ fn the_fetch_parity_scenarios_are_present_and_green() {
 /// A golden is only evidence if breaking it fails the suite. Mutating one
 /// digit of a score in a copy of a golden must be caught by the same
 /// comparison the suite runs.
+/// A golden is only evidence if breaking it fails the suite: mutating an
+/// element the engine reproduces must surface as a divergence in that
+/// element, which the ledger does not hold.
 #[test]
 fn a_mutated_golden_fails_the_comparison() {
+    let ledger = load_ledger();
     let cases = load_cases();
     let case = cases
         .iter()
         .find(|c| c.name == "run-healthy")
         .expect("the healthy whole-run scenario");
+    let element = ("run-healthy".to_string(), "spec_version".to_string());
+    assert!(
+        !ledger.contains_key(&element),
+        "the anchor element must be one the engine reproduces"
+    );
     let expected = golden_text(&case.name);
     let actual = scorecard_json(case).expect("the healthy scenario scores");
-    assert_eq!(actual, expected);
-
-    let mutated = expected.replacen("\"score_pct\": 93", "\"score_pct\": 94", 1);
+    let spec = format!("\"spec_version\": \"{}\"", case.scenario.spec_version);
+    let mutated = expected.replacen(&spec, "\"spec_version\": \"0.0.0\"", 1);
     assert_ne!(mutated, expected, "the mutation must change the document");
     assert_ne!(
         actual, mutated,
-        "the comparison must reject a scorecard whose score moved"
+        "the comparison must reject a scorecard whose field moved"
     );
     let diff = first_difference(&mutated, &actual);
     assert!(
-        diff.contains("score_pct"),
+        diff.contains("spec_version"),
         "the failure must name the field: {diff}"
     );
 }

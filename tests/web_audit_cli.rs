@@ -82,6 +82,21 @@ fn the_single_check_form_returns_that_rows_code() {
 /// gate in, because the declaration is what satisfies it. So this pins
 /// which rows carry the declared-type line rather than counting them.
 #[test]
+fn following_declared_hosts_is_on_by_default_and_no_follow_turns_it_off() {
+    let server = fixture_site();
+    let host = host_of(&server);
+    let follows = |extra: &[&str]| -> Value {
+        let mut args = vec!["web", host.as_str(), "--output", "json"];
+        args.extend(extra.iter().copied());
+        let assert = anc().args(&args).assert();
+        let card: Value = serde_json::from_str(&stdout_of(assert.get_output())).unwrap();
+        card["follow_declarations"].clone()
+    };
+    assert_eq!(follows(&[]), Value::Bool(true));
+    assert_eq!(follows(&["--no-follow"]), Value::Bool(false));
+}
+
+#[test]
 fn the_declared_site_type_scopes_the_run() {
     use agentnative::web_audit::scorecard::{DeclaredSiteType, ScorecardStatus as S};
 
@@ -248,6 +263,8 @@ fn help_carries_the_exit_table_and_the_external_dns_disclosure() {
     assert!(out.contains("public resolvers"), "{out}");
     assert!(out.contains("--site-type"), "{out}");
     assert!(out.contains("--check"), "{out}");
+    assert!(out.contains("--no-follow"), "{out}");
+    assert!(out.contains("the hosts the target declares"), "{out}");
 
     let top = anc().args(["--help"]).assert().code(0);
     let out = stdout_of(top.get_output());

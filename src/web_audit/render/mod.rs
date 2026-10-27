@@ -6,7 +6,9 @@
 
 mod exit;
 mod failure;
+mod lanes;
 mod progress;
+mod rows;
 mod text;
 
 pub use exit::{
@@ -18,9 +20,8 @@ pub use failure::{
     unknown_check_failure, unreachable_failure, untrusted_certificate_failure,
 };
 pub use progress::{StderrProgress, progress_enabled};
-pub use text::{
-    RenderOptions, advisory_note, format_check, format_text, non_comparable_note, prefix_for,
-};
+pub use rows::prefix_for;
+pub use text::{RenderOptions, advisory_note, format_check, format_text, non_comparable_note};
 
 #[cfg(test)]
 mod test_rows {

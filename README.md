@@ -406,6 +406,15 @@ Warnings (6 SHOULD or MAY):
 
 Passing and inapplicable rows are a count by default; `--verbose` lists them. `--quiet` drops them entirely.
 
+Inside each section, the MCP checks come last, grouped by protocol lane as on anc.dev's result page. A lane heading
+carries the lane's pass count over the whole report and a line saying what the lane covers:
+
+```text
+  MCP · Modern lane · 2026-07-28 (0/7 pass)
+    header-routed and stateless; no initialize or session.
+    [WARN] server/discover answers with server identity on the modern lane (mcp-server-discover) (should)
+```
+
 ### Reading the Registry Offline
 
 Three readers serve the compiled data with no network, so an agent has every id and every fix locally:

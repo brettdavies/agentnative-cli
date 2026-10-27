@@ -1,6 +1,6 @@
 //! Rust source emission for `$OUT_DIR/generated_web_registry.rs`.
 
-use super::vocab::{ANTECEDENTS, SITE_TYPES, TIERS};
+use super::vocab::{ANTECEDENTS, LANE_CATEGORY, SITE_TYPES, TIERS};
 use super::{EVAL_RULES, HANDLER_KINDS, NormalizedRegistry, RemediationEntry};
 use crate::ts_consts::SiteConstants;
 
@@ -112,6 +112,19 @@ pub fn emit_rust(
         src.push_str(&format!("    ({slug:?}, {name:?}),\n"));
     }
     src.push_str("];\n");
+    src.push_str("/// The one category whose checks group under a protocol lane.\n");
+    src.push_str(&format!(
+        "pub const LANE_CATEGORY: &str = {LANE_CATEGORY:?};\n"
+    ));
+    src.push_str("/// The MCP category's protocol lanes, in display order.\n");
+    src.push_str("pub const MCP_LANES: &[McpLane] = &[\n");
+    for lane in &reg.mcp_lanes {
+        src.push_str(&format!(
+            "    McpLane {{ id: {:?}, label: {:?}, note: {:?} }},\n",
+            lane.id, lane.label, lane.note
+        ));
+    }
+    src.push_str("];\n");
     src.push_str("/// Handler kinds this engine ports.\n");
     src.push_str(&format!(
         "pub const HANDLER_KINDS: &[&str] = {};\n",
@@ -208,6 +221,7 @@ pub fn emit_rust(
         src.push_str(&format!("        title: {:?},\n", c.title));
         src.push_str(&format!("        breadcrumb: {:?},\n", c.breadcrumb));
         src.push_str(&format!("        hint: {:?},\n", c.hint));
+        src.push_str(&format!("        lane: {:?},\n", c.lane));
         src.push_str(&format!("        handler: {handler},\n"));
         src.push_str(&format!("        with_json: {:?},\n", c.with_json));
         src.push_str("        patterns: &[\n");

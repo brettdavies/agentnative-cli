@@ -7,31 +7,12 @@ use std::fmt::Write as _;
 use super::exit::{
     EXIT_CLEAN, EXIT_FAILURES, EXIT_WARNINGS, exit_code, exit_reason, is_miss, plural,
 };
+use super::rows::{write_row, write_section};
 use crate::color::{paint, status_style};
 use crate::web_audit::engine::discovery_documents::card_suffix_url;
 use crate::web_audit::engine::{RunReport, Unported};
-use crate::web_audit::registry::{
-    MCP_DISCOVERY, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword, remediation_for,
-};
+use crate::web_audit::registry::{MCP_DISCOVERY, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword};
 use crate::web_audit::scorecard::{ResultRow, RowAdvisory, ScorecardStatus, WebScorecard};
-
-/// The status prefix a row renders with, mapped through the tier: a miss
-/// on a MUST is a failure, on a SHOULD or MAY a warning.
-pub fn prefix_for(row: &ResultRow) -> &'static str {
-    match row.status {
-        ScorecardStatus::Pass => "PASS",
-        ScorecardStatus::Noncompliant | ScorecardStatus::Broken | ScorecardStatus::Absent => {
-            if row.keyword == WebCheckKeyword::Must {
-                "FAIL"
-            } else {
-                "WARN"
-            }
-        }
-        ScorecardStatus::NA => "N/A ",
-        ScorecardStatus::Skip => "SKIP",
-        ScorecardStatus::Error => "ERR ",
-    }
-}
 
 /// How the text report renders.
 #[derive(Clone, Copy, Debug, Default)]
@@ -42,36 +23,6 @@ pub struct RenderOptions {
     pub quiet: bool,
     /// List passing and inapplicable rows instead of counting them.
     pub verbose: bool,
-}
-
-fn write_row(out: &mut String, row: &ResultRow, color: bool, with_fix: bool) {
-    let prefix = prefix_for(row);
-    let painted = paint(status_style(prefix, color), prefix);
-    let _ = writeln!(
-        out,
-        "  [{painted}] {} ({}) ({})",
-        row.label,
-        row.id,
-        row.keyword.as_str()
-    );
-    if let Some(evidence) = row.evidence.as_deref().filter(|e| !e.is_empty()) {
-        for line in evidence.lines() {
-            let _ = writeln!(out, "         {line}");
-        }
-    }
-    if with_fix && let Some(fix) = remediation_for(&row.id) {
-        let _ = writeln!(out, "         Goal: {}", fix.goal);
-        let mut lines = fix.fix.trim_end().lines();
-        if let Some(first) = lines.next() {
-            let _ = writeln!(out, "         Fix:  {first}");
-        }
-        for line in lines {
-            let _ = writeln!(out, "               {line}");
-        }
-        for resource in fix.resources {
-            let _ = writeln!(out, "         Docs: {} <{}>", resource.label, resource.url);
-        }
-    }
 }
 
 /// The note a passing row carries about how it passed, the site's
@@ -129,7 +80,8 @@ fn write_header(out: &mut String, scorecard: &WebScorecard) {
 
 /// Render the full text report: verdict first, then failing rows with
 /// their fixes, then warnings, then what could not be checked, then the
-/// passing and inapplicable rows as counts.
+/// passing and inapplicable rows as counts. Inside each section the MCP
+/// rows gather under their protocol lanes.
 pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
     let scorecard = &report.scorecard;
     let rows = &scorecard.results;
@@ -187,46 +139,45 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
         .filter(|r| r.status == ScorecardStatus::NA)
         .collect();
 
+    let with_fix = |out: &mut String, row: &ResultRow, indent: &str| {
+        write_row(out, row, indent, opts.color, true);
+    };
+    let plain = |out: &mut String, row: &ResultRow, indent: &str| {
+        write_row(out, row, indent, opts.color, false);
+    };
     if !failures.is_empty() {
         let _ = writeln!(out, "\nFailures ({} MUST):", failures.len());
-        for row in &failures {
-            write_row(&mut out, row, opts.color, true);
-        }
+        write_section(&mut out, &failures, rows, with_fix);
     }
     if !warnings.is_empty() {
         let _ = writeln!(out, "\nWarnings ({} SHOULD or MAY):", warnings.len());
-        for row in &warnings {
-            write_row(&mut out, row, opts.color, true);
-        }
+        write_section(&mut out, &warnings, rows, with_fix);
     }
     if !unchecked.is_empty() {
         let _ = writeln!(out, "\nCould not check ({}):", unchecked.len());
-        for row in &unchecked {
-            write_row(&mut out, row, opts.color, false);
-        }
+        write_section(&mut out, &unchecked, rows, plain);
     }
     if !opts.quiet {
         let endpoint = scorecard.mcp_endpoint.as_deref();
-        let advised: Vec<(&ResultRow, String)> = passed
+        let advised: Vec<&ResultRow> = passed
             .iter()
-            .filter_map(|row| advisory_note(row, endpoint).map(|note| (*row, note)))
+            .copied()
+            .filter(|row| advisory_note(row, endpoint).is_some())
             .collect();
         if !advised.is_empty() {
             let _ = writeln!(out, "\nAdvisories ({}):", advised.len());
-            for (row, note) in &advised {
-                write_row(&mut out, row, opts.color, false);
-                let _ = writeln!(out, "         Note: {note}");
-            }
+            write_section(&mut out, &advised, rows, |out, row, indent| {
+                plain(out, row, indent);
+                if let Some(note) = advisory_note(row, endpoint) {
+                    let _ = writeln!(out, "{indent}       Note: {note}");
+                }
+            });
         }
         if opts.verbose {
             let _ = writeln!(out, "\nPassed ({}):", passed.len());
-            for row in &passed {
-                write_row(&mut out, row, opts.color, false);
-            }
+            write_section(&mut out, &passed, rows, plain);
             let _ = writeln!(out, "\nNot applicable ({}):", inapplicable.len());
-            for row in &inapplicable {
-                write_row(&mut out, row, opts.color, false);
-            }
+            write_section(&mut out, &inapplicable, rows, plain);
         } else {
             let _ = writeln!(
                 out,
@@ -280,25 +231,6 @@ mod tests {
                 "Superseded shape (SEP-1649). SEP-2127 moves the card to <endpoint>/server-card, listed in /.well-known/ai-catalog.json."
             )
         );
-    }
-
-    #[test]
-    fn prefixes_follow_the_tier_mapping() {
-        use ScorecardStatus as S;
-        assert_eq!(
-            prefix_for(&row("a", WebCheckKeyword::Must, S::Absent)),
-            "FAIL"
-        );
-        assert_eq!(
-            prefix_for(&row("a", WebCheckKeyword::Should, S::Absent)),
-            "WARN"
-        );
-        assert_eq!(
-            prefix_for(&row("a", WebCheckKeyword::May, S::Broken)),
-            "WARN"
-        );
-        assert_eq!(prefix_for(&row("a", WebCheckKeyword::May, S::Pass)), "PASS");
-        assert_eq!(prefix_for(&row("a", WebCheckKeyword::May, S::NA)), "N/A ");
     }
 
     #[test]

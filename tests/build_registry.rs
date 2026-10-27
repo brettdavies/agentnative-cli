@@ -910,6 +910,42 @@ fn the_mcp_blocks_normalize() {
 }
 
 #[test]
+fn lanes_are_emitted_in_declaration_order_with_each_checks_lane() {
+    let consts =
+        ts_consts::resolve_site_constants(UA_TS, SITE_URL_TS, ROUTES_TS).expect("resolves");
+    let reg = normalize_registry(&mcp_registry(""), &ua_tokens(), CARD_SCHEMA).expect("normalizes");
+    let src = web_registry::emit_rust(
+        &reg,
+        &[],
+        &consts,
+        "0123456789abcdef0123456789abcdef01234567",
+    );
+    let lanes = "pub const MCP_LANES: &[McpLane] = &[\n    McpLane { id: \"shared\", label: \"Every MCP server\", note: \"any protocol\" },\n    McpLane { id: \"legacy\", label: \"Legacy lane\", note: \"initialize, then a session\" },\n];\n";
+    assert!(src.contains(lanes), "missing the lane table in:\n{src}");
+    assert!(
+        src.contains("pub const LANE_CATEGORY: &str = \"mcp\";\n"),
+        "{src}"
+    );
+    let lane_of = |id: &str| {
+        let start = src
+            .find(&format!("        id: {id:?},\n"))
+            .unwrap_or_else(|| panic!("no emitted check {id}"));
+        let entry = &src[start..];
+        let end = entry.find("    },\n").expect("the check entry closes");
+        entry[..end]
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("lane: "))
+            .map(str::to_string)
+    };
+    assert_eq!(lane_of("robots").as_deref(), Some("None,"));
+    assert_eq!(lane_of("mcp-init").as_deref(), Some("Some(\"legacy\"),"));
+    assert_eq!(
+        lane_of("mcp-server-card").as_deref(),
+        Some("Some(\"shared\"),")
+    );
+}
+
+#[test]
 fn unknown_top_level_key_fails_naming_it() {
     let e = top_err(&mcp_registry("frobs: 1\n"));
     assert!(e.contains("\"frobs\"") && e.contains("top-level"), "{e}");

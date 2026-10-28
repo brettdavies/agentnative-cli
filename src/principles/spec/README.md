@@ -13,13 +13,14 @@ the upstream [`README`](https://github.com/brettdavies/agentnative#readme).
 Run from the repo root:
 
 ```sh
-scripts/sync-spec.sh    # queries the remote for the latest v* tag; falls back to local on network failure
+scripts/sync-spec.sh                # the latest v* tag
+scripts/sync-spec.sh --ref v0.7.0   # a named tag, branch, or commit SHA
 ```
 
-The script queries `https://github.com/brettdavies/agentnative.git` for the latest `v*` tag and shallow-clones that tag
-into a temp directory for extraction. If the remote is unreachable, it falls back to a local checkout
-(`$HOME/dev/agentnative-spec` by default; override with `SPEC_ROOT`). Override `SPEC_REMOTE_URL` to query a different
-remote. The script extracts files via `git show`, so neither source's working tree is perturbed.
+The script resolves the ref with `gh api` against the repository `SPEC_REMOTE_URL` names
+(`https://github.com/brettdavies/agentnative.git` by default) and fetches each file from the GitHub contents endpoint
+at that ref. When the API is unreachable, it falls back to a local checkout (`$HOME/dev/agentnative-spec` by default;
+override with `SPEC_ROOT`) and reads files with `git show`, so the checkout's working tree is left as it is.
 
 ## Layout
 
@@ -29,6 +30,10 @@ remote. The script extracts files via `git show`, so neither source's working tr
 | `CHANGELOG.md`          | `CHANGELOG.md`               | Spec change history; informational                                   |
 | `principles/p*.md`      | `principles/p*.md`           | Frontmatter parsed by `build.rs` → `REQUIREMENTS`                    |
 | `principles/scoring.md` | `principles/scoring.md`      | Scoring-formula authority; reference only (not parsed by `build.rs`) |
+
+The spec's own `README.md` is not vendored. Its [Reading the spec](https://github.com/brettdavies/agentnative#reading-the-spec)
+section holds the conventions for reading requirement text, including how a requirement that names a double-dash flag
+applies to a help that declares only single-dash names; the behavioral audits read `--help` by the same rule.
 
 ## Licensing
 

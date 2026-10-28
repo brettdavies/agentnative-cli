@@ -4,6 +4,26 @@ All notable changes to this repository are documented here: governance, validato
 
 Changes to the standard itself (principle MUST/SHOULD/MAY tier moves, requirement IDs added/removed/renamed, applicability shifts) are tracked per-principle in `principles/p*-*.md` via the `last-revised:` calver frontmatter field and the `## Pressure test notes` section appended to each file.
 
+## [0.7.0] - 2026-10-28
+
+### Added
+
+- Add a reading rule for flag names in requirement text: a requirement names a flag by its double-dash spelling, a tool whose help declares no double-dash name meets it with the single-dash spelling, and a single letter meets only a requirement that names that letter. by @brettdavies in [#59](https://github.com/brettdavies/agentnative/pull/59)
+
+### Changed
+
+- Change P3 `p3-must-subcommand-examples` to apply to subcommands that take their own arguments or options; a subcommand that takes none (no positional argument, no nested commands, no option beyond help and the global flags) is exempt. by @brettdavies in [#58](https://github.com/brettdavies/agentnative/pull/58)
+- Change P5 `p5-must-force-yes` to accept a confirmation flag under another name when the command's `--help` documents it as confirming without a prompt, with `--yes` and `--force` as the recommended names.
+- Change P2 `p2-must-schema-print` to accept a documented introspection command under another name as the schema surface, with `schema` / `--schema` as the recommended surface.
+
+### Fixed
+
+- Fix the generated changelog section to stamp its date in UTC, so a release's date does not depend on the operator's time zone. by @brettdavies in [#57](https://github.com/brettdavies/agentnative/pull/57)
+- Fix the audit IDs each principle lists as measuring it, which named seven IDs `anc` does not report and omitted others. by @brettdavies in [#58](https://github.com/brettdavies/agentnative/pull/58)
+- Fix the `last-revised` check to use the UTC calendar date, so a date stamped in any time zone matches the one CI expects. by @brettdavies in [#64](https://github.com/brettdavies/agentnative/pull/64)
+
+**Full Changelog**: [v0.6.0...v0.7.0](https://github.com/brettdavies/agentnative/compare/v0.6.0...v0.7.0)
+
 ## [0.6.0] - 2026-10-05
 
 ### Added
@@ -20,7 +40,8 @@ Changes to the standard itself (principle MUST/SHOULD/MAY tier moves, requiremen
 
 ### Documentation
 
-- Release docs and `cliff.toml` / `publish.yml` comments name `generate-changelog.py` as the entry point. by @brettdavies in [#48](https://github.com/brettdavies/agentnative/pull/48)
+- Release docs and `cliff.toml` / `publish.yml` comments name `generate-changelog.py` as the entry point.
+ by @brettdavies in [#48](https://github.com/brettdavies/agentnative/pull/48)
 
 **Full Changelog**: [v0.5.0...v0.6.0](https://github.com/brettdavies/agentnative/compare/v0.5.0...v0.6.0)
 

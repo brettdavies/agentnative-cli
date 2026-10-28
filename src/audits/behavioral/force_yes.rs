@@ -1,9 +1,10 @@
 //! Audit: `p5-must-force-yes`.
 //!
 //! Destructive operations (delete, overwrite, bulk modify) MUST require an
-//! explicit `--force` or `--yes` flag — agents shouldn't be able to delete
-//! resources by guessing the call shape, and the explicit flag makes the
-//! intent auditable in process tables and shell history.
+//! explicit confirmation flag, `--yes` or `--force` by preference — agents
+//! shouldn't be able to delete resources by guessing the call shape, and the
+//! explicit flag makes the intent auditable in process tables and shell
+//! history.
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
 //! less any the `.anc.toml` chain declares in `[p5] not_destructive`, probe

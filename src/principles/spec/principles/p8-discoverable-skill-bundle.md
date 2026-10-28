@@ -52,9 +52,9 @@ recognizes the tool's idioms across every subsequent invocation.
 
 - If a CLI ships a skill bundle, then it MUST provide an install path that registers the bundle with installed agent
   runtimes. The canonical form is a `tool skill install [<host>]` subcommand that writes into the runtime's filesystem
-  cascade (e.g., `~/.claude/skills/`, `~/.cursor/skills/`). Non-canonical alternatives (`tool init --skill`, `tool
-  skills add`, `tool agents add`) are acceptable but SHOULD migrate toward `tool skill install`. A bundle without an
-  install path sits unread until a human manually copies it; the install path is what turns the bundle from
+  cascade (e.g., `~/.claude/skills/`, `~/.cursor/skills/`). Non-canonical alternatives (`tool init --skill`,
+  `tool skills add`, `tool agents add`) are acceptable but SHOULD migrate toward `tool skill install`. A bundle without
+  an install path sits unread until a human manually copies it; the install path is what turns the bundle from
   documentation into discoverable runtime knowledge.
 
 **SHOULD:**
@@ -92,3 +92,6 @@ recognizes the tool's idioms across every subsequent invocation.
 
 The vendor census in the v0.4.0 source-mining sprint documents the shipped patterns across Firecrawl, CLI-Anything, gws,
 Crush, and larksuite; the `agentnative-skill` repo's `bin/check-update` is a reference for an update-check pattern.
+
+Measured by audit IDs `p8-bundle-install`, `p8-bundle-exists`, `p8-install-all`, `p8-bundle-update`. Run
+`anc audit --principle 8 .` against the CLI under test to see each.

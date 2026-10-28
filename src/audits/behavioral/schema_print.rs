@@ -1,9 +1,10 @@
 //! Audit: `p2-must-schema-print`.
 //!
-//! When a CLI emits structured output, it MUST expose its output schema via a
-//! `schema` subcommand or `--schema` flag. Runtime-discoverable schemas let
-//! agents pin against shape changes across versions; without one, every
-//! consumer infers the shape from sample output and breaks on every change.
+//! When a CLI emits structured output, it MUST expose its output schema at
+//! runtime, by preference through a `schema` subcommand or `--schema` flag.
+//! Runtime-discoverable schemas let agents pin against shape changes across
+//! versions; without one, every consumer infers the shape from sample output
+//! and breaks on every change.
 //!
 //! Applicability: gates on a help-text probe — only fires when the help
 //! mentions any structured-output indicator (`--output`, `--format`, `--json`,

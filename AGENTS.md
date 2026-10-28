@@ -144,9 +144,10 @@ Suppressed audits appear in `results[]` as `status: "skip"` with evidence starti
 
 - `0`: all audits passed
 - `1`: warnings present, no failures
-- `2`: failures, errors, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH,
-  a directory that builds several binaries with no `--bin` (`binary-ambiguous`), a `--bin` that names none of them
+- `2`: failures, or usage errors (bare `anc`, unknown flag, mutually exclusive flags, command not found on PATH, a
+  directory that builds several binaries with no `--bin` (`binary-ambiguous`), a `--bin` that names none of them
   (`unknown-bin`), `--bin` beside a binary target (`bin-needs-directory`))
+- `3`: could not check: an audit errored, or none applied. An errored audit outranks a failure.
 
 Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr; usage errors
 include `Usage:` text, and audit failures don't. Under `--output json`, every error is one envelope on stderr with a

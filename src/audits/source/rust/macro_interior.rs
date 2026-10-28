@@ -295,9 +295,12 @@ fn is_non_evaluating(path: &str) -> bool {
 ///
 /// Testing every ancestor rather than the nearest enclosing item is equivalent
 /// for a definition at item position: its body is flat token trees all the way
-/// down, so nothing re-parsable nests between. A definition written inside
-/// another macro's arguments is not an item, so tree-sitter builds no
-/// `macro_definition` node for it and the token pattern has to be read instead.
+/// down, so nothing re-parsable nests between. A definition tree-sitter cannot
+/// place at item position, such as one in expression position, is left by error
+/// recovery as bare tokens with no `macro_definition` node, so the token pattern
+/// has to be read instead. A definition nested in another macro's arguments
+/// needs neither: the outermost interior's re-parse rebuilds it as a
+/// `macro_definition` node, whose body stays flat tokens.
 fn inside_macro_definition(node: &Node<'_, StrDoc<Rust>>) -> bool {
     if node.ancestors().any(|a| a.kind() == "macro_definition") {
         return true;
@@ -308,12 +311,12 @@ fn inside_macro_definition(node: &Node<'_, StrDoc<Rust>>) -> bool {
         .any(|tree| follows_macro_rules_header(&tree))
 }
 
-/// Whether `tree` is the token tree of a `macro_rules! <name>` written as bare
-/// tokens, which is how one nested in another macro's arguments appears.
+/// Whether `tree` is the token tree of a `macro_rules! <name>` that error
+/// recovery left as bare tokens rather than a `macro_definition` node.
 ///
 /// The two tokens before the name are the discriminator. Testing only that some
-/// earlier sibling says `macro_rules` would also skip a sibling macro written
-/// after a definition in the same interior.
+/// earlier sibling says `macro_rules` would also skip a macro written after a
+/// definition under the same parent.
 fn follows_macro_rules_header(tree: &Node<'_, StrDoc<Rust>>) -> bool {
     let Some(parent) = tree.parent() else {
         return false;
@@ -481,10 +484,19 @@ mod tests {
 
     #[test]
     fn a_macro_definition_nested_in_another_macro_is_never_re_parsed() {
-        // Nested, the definition is bare tokens rather than a `macro_definition`
-        // node, and the transcriber's receiver is an ordinary identifier, so
-        // neither the ancestor-kind test nor the fragment-receiver test sees it.
+        // Nested, the definition is bare tokens in the file's tree; the outer
+        // interior's re-parse rebuilds it as a `macro_definition` node, so its
+        // transcriber is never read as code.
         let source = "cfg_if! {\n    if #[cfg(unix)] {\n        macro_rules! inner {\n            () => { GLOBAL.unwrap() };\n        }\n    }\n}";
+        assert!(interior_locations(source).is_empty());
+    }
+
+    #[test]
+    fn a_definition_left_as_bare_tokens_is_never_re_parsed() {
+        // In expression position tree-sitter builds no `macro_definition` node,
+        // and the transcriber re-parses cleanly with an ordinary receiver, so
+        // only the bare-token header test rejects it.
+        let source = "fn f() { let x = macro_rules! m { () => { GLOBAL.unwrap() } }; }";
         assert!(interior_locations(source).is_empty());
     }
 

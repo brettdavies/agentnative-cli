@@ -1,7 +1,7 @@
 ---
 title: Help-Flag Names Across Frameworks - Plan
 type: fix
-status: merged
+status: released
 prs:
   - "#163"
   - "#164"
@@ -33,6 +33,7 @@ prs:
   - "brettdavies/agentnative#59"
   - "brettdavies/agentnative-site#455"
 completed: 2026-10-26
+released_in: v0.7.0
 date: 2026-10-06
 topic: help-flag-names-across-frameworks
 artifact_contract: ce-unified-plan/v1

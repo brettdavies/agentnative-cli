@@ -1,9 +1,10 @@
 ---
 title: "feat: scorecard JSON Schema — derive, embed, expose, publish"
 type: feat
-status: merged
+status: released
 prs: ["#54", "#239"]
 completed: 2026-10-27
+released_in: v0.7.0
 date: 2026-04-30
 ---
 

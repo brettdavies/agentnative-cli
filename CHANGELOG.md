@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Report `spec_version: "0.6.0"` in scorecards, matching the published spec that now defines `p3-should-unprefixed-command-list`. by @brettdavies in [#136](https://github.com/brettdavies/agentnative-cli/pull/136)
 - Change `p3-subcommand-examples` to exempt subcommands that take no arguments or options of their own (no operand, no nested commands, no flag beyond `--help` and the top-level flags), naming the exempt subcommands in the evidence. A tool whose every probed subcommand is exempt reads `skip`. by @brettdavies in [#142](https://github.com/brettdavies/agentnative-cli/pull/142)
 - Change passing rows of these audits to carry evidence naming the subcommands and flags they matched. by @brettdavies in [#143](https://github.com/brettdavies/agentnative-cli/pull/143)
 - Change `p5-force-yes` to accept `--auto-approve`, `--assume-yes`, and `--confirm` as confirmation flags. by @brettdavies in [#147](https://github.com/brettdavies/agentnative-cli/pull/147)

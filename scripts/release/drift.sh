@@ -30,6 +30,9 @@
 #   0. The anchor release itself reached base: the version carriers and
 #      CHANGELOG.md at the anchor match base's copies (a release whose
 #      backport never ran is invisible to gate 1, which only looks past it).
+#      A manifest compares by its version alone: the overlay took the rest of
+#      the file from base, so base rewriting it since, or keeping lines the
+#      release withheld, is not drift.
 #   1. Every commit on head since the anchor, and every file those commits
 #      touched that base does not already contain. A file base has moved
 #      further on its own is not drift: head's change (anchor to head) is
@@ -175,6 +178,21 @@ resolve_anchor() {
 # to them (three-way containment, same as gate 1), or the next overlay cut
 # reverts the release's own bookkeeping.
 
+# The version a manifest declares at REF, or nothing.
+manifest_version_at() {
+  local ref="$1" path="$2"
+  case "$(basename "$path")" in
+    Cargo.toml | pyproject.toml)
+      git show "$ref:$path" 2>/dev/null | grep -m1 -E '^version[[:space:]]*=' \
+        | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/' || true
+      ;;
+    package.json)
+      git show "$ref:$path" 2>/dev/null | grep -m1 -E '"version"[[:space:]]*:' \
+        | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/' || true
+      ;;
+  esac
+}
+
 gate_anchor_backported() {
   header "Anchor release backported to $BASE_REF"
   local path verdict head_blob prev
@@ -184,7 +202,20 @@ gate_anchor_backported() {
     return
   fi
   prev=$(git rev-parse --verify --quiet "$ANCHOR^" || true)
+  local anchor_version base_version
   for path in $VERSION_CARRIERS; do
+    case "$(basename "$path")" in
+      Cargo.toml | package.json | pyproject.toml)
+        anchor_version=$(manifest_version_at "$ANCHOR" "$path")
+        [[ -n "$anchor_version" ]] || continue
+        base_version=$(manifest_version_at "$BASE_REF" "$path")
+        if [[ -z "$base_version" ]] \
+          || [[ "$(printf '%s\n%s\n' "$anchor_version" "$base_version" | sort -V | tail -n 1)" != "$base_version" ]]; then
+          flagged+=("version $path (${base_version:-none}, release ${anchor_version})")
+        fi
+        continue
+        ;;
+    esac
     head_blob=$(blob_at "$ANCHOR" "$path")
     [[ -n "$head_blob" ]] || continue
     [[ -n "$prev" && "$(blob_at "$prev" "$path")" == "$head_blob" ]] && continue

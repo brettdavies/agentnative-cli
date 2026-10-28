@@ -235,6 +235,17 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
         #[arg(long)]
         include_tests: bool,
 
+        /// Threads that read source files for source analysis, at least 1.
+        /// Default: one per available core, capped to bound memory, and never
+        /// more than the files read
+        #[arg(
+            long,
+            value_name = "N",
+            env = "AGENTNATIVE_JOBS",
+            value_parser = clap::value_parser!(u16).range(1..),
+        )]
+        jobs: Option<u16>,
+
         /// Exemption category for the target. Suppresses audits that do not
         /// apply to this class of tool — e.g., TUI apps legitimately
         /// intercept the TTY, so `--audit-profile human-tui` skips the

@@ -129,7 +129,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    use crate::project::{Language, ParsedFile};
+    use crate::project::{Language, ParsedFile, SourceFiles};
 
     fn temp_dir(suffix: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -148,7 +148,7 @@ mod tests {
         let src = dir.join("src");
         std::fs::create_dir_all(&src).expect("create src dir");
 
-        let mut parsed = HashMap::new();
+        let mut parsed = SourceFiles::new();
         for (name, content) in files {
             let path = src.join(name);
             std::fs::write(&path, content).expect("write test source file");
@@ -175,6 +175,7 @@ mod tests {
             include_tests: false,
             parsed_files: OnceLock::from(HashMap::from([(Language::Rust, parsed)])),
             help_output: OnceLock::new(),
+            prepared_findings: Default::default(),
             anc_config: Default::default(),
             inventory: Default::default(),
         }

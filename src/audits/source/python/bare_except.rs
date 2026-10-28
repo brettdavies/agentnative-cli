@@ -4,10 +4,10 @@
 //! (KeyboardInterrupt, SystemExit) and hides programming errors. Always specify
 //! the exception type. Analogous to Rust's `code-unwrap`.
 
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Python;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
@@ -36,13 +36,15 @@ impl Audit for BareExceptAudit {
         project.has_language(Language::Python)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Python(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Python);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            if let AuditStatus::Fail(evidence) = audit_bare_except(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Python, Python, self) {
+            if let AuditStatus::Fail(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -67,16 +69,23 @@ impl Audit for BareExceptAudit {
     }
 }
 
-/// Scan a Python source string for bare `except:` clauses.
+impl SourceScan<Python> for BareExceptAudit {
+    type Finding = AuditStatus;
+
+    fn scan(&self, file: &SourceFile<'_, Python>) -> AuditStatus {
+        audit_bare_except(file)
+    }
+}
+
+/// Scan one Python file for bare `except:` clauses.
 ///
 /// Walks the AST looking for `except_clause` nodes that have no exception type.
 /// The tree-sitter-python grammar represents bare except as an `except_clause`
 /// whose first non-keyword child is the `:` token (no type expression between
 /// `except` and `:`).
-pub(crate) fn audit_bare_except(source: &str, file: &str) -> AuditStatus {
-    let root = Python.ast_grep(source);
+pub(crate) fn audit_bare_except(file: &SourceFile<'_, Python>) -> AuditStatus {
     let mut matches = Vec::new();
-    walk(root.root(), file, &mut matches);
+    walk(file.root(), &file.label(), &mut matches);
 
     if matches.is_empty() {
         AuditStatus::Pass
@@ -141,7 +150,7 @@ try:
 except ValueError:
     handle_it()
 ";
-        let status = audit_bare_except(source, "src/foo.py");
+        let status = audit_bare_except(&pass::python(source, "src/foo.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -155,7 +164,7 @@ except (ValueError, KeyError) as e:
 except OSError:
     cleanup()
 ";
-        let status = audit_bare_except(source, "src/foo.py");
+        let status = audit_bare_except(&pass::python(source, "src/foo.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -167,7 +176,7 @@ try:
 except:
     pass
 ";
-        let status = audit_bare_except(source, "src/foo.py");
+        let status = audit_bare_except(&pass::python(source, "src/foo.py"));
         assert!(matches!(status, AuditStatus::Fail(_)));
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains("except:"));
@@ -182,7 +191,7 @@ try:
     risky()
 except: pass
 ";
-        let status = audit_bare_except(source, "src/foo.py");
+        let status = audit_bare_except(&pass::python(source, "src/foo.py"));
         assert!(matches!(status, AuditStatus::Fail(_)));
     }
 
@@ -201,7 +210,7 @@ def b():
     except:
         log()
 ";
-        let status = audit_bare_except(source, "src/multi.py");
+        let status = audit_bare_except(&pass::python(source, "src/multi.py"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
@@ -219,7 +228,7 @@ try:
 except Exception:
     handle()
 ";
-        let status = audit_bare_except(source, "src/clean.py");
+        let status = audit_bare_except(&pass::python(source, "src/clean.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -231,7 +240,7 @@ msg = \"never write `except:` in production\"
 def main():
     return msg
 ";
-        let status = audit_bare_except(source, "src/strings.py");
+        let status = audit_bare_except(&pass::python(source, "src/strings.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -242,14 +251,14 @@ def main():
 def main():
     pass
 ";
-        let status = audit_bare_except(source, "src/comments.py");
+        let status = audit_bare_except(&pass::python(source, "src/comments.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
     #[test]
     fn pass_with_no_python_files() {
         // Empty source = no AST = pass.
-        let status = audit_bare_except("", "src/empty.py");
+        let status = audit_bare_except(&pass::python("", "src/empty.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -261,7 +270,7 @@ try:
 except:
     pass
 ";
-        let status = audit_bare_except(source, "src/loc.py");
+        let status = audit_bare_except(&pass::python(source, "src/loc.py"));
         if let AuditStatus::Fail(evidence) = &status {
             // bare `except:` is on line 3
             assert!(
@@ -295,7 +304,7 @@ try:
 except* ValueError:
     handle_it()
 ";
-        let status = audit_bare_except(source, "src/foo.py");
+        let status = audit_bare_except(&pass::python(source, "src/foo.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

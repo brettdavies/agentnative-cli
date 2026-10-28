@@ -775,6 +775,8 @@ Options:
       --output <OUTPUT>          Output format [default: text] [possible values: text, json]
   -q, --quiet                    Suppress non-essential output [env: AGENTNATIVE_QUIET=]
       --include-tests            Include test code in source analysis
+      --jobs <N>                 Threads that read source files for source analysis, at least 1
+                                 [env: AGENTNATIVE_JOBS=]
       --audit-profile <CATEGORY> Exemption category for the target [possible values:
                                  human-tui, file-traversal, posix-utility, diagnostic-only]
   -h, --help                     Print help

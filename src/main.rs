@@ -151,6 +151,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         principle,
         output,
         include_tests,
+        jobs,
         audit_profile,
     ) = match cli.command {
         Some(Commands::Audit {
@@ -163,6 +164,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             principle,
             output,
             include_tests,
+            jobs,
             audit_profile,
         }) => (
             path,
@@ -174,6 +176,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             principle,
             output,
             include_tests,
+            jobs.and_then(|n| std::num::NonZeroUsize::new(n.into())),
             audit_profile,
         ),
         Some(Commands::Completions { shell }) => {
@@ -330,10 +333,24 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         }
     }
 
+    // Translate the CLI-facing AuditProfile into the registry's
+    // ExceptionCategory. Kept local so the registry stays CLI-agnostic.
+    let exception_category: Option<ExceptionCategory> = audit_profile.map(Into::into);
+
     if !binary_only {
         let languages = project.languages();
         for lang in &languages {
-            all_audits.extend(all_source_audits(*lang));
+            let source_audits = all_source_audits(*lang);
+            let runnable: Vec<&dyn Audit> = source_audits
+                .iter()
+                .map(AsRef::as_ref)
+                .filter(|audit| {
+                    audit.applicable(&project)
+                        && !exception_category.is_some_and(|cat| suppresses(audit.id(), cat))
+                })
+                .collect();
+            audits::source::pass::prepare(&project, *lang, &runnable, jobs);
+            all_audits.extend(source_audits);
         }
         if languages.is_empty() && source_only {
             eprintln!("warning: --source specified but no language detected");
@@ -344,10 +361,6 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     if !binary_only && project.path.is_dir() {
         all_audits.extend(all_project_audits());
     }
-
-    // Translate the CLI-facing AuditProfile into the registry's
-    // ExceptionCategory. Kept local so the registry stays CLI-agnostic.
-    let exception_category: Option<ExceptionCategory> = audit_profile.map(Into::into);
 
     // Run audits. When an audit_profile is set, audits whose IDs appear in
     // the suppression table short-circuit to Skip with structured evidence

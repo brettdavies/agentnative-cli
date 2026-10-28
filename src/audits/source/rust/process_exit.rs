@@ -3,12 +3,23 @@
 //! Principle: P4 (Actionable Errors) — `process::exit()` should only appear
 //! in main.rs. Library code should return errors, not terminate the process.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::find_pattern_matches;
+use crate::source::locations_each;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const PATTERNS: &[&str] = &["process::exit($CODE)", "std::process::exit($CODE)"];
+static PATTERNS: LazyLock<[Pattern; 2]> = LazyLock::new(|| {
+    [
+        Pattern::new("process::exit($CODE)", Rust),
+        Pattern::new("std::process::exit($CODE)", Rust),
+    ]
+});
 
 /// Audit trait implementation for process::exit location detection.
 #[derive(Debug)]
@@ -35,19 +46,15 @@ impl Audit for ProcessExitAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            // Allow process::exit in main.rs
-            if file_str.ends_with("main.rs") {
-                continue;
-            }
-
-            if let AuditStatus::Fail(evidence) = audit_process_exit(&parsed_file.source, &file_str)
-            {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            if let AuditStatus::Fail(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -72,19 +79,24 @@ impl Audit for ProcessExitAudit {
     }
 }
 
-/// Audit a single source string for `process::exit()` calls.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_process_exit(source: &str, file: &str) -> AuditStatus {
-    let mut all_matches = Vec::new();
+impl SourceScan<Rust> for ProcessExitAudit {
+    type Finding = AuditStatus;
 
-    for pattern_str in PATTERNS {
-        let mut matches = find_pattern_matches(source, pattern_str);
-        for m in &mut matches {
-            m.file = file.to_string();
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        // Allow process::exit in main.rs
+        if file.label().ends_with("main.rs") {
+            return AuditStatus::Pass;
         }
-        all_matches.extend(matches);
+        audit_process_exit(file)
     }
+}
+
+/// Audit one file for `process::exit()` calls.
+pub(crate) fn audit_process_exit(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let all_matches: Vec<_> = locations_each(&file.root(), &*PATTERNS, &file.label())
+        .into_iter()
+        .flatten()
+        .collect();
 
     if all_matches.is_empty() {
         AuditStatus::Pass
@@ -109,7 +121,7 @@ fn handle_error(e: Error) -> Result<()> {
     Err(e.into())
 }
 "#;
-        let status = audit_process_exit(source, "src/lib.rs");
+        let status = audit_process_exit(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -123,7 +135,7 @@ fn bail(msg: &str) {
     process::exit(1);
 }
 "#;
-        let status = audit_process_exit(source, "src/lib.rs");
+        let status = audit_process_exit(&pass::rust(source, "src/lib.rs"));
         assert!(matches!(status, AuditStatus::Fail(_)));
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains("process::exit"));
@@ -138,7 +150,7 @@ fn bail() {
     std::process::exit(1);
 }
 "#;
-        let status = audit_process_exit(source, "src/util.rs");
+        let status = audit_process_exit(&pass::rust(source, "src/util.rs"));
         assert!(matches!(status, AuditStatus::Fail(_)));
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains("std::process::exit"));
@@ -147,7 +159,7 @@ fn bail() {
 
     #[test]
     fn run_skips_main_rs() {
-        // The run() method skips main.rs, but the inner function does not.
+        // The scan skips main.rs, but the inner function does not.
         // This test verifies the inner function finds the call.
         let source = r#"
 use std::process;
@@ -156,8 +168,8 @@ fn main() {
     process::exit(0);
 }
 "#;
-        // Inner function always reports — it's run() that filters main.rs
-        let status = audit_process_exit(source, "src/main.rs");
+        // Inner function always reports — it's the scan that filters main.rs
+        let status = audit_process_exit(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Fail(_)));
     }
 
@@ -174,7 +186,7 @@ fn bail_b() {
     process::exit(2);
 }
 "#;
-        let status = audit_process_exit(source, "src/commands.rs");
+        let status = audit_process_exit(&pass::rust(source, "src/commands.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {

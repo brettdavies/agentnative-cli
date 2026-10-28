@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::anc_toml::ResolvedConfig;
+use crate::audits::source::pass::PreparedFindings;
 use crate::runner::{BinaryRunner, HelpOutput};
 
 pub use bins::Candidate;
@@ -81,6 +82,10 @@ pub struct ParsedFile {
     pub source: String,
 }
 
+/// One language's source files, in path order, so evidence that spans files
+/// reads the same on every run.
+pub type SourceFiles = BTreeMap<PathBuf, ParsedFile>;
+
 pub struct Project {
     pub path: PathBuf,
     pub language: Option<Language>,
@@ -88,8 +93,10 @@ pub struct Project {
     pub manifest_path: Option<PathBuf>,
     pub runner: Option<BinaryRunner>,
     pub include_tests: bool,
-    pub(crate) parsed_files: OnceLock<HashMap<Language, HashMap<PathBuf, ParsedFile>>>,
+    pub(crate) parsed_files: OnceLock<HashMap<Language, SourceFiles>>,
     pub(crate) help_output: OnceLock<Option<HelpOutput>>,
+    /// Source-audit findings the shared pass prepared for this run.
+    pub(crate) prepared_findings: PreparedFindings,
     /// The merged `.anc.toml` chain for this target, resolved once per run.
     pub anc_config: ResolvedConfig,
     /// Every package under a directory target; empty for a binary target.
@@ -153,6 +160,7 @@ impl Project {
                 include_tests,
                 parsed_files: OnceLock::new(),
                 help_output: OnceLock::new(),
+                prepared_findings: PreparedFindings::default(),
                 anc_config: ResolvedConfig::default(),
                 inventory: Inventory::default(),
             });
@@ -176,6 +184,7 @@ impl Project {
             include_tests,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            prepared_findings: PreparedFindings::default(),
             anc_config: ResolvedConfig::default(),
             inventory,
         })
@@ -278,8 +287,8 @@ impl Project {
 
     /// Every `language` source file under the audit root that the shared
     /// walker reaches, read once for all languages.
-    pub fn parsed_files(&self, language: Language) -> &HashMap<PathBuf, ParsedFile> {
-        static NONE: LazyLock<HashMap<PathBuf, ParsedFile>> = LazyLock::new(HashMap::new);
+    pub fn parsed_files(&self, language: Language) -> &SourceFiles {
+        static NONE: LazyLock<SourceFiles> = LazyLock::new(SourceFiles::new);
         self.parsed_files
             .get_or_init(|| read_sources(&self.path, self.include_tests))
             .get(&language)
@@ -291,11 +300,8 @@ impl Project {
 /// rules: the repository's ignore files, no hidden, build, or dependency
 /// directories, and `tests` only with `include_tests`. Example programs
 /// beside a manifest are skipped too ([`scan::source_walker`]).
-fn read_sources(
-    root: &Path,
-    include_tests: bool,
-) -> HashMap<Language, HashMap<PathBuf, ParsedFile>> {
-    let mut found: HashMap<Language, HashMap<PathBuf, ParsedFile>> = HashMap::new();
+fn read_sources(root: &Path, include_tests: bool) -> HashMap<Language, SourceFiles> {
+    let mut found: HashMap<Language, SourceFiles> = HashMap::new();
     if !root.is_dir() {
         return found;
     }

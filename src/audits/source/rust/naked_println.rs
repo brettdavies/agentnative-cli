@@ -8,13 +8,23 @@
 //! `println!("cargo:...")` directives by required-by-protocol convention; no
 //! alternative API exists, so flagging them produces noise without recourse.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::find_pattern_matches;
+use crate::source::locations_each;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const PRINTLN_PATTERN: &str = "println!($$$ARGS)";
-const PRINT_PATTERN: &str = "print!($$$ARGS)";
+static PRINT_MACROS: LazyLock<[Pattern; 2]> = LazyLock::new(|| {
+    [
+        Pattern::new("println!($$$ARGS)", Rust),
+        Pattern::new("print!($$$ARGS)", Rust),
+    ]
+});
 
 /// Audit trait implementation for naked println detection.
 #[derive(Debug)]
@@ -41,25 +51,15 @@ impl Audit for NakedPrintlnAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-
-            // Exempt files with "output" or "display" in their path, and
-            // Cargo build scripts (build.rs at any crate root).
-            let lower = file_str.to_lowercase();
-            if lower.contains("output") || lower.contains("display") {
-                continue;
-            }
-            if is_cargo_build_script(&file_str) {
-                continue;
-            }
-
-            if let AuditStatus::Warn(evidence) = audit_naked_println(&parsed_file.source, &file_str)
-            {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            if let AuditStatus::Warn(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -81,6 +81,24 @@ impl Audit for NakedPrintlnAudit {
             config_hint: None,
             pass_evidence: None,
         })
+    }
+}
+
+impl SourceScan<Rust> for NakedPrintlnAudit {
+    type Finding = AuditStatus;
+
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        let file_str = file.label();
+
+        // Exempt files with "output" or "display" in their path, and
+        // Cargo build scripts (build.rs at any crate root).
+        let lower = file_str.to_lowercase();
+        if lower.contains("output") || lower.contains("display") || is_cargo_build_script(&file_str)
+        {
+            return AuditStatus::Pass;
+        }
+
+        audit_naked_println(file)
     }
 }
 
@@ -108,22 +126,12 @@ fn is_cargo_build_script(path: &str) -> bool {
         .any(|s| matches!(*s, "src" | "tests" | "examples" | "benches"))
 }
 
-/// Audit a single source string for `println!` and `print!` calls.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_naked_println(source: &str, file: &str) -> AuditStatus {
-    let mut println_matches = find_pattern_matches(source, PRINTLN_PATTERN);
-    let mut print_matches = find_pattern_matches(source, PRINT_PATTERN);
-
-    for m in &mut println_matches {
-        m.file = file.to_string();
-    }
-    for m in &mut print_matches {
-        m.file = file.to_string();
-    }
-
-    let mut all_matches = println_matches;
-    all_matches.append(&mut print_matches);
+/// Audit one file for `println!` and `print!` calls.
+pub(crate) fn audit_naked_println(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let all_matches: Vec<_> = locations_each(&file.root(), &*PRINT_MACROS, &file.label())
+        .into_iter()
+        .flatten()
+        .collect();
 
     if all_matches.is_empty() {
         AuditStatus::Pass
@@ -149,7 +157,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let status = audit_naked_println(source, "src/main.rs");
+        let status = audit_naked_println(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -160,7 +168,7 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let status = audit_naked_println(source, "src/main.rs");
+        let status = audit_naked_println(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("println!"));
@@ -175,7 +183,7 @@ fn render() {
     print!("loading...");
 }
 "#;
-        let status = audit_naked_println(source, "src/render.rs");
+        let status = audit_naked_println(&pass::rust(source, "src/render.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("print!"));
@@ -191,7 +199,7 @@ fn main() {
     eprintln!("error: {}", msg);
 }
 "#;
-        let status = audit_naked_println(source, "src/main.rs");
+        let status = audit_naked_println(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -204,7 +212,7 @@ fn main() {
     print!("three");
 }
 "#;
-        let status = audit_naked_println(source, "src/lib.rs");
+        let status = audit_naked_println(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Warn(evidence) = &status {
             assert_eq!(evidence.lines().count(), 3);
         } else {
@@ -232,15 +240,15 @@ fn main() {
     #[test]
     fn audit_skips_build_script_println() {
         // Direct audit of the helper — the macro pattern matches, but the
-        // path-level filter in run() skips build.rs callers.
+        // path-level filter in the scan skips build.rs callers.
         let source = r#"
 fn main() {
     println!("cargo:rerun-if-changed=src/principles/spec/");
 }
 "#;
         // The unit-level helper still warns (it doesn't know about file
-        // path); the run() loop is what skips. Confirm both behaviors.
-        let status = audit_naked_println(source, "build.rs");
+        // path); the scan is what skips. Confirm both behaviors.
+        let status = audit_naked_println(&pass::rust(source, "build.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         assert!(is_cargo_build_script("build.rs"));
     }

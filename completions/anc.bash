@@ -119,7 +119,7 @@ _anc() {
             return 0
             ;;
         anc__subcmd__audit)
-            opts="-q -v -h --command --binary --bin --repo --source --principle --output --include-tests --audit-profile --quiet --verbose --examples --json --color --raw --help"
+            opts="-q -v -h --command --binary --bin --repo --source --principle --output --include-tests --jobs --audit-profile --quiet --verbose --examples --json --color --raw --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -146,6 +146,10 @@ _anc() {
                     ;;
                 --output)
                     COMPREPLY=($(compgen -W "text json" -- "${cur}"))
+                    return 0
+                    ;;
+                --jobs)
+                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --audit-profile)

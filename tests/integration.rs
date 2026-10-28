@@ -608,6 +608,148 @@ fn code_unwrap_evidence(fixture: &str, extra_args: &[&str]) -> Vec<String> {
 }
 
 #[test]
+fn test_multi_file_evidence_follows_path_order_on_every_run() {
+    // Five files each call `std::process::exit`, so a per-process file order
+    // would match path order about once in 120 runs.
+    let path = fixture_path("multi-file-evidence");
+    let expected = ["alpha.rs", "bravo.rs", "charlie.rs", "delta.rs", "echo.rs"];
+    for run in 0..2 {
+        let output = cmd()
+            .args(["audit", &path, "--source", "--output", "json"])
+            .output()
+            .expect("anc should run");
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+        let row = parsed["results"]
+            .as_array()
+            .expect("results should be an array")
+            .iter()
+            .find(|r| r["id"].as_str() == Some("p4-process-exit"))
+            .expect("results should include a p4-process-exit row");
+        let files: Vec<String> = row["evidence"]
+            .as_str()
+            .expect("p4-process-exit fail must carry evidence")
+            .lines()
+            .map(|line| {
+                let location = line.split(':').next().expect("evidence line has a path");
+                location.rsplit('/').next().unwrap_or(location).to_string()
+            })
+            .collect();
+        assert_eq!(files, expected, "run {run}: evidence out of path order");
+    }
+}
+
+/// `anc audit <path> --source --output json` with `envs` and `args`: the exit
+/// code and the scorecard with the run's invocation and timing removed.
+fn masked_source_scorecard(
+    path: &str,
+    envs: &[(&str, &str)],
+    args: &[&str],
+) -> (Option<i32>, serde_json::Value) {
+    let output = cmd()
+        .envs(envs.iter().copied())
+        .args(["audit", path, "--source", "--output", "json"])
+        .args(args)
+        .output()
+        .expect("anc should run");
+    let mut card: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|e| panic!("scorecard JSON: {e}; {output:?}"));
+    let run = card["run"].as_object_mut().expect("run block");
+    for key in ["invocation", "started_at", "duration_ms"] {
+        run.remove(key);
+    }
+    (output.status.code(), card)
+}
+
+#[test]
+fn test_source_scorecard_is_the_same_at_every_worker_count() {
+    for fixture in ["multi-file-evidence", "multi-file-python"] {
+        let path = fixture_path(fixture);
+        let at = |jobs: &str| masked_source_scorecard(&path, &[("AGENTNATIVE_JOBS", jobs)], &[]);
+        let one = at("1");
+        assert_eq!(at("2"), one, "{fixture}: 2 workers");
+        assert_eq!(at("8"), one, "{fixture}: 8 workers");
+    }
+}
+
+#[test]
+fn test_agentnative_jobs_sets_jobs_and_the_flag_overrides_it() {
+    let path = fixture_path("multi-file-evidence");
+    let from_env = cmd()
+        .env("AGENTNATIVE_JOBS", "0")
+        .args(["audit", &path, "--source", "--output", "json"])
+        .output()
+        .expect("anc should run");
+    assert_eq!(from_env.status.code(), Some(2), "{from_env:?}");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&from_env.stderr).expect("usage envelope on stderr");
+    assert_eq!(envelope["argument"], "--jobs <N>", "{envelope}");
+
+    let (_, card) = masked_source_scorecard(&path, &[("AGENTNATIVE_JOBS", "0")], &["--jobs", "2"]);
+    assert!(card["results"].is_array(), "the flag wins: {card}");
+}
+
+#[test]
+fn test_jobs_zero_is_a_usage_error_before_any_audit_runs() {
+    let path = fixture_path("multi-file-evidence");
+    let output = cmd()
+        .args([
+            "audit", &path, "--source", "--output", "json", "--jobs", "0",
+        ])
+        .output()
+        .expect("anc should run");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(output.stdout.is_empty(), "no scorecard: {output:?}");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("usage envelope on stderr");
+    assert_eq!(envelope["error"], "value-validation", "{envelope}");
+    assert_eq!(envelope["argument"], "--jobs <N>", "{envelope}");
+}
+
+/// Relies on an 8 MiB main-thread stack, which Windows does not give.
+#[test]
+#[cfg(unix)]
+fn test_deeply_nested_file_audits_the_same_on_a_worker_thread() {
+    // code-unwrap's walk recurses once per tree level: in a debug build 4000
+    // nested parentheses need about 4 MiB of stack, over a spawned thread's
+    // 2 MiB default and well under the main thread's 8 MiB.
+    let depth = 4000;
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir(tmp.path().join("src")).expect("src dir");
+    std::fs::write(
+        tmp.path().join("Cargo.toml"),
+        "[package]\nname = \"deep\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .expect("write Cargo.toml");
+    std::fs::write(tmp.path().join("src/main.rs"), "mod deep;\nfn main() {}\n")
+        .expect("write main.rs");
+    let nested = format!(
+        "pub fn f(x: Option<u8>) -> u8 {{\n    {}x.unwrap(){}\n}}\n",
+        "(".repeat(depth),
+        ")".repeat(depth)
+    );
+    std::fs::write(tmp.path().join("src/deep.rs"), nested).expect("write deep.rs");
+
+    let path = tmp.path().to_str().expect("utf8 path");
+    let (one_code, one) = masked_source_scorecard(path, &[], &["--jobs", "1"]);
+    let (two_code, two) = masked_source_scorecard(path, &[], &["--jobs", "2"]);
+    assert_eq!(two_code, one_code);
+    assert_eq!(two, one);
+    let unwrap = one["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .find(|row| row["id"] == "code-unwrap")
+        .expect("a code-unwrap row");
+    assert!(
+        unwrap["evidence"]
+            .as_str()
+            .is_some_and(|evidence| evidence.contains("deep.rs:2:")),
+        "the nested call is reported: {unwrap}"
+    );
+}
+
+#[test]
 fn test_macro_interiors_fixture_reports_only_genuine_calls() {
     // End-to-end coverage of the macro-interior matcher through the full
     // parse -> walk -> re-parse -> AuditResult -> scorecard pipeline. Unit tests
@@ -1119,6 +1261,39 @@ fn test_broken_python_fixture() {
         has_bare_except,
         "broken-python fixture should trigger code-bare-except audit"
     );
+}
+
+#[test]
+fn test_mixed_language_source_pass_folds_shared_audits() {
+    // Rust and Python each run an audit under these ids. A source audit that
+    // takes findings its language was never prepared with trips a debug
+    // assertion, which this debug binary turns into a panic.
+    let path = fixture_path("mixed-no-root");
+    let output = cmd()
+        .args(["audit", &path, "--source", "--output", "json"])
+        .output()
+        .expect("anc should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_ne!(
+        output.status.code(),
+        Some(RUST_PANIC_EXIT_CODE),
+        "anc panicked: {stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "anc panicked: {stderr}");
+
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let results = parsed["results"]
+        .as_array()
+        .expect("results should be an array");
+    for audit_id in ["p6-no-color", "p4-enumerate-valid-set", "p6-sigterm"] {
+        let rows = results
+            .iter()
+            .filter(|r| r["audit_id"].as_str() == Some(audit_id))
+            .count();
+        assert_eq!(rows, 1, "{audit_id} must fold into one row, got {rows}");
+    }
 }
 
 /// Convention enforcement: audit_x() functions must return AuditStatus, not AuditResult.

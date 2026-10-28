@@ -5,10 +5,17 @@
 //! option. The audit verifies one of these patterns is present; the message
 //! shape is then guaranteed by the framework.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Python;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::has_pattern_in;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
+
+static CHOICES: LazyLock<Pattern> = LazyLock::new(|| Pattern::new("choices=$$$_", Python));
 
 #[derive(Debug)]
 pub struct EnumerateValidSetPythonAudit;
@@ -38,21 +45,15 @@ impl Audit for EnumerateValidSetPythonAudit {
         project.has_language(Language::Python)
     }
 
-    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Python);
-        let mut found_closed_set = false;
-        let mut found_framework = false;
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Python(self))
+    }
 
-        for (_path, parsed_file) in parsed.iter() {
-            match audit_enumerate_valid_set_python(&parsed_file.source) {
-                EnumerateScan::ClosedSetDeclared => {
-                    found_closed_set = true;
-                    break;
-                }
-                EnumerateScan::FrameworkWithoutClosedSet => found_framework = true,
-                EnumerateScan::NoFramework => {}
-            }
-        }
+    fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
+        let scans = pass::findings(project, Language::Python, Python, self);
+        let found = |signal: EnumerateScan| scans.iter().any(|(_, scan)| *scan == signal);
+        let found_closed_set = found(EnumerateScan::ClosedSetDeclared);
+        let found_framework = found(EnumerateScan::FrameworkWithoutClosedSet);
 
         let status = if found_closed_set {
             AuditStatus::Pass
@@ -81,26 +82,35 @@ impl Audit for EnumerateValidSetPythonAudit {
     }
 }
 
+impl SourceScan<Python> for EnumerateValidSetPythonAudit {
+    type Finding = EnumerateScan;
+
+    fn scan(&self, file: &SourceFile<'_, Python>) -> EnumerateScan {
+        audit_enumerate_valid_set_python(file)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum EnumerateScan {
+pub enum EnumerateScan {
     ClosedSetDeclared,
     FrameworkWithoutClosedSet,
     NoFramework,
 }
 
 /// Inspect a single Python source file. Returns the strongest signal found.
-pub(crate) fn audit_enumerate_valid_set_python(source: &str) -> EnumerateScan {
+pub(crate) fn audit_enumerate_valid_set_python(file: &SourceFile<'_, Python>) -> EnumerateScan {
+    let source = file.source();
     // Closed-set patterns. ast-grep handles the keyword-argument shape better
     // than substring; substring covers `choices=` outside `add_argument` too,
     // which is acceptable false-positive territory.
-    if has_pattern_in(source, "choices=$$$_", Language::Python) {
-        return EnumerateScan::ClosedSetDeclared;
-    }
     if source.contains("click.Choice(") || source.contains("Choice(") && source.contains("click") {
         return EnumerateScan::ClosedSetDeclared;
     }
     // Conservative fallback — any literal `choices=` keyword usage qualifies.
     if source.contains("choices=") {
+        return EnumerateScan::ClosedSetDeclared;
+    }
+    if file.root().find_all(&*CHOICES).next().is_some() {
         return EnumerateScan::ClosedSetDeclared;
     }
 
@@ -133,7 +143,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--mode', choices=['fast', 'slow'])
 "#;
         assert_eq!(
-            audit_enumerate_valid_set_python(source),
+            audit_enumerate_valid_set_python(&pass::python(source, "src/cli.py")),
             EnumerateScan::ClosedSetDeclared
         );
     }
@@ -149,7 +159,7 @@ def cli(mode):
     pass
 "#;
         assert_eq!(
-            audit_enumerate_valid_set_python(source),
+            audit_enumerate_valid_set_python(&pass::python(source, "src/cli.py")),
             EnumerateScan::ClosedSetDeclared
         );
     }
@@ -163,7 +173,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--mode', help='operating mode')
 "#;
         assert_eq!(
-            audit_enumerate_valid_set_python(source),
+            audit_enumerate_valid_set_python(&pass::python(source, "src/cli.py")),
             EnumerateScan::FrameworkWithoutClosedSet
         );
     }
@@ -175,7 +185,7 @@ def main():
     print("hello")
 "#;
         assert_eq!(
-            audit_enumerate_valid_set_python(source),
+            audit_enumerate_valid_set_python(&pass::python(source, "src/cli.py")),
             EnumerateScan::NoFramework
         );
     }
@@ -195,6 +205,7 @@ def main():
             include_tests: false,
             parsed_files: OnceLock::new(),
             help_output: OnceLock::new(),
+            prepared_findings: Default::default(),
             anc_config: Default::default(),
             inventory: Default::default(),
         };

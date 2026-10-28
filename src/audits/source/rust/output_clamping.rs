@@ -6,20 +6,33 @@
 //!
 //! This is inherently heuristic — prefers Skip/Warn over Fail.
 
+use std::sync::LazyLock;
+
+use ast_grep_core::Pattern;
+use ast_grep_language::Rust;
+
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
-use crate::source::{evidence_preview, find_pattern_matches, has_pattern};
+use crate::source::{evidence_preview, has_any, locations_each};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Patterns that suggest list/collection output.
-const LIST_PATTERNS: &[&str] = &[
-    "$RECV.collect::<Vec<$$$TYPES>>()",
-    "for $ITEM in $ITER { $$$BODY }",
-    "for $ITEM in $RECV.iter() { $$$BODY }",
-];
+static LIST_PATTERNS: LazyLock<[Pattern; 3]> = LazyLock::new(|| {
+    [
+        Pattern::new("$RECV.collect::<Vec<$$$TYPES>>()", Rust),
+        Pattern::new("for $ITEM in $ITER { $$$BODY }", Rust),
+        Pattern::new("for $ITEM in $RECV.iter() { $$$BODY }", Rust),
+    ]
+});
 
 /// Patterns that indicate output clamping is present.
-const CLAMP_PATTERNS: &[&str] = &["$RECV.take($LIMIT)", "$RECV.clamp($$$ARGS)"];
+static CLAMP_PATTERNS: LazyLock<[Pattern; 2]> = LazyLock::new(|| {
+    [
+        Pattern::new("$RECV.take($LIMIT)", Rust),
+        Pattern::new("$RECV.clamp($$$ARGS)", Rust),
+    ]
+});
 
 /// String indicators of clamping in arg definitions or source.
 const CLAMP_STRINGS: &[&str] = &["--limit", "--max", "limit", "max_results", "page_size"];
@@ -53,18 +66,20 @@ impl Audit for OutputClampingAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut has_list_patterns = false;
         let mut has_clamping = false;
         let mut list_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            match &audit_output_clamping(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            match status {
                 AuditStatus::Warn(evidence) => {
                     has_list_patterns = true;
-                    list_evidence.push(evidence.clone());
+                    list_evidence.push(evidence);
                 }
                 AuditStatus::Pass => {
                     has_list_patterns = true;
@@ -99,28 +114,29 @@ impl Audit for OutputClampingAudit {
     }
 }
 
-/// Audit a single source string for list patterns and clamping.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_output_clamping(source: &str, file: &str) -> AuditStatus {
-    // Step 1: Look for list/iteration patterns
-    let mut list_locations = Vec::new();
+impl SourceScan<Rust> for OutputClampingAudit {
+    type Finding = AuditStatus;
 
-    for pattern_str in LIST_PATTERNS {
-        let mut matches = find_pattern_matches(source, pattern_str);
-        for m in &mut matches {
-            m.file = file.to_string();
-        }
-        list_locations.extend(matches);
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_output_clamping(file)
     }
+}
+
+/// Audit one file for list patterns and clamping.
+pub(crate) fn audit_output_clamping(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let root = file.root();
+    let list_locations: Vec<_> = locations_each(&root, &*LIST_PATTERNS, &file.label())
+        .into_iter()
+        .flatten()
+        .collect();
 
     if list_locations.is_empty() {
         return AuditStatus::Skip("No list output patterns detected".to_string());
     }
 
-    // Step 2: Audit if clamping exists anywhere in the same source
-    let has_clamping = CLAMP_PATTERNS.iter().any(|pat| has_pattern(source, pat))
-        || CLAMP_STRINGS.iter().any(|s| source.contains(s));
+    let source = file.source();
+    let has_clamping =
+        CLAMP_STRINGS.iter().any(|s| source.contains(s)) || has_any(&root, &*CLAMP_PATTERNS);
 
     if has_clamping {
         AuditStatus::Pass
@@ -153,7 +169,7 @@ fn main() {
     eprintln!("result: {x}");
 }
 "#;
-        let status = audit_output_clamping(source, "src/main.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Skip(_)));
     }
 
@@ -164,7 +180,7 @@ fn list_items(items: &[Item]) -> Vec<String> {
     items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let status = audit_output_clamping(source, "src/list.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/list.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("list pattern without clamping"));
@@ -178,7 +194,7 @@ fn list_items(items: &[Item]) -> Vec<String> {
     items.iter().take(100).map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let status = audit_output_clamping(source, "src/list.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/list.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -193,7 +209,7 @@ fn parse_args() {
     let limit = matches.get_one::<usize>("--limit");
 }
 "#;
-        let status = audit_output_clamping(source, "src/list.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/list.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -206,7 +222,7 @@ fn print_all(items: Vec<String>) {
     }
 }
 "#;
-        let status = audit_output_clamping(source, "src/printer.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/printer.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
     }
 
@@ -217,7 +233,7 @@ fn list_items(items: &[Item]) -> Vec<String> {
     items.iter().map(|item| format!("{} was renamed to {}", item.old_name, item.new_name)).collect::<Vec<String>>()
 }
 "#;
-        let status = audit_output_clamping(source, "src/list.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/list.rs"));
         let AuditStatus::Warn(evidence) = status else {
             panic!("expected Warn, got {status:?}");
         };
@@ -237,7 +253,7 @@ fn list_items(items: &[Item]) -> Vec<String> {
     items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let status = audit_output_clamping(source, "src/list.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/list.rs"));
         let AuditStatus::Warn(evidence) = status else {
             panic!("expected Warn, got {status:?}");
         };
@@ -257,7 +273,7 @@ fn spin(frames_seen: &mut Vec<&str>) {
     }
 }
 "#;
-        let status = audit_output_clamping(source, "src/spinner.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/spinner.rs"));
         let AuditStatus::Warn(evidence) = status else {
             panic!("expected Warn, got {status:?}");
         };
@@ -274,7 +290,7 @@ fn describe(names: &[String]) -> Vec<String> {
     names.iter().map(|name| format!("名前は{name}です。よろしくお願いします")).collect::<Vec<String>>()
 }
 "#;
-        let status = audit_output_clamping(source, "src/describe.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/describe.rs"));
         let AuditStatus::Warn(evidence) = status else {
             panic!("expected Warn, got {status:?}");
         };
@@ -293,7 +309,7 @@ fn celebrate(winners: &[String]) {
     }
 }
 "#;
-        let status = audit_output_clamping(source, "src/celebrate.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/celebrate.rs"));
         let AuditStatus::Warn(evidence) = status else {
             panic!("expected Warn, got {status:?}");
         };
@@ -311,7 +327,7 @@ fn list_results(items: &[Item]) -> Vec<String> {
     items.iter().map(|i| i.name.clone()).collect::<Vec<String>>()
 }
 "#;
-        let status = audit_output_clamping(source, "src/list.rs");
+        let status = audit_output_clamping(&pass::rust(source, "src/list.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

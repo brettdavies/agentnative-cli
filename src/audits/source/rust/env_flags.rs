@@ -6,11 +6,13 @@
 //! defaults without passing flags every invocation. Renamed from
 //! `p6-env-flags` in v0.1.1 — the spec requirement lives in P1, not P6.
 
+use std::sync::LazyLock;
+
 use ast_grep_core::Pattern;
-use ast_grep_core::tree_sitter::LanguageExt;
 use ast_grep_language::Rust;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
@@ -18,6 +20,8 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence,
 const AGENTIC_FLAGS: &[&str] = &[
     "output", "quiet", "verbose", "timeout", "no_color", "no-color", "format",
 ];
+
+static ARG_ATTR: LazyLock<Pattern> = LazyLock::new(|| Pattern::new("#[arg($$$ARGS)]", Rust));
 
 /// Audit trait implementation for env-backed flag detection.
 #[derive(Debug)]
@@ -48,17 +52,19 @@ impl Audit for EnvFlagsAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_warn_evidence = Vec::new();
         let mut has_clap_attrs = false;
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            match &audit_env_flags(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            match status {
                 AuditStatus::Warn(evidence) => {
                     has_clap_attrs = true;
-                    all_warn_evidence.push(evidence.clone());
+                    all_warn_evidence.push(evidence);
                 }
                 AuditStatus::Pass => {
                     has_clap_attrs = true;
@@ -92,16 +98,20 @@ impl Audit for EnvFlagsAudit {
     }
 }
 
-/// Audit a single source string for agentic flags missing `env = "..."`.
-///
-/// Kept public(crate) for unit testing with inline source strings.
-pub(crate) fn audit_env_flags(source: &str, file: &str) -> AuditStatus {
-    let missing = find_agentic_flags_missing_env(source, file);
+impl SourceScan<Rust> for EnvFlagsAudit {
+    type Finding = AuditStatus;
 
-    // If we found no agentic arg attributes at all, check if there are *any* arg attributes.
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_env_flags(file)
+    }
+}
+
+/// Audit one file for agentic flags missing `env = "..."`.
+pub(crate) fn audit_env_flags(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let missing = find_agentic_flags_missing_env(file);
+
     if missing.found_agentic == 0 {
-        let has_any_arg = has_arg_attributes(source);
-        if !has_any_arg {
+        if !missing.found_any {
             return AuditStatus::Skip("No clap #[arg(...)] attributes found".to_string());
         }
         // Has arg attributes but none are agentic — that's still a skip for this file
@@ -127,39 +137,20 @@ pub(crate) fn audit_env_flags(source: &str, file: &str) -> AuditStatus {
 }
 
 struct MissingEnvResult {
+    found_any: bool,
     found_agentic: usize,
     locations: Vec<SourceLocation>,
 }
 
-/// Audit if the source has any `#[arg(...)]` attributes.
-fn has_arg_attributes(source: &str) -> bool {
-    let pattern = match Pattern::try_new("#[arg($$$ARGS)]", Rust) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let root = Rust.ast_grep(source);
-    root.root().find(&pattern).is_some()
-}
-
 /// Find agentic flag attributes that lack `env = "..."`.
-fn find_agentic_flags_missing_env(source: &str, file: &str) -> MissingEnvResult {
-    let root = Rust.ast_grep(source);
-    let root_node = root.root();
-
-    let arg_attr_pattern = match Pattern::try_new("#[arg($$$ARGS)]", Rust) {
-        Ok(p) => p,
-        Err(_) => {
-            return MissingEnvResult {
-                found_agentic: 0,
-                locations: Vec::new(),
-            };
-        }
-    };
-
+fn find_agentic_flags_missing_env(file: &SourceFile<'_, Rust>) -> MissingEnvResult {
+    let label = file.label();
+    let mut found_any = false;
     let mut found_agentic = 0;
     let mut missing = Vec::new();
 
-    for attr_match in root_node.find_all(&arg_attr_pattern) {
+    for attr_match in file.root().find_all(&*ARG_ATTR) {
+        found_any = true;
         let attr_text = attr_match.text().to_string();
 
         let is_agentic = AGENTIC_FLAGS.iter().any(|flag| {
@@ -176,7 +167,7 @@ fn find_agentic_flags_missing_env(source: &str, file: &str) -> MissingEnvResult 
         if !attr_text.contains("env") {
             let pos = attr_match.start_pos();
             missing.push(SourceLocation {
-                file: file.to_string(),
+                file: label.clone(),
                 line: pos.line() + 1,
                 column: pos.column(&attr_match) + 1,
                 text: attr_text,
@@ -185,6 +176,7 @@ fn find_agentic_flags_missing_env(source: &str, file: &str) -> MissingEnvResult 
     }
 
     MissingEnvResult {
+        found_any,
         found_agentic,
         locations: missing,
     }
@@ -209,7 +201,7 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let status = audit_env_flags(source, "src/cli.rs");
+        let status = audit_env_flags(&pass::rust(source, "src/cli.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -225,7 +217,7 @@ struct Cli {
     quiet: bool,
 }
 "#;
-        let status = audit_env_flags(source, "src/cli.rs");
+        let status = audit_env_flags(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("output"));
@@ -241,7 +233,7 @@ fn main() {
     println!("Hello, world!");
 }
 "#;
-        let status = audit_env_flags(source, "src/main.rs");
+        let status = audit_env_flags(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Skip(_)));
     }
 
@@ -257,7 +249,7 @@ struct Cli {
     config: Option<String>,
 }
 "#;
-        let status = audit_env_flags(source, "src/cli.rs");
+        let status = audit_env_flags(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Skip(_)));
     }
 
@@ -273,7 +265,7 @@ struct Cli {
     verbose: bool,
 }
 "#;
-        let status = audit_env_flags(source, "src/cli.rs");
+        let status = audit_env_flags(&pass::rust(source, "src/cli.rs"));
         assert!(matches!(status, AuditStatus::Warn(_)));
         if let AuditStatus::Warn(evidence) = &status {
             assert!(evidence.contains("verbose"));
@@ -290,8 +282,65 @@ struct Cli {
     timeout: Option<u64>,
 }
 "#;
-        let status = audit_env_flags(source, "src/cli.rs");
+        let status = audit_env_flags(&pass::rust(source, "src/cli.rs"));
         assert_eq!(status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn run_reports_only_the_agentic_file_when_another_holds_plain_args() {
+        let dir = std::env::temp_dir().join(format!("anc-envflags-split-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).expect("create test dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write test Cargo.toml");
+        std::fs::write(
+            dir.join("src/cli.rs"),
+            "#[derive(Parser)]\nstruct Cli {\n    #[arg(long = \"output\", env = \"APP_OUTPUT\")]\n    output: Option<String>,\n    #[arg(long = \"quiet\")]\n    quiet: bool,\n}\n",
+        )
+        .expect("write test cli.rs");
+        std::fs::write(
+            dir.join("src/paths.rs"),
+            "#[derive(Args)]\nstruct PathArgs {\n    #[arg(long = \"path\")]\n    path: String,\n}\n",
+        )
+        .expect("write test paths.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+
+        let result = EnvFlagsAudit.run(&project).expect("run audit");
+
+        let cli = dir.join("src/cli.rs");
+        assert_eq!(
+            result.status,
+            AuditStatus::Warn(format!(
+                "{}:5:5 — #[arg(long = \"quiet\")] missing env attribute",
+                cli.display()
+            ))
+        );
+    }
+
+    #[test]
+    fn run_skips_when_every_arg_attribute_is_non_agentic() {
+        let dir = std::env::temp_dir().join(format!("anc-envflags-plain-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).expect("create test dir");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write test Cargo.toml");
+        std::fs::write(
+            dir.join("src/paths.rs"),
+            "#[derive(Args)]\nstruct PathArgs {\n    #[arg(long = \"path\")]\n    path: String,\n}\n",
+        )
+        .expect("write test paths.rs");
+        let project = Project::discover(&dir).expect("discover test project");
+
+        let result = EnvFlagsAudit.run(&project).expect("run audit");
+
+        assert_eq!(
+            result.status,
+            AuditStatus::Skip("No clap #[arg(...)] attributes found".to_string())
+        );
     }
 
     #[test]

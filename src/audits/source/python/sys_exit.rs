@@ -5,10 +5,11 @@
 //! the `__main__` guard. Analogous to Rust's `p4-process-exit`.
 
 use ast_grep_core::Node;
-use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
+use ast_grep_core::tree_sitter::StrDoc;
 use ast_grep_language::Python;
 
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
@@ -37,18 +38,15 @@ impl Audit for SysExitAudit {
         project.has_language(Language::Python)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Python(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Python);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            // __main__.py is the Python entry point — sys.exit() is expected there,
-            // just as process::exit() is expected in Rust's main.rs.
-            if path.file_name().is_some_and(|f| f == "__main__.py") {
-                continue;
-            }
-            if let AuditStatus::Fail(evidence) = audit_sys_exit(&parsed_file.source, &file_str) {
+        for (_, status) in pass::findings(project, Language::Python, Python, self) {
+            if let AuditStatus::Fail(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -73,12 +71,24 @@ impl Audit for SysExitAudit {
     }
 }
 
-/// Scan a Python source string for `sys.exit(...)` calls outside the
+impl SourceScan<Python> for SysExitAudit {
+    type Finding = AuditStatus;
+
+    fn scan(&self, file: &SourceFile<'_, Python>) -> AuditStatus {
+        // __main__.py is the Python entry point — sys.exit() is expected there,
+        // just as process::exit() is expected in Rust's main.rs.
+        if file.path().file_name().is_some_and(|f| f == "__main__.py") {
+            return AuditStatus::Pass;
+        }
+        audit_sys_exit(file)
+    }
+}
+
+/// Scan one Python file for `sys.exit(...)` calls outside the
 /// `if __name__ == "__main__":` guard.
-pub(crate) fn audit_sys_exit(source: &str, file: &str) -> AuditStatus {
-    let root = Python.ast_grep(source);
+pub(crate) fn audit_sys_exit(file: &SourceFile<'_, Python>) -> AuditStatus {
     let mut matches = Vec::new();
-    walk(root.root(), file, false, &mut matches);
+    walk(file.root(), &file.label(), false, &mut matches);
 
     if matches.is_empty() {
         AuditStatus::Pass
@@ -186,7 +196,7 @@ def main():
 if __name__ == \"__main__\":
     sys.exit(main())
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -198,7 +208,7 @@ import sys
 if __name__ == '__main__':
     sys.exit(0)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -208,7 +218,7 @@ if __name__ == '__main__':
 import sys
 sys.exit(1)
 ";
-        let status = audit_sys_exit(source, "src/bad.py");
+        let status = audit_sys_exit(&pass::python(source, "src/bad.py"));
         assert!(matches!(status, AuditStatus::Fail(_)));
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains("sys.exit"));
@@ -227,7 +237,7 @@ def fail_hard(msg):
 
 fail_hard('boom')
 ";
-        let status = audit_sys_exit(source, "src/lib.py");
+        let status = audit_sys_exit(&pass::python(source, "src/lib.py"));
         assert!(matches!(status, AuditStatus::Fail(_)));
     }
 
@@ -238,7 +248,7 @@ import sys
 print('hi')
 sys.exit(7)
 ";
-        let status = audit_sys_exit(source, "src/loc.py");
+        let status = audit_sys_exit(&pass::python(source, "src/loc.py"));
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains(":3:"), "expected line 3, got: {evidence}");
         } else {
@@ -254,7 +264,7 @@ import sys
 if __name__ == \"__main__\":  # entry point
     sys.exit(0)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -265,7 +275,7 @@ if __name__ == \"__main__\":  # entry point
         let source = "\
 exit(1)
 ";
-        let status = audit_sys_exit(source, "src/builtin.py");
+        let status = audit_sys_exit(&pass::python(source, "src/builtin.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -276,7 +286,7 @@ import sys
 sys.stderr.write('hi')
 print(sys.argv)
 ";
-        let status = audit_sys_exit(source, "src/sys_other.py");
+        let status = audit_sys_exit(&pass::python(source, "src/sys_other.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -286,7 +296,7 @@ print(sys.argv)
 def add(a, b):
     return a + b
 ";
-        let status = audit_sys_exit(source, "src/clean.py");
+        let status = audit_sys_exit(&pass::python(source, "src/clean.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -301,7 +311,7 @@ def a():
 def b():
     sys.exit(2)
 ";
-        let status = audit_sys_exit(source, "src/multi.py");
+        let status = audit_sys_exit(&pass::python(source, "src/multi.py"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 2);
         } else {
@@ -322,7 +332,7 @@ if __name__ == \"__main__\":
     except RuntimeError:
         sys.exit(1)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -332,7 +342,7 @@ if __name__ == \"__main__\":
 msg = \"call sys.exit(1) on failure\"
 print(msg)
 ";
-        let status = audit_sys_exit(source, "src/strings.py");
+        let status = audit_sys_exit(&pass::python(source, "src/strings.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -344,7 +354,7 @@ import sys
 if (__name__ == '__main__'):
     sys.exit(0)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -356,7 +366,7 @@ import sys
 if __name__==\"__main__\":
     sys.exit(0)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -368,7 +378,7 @@ import sys
 if \"__main__\" == __name__:
     sys.exit(0)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -380,7 +390,7 @@ import sys
 if '__main__' == __name__:
     sys.exit(0)
 ";
-        let status = audit_sys_exit(source, "src/cli.py");
+        let status = audit_sys_exit(&pass::python(source, "src/cli.py"));
         assert_eq!(status, AuditStatus::Pass);
     }
 

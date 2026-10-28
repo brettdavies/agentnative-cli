@@ -11,11 +11,12 @@
 //! audit test code on demand.
 
 use ast_grep_core::Node;
-use ast_grep_core::tree_sitter::{LanguageExt, StrDoc};
+use ast_grep_core::tree_sitter::StrDoc;
 use ast_grep_language::Rust;
 
 use super::macro_interior;
 use crate::audit::Audit;
+use crate::audits::source::pass::{self, Scanner, SourceFile, SourceScan};
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, SourceLocation};
 
@@ -44,15 +45,15 @@ impl Audit for UnwrapAudit {
         project.has_language(Language::Rust)
     }
 
+    fn scanner(&self) -> Option<Scanner<'_>> {
+        Some(Scanner::Rust(self))
+    }
+
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
-        let parsed = project.parsed_files(Language::Rust);
         let mut all_evidence = Vec::new();
 
-        for (path, parsed_file) in parsed.iter() {
-            let file_str = path.display().to_string();
-            if let AuditStatus::Fail(evidence) =
-                audit_unwrap_with(&parsed_file.source, &file_str, project.include_tests)
-            {
+        for (_, status) in pass::findings(project, Language::Rust, Rust, self) {
+            if let AuditStatus::Fail(evidence) = status {
                 all_evidence.push(evidence);
             }
         }
@@ -77,15 +78,28 @@ impl Audit for UnwrapAudit {
     }
 }
 
-/// Audit a single source string for `.unwrap()` calls.
+impl SourceScan<Rust> for UnwrapAudit {
+    type Finding = AuditStatus;
+
+    fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
+        audit_unwrap(file)
+    }
+}
+
+/// Audit one file for `.unwrap()` calls.
 ///
-/// When `include_cfg_test` is false (the default), calls inside any
-/// `#[cfg(test)]`-gated item are exempt. When true, every `.unwrap()` is
-/// flagged regardless of cfg gating.
-pub(crate) fn audit_unwrap_with(source: &str, file: &str, include_cfg_test: bool) -> AuditStatus {
-    let root = Rust.ast_grep(source);
+/// Unless the run reads test code, calls inside any `#[cfg(test)]`-gated item
+/// are exempt; with it, every `.unwrap()` is flagged regardless of cfg gating.
+pub(crate) fn audit_unwrap(file: &SourceFile<'_, Rust>) -> AuditStatus {
+    let label = file.label();
     let mut matches = Vec::new();
-    walk(root.root(), file, false, include_cfg_test, &mut matches);
+    walk(
+        file.root(),
+        &label,
+        false,
+        file.include_tests(),
+        &mut matches,
+    );
 
     if matches.is_empty() {
         AuditStatus::Pass
@@ -383,7 +397,14 @@ pub(super) fn balanced_parens(s: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
+
+    /// `source` parsed as `file` for a run that reads test code.
+    fn with_tests(source: &str, file: &'static str) -> SourceFile<'static, Rust> {
+        SourceFile::parse(Path::new(file), source, Rust, true)
+    }
 
     #[test]
     fn pass_when_no_unwrap() {
@@ -394,7 +415,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let status = audit_unwrap_with(source, "src/main.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -405,7 +426,7 @@ fn main() {
     let config = load_config().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/main.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/main.rs"));
         assert!(matches!(status, AuditStatus::Fail(_)));
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains("unwrap"));
@@ -422,7 +443,7 @@ fn main() {
     let c = baz().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 3);
         } else {
@@ -439,7 +460,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let status = audit_unwrap_with(source, "src/main.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -451,7 +472,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 "#;
-        let status = audit_unwrap_with(source, "src/main.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/main.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -477,7 +498,7 @@ fn helper() {
     qux().unwrap();
 }
 "#;
-        let default_status = audit_unwrap_with(source, "src/lib.rs", false);
+        let default_status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &default_status {
             assert_eq!(
                 evidence.lines().count(),
@@ -489,7 +510,7 @@ fn helper() {
             panic!("expected Fail with one line, got {default_status:?}");
         }
 
-        let include_status = audit_unwrap_with(source, "src/lib.rs", true);
+        let include_status = audit_unwrap(&with_tests(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &include_status {
             assert_eq!(
                 evidence.lines().count(),
@@ -512,7 +533,7 @@ mod outer {
     }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -528,7 +549,7 @@ fn run() {
     bar().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("bar().unwrap()"));
@@ -545,7 +566,7 @@ mod tests {
     fn t() { foo().unwrap(); }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -557,7 +578,7 @@ mod tests {
     fn t() { foo().unwrap(); }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -571,7 +592,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -589,7 +610,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -606,7 +627,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
         } else {
@@ -626,7 +647,7 @@ impl S {
     }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -642,7 +663,7 @@ fn production_only() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -662,7 +683,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -681,7 +702,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -701,7 +722,7 @@ mod tests {
     fn t() { foo().unwrap(); }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -716,7 +737,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -742,7 +763,7 @@ fn production() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -763,7 +784,7 @@ mod tests {
     }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -783,7 +804,7 @@ mod tests {
     fn t() { foo().unwrap(); }
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(status, AuditStatus::Pass);
     }
 
@@ -797,7 +818,7 @@ fn x() {
     foo().unwrap();
 }
 "#;
-        let status = audit_unwrap_with(source, "src/lib.rs", false);
+        let status = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &status {
             assert_eq!(evidence.lines().count(), 1);
             assert!(evidence.contains("foo().unwrap()"));
@@ -822,10 +843,10 @@ fn helper() {
     baz().unwrap();
 }
 "#;
-        let default = audit_unwrap_with(source, "src/lib.rs", false);
+        let default = audit_unwrap(&pass::rust(source, "src/lib.rs"));
         assert_eq!(default, AuditStatus::Pass);
 
-        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        let included = audit_unwrap(&with_tests(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &included {
             assert_eq!(evidence.lines().count(), 3);
         } else {
@@ -834,8 +855,13 @@ fn helper() {
     }
 
     /// Single evidence line for a source expected to produce exactly one finding.
-    fn sole_evidence(source: &str, file: &str, include_cfg_test: bool) -> String {
-        match audit_unwrap_with(source, file, include_cfg_test) {
+    fn sole_evidence(source: &str, file: &'static str, include_cfg_test: bool) -> String {
+        let parsed = if include_cfg_test {
+            with_tests(source, file)
+        } else {
+            pass::rust(source, file)
+        };
+        match audit_unwrap(&parsed) {
             AuditStatus::Fail(evidence) => {
                 assert_eq!(
                     evidence.lines().count(),
@@ -948,7 +974,7 @@ macro_rules! unwrap_or_bail {
 fn main() {}
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
     }
@@ -968,7 +994,7 @@ fn main() {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/main.rs", false),
+            audit_unwrap(&pass::rust(source, "src/main.rs")),
             AuditStatus::Pass
         );
     }
@@ -981,7 +1007,7 @@ fn main() {
 }
 "##;
         assert_eq!(
-            audit_unwrap_with(source, "src/main.rs", false),
+            audit_unwrap(&pass::rust(source, "src/main.rs")),
             AuditStatus::Pass
         );
     }
@@ -998,7 +1024,7 @@ fn main() {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/main.rs", false),
+            audit_unwrap(&pass::rust(source, "src/main.rs")),
             AuditStatus::Pass
         );
     }
@@ -1017,11 +1043,11 @@ mod tests {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", true),
+            audit_unwrap(&with_tests(source, "src/lib.rs")),
             AuditStatus::Pass
         );
     }
@@ -1038,7 +1064,7 @@ mod tests {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
         assert_eq!(
@@ -1058,7 +1084,7 @@ thread_local! {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
         assert_eq!(
@@ -1086,10 +1112,10 @@ thread_local! {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
-        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        let included = audit_unwrap(&with_tests(source, "src/lib.rs"));
         if let AuditStatus::Fail(evidence) = &included {
             assert_eq!(evidence.lines().count(), 2, "got:\n{evidence}");
         } else {
@@ -1108,7 +1134,7 @@ thread_local! {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
         assert_eq!(
@@ -1132,10 +1158,10 @@ cfg_if! {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/lib.rs", false),
+            audit_unwrap(&pass::rust(source, "src/lib.rs")),
             AuditStatus::Pass
         );
-        let included = audit_unwrap_with(source, "src/lib.rs", true);
+        let included = audit_unwrap(&with_tests(source, "src/lib.rs"));
         assert!(matches!(included, AuditStatus::Fail(_)));
     }
 
@@ -1179,7 +1205,7 @@ fn main() {
 }
 "#;
         assert_eq!(
-            audit_unwrap_with(source, "src/main.rs", false),
+            audit_unwrap(&pass::rust(source, "src/main.rs")),
             AuditStatus::Pass
         );
     }

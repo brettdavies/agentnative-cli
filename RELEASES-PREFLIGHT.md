@@ -89,7 +89,8 @@ The previous release branch took `dev` before that sync commit merged, so a PR t
 went out in neither release, and the log above does not show it. `generate-changelog.py` reads it: it also reads the PRs
 between the sync commit before that one and this one, and leaves out every PR `CHANGELOG.md` already lists. The
 generated section is the complete list, and a breaking PR merged in that gap appears in its `### Breaking changes`
-rather than in the tally.
+rather than in the tally. No section cites a PR the previous release left out of its notes on purpose either, such as
+a `(web)` PR while `anc web` stays off `main`, so it comes back in this section; leave it out the same way.
 
 Every `!:` commit drives the major-version decision and gets a row in the release's `### Breaking changes` section.
 

@@ -293,7 +293,8 @@ planned here, with no separate site plan).
   the engine reproduces every scenario of the vendored corpus.
 - U14 (`ANC_WEB_TOKEN` and `--token-stdin`) is on `dev` (#230), the credentialed side the corpus does not exercise.
 - The commit that turns `web` on by default is the parity commit, and task T1's release NASM and `Cross.toml` cmake
-  ride with it. It waits on the owner's go-ahead, and no release ships `anc web` before it.
+  ride with it. It waits on the owner's go-ahead, and no release ships `anc web` before it: v0.7.0's release branch
+  (#241) strips the web code and its CHANGELOG leaves out the web PRs, and each release does the same until the flip.
 - U16 waits on U15: it re-pins once `agentnative-site` commits the vendoring contract under
   `src/data/web-audit/contract/`, which site `dev` does not carry.
 

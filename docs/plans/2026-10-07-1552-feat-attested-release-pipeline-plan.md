@@ -43,8 +43,10 @@ execution: code
   result.
 - **Delivery:** U1 through U10 are merged: brettdavies/.github #80 (U1), agent-skills #156, #158 and #157 (U2 to
   U4), #154 to #157 in this repo (U5 to U8), homebrew-tap #151 (U9) and xurl-rs #309 (U10). #174 to #176 build the
-  release matrix once at the tag and carry the runbooks with it. U11 is open: v0.6.0 is the latest tag, and the live
-  `protect-main` ruleset lacks the three contexts `.github/rulesets/protect-main.json` adds.
+  release matrix once at the tag and carry the runbooks with it. U11 runs through step 6 with v0.7.0: `release.yml`
+  run 40607508242, the tap's `Update Formula` 40608205750 and `Publish formula` 40608665552, `finalize-release`
+  40608726301, postflight 7 of 7, and the backport #247. Step 7 waits on the owner: the live `protect-main` ruleset
+  lacks the three contexts `.github/rulesets/protect-main.json` adds, and all three reported on release PR #241.
 
 ---
 
@@ -128,10 +130,10 @@ repo scaffolded today starts behind the standard.
 **Proof**
 
 - R9. On the proving release, `release.yml` finishes green with its attestation and verification jobs, the tap bumps the
-  formula and signs the bottles with no manual step,
+  formula to the release's archives with no manual step after verifying each archive against its attestation, and
   `gh attestation verify --signer-workflow brettdavies/.github/.github/workflows/rust-release.yml` passes on a
-  downloaded archive, and `brew verify --os=all --arch=all brettdavies/tap/agentnative` reports a valid attestation for
-  every bottle.
+  downloaded archive. The formula installs those archives and builds no bottle, so there is no bottle attestation to
+  verify.
 
 ### Scope Boundaries
 
@@ -551,7 +553,8 @@ sequenceDiagram
   - `release.yml` finishes with `attest` and `verify-attestations` green.
   - The tap's formula update verifies four archives and opens its bump PR with checksums equal to the release's
     `sha256sum.txt`.
-  - The tap publishes four bottles, each with a valid attestation.
+  - The tap's formula update verifies each of its four archives against its attestation, and the formula builds no
+    bottle.
   - `gh attestation verify` without `--signer-workflow` fails on an archive, which confirms the documented command is
     the one that works.
   - Postflight passes for the tag once the sync PR merges.
@@ -573,7 +576,6 @@ sequenceDiagram
 | Release preflight   | `scripts/release/preflight.sh all`                                                                                                            | U11                                                  |
 | Release postflight  | `scripts/release/postflight.sh --tag <tag> all`                                                                                               | U11                                                  |
 | Archive attestation | `gh attestation verify <archive> --repo brettdavies/agentnative-cli --signer-workflow brettdavies/.github/.github/workflows/rust-release.yml` | U11                                                  |
-| Bottle attestation  | `brew verify --os=all --arch=all brettdavies/tap/agentnative`                                                                                 | U11                                                  |
 
 A CI run counts as green only when every check's conclusion is read from the rollup, not from a watcher's exit code.
 

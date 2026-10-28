@@ -744,7 +744,9 @@ def merged_pr_numbers(base: str, prev_tag: str | None) -> list[int]:
 BOUNDARY_RE = re.compile(r"^chore\(release\): (?:sync dev after|backport) (\S+)")
 
 
-def carried_over_pr_numbers(base: str, prev_tag: str | None) -> list[int]:
+def carried_over_pr_numbers(
+    base: str, prev_tag: str | None, cited: set[int] | None = None
+) -> list[int]:
     """PR numbers merged before the previous release's backport that it may not carry.
 
     A release is cut from the integration branch and backported once its tag is
@@ -752,15 +754,19 @@ def carried_over_pr_numbers(base: str, prev_tag: str | None) -> list[int]:
     backport. These are the PRs between the backport before the previous one on
     the same release line and the previous one. The caller drops every one the
     changelog already lists, which leaves the PRs the previous release did not
-    carry. With no earlier backport, the previous window opened at the start of
-    history, and a first release's notes need not cite its PRs, so nothing
-    carries over; nor does a boundary that is no backport commit, such as a tag.
+    carry. With no earlier backport, the previous release was cut after the
+    newest PR its section cites (CITED), so these are the PRs after that one.
+    The newest rather than the oldest, because a window opened earlier would
+    read back PRs an older generator left out on purpose. A section that cites
+    no PR, such as a first release's hand-written notes, carries nothing over;
+    nor does a boundary that is no backport commit, such as a tag.
     """
     anchor = release_anchor(base, prev_tag)
     if not anchor:
         return []
     line: str | None = None
     start: str | None = None
+    newest_cited: str | None = None
     proc = run(["git", "log", f"origin/{base}", "--format=%H %s"])
     for entry in proc.stdout.splitlines():
         sha, _, subject = entry.partition(" ")
@@ -773,6 +779,11 @@ def carried_over_pr_numbers(base: str, prev_tag: str | None) -> list[int]:
         elif found and release_line(found.group(1)) == line:
             start = sha
             break
+        elif cited and newest_cited is None and not BOOKKEEPING_RE.match(subject):
+            number = re.search(r"\(#(\d+)\)", subject)
+            if number and int(number.group(1)) in cited:
+                newest_cited = sha
+    start = start or newest_cited
     if not start:
         return []
     return pr_numbers_in(f"{start}..{anchor}")
@@ -789,10 +800,18 @@ def listed_before(content: str, version: str | None) -> set[int]:
     return set(pr_numbers_from_section(content)) - set(pr_numbers_from_section(this_section))
 
 
-def unreleased_pr_numbers(base: str, prev_tag: str | None, listed: set[int]) -> list[int]:
+def unreleased_pr_numbers(
+    base: str, prev_tag: str | None, content: str, version: str | None, prefix: str = ""
+) -> list[int]:
     """The PRs this release carries: merged since the previous release's backport,
-    or before it and carried by no release, leaving out every PR in LISTED."""
-    numbers = carried_over_pr_numbers(base, prev_tag) + merged_pr_numbers(base, prev_tag)
+    or before it and carried by no release, leaving out every PR the changelog
+    CONTENT lists outside VERSION's section."""
+    cited: set[int] = set()
+    if prev_tag:
+        previous = extract_version_section(content, version_from_tag(prev_tag, prefix))
+        cited = set(pr_numbers_from_section(previous))
+    numbers = carried_over_pr_numbers(base, prev_tag, cited) + merged_pr_numbers(base, prev_tag)
+    listed = listed_before(content, version)
     return sorted({n for n in numbers if n not in listed})
 
 
@@ -957,7 +976,7 @@ def audit_sections_mode(
     prev = previous_tag(tag or "", prefix)
     content = changelog.read_text() if changelog.exists() else ""
     version = version_from_tag(tag, prefix) if tag else None
-    pr_nums = unreleased_pr_numbers(args.dev_branch, prev, listed_before(content, version))
+    pr_nums = unreleased_pr_numbers(args.dev_branch, prev, content, version, prefix)
     prefetch_prs(owner, repo_name, pr_nums)
     label = crate_config["heading"] if crate_config else "Changelog"
     heading = rf"^## {re.escape(label)}\s*$"
@@ -1017,9 +1036,7 @@ def from_dev_prs_mode(
         prev = previous_tag(tag, prefix)
         seed_version_section(changelog, version)
         content = changelog.read_text()
-        pr_nums = unreleased_pr_numbers(
-            args.dev_branch, prev, listed_before(content, version)
-        )
+        pr_nums = unreleased_pr_numbers(args.dev_branch, prev, content, version, prefix)
         prefetch_prs(owner, repo_name, pr_nums)
         if crate_config and pr_nums:
             total = len(pr_nums)

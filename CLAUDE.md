@@ -56,6 +56,9 @@ For the full routing table, see `~/.claude/skills/docs/workflow-routing.md`.
 organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Search with
 `qmd query "<topic>" --collection solutions`. Relevant when implementing or debugging in documented areas.
 
+`CONCEPTS.md` at the repo root holds the project's shared domain vocabulary (Requirement, Scorecard, Audit and its
+layers, Audit profile), relevant when orienting to the codebase or discussing domain concepts.
+
 ## gstack Project History
 
 This project was designed in the `brettdavies/agent-skills` repo, then moved here. gstack project data (design doc, eng

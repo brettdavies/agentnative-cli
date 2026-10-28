@@ -600,6 +600,19 @@ agentnative uses three layers to analyze your CLI:
 `--binary` and `--source` are useful when one layer regresses and you want a focused gate (CI step for source quality,
 release-gate against the compiled artifact). Without either flag, all three layers run together.
 
+### How a behavioral probe runs
+
+`anc` runs the binary directly, never through a shell, with stdin closed, a timeout, and a fixed terminal: `TERM=dumb`,
+`COLUMNS=80`, `PAGER=cat`, and `NO_COLOR=1`. A probe inherits the rest of your environment except `ANC_WEB_TOKEN` and
+the variables that reach a display or the desktop session bus (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`,
+`DBUS_SESSION_BUS_ADDRESS`), so a GUI app probed with a flag it does not handle cannot open a window or start a session
+service.
+
+On Unix each probe runs in a process group of its own. When the probe exits or times out, `anc` kills the group, so a
+launcher that exits while the app it started keeps running takes the app with it. An interrupt, hangup, quit, or
+terminate signal sent to `anc` kills every running probe group before `anc` exits. A process that leaves the group with
+`setsid` is beyond that reach, which is one reason a probe gets no display.
+
 ### How behavioral audits read `--help`
 
 Several behavioral audits ask whether a help declares a flag (`--quiet`, `--force`, `--output`). `anc` answers from

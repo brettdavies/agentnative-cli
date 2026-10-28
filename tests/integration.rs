@@ -2176,3 +2176,117 @@ fn an_audited_binary_never_inherits_the_web_token() {
         "an audited binary inherited the web token:\n{seen}"
     );
 }
+
+/// A probe never reaches a display, so a GUI app run as `tool -V` cannot
+/// open a window, even on a headless X server the operator's shell exports.
+#[test]
+#[cfg(unix)]
+fn an_audited_binary_never_inherits_a_display() {
+    let dump = tempfile::NamedTempFile::new().expect("temp file");
+    cmd()
+        .args([
+            "audit",
+            &fixture_path("env-dump/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("DISPLAY", ":99")
+        .env("WAYLAND_DISPLAY", "wayland-99")
+        .env("XAUTHORITY", "/fixture/.Xauthority")
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/fixture/bus")
+        .env("ANC_TEST_ENV_DUMP", dump.path())
+        .output()
+        .expect("anc runs");
+    let seen = std::fs::read_to_string(dump.path()).expect("the fixture's dump");
+    assert!(
+        seen.contains("ANC_TEST_ENV_DUMP="),
+        "the fixture never ran: {seen:?}"
+    );
+    let leaked: Vec<&str> = seen
+        .lines()
+        .filter(|line| {
+            [
+                "DISPLAY=",
+                "WAYLAND_DISPLAY=",
+                "XAUTHORITY=",
+                "DBUS_SESSION_BUS_ADDRESS=",
+            ]
+            .iter()
+            .any(|name| line.starts_with(name))
+        })
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "an audited binary inherited a display: {leaked:?}"
+    );
+}
+
+// ── Probe lifetime ─────────────────────────────────────────────────
+
+/// Interrupting anc while a probe runs ends the probe and what it started,
+/// not only anc, and anc still dies by the signal it was sent.
+#[test]
+#[cfg(unix)]
+fn interrupting_an_audit_ends_the_probe_it_was_running() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::{Duration, Instant};
+
+    fn recorded(file: &std::path::Path) -> Vec<libc::pid_t> {
+        std::fs::read_to_string(file)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| line.trim().parse().ok())
+            .collect()
+    }
+    fn is_alive(pid: libc::pid_t) -> bool {
+        // SAFETY: signal 0 only checks that the process exists.
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = std::process::Command::new(env!("CARGO_BIN_EXE_anc"))
+        .args([
+            "audit",
+            &fixture_path("probe-leftovers/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config())
+        .env("ANC_TEST_PID_FILE", pids.path())
+        .env("ANC_TEST_PROBE_HANG", "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("anc starts");
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while recorded(pids.path()).len() < 2 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
+    let status = anc.wait().expect("anc exits");
+
+    let started = recorded(pids.path());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut survivors: Vec<libc::pid_t> = started.clone();
+    while !survivors.is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+        survivors.retain(|&pid| is_alive(pid));
+    }
+    for &pid in &survivors {
+        // SAFETY: kill only sends a signal.
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+
+    assert!(!started.is_empty(), "no probe ran before the deadline");
+    assert_eq!(
+        status.signal(),
+        Some(libc::SIGINT),
+        "anc exited with {status:?}"
+    );
+    assert!(
+        survivors.is_empty(),
+        "these probe processes outlived the interrupted audit: {survivors:?}"
+    );
+}

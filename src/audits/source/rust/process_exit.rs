@@ -83,8 +83,11 @@ impl SourceScan<Rust> for ProcessExitAudit {
     type Finding = AuditStatus;
 
     fn scan(&self, file: &SourceFile<'_, Rust>) -> AuditStatus {
-        // Allow process::exit in main.rs
-        if file.label().ends_with("main.rs") {
+        if file
+            .path()
+            .file_name()
+            .is_some_and(|name| name == "main.rs")
+        {
             return AuditStatus::Pass;
         }
         audit_process_exit(file)
@@ -155,6 +158,16 @@ fn bail() {
         if let AuditStatus::Fail(evidence) = &status {
             assert!(evidence.contains("std::process::exit"));
         }
+    }
+
+    #[test]
+    fn scan_exempts_only_files_named_main_rs() {
+        let source = "fn stop() {\n    std::process::exit(1);\n}\n";
+        let scan = |file| ProcessExitAudit.scan(&pass::rust(source, file));
+        assert!(matches!(scan("src/domain.rs"), AuditStatus::Fail(_)));
+        assert!(matches!(scan("src/remain.rs"), AuditStatus::Fail(_)));
+        assert_eq!(scan("src/main.rs"), AuditStatus::Pass);
+        assert_eq!(scan("src/bin/main.rs"), AuditStatus::Pass);
     }
 
     #[test]

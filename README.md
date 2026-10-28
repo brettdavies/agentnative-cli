@@ -538,7 +538,7 @@ agentnative audits your CLI against eight agent-readiness principles:
 | # | Principle | What It Means |
 | - | --------- | ------------- |
 | P1 | Non-Interactive by Default | No prompts, no browser popups, stdin from `/dev/null` works |
-| P2 | Structured Output | `--output json` exists, produces valid JSON, and the shape is discoverable via `schema` subcommand or `--schema` flag |
+| P2 | Structured Output | `--output json` exists, produces valid JSON, and the output schema is discoverable at runtime (`schema` subcommand or `--schema` flag) |
 | P3 | Progressive Help | `--help` has examples, `--version` works |
 | P4 | Actionable Errors | Structured error types, named exit codes, no `.unwrap()` |
 | P5 | Safe Retries | `--dry-run` for write operations |
@@ -866,61 +866,68 @@ Pre-generated scripts are also available in `completions/`.
 anc audit . --output json
 ```
 
-Produces a self-describing scoring run record (`schema_version: "0.5"`) with results, summary, coverage against the
+Produces a self-describing scoring run record (`schema_version: "0.9"`) with results, summary, coverage against the
 eight principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform,
 and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema` (also committed at
 `schema/scorecard.schema.json`):
 
 ```json
 {
-  "schema_version": "0.5",
+  "schema_version": "0.9",
   "results": [
     {
-      "id": "p3-help",
+      "id": "p3-must-top-level-examples",
       "label": "Help flag produces useful output",
       "group": "P3",
       "layer": "behavioral",
       "status": "pass",
       "evidence": null,
-      "confidence": "high"
+      "confidence": "high",
+      "tier": "must",
+      "audit_id": "p3-help"
     }
   ],
   "summary": {
-    "total": 33,
-    "pass": 28,
-    "warn": 1,
-    "fail": 0,
-    "skip": 4,
+    "total": 44,
+    "pass": 16,
+    "warn": 7,
+    "fail": 2,
+    "opt_out": 0,
+    "n_a": 4,
+    "skip": 15,
     "error": 0
   },
   "coverage_summary": {
-    "must":   { "total": 27, "verified": 21 },
-    "should": { "total": 20, "verified": 6  },
-    "may":    { "total": 10, "verified": 3  }
+    "must":   { "total": 28, "verified": 19 },
+    "should": { "total": 22, "verified": 14 },
+    "may":    { "total": 10, "verified": 10 }
   },
   "audience": "agent-optimized",
   "audit_profile": null,
-  "spec_version": "0.4.0",
-  "tool":   { "name": "ripgrep", "binary": "rg", "version": "ripgrep 15.1.0" },
-  "anc":    { "version": "0.4.0" },
+  "spec_version": "0.7.0",
+  "tool":   { "name": "rg", "binary": "rg", "version": "ripgrep 15.2.0" },
+  "anc":    { "version": "0.7.0" },
   "run":    {
     "invocation": "anc audit --command rg --output json",
-    "started_at": "2026-04-29T16:00:00Z",
-    "duration_ms": 412,
+    "started_at": "2026-10-28T22:45:22.88779231Z",
+    "duration_ms": 218,
     "platform":   { "os": "linux", "arch": "x86_64" }
   },
   "target": { "kind": "command", "path": null, "command": "rg" },
   "badge":  {
     "eligible": true,
-    "score_pct": 97,
-    "embed_markdown": "[![agent-native](https://anc.dev/badge/ripgrep.svg)](https://anc.dev/score/ripgrep)",
-    "scorecard_url":  "https://anc.dev/score/ripgrep",
-    "badge_url":      "https://anc.dev/badge/ripgrep.svg",
+    "score_pct": 78,
+    "embed_markdown": "[![agent-native](https://anc.dev/badge/rg.svg)](https://anc.dev/score/rg)",
+    "scorecard_url":  "https://anc.dev/score/rg",
+    "badge_url":      "https://anc.dev/badge/rg.svg",
     "convention_url": "https://anc.dev/badge"
   }
 }
 ```
 
+- `results`: one row per requirement an audit that ran covers. `id` is the requirement ID from the spec registry,
+  `tier` its level (`must`, `should`, or `may`), and `audit_id` the audit that produced the row; an audit that covers
+  several requirements produces one row for each. `status` is one of the seven in [Scoring](#scoring).
 - `coverage_summary`: how many MUSTs/SHOULDs/MAYs the audits that ran actually verified, against the spec registry's
   totals. See `docs/coverage-matrix.md` for the per-requirement breakdown. Audits suppressed by `--audit-profile` do
   **not** count toward `verified`. Suppression means the requirement was not verified, even when the audit shows as Skip

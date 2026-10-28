@@ -27,6 +27,12 @@ permissions:
 # HTTP/1.1 avoids it. The reusable workflow sets the same for its own jobs.
 env:
   CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_INCREMENTAL: 0
+  # Half the target directory of full debug info and as fast to build as none,
+  # and a failing test's backtrace keeps its file and line (measured in
+  # brettdavies/xurl-rs#431).
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_TERM_COLOR: always
 
 jobs:
   ci:
@@ -54,15 +60,14 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
-      CARGO_TERM_COLOR: always
       RUSTFLAGS: "-Dwarnings"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Installs what rust-toolchain.toml names, components included, so the
+      # version lives in one file and no action pin has to track it.
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
-        with:
-          components: clippy
+        run: rustup toolchain install
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -80,13 +85,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     env:
-      CARGO_TERM_COLOR: always
       RUSTFLAGS: "-Dwarnings"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
+        run: rustup toolchain install
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -116,7 +120,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable @ 2026-09-03
+        run: rustup toolchain install
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

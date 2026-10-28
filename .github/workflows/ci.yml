@@ -29,8 +29,7 @@ env:
   CARGO_HTTP_MULTIPLEXING: "false"
   CARGO_INCREMENTAL: 0
   # Half the target directory of full debug info and as fast to build as none,
-  # and a failing test's backtrace keeps its file and line (measured in
-  # brettdavies/xurl-rs#431).
+  # and a failing test's backtrace keeps its file and line.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_TERM_COLOR: always
 

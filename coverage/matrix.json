@@ -189,7 +189,7 @@
       "id": "p2-must-schema-print",
       "principle": 2,
       "level": "must",
-      "summary": "CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier.",
+      "summary": "CLIs that emit structured output expose the output schema at runtime, with a documented format identifier, via a `schema` subcommand or `--schema` flag (the recommended names) or a documented introspection command under another name.",
       "applicability": {
         "kind": "conditional",
         "antecedent": {
@@ -285,10 +285,10 @@
       "id": "p3-must-subcommand-examples",
       "principle": 3,
       "level": "must",
-      "summary": "Every subcommand ships at least one concrete invocation example (`after_help` in clap).",
+      "summary": "Every subcommand that takes its own arguments or options ships at least one concrete invocation example (`after_help` in clap).",
       "applicability": {
         "kind": "conditional",
-        "condition": "CLI uses subcommands"
+        "condition": "CLI has subcommands that take their own arguments or options"
       },
       "verifiers": [
         {
@@ -521,7 +521,7 @@
       "id": "p5-must-force-yes",
       "principle": 5,
       "level": "must",
-      "summary": "Destructive operations (delete, overwrite, bulk modify) require an explicit `--force` or `--yes` flag.",
+      "summary": "Destructive operations (delete, overwrite, bulk modify) require an explicit confirmation flag; `--yes` and `--force` are the recommended names, and a documented flag under another name satisfies the requirement.",
       "applicability": {
         "kind": "conditional",
         "condition": "CLI has destructive operations"

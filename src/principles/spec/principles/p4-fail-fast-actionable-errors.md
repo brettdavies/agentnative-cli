@@ -119,8 +119,9 @@ OAuth or asks the user to check their config file. Getting that wrong wastes ent
 - Error messages that state the symptom without the cause or fix ("Error: request failed").
 - Panics (`unwrap()`, `expect()`) on recoverable errors in production code paths.
 
-Measured by audit IDs `p4-bad-args`, `p4-process-exit`, `p4-unwrap`, `p4-exit-codes`. Run `anc audit --principle 4 .`
-against the CLI under test to see each.
+Measured by audit IDs `p4-try-parse`, `p4-bad-args`, `p4-exit-codes`, `p4-actionable-errors`, `p4-error-module`,
+`p4-error-types`, `p4-json-error-output`, `p4-enumerate-valid-set`, `p4-process-exit`, `p4-sys-exit`, `code-unwrap`,
+`code-bare-except`. Run `anc audit --principle 4 .` against the CLI under test to see each.
 
 ## Pressure test notes
 

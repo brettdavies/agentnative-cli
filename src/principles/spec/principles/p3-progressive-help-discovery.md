@@ -1,14 +1,14 @@
 ---
 id: p3
 title: Progressive Help Discovery
-last-revised: 2026-09-17
+last-revised: 2026-10-06
 status: active
 requirements:
   - id: p3-must-subcommand-examples
     level: must
     applicability:
-      if: CLI uses subcommands
-    summary: Every subcommand ships at least one concrete invocation example (`after_help` in clap).
+      if: CLI has subcommands that take their own arguments or options
+    summary: Every subcommand that takes its own arguments or options ships at least one concrete invocation example (`after_help` in clap).
   - id: p3-must-top-level-examples
     level: must
     applicability: universal
@@ -59,9 +59,12 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 
 **MUST:**
 
-- Every subcommand MUST render at least one concrete invocation example with realistic arguments, in the section that
-  appears after the flags list. Clap's `after_help` attribute is the Rust realization; other frameworks have equivalents
-  (see Evidence section below).
+- Every subcommand that takes its own arguments or options MUST render at least one concrete invocation example with
+  realistic arguments, in the section that appears after the flags list. A subcommand whose `--help` shows no positional
+  argument (a nested command list counts as one) and no option beyond `-h`/`--help` and the global flags every
+  subcommand inherits is exempt: its usage line (`tool version`, `tool logout`) is its whole call shape, so an example
+  would repeat it. Clap's `after_help` attribute is the Rust realization; other frameworks have equivalents (see
+  Evidence section below).
 - The top-level command MUST render 2–3 examples covering the primary use cases.
 - The top-level command MUST respond to `--version` with a non-empty version line on stdout and exit 0. Agents pin
   against tool versions to detect breaking changes; a `--version` that errors, exits non-zero, or prints nothing forces
@@ -91,9 +94,10 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 ## Evidence
 
 - `after_help` (or `after_long_help`) attribute on the top-level parser struct.
-- `after_help` attribute on every subcommand variant.
+- `after_help` attribute on every subcommand variant that takes its own arguments or options.
 - Example invocations in `after_help` text that include realistic arguments, not placeholder `<foo>` tokens.
-- Both `about` (short) and `after_help` (examples) present on each subcommand.
+- `about` (short) present on each subcommand, and `after_help` (examples) on each subcommand that takes its own
+  arguments or options.
 - The command list's left column holds bare command tokens; the binary name appears in the `Usage:` line and in
   examples, not at the head of each command entry.
 
@@ -107,8 +111,9 @@ trial-and-errors its way into a working call, burning tokens and sometimes landi
 - A hand-written command list that prefixes every entry with the binary name, so the command token sits second on each
   line and a scanner has to strip the prefix before it can read the command.
 
-Measured by audit IDs `p3-help`, `p3-after-help`, `p3-version`. Run `anc audit --principle 3 .` against the CLI under
-test to see each.
+Measured by audit IDs `p3-subcommand-examples`, `p3-help`, `p3-version`, `p3-paired-examples`, `p3-about-long-about`,
+`p3-unprefixed-command-list`, `p3-examples-subcommand`. Run `anc audit --principle 3 .` against the CLI under test to
+see each.
 
 ## Pressure test notes
 

@@ -33,7 +33,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p2-must-stdout-stderr-split` | MUST | Universal | `p2-output-module` (source) | Data goes to stdout; diagnostics/progress/warnings go to stderr, never interleaved. |
 | `p2-must-exit-codes` | MUST | Universal | `p2-structured-exit-codes` (behavioral) | Exit codes are structured and documented (0 success, 1 general, 2 usage, 77 auth, 78 config). |
 | `p2-must-json-errors` | MUST | Universal | `p2-json-errors` (behavioral) | When `--output json` is active, errors are emitted as JSON (to stderr) with at least `error`, `kind`, and `message` fields. |
-| `p2-must-schema-print` | MUST | If: `p2-json-output` is present | `p2-schema-print` (behavioral) | CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier. |
+| `p2-must-schema-print` | MUST | If: `p2-json-output` is present | `p2-schema-print` (behavioral) | CLIs that emit structured output expose the output schema at runtime, with a documented format identifier, via a `schema` subcommand or `--schema` flag (the recommended names) or a documented introspection command under another name. |
 | `p2-should-consistent-envelope` | SHOULD | Universal | `p2-consistent-envelope` (behavioral) | JSON output uses a consistent envelope (a top-level object with predictable keys) across every command. |
 | `p2-should-schema-file` | SHOULD | If: `p2-json-output` is present | `p2-schema-file` (project) | Output schemas are also exported to a stable file path (e.g., `schema/<command>.json`) so CI/static-analysis consumers pin without invoking the tool. |
 | `p2-should-json-aliases` | SHOULD | Universal | `p2-json-aliases` (behavioral) | `--json` and `--jsonl` are accepted as aliases for `--output json` and `--output jsonl`; the short forms work alongside the canonical enum. |
@@ -44,7 +44,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p3-must-subcommand-examples` | MUST | If: CLI uses subcommands | `p3-subcommand-examples` (behavioral) | Every subcommand ships at least one concrete invocation example (`after_help` in clap). |
+| `p3-must-subcommand-examples` | MUST | If: CLI has subcommands that take their own arguments or options | `p3-subcommand-examples` (behavioral) | Every subcommand that takes its own arguments or options ships at least one concrete invocation example (`after_help` in clap). |
 | `p3-must-top-level-examples` | MUST | Universal | `p3-help` (behavioral) | The top-level command ships 2–3 examples covering the primary use cases. |
 | `p3-must-version` | MUST | Universal | `p3-version` (behavioral) | Top-level `--version` prints a non-empty version line and exits 0. |
 | `p3-should-version-short` | SHOULD | Universal | `p3-version` (behavioral) | A short version alias (`-V`, `-v`, or `-version`) accompanies `--version` for fast version probes. |
@@ -69,7 +69,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
-| `p5-must-force-yes` | MUST | If: CLI has destructive operations | `p5-force-yes` (behavioral) | Destructive operations (delete, overwrite, bulk modify) require an explicit `--force` or `--yes` flag. |
+| `p5-must-force-yes` | MUST | If: CLI has destructive operations | `p5-force-yes` (behavioral) | Destructive operations (delete, overwrite, bulk modify) require an explicit confirmation flag; `--yes` and `--force` are the recommended names, and a documented flag under another name satisfies the requirement. |
 | `p5-must-read-write-distinction` | MUST | If: CLI has both read and write operations | `p5-read-write-distinction` (behavioral) | The distinction between read and write commands is clear from the command name and help text alone. |
 | `p5-must-dry-run` | MUST | If: CLI has write operations | `p5-dry-run` (project) | A `--dry-run` flag is present on every write command; dry-run output respects `--output json`. |
 | `p5-should-idempotency` | SHOULD | If: CLI has write operations | **UNCOVERED** | Write operations are idempotent where the domain allows it: running the same command twice produces the same result. |

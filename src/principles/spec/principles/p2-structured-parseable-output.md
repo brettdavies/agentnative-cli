@@ -1,7 +1,7 @@
 ---
 id: p2
 title: Structured, Parseable Output
-last-revised: 2026-05-29
+last-revised: 2026-10-06
 status: active
 requirements:
   - id: p2-must-output-flag
@@ -26,7 +26,7 @@ requirements:
       kind: conditional
       antecedent:
         audit_id: p2-json-output
-    summary: "CLIs that emit structured output expose the output schema via a `schema` subcommand or `--schema` flag: runtime-discoverable, with a documented format identifier."
+    summary: "CLIs that emit structured output expose the output schema at runtime, with a documented format identifier, via a `schema` subcommand or `--schema` flag (the recommended names) or a documented introspection command under another name."
   - id: p2-should-consistent-envelope
     level: should
     applicability: universal
@@ -92,11 +92,13 @@ catastrophically later.
 
 - When `--output json` is active, errors MUST be emitted as JSON to stderr with at least `error`, `kind`, and `message`
   fields. A plain-text error inside a JSON run breaks the consumer's parser on the only shape it was told to expect.
-- CLIs that emit structured output (`--output json|jsonl`) MUST expose the output schema at runtime via a `schema`
-  subcommand (or a `--schema` flag on each data-emitting subcommand). The schema MUST identify its format (canonical
-  recommendation is JSON Schema 2020-12, the same dialect OpenAPI 3.1 uses), so an agent reading the schema loads the
-  right validator without parsing prose. A consumer asking "what shape am I about to receive?" gets a machine-readable
-  answer in one call.
+- CLIs that emit structured output (`--output json|jsonl`) MUST expose the output schema at runtime. A `schema`
+  subcommand (or a `--schema` flag on each data-emitting subcommand) is the recommended surface; an introspection
+  command under another name satisfies the requirement when the tool's `--help` documents it as the command that
+  describes the output's structure (`kubectl explain`, which prints the fields of the resources `kubectl get -o json`
+  returns). The schema MUST identify its format (canonical recommendation is JSON Schema 2020-12, the same dialect
+  OpenAPI 3.1 uses), so an agent reading the schema loads the right validator without parsing prose. A consumer asking
+  "what shape am I about to receive?" gets a machine-readable answer in one call.
 
 **SHOULD:**
 
@@ -132,8 +134,9 @@ catastrophically later.
 - `process::exit()` in library code, bypassing structured error propagation.
 - Human-formatted tables as the only output mode with no JSON alternative.
 
-Measured by audit IDs `p2-output-json`, `p2-output-format`, `p2-stderr-diagnostics`. Run `anc audit --principle 2 .`
-against the CLI under test to see each.
+Measured by audit IDs `p2-json-output`, `p2-structured-output`, `p2-output-module`, `p2-structured-exit-codes`,
+`p2-json-errors`, `p2-schema-print`, `p2-consistent-envelope`, `p2-schema-file`, `p2-json-aliases`, `p2-more-formats`,
+`p2-raw-flag`. Run `anc audit --principle 2 .` against the CLI under test to see each.
 
 ## Pressure test notes
 

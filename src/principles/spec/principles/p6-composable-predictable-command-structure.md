@@ -157,8 +157,10 @@ tool a building block rather than a dead end.
 - A `completions` command that requires auth or config to run.
 - No stdin support on commands where piped input is a natural use case.
 
-Measured by audit IDs `p6-sigpipe`, `p6-no-color`, `p6-completions`, `p6-timeout`, `p6-agents-md`. Run `anc audit
---principle 6 .` against the CLI under test to see each.
+Measured by audit IDs `p6-sigpipe`, `p6-sigterm`, `p6-no-color-behavioral`, `p6-no-color`, `p6-completions`,
+`p6-timeout`, `p6-no-pager-behavioral`, `p6-no-pager`, `p6-global-flags`, `p6-stdin-input`, `p6-consistent-naming`,
+`p6-subcommand-operations`, `p6-color-flag`, `p6-standard-names`, `p6-dependencies`. Run `anc audit --principle 6 .`
+against the CLI under test to see each.
 
 ## Pressure test notes
 
@@ -167,16 +169,16 @@ Measured by audit IDs `p6-sigpipe`, `p6-no-color`, `p6-completions`, `p6-timeout
 Adversarial review via `compound-engineering:ce-adversarial-document-reviewer` ahead of the v0.3.0 launch. Findings
 recorded verbatim per `principles/AGENTS.md` § "Pressure-test protocol".
 
-- **[edit]** *Prior art / vague agent-native.* "The SIGPIPE MUST prescribes `unsafe { libc::signal(libc::SIGPIPE,
-  libc::SIG_DFL); }` as the first `main()` statement. That is a Rust-specific remedy. Python raises `BrokenPipeError` by
-  default (different fix), Go's runtime already exits cleanly on EPIPE writes (no fix needed), Node.js needs
-  `process.stdout.on('error')`. The MUST as written is correct in spirit but the prescription leaks Rust into a
-  universal-applicability rule." Resolved: prose bullet now leads with the language-neutral MUST ("SIGPIPE is handled so
-  that piping to `head`, `tail`, or any tool that closes the pipe early does not crash the process"); the Rust snippet
-  stays as the canonical example; per-language one-liners cover Python, Go, and Node. Frontmatter summary updated to
-  match.
+- **[edit]** *Prior art / vague agent-native.* "The SIGPIPE MUST prescribes
+  `unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }` as the first `main()` statement. That is a Rust-specific
+  remedy. Python raises `BrokenPipeError` by default (different fix), Go's runtime already exits cleanly on EPIPE writes
+  (no fix needed), Node.js needs `process.stdout.on('error')`. The MUST as written is correct in spirit but the
+  prescription leaks Rust into a universal-applicability rule." Resolved: prose bullet now leads with the
+  language-neutral MUST ("SIGPIPE is handled so that piping to `head`, `tail`, or any tool that closes the pipe early
+  does not crash the process"); the Rust snippet stays as the canonical example; per-language one-liners cover Python,
+  Go, and Node. Frontmatter summary updated to match.
 - **[edit]** *MUST-vs-SHOULD.* "The `global = true` MUST is a clap-API artifact. The behavioral requirement is 'agentic
-  flags propagate to every subcommand,' which is what the prose actually says. The frontmatter summary baking `global =
-  true` into a universal contract overfits to one library." Resolved: frontmatter summary and prose bullet now lead with
-  the behavioral requirement ("propagate to every subcommand"), with `global = true` cited as the clap-specific example.
-  Behavior unchanged; language-neutrality restored.
+  flags propagate to every subcommand,' which is what the prose actually says. The frontmatter summary baking
+  `global = true` into a universal contract overfits to one library." Resolved: frontmatter summary and prose bullet now
+  lead with the behavioral requirement ("propagate to every subcommand"), with `global = true` cited as the
+  clap-specific example. Behavior unchanged; language-neutrality restored.

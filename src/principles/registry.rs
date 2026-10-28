@@ -237,10 +237,10 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
         &[
             // No current audit verifies subcommand-examples or
             // subcommand-operations for tools-without-subcommands. The
-            // `If: CLI uses subcommands` applicability on existing audits
-            // already produces the right Skip outcome for fd/find-style
-            // tools. Kept as a table entry so future audits can be added
-            // without a schema change.
+            // subcommand-gated applicability on existing audits already
+            // produces the right Skip outcome for fd/find-style tools. Kept
+            // as a table entry so future audits can be added without a
+            // schema change.
         ],
     ),
     (

@@ -115,8 +115,9 @@ agent-tool deadlock.
 - OAuth flow that unconditionally opens a browser with no headless escape hatch.
 - A `--password <value>` flag with no stdin or file alternative: every invocation leaks the secret into `ps` output.
 
-Measured by audit IDs `p1-non-interactive` (behavioral) and `p1-non-interactive-source` (source). Run `anc audit
---principle 1 .` against the CLI under test to see both.
+Measured by audit IDs `p1-env-hints`, `p1-env-flags-source`, `p1-non-interactive`, `p1-flag-existence`,
+`p1-non-interactive-source`, `p1-headless-auth`, `p1-secret-non-leaky-path`, `p1-tty-detection-source`,
+`p1-defaults-in-help`, `p1-rich-tui`. Run `anc audit --principle 1 .` against the CLI under test to see each.
 
 ## Pressure test notes
 

@@ -55,7 +55,7 @@ impl Audit for ForceYesAudit {
     }
 
     fn label(&self) -> &'static str {
-        "Destructive subcommands require `--force` or `--yes`"
+        "Destructive subcommands require a confirmation flag"
     }
 
     fn group(&self) -> AuditGroup {

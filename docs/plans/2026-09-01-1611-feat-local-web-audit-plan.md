@@ -245,7 +245,7 @@ flowchart TB
 - The vendored conformance suite passing against both engines is the evidence behind the parity claim; a divergence is a
   red build, not a support ticket.
 - Binary growth stays within the ceiling U1 measures and records: ~5MB delta over today's 3.4MB release binary is the
-  stop-condition threshold, and the plain aws-lc-rs build ships (no size-optimized crypto configuration).
+  stop-condition threshold; #215 builds aws-lc-sys at `opt-level = "s"` to stay under it.
 - The incident test: a dev audits an internal-only site end to end — install anc, run one command, read the report —
   with nothing exposed publicly at any step; the target hostname reaches no third-party resolver or proxy.
 
@@ -1138,7 +1138,8 @@ cmake needs no provisioning, since every hosted runner image already carries it)
   3. Dogfood: `anc audit .` still passes with the new verb present (envelope pattern, safe probing,
      `arg_required_else_help` untouched); a corpus of previously-valid bare invocations (`anc .`, `anc <path>`,
      `anc <flags>`) still routes to audit (System-Wide Impact's behavior-delta guard).
-  4. Size gate: CI asserts the release binary stays under the ceiling U1 recorded (~5MB over the pre-U1 binary).
+  4. Size gate: CI asserts the release binary stays under the absolute ceiling `CEILING_BYTES` (20 MiB) in
+     `scripts/check-binary-size.sh`.
 - **Test scenarios:**
   - Happy path: full corpus green. Covers AE4.
   - Edge: a deliberately mutated golden file fails (the suite binds).

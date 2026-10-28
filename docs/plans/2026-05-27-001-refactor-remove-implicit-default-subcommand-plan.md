@@ -2,7 +2,7 @@
 title: "refactor: Remove implicit default subcommand (require explicit `anc audit`)"
 type: refactor
 status: dropped
-dropped_reason: "implicit routing is a documented, tested feature across both verbs: `anc .` runs `anc audit .`, and `anc anc.dev` runs `anc web anc.dev`"
+dropped_reason: "implicit routing is a documented, tested feature across both verbs: `anc .` runs `anc audit .`, and in a `--features web` build `anc anc.dev` runs `anc web anc.dev`"
 date: 2026-05-27
 origin: maintainer decision — require the explicit verb (git/cargo/kubectl/docker/gh/terraform convention); supersedes the default-subcommand portion of docs/plans/2026-04-02-003-feat-cli-default-subcommand-and-command-flag-plan.md
 ---

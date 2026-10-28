@@ -546,7 +546,7 @@ the corpus both need the released binary.
   3. Rewrite the `RELEASES-POSTFLIGHT.md` checkbox that asks the operator to click the emitted `badge_url` and
      `scorecard_url`, so the postflight stops referencing removed fields.
   4. Append the 0.10 entry to the cumulative schema history in `CLAUDE.md`, and rewrite its `0.5` section at
-     `CLAUDE.md:209-223`. Appending alone does not meet this unit's goal: that section states the six-field
+     `CLAUDE.md:231-246`. Appending alone does not meet this unit's goal: that section states the six-field
      `BadgeInfo { eligible, score_pct, embed_markdown, scorecard_url, badge_url, convention_url }` signature, the rule
      that `embed_markdown` is `Some` only when eligible, that `scorecard_url` / `badge_url` are populated whenever a
      slug exists, and that the JSON `embed_markdown` and the printed hint can never disagree. All four statements
@@ -880,7 +880,7 @@ Scores are before and after this plan plus this review's corrections, scoped to 
    the CLI's derivation matches the registry slug convention, false for exactly the 12 tools at issue;
    `content/scorecard-schema.md`, whose worked example used `rg`, the wrong slug this plan exists to remove; the
    schema's own `badge` description, stating the floor as 80 and the formula as `pass / (pass + warn + fail)`; and
-   `CLAUDE.md:209-223`. U6 step 4 covered only the history append, leaving that last one describing a six-field struct
+   `CLAUDE.md:231-246`. U6 step 4 covered only the history append, leaving that last one describing a six-field struct
    and a text-hint agreement that stops existing. Corrected in this review.
 5. **Upgrade path, 7 → 8.** A breaking removal under `additionalProperties: false` is the hard case, and the plan
    handles it properly: the version set widens rather than flips, the consumer leads, and inject mode verifies against a
@@ -964,7 +964,7 @@ any `TODO*.md`. The deferred items live in **NOT in scope** above and in the tas
 
 Synthesized from this review's findings. Each derives from a specific finding above.
 
-- [ ] **T1 (P1, human: ~30min / CC: ~5min)** — CLI docs — Rewrite `CLAUDE.md:209-223` for the three-field `BadgeInfo`
+- [ ] **T1 (P1, human: ~30min / CC: ~5min)** — CLI docs — Rewrite `CLAUDE.md:231-246` for the three-field `BadgeInfo`
   - Surfaced by: Pass 4 — U6 step 4 covered only the history append, leaving four statements describing removed fields
   - Files: `CLAUDE.md`
   - Verify: `rg 'embed_markdown|badge_url' CLAUDE.md` returns only the 0.10 history entry

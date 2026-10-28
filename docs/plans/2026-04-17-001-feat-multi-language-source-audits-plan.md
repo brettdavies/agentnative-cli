@@ -11,8 +11,8 @@ date: 2026-04-17
 
 Extend source audits beyond Rust and Python to cover Go, Ruby, and TypeScript. Start with a scoped research spike to
 characterize ast-grep support, meta-variable conventions, framework idioms, and code-pattern viability per language,
-then ship 3–4 starter audits per language behind the same `Audit` trait architecture already proven by the 16 Rust
-audits and 3 Python audits. This is the next increment on the design doc's commitment that source audits "go deeper for
+then ship 3–4 starter audits per language behind the same `Audit` trait architecture already proven by the 18 Rust
+audits and 5 Python audits. This is the next increment on the design doc's commitment that source audits "go deeper for
 supported languages" without expanding the project's dependency surface.
 
 ## Problem Frame
@@ -339,11 +339,11 @@ Go, TypeScript, and Ruby (accounting for Ruby's and Go's `µ` meta-variable char
 **Files:**
 
 - Modify: `Cargo.toml` (add three feature flags to the `ast-grep-language` dependency line).
-- Modify: `src/project.rs` (Language enum, detect_language manifest table, parsed_files extension map, walk_source_files
-  signature if extensions becomes a slice).
+- Modify: `src/project/mod.rs` (Language enum, detect_language manifest table, parsed_files extension map,
+  walk_source_files signature if extensions becomes a slice).
 - Modify: `src/source.rs` (has_pattern_in, find_pattern_matches_in, has_string_literal_in — extend match arms).
-- Modify: `src/audits/source/mod.rs` (all_source_audits router — add TypeScript, Ruby branches; Go branch already exists
-  but currently returns `vec![]`, will be wired to `go::all_go_audits()` in Unit 3).
+- Modify: `src/audits/source/mod.rs` (all_source_audits router — add Go, TypeScript, and Ruby branches; it matches Rust
+  and Python and returns `vec![]` for any other language; Go is wired to `go::all_go_audits()` in Unit 3).
 - Test: `src/project.rs::tests` (detect_language for tsconfig.json, Gemfile, gemspec); `src/source.rs::tests`
   (has_pattern_in for Go, TypeScript, Ruby; has_string_literal_in for each; confirm `µ`-meta-var patterns match for Go
   and Ruby; confirm `$`-meta-var patterns match for TypeScript).

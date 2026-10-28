@@ -40,7 +40,8 @@ an upstream false positive; there was nothing to report, because `dev` already c
 owns, and it reaches users only through a release as well: v0.5.0 predates `.anc.toml` support (#76, #83).
 
 The plan that corrected the polarity bug,
-`docs/plans/2026-06-03-004-fix-pr77-code-unwrap-cfg-not-test-polarity-plan.md`, is marked `status: completed` and lists
+`docs/plans/2026-06-03-004-fix-pr77-code-unwrap-cfg-not-test-polarity-plan.md`, is marked `status: released`
+(`released_in: v0.6.0`) and lists
 "`anc audit` on the consumer repo's `code-unwrap` continues to Pass" as an acceptance criterion. That criterion holds on
 `dev` and has never held for any binary a user can install. Completed meant merged, and nothing downstream of merge was
 checked.

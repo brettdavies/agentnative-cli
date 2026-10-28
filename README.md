@@ -618,9 +618,10 @@ An interrupt, hangup, quit, or terminate signal sent to `anc` kills every runnin
 does not reach a process the running probe has already moved out of its group, and a `SIGKILL` sent to `anc`, or to its
 process group, reaches no probe.
 
-`p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it on the
-`--version` definition: `-v, --version  Print version` declares `-v`, and `-v, --verbose` declares no version alias. An
-alias the help does not declare is never run.
+`p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it as a version
+flag: on the `--version` definition, as in `-v, --version  Print version`, or with a description that names the version,
+as in less's `-V  ........  --version`. `-v, --verbose` declares no version alias. An alias the help does not declare is
+never run.
 
 ### How behavioral audits read `--help`
 
@@ -969,9 +970,9 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   basename, manifest package name, project directory basename) that matches the site registry's slug convention.
   `binary` is the executable basename when one is located; `null` for project-mode runs without a built artifact.
   `version` is best-effort: project-mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`), command/binary
-  mode probes `<bin> --version`, then each short alias its help declares on the `--version` definition. `null` when
-  probing failed or was declined by the self-spawn guard. The site's `registry.yaml` `version_extract` snippets remain
-  authoritative for tools whose self-report is unreliable. Schema `0.4` addition.
+  mode probes `<bin> --version`, then each short alias its help declares as a version flag. `null` when probing failed
+  or was declined by the self-spawn guard. The site's `registry.yaml` `version_extract` snippets remain authoritative
+  for tools whose self-report is unreliable. Schema `0.4` addition.
 - `anc`: identifies the `anc` build that produced the scorecard. `version` is the crate version at compile time.
   Informational, not a signed provenance signal. Pair with a Sigstore-signed release artifact when provenance is
   required. Schema `0.4` addition.

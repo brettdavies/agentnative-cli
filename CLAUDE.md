@@ -213,8 +213,9 @@ Existing field semantics:
 
 - `tool`: `ToolInfo { name: String, binary: Option<String>, version: Option<String> }`. Built in `main.rs`'s
   `build_tool_info`. Project mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`); command/binary mode
-  probes `<bin> --version` then `-V` via a fresh `BinaryRunner` with a 2-second timeout. Self-spawn guard compares the
-  resolved binary path against `std::env::current_exe()`; recursion declined → `tool.version: null`.
+  probes `<bin> --version`, then each short alias its help declares as a version flag, via a fresh `BinaryRunner` with a
+  2-second timeout. Self-spawn guard compares the resolved binary path against `std::env::current_exe()`; recursion
+  declined → `tool.version: null`.
 - `anc`: `AncInfo { version: &'static str }`. `version` is a build-time constant emitted by `build.rs` into
   `$OUT_DIR/build_info.rs` (re-exported from `src/build_info.rs`). The `commit` field shipped pre-`0.5` was dropped
   before the v0.3.0 tag: the version pin is sufficient build identity for scorecard consumers and the

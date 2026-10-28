@@ -1,3 +1,4 @@
+use super::flag_meaning::{self, Meaning};
 use crate::audit::Audit;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
@@ -11,6 +12,12 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 ///
 /// Any one responding satisfies the SHOULD requirement.
 const SHORT_VERSION_FLAGS: &[&str] = &["-V", "-v", "-version"];
+
+const VERSION: Meaning = Meaning {
+    what: "the version",
+    long_names: &["--version", "-version"],
+    words: &["version"],
+};
 
 pub struct VersionAudit;
 
@@ -64,22 +71,19 @@ impl Audit for VersionAudit {
     }
 }
 
-/// The [`SHORT_VERSION_FLAGS`] that `help` declares on the definition that
-/// declares `--version`, in probe order.
+/// The short version aliases (`-V`, `-v`, `-version`) that `help` declares
+/// as version flags, in probe order.
 ///
-/// Only that definition counts: `-v` beside `--verbose` is another flag, and
-/// a launcher run with a flag its help does not declare can start the whole
-/// app it launches.
+/// A single letter counts only where its own definition means the version,
+/// by also declaring `--version` or by saying version in its description:
+/// `-v` beside `--verbose` is another flag, and a launcher run with a flag
+/// its help does not declare can start the whole app it launches.
 pub fn declared_short_aliases(help: &HelpOutput) -> Vec<&'static str> {
-    help.find_flag(&["--version", "-version"])
-        .map(|found| {
-            SHORT_VERSION_FLAGS
-                .iter()
-                .copied()
-                .filter(|alias| found.flag.declares(alias).is_some())
-                .collect()
-        })
-        .unwrap_or_default()
+    SHORT_VERSION_FLAGS
+        .iter()
+        .copied()
+        .filter(|alias| flag_meaning::find(help, &[alias], &VERSION).is_some())
+        .collect()
 }
 
 /// The verdict once `--version` works: probe each declared short alias, and
@@ -93,21 +97,16 @@ fn audit_short_alias(runner: &BinaryRunner, help: Option<&HelpOutput>) -> AuditS
     };
     let declared = declared_short_aliases(help);
     if declared.is_empty() {
-        let mut message = format!(
-            "`--version` works, but `--help` declares no short alias for it (looked for {} on \
-             the `--version` definition), so none was run. Declaring one there shortens \
-             version probes for agents.",
-            SHORT_VERSION_FLAGS.join(", "),
-        );
-        for alias in SHORT_VERSION_FLAGS {
-            if let Some(found) = help.find_flag(&[alias]) {
-                message.push_str(&format!(
-                    " `{alias}` is declared by `{}`.",
-                    found.flag.definition()
-                ));
-            }
-        }
-        return AuditStatus::Warn(message);
+        return AuditStatus::Warn(flag_meaning::noting(
+            help,
+            SHORT_VERSION_FLAGS,
+            &VERSION,
+            &format!(
+                "`--version` works, but `--help` declares no short alias for it ({}), so none \
+                 was run. Declaring one shortens version probes for agents.",
+                SHORT_VERSION_FLAGS.join(", "),
+            ),
+        ));
     }
     if declared
         .iter()
@@ -244,7 +243,10 @@ mod tests {
         let msg = warn_message(result.status);
         assert!(msg.contains("declares no short alias"), "{msg}");
         assert!(
-            msg.contains("`-v` is declared by `-v, --verbose  More output`"),
+            msg.contains(
+                "`-v` is declared, but its definition (`-v, --verbose  More output`) does not \
+                 mean the version."
+            ),
             "{msg}"
         );
         assert_eq!(probed(&project), vec!["--version", "--help"]);
@@ -274,6 +276,20 @@ mod tests {
             msg.contains("no declared short alias responded (tried -V)"),
             "{msg}"
         );
+    }
+
+    /// less declares `-V  ........  --version`, a layout the parser reads as
+    /// `-V` with a description that names the version.
+    #[test]
+    fn an_alias_whose_description_names_the_version_counts() {
+        let project = logging_project(
+            "  -?  ........  --help\n                  Display help (from command line).\n  \
+             -V  ........  --version\n                  Display the version number of \"less\".",
+            "--version|-V",
+        );
+        let result = VersionAudit.run(&project).expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
     }
 
     /// Go's `flag` package declares `-version`, the alias itself, as the

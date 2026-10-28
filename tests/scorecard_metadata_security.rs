@@ -152,6 +152,33 @@ fn hostile_binary_nonzero_version_exit_yields_null() {
 }
 
 #[test]
+#[cfg(unix)]
+fn tool_version_falls_back_only_to_a_declared_alias() {
+    // Fixture fails `--version`, declares `-v, --version` in its help, and
+    // answers both `-v` and `-V`. tool.version comes from `-v`; `-V`, which
+    // the help does not declare, never runs.
+    let log = tempfile::NamedTempFile::new().expect("temp file");
+    let output = cmd()
+        .args([
+            "audit",
+            &fixture_path("version-alias/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("ANC_TEST_ARGV_LOG", log.path())
+        .timeout(Duration::from_secs(20))
+        .output()
+        .expect("anc spawn");
+    let parsed: Value = serde_json::from_slice(&output.stdout).expect("scorecard JSON");
+    assert_eq!(parsed["tool"]["version"], "version-alias 2.0.0");
+    let probed = std::fs::read_to_string(log.path()).expect("the fixture's log");
+    assert!(
+        !probed.lines().any(|arg| arg == "-V"),
+        "an undeclared alias ran: {probed:?}"
+    );
+}
+
+#[test]
 fn unknown_command_errors_with_actionable_message() {
     // The v0.4 metadata work did NOT change `resolve_command_on_path`'s
     // contract: an unknown command name still produces a top-level error,

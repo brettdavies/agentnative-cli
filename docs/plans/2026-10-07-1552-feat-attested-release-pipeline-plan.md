@@ -1,7 +1,7 @@
 ---
 title: Attested Release Pipeline - Plan
 type: feat
-status: active
+status: released
 prs:
   - "brettdavies/.github#80"
   - "brettdavies/agent-skills#156"
@@ -16,6 +16,10 @@ prs:
   - "#174"
   - "#175"
   - "#176"
+  - "#241"
+  - "#247"
+completed: 2026-10-28
+released_in: v0.7.0
 date: 2026-10-07
 topic: attested-release-pipeline
 artifact_contract: ce-unified-plan/v1
@@ -43,10 +47,11 @@ execution: code
   result.
 - **Delivery:** U1 through U10 are merged: brettdavies/.github #80 (U1), agent-skills #156, #158 and #157 (U2 to
   U4), #154 to #157 in this repo (U5 to U8), homebrew-tap #151 (U9) and xurl-rs #309 (U10). #174 to #176 build the
-  release matrix once at the tag and carry the runbooks with it. U11 runs through step 6 with v0.7.0: `release.yml`
-  run 40607508242, the tap's `Update Formula` 40608205750 and `Publish formula` 40608665552, `finalize-release`
-  40608726301, postflight 7 of 7, and the backport #247. Step 7 waits on the owner: the live `protect-main` ruleset
-  lacks the three contexts `.github/rulesets/protect-main.json` adds, and all three reported on release PR #241.
+  release matrix once at the tag and carry the runbooks with it. U11 runs with v0.7.0: `release.yml` run
+  40607508242, the tap's `Update Formula` 40608205750 and `Publish formula` 40608665552, `finalize-release`
+  40608726301, postflight 7 of 7, and the backport #247. Step 7 applies `protect-main` from
+  `.github/rulesets/protect-main.json` after all eleven required contexts reported on release PR #241, and the live
+  ruleset reads back equal to the committed file.
 
 ---
 
@@ -474,10 +479,10 @@ sequenceDiagram
   2. Pass `advisories_blocking: true` in `ci.yml`.
   3. Update the lists in the runbook's branch-protection section.
   4. After the PR merges, apply both rulesets live on the maintainer's instruction and read them back (KTD6).
-- **Live apply state:** `protect-dev` is applied and reads back equal to its committed file.
-  `protect-main` is **not** applied: the live ruleset is missing `ci / Security audit (advisories)`, `ci / Shellcheck`
-  and `ci / Windows check`. Its apply is sequenced into U11 step 7, after the tag publishes, because a required check
-  that fails to report on the release PR blocks the release itself, and `main` is the branch the release moves through.
+- **Live apply state:** `protect-dev` and `protect-main` are applied and read back equal to their committed files.
+  `protect-main`'s apply, which adds `ci / Security audit (advisories)`, `ci / Shellcheck` and `ci / Windows check`,
+  runs in U11 step 7, after the tag publishes, because a required check that fails to report on the release PR blocks
+  the release itself, and `main` is the branch the release moves through.
 - **Execution note:** The live apply is a separate, maintainer-gated step. Do not apply from an unmerged branch.
 - **Patterns to follow:** `xurl-rs`'s `.github/rulesets/`; `github-repo-setup/references/branch-protection.md` for the
   exclusions.
@@ -585,8 +590,7 @@ A CI run counts as green only when every check's conclusion is read from the rol
 
 - R9 holds on the published proving release.
 - Every PR in U1 through U10 is merged by the maintainer, and each repo's CI is green on the merge.
-- The live rulesets on `agentnative-cli` equal the committed JSON. `protect-dev` holds;
-  `protect-main` is applied in U11 step 7 and is the last piece of this clause.
+- The live rulesets on `agentnative-cli` equal the committed JSON: `protect-dev`, and `protect-main` from U11 step 7.
 - `agentnative-cli`'s `dev` is synced with the release, and its postflight passes.
 - The skills changes are on `agent-skills` `main`, and the live skills checkout is fast-forwarded to that commit on the
   maintainer's go-ahead, since that working tree is what every session loads.

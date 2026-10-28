@@ -604,19 +604,21 @@ release-gate against the compiled artifact). Without either flag, all three laye
 
 `anc` runs the binary directly, never through a shell, with stdin closed, a timeout, and a fixed terminal: `TERM=dumb`,
 `COLUMNS=80`, `PAGER=cat`, and `NO_COLOR=1`. A probe inherits the rest of your environment except `ANC_WEB_TOKEN` and
-your display and desktop session bus. `DISPLAY` and `XAUTHORITY` are removed, and `WAYLAND_DISPLAY` and
-`DBUS_SESSION_BUS_ADDRESS` point at `/dev/null`, because a client left without them connects to the default socket in
-`$XDG_RUNTIME_DIR`. A GUI app probed with a flag it does not handle cannot open a window or start a session service.
+your display and desktop session bus. `DISPLAY`, `XAUTHORITY`, and `WAYLAND_SOCKET` are removed, and `WAYLAND_DISPLAY`
+and `DBUS_SESSION_BUS_ADDRESS` point at `/dev/null`, because a client left without them connects to the default socket
+in `$XDG_RUNTIME_DIR`. On Linux and other X11 or Wayland systems, a GUI app probed with a flag it does not handle cannot
+open a window or start a session service. On macOS a GUI app reaches the window server without any environment variable,
+so there the process groups below are the containment.
 
 On Unix each probe runs in a process group of its own. When the probe exits or times out, `anc` kills the group, so a
 launcher that exits while the app it started keeps running takes the app with it. On Linux `anc` is also a child
 subreaper while it audits: a process a probe moves out of its group, with `setsid` or a double fork as a detached GUI
-app does, is reparented to `anc` and killed when the probe ends. macOS has no equivalent, so there the group kill and
-the withheld display are the containment.
+app does, is reparented to `anc` and killed when the probe ends. macOS has no equivalent.
 
-An interrupt, hangup, quit, or terminate signal sent to `anc` kills every running probe group before `anc` exits. It
-does not reach a process the running probe has already moved out of its group, and a `SIGKILL` sent to `anc`, or to its
-process group, reaches no probe.
+An interrupt, hangup, quit, or terminate signal sent to `anc` kills every running probe group before `anc` exits; a
+signal `anc` was started ignoring, as under `nohup`, stays ignored. The handler does not reach a process the running
+probe has already moved out of its group. A `SIGKILL` sent to `anc`, or to its process group, reaches no probe group; on
+Linux the running probe itself is set to die with `anc`, but not what it started, so send `SIGTERM` first.
 
 `p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it as a version
 flag: on the `--version` definition, as in `-v, --version  Print version`, or with a description that names the version,

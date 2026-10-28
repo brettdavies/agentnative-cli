@@ -2268,16 +2268,19 @@ fn survivors(pids: &[libc::pid_t]) -> Vec<libc::pid_t> {
     alive
 }
 
-/// Interrupting anc while a probe runs ends the probe and what it started,
-/// not only anc, and anc still dies by the signal it was sent.
-#[test]
+/// Start `anc audit` on a fixture whose every probe hangs, with each signal
+/// in `ignored` set to be ignored, as `nohup` sets SIGHUP, and return once
+/// a probe is running.
 #[cfg(unix)]
-fn interrupting_an_audit_ends_the_probe_it_was_running() {
-    use std::os::unix::process::ExitStatusExt;
+fn audit_until_a_probe_runs(
+    pids: &std::path::Path,
+    ignored: &'static [libc::c_int],
+) -> std::process::Child {
+    use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
 
-    let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = std::process::Command::new(env!("CARGO_BIN_EXE_anc"))
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_anc"));
+    command
         .args([
             "audit",
             &fixture_path("probe-leftovers/probe.sh"),
@@ -2285,17 +2288,37 @@ fn interrupting_an_audit_ends_the_probe_it_was_running() {
             "json",
         ])
         .env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config())
-        .env("ANC_TEST_PID_FILE", pids.path())
+        .env("ANC_TEST_PID_FILE", pids)
         .env("ANC_TEST_PROBE_HANG", "1")
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("anc starts");
-
+        .stderr(std::process::Stdio::null());
+    // SAFETY: the closure runs between fork and exec and calls only signal,
+    // which is async-signal-safe.
+    unsafe {
+        command.pre_exec(move || {
+            for &signal in ignored {
+                libc::signal(signal, libc::SIG_IGN);
+            }
+            Ok(())
+        });
+    }
+    let anc = command.spawn().expect("anc starts");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while recorded_pids(pids.path()).len() < 2 && Instant::now() < deadline {
+    while recorded_pids(pids).len() < 2 && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(10));
     }
+    anc
+}
+
+/// Interrupting anc while a probe runs ends the probe and what it started,
+/// not only anc, and anc still dies by the signal it was sent.
+#[test]
+#[cfg(unix)]
+fn interrupting_an_audit_ends_the_probe_it_was_running() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
     let status = anc.wait().expect("anc exits");
@@ -2311,6 +2334,61 @@ fn interrupting_an_audit_ends_the_probe_it_was_running() {
     assert!(
         survivors.is_empty(),
         "these probe processes outlived the interrupted audit: {survivors:?}"
+    );
+}
+
+/// A signal anc was started ignoring stays ignored, and the others still
+/// end the running probe.
+#[test]
+#[cfg(unix)]
+fn a_signal_anc_was_started_ignoring_stays_ignored() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::Duration;
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[libc::SIGINT]);
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
+    std::thread::sleep(Duration::from_millis(300));
+    let after_interrupt = anc.try_wait().expect("anc's status");
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGTERM) };
+    let status = anc.wait().expect("anc exits");
+
+    let started = recorded_pids(pids.path());
+    let survivors = survivors(&started);
+    assert!(
+        after_interrupt.is_none(),
+        "an ignored SIGINT ended anc: {after_interrupt:?}"
+    );
+    assert_eq!(
+        status.signal(),
+        Some(libc::SIGTERM),
+        "anc exited with {status:?}"
+    );
+    assert!(
+        survivors.is_empty(),
+        "these probe processes outlived the terminated audit: {survivors:?}"
+    );
+}
+
+/// A SIGKILL to anc reaches no handler, so the running probe is set to die
+/// with anc instead. What the probe started is not covered.
+#[test]
+#[cfg(target_os = "linux")]
+fn killing_anc_ends_the_probe_it_was_running() {
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGKILL) };
+    anc.wait().expect("anc exits");
+
+    let started = recorded_pids(pids.path());
+    let survivors = survivors(&started);
+    let probe = *started.get(1).expect("the probe recorded its own pid");
+    assert!(
+        !survivors.contains(&probe),
+        "the probe {probe} outlived anc"
     );
 }
 

@@ -18,12 +18,15 @@ pub fn withhold_anc_secrets(cmd: &mut Command) -> &mut Command {
 /// process-group kill: an app that detaches with `setsid` leaves the group,
 /// and the bus starts a service as its own child.
 ///
-/// `DISPLAY` and `XAUTHORITY` are removed. The other two are pointed at an
-/// address nothing listens on, because a client left without them connects
-/// to the default socket in `$XDG_RUNTIME_DIR` instead (`wayland-0`, `bus`).
+/// `DISPLAY`, `XAUTHORITY`, and `WAYLAND_SOCKET` (a compositor's connection
+/// handed down as a file descriptor) are removed. The other two are pointed
+/// at an address nothing listens on, because a client left without them
+/// connects to the default socket in `$XDG_RUNTIME_DIR` instead
+/// (`wayland-0`, `bus`).
 const DISPLAY_ENV: &[(&str, Option<&str>)] = &[
     ("DISPLAY", None),
     ("XAUTHORITY", None),
+    ("WAYLAND_SOCKET", None),
     ("WAYLAND_DISPLAY", Some("/dev/null")),
     ("DBUS_SESSION_BUS_ADDRESS", Some("unix:path=/dev/null")),
 ];
@@ -71,6 +74,7 @@ mod tests {
                 ("DBUS_SESSION_BUS_ADDRESS", Some("unix:path=/dev/null")),
                 ("DISPLAY", None),
                 ("WAYLAND_DISPLAY", Some("/dev/null")),
+                ("WAYLAND_SOCKET", None),
                 ("XAUTHORITY", None),
             ]
         );

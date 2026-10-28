@@ -41,6 +41,8 @@ impl ProbeGroup {
     pub(super) fn isolate(cmd: &mut Command) -> &mut Command {
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(cmd, 0);
+        #[cfg(target_os = "linux")]
+        die_with_anc(cmd);
         cmd
     }
 
@@ -86,6 +88,30 @@ impl ProbeGroup {
 impl Drop for ProbeGroup {
     fn drop(&mut self) {
         self.kill();
+    }
+}
+
+/// Have the probe killed when the anc thread that spawned it exits. Nothing
+/// is forwarded for a SIGKILL to anc, and the probe is no longer in anc's
+/// process group, so without this a kill of anc's group would leave it
+/// running. It covers only the probe itself, not what it starts.
+#[cfg(target_os = "linux")]
+fn die_with_anc(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    let anc = std::process::id() as libc::pid_t;
+    // SAFETY: the closure runs between fork and exec and calls only prctl
+    // and getppid, which are async-signal-safe.
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            // anc died before the prctl took effect.
+            if libc::getppid() != anc {
+                return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Ok(())
+        });
     }
 }
 

@@ -613,6 +613,10 @@ launcher that exits while the app it started keeps running takes the app with it
 terminate signal sent to `anc` kills every running probe group before `anc` exits. A process that leaves the group with
 `setsid` is beyond that reach, which is one reason a probe gets no display.
 
+`p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it on the
+`--version` definition: `-v, --version  Print version` declares `-v`, and `-v, --verbose` declares no version alias. An
+alias the help does not declare is never run.
+
 ### How behavioral audits read `--help`
 
 Several behavioral audits ask whether a help declares a flag (`--quiet`, `--force`, `--output`). `anc` answers from
@@ -960,9 +964,9 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   basename, manifest package name, project directory basename) that matches the site registry's slug convention.
   `binary` is the executable basename when one is located; `null` for project-mode runs without a built artifact.
   `version` is best-effort: project-mode prefers the manifest version (`Cargo.toml`/`pyproject.toml`), command/binary
-  mode probes `<bin> --version` then `-V`. `null` when probing failed or was declined by the self-spawn guard. The
-  site's `registry.yaml` `version_extract` snippets remain authoritative for tools whose self-report is unreliable.
-  Schema `0.4` addition.
+  mode probes `<bin> --version`, then each short alias its help declares on the `--version` definition. `null` when
+  probing failed or was declined by the self-spawn guard. The site's `registry.yaml` `version_extract` snippets remain
+  authoritative for tools whose self-report is unreliable. Schema `0.4` addition.
 - `anc`: identifies the `anc` build that produced the scorecard. `version` is the crate version at compile time.
   Informational, not a signed provenance signal. Pair with a Sigstore-signed release artifact when provenance is
   required. Schema `0.4` addition.

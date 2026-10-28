@@ -1,9 +1,9 @@
 use crate::audit::Audit;
 use crate::project::Project;
-use crate::runner::{BinaryRunner, RunStatus};
+use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-/// Short-form `--version` aliases probed in priority order.
+/// Short-form `--version` aliases, in the order they are probed.
 ///
 /// - `-V`: clap default, curl, wget, gzip, less.
 /// - `-v`: npm, node, bun, yarn, make.
@@ -42,25 +42,12 @@ impl Audit for VersionAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let runner = project.runner_ref();
 
-        let long = probe_version_flag(runner, "--version");
-        // A failed `--version` decides the verdict, so probing aliases after
-        // it only spends more runner timeouts on a CLI that hangs.
-        let short_match = if long.is_ok() {
-            SHORT_VERSION_FLAGS
-                .iter()
-                .find(|flag| probe_version_flag(runner, flag).is_ok())
-        } else {
-            None
-        };
-
-        let status = match (&long, short_match) {
-            (Ok(()), Some(_)) => AuditStatus::Pass,
-            (Ok(()), None) => AuditStatus::Warn(format!(
-                "`--version` works but no short alias responded (tried {}). \
-                 Adding one shortens version probes for agents.",
-                SHORT_VERSION_FLAGS.join(", "),
-            )),
-            (Err(reason), _) => AuditStatus::Fail(reason.clone()),
+        // A failed `--version` decides the verdict, so probing the help and
+        // the aliases after it only spends more runner timeouts on a CLI
+        // that hangs.
+        let status = match probe_version_flag(runner, "--version") {
+            Ok(()) => audit_short_alias(runner, project.help_output()),
+            Err(reason) => AuditStatus::Fail(reason),
         };
 
         Ok(AuditResult {
@@ -74,6 +61,65 @@ impl Audit for VersionAudit {
             config_hint: None,
             pass_evidence: None,
         })
+    }
+}
+
+/// The [`SHORT_VERSION_FLAGS`] that `help` declares on the definition that
+/// declares `--version`, in probe order.
+///
+/// Only that definition counts: `-v` beside `--verbose` is another flag, and
+/// a launcher run with a flag its help does not declare can start the whole
+/// app it launches.
+pub fn declared_short_aliases(help: &HelpOutput) -> Vec<&'static str> {
+    help.find_flag(&["--version", "-version"])
+        .map(|found| {
+            SHORT_VERSION_FLAGS
+                .iter()
+                .copied()
+                .filter(|alias| found.flag.declares(alias).is_some())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The verdict once `--version` works: probe each declared short alias, and
+/// run none the help does not declare.
+fn audit_short_alias(runner: &BinaryRunner, help: Option<&HelpOutput>) -> AuditStatus {
+    let Some(help) = help else {
+        return AuditStatus::Warn(
+            "`--version` works, but `--help` could not be probed, so no short alias was run."
+                .into(),
+        );
+    };
+    let declared = declared_short_aliases(help);
+    if declared.is_empty() {
+        let mut message = format!(
+            "`--version` works, but `--help` declares no short alias for it (looked for {} on \
+             the `--version` definition), so none was run. Declaring one there shortens \
+             version probes for agents.",
+            SHORT_VERSION_FLAGS.join(", "),
+        );
+        for alias in SHORT_VERSION_FLAGS {
+            if let Some(found) = help.find_flag(&[alias]) {
+                message.push_str(&format!(
+                    " `{alias}` is declared by `{}`.",
+                    found.flag.definition()
+                ));
+            }
+        }
+        return AuditStatus::Warn(message);
+    }
+    if declared
+        .iter()
+        .any(|alias| probe_version_flag(runner, alias).is_ok())
+    {
+        AuditStatus::Pass
+    } else {
+        AuditStatus::Warn(format!(
+            "`--version` works but no declared short alias responded (tried {}). Adding one \
+             shortens version probes for agents.",
+            declared.join(", "),
+        ))
     }
 }
 
@@ -97,21 +143,42 @@ fn probe_version_flag(runner: &BinaryRunner, flag: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audits::behavioral::tests::test_project_with_runner;
+    use crate::audits::behavioral::tests::{test_project_with_runner, test_project_with_sh_script};
     use crate::types::AuditStatus;
 
-    #[test]
-    fn version_pass_with_output() {
-        // `echo` exits 0 with non-empty stdout for any args, so both
-        // `--version` and any short alias produce a Pass-shaped response.
-        let project = test_project_with_runner("/bin/echo");
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert!(matches!(result.status, AuditStatus::Pass));
+    /// A script project whose `--help` prints `help`, whose `answers` case
+    /// pattern prints a version and exits 0, and which logs every first
+    /// argument it is run with to `argv.log` beside it.
+    fn logging_project(help: &str, answers: &str) -> Project {
+        test_project_with_sh_script(&format!(
+            "echo \"$1\" >> \"$(dirname \"$0\")/argv.log\"\n\
+             case \"$1\" in\n\
+             --help) cat <<'HELP'\n{help}\nHELP\n;;\n\
+             {answers}) echo 1.0.0 ;;\n\
+             *) exit 1 ;;\n\
+             esac"
+        ))
+    }
+
+    /// The first arguments the project's script was run with, in order.
+    fn probed(project: &Project) -> Vec<String> {
+        std::fs::read_to_string(project.path.join("argv.log"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn warn_message(status: AuditStatus) -> String {
+        match status {
+            AuditStatus::Warn(msg) => msg,
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 
     #[test]
     fn version_fail_non_zero_exit() {
-        // `/bin/false` exits 1 regardless of args, so both probes fail and
+        // `/bin/false` exits 1 regardless of args, so `--version` fails and
         // the audit returns Fail (the MUST is not satisfied).
         let project = test_project_with_runner("/bin/false");
         let result = VersionAudit.run(&project).expect("audit should run");
@@ -120,60 +187,105 @@ mod tests {
 
     #[test]
     fn version_handles_crash() {
-        let project = crate::audits::behavioral::tests::test_project_with_sh_script("kill -11 $$");
+        let project = test_project_with_sh_script("kill -11 $$");
         let result = VersionAudit
             .run(&project)
             .expect("audit should not panic on crash");
         assert!(matches!(result.status, AuditStatus::Fail(_)));
     }
 
-    /// A failed `--version` decides the verdict, so the short aliases are
-    /// never probed: against a CLI that hangs on version flags, each extra
-    /// probe costs a full runner timeout.
+    /// A failed `--version` decides the verdict, so neither the help nor the
+    /// short aliases are probed: against a CLI that hangs on version flags,
+    /// each extra probe costs a full runner timeout.
     #[test]
     fn short_aliases_not_probed_after_long_flag_fails() {
-        let log = std::env::temp_dir().join(format!(
-            "agentnative-version-probe-{}-{}.log",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("after epoch")
-                .as_nanos(),
-        ));
-        let script = format!("echo \"$1\" >> '{}'; exit 1", log.display());
-        let project = crate::audits::behavioral::tests::test_project_with_sh_script(&script);
+        let project = logging_project("Options:\n  -V, --version  Print version", "-V");
         let result = VersionAudit.run(&project).expect("audit should run");
-        let probed = std::fs::read_to_string(&log).expect("script logged its probes");
-        let _ = std::fs::remove_file(&log);
         assert!(matches!(result.status, AuditStatus::Fail(_)));
-        assert_eq!(probed.lines().collect::<Vec<_>>(), vec!["--version"]);
+        assert_eq!(probed(&project), vec!["--version"]);
     }
 
     #[test]
-    fn version_warn_when_only_long_form_works() {
-        // A shell script that responds to `--version` only emits a Warn:
-        // the MUST is satisfied but no short alias responds.
-        let script = "case \"$1\" in --version) echo 1.0.0 ;; *) exit 1 ;; esac";
-        let project = crate::audits::behavioral::tests::test_project_with_sh_script(script);
+    fn a_declared_alias_that_answers_passes() {
+        let project = logging_project(
+            "Options:\n  -V, --version  Print version\n  -h, --help     Print help",
+            "--version|-V",
+        );
         let result = VersionAudit.run(&project).expect("audit should run");
-        match result.status {
-            AuditStatus::Warn(msg) => {
-                assert!(
-                    msg.contains("short alias"),
-                    "warn message should mention the missing short alias, got: {msg}"
-                );
-            }
-            other => panic!("expected Warn, got {other:?}"),
-        }
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
+    }
+
+    /// Cursor's CLI declares `-v, --version`; run as `cursor -V`, the
+    /// launcher starts the whole app instead.
+    #[test]
+    fn an_alias_the_help_does_not_declare_is_never_run() {
+        let project = logging_project(
+            "Options:\n  -v, --version  Print version\n  -h, --help     Print help",
+            "--version|-v|-V",
+        );
+        let result = VersionAudit.run(&project).expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass);
+        let probed = probed(&project);
+        assert!(
+            !probed.iter().any(|arg| arg == "-V"),
+            "ran an undeclared alias: {probed:?}"
+        );
+        assert!(probed.iter().any(|arg| arg == "-v"), "{probed:?}");
     }
 
     #[test]
-    fn version_pass_when_short_alias_works() {
-        // Both `--version` and `-V` exit 0 with output; everything else fails.
-        // Verifies the SHORT_VERSION_FLAGS lookup returns first match.
-        let script = "case \"$1\" in --version|-V) echo 1.0.0 ;; *) exit 1 ;; esac";
-        let project = crate::audits::behavioral::tests::test_project_with_sh_script(script);
+    fn an_alias_declared_for_another_flag_is_not_run() {
+        let project = logging_project(
+            "Options:\n  -v, --verbose  More output\n      --version  Print version",
+            "--version|-v|-V",
+        );
         let result = VersionAudit.run(&project).expect("audit should run");
-        assert!(matches!(result.status, AuditStatus::Pass));
+        let msg = warn_message(result.status);
+        assert!(msg.contains("declares no short alias"), "{msg}");
+        assert!(
+            msg.contains("`-v` is declared by `-v, --verbose  More output`"),
+            "{msg}"
+        );
+        assert_eq!(probed(&project), vec!["--version", "--help"]);
+    }
+
+    #[test]
+    fn no_alias_is_run_when_the_help_declares_none() {
+        let project = logging_project(
+            "Options:\n      --version  Print version",
+            "--version|-v|-V|-version",
+        );
+        let result = VersionAudit.run(&project).expect("audit should run");
+        let msg = warn_message(result.status);
+        assert!(
+            msg.contains("`--help` declares no short alias for it"),
+            "{msg}"
+        );
+        assert_eq!(probed(&project), vec!["--version", "--help"]);
+    }
+
+    #[test]
+    fn a_declared_alias_that_fails_warns() {
+        let project = logging_project("Options:\n  -V, --version  Print version", "--version");
+        let result = VersionAudit.run(&project).expect("audit should run");
+        let msg = warn_message(result.status);
+        assert!(
+            msg.contains("no declared short alias responded (tried -V)"),
+            "{msg}"
+        );
+    }
+
+    /// Go's `flag` package declares `-version`, the alias itself, as the
+    /// version flag.
+    #[test]
+    fn a_single_dash_version_word_is_its_own_alias() {
+        let project = logging_project(
+            "Usage: depot [options]\n\n  -help      Show help.\n  -version   Show the current version.",
+            "--version|-version",
+        );
+        let result = VersionAudit.run(&project).expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(probed(&project), vec!["--version", "--help", "-version"]);
     }
 }

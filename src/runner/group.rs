@@ -30,8 +30,9 @@ const FORWARDED: [libc::c_int; 4] = [libc::SIGHUP, libc::SIGINT, libc::SIGQUIT, 
 /// the group.
 #[derive(Debug)]
 pub(super) struct ProbeGroup {
+    /// `None` once the group is killed.
     #[cfg(unix)]
-    pgid: libc::pid_t,
+    pgid: Option<libc::pid_t>,
     #[cfg(unix)]
     slot: Option<usize>,
 }
@@ -52,7 +53,10 @@ impl ProbeGroup {
             slot.compare_exchange(0, pgid, Ordering::AcqRel, Ordering::Relaxed)
                 .is_ok()
         });
-        Self { pgid, slot }
+        Self {
+            pgid: Some(pgid),
+            slot,
+        }
     }
 
     #[cfg(not(unix))]
@@ -60,12 +64,21 @@ impl ProbeGroup {
         Self {}
     }
 
-    pub(super) fn kill(&self) {
+    /// SIGKILL every process left in the group, then, on Linux, every
+    /// orphan anc adopted. Only once: after the kill the group's number can
+    /// be reused, so a second kill or a forwarded signal could reach another
+    /// group.
+    pub(super) fn kill(&mut self) {
         #[cfg(unix)]
-        // SAFETY: killpg only sends a signal; a group with no members left
-        // fails with ESRCH, which is the outcome wanted.
-        unsafe {
-            libc::killpg(self.pgid, libc::SIGKILL);
+        if let Some(pgid) = self.pgid.take() {
+            // SAFETY: killpg only sends a signal; a group with no members
+            // left fails with ESRCH, which is the outcome wanted.
+            unsafe { libc::killpg(pgid, libc::SIGKILL) };
+            if let Some(slot) = self.slot.take() {
+                LIVE_GROUPS[slot].store(0, Ordering::Release);
+            }
+            #[cfg(target_os = "linux")]
+            super::orphans::reap(is_live_probe);
         }
     }
 }
@@ -73,11 +86,14 @@ impl ProbeGroup {
 impl Drop for ProbeGroup {
     fn drop(&mut self) {
         self.kill();
-        #[cfg(unix)]
-        if let Some(slot) = self.slot {
-            LIVE_GROUPS[slot].store(0, Ordering::Release);
-        }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn is_live_probe(pid: libc::pid_t) -> bool {
+    LIVE_GROUPS
+        .iter()
+        .any(|slot| slot.load(Ordering::Acquire) == pid)
 }
 
 /// Route each [`FORWARDED`] signal whose action is still the default through

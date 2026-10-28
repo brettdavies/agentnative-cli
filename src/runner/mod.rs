@@ -1,5 +1,7 @@
 mod group;
 pub mod help_probe;
+#[cfg(target_os = "linux")]
+mod orphans;
 
 pub use help_probe::{CommandBlock, HelpOutput};
 
@@ -7,9 +9,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Read as _;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use anyhow::Context;
@@ -92,6 +94,19 @@ const PROBE_ENV: &[(&str, &str)] = &[
     ("PAGER", "cat"),
 ];
 
+/// Have the runner end what its probes orphan. On Linux anc becomes a child
+/// subreaper, so a process a probe moved out of its process group, with
+/// `setsid` or a double fork, is reparented to anc rather than to PID 1, and
+/// the runner kills it once the probe ends. Elsewhere this does nothing, and
+/// the process-group kill is the containment.
+///
+/// Call it only where every child anc starts from then on is a probe: after
+/// each probe the runner kills every other child of anc it finds.
+pub fn adopt_orphans() {
+    #[cfg(target_os = "linux")]
+    orphans::adopt();
+}
+
 impl BinaryRunner {
     /// Create a new runner, validating the binary exists and is executable.
     pub fn new(binary: PathBuf, timeout: Duration) -> Result<Self> {
@@ -158,7 +173,7 @@ impl BinaryRunner {
             Ok(c) => c,
             Err(e) => return Self::classify_spawn_error(e),
         };
-        let group = ProbeGroup::of(&child);
+        let mut group = ProbeGroup::of(&child);
 
         // Read only the requested number of bytes from stdout.
         let mut buf = vec![0u8; read_bytes];
@@ -181,7 +196,7 @@ impl BinaryRunner {
 
         let stderr_handle = child.stderr.take();
         let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
-        let exit = child.wait().ok();
+        let exit = self.wait_or_kill(&mut child);
         group.kill();
         let (stderr_output, stderr_truncated) = stderr_thread.join().unwrap_or_default();
 
@@ -194,6 +209,26 @@ impl BinaryRunner {
             status: RunStatus::Ok,
             stdout_truncated: false,
             stderr_truncated,
+        }
+    }
+
+    /// Wait for `child` to exit, and kill it once the runner's timeout has
+    /// passed: a probe that writes nothing more never gets the SIGPIPE a
+    /// partial read relies on.
+    fn wait_or_kill(&self, child: &mut Child) -> Option<ExitStatus> {
+        let deadline = Instant::now() + self.timeout;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Some(status),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    return child.wait().ok();
+                }
+                Err(_) => return None,
+            }
         }
     }
 
@@ -222,7 +257,7 @@ impl BinaryRunner {
             Ok(c) => c,
             Err(e) => return Self::classify_spawn_error(e),
         };
-        let group = ProbeGroup::of(&child);
+        let mut group = ProbeGroup::of(&child);
 
         // Take stdout/stderr handles so reader threads own them.
         let stdout_handle = child.stdout.take();
@@ -746,6 +781,22 @@ mod tests {
             let result = runner.run_partial(&["-c", &script], 4);
             assert_eq!(result.stdout, "prob");
             assert_eq!(recorded.survivors(), Vec::<libc::pid_t>::new());
+        }
+
+        /// A probe that writes nothing after the read gets no SIGPIPE, so the
+        /// partial read ends it at the timeout.
+        #[test]
+        fn a_partial_read_ends_a_probe_that_stops_writing() {
+            let runner =
+                BinaryRunner::new("/bin/sh".into(), Duration::from_millis(300)).expect("sh");
+            let start = Instant::now();
+            let result = runner.run_partial(&["-c", "echo abcdefgh; exec sleep 20"], 4);
+            let elapsed = start.elapsed();
+            assert_eq!(result.stdout, "abcd");
+            assert!(
+                elapsed < Duration::from_secs(3),
+                "the partial read waited out the probe: {elapsed:?}"
+            );
         }
 
         /// A leftover that holds the probe's output pipes keeps the reads

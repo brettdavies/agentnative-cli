@@ -604,14 +604,19 @@ release-gate against the compiled artifact). Without either flag, all three laye
 
 `anc` runs the binary directly, never through a shell, with stdin closed, a timeout, and a fixed terminal: `TERM=dumb`,
 `COLUMNS=80`, `PAGER=cat`, and `NO_COLOR=1`. A probe inherits the rest of your environment except `ANC_WEB_TOKEN` and
-the variables that reach a display or the desktop session bus (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`,
-`DBUS_SESSION_BUS_ADDRESS`), so a GUI app probed with a flag it does not handle cannot open a window or start a session
-service.
+your display and desktop session bus. `DISPLAY` and `XAUTHORITY` are removed, and `WAYLAND_DISPLAY` and
+`DBUS_SESSION_BUS_ADDRESS` point at `/dev/null`, because a client left without them connects to the default socket in
+`$XDG_RUNTIME_DIR`. A GUI app probed with a flag it does not handle cannot open a window or start a session service.
 
 On Unix each probe runs in a process group of its own. When the probe exits or times out, `anc` kills the group, so a
-launcher that exits while the app it started keeps running takes the app with it. An interrupt, hangup, quit, or
-terminate signal sent to `anc` kills every running probe group before `anc` exits. A process that leaves the group with
-`setsid` is beyond that reach, which is one reason a probe gets no display.
+launcher that exits while the app it started keeps running takes the app with it. On Linux `anc` is also a child
+subreaper while it audits: a process a probe moves out of its group, with `setsid` or a double fork as a detached GUI
+app does, is reparented to `anc` and killed when the probe ends. macOS has no equivalent, so there the group kill and
+the withheld display are the containment.
+
+An interrupt, hangup, quit, or terminate signal sent to `anc` kills every running probe group before `anc` exits. It
+does not reach a process the running probe has already moved out of its group, and a `SIGKILL` sent to `anc`, or to its
+process group, reaches no probe.
 
 `p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it on the
 `--version` definition: `-v, --version  Print version` declares `-v`, and `-v, --verbose` declares no version alias. An

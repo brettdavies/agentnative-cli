@@ -25,7 +25,7 @@ use agentnative::principles::registry::{
 };
 use agentnative::project::Project;
 use agentnative::project::select::{self, Choice, Unselected};
-use agentnative::runner::{BinaryRunner, RunStatus};
+use agentnative::runner::{BinaryRunner, RunStatus, adopt_orphans};
 use agentnative::scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
@@ -361,6 +361,8 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     if !binary_only && project.path.is_dir() {
         all_audits.extend(all_project_audits());
     }
+
+    adopt_orphans();
 
     // Run audits. When an audit_profile is set, audits whose IDs appear in
     // the suppression table short-circuit to Skip with structured evidence

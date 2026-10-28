@@ -1,7 +1,9 @@
 ---
 title: Source Audits Parse Each File Once - Plan
 type: perf
-status: active
+status: merged
+prs: ["#243"]
+completed: 2026-10-28
 date: 2026-10-27
 artifact_contract: ce-unified-plan/v1
 product_contract_source: ce-plan-bootstrap
@@ -359,6 +361,8 @@ flowchart LR
   2. Measure the clean debug build time before and after, and record both next to the R9 figure in the PR body.
 - **Test expectation:** none -- build configuration only; R9's measurement is the proof.
 - **Verification:** the debug self-audit source CPU meets R9 in interleaved pairs, and the clean-build cost is recorded.
+- **Outcome:** not built. After U5 the debug self-audit takes 6.8 s of CPU against a 21.4 s baseline (#243), within R9's
+  one third, so the dev profile carries no package overrides.
 
 ---
 

@@ -51,6 +51,8 @@ mod unprefixed_command_list;
 mod verbose_flag;
 mod version;
 
+pub use version::declared_short_aliases;
+
 use crate::audit::Audit;
 
 pub fn all_behavioral_audits() -> Vec<Box<dyn Audit>> {

@@ -2176,3 +2176,245 @@ fn an_audited_binary_never_inherits_the_web_token() {
         "an audited binary inherited the web token:\n{seen}"
     );
 }
+
+/// A probe never reaches a display, so a GUI app run as `tool -V` cannot
+/// open a window, even on a headless X server the operator's shell exports.
+#[test]
+#[cfg(unix)]
+fn an_audited_binary_never_inherits_a_display() {
+    let dump = tempfile::NamedTempFile::new().expect("temp file");
+    cmd()
+        .args([
+            "audit",
+            &fixture_path("env-dump/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("DISPLAY", ":99")
+        .env("WAYLAND_DISPLAY", "wayland-99")
+        .env("XAUTHORITY", "/fixture/.Xauthority")
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/fixture/bus")
+        .env("ANC_TEST_ENV_DUMP", dump.path())
+        .output()
+        .expect("anc runs");
+    let seen = std::fs::read_to_string(dump.path()).expect("the fixture's dump");
+    assert!(
+        seen.contains("ANC_TEST_ENV_DUMP="),
+        "the fixture never ran: {seen:?}"
+    );
+    let operators = [
+        "DISPLAY=:99",
+        "WAYLAND_DISPLAY=wayland-99",
+        "XAUTHORITY=/fixture/.Xauthority",
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/fixture/bus",
+    ];
+    let leaked: Vec<&str> = seen
+        .lines()
+        .filter(|line| {
+            operators.contains(line)
+                || line.starts_with("DISPLAY=")
+                || line.starts_with("XAUTHORITY=")
+        })
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "an audited binary inherited a display: {leaked:?}"
+    );
+    // Unset, a Wayland or D-Bus client connects to the default socket in
+    // $XDG_RUNTIME_DIR, so both point at an address nothing listens on.
+    for unreachable in [
+        "WAYLAND_DISPLAY=/dev/null",
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/dev/null",
+    ] {
+        assert!(
+            seen.lines().any(|line| line == unreachable),
+            "an audited binary was not given {unreachable}:\n{seen}"
+        );
+    }
+}
+
+// ── Probe lifetime ─────────────────────────────────────────────────
+
+/// The pids the `probe-leftovers` fixture appended to `file`.
+#[cfg(unix)]
+fn recorded_pids(file: &std::path::Path) -> Vec<libc::pid_t> {
+    std::fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.trim().parse().ok())
+        .collect()
+}
+
+/// Of `pids`, the processes still alive once a killed one has had time to
+/// be reaped. Each survivor is then killed, so a failing test leaves nothing
+/// behind.
+#[cfg(unix)]
+fn survivors(pids: &[libc::pid_t]) -> Vec<libc::pid_t> {
+    use std::time::{Duration, Instant};
+
+    // SAFETY: signal 0 only checks that the process exists.
+    let is_alive = |pid: libc::pid_t| unsafe { libc::kill(pid, 0) == 0 };
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut alive = pids.to_vec();
+    alive.retain(|&pid| is_alive(pid));
+    while !alive.is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+        alive.retain(|&pid| is_alive(pid));
+    }
+    for &pid in &alive {
+        // SAFETY: kill only sends a signal.
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+    alive
+}
+
+/// Start `anc audit` on a fixture whose every probe hangs, with each signal
+/// in `ignored` set to be ignored, as `nohup` sets SIGHUP, and return once
+/// a probe is running.
+#[cfg(unix)]
+fn audit_until_a_probe_runs(
+    pids: &std::path::Path,
+    ignored: &'static [libc::c_int],
+) -> std::process::Child {
+    use std::os::unix::process::CommandExt;
+    use std::time::{Duration, Instant};
+
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_anc"));
+    command
+        .args([
+            "audit",
+            &fixture_path("probe-leftovers/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config())
+        .env("ANC_TEST_PID_FILE", pids)
+        .env("ANC_TEST_PROBE_HANG", "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    // SAFETY: the closure runs between fork and exec and calls only signal,
+    // which is async-signal-safe.
+    unsafe {
+        command.pre_exec(move || {
+            for &signal in ignored {
+                libc::signal(signal, libc::SIG_IGN);
+            }
+            Ok(())
+        });
+    }
+    let anc = command.spawn().expect("anc starts");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while recorded_pids(pids).len() < 2 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    anc
+}
+
+/// Interrupting anc while a probe runs ends the probe and what it started,
+/// not only anc, and anc still dies by the signal it was sent.
+#[test]
+#[cfg(unix)]
+fn interrupting_an_audit_ends_the_probe_it_was_running() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
+    let status = anc.wait().expect("anc exits");
+
+    let started = recorded_pids(pids.path());
+    let survivors = survivors(&started);
+    assert!(!started.is_empty(), "no probe ran before the deadline");
+    assert_eq!(
+        status.signal(),
+        Some(libc::SIGINT),
+        "anc exited with {status:?}"
+    );
+    assert!(
+        survivors.is_empty(),
+        "these probe processes outlived the interrupted audit: {survivors:?}"
+    );
+}
+
+/// A signal anc was started ignoring stays ignored, and the others still
+/// end the running probe.
+#[test]
+#[cfg(unix)]
+fn a_signal_anc_was_started_ignoring_stays_ignored() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::Duration;
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[libc::SIGINT]);
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
+    std::thread::sleep(Duration::from_millis(300));
+    let after_interrupt = anc.try_wait().expect("anc's status");
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGTERM) };
+    let status = anc.wait().expect("anc exits");
+
+    let started = recorded_pids(pids.path());
+    let survivors = survivors(&started);
+    assert!(
+        after_interrupt.is_none(),
+        "an ignored SIGINT ended anc: {after_interrupt:?}"
+    );
+    assert_eq!(
+        status.signal(),
+        Some(libc::SIGTERM),
+        "anc exited with {status:?}"
+    );
+    assert!(
+        survivors.is_empty(),
+        "these probe processes outlived the terminated audit: {survivors:?}"
+    );
+}
+
+/// A SIGKILL to anc reaches no handler, so the running probe is set to die
+/// with anc instead. What the probe started is not covered.
+#[test]
+#[cfg(target_os = "linux")]
+fn killing_anc_ends_the_probe_it_was_running() {
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGKILL) };
+    anc.wait().expect("anc exits");
+
+    let started = recorded_pids(pids.path());
+    let survivors = survivors(&started);
+    let probe = *started.get(1).expect("the probe recorded its own pid");
+    assert!(
+        !survivors.contains(&probe),
+        "the probe {probe} outlived anc"
+    );
+}
+
+/// A process a probe moves out of its process group with `setsid`, as a
+/// detached GUI app does, escapes the group kill. On Linux anc adopts it as
+/// a child subreaper and ends it with the probe.
+#[test]
+#[cfg(target_os = "linux")]
+fn an_audit_ends_what_a_probe_moved_out_of_its_group() {
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    cmd()
+        .args([
+            "audit",
+            &fixture_path("probe-leftovers/probe.sh"),
+            "--output",
+            "json",
+        ])
+        .env("ANC_TEST_PID_FILE", pids.path())
+        .env("ANC_TEST_PROBE_SETSID", "1")
+        .output()
+        .expect("anc runs");
+    let started = recorded_pids(pids.path());
+    let survivors = survivors(&started);
+    assert!(!started.is_empty(), "the fixture never ran");
+    assert!(
+        survivors.is_empty(),
+        "these processes outlived the audit: {survivors:?}"
+    );
+}

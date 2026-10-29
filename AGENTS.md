@@ -111,8 +111,8 @@ fields beyond the base `results` / `summary`:
   `src/principles/spec/VERSION` by `build.rs`; reads `"unknown"` if that file was missing at build time. Pin against
   this to know which spec contract the scorecard's requirement IDs reference.
 - `tool`: `{ name, binary, version }`. Identifies what was scored. `version` is best-effort (manifest field for project
-  mode, `<bin> --version` / `-V` for binary/command mode); `null` when probing fails or is declined by the self-spawn
-  guard. Schema `0.4` addition.
+  mode; for binary/command mode, `<bin> --version`, then each short alias the help declares as a version flag); `null`
+  when probing fails or is declined by the self-spawn guard. Schema `0.4` addition.
 - `anc`: `{ version, commit }`. Identifies the `anc` build that produced the scorecard. `commit` is `null` for builds
   outside a Git checkout. Informational, not signed provenance. Schema `0.4` addition.
 - `run`: `{ invocation, started_at, duration_ms, platform: { os, arch } }`. `invocation` reflects what the user typed

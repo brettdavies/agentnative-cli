@@ -1,4 +1,7 @@
+mod group;
 pub mod help_probe;
+#[cfg(target_os = "linux")]
+mod orphans;
 
 pub use help_probe::{CommandBlock, HelpOutput};
 
@@ -6,15 +9,16 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Read as _;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use anyhow::Context;
 use anyhow::{Result, bail};
 
-use crate::spawn_env::withhold_anc_secrets;
+use crate::spawn_env::{withhold_anc_secrets, withhold_display};
+use group::ProbeGroup;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
@@ -90,6 +94,19 @@ const PROBE_ENV: &[(&str, &str)] = &[
     ("PAGER", "cat"),
 ];
 
+/// Have the runner end what its probes orphan. On Linux anc becomes a child
+/// subreaper, so a process a probe moved out of its process group, with
+/// `setsid` or a double fork, is reparented to anc rather than to PID 1, and
+/// the runner kills it once the probe ends. Elsewhere this does nothing, and
+/// the process-group kill is the containment.
+///
+/// Call it only where every child anc starts from then on is a probe: after
+/// each probe the runner kills every other child of anc it finds.
+pub fn adopt_orphans() {
+    #[cfg(target_os = "linux")]
+    orphans::adopt();
+}
+
 impl BinaryRunner {
     /// Create a new runner, validating the binary exists and is executable.
     pub fn new(binary: PathBuf, timeout: Duration) -> Result<Self> {
@@ -150,18 +167,13 @@ impl BinaryRunner {
     /// Run the binary but read only `read_bytes` from stdout, then drop the
     /// handle (triggering SIGPIPE on the child). Not cached.
     pub fn run_partial(&self, args: &[&str], read_bytes: usize) -> RunResult {
-        let mut cmd = Command::new(&self.binary);
-        withhold_anc_secrets(&mut cmd)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .envs(PROBE_ENV.iter().copied());
+        let mut cmd = self.probe_command(args);
 
         let mut child = match Self::spawn_with_retry(&mut cmd) {
             Ok(c) => c,
             Err(e) => return Self::classify_spawn_error(e),
         };
+        let mut group = ProbeGroup::of(&child);
 
         // Read only the requested number of bytes from stdout.
         let mut buf = vec![0u8; read_bytes];
@@ -182,18 +194,11 @@ impl BinaryRunner {
         };
         // stdout handle is dropped here, which may cause SIGPIPE.
 
-        let stderr_output = match child.stderr.take() {
-            Some(mut h) => {
-                let mut s = String::new();
-                let _ = h.read_to_string(&mut s);
-                s
-            }
-            None => String::new(),
-        };
-
-        // Kill if still running, then wait.
-        let _ = child.kill();
-        let exit = child.wait().ok();
+        let stderr_handle = child.stderr.take();
+        let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
+        let exit = self.wait_or_kill(&mut child);
+        group.kill();
+        let (stderr_output, stderr_truncated) = stderr_thread.join().unwrap_or_default();
 
         let stdout_str = String::from_utf8_lossy(&buf[..bytes_read]).into_owned();
 
@@ -203,19 +208,47 @@ impl BinaryRunner {
             stderr: stderr_output,
             status: RunStatus::Ok,
             stdout_truncated: false,
-            stderr_truncated: false,
+            stderr_truncated,
         }
     }
 
-    fn spawn_and_wait(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> RunResult {
+    /// Wait for `child` to exit, and kill it once the runner's timeout has
+    /// passed: a probe that writes nothing more never gets the SIGPIPE a
+    /// partial read relies on.
+    fn wait_or_kill(&self, child: &mut Child) -> Option<ExitStatus> {
+        let deadline = Instant::now() + self.timeout;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Some(status),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    return child.wait().ok();
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+
+    /// The command a probe of this binary runs: no stdin, captured output,
+    /// [`PROBE_ENV`], none of anc's secrets or the operator's display, and a
+    /// process group of its own.
+    fn probe_command(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(&self.binary);
-        withhold_anc_secrets(&mut cmd)
+        withhold_display(withhold_anc_secrets(&mut cmd));
+        ProbeGroup::isolate(&mut cmd)
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .envs(PROBE_ENV.iter().copied());
+        cmd
+    }
 
+    fn spawn_and_wait(&self, args: &[&str], env_overrides: &[(&str, &str)]) -> RunResult {
+        let mut cmd = self.probe_command(args);
         for (k, v) in env_overrides {
             cmd.env(k, v);
         }
@@ -224,6 +257,7 @@ impl BinaryRunner {
             Ok(c) => c,
             Err(e) => return Self::classify_spawn_error(e),
         };
+        let mut group = ProbeGroup::of(&child);
 
         // Take stdout/stderr handles so reader threads own them.
         let stdout_handle = child.stdout.take();
@@ -286,6 +320,9 @@ impl BinaryRunner {
             }
             std::thread::sleep(Duration::from_millis(10));
         };
+        // A leftover that inherited the output pipes holds them open, so the
+        // group dies before the reads are joined.
+        group.kill();
 
         // Signal the timeout thread to wake up and exit immediately.
         {
@@ -642,5 +679,142 @@ mod tests {
         let (output, truncated) = read_capped(None::<&[u8]>);
         assert!(output.is_empty());
         assert!(!truncated);
+    }
+
+    /// What a probe starts must not outlive it: the tool's launcher can exit
+    /// while the app it started keeps running, or hang until the timeout.
+    #[cfg(unix)]
+    mod containment {
+        use super::*;
+        use std::path::Path;
+        use std::time::Instant;
+
+        /// The pids the `probe-leftovers` fixture recorded. Each one still
+        /// alive when the test ends is killed, so a failing run leaves
+        /// nothing behind.
+        struct Recorded(tempfile::NamedTempFile);
+
+        impl Recorded {
+            fn new() -> Self {
+                Self(tempfile::NamedTempFile::new().expect("temp file"))
+            }
+
+            fn path(&self) -> &str {
+                self.0.path().to_str().expect("utf-8 temp path")
+            }
+
+            fn pids(&self) -> Vec<libc::pid_t> {
+                std::fs::read_to_string(self.0.path())
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|line| line.trim().parse().ok())
+                    .collect()
+            }
+
+            /// Recorded pids still alive once a killed process has had time
+            /// to be reaped by whoever inherited it.
+            fn survivors(&self) -> Vec<libc::pid_t> {
+                let pids = self.pids();
+                assert!(!pids.is_empty(), "the fixture never ran");
+                let deadline = Instant::now() + Duration::from_secs(2);
+                loop {
+                    let alive: Vec<_> = pids.iter().copied().filter(|&pid| is_alive(pid)).collect();
+                    if alive.is_empty() || Instant::now() >= deadline {
+                        return alive;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+        }
+
+        impl Drop for Recorded {
+            fn drop(&mut self) {
+                for pid in self.pids().into_iter().filter(|&pid| is_alive(pid)) {
+                    // SAFETY: kill only sends a signal.
+                    unsafe { libc::kill(pid, libc::SIGKILL) };
+                }
+            }
+        }
+
+        fn is_alive(pid: libc::pid_t) -> bool {
+            // SAFETY: signal 0 only checks that the process exists.
+            unsafe { libc::kill(pid, 0) == 0 }
+        }
+
+        fn fixture() -> PathBuf {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/probe-leftovers/probe.sh")
+        }
+
+        #[test]
+        fn a_probe_that_exits_takes_what_it_started_with_it() {
+            let recorded = Recorded::new();
+            let runner = BinaryRunner::new(fixture(), Duration::from_secs(5)).expect("fixture");
+            let result = runner.run(&[], &[("ANC_TEST_PID_FILE", recorded.path())]);
+            assert_eq!(result.status, RunStatus::Ok);
+            assert_eq!(recorded.survivors(), Vec::<libc::pid_t>::new());
+        }
+
+        #[test]
+        fn a_probe_that_times_out_takes_what_it_started_with_it() {
+            let recorded = Recorded::new();
+            let runner = BinaryRunner::new(fixture(), Duration::from_millis(300)).expect("fixture");
+            let result = runner.run(
+                &[],
+                &[
+                    ("ANC_TEST_PID_FILE", recorded.path()),
+                    ("ANC_TEST_PROBE_HANG", "1"),
+                ],
+            );
+            assert_eq!(result.status, RunStatus::Timeout);
+            assert_eq!(recorded.survivors(), Vec::<libc::pid_t>::new());
+        }
+
+        #[test]
+        fn a_partial_read_takes_what_the_probe_started_with_it() {
+            let recorded = Recorded::new();
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh");
+            let script = format!(
+                "ANC_TEST_PID_FILE='{}' exec '{}'",
+                recorded.path(),
+                fixture().display()
+            );
+            let result = runner.run_partial(&["-c", &script], 4);
+            assert_eq!(result.stdout, "prob");
+            assert_eq!(recorded.survivors(), Vec::<libc::pid_t>::new());
+        }
+
+        /// A probe that writes nothing after the read gets no SIGPIPE, so the
+        /// partial read ends it at the timeout.
+        #[test]
+        fn a_partial_read_ends_a_probe_that_stops_writing() {
+            let runner =
+                BinaryRunner::new("/bin/sh".into(), Duration::from_millis(300)).expect("sh");
+            let start = Instant::now();
+            let result = runner.run_partial(&["-c", "echo abcdefgh; exec sleep 20"], 4);
+            let elapsed = start.elapsed();
+            assert_eq!(result.stdout, "abcd");
+            assert!(
+                elapsed < Duration::from_secs(3),
+                "the partial read waited out the probe: {elapsed:?}"
+            );
+        }
+
+        /// A leftover that holds the probe's output pipes keeps the reads
+        /// open, so it has to die before the runner waits on them.
+        #[test]
+        fn a_leftover_holding_the_output_does_not_hold_the_probe() {
+            let recorded = Recorded::new();
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh");
+            let script = format!("sleep 20 & echo \"$!\" >> '{}'; echo done", recorded.path());
+            let start = Instant::now();
+            let result = runner.run(&["-c", &script], &[]);
+            let elapsed = start.elapsed();
+            assert_eq!(result.stdout.trim(), "done");
+            assert!(
+                elapsed < Duration::from_secs(3),
+                "the probe returned only after its leftover exited: {elapsed:?}"
+            );
+            assert_eq!(recorded.survivors(), Vec::<libc::pid_t>::new());
+        }
     }
 }

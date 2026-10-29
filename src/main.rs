@@ -9,7 +9,7 @@ use time::format_description::well_known::Rfc3339;
 
 use agentnative::argv::{format_invocation, inject_default_subcommand};
 use agentnative::audit::Audit;
-use agentnative::audits::behavioral::all_behavioral_audits;
+use agentnative::audits::behavioral::{all_behavioral_audits, declared_short_aliases};
 use agentnative::audits::project::all_project_audits;
 use agentnative::audits::source::all_source_audits;
 use agentnative::build_info::ANC_VERSION;
@@ -25,7 +25,7 @@ use agentnative::principles::registry::{
 };
 use agentnative::project::Project;
 use agentnative::project::select::{self, Choice, Unselected};
-use agentnative::runner::{BinaryRunner, RunStatus};
+use agentnative::runner::{BinaryRunner, RunStatus, adopt_orphans};
 use agentnative::scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
@@ -361,6 +361,8 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     if !binary_only && project.path.is_dir() {
         all_audits.extend(all_project_audits());
     }
+
+    adopt_orphans();
 
     // Run audits. When an audit_profile is set, audits whose IDs appear in
     // the suppression table short-circuit to Skip with structured evidence
@@ -730,10 +732,11 @@ fn build_tool_info(command_name: Option<&str>, project: &Project) -> ToolInfo {
     }
 }
 
-/// Best-effort `<binary> --version` / `<binary> -V` probe. A flag the version
-/// audit already ran is read from the project runner's cache; any other flag
-/// runs through a fresh `BinaryRunner` with a tighter 2-second timeout (the
-/// version probe is one-shot, not an audit).
+/// Best-effort `<binary> --version` probe, then each short alias the help
+/// declares on its `--version` definition. A flag the version audit already
+/// ran is read from the project runner's cache; any other flag runs through a
+/// fresh `BinaryRunner` with a tighter 2-second timeout (the version probe is
+/// one-shot, not an audit).
 ///
 /// Self-spawn guard: comparing the resolved binary path to `current_exe()`
 /// declines the probe when `anc` is asked to score itself. Without this,
@@ -752,23 +755,23 @@ fn probe_tool_version(project: &Project) -> Option<String> {
     }
 
     let runner = BinaryRunner::new(binary.clone(), Duration::from_secs(2)).ok()?;
-    for flag in ["--version", "-V"] {
+    let first_line = |flag: &str| {
         let result = project
             .runner
             .as_ref()
             .and_then(|r| r.cached(&[flag], &[]))
             .unwrap_or_else(|| runner.run(&[flag], &[]));
-        if matches!(result.status, RunStatus::Ok)
-            && result.exit_code == Some(0)
-            && let Some(line) = result.stdout.lines().next()
-        {
-            let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
+        if !matches!(result.status, RunStatus::Ok) || result.exit_code != Some(0) {
+            return None;
         }
-    }
-    None
+        let line = result.stdout.lines().next()?.trim();
+        (!line.is_empty()).then(|| line.to_string())
+    };
+    first_line("--version").or_else(|| {
+        declared_short_aliases(project.help_output()?)
+            .into_iter()
+            .find_map(first_line)
+    })
 }
 
 /// Read `package.version` from a Cargo.toml or `project.version` from a

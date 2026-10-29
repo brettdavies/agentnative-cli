@@ -11,6 +11,22 @@
 One MUST, SHOULD, or MAY statement from the agent-native spec's principles, identified by a stable id. Audits gather
 evidence for requirements, and the scorecard reports a status for each requirement.
 
+### Applicability
+
+Whether a Requirement binds a given target. A universal requirement applies to every CLI; a conditional one applies only
+under a stated condition, such as the CLI having subcommands. anc never grades on the condition's wording: the audits
+that cover the requirement check the condition themselves, and the wording is there for readers.
+
+A conditional requirement may also name an antecedent audit. When the antecedent finds the behavior absent or declined,
+the requirement's row is not applicable; when the antecedent could not be measured or errored, the row takes that status
+too; otherwise the row keeps the status its own audit gave it.
+
+### Coverage matrix
+
+The published table of every Requirement with its level, its Applicability, and the audits that evidence it, so a reader
+can see which requirements anc verifies and which no audit covers. It is generated from the spec's text and each audit's
+declared coverage, and a drift check fails when the published copy disagrees with either.
+
 ### Scorecard
 
 The structured report one anc run produces for a target: a result row per Requirement with its status and evidence,

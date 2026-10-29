@@ -4,14 +4,16 @@
 //! ```text
 //! definition := group (sep group)* (gap column)* description?
 //! column     := group (sep group)* | placeholder+
-//! group      := name placeholder*
+//! group      := name (placeholder | alias)*
 //! sep        := "," | " " | "|" | punctuation
 //! gap        := 2+ spaces
 //! ```
 //!
 //! Every name is kept whole and in the order printed. A name ends where its
-//! placeholder starts. After a gap, text that leads with a name and holds only
-//! names and placeholders is another column of names (`-cd   --print-config-dir`);
+//! placeholder starts. An alias joined by a slash (`-V/--version`) or named in
+//! parentheses after the names (`--version (-V)`) is a name of the same group.
+//! After a gap, text that leads with a name and holds only names and
+//! placeholders is another column of names (`-cd   --print-config-dir`);
 //! anything else is the description. A word that is neither a name nor a
 //! placeholder is prose: it ends the names, and the description starts at the
 //! next gap, or at the prose itself when the line has no later gap. A gap, a
@@ -61,15 +63,14 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
         match piece.kind(names.is_empty()) {
             Kind::Names(declared, attached) => {
                 name_columns.push(column_of(line, piece.start));
-                for name in declared {
-                    if !names.iter().any(|seen| seen.spelling == name) {
-                        names.push(FlagName::new(name));
-                    }
-                }
+                declare(&mut names, declared);
                 if !attached.is_empty() && !MARKERS.contains(&attached) {
                     placeholder.get_or_insert(attached);
                 }
             }
+            // An alias in parentheses starts no column of names, so a
+            // next-line description at its column stays a description.
+            Kind::Alias(declared) => declare(&mut names, declared),
             Kind::Placeholder => {
                 placeholder.get_or_insert(piece.text);
             }
@@ -108,6 +109,15 @@ pub(super) fn tokenize(line: &str) -> Option<Header<'_>> {
             && ((after_gap.is_some() && prose.is_none()) || marker_set_off),
         name_columns,
     })
+}
+
+/// Add each of `declared` that `names` does not hold yet.
+fn declare(names: &mut Vec<FlagName>, declared: Vec<String>) {
+    for name in declared {
+        if !names.iter().any(|seen| seen.spelling == name) {
+            names.push(FlagName::new(name));
+        }
+    }
 }
 
 /// Whether a description that starts right after `piece` is set off from the
@@ -361,6 +371,70 @@ mod tests {
             &["-exec", "-ok"],
         ),
         ("OpenJDK 21 java", "--disable-@files", &["--disable-@files"]),
+        // An alias joined by a slash, or in parentheses after the names.
+        (
+            "synthetic",
+            "-V/--version  Print the version",
+            &["-V", "--version"],
+        ),
+        (
+            "synthetic",
+            "--version/-V  Print the version",
+            &["--version", "-V"],
+        ),
+        (
+            "synthetic",
+            "-h/-?/--help  Print help",
+            &["-h", "-?", "--help"],
+        ),
+        (
+            "synthetic",
+            "-o/--output <FILE>  Write output here",
+            &["-o", "--output"],
+        ),
+        (
+            "synthetic",
+            "--version (-V)  Print the version",
+            &["--version", "-V"],
+        ),
+        (
+            "synthetic",
+            "--help (-h, -?)  Print help",
+            &["--help", "-h", "-?"],
+        ),
+        (
+            "synthetic",
+            "--output <FILE> (-o)  Write output here",
+            &["--output", "-o"],
+        ),
+        // A slash or parentheses that join no name.
+        ("synthetic", "-C/tmp  Change to /tmp first", &["-C"]),
+        (
+            "synthetic",
+            "--format json/yaml  Output format",
+            &["--format"],
+        ),
+        (
+            "synthetic",
+            "--format=json/-  Output format, or - for stdout",
+            &["--format"],
+        ),
+        (
+            "synthetic",
+            "--level (0-9)  Compression level",
+            &["--level"],
+        ),
+        ("synthetic", "--help (or -h)  Print help", &["--help"]),
+        (
+            "synthetic",
+            "--depth N (-1=unlimited)  How deep to recurse",
+            &["--depth"],
+        ),
+        (
+            "synthetic",
+            "--retries N   (-1 retries forever)",
+            &["--retries"],
+        ),
         // Negation pairs.
         (
             "git 2.56.0 commit -h",
@@ -529,6 +603,23 @@ mod tests {
             "--slurpfile name file     set $name to an array of JSON values read",
             "set $name to an array of JSON values read",
         ),
+        // An alias joined by a slash or in parentheses.
+        (
+            "synthetic",
+            "-V/--version  Print the version",
+            "Print the version",
+        ),
+        (
+            "synthetic",
+            "--version (-V)  Print the version",
+            "Print the version",
+        ),
+        (
+            "synthetic",
+            "--retries N   (-1 retries forever)",
+            "(-1 retries forever)",
+        ),
+        ("synthetic", "--force   (-f)   Skip prompts", "Skip prompts"),
     ];
 
     #[test]
@@ -567,9 +658,35 @@ mod tests {
     }
 
     #[test]
+    fn a_joined_alias_is_a_name_and_not_a_placeholder() {
+        let placeholder = |line| tokenize(line).and_then(|header| header.placeholder);
+        assert_eq!(placeholder("-V/--version  Print the version"), None);
+        assert_eq!(placeholder("--version (-V)  Print the version"), None);
+        assert_eq!(
+            placeholder("-o/--output <FILE>  Write output here"),
+            Some("<FILE>")
+        );
+    }
+
+    /// A joined alias moves neither the description column nor the columns
+    /// names start at.
+    #[test]
+    fn a_joined_alias_keeps_the_columns_of_its_line() {
+        for line in [
+            "  -V/--version    Print the version",
+            "  --version (-V)  Print the version",
+        ] {
+            let header = tokenize(line).expect("a definition");
+            assert_eq!(header.description_column, Some(18), "{line}");
+            assert_eq!(header.name_columns, [2], "{line}");
+        }
+    }
+
+    #[test]
     fn a_line_with_no_name_declares_nothing() {
         for line in [
             "- a bullet, not a flag",
+            "- (-n) a bullet that names a flag",
             "-- end of options",
             "---",
             "-> see below",

@@ -3,6 +3,8 @@
 //!
 //! ```text
 //! name        := "--[no-]" word | "--" word | "-" word | "-" char | "+" word | "/" word | "[" name "]"
+//!              | name "/" name
+//! alias       := "(" name (sep name)* ")"
 //! word        := alnum (alnum | "." | "_" | "-" | "@")*
 //! placeholder := "<..>" | "[..]" | "{..}" | "(..)" | quoted | "=" value | UPPER | type word
 //! ```
@@ -59,6 +61,9 @@ pub(super) enum Kind<'a> {
     /// The names the piece declares, whole, and the placeholder text attached
     /// to them (`=false`, `[=WHEN]`, `<category>`; empty when none).
     Names(Vec<String>, &'a str),
+    /// Names in parentheses that alias the names before them
+    /// (`--version (-V)`).
+    Alias(Vec<String>),
     Placeholder,
     /// Punctuation between groups (` / `, `;`, `=`).
     Punctuation,
@@ -68,7 +73,9 @@ pub(super) enum Kind<'a> {
 impl<'a> Piece<'a> {
     /// `first` is whether no name has been read yet on the line.
     pub(super) fn kind(&self, first: bool) -> Kind<'a> {
-        if let Some((names, attached)) = self.names(first) {
+        if let Some(names) = self.alias(first) {
+            Kind::Alias(names)
+        } else if let Some((names, attached)) = self.names(first) {
             Kind::Names(names, attached)
         } else if self.is_placeholder() {
             Kind::Placeholder
@@ -79,11 +86,30 @@ impl<'a> Piece<'a> {
         }
     }
 
+    /// A slash joins a name to a dash-led alias (`-V/--version`); a slash
+    /// before anything else starts a placeholder (`-C/tmp`).
+    fn names(&self, first: bool) -> Option<(Vec<String>, &'a str)> {
+        let (mut declared, mut rest) = self.leading_names(first)?;
+        if let Some(alias) = rest
+            .strip_prefix('/')
+            .filter(|alias| alias.starts_with('-'))
+            && let Some((aliases, after)) = (Piece {
+                text: alias,
+                ..*self
+            })
+            .names(false)
+        {
+            declared.extend(aliases);
+            rest = after;
+        }
+        Some((declared, rest))
+    }
+
     /// `--[no-]x` declares `--x` and `--no-x`, and Thor's `[--x=N]` declares
     /// `--x`. A `/x` name is read only as an alias after a comma or pipe, and
     /// a `+x` name there or at the start of the line, so a path or a sum in
     /// prose is not a name.
-    fn names(&self, first: bool) -> Option<(Vec<String>, &'a str)> {
+    fn leading_names(&self, first: bool) -> Option<(Vec<String>, &'a str)> {
         let text = self.text;
         if let Some(inner) = text.strip_prefix('[').and_then(|t| t.strip_suffix(']'))
             && inner.starts_with('-')
@@ -132,6 +158,25 @@ impl<'a> Piece<'a> {
             _ => false,
         };
         (allowed && stands_alone).then(|| (vec![format!("{prefix}{short}")], rest))
+    }
+
+    /// Names in parentheses one space after a name, and nothing else in
+    /// them. Parentheses that hold a range or prose (`(0-9)`, `(or -h)`) are
+    /// a placeholder, and after a gap they start a column or a description.
+    fn alias(&self, first: bool) -> Option<Vec<String>> {
+        let inner = self.text.strip_prefix('(')?.strip_suffix(')')?;
+        if first || self.after_gap {
+            return None;
+        }
+        let mut declared = Vec::new();
+        for piece in pieces(inner) {
+            let (names, attached) = piece.names(false)?;
+            if !attached.is_empty() {
+                return None;
+            }
+            declared.extend(names);
+        }
+        (!declared.is_empty()).then_some(declared)
     }
 
     /// Bracketed, quoted, `=`-led or path-like text, a word in capitals up to

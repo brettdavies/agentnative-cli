@@ -621,9 +621,9 @@ probe has already moved out of its group. A `SIGKILL` sent to `anc`, or to its p
 Linux the running probe itself is set to die with `anc`, but not what it started, so send `SIGTERM` first.
 
 `p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it as a version
-flag: on the `--version` definition, as in `-v, --version  Print version`, or with a description that names the version,
-as in less's `-V  ........  --version`. `-v, --verbose` declares no version alias. An alias the help does not declare is
-never run.
+flag: on the `--version` definition, as in `-v, --version  Print version` or `--version (-V)  Print version`, or with a
+description that names the version, as in less's `-V  ........  --version`. `-v, --verbose` declares no version alias.
+An alias the help does not declare is never run.
 
 ### How behavioral audits read `--help`
 
@@ -648,9 +648,17 @@ spelling:
 | `-h,-H,--help,-help,-usage,/? = Print usage information and exit.` (cmake)          | `-h`, `-H`, `--help`, `-help`, `-usage`, `/?` |
 | `-W<category>                 = Enable the specified category of warnings.` (cmake) | `-W`                                          |
 | `-0, --http1.0                     Use HTTP/1.0` (curl)                             | `-0`, `--http1.0`                             |
+| `-V/--version  Print the version`                                                   | `-V`, `--version`                             |
+| `--version (-V)  Print the version`                                                 | `--version`, `-V`                             |
 | `-cd   --print-config-dir   Print the config directory` (lazygit)                   | `-cd`, `--print-config-dir`                   |
 | `-f FORMAT, -r FORMAT  --from=FORMAT, --read=FORMAT` (pandoc)                       | `-f`, `-r`, `--from`, `--read`                |
 | `--ignore-files-only   --ignore option only ignores files` (files-to-prompt)        | `--ignore-files-only`                         |
+
+A slash with no space around it joins two names, and names in parentheses one space after a flag's names are its
+aliases, so `-V/--version` and `--version (-V)` each declare `-V` and `--version`. A slash before anything other than a
+flag name, as in `-C/tmp`, joins nothing, and parentheses that hold anything but names, such as `(0-9)` or `(or -h)`,
+are not aliases. Neither declares a name inside a description: ripgrep's `-e/--regexp flag, then ...` carries on the
+description above it.
 
 A value placeholder (`<FILE>`, `=false`, `N`, `[=WHEN]`) is never part of a name. A single letter matches only the same
 letter: `-f` is not `-force-copy`, and `-v` is not `-version`. A single letter also counts for an audit only when its

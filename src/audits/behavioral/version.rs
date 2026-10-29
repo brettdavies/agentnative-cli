@@ -292,6 +292,31 @@ mod tests {
         assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
     }
 
+    /// `-V/--version` declares both names on one definition, so `-V` counts
+    /// by the long name even where the description does not name the
+    /// version.
+    #[test]
+    fn an_alias_joined_by_a_slash_counts() {
+        let project = logging_project(
+            "Options:\n  -h/--help     Print help\n  -V/--version  Print the release and exit",
+            "--version|-V",
+        );
+        let result = VersionAudit.run(&project).expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
+    }
+
+    #[test]
+    fn an_alias_in_parentheses_counts() {
+        let project = logging_project(
+            "Options:\n  --help (-h)       Print help\n  --version (-V)    Print the version",
+            "--version|-V",
+        );
+        let result = VersionAudit.run(&project).expect("audit should run");
+        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
+    }
+
     /// Go's `flag` package declares `-version`, the alias itself, as the
     /// version flag.
     #[test]

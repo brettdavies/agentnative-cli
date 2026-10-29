@@ -330,6 +330,23 @@ mod tests {
 ",
             &[1, 3],
         ),
+        (
+            "ripgrep 15.2.0: a slash-joined alias in a next-line description",
+            "    -f PATTERNFILE, --file=PATTERNFILE
+        Search for patterns from the given file, with one pattern per line.
+        When this flag is used multiple times or in combination with the
+        -e/--regexp flag, then all patterns provided are searched. Empty
+",
+            &[1],
+        ),
+        (
+            "a parenthesized alias in a description and on its wrapped line",
+            "  -c, --config <FILE>  Read settings from FILE; see --help (or -h)
+                       --help (-h) lists every key
+  -q, --quiet          Say less
+",
+            &[1, 3],
+        ),
     ];
 
     #[test]
@@ -514,6 +531,16 @@ Advanced:
             "\u{1b}[m│\u{1b}[m  -d \u{1b}[3m\u{1b}[0m   \u{1b}[m│\u{1b}[m--dates \u{1b}[3m\u{1b}[0m                     \u{1b}[m│\u{1b}[mShow the last modified date of files   \u{1b}[m│\u{1b}[m\n",
             &[&["-d", "--dates"]],
         ),
+        (
+            "aliases joined by a slash",
+            "Options:\n  -h/--help     Print help\n  -V/--version  Print the version\n  -q/--quiet    Print only errors\n",
+            &[&["-h", "--help"], &["-V", "--version"], &["-q", "--quiet"]],
+        ),
+        (
+            "aliases in parentheses after the names",
+            "Options:\n  --help (-h)       Print help\n  --version (-V)    Print the version\n  --quiet (-q)      Print only errors\n",
+            &[&["--help", "-h"], &["--version", "-V"], &["--quiet", "-q"]],
+        ),
     ];
 
     #[test]
@@ -568,6 +595,18 @@ Advanced:
         (
             "pixi 0.81.0 add: a bullet list at column 0",
             "- `pixi add python=3.9`: This will select the latest minor version that\n  complies with 3.9.*, i.e., python version 3.9.0, 3.9.1, 3.9.2, etc.\n",
+        ),
+        (
+            "zgrep (gzip) 1.12: prose at column 0 that names flags with their aliases in parentheses",
+            "OPTIONs are the same as for 'grep', except that the following 'grep'\noptions are not supported: --dereference-recursive (-R), --directories (-d),\n--exclude, --exclude-from, --exclude-dir, --include, --null (-Z),\n--null-data (-z), and --recursive (-r).\n",
+        ),
+        (
+            "a usage synopsis whose alternatives a pipe or a slash joins",
+            "Usage: tool [-h|--help] [-v|--verbose]\n       [-q/--quiet] [-V/--version] FILE\n",
+        ),
+        (
+            "a synopsis line of its own, bracketed alternatives joined by a slash",
+            "SYNOPSIS\n          [-v/--verbose] [-q/--quiet]\n",
         ),
     ];
 

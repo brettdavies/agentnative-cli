@@ -170,6 +170,8 @@ mod tests {
             "  -q, --quiet    Say less.",
             "      --quiet    Say less.",
             "  -q             Quiet mode.",
+            "  -q/--quiet     Say less.",
+            "  --quiet (-q)   Say less.",
         ] {
             let help =
                 HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));

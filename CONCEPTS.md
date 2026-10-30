@@ -46,6 +46,14 @@ audit belongs to exactly one layer: a Behavioral audit, a Source audit, or a Pro
 An audit that runs the target's built binary and judges what it observably does, such as its help text, exit codes, and
 flags, so it applies to a CLI written in any language.
 
+### Option definition
+
+A line in a tool's `--help` that declares one or more flag names, such as `-q, --quiet  Suppress output`,
+`-V/--version`, or `--version (-V)`. A behavioral audit counts a flag only when an option definition declares it; a flag
+named only in a usage line or in prose does not count, and the row's evidence says so. A single letter counts for a
+meaning, such as `-q` for quiet, only when its definition also declares the long name or its description names that
+meaning. The README's "How behavioral audits read `--help`" section lists the layouts anc reads.
+
 ### Source audit
 
 An audit that reads a project's source files for code patterns, without running the binary, for the languages anc can

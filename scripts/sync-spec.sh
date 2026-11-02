@@ -64,33 +64,33 @@ SPEC_REF="${SPEC_REF:-}"
 # --- Argument parsing ---------------------------------------------------
 # CLI --ref wins over SPEC_REF env. Other flags reserved for future use.
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --ref)
-            if [[ $# -lt 2 || -z "$2" ]]; then
-                echo "error: --ref requires a value (branch, tag, or SHA)" >&2
-                exit 2
-            fi
-            SPEC_REF="$2"
-            shift 2
-            ;;
-        --ref=*)
-            SPEC_REF="${1#--ref=}"
-            if [[ -z "$SPEC_REF" ]]; then
-                echo "error: --ref= requires a value (branch, tag, or SHA)" >&2
-                exit 2
-            fi
-            shift
-            ;;
-        -h|--help)
-            sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
-            exit 0
-            ;;
-        *)
-            echo "error: unknown argument: $1" >&2
-            echo "       run \`$0 --help\` for usage" >&2
-            exit 2
-            ;;
-    esac
+  case "$1" in
+    --ref)
+      if [[ $# -lt 2 || -z "$2" ]]; then
+        echo "error: --ref requires a value (branch, tag, or SHA)" >&2
+        exit 2
+      fi
+      SPEC_REF="$2"
+      shift 2
+      ;;
+    --ref=*)
+      SPEC_REF="${1#--ref=}"
+      if [[ -z "$SPEC_REF" ]]; then
+        echo "error: --ref= requires a value (branch, tag, or SHA)" >&2
+        exit 2
+      fi
+      shift
+      ;;
+    -h | --help)
+      sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      echo "       run \`$0 --help\` for usage" >&2
+      exit 2
+      ;;
+  esac
 done
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -105,8 +105,8 @@ spec_repo="${SPEC_REMOTE_URL%.git}"
 spec_repo="${spec_repo#*github.com[/:]}"
 spec_repo="${spec_repo%/}"
 if [[ -z "$spec_repo" || "$spec_repo" == "$SPEC_REMOTE_URL" || "$spec_repo" != */* ]]; then
-    echo "error: could not parse owner/repo from SPEC_REMOTE_URL: $SPEC_REMOTE_URL" >&2
-    exit 1
+  echo "error: could not parse owner/repo from SPEC_REMOTE_URL: $SPEC_REMOTE_URL" >&2
+  exit 1
 fi
 
 # === Resolution =========================================================
@@ -122,29 +122,29 @@ source_label=""
 api_ok=false
 
 if [[ -n "$SPEC_REF" ]]; then
-    # User-specified ref. gh api accepts branches, tags, and SHAs at the
-    # same endpoint via `?ref=<X>`.
-    if full_sha="$(gh api "repos/$spec_repo/commits/$SPEC_REF" --jq '.sha' 2>/dev/null)"; then
-        resolved_ref="$SPEC_REF"
-        resolved_sha="${full_sha:0:7}"
-        source_label="github.com:$spec_repo via gh api"
-        api_ok=true
-    fi
+  # User-specified ref. gh api accepts branches, tags, and SHAs at the
+  # same endpoint via `?ref=<X>`.
+  if full_sha="$(gh api "repos/$spec_repo/commits/$SPEC_REF" --jq '.sha' 2>/dev/null)"; then
+    resolved_ref="$SPEC_REF"
+    resolved_sha="${full_sha:0:7}"
+    source_label="github.com:$spec_repo via gh api"
+    api_ok=true
+  fi
 else
-    # Default: latest v* tag. Query all tags, filter to semver-shape v*,
-    # sort -V (version sort, descending), take the first.
-    latest_tag="$(gh api "repos/$spec_repo/tags?per_page=100" --jq '.[].name' 2>/dev/null \
-        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' \
-        | sort -V -r \
-        | head -n 1 || true)"
-    if [[ -n "$latest_tag" ]]; then
-        if full_sha="$(gh api "repos/$spec_repo/commits/$latest_tag" --jq '.sha' 2>/dev/null)"; then
-            resolved_ref="$latest_tag"
-            resolved_sha="${full_sha:0:7}"
-            source_label="github.com:$spec_repo via gh api"
-            api_ok=true
-        fi
+  # Default: latest v* tag. Query all tags, filter to semver-shape v*,
+  # sort -V (version sort, descending), take the first.
+  latest_tag="$(gh api "repos/$spec_repo/tags?per_page=100" --jq '.[].name' 2>/dev/null \
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' \
+    | sort -V -r \
+    | head -n 1 || true)"
+  if [[ -n "$latest_tag" ]]; then
+    if full_sha="$(gh api "repos/$spec_repo/commits/$latest_tag" --jq '.sha' 2>/dev/null)"; then
+      resolved_ref="$latest_tag"
+      resolved_sha="${full_sha:0:7}"
+      source_label="github.com:$spec_repo via gh api"
+      api_ok=true
     fi
+  fi
 fi
 
 # === Local fallback =====================================================
@@ -153,37 +153,37 @@ fi
 # against SPEC_ROOT — `gh` is not involved in this path so it works
 # without network or auth.
 if ! $api_ok; then
-    if [[ ! -d "$SPEC_ROOT/.git" ]]; then
-        echo "error: API path failed and SPEC_ROOT is not a git repository: $SPEC_ROOT" >&2
-        echo "       remote: $SPEC_REMOTE_URL" >&2
-        if [[ -n "$SPEC_REF" ]]; then
-            echo "       requested ref: $SPEC_REF" >&2
-        fi
-        echo "       check \`gh auth status\`, network access, or point SPEC_ROOT at a local checkout." >&2
-        exit 1
-    fi
-    echo "warning: gh api unreachable; falling back to local $SPEC_ROOT" >&2
-
+  if [[ ! -d "$SPEC_ROOT/.git" ]]; then
+    echo "error: API path failed and SPEC_ROOT is not a git repository: $SPEC_ROOT" >&2
+    echo "       remote: $SPEC_REMOTE_URL" >&2
     if [[ -n "$SPEC_REF" ]]; then
-        # User-provided ref must be resolvable in the local checkout.
-        if ! git -C "$SPEC_ROOT" rev-parse --verify --quiet "$SPEC_REF^{commit}" >/dev/null; then
-            echo "error: ref \`$SPEC_REF\` not found in $SPEC_ROOT" >&2
-            echo "       try \`git -C $SPEC_ROOT fetch --all --tags\` to pick up upstream refs," >&2
-            echo "       or pass a SHA the local checkout already contains." >&2
-            exit 1
-        fi
-        resolved_ref="$SPEC_REF"
-    else
-        # Latest v* tag in the local checkout.
-        resolved_ref="$(git -C "$SPEC_ROOT" tag --list 'v*' --sort='-version:refname' | head -n 1)"
-        if [[ -z "$resolved_ref" ]]; then
-            echo "error: no v* tags found in $SPEC_ROOT" >&2
-            echo "       try \`git -C $SPEC_ROOT fetch --tags\` to pick up upstream tags" >&2
-            exit 1
-        fi
+      echo "       requested ref: $SPEC_REF" >&2
     fi
-    resolved_sha="$(git -C "$SPEC_ROOT" rev-parse --short=7 "$resolved_ref^{commit}")"
-    source_label="local $SPEC_ROOT"
+    echo "       check \`gh auth status\`, network access, or point SPEC_ROOT at a local checkout." >&2
+    exit 1
+  fi
+  echo "warning: gh api unreachable; falling back to local $SPEC_ROOT" >&2
+
+  if [[ -n "$SPEC_REF" ]]; then
+    # User-provided ref must be resolvable in the local checkout.
+    if ! git -C "$SPEC_ROOT" rev-parse --verify --quiet "$SPEC_REF^{commit}" >/dev/null; then
+      echo "error: ref \`$SPEC_REF\` not found in $SPEC_ROOT" >&2
+      echo "       try \`git -C $SPEC_ROOT fetch --all --tags\` to pick up upstream refs," >&2
+      echo "       or pass a SHA the local checkout already contains." >&2
+      exit 1
+    fi
+    resolved_ref="$SPEC_REF"
+  else
+    # Latest v* tag in the local checkout.
+    resolved_ref="$(git -C "$SPEC_ROOT" tag --list 'v*' --sort='-version:refname' | head -n 1)"
+    if [[ -z "$resolved_ref" ]]; then
+      echo "error: no v* tags found in $SPEC_ROOT" >&2
+      echo "       try \`git -C $SPEC_ROOT fetch --tags\` to pick up upstream tags" >&2
+      exit 1
+    fi
+  fi
+  resolved_sha="$(git -C "$SPEC_ROOT" rev-parse --short=7 "$resolved_ref^{commit}")"
+  source_label="local $SPEC_ROOT"
 fi
 
 echo "vendoring $resolved_ref ($resolved_sha) from $source_label"
@@ -192,26 +192,26 @@ echo "vendoring $resolved_ref ($resolved_sha) from $source_label"
 # Fetcher: API path uses `gh api` with raw accept header; local path uses
 # `git show`. Both write a single file to $2 from path $1.
 fetch_file() {
-    local path="$1"
-    local dest="$2"
-    if $api_ok; then
-        gh api -H "Accept: application/vnd.github.raw" \
-            "repos/$spec_repo/contents/$path?ref=$resolved_ref" >"$dest"
-    else
-        git -C "$SPEC_ROOT" show "$resolved_ref:$path" >"$dest"
-    fi
+  local path="$1"
+  local dest="$2"
+  if $api_ok; then
+    gh api -H "Accept: application/vnd.github.raw" \
+      "repos/$spec_repo/contents/$path?ref=$resolved_ref" >"$dest"
+  else
+    git -C "$SPEC_ROOT" show "$resolved_ref:$path" >"$dest"
+  fi
 }
 
 # Lister: returns names (not paths) of files in a directory at the ref.
 # API path uses the contents endpoint; local path uses ls-tree.
 list_dir() {
-    local dir="$1"
-    if $api_ok; then
-        gh api "repos/$spec_repo/contents/$dir?ref=$resolved_ref" --jq '.[].name'
-    else
-        git -C "$SPEC_ROOT" ls-tree --name-only "$resolved_ref" "$dir/" \
-            | sed "s|^$dir/||"
-    fi
+  local dir="$1"
+  if $api_ok; then
+    gh api "repos/$spec_repo/contents/$dir?ref=$resolved_ref" --jq '.[].name'
+  else
+    git -C "$SPEC_ROOT" ls-tree --name-only "$resolved_ref" "$dir/" \
+      | sed "s|^$dir/||"
+  fi
 }
 
 mkdir -p "$DEST_PRINCIPLES"
@@ -225,18 +225,18 @@ fetch_file "CHANGELOG.md" "$DEST_DIR/CHANGELOG.md"
 # by the site) is skipped.
 copied=0
 while IFS= read -r name; do
-    [[ -z "$name" ]] && continue
-    case "$name" in
-        p[0-9]-*.md|p[0-9][0-9]-*.md)
-            fetch_file "principles/$name" "$DEST_PRINCIPLES/$name"
-            copied=$((copied + 1))
-            ;;
-    esac
+  [[ -z "$name" ]] && continue
+  case "$name" in
+    p[0-9]-*.md | p[0-9][0-9]-*.md)
+      fetch_file "principles/$name" "$DEST_PRINCIPLES/$name"
+      copied=$((copied + 1))
+      ;;
+  esac
 done < <(list_dir "principles")
 
 if [[ "$copied" -eq 0 ]]; then
-    echo "error: no principles/p*-*.md files found at ref \`$resolved_ref\`" >&2
-    exit 1
+  echo "error: no principles/p*-*.md files found at ref \`$resolved_ref\`" >&2
+  exit 1
 fi
 
 # scoring.md is a named reference doc in principles/ (the scoring-formula

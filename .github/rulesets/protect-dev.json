@@ -51,6 +51,10 @@
           {
             "context": "lint / actionlint",
             "integration_id": 15368
+          },
+          {
+            "context": "Web feature (clippy, test)",
+            "integration_id": 15368
           }
         ]
       }

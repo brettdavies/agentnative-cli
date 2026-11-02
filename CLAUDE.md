@@ -389,9 +389,14 @@ Rustup verifies component SHA256s from the distribution manifest, so the version
 manifest is the toolchain's "lockfile"). Bumping the toolchain is a reviewed PR that updates `rust-toolchain.toml`; no
 runtime `rustup update` anywhere. Policy: bump only after a new stable has aged ≥7 days (supply-chain quarantine).
 
-**Pre-push hook:** `scripts/hooks/pre-push` mirrors CI exactly: fmt, clippy with `-Dwarnings`, test, cargo-deny, and a
-Windows compatibility check. Tracked in git and activated via `core.hooksPath`. After cloning, run:
-`git config core.hooksPath scripts/hooks`
+**Hooks:** both hooks source `scripts/hooks/_lib.sh` (github-repo-setup's hook library) and report every failing step,
+not just the first. `scripts/hooks/pre-push` mirrors CI: fmt, clippy with `-Dwarnings`, test and docs for the default
+and `web` feature sets, MSRV, cargo-deny, shellcheck, shfmt, actionlint, workflow concurrency namespacing, the libc
+`#[cfg(unix)]` scan, and the Windows cross-clippy (default and `web`). It skips the cargo steps when the pushed range
+changes no cargo input, by `scripts/cargo-inputs.sh`, the classifier CI's `scope` job runs. `scripts/hooks/pre-commit`
+checks only the staged files: `cargo fmt` when a `.rs` file is staged, shellcheck, shfmt, actionlint, and markdownlint
+over the staged blobs, so the canonical config's `fix: true` never rewrites a file mid-commit. Tracked in git and
+activated via `core.hooksPath`. After cloning, run: `git config core.hooksPath scripts/hooks`
 
 **Windows compatibility:** Only `libc` belongs in `[target.'cfg(unix)'.dependencies]`. All SIGPIPE/signal code must be
 inside `#[cfg(unix)]` blocks. The pre-push hook checks this statically.

@@ -27,12 +27,13 @@
 #                       _lib.sh's delegate_to_subscript; suppresses the summary
 #
 # Gates:
-#   0. The anchor release itself reached base: the version carriers and
-#      CHANGELOG.md at the anchor match base's copies (a release whose
-#      backport never ran is invisible to gate 1, which only looks past it).
-#      A manifest compares by its version alone: the overlay took the rest of
-#      the file from base, so base rewriting it since, or keeping lines the
-#      release withheld, is not drift.
+#   0. The anchor release itself reached base: for each version carrier and
+#      CHANGELOG.md the anchor changed, every line the release added is in
+#      base's copy or was held by base at some commit, and every line it
+#      removed is gone from base's copy (a release whose backport never ran is
+#      invisible to gate 1, which only looks past it). With
+#      DRIFT_MANIFEST_COMPARE=version in release.env, a manifest carrier
+#      passes when base declares the release's version or a newer one.
 #   1. Every commit on head since the anchor, and every file those commits
 #      touched that base does not already contain. A file base has moved
 #      further on its own is not drift: head's change (anchor to head) is
@@ -72,9 +73,11 @@ SINCE_REF=""
 DO_FETCH=1
 RESULT_FILE=""
 
+# usage [CODE]: prints the header and exits CODE, 2 (a usage error) by default;
+# --help passes 0.
 usage() {
   print_usage_header
-  exit 2
+  exit "${1:-2}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -99,7 +102,7 @@ while [[ $# -gt 0 ]]; do
       RESULT_FILE="$2"
       shift 2
       ;;
-    -h | --help) usage ;;
+    -h | --help) usage 0 ;;
     *)
       echo "unknown arg: $1" >&2
       usage
@@ -123,6 +126,21 @@ readonly LOCKFILE_PATTERN='(^|/)(package-lock\.json|bun\.lock|Cargo\.lock)$'
 # single-package repo, and a carrier this list omits is a file whose
 # release-time edit the gate silently treats as ordinary drift.
 readonly VERSION_CARRIERS="${VERSION_CARRIERS:-Cargo.toml package.json pyproject.toml VERSION CHANGELOG.md}"
+# How gate 0 compares a manifest carrier (Cargo.toml, package.json,
+# pyproject.toml), also overridable from release.env. "lines" holds the
+# release's change to the whole manifest to base. "version" checks only that
+# base declares the release's version or a newer one, for a repo whose
+# releases ship less than dev: a release branch that strips a feature dev
+# keeps removes manifest lines dev still holds on every release. Changelogs
+# and other carriers stay on the line check either way.
+readonly DRIFT_MANIFEST_COMPARE="${DRIFT_MANIFEST_COMPARE:-lines}"
+case "$DRIFT_MANIFEST_COMPARE" in
+  lines | version) ;;
+  *)
+    echo "DRIFT_MANIFEST_COMPARE must be lines or version, not: $DRIFT_MANIFEST_COMPARE" >&2
+    exit 2
+    ;;
+esac
 
 # Setup ----------------------------------------------------------------------
 
@@ -145,14 +163,18 @@ require_ref() {
 # Resolves the anchor commit for "since the last release" and prints how it
 # was chosen. Honors --since when given.
 resolve_anchor() {
-  local tag subject_commit
+  local tag subject_commit glob
   if [[ -n "$SINCE_REF" ]]; then
     require_ref "$SINCE_REF"
     ANCHOR=$(git rev-parse "$SINCE_REF^{commit}")
     ANCHOR_HOW="--since $SINCE_REF"
     return
   fi
-  if tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --match '[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*' "$HEAD_REF" 2>/dev/null); then
+  local -a match=()
+  for glob in "${RELEASE_TAG_GLOBS[@]}"; do
+    match+=(--match "$glob")
+  done
+  if tag=$(git describe --tags --abbrev=0 "${match[@]}" "$HEAD_REF" 2>/dev/null); then
     ANCHOR=$(git rev-parse "$tag^{commit}")
     ANCHOR_HOW="tag $tag"
     return
@@ -175,47 +197,35 @@ resolve_anchor() {
 # Gate 1 only looks past the anchor, so a release whose backport never ran
 # is invisible to it. Compare the version carriers and CHANGELOG.md at the
 # anchor against base: base must already hold every change the release made
-# to them (three-way containment, same as gate 1), or the next overlay cut
-# reverts the release's own bookkeeping.
-
-# The version a manifest declares at REF, or nothing.
-manifest_version_at() {
-  local ref="$1" path="$2"
-  case "$(basename "$path")" in
-    Cargo.toml | pyproject.toml)
-      git show "$ref:$path" 2>/dev/null | grep -m1 -E '^version[[:space:]]*=' \
-        | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/' || true
-      ;;
-    package.json)
-      git show "$ref:$path" 2>/dev/null | grep -m1 -E '"version"[[:space:]]*:' \
-        | sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/' || true
-      ;;
-  esac
-}
+# to them, or the next overlay cut reverts the release's own bookkeeping.
+#
+# The release's diff mixes two kinds of line: those the cut wrote itself (the
+# version bump, the new changelog section) and content the overlay carried
+# over from base. Base may later edit or delete the second kind on its own, so
+# an added line counts as held when base's copy has it or base held it at any
+# commit; a line base once held and then dropped is base's own edit, not a
+# missing backport. The lines the cut wrote were never on base before the
+# backport, so a skipped backport still fails, and a version bump fails twice:
+# its new line was never held and its old line is still in base's copy.
+#
+# A line that repeats within a file, such as a changelog's "### Fixed",
+# counts as present wherever it appears. The version line and the release
+# heading are unique to the release, and those keep the check sound.
+#
+# Under DRIFT_MANIFEST_COMPARE=version a manifest carrier compares by its
+# declared version alone. A skipped backport still fails: base still declares
+# the previous version, and the changelog stays on the line check.
 
 gate_anchor_backported() {
   header "Anchor release backported to $BASE_REF"
-  local path verdict head_blob prev
+  local path verdict head_blob prev released held
   local -a flagged=()
   if [[ "$ANCHOR" == "$(git merge-base "$BASE_REF" "$HEAD_REF")" ]]; then
     gate_skip "anchor bookkeeping" "anchor is the merge base; nothing to compare"
     return
   fi
   prev=$(git rev-parse --verify --quiet "$ANCHOR^" || true)
-  local anchor_version base_version
   for path in $VERSION_CARRIERS; do
-    case "$(basename "$path")" in
-      Cargo.toml | package.json | pyproject.toml)
-        anchor_version=$(manifest_version_at "$ANCHOR" "$path")
-        [[ -n "$anchor_version" ]] || continue
-        base_version=$(manifest_version_at "$BASE_REF" "$path")
-        if [[ -z "$base_version" ]] \
-          || [[ "$(printf '%s\n%s\n' "$anchor_version" "$base_version" | sort -V | tail -n 1)" != "$base_version" ]]; then
-          flagged+=("version $path (${base_version:-none}, release ${anchor_version})")
-        fi
-        continue
-        ;;
-    esac
     head_blob=$(blob_at "$ANCHOR" "$path")
     [[ -n "$head_blob" ]] || continue
     [[ -n "$prev" && "$(blob_at "$prev" "$path")" == "$head_blob" ]] && continue
@@ -226,7 +236,18 @@ gate_anchor_backported() {
       [[ -n "$(blob_at "$BASE_REF" "$path")" ]] || flagged+=("missing $path")
       continue
     fi
-    verdict=$(classify_file_at "$ANCHOR" "$prev" "$path")
+    if [[ "$DRIFT_MANIFEST_COMPARE" == version ]] && is_manifest "$path"; then
+      released=$(manifest_version_at "$ANCHOR" "$path")
+      # A manifest that declares no version (a virtual workspace root, a
+      # member that inherits one) has nothing to compare under this rule.
+      [[ -n "$released" ]] || continue
+      held=$(manifest_version_at "$BASE_REF" "$path")
+      if [[ -z "$held" || "$(printf '%s\n%s\n' "$released" "$held" | sort -V | tail -n 1)" != "$held" ]]; then
+        flagged+=("version $path (${held:-none} on $BASE_REF, release $released)")
+      fi
+      continue
+    fi
+    verdict=$(classify_file_at "$ANCHOR" "$prev" "$path" history)
     [[ "$verdict" == contained ]] || flagged+=("$verdict $path")
   done
   if [[ ${#flagged[@]} -eq 0 ]]; then
@@ -246,6 +267,31 @@ blob_at() {
   git rev-parse --verify --quiet "$1:$2" 2>/dev/null || true
 }
 
+# Returns 0 when PATH names a manifest that declares a version.
+is_manifest() {
+  case "${1##*/}" in
+    Cargo.toml | package.json | pyproject.toml) return 0 ;;
+  esac
+  return 1
+}
+
+# Prints the version the manifest PATH declares at REF: the first top-level
+# `version = "..."` line of a Cargo.toml or pyproject.toml, or the first
+# "version" key of a package.json. Prints nothing when it declares none.
+manifest_version_at() {
+  local ref="$1" path="$2"
+  case "${path##*/}" in
+    Cargo.toml | pyproject.toml)
+      git show "$ref:$path" 2>/dev/null \
+        | sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' | head -n 1 || true
+      ;;
+    package.json)
+      git show "$ref:$path" 2>/dev/null \
+        | sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' | head -n 1 || true
+      ;;
+  esac
+}
+
 # Classifies PATH as "contained", "differs", or "missing": whether base
 # already holds everything head changed in it since the anchor. A path base
 # deleted counts as contained when head's copy is still the anchor's. First a
@@ -260,9 +306,12 @@ classify_file() {
 }
 
 # Same as classify_file, for an explicit head ref and anchor ref (an empty
-# anchor means "no prior state", so any difference from base is drift).
+# anchor means "no prior state", so any difference from base is drift). With
+# a fourth argument, the line check also counts an added line as present when
+# base held PATH with that line at any commit (gate 0's rule).
 classify_file_at() {
-  local head_ref="$1" anchor_ref="$2" path="$3" anchor_blob head_blob base_blob tmp merged status
+  local head_ref="$1" anchor_ref="$2" path="$3" history="${4:-}"
+  local anchor_blob head_blob base_blob tmp merged status held=""
   head_blob=$(blob_at "$head_ref" "$path")
   base_blob=$(blob_at "$BASE_REF" "$path")
   anchor_blob=""
@@ -297,12 +346,35 @@ classify_file_at() {
   set -e
   if [[ $status -eq 0 && "$merged" == "$(<"$tmp/base")" ]]; then
     echo contained
-  elif lines_contained "$tmp/anchor" "$tmp/head" "$tmp/base" "$path"; then
+    rm -rf "$tmp"
+    return
+  fi
+  if [[ -n "$history" ]]; then
+    held="$tmp/held"
+    base_history_lines "$path" "$held"
+  fi
+  if lines_contained "$tmp/anchor" "$tmp/head" "$tmp/base" "$path" "$held"; then
     echo contained
   else
     echo differs
   fi
   rm -rf "$tmp"
+}
+
+# Writes to OUT every line PATH held at any commit on BASE_REF that touched it,
+# each once. A package.json copy is qualified first, as lines_contained
+# qualifies the copies it compares.
+base_history_lines() {
+  local path="$1" out="$2" commit
+  : >"$out.all"
+  while IFS= read -r commit; do
+    git cat-file -p "$commit:$path" >"$out.rev" 2>/dev/null || continue
+    if [[ "${path##*/}" == package.json ]]; then
+      qualify_dependency_entries "$out.rev"
+    fi
+    cat "$out.rev" >>"$out.all"
+  done < <(git rev-list "$BASE_REF" -- "$path")
+  sort -u "$out.all" >"$out"
 }
 
 # Lines on one side of a diff between two files, marker stripped. `+` gives the
@@ -328,8 +400,9 @@ diff_side() {
 # by qualify_dependency_entries, and an added dependency entry base does not
 # hold verbatim still counts as present when dependency_covered finds base's
 # range at or past it, since a range base has bumped since still carries it.
+# With HELD_FILE, an added line found there counts as present too.
 lines_contained() {
-  local anchor_file="$1" head_file="$2" base_file="$3" path="${4:-}" manifest=0 line
+  local anchor_file="$1" head_file="$2" base_file="$3" path="${4:-}" held_file="${5:-}" manifest=0 line
   if [[ "${path##*/}" == package.json ]]; then
     manifest=1
     qualify_dependency_entries "$anchor_file" "$head_file" "$base_file"
@@ -337,6 +410,7 @@ lines_contained() {
   while IFS= read -r line; do
     [[ "$line" =~ ^[[:space:][:punct:]]*$ ]] && continue
     grep -qxF -- "$line" "$base_file" && continue
+    [[ -n "$held_file" ]] && grep -qxF -- "$line" "$held_file" && continue
     [[ $manifest -eq 1 ]] && dependency_covered "$line" "$base_file" && continue
     return 1
   done < <(diff_side + "$anchor_file" "$head_file")

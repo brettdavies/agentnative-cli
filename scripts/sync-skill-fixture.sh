@@ -37,11 +37,11 @@ SOURCE_PATH="src/data/skill/skill.json"
 
 mode="update"
 if [[ ${1:-} == "--check" ]]; then
-    mode="check"
+  mode="check"
 elif [[ -n ${1:-} ]]; then
-    echo "error: unknown argument: $1" >&2
-    echo "usage: $0 [--check]" >&2
-    exit 2
+  echo "error: unknown argument: $1" >&2
+  echo "usage: $0 [--check]" >&2
+  exit 2
 fi
 
 # Always-allocated workspace dir for the upstream copy. The remote path
@@ -49,9 +49,9 @@ fi
 # the staged blob.
 tmp_root="$(mktemp -d -t agentnative-site-sync-XXXXXX)"
 cleanup() {
-    if [[ -n "$tmp_root" && -d "$tmp_root" ]]; then
-        rm -rf "$tmp_root"
-    fi
+  if [[ -n "$tmp_root" && -d "$tmp_root" ]]; then
+    rm -rf "$tmp_root"
+  fi
 }
 trap cleanup EXIT
 
@@ -62,30 +62,30 @@ resolved_sha=""
 echo "querying $SKILL_SITE_REMOTE_URL for $SKILL_SITE_REF..."
 remote_clone="$tmp_root/clone"
 if git clone --depth 1 --branch "$SKILL_SITE_REF" --quiet \
-        "$SKILL_SITE_REMOTE_URL" "$remote_clone" 2>/dev/null; then
-    site_source="$remote_clone"
-    resolved_sha="$(git -C "$site_source" rev-parse --short=7 HEAD)"
-    echo "extracting $SKILL_SITE_REF ($resolved_sha) from remote $SKILL_SITE_REMOTE_URL"
+  "$SKILL_SITE_REMOTE_URL" "$remote_clone" 2>/dev/null; then
+  site_source="$remote_clone"
+  resolved_sha="$(git -C "$site_source" rev-parse --short=7 HEAD)"
+  echo "extracting $SKILL_SITE_REF ($resolved_sha) from remote $SKILL_SITE_REMOTE_URL"
 fi
 
 # === Local fallback ====================================================
 if [[ -z "$site_source" ]]; then
-    if [[ ! -d "$SKILL_SITE_ROOT/.git" ]]; then
-        echo "error: remote unreachable and SKILL_SITE_ROOT is not a git repository: $SKILL_SITE_ROOT" >&2
-        echo "       remote: $SKILL_SITE_REMOTE_URL" >&2
-        echo "       set SKILL_SITE_ROOT to your agentnative-site checkout, or check network access." >&2
-        exit 1
-    fi
-    echo "warning: remote query failed; falling back to local $SKILL_SITE_ROOT" >&2
-    site_source="$SKILL_SITE_ROOT"
-    resolved_sha="$(git -C "$site_source" rev-parse --short=7 "$SKILL_SITE_REF" 2>/dev/null || echo "unknown")"
-    echo "extracting $SKILL_SITE_REF ($resolved_sha) from local $site_source"
+  if [[ ! -d "$SKILL_SITE_ROOT/.git" ]]; then
+    echo "error: remote unreachable and SKILL_SITE_ROOT is not a git repository: $SKILL_SITE_ROOT" >&2
+    echo "       remote: $SKILL_SITE_REMOTE_URL" >&2
+    echo "       set SKILL_SITE_ROOT to your agentnative-site checkout, or check network access." >&2
+    exit 1
+  fi
+  echo "warning: remote query failed; falling back to local $SKILL_SITE_ROOT" >&2
+  site_source="$SKILL_SITE_ROOT"
+  resolved_sha="$(git -C "$site_source" rev-parse --short=7 "$SKILL_SITE_REF" 2>/dev/null || echo "unknown")"
+  echo "extracting $SKILL_SITE_REF ($resolved_sha) from local $site_source"
 fi
 
 # === Extract via git show (works identically for remote and local) =====
 if ! git -C "$site_source" cat-file -e "$SKILL_SITE_REF:$SOURCE_PATH" 2>/dev/null; then
-    echo "error: $SKILL_SITE_REF has no $SOURCE_PATH in $site_source" >&2
-    exit 1
+  echo "error: $SKILL_SITE_REF has no $SOURCE_PATH in $site_source" >&2
+  exit 1
 fi
 
 # Stream the upstream blob to a temp file. Variable capture (`$(...)`) would
@@ -97,22 +97,22 @@ git -C "$site_source" show "$SKILL_SITE_REF:$SOURCE_PATH" >"$upstream_tmp"
 
 # === Mode-specific behavior ============================================
 case "$mode" in
-    update)
-        mkdir -p "$(dirname "$DEST_FILE")"
-        cp "$upstream_tmp" "$DEST_FILE"
-        echo "wrote $DEST_FILE"
-        echo
-        echo "next: review \`git diff $DEST_FILE\` for unexpected changes, then commit."
-        ;;
-    check)
-        if cmp -s "$DEST_FILE" "$upstream_tmp"; then
-            echo "ok: $DEST_FILE matches $SKILL_SITE_REF:$SOURCE_PATH ($resolved_sha)"
-            exit 0
-        fi
-        echo "error: $DEST_FILE drifted from $SKILL_SITE_REF:$SOURCE_PATH ($resolved_sha)" >&2
-        echo "       run \`scripts/sync-skill-fixture.sh\` to refresh, then commit." >&2
-        echo >&2
-        diff -u "$DEST_FILE" "$upstream_tmp" || true
-        exit 1
-        ;;
+  update)
+    mkdir -p "$(dirname "$DEST_FILE")"
+    cp "$upstream_tmp" "$DEST_FILE"
+    echo "wrote $DEST_FILE"
+    echo
+    echo "next: review \`git diff $DEST_FILE\` for unexpected changes, then commit."
+    ;;
+  check)
+    if cmp -s "$DEST_FILE" "$upstream_tmp"; then
+      echo "ok: $DEST_FILE matches $SKILL_SITE_REF:$SOURCE_PATH ($resolved_sha)"
+      exit 0
+    fi
+    echo "error: $DEST_FILE drifted from $SKILL_SITE_REF:$SOURCE_PATH ($resolved_sha)" >&2
+    echo "       run \`scripts/sync-skill-fixture.sh\` to refresh, then commit." >&2
+    echo >&2
+    diff -u "$DEST_FILE" "$upstream_tmp" || true
+    exit 1
+    ;;
 esac

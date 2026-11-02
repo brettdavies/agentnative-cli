@@ -1,4 +1,7 @@
+# Canonical version: 2026.11.02 (rust)
+#
 # Builds every target the release matrix builds, without releasing anything.
+# Copy to .github/workflows/release-matrix-check.yml in the tool repo.
 #
 # A release compiles its binaries once, on the `v*` tag push. What breaks a
 # cross-compiled target is a change to the dependency graph or the toolchain
@@ -20,6 +23,7 @@ name: Release matrix check
 
 on:
   workflow_dispatch:
+  # A workspace adds its members' manifests (`crates/*/Cargo.toml`).
   pull_request:
     branches:
       - dev

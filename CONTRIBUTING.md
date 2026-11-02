@@ -44,7 +44,7 @@ git clone https://github.com/brettdavies/agentnative-cli && cd agentnative-cli
 cargo build                   # builds the `anc` binary
 cargo test                    # unit + integration tests
 cargo deny check              # supply-chain audit (licenses, advisories)
-git config core.hooksPath scripts/hooks   # activate pre-push hook (next section)
+git config core.hooksPath scripts/hooks   # activate the hooks (next section)
 ```
 
 The `anc` binary lives at `target/debug/anc` after build; `cargo run -- audit .` against any CLI's source tree runs the
@@ -53,8 +53,12 @@ see [`src/principles/registry.rs`](src/principles/registry.rs).
 
 ## Pre-push hook battery
 
-The repo ships a pre-push hook that mirrors CI: `cargo fmt --check`, `cargo clippy -Dwarnings`, `cargo test`,
-`cargo-deny check`, and a Windows compatibility scan. Activate the hook once after clone:
+The repo ships a hook pair. The pre-push hook mirrors CI: `cargo fmt --check`, `cargo clippy -Dwarnings`, `cargo test`
+and `cargo doc` for the default and `web` feature sets, an MSRV check, `cargo-deny check`, shellcheck, shfmt,
+actionlint, and the Windows compatibility checks. It reports every failing step in one run, and skips the cargo steps
+when the push changes no file cargo reads (`scripts/cargo-inputs.sh` decides, the same classifier CI uses). The
+pre-commit hook runs the fast checks on the staged files only. A check whose tool is not installed is skipped with a
+note naming the install command. Activate the hooks once after clone:
 
 ```bash
 git config core.hooksPath scripts/hooks

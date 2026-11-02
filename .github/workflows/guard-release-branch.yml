@@ -1,3 +1,5 @@
+# Canonical version: 2026.09.08 (generic)
+#
 # Source-repo caller wrapper for the reusable guard-release-branch workflow.
 # Copy to .github/workflows/guard-release-branch.yml in repos using the
 # forever-dev + release/* flow.

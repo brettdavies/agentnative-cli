@@ -1,18 +1,22 @@
-# Source repo CI wrapper — calls the centralized reusable workflow.
+# Canonical version: 2026.11.02 (rust)
+#
+# Source repo CI wrapper: calls the centralized reusable workflows.
 # Copy to .github/workflows/ci.yml in the tool repo.
 #
-# The reusable workflow runs: fmt, clippy, test, cargo-deny check, package check,
-# Windows dep check, and changelog verification (on PRs to main).
-# No secrets required — only needs contents: read and pull-requests: read.
+# rust-change-scope.yml decides whether the change can reach cargo at all, by
+# the repo's scripts/cargo-inputs.sh (copy it verbatim from rust-tool-release).
+# Without that script the scope job fails, and every Rust job runs.
+# rust-ci.yml runs fmt, clippy, test, cargo-deny check, package check, Windows
+# check, and changelog verification (on PRs to main), plus each job an input
+# below turns on.
+# lint-basics.yml runs actionlint and markdownlint.
+# No secrets required: only contents: read and pull-requests: read.
 #
-# pull_request only: merges to main/dev are squash merges, so a push run
-# would re-verify the identical tree already checked at the PR head.
-#
-# No concurrency block here: the reusable declares its own
-# `${{ github.workflow }}-${{ github.ref }}` group, which evaluates in this
-# caller's context. Declaring the same group here makes the caller and the
-# called workflow contend for one group, and GitHub cancels the run as a
-# deadlock before any job starts.
+# pull_request only: merges to main and dev are squash merges, so the merge
+# commit's tree equals the PR head this workflow already verified, and a push
+# run would re-check an identical tree for no new signal. The compensating
+# local gate is the hook pair at scripts/hooks/, which mirrors these jobs
+# before the push leaves the machine.
 name: CI
 
 on:
@@ -21,6 +25,15 @@ on:
 permissions:
   contents: read
   pull-requests: read
+
+# The group key leads with a literal token naming this workflow. A key built
+# only from context (`${{ github.workflow }}`) is one the reusables called below
+# also produce, because `github.workflow` resolves to this caller's name inside
+# a called workflow; both then land in one group and a reusable's queue cancels
+# this run. The reusables carry their own `rust-ci-` and `lint-basics-` tokens.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 # Crate downloads on hosted runners, Linux and Windows alike, fail with curl
 # error 16 ("Error in the HTTP2 framing layer"), which cargo does not retry;
@@ -34,22 +47,44 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Whether the change can reach cargo, by scripts/cargo-inputs.sh. A
+  # documentation-only PR skips every Rust job, and a skipped job reports
+  # success, so required checks still pass. The `ci` job runs unless this
+  # answered `false`, so a scope job that fails runs the full battery.
+  scope:
+    uses: brettdavies/.github/.github/workflows/rust-change-scope.yml@main
+
   ci:
+    needs: scope
+    if: ${{ !cancelled() }}
     uses: brettdavies/.github/.github/workflows/rust-ci.yml@main
+    # Every rust-ci input, one line each. The reusable's
+    # on.workflow_call.inputs holds each one's full description and default.
+    #   advisories_blocking         an advisory fails the run (set below)
+    #   windows_nasm                install NASM on the Windows jobs, for a dependency that assembles there
+    #   docs_only                   skip every job (set below, from the scope job)
+    #   cross_os_tests              run cargo test on Windows and macOS too
+    #   docs                        cargo doc with warnings denied (set below)
+    #   msrv                        cargo check on the root Cargo.toml's rust-version (set below)
+    #   completions                 scripts/generate-completions.sh --check (rust-tool-release)
+    #   lint_stdio                  scripts/lint-stdio.sh (rust-tool-release skeleton)
+    #   workflow_concurrency        scripts/check-workflow-concurrency.sh (github-repo-setup)
+    #   anc_version, anc_bin        the agent-native audit at an exact anc release, on the named binary
+    #   anc_score_floor             the lowest badge score that audit accepts
+    #   anc_blocking_tiers          which failing audit rows block: `must` or `any`
+    #   release_size_ceiling_bytes  with anc_version set, the largest release binary allowed
     with:
       # An advisory turns this run red rather than leaving it green with one
-      # failed job. The rulesets already block the merge; this is so the run's
-      # colour matches what a human scanning the Actions tab should act on.
+      # failed job, so the run's colour matches what a human scanning the
+      # Actions tab should act on.
       advisories_blocking: true
+      docs_only: ${{ needs.scope.outputs.rust == 'false' }}
+      docs: true
+      msrv: true
       # completions/ ships with the crate and is generated from the clap
       # definition; the job fails when a help string changes without a
       # regeneration.
       completions: true
-      # Cargo.toml declares rust-version; this compiles every feature on it.
-      msrv: true
-      # docs.rs builds the published docs with every feature; this fails a
-      # broken intra-doc link at the PR instead of after publish.
-      docs: true
 
   # The reusable workflow above builds the default feature set. The local web
   # audit is the `web` feature, off by default, so these jobs hold that build

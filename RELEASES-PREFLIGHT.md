@@ -1,3 +1,4 @@
+<!-- Canonical version: 2026.11.02 (generic) -->
 # Pre-release verification: `agentnative`
 
 Operational pre-flight checklist. Walk it before step 1 of
@@ -106,17 +107,23 @@ Security PRs, hotfixes, and config edits land on `main` first. The release branc
 `dev`'s changes, so anything `main` holds that `dev` never received is reverted by the release or collides with it, and
 Dependabot raises the same fix again.
 
-- [ ] The previous release's bookkeeping (`Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`) reached `dev` (gate 0 fails when
-  it never did; run `scripts/sync-dev-after-release.sh v<version>` and merge its PR first).
+<!-- canonical:begin drift-gate -->
+
+- [ ] The previous release's own bookkeeping reached `dev` (gate 0: the version carriers and `CHANGELOG.md` as the
+  release left them). It fails when a backport never ran; run `scripts/sync-dev-after-release.sh v<previous>`, merge its
+  PR, and rerun.
 - [ ] Every commit on `main` since the last release has its changes on `dev` (gate 1 lists the ones that do not, as
   `differs` or `missing`). Backport them by PR into `dev` first, merge, and rerun.
 - [ ] Nothing under `.github/` on `main` is missing from `dev` (gate 2). `.github/` reaches `main` through the release,
   so config that has reached `dev` and not `main` is what this release delivers, and the gate counts it. The gate fails
   on the other direction, where `main` holds workflow or ruleset config `dev` never received, and names each path as
   `missing` or `differs`.
-- [ ] No `Cargo.lock` package resolves newer on `main` than on `dev` (gate 3). The one benign case is a version still
-  inside a release-age window when the advisory is already patched at `dev`'s version.
+- [ ] No lockfile package resolves newer on `main` than on `dev` (gate 3, which reads `package-lock.json`, `bun.lock`,
+  and `Cargo.lock`). The one benign case is a version still inside the local package manager's release-age window when
+  the advisory is already patched at `dev`'s version.
 - [ ] `dev`-newer packages are the routine updates this release ships; the gate counts them and does not list them.
+
+<!-- canonical:end drift-gate -->
 
 ### Dependabot preflight
 
@@ -207,12 +214,14 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
   or revert it before tagging.
 - [ ] No unmerged dependency advisories from `cargo deny check advisories`. The full local pre-push check
   (`scripts/hooks/pre-push`) mirrors CI; run it explicitly before pushing the release branch.
-- [ ] The latest `Release matrix check` run on a PR to `dev` is green
-  (`gh run list --workflow release-matrix-check.yml --event pull_request --limit 5`). The tag's build is the release's
-  one build of the cross-compiled targets, and nothing builds them for the release branch. No ruleset can require the
-  check: it is path-filtered on PRs, and a required context that never reports leaves a PR pending, so a dependency or
-  toolchain PR can merge with it red. `gh workflow run release-matrix-check.yml --ref release/v<version>` rehearses the
-  matrix on the release branch when the release wants one.
+- [ ] The `Release matrix check` run of the newest pull request merged to `dev` that ran the check is green.
+  `gh run list --workflow release-matrix-check.yml --event pull_request --limit 10 --json headBranch,conclusion,createdAt`
+  lists each run with its branch; read the newest whose branch `gh pr list --base dev --state merged --limit 20` shows
+  merged. A run on a branch that has not merged says nothing about the tree `dev` will tag. The tag's build is the
+  release's one build of the cross-compiled targets, and nothing builds them for the release branch. No ruleset requires
+  the check, because it is path-filtered and a required context that never reports leaves a PR pending, so a dependency
+  or toolchain PR can merge with it red. `gh workflow run release-matrix-check.yml --ref release/v<version>` rehearses
+  the matrix on the release branch when the release wants one.
 - [ ] `scripts/release/cut-release-branch.sh` exited 0, so its check A held: the staged tree equals `origin/dev`'s apart
   from the version carriers and the guarded paths. A cherry-pick release runs the triple diff in `RELEASES.md` §
   Exception: cherry-pick instead, with `HEAD..origin/dev` filtered by the guarded set (not all of `docs/`, since a

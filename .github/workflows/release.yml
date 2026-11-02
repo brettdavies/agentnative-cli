@@ -1,4 +1,7 @@
+# Canonical version: 2026.11.02 (rust)
+#
 # Source repo release wrapper — calls the centralized reusable workflow.
+# Copy to .github/workflows/release.yml in the tool repo.
 #
 # crate: agentnative (crates.io name) | bin: anc (installed executable)
 #
@@ -29,16 +32,16 @@ jobs:
     with:
       crate: agentnative
       bin: anc
-      # Block release on linux-musl build failure (anc has been spike-validated
-      # against both x86_64- and aarch64-unknown-linux-musl).
+      # A musl failure blocks the release instead of silently omitting two
+      # archives from it. release-matrix-check.yml builds both rows before a
+      # tag exists.
       linux_musl_required: true
-      # Belt-and-suspenders: exec the x86_64-musl binary inside alpine:latest
-      # after build to catch dlopen/NSS/locale surprises that pass the
-      # static-link `file` assertion.
+      # Exec the x86_64-musl binary inside alpine:latest after the build, to
+      # catch dlopen/NSS/locale surprises a static-link assertion passes.
       linux_musl_verify_alpine: true
-      # The Homebrew formula installs the darwin and musl archives, and the tap
-      # verifies each against its attestation before it pins the checksum, so
-      # a release without attestations never reaches Homebrew.
+      # A Homebrew formula that installs release archives needs this: the tap
+      # verifies each archive against its attestation before it pins the
+      # checksum, so a release without attestations never reaches Homebrew.
       attest: true
     secrets:
       CI_RELEASE_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}

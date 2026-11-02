@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
-# Pre-commit hook: fast checks scoped to staged files only.
+# Canonical version: 2026.11.01 (generic)
 #
-# Defensive: each tool no-ops with a notice when not installed, so it never
-# blocks a commit on a machine that hasn't set up the full toolchain yet.
-# Kept staged-file-scoped (not whole-repo) so it stays fast enough to run on
-# every commit; the whole-repo equivalents live in scripts/hooks/pre-push.
+# Pre-commit hook: fast, staged-file-scoped checks that catch the cheap
+# mistakes before they reach a commit. The whole-repo CI mirror lives in the
+# pre-push hook (scripts/hooks/pre-push); keep this hook fast enough that it
+# is never the reason someone reaches for --no-verify.
 #
-# Activated per clone via: git config core.hooksPath scripts/hooks
+# Every check comes from scripts/hooks/_lib.sh, which both hooks source. The
+# two hooks differ in scope, not in what a check means: pre-commit passes the
+# staged set, pre-push passes the tracked set.
+#
+# Activate per clone via: git config core.hooksPath scripts/hooks
+# (This is machine-local git config: it does NOT travel with the clone, and
+# an unset core.hooksPath is the single most common reason a hook never fires.
+# Run the command above once per fresh clone, human and agent workspace alike.)
+#
+# Defensive no-ops: each check guards on its own tool being present and on the
+# relevant file type being staged, then skips cleanly. The library announces a
+# skip caused by a missing tool, and a skipped check never prints a pass line:
+# a silent skip is indistinguishable from a passing check.
+#
+# Failures aggregate. One run reports every failing check rather than stopping
+# at the first, so a commit is fixed in one pass.
+#
+# Exit codes: 0 = all staged checks pass (or cleanly skipped), 1 = failure.
 #
 # Requires bash >= 4.4 (mapfile, and empty-array expansion under `set -u`). The
 # guard re-execs under Homebrew's bash when `#!/usr/bin/env bash` found an older
@@ -31,85 +48,89 @@ if [[ "$hook_worktree_root" != "$hook_self_root" && -x "$hook_own_copy" ]]; then
   exec "$hook_own_copy" "$@"
 fi
 
-set -euo pipefail
+set -uo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BOLD='\033[1m'
-RESET='\033[0m'
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 1
+# shellcheck source=scripts/hooks/_lib.sh
+. ./scripts/hooks/_lib.sh || exit 1
 
-pass() { echo -e "  ${GREEN}✓${RESET} $1"; }
-fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
+fail=0
 
-# without_git_repo_env <command>...: run a command in a subshell without git's
-# repository variables.
+# Git's repository variables stay set in this hook: during `commit -a` and
+# `commit <paths>`, GIT_INDEX_FILE names the temporary index the commit is built
+# from, and `staged` has to read it. None of the checks below runs git. A check
+# whose tool does (a test suite that builds scratch repositories, cargo
+# resolving a git dependency) runs through without_git_repo_env, so the tool's
+# git calls find its own repository rather than this one:
 #
-# Git exports GIT_DIR into a hook started from a linked worktree, and
-# GIT_INDEX_FILE into pre-commit. A tool that runs git in another directory
-# under them acts on this repository instead: it commits onto the branch,
-# resets it, or resolves the wrong top level. This hook keeps them for its own
-# `git diff --cached`, because during `commit -a` and `commit <paths>` the
-# staged set lives only in the temporary index GIT_INDEX_FILE names, and runs
-# every tool through this helper.
-without_git_repo_env() (
-  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
-    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE
-  "$@"
-)
+#   step "test" "bun test" without_git_repo_env bun test || fail=1
 
-echo -e "${BOLD}Running pre-commit checks...${RESET}"
+# Every check here is a file-scoped linter over a disjoint set of paths: none
+# writes, none takes a build lock, so they all run together and the slowest one
+# sets the wall-clock. step_wait replays them in the order queued below.
+#
+# Rust: the crate's format check, whenever a .rs file is staged. `cargo fmt`
+# rather than the library's per-file check_rustfmt, which passes rustfmt
+# `--edition 2021`: this crate is edition 2024 and uses let chains, which do not
+# parse under 2021. Per-file rustfmt would also reach the fixture crates under
+# tests/fixtures/, which are deliberately unformatted and outside the crate
+# `cargo fmt` formats. `cargo fmt` only reads, so it queues with the linters.
+check_cargo_fmt_staged() {
+  [ "$#" -gt 0 ] || return "$HOOK_SKIPPED"
+  without_git_repo_env check_cargo_fmt
+}
+mapfile -t rs < <(staged '*.rs')
+step_bg "fmt" "cargo fmt -- --check (run \`cargo fmt\` and re-stage)" check_cargo_fmt_staged "${rs[@]}"
 
-mapfile -t staged_files < <(git diff --cached --name-only --diff-filter=ACM)
+# Shell: correctness and layout on the staged scripts, hooks included.
+mapfile -t sh < <(staged '*.sh' 'scripts/hooks/pre-commit' 'scripts/hooks/pre-push' 'scripts/hooks/_lib.sh')
+step_bg "shellcheck" "shellcheck --severity=warning" check_shell "${sh[@]}"
+step_bg "shfmt" "shfmt -i 2 -ci -bn -d" check_shfmt "${sh[@]}"
 
-staged_rs=()
-staged_md=()
-staged_sh=()
-for f in "${staged_files[@]}"; do
-    case "$f" in
-        *.rs) staged_rs+=("$f") ;;
-        *.md) staged_md+=("$f") ;;
-        *.sh) staged_sh+=("$f") ;;
-    esac
-done
-if printf '%s\n' "${staged_files[@]}" | grep -qx 'scripts/hooks/pre-commit\|scripts/hooks/pre-push'; then
-    staged_sh+=("scripts/hooks/pre-commit" "scripts/hooks/pre-push")
-fi
+# Tests: no staged test file resets a core environment variable.
+mapfile -t tests < <(staged '*.bats' '*.bash' '*tests/*.sh' '*test/*.sh')
+step_bg "core-env guard" "scripts/hooks/core-env-guard.sh" check_core_env "${tests[@]}"
 
-# 1. Rust formatting — staged .rs files only
-if [ ${#staged_rs[@]} -gt 0 ]; then
-    if command -v cargo >/dev/null 2>&1; then
-        without_git_repo_env cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check (run \`cargo fmt\` and re-stage)"
-        pass "fmt (${#staged_rs[@]} file(s))"
-    else
-        echo "  - fmt (skipped: cargo not installed)"
-    fi
-else
-    echo "  - fmt (skipped: no staged .rs files)"
-fi
+# Workflows: lint the staged workflow files.
+mapfile -t wf < <(staged '.github/workflows/*.yml' '.github/workflows/*.yaml')
+step_bg "actionlint" "actionlint" check_actionlint "${wf[@]}"
+step_bg "concurrency namespacing" "scripts/check-workflow-concurrency.sh" check_workflow_concurrency "${wf[@]}"
 
-# 2. Markdown lint — staged .md files only
-if [ ${#staged_md[@]} -gt 0 ]; then
-    if command -v markdownlint-cli2 >/dev/null 2>&1; then
-        without_git_repo_env markdownlint-cli2 "${staged_md[@]}" || fail "markdownlint-cli2"
-        pass "markdownlint (${#staged_md[@]} file(s))"
-    else
-        echo "  - markdownlint (skipped: install via \`brew install markdownlint-cli2\`)"
-    fi
-else
-    echo "  - markdownlint (skipped: no staged .md files)"
-fi
+# Markdown: lint what is being committed. The canonical .markdownlint-cli2.yaml
+# sets `fix: true`, under which markdownlint-cli2 rewrites every file it reads,
+# so the library's check_markdown skips. This step lints the staged blobs in a
+# scratch tree instead: each tracked markdownlint config is copied to the same
+# relative path with `fix` turned off, so the root `ignores` list (CHANGELOG.md
+# among them) and the nested config under src/principles/spec/ apply exactly
+# as they do in CI's markdownlint job, and no file in the checkout is touched.
+check_markdown_staged() {
+  [ "$#" -gt 0 ] || return "$HOOK_SKIPPED"
+  have markdownlint-cli2 || skip "markdownlint" "install via \`brew install markdownlint-cli2\`" || return
+  local tree f rc=0
+  tree="$(mktemp -d)" || return 1
+  while IFS= read -r f; do
+    mkdir -p "$tree/$(dirname "$f")"
+    git show ":$f" | sed -E 's/^([[:space:]]*"?fix"?[[:space:]]*:[[:space:]]*)true/\1false/' >"$tree/$f"
+  done < <(git ls-files -- ':(glob)**/.markdownlint*')
+  for f in "$@"; do
+    mkdir -p "$tree/$(dirname "$f")"
+    git show ":$f" >"$tree/$f" || rc=1
+  done
+  if [ "$rc" -eq 0 ]; then
+    (cd "$tree" && markdownlint-cli2 "$@") || rc=$?
+  fi
+  rm -rf "$tree"
+  return "$rc"
+}
+mapfile -t md < <(staged '*.md')
+step_bg "markdownlint" "markdownlint-cli2" check_markdown_staged "${md[@]}"
 
-# 3. Shellcheck — staged .sh files (and the hooks themselves if touched)
-if [ ${#staged_sh[@]} -gt 0 ]; then
-    if command -v shellcheck >/dev/null 2>&1; then
-        mapfile -t staged_sh_uniq < <(printf '%s\n' "${staged_sh[@]}" | sort -u)
-        without_git_repo_env shellcheck --severity=warning "${staged_sh_uniq[@]}" || fail "shellcheck --severity=warning"
-        pass "shellcheck (${#staged_sh_uniq[@]} file(s))"
-    else
-        echo "  - shellcheck (skipped: install via \`brew install shellcheck\`)"
-    fi
-else
-    echo "  - shellcheck (skipped: no staged .sh files)"
-fi
+step_wait || fail=1
 
-echo -e "${BOLD}${GREEN}Pre-commit checks passed.${RESET}"
+[ "$fail" -eq 0 ] || {
+  echo "pre-commit checks failed (see CONTRIBUTING.md, Pre-push hook battery)." >&2
+  exit 1
+}
+
+echo "pre-commit: staged checks passed"

@@ -5,16 +5,16 @@
 # overall run must succeed (a target that refuses to self-report is not
 # a scoring error).
 case "$1" in
-    --help|-h)
-        echo "hostile-nonzero-exit: --help works, version probes fail"
-        exit 0
-        ;;
-    --version|-V)
-        echo "version probe rejected" >&2
-        exit 1
-        ;;
-    *)
-        echo "hostile-nonzero-exit"
-        exit 0
-        ;;
+  --help | -h)
+    echo "hostile-nonzero-exit: --help works, version probes fail"
+    exit 0
+    ;;
+  --version | -V)
+    echo "version probe rejected" >&2
+    exit 1
+    ;;
+  *)
+    echo "hostile-nonzero-exit"
+    exit 0
+    ;;
 esac

@@ -1,3 +1,4 @@
+<!-- Canonical version: 2026.10.22 (generic) -->
 # Post-release verification: `agentnative`
 
 Operational post-flight checklist. Runs **after** the `release/v<version> → main` PR merges and you push the tag

@@ -1,6 +1,43 @@
 #!/usr/bin/env bash
-# Local CI mirror — runs the same checks as the GitHub Actions CI pipeline.
-# Use as a pre-push hook or run manually before pushing.
+# Canonical version: 2026.11.02 (generic)
+#
+# Local CI mirror: the whole-repo pre-push gate. Runs the same checks as the
+# GitHub Actions CI pipeline, so a push that survives the hook passes CI and a
+# push that fails the hook would have failed CI anyway, just slower. This is
+# the compensating control for CI trigger topology thinned to one run per
+# change (pull_request-only): it reproduces CI's verdict before the network
+# round-trip, and it is the only remote-equivalent check for any code that
+# never opens a PR. Its fast, staged-file-scoped companion is
+# scripts/hooks/pre-commit.
+#
+# Every shared check comes from scripts/hooks/_lib.sh, which both hooks source.
+# The two hooks differ in scope, not in what a check means: pre-push passes the
+# tracked set, pre-commit passes the staged set. Steps 8 and 9 stay inline
+# because pre-commit has no use for them and each carries a project-specific
+# pattern to customize.
+#
+# Activate per clone via: git config core.hooksPath scripts/hooks
+# core.hooksPath is machine-local git config: it does NOT travel with the
+# clone and is not enforced by cloning. An unset core.hooksPath is the single
+# most common reason a tracked hook never fires (a fleet audit found it unset
+# in 9 of 11 checkouts). Run the command above once per fresh clone, and state
+# it as a setup step in README/CONTRIBUTING next to the clone instructions.
+#
+# Defensive no-ops, but never silent: each optional step guards on its tool
+# being present and skips cleanly when absent, so the hook never blocks a push
+# on a machine without the full toolchain. The library announces every such
+# skip, and a skipped check never prints a pass line: a silent skip is
+# indistinguishable from a passing check. Never gate a step on `ls file1 file2`
+# (fails closed when any one file is absent, silently disabling the step); test
+# each file with `[ -f "$f" ]` or enumerate with `git ls-files`, which is what
+# the library's `tracked` helper does.
+#
+# Failures aggregate. One run reports every failing step rather than stopping
+# at the first, so a push is fixed in one pass instead of one step at a time.
+#
+# Heavy suites (browser e2e, full package builds) stay CI-only by design; when
+# one is omitted here, say so in a comment rather than leaving the gap for a
+# reader to infer.
 #
 # Exit codes: 0 = all pass, 1 = failure
 #
@@ -36,151 +73,148 @@ fi
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE
 
-set -euo pipefail
+set -uo pipefail
 
-# push_only_deletes: true when every ref line git hands pre-push on stdin,
-# `<local ref> <local sha> <remote ref> <remote sha>`, deletes a remote ref.
-# A delete carries an all-zero local sha (40 zeros, or 64 in a SHA-256
-# repository) and delivers no commit for any check to read.
-#
-# False, so the checks run, when stdin is a terminal (the hook run by hand),
-# when it carries no ref lines, and when it stays open for
-# HOOK_STDIN_WAIT_SECONDS (default 5) with no next line. Git writes its lines
-# and closes stdin at once, so a real push never waits.
-#
-# The same function github-repo-setup's hooks library ships, inline because
-# this hook sources no library.
-push_only_deletes() {
-  local wait_s="${HOOK_STDIN_WAIT_SECONDS:-5}" line local_ref local_sha rc deletes=0 others=0
-  HOOK_PUSH_REFS=''
-  [ -t 0 ] && return 1
-  while :; do
-    rc=0
-    IFS= read -r -t "$wait_s" line || rc=$?
-    # At end of input read returns 1 but still fills line with a last line
-    # that has no newline, which counts like any other.
-    [ "$rc" -eq 0 ] || { [ "$rc" -le 128 ] && [ -n "$line" ]; } || break
-    HOOK_PUSH_REFS+="$line"$'\n'
-    read -r local_ref local_sha _ <<<"$line"
-    [ -n "$local_ref" ] || continue
-    if [[ "$local_sha" =~ ^0+$ ]]; then
-      deletes=$((deletes + 1))
-    else
-      others=$((others + 1))
-    fi
-  done
-  # read returns above 128 on a timeout and 1 at end of input.
-  [ "$rc" -le 128 ] && [ "$deletes" -gt 0 ] && [ "$others" -eq 0 ]
-}
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 1
+# shellcheck source=scripts/hooks/_lib.sh
+. ./scripts/hooks/_lib.sh || exit 1
 
 if push_only_deletes; then
   echo "Nothing to check: the push only deletes."
   exit 0
 fi
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BOLD='\033[1m'
-RESET='\033[0m'
-
-pass() { echo -e "  ${GREEN}✓${RESET} $1"; }
-fail() { echo -e "  ${RED}✗${RESET} $1"; exit 1; }
-
-echo -e "${BOLD}Running local CI checks...${RESET}"
-
-# The toolchain is pinned in rust-toolchain.toml — both local and CI read the same file
-# and install the same version. Rustup verifies component SHA256s from the distribution
-# manifest, so the pin is effectively a SHA pin. No `rustup update` step here: bumping
-# the toolchain is a reviewed PR that updates rust-toolchain.toml.
-pass "toolchain ($(rustc --version 2>/dev/null | awk '{print $2}' || echo unknown))"
-
-# 1. Format check
-cargo fmt -- --check 2>/dev/null || fail "cargo fmt -- --check"
-pass "fmt"
-
-# 2. Clippy with warnings-as-errors: CI's RUSTFLAGS=-Dwarnings as a clippy
-# argument, since cargo keys every dependency build on RUSTFLAGS.
-cargo clippy --quiet -- -D warnings 2>&1 || fail "cargo clippy -- -D warnings"
-pass "clippy"
-
-# 2b. The `web` feature (the local web audit, off by default), as CI's
-# "Web feature" job builds it.
-cargo clippy --quiet --all-targets --features web -- -D warnings 2>&1 \
-    || fail "cargo clippy --all-targets --features web -- -D warnings"
-pass "clippy (web feature)"
-
-# 3. Tests, for the default feature set and for the `web` feature.
-cargo test --quiet 2>&1 || fail "cargo test"
-pass "test"
-cargo test --quiet --features web 2>&1 || fail "cargo test --features web"
-pass "test (web feature)"
-
-# 3b. Doc build — the crate publishes a library whose docs.rs page is the
-# README plus the `web_audit` surface, so a broken intra-doc link, an
-# unclosed code fence or a bare URL is a rendering bug on a published page.
-# RUSTDOCFLAGS=-D warnings makes every doc warning a failure, and
-# `#![deny(missing_docs)]` in src/lib.rs makes an undocumented public item
-# one too.
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet 2>&1 || fail "cargo doc --no-deps (RUSTDOCFLAGS=-D warnings)"
-pass "doc"
-# docs.rs builds with every feature on ([package.metadata.docs.rs]), so the
-# `web` build's pages are the published ones.
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet --features web 2>&1 \
-    || fail "cargo doc --no-deps --features web (RUSTDOCFLAGS=-D warnings)"
-pass "doc (web feature)"
-
-# 4. Security audit (licenses + advisories) — skip if cargo-deny not installed
-if cargo deny --version &>/dev/null; then
-    cargo deny check 2>&1 || fail "cargo deny check"
-    pass "deny"
-else
-    echo "  - deny (skipped, cargo-deny not installed)"
+# A real push passes the remote's name and URL. With no ref lines after them,
+# no ref would update, so there is nothing to check. A hand run passes neither
+# and checks everything.
+if [ "$#" -ge 2 ] && [ -z "${HOOK_PUSH_REFS:-}" ]; then
+  echo "pre-push: nothing to push"
+  exit 0
 fi
 
-# 5. Shellcheck — lint shell scripts (and the pre-push hook itself). Severity
-# threshold "warning" catches real bugs (unused vars, quoting issues, missing
-# exits) while ignoring info/style noise like SC2016 for intentional jaq
-# filters with single quotes. Skip silently if shellcheck isn't installed —
-# the maintainer machine has it via Homebrew (`brew install shellcheck`).
-if command -v shellcheck &>/dev/null; then
-    mapfile -t shell_files < <({
-        git ls-files '*.sh' 2>/dev/null
-        git ls-files 'scripts/hooks/*' 2>/dev/null
-    } | sort -u)
-    if [ ${#shell_files[@]} -gt 0 ]; then
-        shellcheck --severity=warning "${shell_files[@]}" || fail "shellcheck --severity=warning"
-    fi
-    pass "shellcheck"
-else
-    echo "  - shellcheck (skipped: install via \`brew install shellcheck\` or \`apt install shellcheck\`)"
+fail=0
+
+# The cargo steps run unless the pushed paths are known and the repo's
+# cargo-inputs.sh classifier finds no cargo input among them (see needs_cargo).
+run_cargo=true
+if changed=$(pushed_paths) && ! needs_cargo "$changed"; then
+  run_cargo=false
 fi
 
-# 6. Windows cross-check (fast): verify no unconditional use of unix-only APIs.
+banner "Running local CI checks..."
+
+if $run_cargo; then
+  # Toolchain banner: surface the resolved version before any cargo step, so a
+  # stale machine sees it at the top of the run. rust-toolchain.toml pins it, and
+  # CI reads the same file; rustup verifies component SHA256s from the
+  # distribution manifest, so the pin works as a SHA pin. No `rustup update`
+  # here: a toolchain bump is a reviewed PR that edits rust-toolchain.toml.
+  show_toolchain
+
+  # 1. Format check
+  step "fmt" "cargo fmt -- --check" check_cargo_fmt || fail=1
+
+  # 2. Clippy with warnings-as-errors: CI's RUSTFLAGS=-Dwarnings as a clippy
+  # argument, since cargo keys every dependency build on RUSTFLAGS.
+  step "clippy" "cargo clippy -- -D warnings" check_clippy || fail=1
+  # The `web` feature (the local web audit, off by default), as CI's "Web
+  # feature" job builds it.
+  step "clippy (web feature)" "cargo clippy --all-targets --features web -- -D warnings" \
+    check_clippy --all-targets --features web || fail=1
+
+  # 3. Tests, for the default feature set and for the `web` feature.
+  step "test" "cargo test" check_tests || fail=1
+  step "test (web feature)" "cargo test --features web" check_tests --features web || fail=1
+
+  # 4. MSRV check: compile against the rust-version declared in Cargo.toml.
+  # Library crates declare a lower MSRV than the rust-toolchain.toml pin; this
+  # validates the declared promise so consumers on the MSRV still see a working
+  # crate. Requires the MSRV toolchain installed; the library skips with a hint
+  # otherwise. The version is read here so both the pass line and the rerun hint
+  # name it.
+  msrv=$(msrv_version)
+  step "msrv${msrv:+ ($msrv)}" "cargo +${msrv:-MSRV} check" check_msrv || fail=1
+
+  # 5. Doc build: catch doc-comment breakage (broken intra-doc links, missing
+  # code-fence markers) that would render badly on docs.rs. The crate publishes
+  # a library whose docs.rs page is the README plus the `web_audit` surface, and
+  # `#![deny(missing_docs)]` in src/lib.rs makes an undocumented public item a
+  # failure too. docs.rs builds with every feature on
+  # ([package.metadata.docs.rs]), so the `web` build's pages are the published
+  # ones.
+  step "doc" "cargo doc --no-deps (RUSTDOCFLAGS=-D warnings)" check_doc || fail=1
+  check_doc_web() {
+    cargo_ready "doc (web feature)" || return
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet --features web 2>&1
+  }
+  step "doc (web feature)" "cargo doc --no-deps --features web (RUSTDOCFLAGS=-D warnings)" check_doc_web || fail=1
+
+  # 6. Security audit (licenses + advisories)
+  step "deny" "cargo deny check" check_deny || fail=1
+else
+  pass "cargo steps: this push changes no cargo input"
+fi
+
+# Steps 1-6 above stay serial: every one of them takes the cargo build lock, so
+# running them together would serialize on the lock anyway and interleave their
+# output while doing it. Steps 7 and 8 and the core-env guard take no lock and
+# only read files, so they run together and the slowest sets their wall-clock.
+
+# 7. Shell correctness and layout over every tracked script, the hooks included.
+step_bg "shellcheck" "shellcheck --severity=warning" check_shell_all
+step_bg "shfmt" "shfmt -i 2 -ci -bn -d" check_shfmt_all
+
+# 8. Workflow lint over every tracked workflow file.
+step_bg "actionlint" "actionlint" check_actionlint_all
+step_bg "concurrency namespacing" "scripts/check-workflow-concurrency.sh" check_workflow_concurrency_all
+
+# No tracked test resets a core environment variable, and no allowlist entry has
+# gone stale.
+step_bg "core-env guard" "scripts/hooks/core-env-guard.sh" check_core_env_all
+
+step_wait || fail=1
+
+# 9. Windows cross-check (fast): verify no unconditional use of unix-only APIs.
 # Catches the libc::SIGPIPE class of issue without invoking a Windows toolchain
-# — runs in milliseconds. Step 7 is the comprehensive backstop.
-if rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ | rg -v '#\[cfg(unix)\]' | rg -v '// *#\[cfg' | rg -qv '^$'; then
-    violations=$(rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ 2>/dev/null || true)
-    if [ -n "$violations" ]; then
-        while IFS= read -r line; do
-            file=$(echo "$line" | cut -d: -f1)
-            lineno=$(echo "$line" | cut -d: -f2)
-            before=$(sed -n "$((lineno > 3 ? lineno - 3 : 1)),${lineno}p" "$file")
-            if ! echo "$before" | rg -q 'cfg\(unix\)'; then
-                fail "libc unix-only API used without #[cfg(unix)] at $file:$lineno"
-            fi
-        done <<< "$violations"
+#: runs in milliseconds. Step 10 is the comprehensive backstop. Inline rather
+# than in the library: pre-commit has no use for it, and the pattern is
+# per-project.
+#
+# CUSTOMIZE: the libc pattern below assumes the project's only unix-only
+# entry points are libc::SIGPIPE / SIG_DFL / signal. If the project pulls in
+# other unix-only APIs (e.g. `nix::*`, `std::os::unix::*`), add them to the
+# grep alternation.
+check_windows_libc() {
+  have rg || skip "windows compat (libc grep)" "install via \`brew install ripgrep\`" || return
+  local violations file lineno before rc=0
+  violations=$(rg -n 'libc::(SIGPIPE|SIG_DFL|signal)' --type rust src/ 2>/dev/null || true)
+  [ -n "$violations" ] || return 0
+  while IFS= read -r line; do
+    file=${line%%:*}
+    lineno=$(echo "$line" | cut -d: -f2)
+    before=$(sed -n "$((lineno > 3 ? lineno - 3 : 1)),${lineno}p" "$file")
+    # Here-string, not a pipe: `rg -q` exits at its first match, and under
+    # `pipefail` that kills the producer and makes a *matching* pipeline
+    # non-zero, which this `!` would read as "no cfg(unix) found" and fail a
+    # correctly-gated call site.
+    if ! rg -q 'cfg\(unix\)' <<<"$before"; then
+      step_failed "libc unix-only API used without #[cfg(unix)] at $file:$lineno"
+      rc=1
     fi
-    pass "windows compat (libc grep)"
-else
-    pass "windows compat (libc grep)"
+  done <<<"$violations"
+  return "$rc"
+}
+if $run_cargo; then
+  step "windows compat (libc grep)" "unix-only libc API outside #[cfg(unix)]" check_windows_libc || fail=1
 fi
 
-# 7. Windows cross-clippy: full type-check of the codebase as if compiling for
+# 10. Windows cross-clippy: full type-check of the codebase as if compiling for
 # x86_64-pc-windows-gnu. Catches cfg-gated unused imports, conditional dead
 # code, and any other warning class that only surfaces on Windows. Linux
 # clippy alone misses these because `#[cfg(unix)]` filters out their usage
-# sites locally — the warning only fires on the platform where the gate
-# excludes them.
+# sites locally: the warning only fires on the platform where the gate
+# excludes them. Inline for the same reason as step 9.
 #
 # Requirements (one-time setup):
 #   sudo apt install mingw-w64                          # the C linker tree-sitter needs
@@ -189,22 +223,34 @@ fi
 #
 # The `web` feature also needs cmake, which the native build already uses.
 # If a tool is missing its step is skipped with a one-line note rather than
-# failing — but local Windows coverage is then absent, and CI's Windows jobs
+# failing: but local Windows coverage is then absent, and CI's Windows jobs
 # become the only backstop. Install all of them to close that gap.
-if command -v x86_64-w64-mingw32-gcc &>/dev/null \
-    && rustup target list --installed 2>/dev/null | grep -q '^x86_64-pc-windows-gnu$'; then
-    cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet -- -D warnings 2>&1 \
-        || fail "cargo clippy --target x86_64-pc-windows-gnu -- -D warnings"
-    pass "windows clippy (cross-target)"
-    if command -v nasm &>/dev/null; then
-        cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web --quiet -- -D warnings 2>&1 \
-            || fail "cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web -- -D warnings"
-        pass "windows clippy (cross-target, web feature)"
-    else
-        echo "  - windows clippy, web feature (skipped: install \`nasm\` to enable)"
-    fi
-else
-    echo "  - windows clippy (skipped: install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\` to enable)"
+check_windows_clippy() {
+  have x86_64-w64-mingw32-gcc \
+    && grep -q '^x86_64-pc-windows-gnu$' <<<"$(rustup target list --installed 2>/dev/null)" \
+    || skip "windows clippy (cross-target)" \
+      "install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\`" || return
+  cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet -- -D warnings 2>&1
+}
+check_windows_clippy_web() {
+  have x86_64-w64-mingw32-gcc \
+    && grep -q '^x86_64-pc-windows-gnu$' <<<"$(rustup target list --installed 2>/dev/null)" \
+    || skip "windows clippy (cross-target, web feature)" \
+      "install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\`" || return
+  have nasm || skip "windows clippy (cross-target, web feature)" "install \`nasm\` to enable" || return
+  cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web --quiet -- -D warnings 2>&1
+}
+if $run_cargo; then
+  step "windows clippy (cross-target)" "cargo clippy --target x86_64-pc-windows-gnu -- -D warnings" \
+    check_windows_clippy || fail=1
+  step "windows clippy (cross-target, web feature)" \
+    "cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web -- -D warnings" \
+    check_windows_clippy_web || fail=1
 fi
 
-echo -e "${BOLD}${GREEN}All checks passed.${RESET}"
+[ "$fail" -eq 0 ] || {
+  echo "pre-push checks failed (see CONTRIBUTING.md, Pre-push hook battery)." >&2
+  exit 1
+}
+
+banner "All checks passed."

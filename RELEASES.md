@@ -1,3 +1,4 @@
+<!-- Canonical version: 2026.10.22 (generic) -->
 # Releasing `agentnative`
 
 Operational runbook. Rationale lives in [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md). Pre-cut go/no-go checklist
@@ -65,10 +66,10 @@ optional: fill `## Breaking Changes` on a major, delete the rest when they do no
 - **Zero verification artifacts in the body.** No triple-diff stats, leak-check output ("`guard-main-docs` runs clean"),
   patch-id cherry-check counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
   push, not audit-trailed.
-- **Changelog** subsections (`### Added` / `### Changed` / `### Fixed` / `### Documentation` from the template, plus
-  `### Breaking changes` or `### Deprecated` when a change needs one; the generator orders all six): 1-5 bullets each,
-  delete empty subsections, each bullet starts with a verb. A `## Changelog` heading left standing with no bullets under
-  it says the PR ships nothing user-facing, and `generate-changelog.py` adds nothing for it, whatever the PR title says.
+- **Changelog** subsections (`### Breaking changes` / `### Added` / `### Changed` / `### Deprecated` / `### Removed` /
+  `### Fixed` / `### Documentation`): 1-5 bullets each, delete empty subsections, each bullet starts with a verb. A
+  `## Changelog` heading left standing with no bullets under it says the PR ships nothing user-facing, and
+  `generate-changelog.py` adds nothing for it, whatever the PR title says.
 - **Type of Change**: one checkbox. Prefer `feat`/`fix` over `chore` for any user-observable change.
 - **Related Issues/Stories**: four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four required
   even when empty (`- None.` / `n/a`).

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Canonical version: 2026.06.22 (rust)
+#
 # generate-completions.sh — Generate or verify shell completions for a Rust CLI.
 #
 # Usage:
@@ -21,8 +23,14 @@ REPO_PATH="."
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --check) MODE="check"; shift ;;
-    *) REPO_PATH="$1"; shift ;;
+    --check)
+      MODE="check"
+      shift
+      ;;
+    *)
+      REPO_PATH="$1"
+      shift
+      ;;
   esac
 done
 
@@ -129,7 +137,7 @@ if [[ "$MODE" == "check" ]]; then
 else
   mkdir -p completions
   for shell in "${SHELLS[@]}"; do
-    gen "$shell" > "completions/$BIN.$shell"
+    gen "$shell" >"completions/$BIN.$shell"
     echo "Generated: completions/$BIN.$shell"
   done
   echo "Done. Commit completions/ when ready."

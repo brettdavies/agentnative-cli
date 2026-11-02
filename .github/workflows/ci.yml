@@ -88,7 +88,10 @@ jobs:
 
   # The reusable workflow above builds the default feature set. The local web
   # audit is the `web` feature, off by default, so these jobs hold that build
-  # to the same clippy, test and Windows bars.
+  # to the same clippy, test and Windows bars. They do not wait on the scope
+  # job, and must not: cargo-inputs.sh counts src/principles/spec/principles/*.md
+  # as documentation because build.rs finds them with read_dir, not by name, so
+  # the jobs below are the only CI that builds a change to only those files.
   web:
     name: Web feature (clippy, test)
     runs-on: ubuntu-22.04

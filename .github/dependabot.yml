@@ -1,3 +1,5 @@
+# Canonical version: 2026.10.02 (generic)
+#
 # Dependabot configuration.
 #
 # Two ecosystems: cargo for Rust dependencies, github-actions for workflow
@@ -39,8 +41,6 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 1
-    reviewers:
-      - brettdavies
     labels:
       - dependencies
       - rust
@@ -64,8 +64,6 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 3
-    reviewers:
-      - brettdavies
     labels:
       - dependencies
       - github-actions

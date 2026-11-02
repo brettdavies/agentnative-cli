@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Canonical version: 2026.11.01 (generic)
+#
 # Shared bash utilities for the release-(pre|post)flight orchestrators and any
 # project-authored surface-smoke suite that wants to participate in the
 # orchestrator's PASS/FAIL/SKIP accounting. Source via:

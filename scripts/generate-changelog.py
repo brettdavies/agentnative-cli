@@ -1,4 +1,5 @@
 #!/usr/bin/env -S PYTHONDONTWRITEBYTECODE=1 uv run --script
+# Canonical version: 2026.10.29 (generic)
 # /// script
 # requires-python = ">=3.11"
 # dependencies = []

@@ -184,13 +184,21 @@ declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. An entry 
 flag: `noconfirm` is `--noconfirm`, and `y` is `-y`. A pass that needed a declared flag says so in the row's evidence,
 naming the subcommand, the flag, and the file: `destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`.
 
-`not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`, `clean`,
-and names built on them). A tool whose `clean` clears regenerable caches, for one, declares it here, and the audit
-leaves it out of the destructive set. Entries are lowercase; they are compared with the lowercased subcommand name. The
-row's evidence names each subcommand left out and the file that declared it:
-`declared not destructive: clean via .anc.toml [p5].not_destructive`. When every destructive subcommand is declared, the
-row is `skip`, as for a tool with none. A declared subcommand still counts as a write for
+`not_destructive`: P5 defines a destructive operation by its effect: it deletes or overwrites data the tool cannot
+regenerate, or modifies many records at once. `p5-must-force-yes` can only read a name, so it treats a subcommand as
+destructive by its name (`delete`, `rm`, `purge`, `clean`, and names built on them). A tool whose `clean` clears
+regenerable caches, for one, declares it here, and the audit applies that as the author's claim and leaves it out of the
+destructive set. A false declaration is the author's published statement. Entries are lowercase; they are compared with
+the lowercased subcommand name. The row's evidence names each subcommand left out and the file that declared it,
+`declared not destructive: clean via .anc.toml [p5].not_destructive`, and its `waivers` field lists them as
+`{subcommand, file}`. Text mode prints that evidence under the row, on a pass as well. When every destructive subcommand
+is declared, the row is `skip`, as for a tool with none. A declared subcommand still counts as a write for
 `p5-must-read-write-distinction`, because clearing a cache changes state.
+
+An entry that is not lowercase, or that names no subcommand the help lists, is not applied, and the row's evidence says
+so: `` `Clean` in .anc.toml [p5].not_destructive was not applied: entries are lowercase, so write `clean` `` or
+`` `purge` in .anc.toml [p5].not_destructive was not applied: the help lists no such subcommand ``. An entry for a
+listed subcommand whose name does not read as destructive has nothing to waive and changes nothing.
 
 `domain_verbs`: `p6-may-standard-names` passes when most subcommand names are standard verbs. A declared verb counts
 beside the built-in list. Entries are lowercase; they are compared with the lowercased subcommand name. A pass that
@@ -522,10 +530,10 @@ the run as `untrusted-certificate`, exit 3, naming the roots it was checked agai
 
 The two verbs emit different documents, and each `emit` verb serves its own schema:
 
-| Verb        | Scorecard                                | Schema                |
-| ----------- | ---------------------------------------- | --------------------- |
-| `anc audit` | the CLI scorecard (`schema_version` 0.9) | `anc emit schema`     |
-| `anc web`   | the web scorecard (`schema_version` 0.5) | `anc emit web-schema` |
+| Verb        | Scorecard                                 | Schema                |
+| ----------- | ----------------------------------------- | --------------------- |
+| `anc audit` | the CLI scorecard (`schema_version` 0.10) | `anc emit schema`     |
+| `anc web`   | the web scorecard (`schema_version` 0.5)  | `anc emit web-schema` |
 
 The web scorecard is byte-identical to what anc.dev emits for the same target, which the conformance suite holds to a
 committed corpus of the hosted engine's own output. Its `spec_version` and the registry version the run scored against
@@ -907,14 +915,14 @@ Pre-generated scripts are also available in `completions/`.
 anc audit . --output json
 ```
 
-Produces a self-describing scoring run record (`schema_version: "0.9"`) with results, summary, coverage against the
+Produces a self-describing scoring run record (`schema_version: "0.10"`) with results, summary, coverage against the
 eight principles, plus contextual metadata identifying which tool was scored, by which `anc` build, on which platform,
 and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema` (also committed at
 `schema/scorecard.schema.json`):
 
 ```json
 {
-  "schema_version": "0.9",
+  "schema_version": "0.10",
   "results": [
     {
       "id": "p3-must-top-level-examples",
@@ -1014,7 +1022,8 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
 - `evidence` on a `pass` row: what the audit matched, for an audit that names it (`p7-limit` names each list command and
   its limit flag), then, when an `.anc.toml` setting decided the pass, the setting, what it contributed, and the file
   that supplied it, such as `destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`. The two parts are joined by
-  a semicolon. `null` when the pass carries neither. See [Configuration](#configuration-anctoml).
+  a semicolon. A `p5-must-force-yes` row also names each `not_destructive` entry `anc` did not apply. `null` when the
+  pass carries none of these. See [Configuration](#configuration-anctoml).
 - `config_hint`: present only on a `p6-may-standard-names` warning when no `.anc.toml` declared `domain_verbs`. `files`
   lists where the setting can go, each as `{file, scope}`: `file` is `.anc.toml`, `~/.anc.toml`, or
   `$AGENTNATIVE_HOME_CONFIG` (never an absolute path), and `scope` is `repository` (the root of the repository this
@@ -1022,6 +1031,10 @@ and how. Each scorecard conforms to the JSON Schema emitted by `anc emit schema`
   outside any repository; read from a checkout or through `--repo`), or `user` (applies to every audit on the machine).
   The repository's file comes first. `domain_verbs` lists the flagged verbs to add under `[p6]`, and `docs` links
   [Configuration](#configuration-anctoml). Schema `0.9` addition.
+- `waivers`: present only on a `p5-must-force-yes` row, of any status, where `[p5] not_destructive` took a subcommand out
+  of the audit. One `{subcommand, file}` per subcommand: `subcommand` as the help lists it, and `file` as evidence names
+  it (`.anc.toml`, a repo-relative path, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG`; never an absolute path). See
+  [Configuration](#configuration-anctoml). Schema `0.10` addition.
 
 > Publishing a scorecard? `run.invocation` may carry usernames or absolute paths from the machine that produced the
 > scorecard. `target.path` is intentionally the basename only and is safe to commit. Review `run.invocation` before

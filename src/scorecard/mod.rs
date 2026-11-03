@@ -13,7 +13,7 @@ use serde::Serialize;
 use crate::audit::Audit;
 use crate::principles::registry::{Level, REQUIREMENTS, SPEC_VERSION};
 use crate::types::{
-    AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint, ConfigScope, Mitigation,
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, ConfigHint, ConfigScope, Mitigation, Waiver,
 };
 
 /// Current scorecard JSON schema version. Consumers (site rendering,
@@ -38,8 +38,11 @@ use crate::types::{
 /// `.anc.toml [p6] domain_verbs` recognition; Pass evidence string
 /// populated with the built-in / domain ratio), `0.9` (optional
 /// `config_hint` on a row whose warning a `.anc.toml` setting would clear:
-/// the files it can go in, the `domain_verbs` to add, and the README section).
-pub const SCHEMA_VERSION: &str = "0.9";
+/// the files it can go in, the `domain_verbs` to add, and the README section),
+/// `0.10` (optional `waivers` on a row whose verdict `.anc.toml [p5]
+/// not_destructive` shaped: each subcommand it took out of the audit and the
+/// file that declared it).
+pub const SCHEMA_VERSION: &str = "0.10";
 
 /// Eligibility floor for the agent-native badge, expressed as an integer
 /// percent. A score that meets or exceeds this floor qualifies a tool to
@@ -434,6 +437,11 @@ pub struct AuditResultView {
     /// from every row without one. Schema `0.9` addition.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_hint: Option<ConfigHint>,
+    /// Each subcommand `.anc.toml [p5] not_destructive` took out of this
+    /// row's audit and the file that declared it. Absent from every row
+    /// without one, whatever its status. Schema `0.10` addition.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waivers: Vec<Waiver>,
 }
 
 // A Pass row's evidence reads what the audit observed before the
@@ -446,6 +454,7 @@ fn pass_row_evidence(r: &AuditResult) -> Option<String> {
             crate::audits::behavioral::standard_names::format_pass_evidence(info)
         }
         Mitigation::Config(prose) => prose.clone(),
+        Mitigation::NotDestructive { evidence, .. } => evidence.clone(),
     });
     match (r.pass_evidence.as_deref(), declared) {
         (Some(observed), Some(declared)) => {
@@ -522,6 +531,10 @@ impl AuditResultView {
             using_domain_verbs,
             domain_match_count,
             config_hint: r.config_hint.clone(),
+            waivers: match &r.mitigation {
+                Some(Mitigation::NotDestructive { waivers, .. }) => waivers.clone(),
+                _ => Vec::new(),
+            },
         }
     }
 }
@@ -676,6 +689,11 @@ pub fn format_text(
                 .unwrap_or_default();
             let _ = writeln!(out, "  [{painted}] {} ({}){tier_suffix}", r.label, r.id);
             match &r.status {
+                AuditStatus::Pass => {
+                    if let Some(Mitigation::NotDestructive { evidence, .. }) = &r.mitigation {
+                        let _ = writeln!(out, "         {evidence}");
+                    }
+                }
                 AuditStatus::Warn(e) | AuditStatus::Fail(e) | AuditStatus::Error(e) => {
                     for line in e.lines() {
                         let _ = writeln!(out, "         {line}");
@@ -1086,7 +1104,7 @@ mod tests {
         ];
         let json = format_json(&results, &[], None, None, fixture_metadata());
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-        assert_eq!(parsed["schema_version"], "0.9");
+        assert_eq!(parsed["schema_version"], "0.10");
         assert_eq!(parsed["summary"]["total"], 2);
         assert_eq!(parsed["summary"]["pass"], 1);
         assert_eq!(parsed["summary"]["fail"], 1);
@@ -1330,7 +1348,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["audience"], "agent-optimized");
         assert!(parsed["audit_profile"].is_null());
-        assert_eq!(parsed["schema_version"], "0.9");
+        assert_eq!(parsed["schema_version"], "0.10");
     }
 
     #[test]
@@ -1606,7 +1624,7 @@ mod tests {
         }
 
         // 0.4 + 0.5 additions — every documented sub-key resolves.
-        assert_eq!(parsed["schema_version"], "0.9");
+        assert_eq!(parsed["schema_version"], "0.10");
         for path in [
             // 0.4
             "tool.name",

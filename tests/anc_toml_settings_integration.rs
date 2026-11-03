@@ -74,6 +74,18 @@ impl Fixture {
             .unwrap_or_else(|| panic!("no {id} row: {stdout}"))
             .clone()
     }
+
+    /// The stdout of `anc audit <bin> --repo <repo> --output text`.
+    fn text(&self) -> String {
+        let output = Command::cargo_bin("anc")
+            .expect("anc binary")
+            .env("AGENTNATIVE_HOME_CONFIG", &self.home_file)
+            .args(["audit", path_str(&self.bin), "--repo", path_str(&self.repo)])
+            .args(["--output", "text"])
+            .output()
+            .expect("spawn anc");
+        String::from_utf8(output.stdout).expect("utf8 stdout")
+    }
 }
 
 fn write_executable(path: &Path, body: &str) {
@@ -164,6 +176,144 @@ fn not_destructive_from_the_home_file_passes_force_yes_and_names_the_file() {
         row["evidence"],
         "declared not destructive: clean via $AGENTNATIVE_HOME_CONFIG [p5].not_destructive",
         "row: {row}"
+    );
+    assert_eq!(
+        row["waivers"],
+        serde_json::json!([{"subcommand": "clean", "file": "$AGENTNATIVE_HOME_CONFIG"}]),
+        "row: {row}"
+    );
+}
+
+/// biome 2.5.15's shape: `clean` removes the daemon's log files and is the
+/// only subcommand whose name reads as destructive.
+const BIOME_LIKE_CLI: &str = r#"  "clean --help") printf 'Usage: biome clean\n\nOptions:\n  -h, --help  Show help.\n' ;;
+  "--version") echo "Version: 2.5.15" ;;
+  *) printf 'Usage: biome COMMAND\n\nAvailable commands:\n  check  Runs the checks.\n  clean  Removes the Biome daemon server log files.\n' ;;"#;
+
+#[test]
+fn a_waiver_that_empties_the_destructive_set_skips_and_names_the_subcommand_and_the_file() {
+    let row = Fixture::new(BIOME_LIKE_CLI)
+        .repo_config("[p5]\nnot_destructive = [\"clean\"]\n")
+        .row("p5-must-force-yes");
+
+    assert_eq!(row["status"], "skip", "row: {row}");
+    assert_eq!(
+        row["waivers"],
+        serde_json::json!([{"subcommand": "clean", "file": ".anc.toml"}]),
+        "row: {row}"
+    );
+    assert_eq!(
+        row["evidence"],
+        "no destructive subcommands remain; MUST applies conditionally to CLIs with destructive \
+         operations. Subcommands declared not destructive: clean via .anc.toml [p5].not_destructive.",
+        "row: {row}"
+    );
+}
+
+#[test]
+fn a_waiver_sits_beside_a_declared_confirmation_flag_in_a_passing_row() {
+    let script = r#"  "clean --help") printf 'Usage: tool clean\n' ;;
+  "destroy --help") printf 'Usage: tool destroy\n\nOptions:\n      --nuke  Skip the prompt.\n' ;;
+  "--version") echo "tool 1.0.0" ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean    Remove the log files\n  destroy  Destroy the stack\n' ;;"#;
+
+    let row = Fixture::new(script)
+        .repo_config("[p5]\nconfirm_flags = [\"--nuke\"]\nnot_destructive = [\"clean\"]\n")
+        .row("p5-must-force-yes");
+
+    assert_eq!(row["status"], "pass", "row: {row}");
+    assert_eq!(
+        row["evidence"],
+        "destroy accepts --nuke via .anc.toml [p5].confirm_flags; declared not destructive: \
+         clean via .anc.toml [p5].not_destructive",
+        "row: {row}"
+    );
+    assert_eq!(
+        row["waivers"],
+        serde_json::json!([{"subcommand": "clean", "file": ".anc.toml"}]),
+        "row: {row}"
+    );
+}
+
+#[test]
+fn a_waiver_on_a_failing_row_is_still_recorded() {
+    let script = r#"  "clean --help") printf 'Usage: tool clean\n' ;;
+  "delete --help") printf 'Usage: tool delete <ID>\n' ;;
+  "--version") echo "tool 1.0.0" ;;
+  *) printf 'Usage: tool <COMMAND>\n\nCommands:\n  clean   Remove the log files\n  delete  Delete an item\n' ;;"#;
+
+    let row = Fixture::new(script)
+        .repo_config("[p5]\nnot_destructive = [\"clean\"]\n")
+        .row("p5-must-force-yes");
+
+    assert_eq!(row["status"], "fail", "row: {row}");
+    assert_eq!(
+        row["waivers"],
+        serde_json::json!([{"subcommand": "clean", "file": ".anc.toml"}]),
+        "row: {row}"
+    );
+}
+
+#[test]
+fn an_entry_that_is_not_lowercase_leaves_the_subcommand_destructive_and_names_the_casing() {
+    let row = Fixture::new(BIOME_LIKE_CLI)
+        .repo_config("[p5]\nnot_destructive = [\"Clean\"]\n")
+        .row("p5-must-force-yes");
+
+    assert_eq!(row["status"], "fail", "row: {row}");
+    let evidence = row["evidence"].as_str().expect("evidence");
+    assert!(
+        evidence.contains("lists no confirmation flag: clean."),
+        "{evidence}"
+    );
+    assert!(
+        evidence.ends_with(
+            "`Clean` in .anc.toml [p5].not_destructive was not applied: entries are lowercase, \
+             so write `clean`."
+        ),
+        "{evidence}"
+    );
+    assert!(row.get("waivers").is_none(), "row: {row}");
+}
+
+#[test]
+fn an_entry_naming_no_listed_subcommand_warns_that_it_matches_nothing() {
+    let row = Fixture::new(CLEAN_CLI)
+        .repo_config("[p5]\nnot_destructive = [\"purge\", \"clean\"]\n")
+        .row("p5-must-force-yes");
+
+    assert_eq!(row["status"], "pass", "row: {row}");
+    assert_eq!(
+        row["evidence"],
+        "declared not destructive: clean via .anc.toml [p5].not_destructive; `purge` in \
+         .anc.toml [p5].not_destructive was not applied: the help lists no such subcommand",
+        "row: {row}"
+    );
+    assert_eq!(
+        row["waivers"],
+        serde_json::json!([{"subcommand": "clean", "file": ".anc.toml"}]),
+        "row: {row}"
+    );
+}
+
+#[test]
+fn text_mode_prints_what_not_destructive_did_on_a_passing_row() {
+    let text = Fixture::new(CLEAN_CLI)
+        .repo_config("[p5]\nnot_destructive = [\"purge\", \"clean\"]\n")
+        .text();
+
+    let row = text
+        .lines()
+        .position(|line| line.contains("(p5-must-force-yes)"))
+        .unwrap_or_else(|| panic!("no p5-must-force-yes line: {text}"));
+    let evidence = text.lines().nth(row + 1).expect("a line under the row");
+    assert!(
+        evidence.contains("declared not destructive: clean via .anc.toml [p5].not_destructive"),
+        "{evidence}"
+    );
+    assert!(
+        evidence.contains("`purge` in .anc.toml [p5].not_destructive was not applied"),
+        "{evidence}"
     );
 }
 

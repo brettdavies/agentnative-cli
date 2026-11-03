@@ -20,7 +20,8 @@
 //! the schema surface.
 //! `confirm_flags` names flags that confirm a destructive subcommand, beside
 //! the built-in names `p5-must-force-yes` accepts; `not_destructive` names
-//! subcommands that audit leaves out of its destructive set. `domain_verbs` extends the
+//! subcommands that audit leaves out of its destructive set, on the author's
+//! claim that they lack the effect P5 defines. `domain_verbs` extends the
 //! built-in standard-verb list consulted by the `p6-may-standard-names`
 //! audit. Built-ins stay conservative across all CLIs; a CLI whose
 //! vocabulary diverges from them (an X CLI shipping `post` / `like` /

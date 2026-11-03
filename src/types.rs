@@ -219,7 +219,7 @@ pub enum ConfigScope {
     User,
 }
 
-/// The `.anc.toml` setting a Pass depended on. The scorecard renders either
+/// The `.anc.toml` setting a verdict depended on. The scorecard renders every
 /// variant as the Pass row's `evidence`.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub enum Mitigation {
@@ -229,6 +229,27 @@ pub enum Mitigation {
     /// Any other setting: the prose names the setting, the values it
     /// contributed, and the file that supplied them.
     Config(String),
+    /// `p5-force-yes` read `[p5] not_destructive`. Set on a row of any status,
+    /// because a waiver shapes a Skip or a Fail as much as a Pass. `evidence`
+    /// is the Pass row's prose; any other status carries it in its own
+    /// evidence.
+    NotDestructive {
+        waivers: Vec<Waiver>,
+        evidence: String,
+    },
+}
+
+/// A subcommand `[p5] not_destructive` took out of `p5-force-yes`'s
+/// destructive set, on the author's claim that it does not have the effect
+/// P5 defines.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+pub struct Waiver {
+    /// The subcommand, spelled as the help lists it.
+    pub subcommand: String,
+    /// The file that declared it, named the way evidence names files: never
+    /// an absolute path.
+    pub file: String,
 }
 
 /// Transparency metadata attached to an `AuditResult` when

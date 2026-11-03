@@ -1,10 +1,14 @@
 //! Audit: `p5-must-force-yes`.
 //!
-//! Destructive operations (delete, overwrite, bulk modify) MUST require an
+//! Destructive operations (those that delete or overwrite data the tool
+//! cannot regenerate, or modify many records at once) MUST require an
 //! explicit confirmation flag, `--yes` or `--force` by preference — agents
 //! shouldn't be able to delete resources by guessing the call shape, and the
 //! explicit flag makes the intent auditable in process tables and shell
 //! history.
+//!
+//! P5 defines destructive by effect, and a name cannot show an effect, so the
+//! audit detects by name and applies the author's declaration as a claim.
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
 //! less any the `.anc.toml` chain declares in `[p5] not_destructive`, probe
@@ -24,7 +28,7 @@ use crate::audits::behavioral::subcommand_help::{dash_rule_notes, probe_subcomma
 use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{
-    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict,
+    AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Mitigation, Verdict, Waiver,
 };
 
 /// Flags that confirm a destructive operation non-interactively.
@@ -133,10 +137,13 @@ impl Audit for ForceYesAudit {
         let verdict = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()).into(),
             Some(top_help) => {
-                let (destructive, excluded) =
-                    without_declared(&destructive_subcommands(top_help), not_destructive);
-                let verdict = if destructive.is_empty() {
-                    let found = if excluded.is_empty() {
+                let declared = read_not_destructive(
+                    &destructive_subcommands(top_help),
+                    top_help.subcommands(),
+                    not_destructive,
+                );
+                let verdict = if declared.destructive.is_empty() {
+                    let found = if declared.waivers.is_empty() {
                         "no destructive subcommands detected"
                     } else {
                         "no destructive subcommands remain"
@@ -148,9 +155,9 @@ impl Audit for ForceYesAudit {
                 } else {
                     let runner = project.runner_ref();
                     let subhelp = probe_subcommands(runner, top_help);
-                    audit_force_yes(&destructive, &subhelp, declared_flags)
+                    audit_force_yes(&declared.destructive, &subhelp, declared_flags)
                 };
-                with_exclusions(verdict, &excluded)
+                with_not_destructive(verdict, declared)
             }
         };
         let status = match project.anc_config.void_note() {
@@ -248,33 +255,102 @@ pub(crate) fn audit_force_yes(
     .into()
 }
 
-/// Split `detected` into the subcommands that stay destructive and, cited
-/// with the file that declared it, each one `not_destructive` removes.
-pub(crate) fn without_declared(
+/// What `[p5] not_destructive` did to the subcommands detected as destructive.
+pub(crate) struct NotDestructive {
+    /// The detected subcommands no entry waives.
+    destructive: Vec<String>,
+    waivers: Vec<Waiver>,
+    /// Each entry not applied and why, cited with the file that declared it.
+    unapplied: Vec<String>,
+}
+
+/// Apply `entries` to `detected`, comparing each with the lowercased
+/// subcommand name. An entry that names a listed subcommand whose name does
+/// not read as destructive has nothing to waive and is not an error.
+pub(crate) fn read_not_destructive(
     detected: &[&String],
-    not_destructive: &[Sourced<String>],
-) -> (Vec<String>, Vec<String>) {
+    listed: &[String],
+    entries: &[Sourced<String>],
+) -> NotDestructive {
     let mut destructive = Vec::new();
-    let mut excluded = Vec::new();
+    let mut waivers = Vec::new();
     for name in detected {
         let lower = name.to_lowercase();
-        match not_destructive.iter().find(|entry| entry.value == lower) {
-            Some(entry) => excluded.push(format!("{name} via {}", entry.cite(NOT_DESTRUCTIVE_KEY))),
+        match entries.iter().find(|entry| entry.value == lower) {
+            Some(entry) => waivers.push(Waiver {
+                subcommand: (*name).clone(),
+                file: entry.file.clone(),
+            }),
             None => destructive.push((*name).clone()),
         }
     }
-    (destructive, excluded)
+    NotDestructive {
+        destructive,
+        waivers,
+        unapplied: entries
+            .iter()
+            .filter_map(|entry| why_not_applied(entry, listed))
+            .collect(),
+    }
 }
 
-/// Name the subcommands a declaration removed: in a Pass's evidence beside
-/// any other setting it needed, or at the end of any other status.
-fn with_exclusions(verdict: Verdict, excluded: &[String]) -> Verdict {
-    if excluded.is_empty() {
+fn why_not_applied(entry: &Sourced<String>, listed: &[String]) -> Option<String> {
+    let lower = entry.value.to_lowercase();
+    let reason = if !listed.iter().any(|name| name.to_lowercase() == lower) {
+        "the help lists no such subcommand".to_string()
+    } else if entry.value != lower {
+        format!("entries are lowercase, so write `{lower}`")
+    } else {
+        return None;
+    };
+    Some(format!(
+        "`{}` in {} was not applied: {reason}",
+        entry.value,
+        entry.cite(NOT_DESTRUCTIVE_KEY)
+    ))
+}
+
+/// Record what the declaration did: the waivers on the row, and the waived
+/// subcommands and the entries not applied in the row's evidence, on a Pass
+/// after any other setting it needed, or at the end of any other status.
+fn with_not_destructive(verdict: Verdict, declared: NotDestructive) -> Verdict {
+    let NotDestructive {
+        waivers, unapplied, ..
+    } = declared;
+    let mut prose = Vec::new();
+    let mut notes = Vec::new();
+    if !waivers.is_empty() {
+        let cited: Vec<String> = waivers
+            .iter()
+            .map(|waiver| {
+                format!(
+                    "{} via {} {NOT_DESTRUCTIVE_KEY}",
+                    waiver.subcommand, waiver.file
+                )
+            })
+            .collect();
+        let waived = format!("declared not destructive: {}", cited.join(", "));
+        notes.push(format!("Subcommands {waived}."));
+        prose.push(waived);
+    }
+    for entry in unapplied {
+        notes.push(format!("{entry}."));
+        prose.push(entry);
+    }
+    if prose.is_empty() {
         return verdict;
     }
-    let declared = format!("declared not destructive: {}", excluded.join(", "));
-    let note = format!("Subcommands {declared}.");
-    verdict.crediting(declared, &note)
+    let prose = prose.join("; ");
+    Verdict {
+        status: verdict.status.with_note(&notes.join(" ")),
+        mitigation: Some(Mitigation::NotDestructive {
+            waivers,
+            evidence: match verdict.mitigation {
+                Some(Mitigation::Config(earlier)) => format!("{earlier}; {prose}"),
+                _ => prose,
+            },
+        }),
+    }
 }
 
 /// The built-in names, the names that count by their description, then each
@@ -614,14 +690,60 @@ mod tests {
 
     #[test]
     fn a_declared_not_destructive_subcommand_leaves_the_destructive_set() {
-        let detected = ["clean".to_string(), "Purge".to_string()];
-        let detected: Vec<&String> = detected.iter().collect();
+        let listed = ["clean".to_string(), "Purge".to_string()];
+        let detected: Vec<&String> = listed.iter().collect();
 
-        let (destructive, excluded) =
-            without_declared(&detected, &[declared("clean", ".anc.toml")]);
+        let read = read_not_destructive(&detected, &listed, &[declared("clean", ".anc.toml")]);
 
-        assert_eq!(destructive, ["Purge"]);
-        assert_eq!(excluded, ["clean via .anc.toml [p5].not_destructive"]);
+        assert_eq!(read.destructive, ["Purge"]);
+        assert_eq!(
+            read.waivers,
+            [Waiver {
+                subcommand: "clean".into(),
+                file: ".anc.toml".into()
+            }]
+        );
+        assert!(read.unapplied.is_empty(), "{:?}", read.unapplied);
+    }
+
+    #[test]
+    fn a_lowercase_entry_waives_a_subcommand_the_help_spells_in_another_case() {
+        let listed = ["Purge".to_string()];
+        let detected: Vec<&String> = listed.iter().collect();
+
+        let read = read_not_destructive(&detected, &listed, &[declared("purge", ".anc.toml")]);
+
+        assert!(read.destructive.is_empty(), "{:?}", read.destructive);
+        assert_eq!(read.waivers[0].subcommand, "Purge");
+        assert!(read.unapplied.is_empty(), "{:?}", read.unapplied);
+    }
+
+    #[test]
+    fn an_entry_for_a_listed_subcommand_that_reads_as_safe_has_nothing_to_waive() {
+        let listed = ["clean".to_string(), "list".to_string()];
+        let clean = listed[0].clone();
+
+        let read = read_not_destructive(&[&clean], &listed, &[declared("list", ".anc.toml")]);
+
+        assert_eq!(read.destructive, ["clean"]);
+        assert!(read.waivers.is_empty(), "{:?}", read.waivers);
+        assert!(read.unapplied.is_empty(), "{:?}", read.unapplied);
+    }
+
+    #[test]
+    fn an_entry_in_another_case_naming_nothing_listed_says_the_help_lists_no_such_subcommand() {
+        let listed = ["clean".to_string()];
+        let clean = listed[0].clone();
+
+        let read = read_not_destructive(&[&clean], &listed, &[declared("Purge", "~/.anc.toml")]);
+
+        assert_eq!(
+            read.unapplied,
+            [
+                "`Purge` in ~/.anc.toml [p5].not_destructive was not applied: the help lists no \
+              such subcommand"
+            ]
+        );
     }
 
     /// A tool with `clean` (no confirmation flag) and `delete --force`.
@@ -656,9 +778,14 @@ esac"#;
         assert_eq!(with.status, AuditStatus::Pass);
         assert_eq!(
             with.mitigation,
-            Some(Mitigation::Config(
-                "declared not destructive: clean via .anc.toml [p5].not_destructive".into()
-            ))
+            Some(Mitigation::NotDestructive {
+                waivers: vec![Waiver {
+                    subcommand: "clean".into(),
+                    file: ".anc.toml".into()
+                }],
+                evidence: "declared not destructive: clean via .anc.toml [p5].not_destructive"
+                    .into()
+            })
         );
     }
 

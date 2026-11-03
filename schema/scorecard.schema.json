@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://anc.dev/scorecard-v0.9.schema.json",
+  "$id": "https://anc.dev/scorecard-v0.10.schema.json",
   "title": "agentnative scorecard",
-  "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.9). Each result is one requirement row, carrying its RFC 2119 `tier` and the `audit_id` of the probe that produced it; `status` takes one of seven values, with a matching counter in `summary`; a conditional requirement whose antecedent is unmet reads `n_a`. The field reference is at https://anc.dev/scorecard-schema.",
+  "description": "JSON Schema for `anc audit --output json` scorecards (schema version 0.10). Each result is one requirement row, carrying its RFC 2119 `tier` and the `audit_id` of the probe that produced it; `status` takes one of seven values, with a matching counter in `summary`; a conditional requirement whose antecedent is unmet reads `n_a`. The field reference is at https://anc.dev/scorecard-schema.",
   "type": "object",
   "required": [
     "schema_version",
@@ -23,7 +23,7 @@
     "schema_version": {
       "type": "string",
       "description": "Scorecard schema version. Pre-launch additive — consumers feature-detect new fields rather than pin to an exact value.",
-      "examples": ["0.9"]
+      "examples": ["0.10"]
     },
     "results": {
       "type": "array",
@@ -89,7 +89,7 @@
         },
         "evidence": {
           "type": ["string", "null"],
-          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path, the antecedent propagation reason. On a Pass: what the audit matched, for an audit that names it (`list (--max)`), then, when a `.anc.toml` setting decided the Pass, the setting, what it contributed, and the file that supplied it, e.g. `destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`, the two joined by a semicolon. `null` for a Pass that carries neither."
+          "description": "Structured evidence for non-Pass statuses: the suppression-table marker, the unrecognized-flag list, the missing-file path, the antecedent propagation reason. On a Pass: what the audit matched, for an audit that names it (`list (--max)`), then, when a `.anc.toml` setting decided the Pass, the setting, what it contributed, and the file that supplied it, e.g. `destroy accepts -auto-approve via .anc.toml [p5].confirm_flags`, the two joined by a semicolon. A `p5-must-force-yes` row of any status also names each `[p5].not_destructive` entry anc did not apply, and why. `null` for a Pass that carries none of these."
         },
         "confidence": {
           "type": "string",
@@ -117,6 +117,12 @@
         "config_hint": {
           "$ref": "#/$defs/ConfigHint",
           "description": "Schema 0.9+. The `.anc.toml` setting that would clear this row's warning, attached when no config supplied it. Absent from every other row."
+        },
+        "waivers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Waiver" },
+          "description": "Schema 0.10+. Each subcommand `.anc.toml [p5] not_destructive` took out of this row's audit, on the author's declaration that it does not have the effect P5 defines. Only `p5-must-force-yes` carries it, on any status. Absent from every row without a waiver."
         }
       }
     },
@@ -158,6 +164,22 @@
           "type": "string",
           "format": "uri",
           "description": "The README section on where anc looks for `.anc.toml`."
+        }
+      }
+    },
+    "Waiver": {
+      "type": "object",
+      "description": "One subcommand a `[p5] not_destructive` entry took out of `p5-must-force-yes`'s destructive set.",
+      "required": ["subcommand", "file"],
+      "additionalProperties": false,
+      "properties": {
+        "subcommand": {
+          "type": "string",
+          "description": "The subcommand, spelled as the help lists it."
+        },
+        "file": {
+          "type": "string",
+          "description": "The file that declared it, named as evidence names files: repo-relative inside a repository, `~/.anc.toml`, or `$AGENTNATIVE_HOME_CONFIG` when that variable relocated the user-level file. Never an absolute path."
         }
       }
     },
@@ -268,7 +290,7 @@
   },
   "examples": [
     {
-      "schema_version": "0.9",
+      "schema_version": "0.10",
       "results": [
         {
           "id": "p1-must-no-interactive",

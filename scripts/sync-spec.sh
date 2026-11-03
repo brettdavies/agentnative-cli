@@ -2,11 +2,13 @@
 # Vendor agentnative-spec into src/principles/spec/.
 #
 # Default behavior: resolves the latest v* tag of agentnative-spec via the
-# GitHub API and pulls VERSION, CHANGELOG.md, principles/p*-*.md, and
-# principles/scoring.md at that tag. The vendored tree is the build-time
-# input for build.rs, which generates the REQUIREMENTS slice consumed by
-# `anc audit`; scoring.md is reference-only (the scorecard's formula
-# authority) and is not parsed by build.rs.
+# GitHub API and pulls VERSION, CHANGELOG.md, principles/p*-*.md,
+# principles/scoring.md, and principles/flag-names.md at that tag. The
+# vendored tree is the build-time input for build.rs, which generates the
+# REQUIREMENTS slice consumed by `anc audit`; scoring.md (the scorecard's
+# formula authority) and flag-names.md (the flag-name reading rule) are
+# reference-only and are not parsed by build.rs. A ref that predates
+# flag-names.md has none, and the script vendors the rest without it.
 #
 # Override behavior (--ref / SPEC_REF): vendors an explicit branch HEAD,
 # tag, or commit SHA instead of the latest v* tag. Use for cross-repo
@@ -82,7 +84,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h | --help)
-      sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,58p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -222,14 +224,20 @@ fetch_file "CHANGELOG.md" "$DEST_DIR/CHANGELOG.md"
 
 # Enumerate principle files at the ref and extract each one. Filter to
 # p*-*.md so principles/AGENTS.md (spec-side design context, not consumed
-# by the site) is skipped.
+# by the site) is skipped. flag-names.md is fetched only when listed,
+# because a ref that predates the file has none.
 copied=0
+flag_names=false
 while IFS= read -r name; do
   [[ -z "$name" ]] && continue
   case "$name" in
     p[0-9]-*.md | p[0-9][0-9]-*.md)
       fetch_file "principles/$name" "$DEST_PRINCIPLES/$name"
       copied=$((copied + 1))
+      ;;
+    flag-names.md)
+      fetch_file "principles/$name" "$DEST_PRINCIPLES/$name"
+      flag_names=true
       ;;
   esac
 done < <(list_dir "principles")
@@ -245,7 +253,12 @@ fi
 # (its filter requires a leading `p`).
 fetch_file "principles/scoring.md" "$DEST_PRINCIPLES/scoring.md"
 
-echo "wrote $copied principle file(s) + scoring.md to $DEST_PRINCIPLES"
+if $flag_names; then
+  echo "wrote $copied principle file(s) + scoring.md + flag-names.md to $DEST_PRINCIPLES"
+else
+  echo "wrote $copied principle file(s) + scoring.md to $DEST_PRINCIPLES"
+  echo "note: $resolved_ref carries no principles/flag-names.md"
+fi
 echo "wrote VERSION + CHANGELOG.md to $DEST_DIR"
 echo
 echo "next: review \`git diff\` for unexpected changes, then commit."

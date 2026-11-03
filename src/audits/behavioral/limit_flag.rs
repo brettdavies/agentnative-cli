@@ -1,9 +1,10 @@
 //! Audit: `p7-should-limit`.
 //!
-//! A `--limit` or `--max-results` flag lets callers request exactly the
-//! number of items they want from list-style commands. SHOULD-tier;
-//! applicability is gated on the presence of a list-style subcommand
-//! (see `list_style::list_style_subcommands`).
+//! P7 accepts `--limit`, `--max-results`, or an option whose definition bounds
+//! the number of items returned, naming `--max`, `--top`, and `-n` as examples,
+//! so callers can request exactly the number of items they want from list-style
+//! commands. SHOULD-tier; applicability is gated on the presence of a list-style
+//! subcommand (see `list_style::list_style_subcommands`).
 //!
 //! The flag belongs on the list command (`helm list --max`), so the audit
 //! reads each list-style subcommand's own `--help`, plus the top-level help
@@ -14,9 +15,14 @@
 //! (helm, kubectl), `--dry-run` (rclone), and `--no-headers` (xsv). A `-n`
 //! is a limit flag when its long form names a count (`--lines`, `--last`) or
 //! its description says so ("Max results", "number of").
+//!
+//! `--max` and `--top` count only when their description names a count of
+//! returned items, because the names alone also mean a depth, a size, or a
+//! sort order. Declaring the name credits nothing, and a bare "max" says
+//! nothing about what is bounded.
 
 use crate::audit::Audit;
-use crate::audits::behavioral::flag_meaning::{self, Meaning};
+use crate::audits::behavioral::flag_meaning::{self, Meaning, first_sentence, names_any};
 use crate::audits::behavioral::list_style::list_style_subcommands;
 use crate::audits::behavioral::subcommand_help::{
     coverage, dash_rule_notes, first_flag, probe_named,
@@ -26,7 +32,13 @@ use crate::runner::HelpOutput;
 use crate::runner::help_probe::{Flag, is_single_letter};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const LIMIT_FLAGS: &[&str] = &["--limit", "--max-results", "--max", "--top", "-n"];
+const LIMIT_FLAGS: &[&str] = &["--limit", "--max-results", "-n"];
+
+/// Names that count only when the description names a count of returned items.
+const COUNT_WORDED_FLAGS: &[&str] = &["--max", "--top"];
+
+/// What a description says to name a count of returned items.
+const RETURNED_COUNT_WORDS: &[&str] = &["number of", "results", "items"];
 
 /// What `-n` must mean to bound a count.
 const LIMIT: Meaning = Meaning {
@@ -129,8 +141,9 @@ pub(crate) fn audit_limit_flag(
     (
         AuditStatus::Warn(format!(
             "list-style subcommand(s) with no limit flag in their --help: {} \
-             (looked for {}, or a -n that bounds a count).{carried} SHOULD-tier: callers should be able to bound \
-             response size directly rather than scrape-then-truncate.{}",
+             (looked for {}, a --max or --top whose description names a count of returned items, \
+             or a -n that bounds a count, the options P7 accepts).{carried} SHOULD-tier: callers \
+             should be able to bound response size directly rather than scrape-then-truncate.{}{}",
             cov.without_list(),
             LIMIT_FLAGS
                 .iter()
@@ -138,10 +151,38 @@ pub(crate) fn audit_limit_flag(
                 .filter(|name| !is_single_letter(name))
                 .collect::<Vec<_>>()
                 .join(", "),
-            dash_rule_notes(&cov.without, subhelp, LIMIT_FLAGS, Some(&LIMIT)),
+            dash_rule_notes(
+                &cov.without,
+                subhelp,
+                &[LIMIT_FLAGS, COUNT_WORDED_FLAGS].concat(),
+                Some(&LIMIT)
+            ),
+            no_returned_count_notes(&cov.without, subhelp),
         )),
         None,
     )
+}
+
+/// For each of `names` whose own help declares `--max` or `--top` without
+/// naming a count of returned items: the definition, and that it does not
+/// count. Led by the subcommand's name, ready to close a deny message.
+fn no_returned_count_notes(names: &[&str], subhelp: &[(String, HelpOutput)]) -> String {
+    names
+        .iter()
+        .filter_map(|name| {
+            let (_, help) = subhelp.iter().find(|(sub, _)| sub == name)?;
+            let flag = help
+                .flags()
+                .iter()
+                .find(|flag| flag.declares_any(COUNT_WORDED_FLAGS).is_some())?;
+            Some(format!(
+                " In `{name}`, `{}` is declared, but its definition (`{}`) names no count of \
+                 returned items, so P7 does not count it as a limit.",
+                flag.name(),
+                first_sentence(&flag.definition()),
+            ))
+        })
+        .collect()
 }
 
 fn find_limit_flag(help: &HelpOutput) -> Option<String> {
@@ -150,6 +191,8 @@ fn find_limit_flag(help: &HelpOutput) -> Option<String> {
 
 fn is_limit_flag(flag: &Flag) -> bool {
     flag_meaning::accepts(flag, LIMIT_FLAGS, &LIMIT).is_some()
+        || (flag.declares_any(COUNT_WORDED_FLAGS).is_some()
+            && names_any(flag.description(), RETURNED_COUNT_WORDS))
 }
 
 #[cfg(test)]
@@ -414,6 +457,71 @@ Other Options:
             })
             .collect();
         assert_eq!(verdicts, cases);
+    }
+
+    #[test]
+    fn max_and_top_count_only_when_the_description_names_a_count_of_returned_items() {
+        let cases = [
+            // helm 4.3, `helm list --help`
+            (
+                "  -m, --max int              maximum number of releases to fetch (default 256)",
+                true,
+            ),
+            ("      --top <N>    Show the top N results", true),
+            ("      --max <N>    Items to print", true),
+            ("      --max <DEPTH>    Maximum directory depth", false),
+            ("      --top    Sort by the top score", false),
+            // The name alone, and a bare "max", say nothing about what is bounded.
+            ("      --max <N>", false),
+            ("      --top <N>", false),
+            ("      --max <N>    Max", false),
+            ("      --max <N>    The max to allow", false),
+        ];
+        let verdicts: Vec<(&str, bool)> = cases
+            .iter()
+            .map(|&(line, _)| {
+                let help = HelpOutput::from_raw(format!("Options:\n{line}\n"));
+                (line, find_limit_flag(&help).is_some())
+            })
+            .collect();
+        assert_eq!(verdicts, cases);
+    }
+
+    #[test]
+    fn limit_and_max_results_still_count_by_name_alone() {
+        for line in ["      --limit <N>", "      --max-results <N>"] {
+            let help = HelpOutput::from_raw(format!("Options:\n{line}\n"));
+            assert!(find_limit_flag(&help).is_some(), "{line}");
+        }
+    }
+
+    #[test]
+    fn a_max_that_names_no_count_warns_and_quotes_its_definition() {
+        let help = HelpOutput::from_raw(RCLONE_HELP);
+        let subhelp = vec![sub(
+            "ls",
+            "Usage: tool ls [flags]\n\nFlags:\n      --max <DEPTH>   Maximum directory depth\n  -h, --help          help for ls\n",
+        )];
+        match audit_limit_flag(&help, &subhelp) {
+            (AuditStatus::Warn(msg), None) => {
+                assert!(
+                    msg.contains(
+                        "a --max or --top whose description names a count of returned items"
+                    ),
+                    "{msg}"
+                );
+                assert!(msg.contains("the options P7 accepts"), "{msg}");
+                assert!(
+                    msg.ends_with(
+                        "In `ls`, `--max` is declared, but its definition (`--max <DEPTH>  Maximum \
+                         directory depth`) names no count of returned items, so P7 does not count \
+                         it as a limit."
+                    ),
+                    "{msg}"
+                );
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 
     #[test]

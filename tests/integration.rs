@@ -1322,6 +1322,65 @@ fn test_mixed_language_source_pass_folds_shared_audits() {
     }
 }
 
+// ── p8-should-bundle-exists rows ───────────────────────────────────
+
+const BUNDLE_WITH_FRONTMATTER: &str = "---\nname: tool\n---\n\n# tool\n";
+
+/// The `(audit_id, status)` of every `p8-should-bundle-exists` row anc reports
+/// for a directory holding `files`.
+fn bundle_rows(files: &[(&str, &str)], flags: &[&str]) -> Vec<(String, String)> {
+    let dir = integration_tempdir();
+    for (name, body) in files {
+        std::fs::write(dir.join(name), body).expect("write repo file");
+    }
+    let output = cmd()
+        .arg("audit")
+        .arg(&dir)
+        .args(flags)
+        .args(["--output", "json"])
+        .output()
+        .expect("spawn anc");
+    let parsed: serde_json::Value = serde_json::from_slice(&output.stdout).expect("JSON scorecard");
+    parsed["results"]
+        .as_array()
+        .expect("results array")
+        .iter()
+        .filter(|row| row["id"] == "p8-should-bundle-exists")
+        .map(|row| {
+            (
+                row["audit_id"].as_str().expect("audit_id").to_string(),
+                row["status"].as_str().expect("status").to_string(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn bundle_requirement_gets_one_row_from_p8_bundle_exists() {
+    let cases: [(&[(&str, &str)], &str); 4] = [
+        (&[("SKILL.md", BUNDLE_WITH_FRONTMATTER)], "pass"),
+        (&[("AGENTS.md", BUNDLE_WITH_FRONTMATTER)], "pass"),
+        (&[("AGENTS.md", "# tool\n")], "warn"),
+        (&[("README.md", "# tool\n")], "opt_out"),
+    ];
+    for (files, status) in cases {
+        assert_eq!(
+            bundle_rows(files, &[]),
+            [("p8-bundle-exists".to_string(), status.to_string())],
+            "repo files: {files:?}"
+        );
+    }
+}
+
+#[test]
+fn principle_6_reports_no_row_for_the_bundle_requirement() {
+    let rows = bundle_rows(
+        &[("SKILL.md", BUNDLE_WITH_FRONTMATTER)],
+        &["--principle", "6"],
+    );
+    assert!(rows.is_empty(), "rows under --principle 6: {rows:?}");
+}
+
 /// Convention enforcement: audit_x() functions must return AuditStatus, not AuditResult.
 ///
 /// The Audit trait's run() method is the sole constructor of AuditResult. If audit_x()

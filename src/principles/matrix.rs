@@ -329,6 +329,7 @@ fn principle_name(principle: u8) -> &'static str {
         5 => "Safe Retries, Mutation Boundaries",
         6 => "Composable, Predictable Command Structure",
         7 => "Bounded, High-Signal Responses",
+        8 => "Discoverable Through Agent Skill Bundles",
         _ => "Unknown",
     }
 }
@@ -438,6 +439,66 @@ mod tests {
         assert!(md.contains("## Summary"));
         assert!(md.contains("**UNCOVERED**"));
         assert!(md.contains("P1: Non-Interactive by Default"));
+    }
+
+    // A principle the registry grades but `principle_name` does not know would
+    // publish a `## P9: Unknown` heading in the committed matrix.
+    #[test]
+    fn every_registry_principle_has_a_name() {
+        for requirement in REQUIREMENTS {
+            assert_ne!(
+                principle_name(requirement.principle),
+                "Unknown",
+                "`{}` belongs to a principle `principle_name` does not know",
+                requirement.id
+            );
+        }
+    }
+
+    #[test]
+    fn p8_heading_carries_the_vendored_principle_title() {
+        let title = include_str!("spec/principles/p8-discoverable-skill-bundle.md")
+            .lines()
+            .find(|line| line.starts_with("# P8: "))
+            .expect("the vendored P8 file has a `# P8:` title");
+        let md = render_markdown(&build(&[]));
+        assert!(
+            md.lines().any(|line| line == format!("#{title}")),
+            "no `#{title}` heading in the rendered matrix"
+        );
+    }
+
+    #[test]
+    fn bundle_requirement_has_one_verifier() {
+        let matrix = build(&crate::audits::all_audits_catalog());
+        let row = matrix
+            .rows
+            .iter()
+            .find(|r| r.id == "p8-should-bundle-exists")
+            .expect("requirement row");
+        let verifiers: Vec<&str> = row.verifiers.iter().map(|v| v.audit_id.as_str()).collect();
+        assert_eq!(verifiers, ["p8-bundle-exists"]);
+    }
+
+    // `--principle <N>` filters on an audit's group, so an audit grouped under
+    // one principle that covers another's requirement reports that requirement
+    // under the wrong principle.
+    #[test]
+    fn audits_grouped_under_a_principle_cover_only_that_principle() {
+        let mut misplaced = Vec::new();
+        for audit in crate::audits::all_audits_catalog() {
+            let group = format!("{:?}", audit.group());
+            let Some(principle) = group.strip_prefix('P').and_then(|n| n.parse::<u8>().ok()) else {
+                continue;
+            };
+            for id in audit.covers() {
+                let requirement = crate::principles::registry::find(id).expect("registry id");
+                if requirement.principle != principle {
+                    misplaced.push(format!("{} ({group}) covers {id}", audit.id()));
+                }
+            }
+        }
+        assert!(misplaced.is_empty(), "{misplaced:#?}");
     }
 
     // The committed `docs/coverage-matrix.md` is staged during a release cut,

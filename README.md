@@ -542,7 +542,7 @@ agentnative audits your CLI against eight agent-readiness principles:
 | P3 | Progressive Help | `--help` has examples, `--version` works |
 | P4 | Actionable Errors | Structured error types, named exit codes, no `.unwrap()` |
 | P5 | Safe Retries | `--dry-run` for write operations |
-| P6 | Composable Structure | SIGPIPE handled, NO_COLOR respected, shell completions, `AGENTS.md`, SIGTERM cleanup |
+| P6 | Composable Structure | SIGPIPE handled, NO_COLOR respected, shell completions, SIGTERM cleanup |
 | P7 | Bounded Responses | `--quiet` flag, no unbounded list output, clamped pagination |
 | P8 | Discoverable Skill Bundle | Top-level `AGENTS.md` / `SKILL.md` with YAML frontmatter, `tool skill install [<host>]` for agent runtimes |
 
@@ -550,36 +550,40 @@ agentnative audits your CLI against eight agent-readiness principles:
 
 ```text
 P1 — Non-Interactive by Default
-  [PASS] Non-interactive by default (p1-non-interactive)
-  [PASS] Flags advertise env-var bindings in --help (p1-env-hints)
-  [PASS] Secret-bearing flags expose stdin or *-file companion (p1-secret-non-leaky-path)
-  [PASS] TTY detection for color output (p1-tty-detection-source)
-  [PASS] No interactive prompt dependencies (p1-non-interactive-source)
+  [PASS] Non-interactive by default (p1-must-no-interactive) (must)
+  [PASS] Flags advertise env-var bindings in --help (p1-must-env-var) (must)
+  [PASS] Secret-bearing flags expose stdin or *-file companion (p1-must-secret-non-leaky-path) (must)
+  [WARN] Headless auth supported (p1-must-no-browser) (must)
+         Auth code detected but no --no-browser or --headless flag found. Agents need a way to authenticate without a browser.
+  [PASS] TTY detection for color output (p1-should-tty-detection) (should)
+  [PASS] No interactive prompt dependencies (p1-must-no-interactive) (must)
 
 P2 — Structured Output
-  [PASS] Structured-output CLI exposes its schema at runtime (p2-schema-print)
-  [PASS] --json / --jsonl short aliases for --output (p2-json-aliases)
-  [PASS] Output schema exported to a stable file path (p2-schema-file)
+  [PASS] Structured-output CLI exposes its schema at runtime (p2-must-schema-print) (must)
+  [PASS] --json / --jsonl short aliases for --output (p2-should-json-aliases) (should)
+  [PASS] Output schema exported to a stable file path (p2-should-schema-file) (should)
 
 P6 — Composable Structure
-  [PASS] Handles SIGPIPE gracefully (p6-sigpipe)
-  [PASS] Subcommand verbs follow community-standard names (p6-standard-names)
-  [PASS] Long-running CLI handles SIGTERM (p6-sigterm)
-  [PASS] Shell completions support (p6-completions)
+  [PASS] Handles SIGPIPE gracefully (p6-must-sigpipe) (must)
+  [PASS] Subcommand verbs follow community-standard names (p6-may-standard-names) (may)
+  [PASS] Long-running CLI handles SIGTERM (p6-must-sigterm) (must)
+  [PASS] Shell completions support (p6-must-completions) (must)
 
 P8 — Discoverable Skill Bundles
-  [PASS] Skill bundle has install path (`tool skill install [<host>]`) (p8-bundle-install)
-  [PASS] Top-level AGENTS.md / SKILL.md bundle present (p8-bundle-exists)
+  [PASS] Skill bundle has install path (`tool skill install [<host>]`) (p8-must-bundle-install) (must)
+  [PASS] Top-level AGENTS.md / SKILL.md bundle present (p8-should-bundle-exists) (should)
 
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-69 audits: 59 pass, 0 warn, 0 fail, 0 opt_out, 0 n_a, 10 skip, 0 error
+69 audits: 60 pass, 1 warn, 0 fail, 0 opt_out, 0 n_a, 8 skip, 0 error
 
 🏆 Score: 100% — your tool qualifies for the agent-native badge.
    Embed in your README:
      [![agent-native](https://anc.dev/badge/anc.svg)](https://anc.dev/score/anc)
    Convention: https://anc.dev/badge
+
+exit 1: warnings only (1 warning)
 ```
 
 The badge hint appears in `text` output when a tool scores at or above the 70% eligibility floor. Below the floor, `anc`
@@ -776,14 +780,14 @@ on tier:
 `anc` runs the same scoring on itself. Because the public score is behavioral-only, a source-only run has no rows to
 score. It reports `0%` and ineligible by design, since there is no shipped-binary behavior to measure:
 
-| Mode                   | Audits | Pass | Skip | Behavioral rows | Score | Eligible |
-| ---------------------- | -----: | ---: | ---: | --------------: | ----: | -------- |
-| `anc audit . --binary` |     43 |   34 |    9 |              43 |  100% | yes      |
-| `anc audit . --source` |     26 |   25 |    1 |               0 |    0% | no       |
-| `anc audit .` (full)   |     69 |   59 |   10 |              43 |  100% | yes      |
+| Mode                   | Audits | Pass | Warn | Skip | Behavioral rows | Score | Eligible |
+| ---------------------- | -----: | ---: | ---: | ---: | --------------: | ----: | -------- |
+| `anc audit . --binary` |     44 |   36 |    0 |    8 |              44 |  100% | yes      |
+| `anc audit . --source` |     25 |   24 |    1 |    0 |               0 |    0% | no       |
+| `anc audit .` (full)   |     69 |   60 |    1 |    8 |              44 |  100% | yes      |
 
 The score is identical in `--binary` and full mode: source and project audits add scorecard rows but never change the
-number. The nine behavioral skips are probe limitations (`skip`), excluded from the denominator, so they neither help
+number. The eight behavioral skips are probe limitations (`skip`), excluded from the denominator, so they neither help
 nor hurt the score.
 
 ## CLI Reference

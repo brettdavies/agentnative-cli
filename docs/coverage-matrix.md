@@ -8,7 +8,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 ## Summary
 
 - **Total**: 60 requirements (57 covered / 3 uncovered)
-- **Dual-layer**: 10 of 57 covered requirements have verifiers in two layers (behavioral + source or project)
+- **Dual-layer**: 9 of 57 covered requirements have verifiers in two layers (behavioral + source or project)
 - **MUST**: 28 of 28 covered
 - **SHOULD**: 19 of 22 covered
 - **MAY**: 10 of 10 covered
@@ -104,11 +104,11 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p7-may-cursor-pagination` | MAY | If: CLI returns paginated results | `p7-cursor-pagination` (behavioral) | Cursor-based pagination flags (`--after`, `--before`) for efficient traversal of large result sets. |
 | `p7-may-auto-verbosity` | MAY | Universal | `p7-auto-verbosity` (behavioral) | Automatic verbosity reduction in non-TTY contexts (same behavior `--quiet` explicitly requests). |
 
-## P8: Unknown
+## P8: Discoverable Through Agent Skill Bundles
 
 | ID | Level | Applicability | Verifier(s) | Summary |
 | --- | --- | --- | --- | --- |
 | `p8-must-bundle-install` | MUST | If: `p8-bundle-exists` is present | `p8-bundle-install` (behavioral) | When a skill bundle exists, the CLI provides an install path (`tool skill install [<host>]`) that registers the bundle with installed agent runtimes. |
-| `p8-should-bundle-exists` | SHOULD | Universal | `p6-agents-md` (project)<br>`p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
+| `p8-should-bundle-exists` | SHOULD | Universal | `p8-bundle-exists` (project) | CLIs ship a top-level agent-discoverable markdown bundle (`AGENTS.md`, `SKILL.md`, or equivalent) with YAML frontmatter naming the tool and capability summary. |
 | `p8-may-install-all` | MAY | If: `p8-bundle-exists` is present | `p8-install-all` (behavioral) | An `--all` mode auto-detects installed runtimes (Claude Code, Cursor, Codex, OpenCode, etc.) and installs across all. |
 | `p8-may-bundle-update` | MAY | If: `p8-bundle-exists` is present | `p8-bundle-update` (behavioral) | An update/upgrade subcommand (`tool skill update`) pulls the latest bundle version. |

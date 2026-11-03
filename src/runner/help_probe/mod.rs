@@ -34,6 +34,7 @@ use anyhow::Result;
 
 use super::{BinaryRunner, RunStatus};
 
+mod description;
 mod env_hints_bash;
 #[cfg(test)]
 pub(crate) mod fixture_snapshots;
@@ -258,6 +259,12 @@ impl HelpOutput {
                     .map(|entry| block.summary(entry))
             })
             .filter(|summary| !summary.is_empty())
+    }
+
+    /// The paragraph of prose the help opens with, the tool's own words for
+    /// what it is. `None` when the help opens with no prose.
+    pub fn description(&self) -> Option<String> {
+        description::parse(&self.raw)
     }
 
     /// Why [`HelpOutput::subcommands`] is empty, worded as what the parser

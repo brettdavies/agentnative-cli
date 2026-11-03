@@ -46,7 +46,7 @@ mod subcommand_arguments;
 mod subcommand_examples;
 mod subcommand_help;
 mod subcommand_operations;
-mod timeout_behavioral;
+pub(crate) mod timeout_behavioral;
 mod unprefixed_command_list;
 mod verbose_flag;
 mod version;

@@ -15,6 +15,7 @@ mod pieces;
 
 use classify::Line;
 pub(super) use classify::is_section_heading;
+pub(super) use normalize::normalize;
 
 /// How a help spells one flag name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

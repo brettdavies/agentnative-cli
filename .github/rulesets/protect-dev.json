@@ -55,6 +55,10 @@
           {
             "context": "Web feature (clippy, test)",
             "integration_id": 15368
+          },
+          {
+            "context": "changelog-bump / Surface growth needs a minor section",
+            "integration_id": 15368
           }
         ]
       }

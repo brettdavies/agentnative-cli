@@ -1,4 +1,4 @@
-<!-- Canonical version: 2026.11.02 (generic) -->
+<!-- Canonical version: 2026.11.03 (generic) -->
 # Releases rationale
 
 Companion to [`RELEASES.md`](./RELEASES.md). RELEASES.md is the runbook (commands, paths, decision tables). This file
@@ -180,10 +180,11 @@ prior squash, it's a false positive (no action). Otherwise cherry-pick the commi
 
 `scripts/generate-changelog.py` (vendored from the `github-repo-setup` skill, with the repo-local `cliff.toml`) is the
 only sanctioned way to update `CHANGELOG.md`. On an overlay-built release branch it runs as `--from-dev-prs`: the PRs
-merged into `dev` since the previous release are the entries, and each PR's body supplies its
-`## Changelog → ### Breaking changes / Added / Changed / Deprecated / Removed / Fixed / Documentation` subsections
-(with author and PR-link attribution). On a cherry-picked branch it runs `git-cliff` first to prepend a versioned entry
-from the branch's commits, then expands the same way.
+merged into `dev` since the previous release are the entries, and each PR's body supplies its `## Changelog` subsections
+under the six headings of [`RELEASES.md` § Versioning](./RELEASES.md#versioning) (`Breaking changes`, `Added`,
+`Changed`, `Deprecated`, `Fixed`, `Documentation`), with author and PR-link attribution. A heading outside the six still
+renders, after them. On a cherry-picked branch it runs `git-cliff` first to prepend a versioned entry from the branch's
+commits, then expands the same way.
 
 If a PR's body offers no changelog section at all, its title becomes a bullet under the group `cliff.toml` gives the
 same commit (`type!:` under Breaking changes, `feat` under Added, `fix` under Fixed, `docs` under Documentation,
@@ -200,6 +201,15 @@ beside it did not (a member that keeps none is held to the root's); `publish = f
 `preflight.sh mechanics` checks that the release changelog opens on the release version with no `[Unreleased]`
 placeholder. The release workflow cuts the GitHub Release body from the section whose heading names the tag's version,
 and falls back to generated notes, with a warning, when there is none.
+
+### Why the changelog sections set the version
+
+A SemVer release's bump comes from the headings its PRs filed, not from commit markers or a judgment made at the cut:
+the author of a change knows best whether it adds, fixes, or breaks a contract surface, and the heading records that
+answer where review sees it. `generate-changelog.py --bump` reads the same sections the release notes are built from, so
+the version and the notes cannot disagree. A `!:` commit stays a cross-check: a PR can break the contract with no
+marker, and a marker can sit on a change outside the contract. The rules, the pre-1.0 shift, the MSRV rule, and the
+small-break exception are in [`RELEASES.md` § Versioning](./RELEASES.md#versioning).
 
 ### Why `cliff.toml` skips chore/style/test/ci/build
 

@@ -11,7 +11,7 @@ keywords = ["cli", "linter", "agent", "ast-grep", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 authors = ["Brett Davies <pm8fp22mbg@privaterelay.appleid.com>"]
 readme = "README.md"
-rust-version = "1.89"
+rust-version = "1.96.0"
 exclude = [
     ".claude/",
     ".context/",

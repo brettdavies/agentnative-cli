@@ -28,6 +28,8 @@ pub mod cli;
 #[doc(hidden)]
 pub mod color;
 #[doc(hidden)]
+pub mod completions;
+#[doc(hidden)]
 pub mod error;
 #[doc(hidden)]
 pub mod exit_codes;

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Parser as _;
-use clap_complete::generate;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -16,6 +15,7 @@ use agentnative::build_info::ANC_VERSION;
 use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
 #[cfg(feature = "web")]
 use agentnative::cli::{ColorChoice, SiteType};
+use agentnative::completions;
 use agentnative::error::AppError;
 use agentnative::principles::matrix;
 #[cfg(feature = "web")]
@@ -181,7 +181,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         ),
         Some(Commands::Completions { shell }) => {
             let mut cmd = <Cli as clap::CommandFactory>::command();
-            generate(shell, &mut cmd, "anc", &mut std::io::stdout());
+            completions::write(shell, &mut cmd, "anc", &mut std::io::stdout())?;
             return Ok(0);
         }
         #[cfg(feature = "web")]

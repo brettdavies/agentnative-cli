@@ -471,7 +471,7 @@ Two rulesets are committed under `.github/rulesets/` and applied to the repo via
   blocked).
 - `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked, required status checks
   (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
-  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`, `lint / actionlint`,
+  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`, `ci / Completions freshness`, `lint / actionlint`,
   `Web feature (clippy, test)`, `changelog-bump / Surface growth needs a minor section`)). PR-only norm is convention +
   `guard-release-branch` on the main side.
 

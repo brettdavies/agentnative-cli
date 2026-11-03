@@ -15,18 +15,21 @@
 #     completions/<BIN>.bash, which the repo's completions freshness check
 #     holds equal to the clap definition;
 #   - every leaf of every JSON schema under SCHEMA_DIR except `description`,
-#     `title`, `$id`, and `examples`, so a new envelope key, `reason`,
-#     `action`, or response field counts and reworded prose does not. anc's
-#     `$id` and examples carry the scorecard's schema_version, so an additive
-#     schema bump would otherwise read as a removal. A property named
-#     `examples` still counts. A repo without the directory compares the CLI
-#     alone.
+#     `title`, `$id`, and `examples`, so a new scorecard field or enum value
+#     counts and reworded prose does not. anc's `$id` and examples carry the
+#     scorecard's schema_version, so an additive schema bump would otherwise
+#     read as a removal. A property named `examples` still counts. A repo
+#     without the directory compares the CLI alone;
+#   - every requirement ID and audit ID in MATRIX, the coverage matrix
+#     `anc emit coverage-matrix` writes and its drift check holds current.
 #
 # Growth passes when the block has a bullet under `### Added`, `### Deprecated`,
 # or `### Breaking changes`. A removal passes with a bullet under
 # `### Breaking changes`, a contract removal and a major, or `### Fixed`, a
-# change back to the documented contract and a patch. Env vars, exit codes, and
-# the store format have no generated artifact and are not compared.
+# change back to the documented contract and a patch. Env vars, exit codes,
+# the error envelope's `reason` and `next_step.action` sets (src/json_error.rs),
+# `.anc.toml` settings, and the skill install hosts have no artifact here and
+# are not compared; review holds them to RELEASES.md § What the contract is.
 #
 # Usage:
 #   check-surface-bump.sh surface <tree>
@@ -42,10 +45,12 @@
 set -euo pipefail
 
 # CUSTOMIZE: the binary whose completions/<BIN>.bash describes the CLI, the
-# manifest that names the PR body's changelog heading, and the schema directory.
+# manifest that names the PR body's changelog heading, the schema directory,
+# and the coverage matrix.
 readonly BIN="${SURFACE_BIN:-anc}"
 readonly MANIFEST="${SURFACE_MANIFEST:-Cargo.toml}"
 readonly SCHEMA_DIR="${SURFACE_SCHEMA_DIR:-schema}"
+readonly MATRIX="${SURFACE_MATRIX:-coverage/matrix.json}"
 
 readonly MINOR_OR_HIGHER='Added|Deprecated|Breaking changes'
 readonly REMOVAL_SECTIONS='Breaking changes|Fixed'
@@ -110,6 +115,11 @@ surface() {
             | "schema\t\($file)\t\($p | map(if type == "number" then "[]" else . end) | join("."))=\(getpath($p) | tojson)"
         ' "$tree/$file" || die "cannot read $tree/$file as JSON"
   done < <([ -d "$tree/$SCHEMA_DIR" ] && cd "$tree" && find "$SCHEMA_DIR" -type f -name '*.json' | LC_ALL=C sort)
+
+  if [ -f "$tree/$MATRIX" ]; then
+    jq -r '.rows[] | "matrix\trequirement\t\(.id)", (.verifiers[]? | "matrix\taudit\t\(.audit_id)")' \
+      "$tree/$MATRIX" || die "cannot read $tree/$MATRIX as JSON"
+  fi
 }
 
 # filled_sections <head-tree> <body-file> — each `###` heading in the

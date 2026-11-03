@@ -27,3 +27,7 @@ concurrency:
 jobs:
   changelog-bump:
     uses: brettdavies/.github/.github/workflows/rust-changelog-bump.yml@main
+    with:
+      # coverage/ holds the matrix whose requirement and audit IDs the script
+      # compares; the base tree carries only the paths named here.
+      surface_paths: completions schema coverage

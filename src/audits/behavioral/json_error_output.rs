@@ -1,19 +1,19 @@
 //! Audit: `p4-should-json-error-output`.
 //!
-//! Errors must respect `--output json`: when JSON output is selected, error
+//! Errors must respect the JSON output mode: when JSON output is selected, error
 //! messages go to stderr (or stdout, since some CLIs diverge there) as JSON.
 //! Weaker than `p2-must-json-errors` — this SHOULD only requires the output
 //! parse as JSON; it does not require the spec's `error`/`kind`/`message`
 //! triple, since the stricter MUST already covers that.
 //!
-//! Applicability gate: vacuous Skip when the top-level `--help` declares no
-//! JSON mode (`output_flags::json_mode`). Pass when stderr (or stdout) parses
-//! as JSON under the declared mode; Warn when JSON mode is opted into but the
-//! error comes out as plain text.
+//! Applicability gate: vacuous Skip when neither the top-level `--help` nor a
+//! top-level subcommand's declares a JSON mode (`output_flags::json_mode`). Pass
+//! when stderr (or stdout) parses as JSON under the declared mode; Warn when JSON
+//! mode is opted into but the error comes out as plain text.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    NO_JSON_MODE, parse_error_envelope, probe_bad_invocation_json, shown,
+    NO_JSON_MODE, parse_error_envelope, probe_bad_invocation_json,
 };
 use crate::audits::behavioral::output_flags;
 use crate::project::Project;
@@ -28,7 +28,7 @@ impl Audit for JsonErrorOutputAudit {
     }
 
     fn label(&self) -> &'static str {
-        "`--output json` produces JSON-formatted errors"
+        "A JSON output mode produces JSON-formatted errors"
     }
 
     fn group(&self) -> AuditGroup {
@@ -50,14 +50,16 @@ impl Audit for JsonErrorOutputAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
-            Some(help) => match output_flags::json_mode(help) {
+            Some(help) => match output_flags::json_mode(project.runner_ref(), help) {
                 None => AuditStatus::Skip(format!(
                     "{NO_JSON_MODE}; SHOULD applies only to CLIs that opt into the JSON contract."
                 )),
-                Some(mode) => {
-                    let result = probe_bad_invocation_json(project.runner_ref(), &mode);
-                    classify_json_error_output(&result, &shown(&mode))
-                }
+                Some(mode) => mode.noted(
+                    match probe_bad_invocation_json(project.runner_ref(), &mode) {
+                        Ok(result) => classify_json_error_output(&result, &mode.shown()),
+                        Err(skip) => skip,
+                    },
+                ),
             },
         };
         Ok(AuditResult {

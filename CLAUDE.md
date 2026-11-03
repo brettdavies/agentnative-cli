@@ -356,7 +356,9 @@ agentnative. Three rules guard the probe:
    Bare `subcmd --output json` is unsafe for any CLI with side-effecting subcommands. The one call outside those
    suffixes is a `.anc.toml [p2] json_probe`: `run_declared_probe` runs the declared arguments exactly as written,
    through the same `BinaryRunner` (no shell, timeout, closed stdin), because the tool's repository or the operator
-   chose them. An empty declaration declares nothing, so the bare invocation never runs.
+   chose them. An empty declaration declares nothing, so the bare invocation never runs. The JSON error audits' bad-flag
+   probe of a subcommand ends in `--help` (`error_probe.rs`): a parser that rejects unknown flags stops at the bad flag,
+   and any other prints help instead of running the subcommand, which leaves the row `skip`.
 3. **Binary discovery picks the newer of release/debug by mtime** (`src/project/bins.rs::rust_artifact`): when both
    `release/<bin>` and `debug/<bin>` exist in a target directory, the function returns the one with the more recent
    mtime. The target directory is cargo's (`src/project/cargo_target.rs`): `CARGO_TARGET_DIR`, else what
@@ -378,8 +380,8 @@ agentnative. Three rules guard the probe:
 the source layer, about 7 CPU-seconds per audit in a debug build, and libtest runs one test per core. `self_audit` runs
 each distinct invocation once per test binary, with `AGENTNATIVE_JOBS=1` so the source layer reads on one thread, and
 holds one of `SLOTS` (4) lock files in the system temp directory while it runs, so audits of this repository run four at
-a time across every test run on the machine.
-`tests/self_audit_guard.rs` fails on a spawn that passes `"."` from the package root without it.
+a time across every test run on the machine. `tests/self_audit_guard.rs` fails on a spawn that passes `"."` from the
+package root without it.
 
 ## CI and Quality
 

@@ -2,7 +2,7 @@ use crate::anc_toml::JSON_PROBE_KEY;
 use crate::audit::Audit;
 use crate::audits::behavioral::declared_probe::audit_declared_probe;
 use crate::audits::behavioral::output_flags::{self, Declared};
-use crate::audits::behavioral::subcommand_help::{dash_rule_notes, should_skip};
+use crate::audits::behavioral::subcommand_help::should_skip;
 use crate::project::Project;
 use crate::runner::{BinaryRunner, HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence, Verdict};
@@ -108,12 +108,11 @@ fn detect_json_output(runner: &BinaryRunner, project: &Project) -> Detected {
 /// or "Subcommands:" section, and hand-written help under `... commands:`; the
 /// shared parser reads all of them.
 fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
-    let accepted = output_flags::accepted();
     let subcommands = subcommands_to_probe(help);
     if subcommands.is_empty() {
-        return Detected::Settled(AuditStatus::OptOut(help.noting_dash_rule(
-            &accepted,
-            &format!(
+        return Detected::Settled(AuditStatus::OptOut(noting_near_miss(
+            help,
+            format!(
                 "no option definition in --help declares {}, the flags this requirement \
                  accepts; a flag named only in a usage line does not count.",
                 output_flags::accepted_prose(),
@@ -135,9 +134,9 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
         read.push((subcmd.to_string(), sub_help));
     }
 
-    let message = help.noting_dash_rule(
-        &accepted,
-        &format!(
+    let message = noting_near_miss(
+        help,
+        format!(
             "no option definition in --help, or in the --help of the {} subcommand{} read, \
              declares {}, the flags this requirement accepts; a flag named only in a usage line \
              does not count.",
@@ -146,11 +145,22 @@ fn probe_subcommands(runner: &BinaryRunner, help: &HelpOutput) -> Detected {
             output_flags::accepted_prose(),
         ),
     );
-    let names: Vec<&str> = read.iter().map(|(name, _)| name.as_str()).collect();
-    Detected::Settled(AuditStatus::OptOut(format!(
-        "{message}{}",
-        dash_rule_notes(&names, &read, &accepted, None)
-    )))
+    let notes: String = read
+        .iter()
+        .filter_map(|(name, sub_help)| {
+            let note = output_flags::near_miss_note(sub_help)?;
+            Some(format!(" In `{name}`, {note}"))
+        })
+        .collect();
+    Detected::Settled(AuditStatus::OptOut(format!("{message}{notes}")))
+}
+
+/// `message`, closed with why a flag `help` declares did not count.
+fn noting_near_miss(help: &HelpOutput, message: String) -> String {
+    match output_flags::near_miss_note(help) {
+        Some(note) => format!("{message} {note}"),
+        None => message,
+    }
 }
 
 /// Top-level subcommand names worth probing for an output flag: the shared
@@ -328,7 +338,8 @@ esac
             AuditStatus::OptOut(msg) => assert!(
                 msg.ends_with(
                     "The probe declared via .anc.toml [p2].json_probe runs only for a tool whose \
-                     help declares --output, --format, --output-format, --json or --jsonl."
+                     help declares --output, a --format or --output-format whose definition names \
+                     json, --json or --jsonl."
                 ),
                 "{msg}"
             ),
@@ -354,6 +365,59 @@ esac
     }
 
     #[test]
+    fn a_format_flag_that_names_no_json_opts_out_and_says_why() {
+        // Would print JSON for `--format json`, which its definition does not
+        // offer.
+        let script = r#"
+case "$*" in
+  *--format*) echo '{"probed":true}';;
+  *--help*)
+    printf 'Usage: tool [OPTIONS]\n\nOptions:\n      --format <TEMPLATE>    Go template for output\n  -h, --help             Show help\n';;
+  *) echo "hello";;
+esac
+"#;
+        let result = JsonOutputAudit
+            .run(&test_project_with_sh_script(script))
+            .expect("audit should run");
+        match result.status {
+            AuditStatus::OptOut(msg) => assert!(
+                msg.ends_with(
+                    "`--format` is declared, but its definition does not name json, and P2 counts \
+                     it as an output flag only when it does."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected OptOut, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_subcommand_format_flag_that_names_no_json_is_noted_with_its_subcommand() {
+        let script = r#"
+case "$*" in
+  *list*--help*)
+    printf 'Usage: tool list [OPTIONS]\n\nOptions:\n      --format <TEMPLATE>    Go template for output\n';;
+  *--help*)
+    printf 'Usage: tool [COMMAND]\n\nCommands:\n  list    List items\n\nOptions:\n  -h, --help    Show help\n';;
+  *) echo "hello";;
+esac
+"#;
+        let result = JsonOutputAudit
+            .run(&test_project_with_sh_script(script))
+            .expect("audit should run");
+        match result.status {
+            AuditStatus::OptOut(msg) => assert!(
+                msg.ends_with(
+                    "In `list`, `--format` is declared, but its definition does not name json, and \
+                     P2 counts it as an output flag only when it does."
+                ),
+                "{msg}"
+            ),
+            other => panic!("expected OptOut, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_longer_flag_that_starts_with_output_does_not_trigger_the_probe() {
         // Would print JSON for `--output json`, which no line of its help
         // declares.
@@ -370,8 +434,9 @@ esac
         assert_eq!(
             result.status,
             AuditStatus::OptOut(
-                "no option definition in --help declares --output, --format, --output-format, \
-                 --json or --jsonl, the flags this requirement accepts; a flag named only in a usage line does not count."
+                "no option definition in --help declares --output, a --format or --output-format \
+                 whose definition names json, --json or --jsonl, the flags this requirement \
+                 accepts; a flag named only in a usage line does not count."
                     .into()
             )
         );
@@ -446,7 +511,7 @@ esac
         let script = r#"
 case "$*" in
   *export*--help*)
-    printf 'Usage: tool export [OPTIONS]\n\nOptions:\n      --output <FILE>      Write to FILE\n      --format <FORMAT>    Output format\n';;
+    printf 'Usage: tool export [OPTIONS]\n\nOptions:\n      --output <FILE>      Write to FILE\n      --format <FORMAT>    Output format: text or json\n';;
   *--help*)
     printf 'Usage: tool [COMMAND]\n\nCommands:\n  list      List items\n  export    Export items\n\nOptions:\n  -h, --help    Show help\n';;
   *) echo "hello";;
@@ -485,8 +550,9 @@ esac
             result.status,
             AuditStatus::OptOut(
                 "no option definition in --help, or in the --help of the 2 subcommands read, \
-                 declares --output, --format, --output-format, --json or --jsonl, the flags this \
-                 requirement accepts; a flag named only in a usage line does not count. In `list`, `-format` is \
+                 declares --output, a --format or --output-format whose definition names json, \
+                 --json or --jsonl, the flags this requirement accepts; a flag named only in a \
+                 usage line does not count. In `list`, `-format` is \
                  declared, but this help also declares double-dash names, so it does not count \
                  as `--format`."
                     .into()
@@ -503,7 +569,7 @@ esac
 case "$*" in
   *--help*|*--version*)
     case "$*" in
-      *export*) printf 'Usage: tool export [OPTIONS]\n\nOptions:\n      --format <FORMAT>    Output format\n';;
+      *export*) printf 'Usage: tool export [OPTIONS]\n\nOptions:\n      --format <FORMAT>    Output format: text or json\n';;
       *) printf 'Usage: tool [COMMAND]\n\nCommands:\n  export    Export items\n\nOptions:\n  -h, --help    Show help\n';;
     esac;;
   *--format*) echo '{"unsafe":"ran without a safe suffix"}';;
@@ -546,7 +612,7 @@ case "$*" in
   *--help*--format*json*|*--format*json*--help*)
     echo '{"help":true}';;
   *--help*)
-    printf 'Usage: test [OPTIONS]\n\nOptions:\n      --format <FORMAT>    Output format\n';;
+    printf 'Usage: test [OPTIONS]\n\nOptions:\n      --format <FORMAT>    Output format: text or json\n';;
   *)
     echo "hello";;
 esac
@@ -618,7 +684,10 @@ esac
         let result = JsonOutputAudit.run(&project).expect("audit should run");
         match &result.status {
             AuditStatus::OptOut(msg) => assert!(
-                msg.starts_with("no option definition in --help declares --output, --format,"),
+                msg.starts_with(
+                    "no option definition in --help declares --output, a --format or \
+                     --output-format whose definition names json,"
+                ),
                 "{msg}"
             ),
             other => panic!("expected OptOut, got {other:?}"),

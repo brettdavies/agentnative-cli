@@ -220,6 +220,9 @@ pub static SUPPRESSION_TABLE: &[(ExceptionCategory, &[&str])] = &[
             "p1-non-interactive-source",
             // p1-should-tty-detection — satisfied vacuously by the TUI
             // contract (the app's event loop is its TTY handler).
+            "p1-prompt-tty-source",
+            // p6-must-no-color's TTY half — same rationale: a TUI draws to the
+            // terminal it owns.
             "p1-tty-detection-source",
             // p6-must-sigpipe — TUIs routinely install their own signal
             // handlers to redraw or exit cleanly; the default-disposition

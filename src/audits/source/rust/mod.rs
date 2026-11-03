@@ -11,6 +11,7 @@ pub mod no_pager;
 pub mod output_clamping;
 pub mod output_module;
 pub mod process_exit;
+pub mod prompt_tty;
 pub mod sigterm;
 pub mod structured_output;
 pub mod timeout_flag;
@@ -38,6 +39,7 @@ pub fn all_rust_audits() -> Vec<Box<dyn Audit>> {
         Box::new(no_pager::NoPagerAudit),
         Box::new(timeout_flag::TimeoutFlagAudit),
         Box::new(tty_detection::TtyDetectionAudit),
+        Box::new(prompt_tty::PromptTtyAudit),
         Box::new(output_module::OutputModuleAudit),
         Box::new(enumerate_valid_set::EnumerateValidSetAudit),
         Box::new(sigterm::SigtermAudit),

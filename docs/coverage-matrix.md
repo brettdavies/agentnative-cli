@@ -21,7 +21,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | `p1-must-no-interactive` | MUST | Universal | `p1-non-interactive` (behavioral)<br>`p1-flag-existence` (behavioral)<br>`p1-non-interactive-source` (project) | When stdin is not a TTY or `--no-interactive` is set, every blocking-input surface (prompt libraries, read-line, TUI init) resolves from defaults/stdin or exits with an actionable error. |
 | `p1-must-no-browser` | MUST | If: CLI authenticates against a remote service | `p1-headless-auth` (source) | Headless authentication path (`--no-browser` / OAuth Device Authorization Grant). |
 | `p1-must-secret-non-leaky-path` | MUST | If: CLI accepts secret material (tokens, passwords, keys) as input | `p1-secret-non-leaky-path` (behavioral) | Sensitive inputs are readable via stdin or a `--*-file` flag; flag-value and env-var inputs MAY exist for convenience but MUST NOT be the only path. |
-| `p1-should-tty-detection` | SHOULD | Universal | `p1-tty-detection-source` (source) | Auto-detect non-interactive context via TTY detection; suppress prompts when stderr is not a terminal. |
+| `p1-should-tty-detection` | SHOULD | Universal | `p1-prompt-tty-source` (source) | Auto-detect non-interactive context via TTY detection; suppress prompts when stderr is not a terminal. |
 | `p1-should-defaults-in-help` | SHOULD | Universal | `p1-defaults-in-help` (behavioral) | Document default values for prompted inputs in `--help` output. |
 | `p1-may-rich-tui` | MAY | Universal | `p1-rich-tui` (behavioral) | Rich interactive experiences (spinners, progress bars, menus) when TTY is detected and `--no-interactive` is not set. |
 
@@ -80,7 +80,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 | --- | --- | --- | --- | --- |
 | `p6-must-sigpipe` | MUST | Universal | `p6-sigpipe` (behavioral) | SIGPIPE is handled so piping to `head`/`tail` does not crash the process (Rust example below; Python/Go/Node have language-specific equivalents). |
 | `p6-must-sigterm` | MUST | If: CLI has long-running operations | `p6-sigterm` (source)<br>`p6-sigterm` (source) | Long-running operations handle SIGTERM gracefully: flush or roll back partial writes, release locks, exit non-zero within a bounded window. Next invocation succeeds without manual cleanup. |
-| `p6-must-no-color` | MUST | Universal | `p6-no-color-behavioral` (behavioral)<br>`p6-no-color` (source)<br>`p6-no-color` (source) | TTY detection plus support for `NO_COLOR` and `TERM=dumb`: color codes suppressed when stdout/stderr is not a terminal. |
+| `p6-must-no-color` | MUST | Universal | `p6-no-color-behavioral` (behavioral)<br>`p6-no-color` (source)<br>`p1-tty-detection-source` (source)<br>`p6-no-color` (source) | TTY detection plus support for `NO_COLOR` and `TERM=dumb`: color codes suppressed when stdout/stderr is not a terminal. |
 | `p6-must-completions` | MUST | Universal | `p6-completions` (project) | Shell completions available via a `completions` subcommand (Tier 1 meta-command, needs no config/auth/network). |
 | `p6-must-timeout-network` | MUST | If: CLI makes network calls | `p6-timeout` (source) | Network CLIs ship a `--timeout` flag with a sensible default (e.g., 30 seconds). |
 | `p6-must-no-pager` | MUST | If: CLI invokes a pager for output | `p6-no-pager-behavioral` (behavioral)<br>`p6-no-pager` (source) | If the CLI uses a pager (`less`, `more`, `$PAGER`), it supports `--no-pager` or respects `PAGER=""`. |

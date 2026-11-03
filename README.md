@@ -568,7 +568,8 @@ P1 — Non-Interactive by Default
   [PASS] Secret-bearing flags expose stdin or *-file companion (p1-must-secret-non-leaky-path) (must)
   [WARN] Headless auth supported (p1-must-no-browser) (must)
          Auth code detected but no --no-browser or --headless flag found. Agents need a way to authenticate without a browser.
-  [PASS] TTY detection for color output (p1-should-tty-detection) (should)
+  [N/A ] Prompt calls guarded by a stdin TTY check (p1-should-tty-detection) (should)
+         No call into a prompt library (dialoguer, inquire, rpassword, rustyline) found, so there is no prompt to suppress.
   [PASS] No interactive prompt dependencies (p1-must-no-interactive) (must)
 
 P2 — Structured Output
@@ -579,6 +580,7 @@ P2 — Structured Output
 P6 — Composable Structure
   [PASS] Handles SIGPIPE gracefully (p6-must-sigpipe) (must)
   [PASS] Subcommand verbs follow community-standard names (p6-may-standard-names) (may)
+  [PASS] TTY detection for color output (p6-must-no-color) (must)
   [PASS] Long-running CLI handles SIGTERM (p6-must-sigterm) (must)
   [PASS] Shell completions support (p6-must-completions) (must)
 
@@ -589,7 +591,7 @@ P8 — Discoverable Skill Bundles
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-69 audits: 60 pass, 1 warn, 0 fail, 0 opt_out, 0 n_a, 8 skip, 0 error
+70 audits: 60 pass, 1 warn, 0 fail, 0 opt_out, 1 n_a, 8 skip, 0 error
 
 🏆 Score: 100% — your tool qualifies for the agent-native badge.
    Embed in your README:

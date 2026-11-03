@@ -67,23 +67,33 @@ pub(crate) fn probe_help_json(runner: &BinaryRunner, mode: &JsonMode) -> RunResu
     runner.run(&mode.args_with(&["--help"]), &[])
 }
 
-/// Try to parse JSON from either stderr or stdout, preferring stderr (the
-/// spec-mandated channel for error envelopes). Returns the parsed value
-/// and which channel it came from for evidence text.
-pub(crate) fn parse_error_envelope(
-    result: &RunResult,
-) -> Option<(serde_json::Value, &'static str)> {
-    if !result.stderr.trim().is_empty()
-        && let Ok(v) = serde_json::from_str::<serde_json::Value>(result.stderr.trim())
-    {
-        return Some((v, "stderr"));
+/// Which stream carried a bad invocation's JSON error.
+pub(crate) enum ErrorStream {
+    /// stderr parses as JSON, the stream the requirements name.
+    Stderr(serde_json::Value),
+    /// Only stdout parses as JSON.
+    Stdout,
+    /// Neither stream parses as JSON.
+    Neither,
+}
+
+/// Read `result`'s streams for a JSON error, stderr first.
+pub(crate) fn error_stream(result: &RunResult) -> ErrorStream {
+    let parse = |text: &str| serde_json::from_str::<serde_json::Value>(text.trim()).ok();
+    match (parse(&result.stderr), parse(&result.stdout)) {
+        (Some(value), _) => ErrorStream::Stderr(value),
+        (None, Some(_)) => ErrorStream::Stdout,
+        (None, None) => ErrorStream::Neither,
     }
-    if !result.stdout.trim().is_empty()
-        && let Ok(v) = serde_json::from_str::<serde_json::Value>(result.stdout.trim())
-    {
-        return Some((v, "stdout"));
-    }
-    None
+}
+
+/// The evidence for a JSON error that went to stdout under `mode`.
+pub(crate) fn on_stdout_evidence(mode: &str, principle: &str, requirement: &str) -> String {
+    format!(
+        "errors under `{mode}` are JSON on stdout, not stderr. {principle} sends JSON errors to \
+         stderr (`{requirement}`), so an agent reads them from one known stream; write them to \
+         stderr."
+    )
 }
 
 #[cfg(test)]

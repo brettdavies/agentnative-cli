@@ -11,7 +11,9 @@
 //! opted into but the error comes out on stdout or as plain text.
 
 use crate::audit::Audit;
-use crate::audits::behavioral::error_probe::{NO_JSON_MODE, probe_bad_invocation_json};
+use crate::audits::behavioral::error_probe::{
+    ErrorStream, NO_JSON_MODE, error_stream, on_stdout_evidence, probe_bad_invocation_json,
+};
 use crate::audits::behavioral::output_flags;
 use crate::project::Project;
 use crate::runner::RunResult;
@@ -74,21 +76,18 @@ impl Audit for JsonErrorOutputAudit {
 }
 
 pub(crate) fn classify_json_error_output(result: &RunResult, mode: &str) -> AuditStatus {
-    let parses = |text: &str| serde_json::from_str::<serde_json::Value>(text.trim()).is_ok();
-    if parses(&result.stderr) {
-        AuditStatus::Pass
-    } else if parses(&result.stdout) {
-        AuditStatus::Warn(format!(
-            "errors under `{mode}` are JSON on stdout, not stderr. P4 sends JSON errors to stderr \
-             (`p4-should-json-error-output`), so an agent reads them from one known stream; write \
-             them to stderr."
-        ))
-    } else {
-        AuditStatus::Warn(format!(
+    match error_stream(result) {
+        ErrorStream::Stderr(_) => AuditStatus::Pass,
+        ErrorStream::Stdout => AuditStatus::Warn(on_stdout_evidence(
+            mode,
+            "P4",
+            "p4-should-json-error-output",
+        )),
+        ErrorStream::Neither => AuditStatus::Warn(format!(
             "errors under `{mode}` are not JSON-formatted. Consumers parsing stdout-as-JSON \
              cannot recover the failure without a separate text-parsing path; switch the error \
              writer to honor the active output mode."
-        ))
+        )),
     }
 }
 

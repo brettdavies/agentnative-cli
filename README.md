@@ -665,8 +665,8 @@ letter: `-f` is not `-force-copy`, and `-v` is not `-version`. A single letter a
 own definition means what the audit asks for, through a long name the audit accepts on the same line or a description
 that names the meaning: `-v  Increase verbosity` is a verbose flag, and `-v, --version  Print version` is not. A row
 that sets a declared letter aside quotes the definition it read. This is the spec's rule, stated in its
-`principles/flag-names.md`: a letter's definition is the line that starts with its name, so unzip's `-q`, printed in the
-second column of `-n  never overwrite existing files         -q  quiet mode`, declares nothing.
+`principles/flag-names.md`: a letter's definition is the line whose leading names declare it, so unzip's `-q`, printed
+after `-n`'s description in `-n  never overwrite existing files         -q  quiet mode`, declares nothing.
 
 Names can sit in a second column with no comma between the columns, as lazygit and pandoc print them. After a gap, text
 that leads with a flag name and holds only names and placeholders is another column; text that reads on as a sentence is

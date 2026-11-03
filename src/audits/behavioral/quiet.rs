@@ -8,7 +8,7 @@ use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence}
 const QUIET_FLAGS: &[&str] = &["--quiet", "-q"];
 
 /// `-q` is also `--disable` (curl) and `--question` (make). The words come
-/// from real `-q` descriptions: "quiet mode" (ssh, unzip), "Suppress
+/// from real `-q` descriptions: "quiet mode" (ssh), "Suppress
 /// diagnostic output" (deno).
 const QUIET: Meaning = Meaning {
     what: "quiet",
@@ -177,6 +177,21 @@ mod tests {
                 HelpOutput::from_raw(format!("Options:\n{line}\n  -h, --help    Show help.\n"));
             assert_eq!(audit_quiet(&help), AuditStatus::Pass, "{line}");
         }
+    }
+
+    /// unzip 6.00 prints two definitions on one line. The spec's
+    /// `principles/flag-names.md` gives a letter the help line whose leading
+    /// names declare it, so `-q` after `-n`'s description has no definition.
+    #[test]
+    fn a_q_after_another_flags_description_declares_nothing() {
+        let help = HelpOutput::from_raw(
+            "modifiers:\n  -n  never overwrite existing files         -q  quiet mode (-qq => quieter)\n",
+        );
+        assert!(
+            matches!(audit_quiet(&help), AuditStatus::Warn(_)),
+            "{:?}",
+            audit_quiet(&help)
+        );
     }
 
     #[test]

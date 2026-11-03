@@ -17,7 +17,8 @@
 //! elsewhere on the call path guards nothing: a tool can ask whether stdin is a
 //! terminal to decide where its input comes from, then prompt regardless.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 use ast_grep_core::Node;
 use ast_grep_core::tree_sitter::StrDoc;
@@ -102,6 +103,9 @@ const STDIN_METHOD_CHECKS: &[&str] = &[
 /// Free functions that take the stream to check as an argument.
 const STREAM_ARGUMENT_CHECKS: &[&str] = &["is_terminal", "atty::is", "isatty"];
 
+/// Stands in a function's calls for a stdin check, under a name no function has.
+const STDIN_CHECK: &str = "<stdin check>";
+
 const NO_PROMPT: &str = "No call into a prompt library (dialoguer, inquire, rpassword, rustyline) \
                          found, so there is no prompt to suppress.";
 
@@ -173,22 +177,23 @@ impl SourceScan<Rust> for PromptTtyAudit {
     }
 }
 
-/// What one function shows about prompts and stdin checks.
+/// What one function shows about prompts and stdin checks. `calls` lists each
+/// callee by name, in source order, with `STDIN_CHECK` standing for a stdin
+/// check.
 #[derive(Debug, Default)]
 pub struct FunctionFacts {
     name: String,
-    checks_stdin: bool,
     calls: Vec<String>,
     gates: Vec<Gate>,
     prompts: Vec<SourceLocation>,
 }
 
-/// An `if` in a function: what its condition asks, and every call under it.
-#[derive(Debug, Default)]
+/// An `if` in a function, as ranges of the function's `calls`: those in its
+/// condition, and every call in the whole expression.
+#[derive(Debug)]
 struct Gate {
-    checks_stdin: bool,
-    condition_calls: Vec<String>,
-    calls: Vec<String>,
+    condition: Range<usize>,
+    calls: Range<usize>,
 }
 
 fn verdict(functions: &[FunctionFacts]) -> AuditStatus {
@@ -213,38 +218,48 @@ fn verdict(functions: &[FunctionFacts]) -> AuditStatus {
 /// that call a function that holds one, and everything called from inside an
 /// `if` whose condition does either.
 fn guarded_functions(functions: &[FunctionFacts]) -> HashSet<&str> {
-    let holding: HashSet<&str> = functions
+    let holds_check = |function: &FunctionFacts| function.calls.iter().any(|c| c == STDIN_CHECK);
+    let asking: HashSet<&str> = functions
         .iter()
-        .filter(|function| function.checks_stdin)
+        .filter(|function| holds_check(function))
         .map(|function| function.name.as_str())
+        .chain([STDIN_CHECK])
         .collect();
-    let asks = |calls: &[String]| calls.iter().any(|call| holding.contains(call.as_str()));
+    let asks = |calls: &[String]| calls.iter().any(|call| asking.contains(call.as_str()));
 
     let mut guarded: HashSet<&str> = functions
         .iter()
-        .filter(|function| function.checks_stdin || asks(&function.calls))
+        .filter(|function| asks(&function.calls))
         .map(|function| function.name.as_str())
         .collect();
 
+    let mut callees: HashMap<&str, Vec<&str>> = HashMap::new();
+    for function in functions {
+        callees
+            .entry(function.name.as_str())
+            .or_default()
+            .extend(function.calls.iter().map(String::as_str));
+    }
     let mut frontier: Vec<&str> = functions
         .iter()
-        .flat_map(|function| &function.gates)
-        .filter(|gate| gate.checks_stdin || asks(&gate.condition_calls))
-        .flat_map(|gate| &gate.calls)
+        .flat_map(|function| {
+            function
+                .gates
+                .iter()
+                .filter(|gate| asks(&function.calls[gate.condition.clone()]))
+                .flat_map(|gate| &function.calls[gate.calls.clone()])
+        })
         .map(String::as_str)
         .collect();
+    let mut reached: HashSet<&str> = HashSet::new();
     while let Some(name) = frontier.pop() {
-        guarded.insert(name);
-        let callees = functions
-            .iter()
-            .filter(|function| function.name == name)
-            .flat_map(|function| &function.calls);
-        for callee in callees {
-            if !guarded.contains(callee.as_str()) {
-                frontier.push(callee.as_str());
-            }
+        if reached.insert(name)
+            && let Some(called) = callees.get(name)
+        {
+            frontier.extend(called);
         }
     }
+    guarded.extend(reached);
     guarded
 }
 
@@ -289,8 +304,8 @@ impl FileScan<'_> {
         if let Some(index) = enclosing {
             match kind.as_ref() {
                 "call_expression" => self.record_call(&node, index),
-                "macro_invocation" => {
-                    self.functions[index].checks_stdin |= macro_checks_stdin(&node);
+                "macro_invocation" if macro_checks_stdin(&node) => {
+                    self.functions[index].calls.push(STDIN_CHECK.to_string());
                 }
                 // A macro's arguments parse as flat tokens, so a helper called
                 // inside `ensure!(is_interactive(), ..)` arrives as an
@@ -301,17 +316,26 @@ impl FileScan<'_> {
                 _ => {}
             }
         }
-        let gate = enclosing
-            .filter(|_| kind == "if_expression")
-            .and_then(|index| Some((index, condition_gate(&node)?)));
+        let condition = (kind == "if_expression")
+            .then(|| node.field("condition").map(|condition| condition.range()))
+            .flatten();
         let first_call = enclosing.map_or(0, |index| self.functions[index].calls.len());
+        let mut condition_end = first_call;
         for child in node.children() {
+            let is_condition = condition.as_ref() == Some(&child.range());
             self.visit(child, enclosing);
+            if is_condition && let Some(index) = enclosing {
+                condition_end = self.functions[index].calls.len();
+            }
         }
-        if let Some((index, mut gate)) = gate {
+        if condition_end > first_call
+            && let Some(index) = enclosing
+        {
             let facts = &mut self.functions[index];
-            gate.calls = facts.calls[first_call..].to_vec();
-            facts.gates.push(gate);
+            facts.gates.push(Gate {
+                condition: first_call..condition_end,
+                calls: first_call..facts.calls.len(),
+            });
         }
     }
 
@@ -325,7 +349,9 @@ impl FileScan<'_> {
             .map(|arguments| compact(&arguments.text()))
             .unwrap_or_default();
         let facts = &mut self.functions[index];
-        facts.checks_stdin |= checks_stdin(&callee, &arguments);
+        if checks_stdin(&callee, &arguments) {
+            facts.calls.push(STDIN_CHECK.to_string());
+        }
         facts.calls.push(callee_name(&callee).to_string());
 
         // In `Confirm::new().interact()` only the inner `Confirm::new()` names
@@ -344,28 +370,6 @@ impl FileScan<'_> {
             self.functions[index].prompts.push(location);
         }
     }
-}
-
-/// The gate an `if` expression's condition makes, when it holds a call at all.
-fn condition_gate(if_expression: &Node<'_, StrDoc<Rust>>) -> Option<Gate> {
-    let condition = if_expression.field("condition")?;
-    let mut gate = Gate::default();
-    for call in condition
-        .dfs()
-        .filter(|node| node.kind() == "call_expression")
-    {
-        let Some(function) = call.field("function") else {
-            continue;
-        };
-        let callee = compact(&function.text());
-        let arguments = call
-            .field("arguments")
-            .map(|arguments| compact(&arguments.text()))
-            .unwrap_or_default();
-        gate.checks_stdin |= checks_stdin(&callee, &arguments);
-        gate.condition_calls.push(callee_name(&callee).to_string());
-    }
-    (!gate.condition_calls.is_empty()).then_some(gate)
 }
 
 fn compact(text: &str) -> String {

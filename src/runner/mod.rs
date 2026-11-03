@@ -169,11 +169,10 @@ impl BinaryRunner {
     pub fn run_partial(&self, args: &[&str], read_bytes: usize) -> RunResult {
         let mut cmd = self.probe_command(args);
 
-        let mut child = match Self::spawn_with_retry(&mut cmd) {
-            Ok(c) => c,
+        let (mut child, mut group) = match ProbeGroup::spawn(|| Self::spawn_with_retry(&mut cmd)) {
+            Ok(started) => started,
             Err(e) => return Self::classify_spawn_error(e),
         };
-        let mut group = ProbeGroup::of(&child);
 
         // Read only the requested number of bytes from stdout.
         let mut buf = vec![0u8; read_bytes];
@@ -253,11 +252,10 @@ impl BinaryRunner {
             cmd.env(k, v);
         }
 
-        let mut child = match Self::spawn_with_retry(&mut cmd) {
-            Ok(c) => c,
+        let (mut child, mut group) = match ProbeGroup::spawn(|| Self::spawn_with_retry(&mut cmd)) {
+            Ok(started) => started,
             Err(e) => return Self::classify_spawn_error(e),
         };
-        let mut group = ProbeGroup::of(&child);
 
         // Take stdout/stderr handles so reader threads own them.
         let stdout_handle = child.stdout.take();

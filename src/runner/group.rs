@@ -9,11 +9,19 @@
 //! Ctrl-C no longer reaches it. anc forwards each signal that would have
 //! reached it, and a terminate, to every live probe group, then dies of the
 //! signal itself.
+//!
+//! A group can only be forwarded to once it is registered, and a probe can be
+//! running before `spawn` returns. So the handler is in place before the first
+//! spawn, and a signal that lands during a spawn is held until the group is
+//! registered. It is held in an atomic and not by blocking the signal, because
+//! `Command` passes its thread's signal mask to the child, so a probe would start
+//! with the signal blocked, and a mask covers only the calling thread.
 
+use std::io;
 use std::process::{Child, Command};
 
 #[cfg(unix)]
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
 /// The groups of the probes running now, `0` for a free slot. A signal
 /// handler reads them, so they sit in a fixed array of atomics rather than
@@ -22,6 +30,14 @@ use std::sync::atomic::{AtomicI32, Ordering};
 /// its group, but is not sent a forwarded signal.
 #[cfg(unix)]
 static LIVE_GROUPS: [AtomicI32; 64] = [const { AtomicI32::new(0) }; 64];
+
+/// How many spawns are under way. A signal that lands during one is held.
+#[cfg(unix)]
+static SPAWNING: AtomicUsize = AtomicUsize::new(0);
+
+/// The signal held for the spawns under way, `0` for none.
+#[cfg(unix)]
+static HELD_SIGNAL: AtomicI32 = AtomicI32::new(0);
 
 #[cfg(unix)]
 const FORWARDED: [libc::c_int; 4] = [libc::SIGHUP, libc::SIGINT, libc::SIGQUIT, libc::SIGTERM];
@@ -46,10 +62,27 @@ impl ProbeGroup {
         cmd
     }
 
-    /// The group `child` leads, after [`ProbeGroup::isolate`] on its command.
+    /// Start a probe through `spawn`, on a command that went through
+    /// [`ProbeGroup::isolate`], and register the group it leads. A forwarded
+    /// signal that lands before the group is registered waits for it, then
+    /// reaches the group.
     #[cfg(unix)]
-    pub(super) fn of(child: &Child) -> Self {
+    pub(super) fn spawn(spawn: impl FnOnce() -> io::Result<Child>) -> io::Result<(Child, Self)> {
         install_forwarding();
+        let _held = HoldSignals::begin();
+        let child = spawn()?;
+        let group = Self::of(&child);
+        Ok((child, group))
+    }
+
+    #[cfg(not(unix))]
+    pub(super) fn spawn(spawn: impl FnOnce() -> io::Result<Child>) -> io::Result<(Child, Self)> {
+        Ok((spawn()?, Self {}))
+    }
+
+    /// The group `child` leads.
+    #[cfg(unix)]
+    fn of(child: &Child) -> Self {
         let pgid = child.id() as libc::pid_t;
         let slot = LIVE_GROUPS.iter().position(|slot| {
             slot.compare_exchange(0, pgid, Ordering::AcqRel, Ordering::Relaxed)
@@ -59,11 +92,6 @@ impl ProbeGroup {
             pgid: Some(pgid),
             slot,
         }
-    }
-
-    #[cfg(not(unix))]
-    pub(super) fn of(_child: &Child) -> Self {
-        Self {}
     }
 
     /// SIGKILL every process left in the group, then, on Linux, every
@@ -88,6 +116,31 @@ impl ProbeGroup {
 impl Drop for ProbeGroup {
     fn drop(&mut self) {
         self.kill();
+    }
+}
+
+/// Holds forwarded signals from `begin` to its drop. The last spawn to finish
+/// delivers what was held.
+#[cfg(unix)]
+struct HoldSignals;
+
+#[cfg(unix)]
+impl HoldSignals {
+    fn begin() -> Self {
+        SPAWNING.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+#[cfg(unix)]
+impl Drop for HoldSignals {
+    fn drop(&mut self) {
+        if SPAWNING.fetch_sub(1, Ordering::SeqCst) == 1 {
+            let held = HELD_SIGNAL.swap(0, Ordering::SeqCst);
+            if held != 0 {
+                end_probes_and_die(held);
+            }
+        }
     }
 }
 
@@ -156,6 +209,22 @@ fn is_default(action: &libc::sigaction) -> bool {
 
 #[cfg(unix)]
 extern "C" fn forward(signal: libc::c_int) {
+    if SPAWNING.load(Ordering::SeqCst) > 0 {
+        HELD_SIGNAL.store(signal, Ordering::SeqCst);
+        // The last spawn can finish between that check and the store, and it
+        // would then never see the signal. Whichever side swaps it out acts on
+        // it, and SeqCst means at least one of them sees the other's write.
+        if SPAWNING.load(Ordering::SeqCst) > 0 || HELD_SIGNAL.swap(0, Ordering::SeqCst) == 0 {
+            return;
+        }
+    }
+    end_probes_and_die(signal);
+}
+
+/// Called from the handler and from a thread finishing a spawn, so it makes
+/// only async-signal-safe calls.
+#[cfg(unix)]
+fn end_probes_and_die(signal: libc::c_int) {
     for slot in &LIVE_GROUPS {
         let pgid = slot.load(Ordering::Acquire);
         if pgid > 0 {
@@ -169,4 +238,120 @@ extern "C" fn forward(signal: libc::c_int) {
     // way it would have without the handler.
     // SAFETY: raise only sends a signal.
     unsafe { libc::raise(signal) };
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::process::ExitStatusExt;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    use super::*;
+
+    /// Set in the process a test re-executes, to the file the probe appends
+    /// its pids to.
+    const PID_FILE_VAR: &str = "ANC_TEST_SPAWN_GAP_PID_FILE";
+
+    fn recorded_pids(file: &Path) -> Vec<libc::pid_t> {
+        std::fs::read_to_string(file)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| line.trim().parse().ok())
+            .collect()
+    }
+
+    /// Start a hung probe that leaves a child behind, and signal this process
+    /// once both are running and before the group is registered. The fixture
+    /// reports its pids after it has exec'd, so the signal lands in the gap on
+    /// every run. It only returns if the signal was lost.
+    fn signal_this_process_between_spawn_and_registration(pid_file: &Path) {
+        let probe = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/probe-leftovers/probe.sh");
+        let mut cmd = Command::new(probe);
+        ProbeGroup::isolate(&mut cmd)
+            .env("ANC_TEST_PID_FILE", pid_file)
+            .env("ANC_TEST_PROBE_HANG", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let started = ProbeGroup::spawn(|| {
+            let child = cmd.spawn()?;
+            let deadline = Instant::now() + Duration::from_secs(30);
+            while recorded_pids(pid_file).len() < 2 && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            // `raise` rather than `kill`: the handler runs on this thread before
+            // it returns. A signal sent to the process can land on another
+            // thread while this one goes on to register the group.
+            // SAFETY: raise only sends a signal.
+            unsafe { libc::raise(libc::SIGINT) };
+            Ok(child)
+        });
+        std::thread::sleep(Duration::from_secs(5));
+        drop(started);
+    }
+
+    /// Run `test` again in a process of its own, because the signal ends that
+    /// process, and hold it to the contract: it dies of the signal, and nothing
+    /// it started outlives it.
+    fn assert_the_signal_ends_the_process_and_every_probe(test: &str) {
+        let pids = tempfile::NamedTempFile::new().expect("temp file");
+        let status = Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--exact", test, "--test-threads=1", "--nocapture"])
+            .env(PID_FILE_VAR, pids.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("test binary starts");
+
+        let started = recorded_pids(pids.path());
+        // SAFETY: signal 0 only checks that the process exists.
+        let is_alive = |pid: libc::pid_t| unsafe { libc::kill(pid, 0) == 0 };
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut survivors = started.clone();
+        while !survivors.is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+            survivors.retain(|&pid| is_alive(pid));
+        }
+        for &pid in &survivors {
+            // SAFETY: kill only sends a signal.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+
+        assert_eq!(started.len(), 2, "the probe did not start: {status:?}");
+        assert_eq!(
+            status.signal(),
+            Some(libc::SIGINT),
+            "the process exited with {status:?}"
+        );
+        assert!(
+            survivors.is_empty(),
+            "these probe processes outlived the signal: {survivors:?}"
+        );
+    }
+
+    #[test]
+    fn a_signal_during_the_first_spawn_reaches_the_probe_group() {
+        match std::env::var_os(PID_FILE_VAR) {
+            Some(file) => signal_this_process_between_spawn_and_registration(Path::new(&file)),
+            None => assert_the_signal_ends_the_process_and_every_probe(
+                "runner::group::tests::a_signal_during_the_first_spawn_reaches_the_probe_group",
+            ),
+        }
+    }
+
+    #[test]
+    fn a_signal_during_a_later_spawn_reaches_the_probe_group() {
+        match std::env::var_os(PID_FILE_VAR) {
+            Some(file) => {
+                let (_child, _group) =
+                    ProbeGroup::spawn(|| Command::new("true").spawn()).expect("true starts");
+                signal_this_process_between_spawn_and_registration(Path::new(&file));
+            }
+            None => assert_the_signal_ends_the_process_and_every_probe(
+                "runner::group::tests::a_signal_during_a_later_spawn_reaches_the_probe_group",
+            ),
+        }
+    }
 }

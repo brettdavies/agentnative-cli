@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Canonical version: 2026.11.02 (generic)
+# Canonical version: 2026.11.03 (generic)
 #
 # Local CI mirror: the whole-repo pre-push gate. Runs the same checks as the
 # GitHub Actions CI pipeline, so a push that survives the hook passes CI and a
@@ -12,7 +12,7 @@
 #
 # Every shared check comes from scripts/hooks/_lib.sh, which both hooks source.
 # The two hooks differ in scope, not in what a check means: pre-push passes the
-# tracked set, pre-commit passes the staged set. Steps 8 and 9 stay inline
+# tracked set, pre-commit passes the staged set. Steps 9 and 10 stay inline
 # because pre-commit has no use for them and each carries a project-specific
 # pattern to customize.
 #
@@ -34,6 +34,9 @@
 #
 # Failures aggregate. One run reports every failing step rather than stopping
 # at the first, so a push is fixed in one pass instead of one step at a time.
+#
+# A commit any remote-tracking branch of the pushed remote reaches counts as
+# already checked, so a tag or new branch at one runs nothing.
 #
 # Heavy suites (browser e2e, full package builds) stay CI-only by design; when
 # one is omitted here, say so in a comment rather than leaving the gap for a
@@ -77,7 +80,8 @@ set -uo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root" || exit 1
-# shellcheck source=scripts/hooks/_lib.sh
+# A CI action that checks one file at a time without -x reports SC1091 here.
+# shellcheck source=scripts/hooks/_lib.sh disable=SC1091
 . ./scripts/hooks/_lib.sh || exit 1
 
 if push_only_deletes; then
@@ -93,12 +97,19 @@ if [ "$#" -ge 2 ] && [ -z "${HOOK_PUSH_REFS:-}" ]; then
   exit 0
 fi
 
+# A tag, or a new branch, at a commit the remote already has brings no commit
+# for any check to read.
+if push_only_known_commits "${1:-}"; then
+  echo "Nothing to check: every pushed commit is already on $1."
+  exit 0
+fi
+
 fail=0
 
 # The cargo steps run unless the pushed paths are known and the repo's
 # cargo-inputs.sh classifier finds no cargo input among them (see needs_cargo).
 run_cargo=true
-if changed=$(pushed_paths) && ! needs_cargo "$changed"; then
+if changed=$(pushed_paths "${1:-}") && ! needs_cargo "$changed"; then
   run_cargo=false
 fi
 
@@ -127,12 +138,11 @@ if $run_cargo; then
   step "test" "cargo test" check_tests || fail=1
   step "test (web feature)" "cargo test --features web" check_tests --features web || fail=1
 
-  # 4. MSRV check: compile against the rust-version declared in Cargo.toml.
-  # Library crates declare a lower MSRV than the rust-toolchain.toml pin; this
-  # validates the declared promise so consumers on the MSRV still see a working
-  # crate. Requires the MSRV toolchain installed; the library skips with a hint
-  # otherwise. The version is read here so both the pass line and the rerun hint
-  # name it.
+  # 4. MSRV check: compile against the rust-version declared in Cargo.toml,
+  # which equals rust-toolchain.toml's channel (RELEASES.md § Versioning), as
+  # CI's MSRV job does. Requires that toolchain installed; the library skips
+  # with a hint otherwise. The version is read here so both the pass line and
+  # the rerun hint name it.
   msrv=$(msrv_version)
   step "msrv${msrv:+ ($msrv)}" "cargo +${msrv:-MSRV} check" check_msrv || fail=1
 
@@ -249,7 +259,7 @@ if $run_cargo; then
 fi
 
 [ "$fail" -eq 0 ] || {
-  echo "pre-push checks failed (see CONTRIBUTING.md, Pre-push hook battery)." >&2
+  echo "pre-push checks failed: rerun the command each failing line names (checks: scripts/hooks/pre-push)." >&2
   exit 1
 }
 

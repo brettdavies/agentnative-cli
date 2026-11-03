@@ -1,11 +1,13 @@
-# Canonical version: 2026.10.02 (generic)
+# Canonical version: 2026.11.03 (generic)
 #
 # Dependabot configuration.
 #
 # Two ecosystems: cargo for Rust dependencies, github-actions for workflow
 # actions. Both scan weekly on Monday mornings. Cargo minor + patch updates
-# group into one PR per week (so a typical week is one PR, not 12); major
-# updates are ignored here and land through a reviewed PR when wanted.
+# group into one PR per week (so a typical week is one PR, not 12). Both
+# version-update blocks ignore semver-major, so no major version update opens
+# a PR: a major is a reviewed bump a maintainer makes by hand. A security fix
+# that needs a major is the exception (see the security block below).
 #
 # `target-branch: dev` is non-negotiable on every version-update block.
 # Without it, Dependabot defaults to `main` and the PR fails the dev ->
@@ -25,9 +27,10 @@
 # fix that resolves outside the current range.
 #
 # Both version-update blocks batch every minor and patch into one PR per
-# week. The github-actions group uses `patterns` rather than `update-types`
-# because a SHA pin's SemVer level comes from a trailing comment and an
-# unclassifiable action would otherwise fall out of the group and open alone.
+# week and ignore semver-major. The github-actions group uses `patterns`
+# rather than `update-types` because a SHA pin's SemVer level comes from a
+# trailing comment and an unclassifiable action would otherwise fall out of
+# the group and open alone.
 version: 2
 updates:
   - package-ecosystem: cargo

@@ -1,4 +1,4 @@
-# Canonical version: 2026.11.02 (rust)
+# Canonical version: 2026.11.03 (rust)
 #
 # Source repo CI wrapper: calls the centralized reusable workflows.
 # Copy to .github/workflows/ci.yml in the tool repo.
@@ -65,7 +65,8 @@ jobs:
     #   docs_only                   skip every job (set below, from the scope job)
     #   cross_os_tests              run cargo test on Windows and macOS too
     #   docs                        cargo doc with warnings denied (set below)
-    #   msrv                        cargo check on the root Cargo.toml's rust-version (set below)
+    #   msrv                        cargo check on the root Cargo.toml's rust-version (set below), which
+    #                               equals rust-toolchain.toml's channel, so it builds on the pinned toolchain
     #   completions                 scripts/generate-completions.sh --check (rust-tool-release)
     #   lint_stdio                  scripts/lint-stdio.sh (rust-tool-release skeleton)
     #   workflow_concurrency        scripts/check-workflow-concurrency.sh (github-repo-setup)
@@ -89,9 +90,8 @@ jobs:
   # The reusable workflow above builds the default feature set. The local web
   # audit is the `web` feature, off by default, so these jobs hold that build
   # to the same clippy, test and Windows bars. They do not wait on the scope
-  # job, and must not: cargo-inputs.sh counts src/principles/spec/principles/*.md
-  # as documentation because build.rs finds them with read_dir, not by name, so
-  # the jobs below are the only CI that builds a change to only those files.
+  # job: they run on every pull request whatever the classifier decides, so the
+  # required "Web feature (clippy, test)" check never rests on its verdict.
   web:
     name: Web feature (clippy, test)
     runs-on: ubuntu-22.04

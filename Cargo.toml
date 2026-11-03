@@ -88,7 +88,7 @@ time = { version = "=0.3.55", default-features = false, features = ["std", "form
 # which cannot hold the bundled trust anchors beside extra roots, so the
 # transport wraps TLS itself (src/web_audit/tls.rs) through ureq's transport
 # API, and the exact pin covers that API too.
-ureq = { version = "=3.4.2", optional = true, default-features = false, features = [
+ureq = { version = "=3.5.0", optional = true, default-features = false, features = [
     "rustls-no-provider",
     "gzip",
     "brotli",

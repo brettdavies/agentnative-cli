@@ -120,7 +120,7 @@ Shared tree helpers live in `src/source.rs`; do not write private per-language p
 
 ## Principle Registry
 
-`src/principles/registry.rs` is the single source of truth linking spec requirements (MUSTs, SHOULDs, MAYs across P1–P7)
+`src/principles/registry.rs` is the single source of truth linking spec requirements (MUSTs, SHOULDs, MAYs across P1–P8)
 to the audits that verify them. IDs follow `p{N}-{level}-{key}` and are stable once published; scorecards and the
 coverage matrix pin against them.
 

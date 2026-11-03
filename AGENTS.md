@@ -166,7 +166,7 @@ include `Usage:` text, and audit failures don't. Under `--output json`, every er
   (`cargo_target.rs`), binary selection (`select.rs`), and the per-language source cache (`mod.rs`)
 - `src/scorecard.rs`: output formatting (text and JSON)
 - `src/types.rs`: AuditResult, AuditStatus, AuditGroup, AuditLayer
-- `src/principles/registry.rs`: single source of truth linking spec requirements (P1–P7 MUSTs/SHOULDs/MAYs) to the
+- `src/principles/registry.rs`: single source of truth linking spec requirements (P1–P8 MUSTs/SHOULDs/MAYs) to the
   audits that verify them
 - `src/principles/matrix.rs`: coverage-matrix generator + drift detector
 
@@ -177,7 +177,7 @@ include `Usage:` text, and audit failures don't. Under `--output json`, every er
    verifies requirements in `src/principles/registry.rs` (return a `&'static [&'static str]` of requirement IDs)
 3. Register in the layer's `mod.rs` (e.g., `all_rust_audits()`)
 4. Add inline `#[cfg(test)]` tests
-5. Regenerate the coverage matrix: `cargo run -- generate coverage-matrix` (produces `docs/coverage-matrix.md` +
+5. Regenerate the coverage matrix: `cargo run -- emit coverage-matrix` (produces `docs/coverage-matrix.md` +
    `coverage/matrix.json`, both tracked in git)
 
 See `CLAUDE.md` §"Principle Registry" and §"`covers()` Declaration" for the registry conventions and drift-detector

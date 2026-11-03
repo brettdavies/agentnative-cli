@@ -1,5 +1,5 @@
 //! Flat `&'static [Requirement]` registry covering every MUST, SHOULD, and
-//! MAY across P1–P7. The registry is the single source of truth linking
+//! MAY across P1–P8. The registry is the single source of truth linking
 //! spec requirements to the audits that verify them via `Audit::covers()`.
 //!
 //! IDs follow the pattern `p{N}-{level}-{key}`. They are stable and must

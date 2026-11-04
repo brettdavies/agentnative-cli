@@ -354,9 +354,49 @@ impl Response {
         Response {
             status,
             headers,
-            body: Box::new(body),
+            body: Box::new(EndsWithGzipBody {
+                inner: body,
+                decoded: false,
+            }),
         }
     }
+}
+
+/// A body reader that ends where a gzip body ended.
+///
+/// ureq's decoder reads on after a member to look for another, and reports what
+/// it finds as an error even though the body already decoded: out of input on
+/// an empty body or after the member, or no second member after one. The site
+/// engine's runtime reads these as a body. flate2 words a stream cut short inside
+/// its data differently, so that stays an error. Two cases read as a body here and
+/// as a failure there, because the decoder's error is identical: a stream cut off
+/// inside the 8-byte trailer, and a body under 10 bytes that never was gzip.
+struct EndsWithGzipBody<R> {
+    inner: R,
+    decoded: bool,
+}
+
+impl<R: Read> Read for EndsWithGzipBody<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.inner.read(buf) {
+            Ok(n) => {
+                self.decoded |= n > 0;
+                Ok(n)
+            }
+            Err(err) if gzip_body_ended(&err, self.decoded) => Ok(0),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+fn gzip_body_ended(err: &std::io::Error, decoded: bool) -> bool {
+    let Some(ureq::Error::Decompress("gzip", cause)) =
+        err.get_ref().and_then(|inner| inner.downcast_ref())
+    else {
+        return false;
+    };
+    let cause = cause.to_string();
+    cause == "unexpected end of file" || (decoded && cause == "invalid gzip header")
 }
 
 #[cfg(test)]

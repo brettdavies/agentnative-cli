@@ -6,7 +6,7 @@
 
 mod common;
 
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
 
@@ -44,12 +44,6 @@ fn read_body(transport: &UreqTransport, url: &str) -> Vec<u8> {
 
 const DECODED: &[u8] = b"hello gzip body\n";
 
-fn gzip_body() -> Vec<u8> {
-    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    encoder.write_all(DECODED).expect("write to a vec");
-    encoder.finish().expect("finish a vec")
-}
-
 /// `hello gzip body\n`, through a brotli encoder.
 const BROTLI_BODY: &[u8] = &[
     0x8b, 0x07, 0x80, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x67, 0x7a, 0x69, 0x70, 0x20, 0x62, 0x6f,
@@ -62,7 +56,11 @@ fn negotiated(request: &RawRequest) -> RawResponse {
     if accepted.split(',').any(|e| e.trim() == "br") {
         RawResponse::new(200, &[("content-encoding", "br")], BROTLI_BODY)
     } else {
-        RawResponse::new(200, &[("content-encoding", "gzip")], &gzip_body())
+        RawResponse::new(
+            200,
+            &[("content-encoding", "gzip")],
+            &common::gzip_of(DECODED),
+        )
     }
 }
 
@@ -85,7 +83,12 @@ fn a_negotiated_body_decodes_and_leaves_its_connection_for_the_next_request() {
 #[test]
 fn a_chunked_gzip_body_decodes_and_leaves_its_connection_for_the_next_request() {
     let server = common::spawn_https_keep_alive(|_| {
-        RawResponse::new(200, &[("content-encoding", "gzip")], &gzip_body()).chunked()
+        RawResponse::new(
+            200,
+            &[("content-encoding", "gzip")],
+            &common::gzip_of(DECODED),
+        )
+        .chunked()
     });
     let transport = transport();
     let url = server.server.url("/");

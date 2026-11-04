@@ -36,6 +36,13 @@ pub fn empty_home_config() -> &'static Path {
     })
 }
 
+/// `bytes` as one gzip member.
+pub fn gzip_of(bytes: &[u8]) -> Vec<u8> {
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(bytes).expect("write to a vec");
+    encoder.finish().expect("finish a vec")
+}
+
 /// One request as the server read it off the wire.
 #[derive(Clone, Debug)]
 pub struct RawRequest {
@@ -200,9 +207,12 @@ fn write_response_ending<W: Write>(mut stream: W, resp: &RawResponse, connection
     out.push_str(&format!("connection: {connection}\r\n\r\n"));
     let _ = stream.write_all(out.as_bytes());
     if resp.chunked {
-        let _ = write!(stream, "{:x}\r\n", resp.body.len());
-        let _ = stream.write_all(&resp.body);
-        let _ = stream.write_all(b"\r\n0\r\n\r\n");
+        if !resp.body.is_empty() {
+            let _ = write!(stream, "{:x}\r\n", resp.body.len());
+            let _ = stream.write_all(&resp.body);
+            let _ = stream.write_all(b"\r\n");
+        }
+        let _ = stream.write_all(b"0\r\n\r\n");
     } else {
         let _ = stream.write_all(&resp.body);
     }

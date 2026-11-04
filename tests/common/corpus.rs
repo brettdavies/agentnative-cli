@@ -262,7 +262,15 @@ pub fn replay_as(
     transport: Arc<MockTransport>,
     credential: Option<Credential>,
 ) -> RunOutcome {
-    replay_through(scenario, handlers, transport, credential, None)
+    replay_through(
+        scenario,
+        handlers,
+        transport,
+        Replay {
+            credential,
+            ..Replay::default()
+        },
+    )
 }
 
 /// `handlers` with the scenario's `failing_handlers` throwing instead of
@@ -296,14 +304,26 @@ fn failing_where_asked(scenario: &Scenario, handlers: Arc<HandlerSet>) -> Arc<Ha
     Arc::new(set)
 }
 
-/// [`replay_as`] through any transport, at `concurrency` or the default.
+/// What a replay changes from the defaults every scenario runs at.
+#[derive(Default)]
+pub struct Replay {
+    pub credential: Option<Credential>,
+    pub concurrency: Option<usize>,
+    pub per_check_timeout: Option<Duration>,
+}
+
+/// [`replay_as`] through any transport, with `replay` over the defaults.
 pub fn replay_through(
     scenario: &Scenario,
     handlers: Arc<HandlerSet>,
     transport: Arc<dyn Transport + Send + Sync>,
-    credential: Option<Credential>,
-    concurrency: Option<usize>,
+    replay: Replay,
 ) -> RunOutcome {
+    let Replay {
+        credential,
+        concurrency,
+        per_check_timeout,
+    } = replay;
     let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), AUDIT_USER_AGENT);
     let fetch = match credential {
         Some(credential) => fetch.with_credential(credential),
@@ -318,7 +338,7 @@ pub fn replay_through(
     };
     input.spec_version = scenario.spec_version.clone();
     input.follow_declarations = scenario.follow_declarations;
-    input.per_check_timeout = Duration::from_secs(2);
+    input.per_check_timeout = per_check_timeout.unwrap_or(Duration::from_secs(2));
     input.per_audit_deadline = Duration::from_secs(20);
     if let Some(concurrency) = concurrency {
         input.concurrency = concurrency;

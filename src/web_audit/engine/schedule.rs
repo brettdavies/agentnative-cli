@@ -262,9 +262,10 @@ impl<'a> Schedule<'a> {
     /// A source that measured nothing, because its handler threw, it has no
     /// handler in this build, or the deadline came first, keeps its own row: the
     /// gate would read that silence as the surface not being there, which can lift
-    /// the score of a run that never looked. Otherwise a row its gate rules out
-    /// finalizes here and takes no slot, a source row reads the probe it already
-    /// made, and any other row queues for a slot.
+    /// the score of a run that never looked. One outside the declared site type
+    /// still reads not applicable, which reads no source. Otherwise a row its gate
+    /// rules out finalizes here and takes no slot, a source row reads the probe it
+    /// already made, and any other row queues for a slot.
     fn finish_row(&mut self, check: &'static WebCheck, index: usize) {
         if self.measured_nothing(check) {
             let result = self.source_row(check);
@@ -284,8 +285,10 @@ impl<'a> Schedule<'a> {
         self.submit_probe(check, self.context(), Rank::Row(index), Done::Row);
     }
 
-    fn measured_nothing(&self, check: &WebCheck) -> bool {
-        is_source_check(check.id) && !self.sources.contains_key(check.id)
+    fn measured_nothing(&self, check: &'static WebCheck) -> bool {
+        is_source_check(check.id)
+            && !self.sources.contains_key(check.id)
+            && antecedents::site_type_applies(check.site_types, &self.antecedent_context(check))
     }
 
     fn source_row(&mut self, check: &'static WebCheck) -> EngineResult {
@@ -528,10 +531,8 @@ impl<'a> Schedule<'a> {
         }
     }
 
-    /// Gate: declared-type filter first, then the antecedent token. The row a
-    /// check settles to, or `None` when it must be probed.
-    fn gate(&self, check: &'static WebCheck) -> Option<EngineResult> {
-        let actx = AntecedentContext {
+    fn antecedent_context(&self, check: &'static WebCheck) -> AntecedentContext<'_> {
+        AntecedentContext {
             site_type: self.plan.site_type,
             mcp_endpoint: self.plan.template.mcp_endpoint.as_deref(),
             discovery_evidence: self.plan.discovery_evidence,
@@ -542,7 +543,13 @@ impl<'a> Schedule<'a> {
             api_anchors: self.plan.api_anchors,
             mcp_auth: self.mcp_auth.as_deref(),
             mcp_lane: McpOp::request_era(check),
-        };
+        }
+    }
+
+    /// Gate: declared-type filter first, then the antecedent token. The row a
+    /// check settles to, or `None` when it must be probed.
+    fn gate(&self, check: &'static WebCheck) -> Option<EngineResult> {
+        let actx = self.antecedent_context(check);
         if !antecedents::site_type_applies(check.site_types, &actx) {
             return Some(na_result(
                 check,

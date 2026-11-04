@@ -23,7 +23,9 @@ use agentnative::web_audit::fetch::FetchInit;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::registry::{CHECKS, HANDLER_KINDS, WebCheck};
-use agentnative::web_audit::scorecard::{EngineResult, EvidenceItem, ScorecardStatus};
+use agentnative::web_audit::scorecard::{
+    DeclaredSiteType, EngineResult, EvidenceItem, ScorecardStatus,
+};
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use serde_json::{Value, json};
 
@@ -613,6 +615,22 @@ fn a_source_still_out_at_the_deadline_keeps_its_skip_row_and_what_is_gated_on_it
         ScorecardStatus::NA
     );
     assert!(!report.complete);
+}
+
+#[test]
+fn a_source_outside_the_declared_site_type_reads_not_applicable_even_when_it_measured_nothing() {
+    let mut set = stand_ins();
+    set.register("http", |check, ctx| {
+        assert_ne!(check.id, "llms-full-txt", "this source's handler throws");
+        probe(check, ctx)
+    });
+    let transport = site(|_, _| None);
+    let mut run = input(transport, set, 6);
+    run.site_type = Some(DeclaredSiteType::Api);
+    let report = complete(run_web_audit(run));
+    let source = row(&report, "llms-full-txt");
+    assert_eq!(source.status, ScorecardStatus::NA, "{source:?}");
+    assert_eq!(source.evidence, "not applicable to the declared site type");
 }
 
 #[test]

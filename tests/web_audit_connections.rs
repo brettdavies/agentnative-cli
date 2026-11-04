@@ -8,6 +8,8 @@ mod common;
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::{Arc, Barrier};
+use std::thread;
 use std::time::Duration;
 
 use agentnative::web_audit::fetch::trust::{TrustClass, TrustConfig, load_ca_file};
@@ -111,4 +113,54 @@ fn a_request_advertises_the_encodings_whose_connection_comes_back() {
     assert_eq!(read_body(&transport, &server.server.url("/")), DECODED);
     let hits = server.server.hits();
     assert_eq!(hits[0].header("accept-encoding"), Some("gzip"));
+}
+
+/// The most requests the transport keeps a connection for on one host.
+const BURST: usize = 16;
+
+/// A server that holds every request until `at_once` have arrived, so each of
+/// them is on a connection of its own.
+fn held_server(at_once: usize) -> common::KeepAliveServer {
+    let arrived = Arc::new(Barrier::new(at_once));
+    common::spawn_https_keep_alive(move |_| {
+        arrived.wait();
+        RawResponse::new(200, &[], b"ok")
+    })
+}
+
+fn at_once(transport: &UreqTransport, url: &str, count: usize) {
+    thread::scope(|scope| {
+        for _ in 0..count {
+            scope.spawn(|| assert_eq!(read_body(transport, url), b"ok"));
+        }
+    });
+}
+
+#[test]
+fn a_burst_leaves_a_connection_for_each_request_of_the_next() {
+    let server = held_server(BURST);
+    let transport = transport();
+    let url = server.server.url("/");
+    at_once(&transport, &url, BURST);
+    assert_eq!(server.accepted(), BURST);
+    at_once(&transport, &url, BURST);
+    assert_eq!(
+        server.accepted(),
+        BURST,
+        "the second burst reuses every connection of the first"
+    );
+}
+
+#[test]
+fn the_hosts_of_one_audit_keep_their_connections_side_by_side() {
+    let servers: Vec<_> = (0..4).map(|_| held_server(BURST)).collect();
+    let transport = transport();
+    for _ in 0..2 {
+        for server in &servers {
+            at_once(&transport, &server.server.url("/"), BURST);
+        }
+    }
+    for server in &servers {
+        assert_eq!(server.accepted(), BURST);
+    }
 }

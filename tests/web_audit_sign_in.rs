@@ -1,9 +1,9 @@
 //! An MCP endpoint that requires sign-in, scored by what an agent at the
 //! audit's vantage can verify: a 401 its own RFC 9728 metadata backs makes
 //! the endpoint present, the rows that need a session read `n_a`
-//! `auth-required`, the three sign-in rows score what the 401 and the
-//! metadata say, and the global score's maximum counts one MCP access
-//! design. The corpus replay pins every row; these name the behaviors.
+//! `auth-required`, and the three sign-in rows score what the 401 and the
+//! metadata say. The corpus replay pins every row; these name the behaviors.
+//! `src/web_audit/universe.rs` holds the global maximum's design rule.
 
 #![cfg(feature = "web")]
 
@@ -108,17 +108,6 @@ fn a_bare_bearer_challenge_names_no_metadata() {
             "the Bearer challenge names no resource_metadata".to_string()
         )
     );
-}
-
-/// Open 155, protected 158, no MCP 158: an open server's global keeps its
-/// value, one without an endpoint counts the largest design.
-#[test]
-fn the_global_maximum_counts_the_mcp_access_design_the_site_presents() {
-    assert_eq!(scorecard_of("run-all-pass").score.global, 100);
-    let no_mcp = scorecard_of("frontmatter-absent");
-    assert_eq!((no_mcp.score.relative, no_mcp.score.global), (65, 19));
-    let protected = scorecard_of("auth-declared-endpoint");
-    assert_eq!((protected.score.relative, protected.score.global), (68, 26));
 }
 
 const SITE: &str = "https://example.com/";

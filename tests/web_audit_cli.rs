@@ -9,6 +9,7 @@ mod common;
 
 use std::process::Command as StdCommand;
 
+use agentnative::web_audit::registry::{CHECKS, RETIRED_CHECK_IDS};
 use agentnative::web_audit::scorecard::WebScorecard;
 use common::web_cli::{anc, api_site, fixture_site, host_of, stderr_of, stdout_of};
 use serde_json::Value;
@@ -74,7 +75,7 @@ fn the_single_check_form_returns_that_rows_code() {
         .assert()
         .code(3);
     let scorecard: WebScorecard = serde_json::from_str(&stdout_of(assert.get_output())).unwrap();
-    assert_eq!(scorecard.results.len(), 68);
+    assert_eq!(scorecard.results.len(), CHECKS.len());
 }
 
 /// Declaring a type both narrows and widens: rows typed for the other
@@ -199,7 +200,7 @@ fn the_offline_readers_serve_the_compiled_registry() {
         .iter()
         .map(|c| c["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids.len(), 68);
+    assert_eq!(ids.len(), CHECKS.len());
     // Every id the reader lists is an id `--check` accepts.
     let server = fixture_site();
     let host = host_of(&server);
@@ -236,7 +237,7 @@ fn the_offline_readers_serve_the_compiled_registry() {
     let fixes = anc().args(["emit", "web-remediation"]).assert().code(0);
     let catalog: Value = serde_json::from_str(&stdout_of(fixes.get_output())).unwrap();
     let entries = catalog["remediation"].as_array().unwrap();
-    assert_eq!(entries.len(), 69, "68 checks and one retired id");
+    assert_eq!(entries.len(), CHECKS.len() + RETIRED_CHECK_IDS.len());
     assert!(
         entries
             .iter()

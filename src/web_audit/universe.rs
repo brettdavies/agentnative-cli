@@ -136,25 +136,57 @@ mod tests {
             ("mcp-tools-list", Pass, None),
             ("mcp-auth-challenge", Pass, None),
         ]);
+        let sizes: Vec<f64> = ALTERNATIVES
+            .iter()
+            .flat_map(|group| group.variants)
+            .map(|variant| {
+                CHECKS
+                    .iter()
+                    .filter(|c| variant.antecedents.contains(&c.antecedent))
+                    .map(|c| ScoreConfig::default().weights.for_keyword(c.keyword))
+                    .sum()
+            })
+            .collect();
+        let largest = sizes.iter().copied().fold(f64::MIN, f64::max);
+        let smallest = sizes.iter().copied().fold(f64::MAX, f64::min);
+        assert!(largest > smallest);
         assert_eq!(
-            (no_mcp, open, protected, hybrid),
-            (158.0, 155.0, 158.0, 158.0)
+            (no_mcp - open, protected, hybrid),
+            (largest - smallest, no_mcp, no_mcp),
+            "the open design counts less than the largest; every other design counts the largest"
         );
     }
 
     #[test]
     fn an_n_a_reason_only_an_applied_check_carries_presents_its_design() {
-        let optional_absent = universe(&[(
-            "mcp-auth-challenge",
-            ScorecardStatus::NA,
-            Some(NaReason::OptionalAbsent),
-        )]);
+        // Without the row's reason only the open design is presented, so this reads
+        // the smaller maximum.
+        let optional_absent = universe(&[
+            ("mcp-tools-list", ScorecardStatus::Pass, None),
+            (
+                "mcp-auth-challenge",
+                ScorecardStatus::NA,
+                Some(NaReason::OptionalAbsent),
+            ),
+        ]);
         let auth_required = universe(&[(
             "mcp-tools-list",
             ScorecardStatus::NA,
             Some(NaReason::AuthRequired),
         )]);
-        assert_eq!((optional_absent, auth_required), (158.0, 158.0));
+        let no_mcp = universe(&[
+            (
+                "mcp-tools-list",
+                ScorecardStatus::NA,
+                Some(NaReason::AntecedentUnmet),
+            ),
+            (
+                "mcp-auth-challenge",
+                ScorecardStatus::NA,
+                Some(NaReason::AntecedentUnmet),
+            ),
+        ]);
+        assert_eq!((optional_absent, auth_required), (no_mcp, no_mcp));
     }
 
     #[test]

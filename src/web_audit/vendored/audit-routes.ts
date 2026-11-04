@@ -12,7 +12,7 @@
 //   raw input
 //     |-- longer than TARGET_MAX_LENGTH ........... rejected, before any parsing
 //     |-- empty after trim ........................ rejected
-//     |-- GitHub repo (URL or owner/repo) ......... CLI, target as entered
+//     |-- GitHub repo (URL or owner/repo) ......... CLI, target owner/repo
 //     |     '-- /tree/<branch> or owner/repo@branch  CLI branch-scoped,
 //     |           target owner/repo@branch; a branch whose last segment is
 //     |           md, json, or html is rejected
@@ -181,7 +181,10 @@ function classifyGithub(raw: string): ClassifiedTarget | null {
     const [, owner, repo, tail] = url;
     if (!GITHUB_OWNER_RE.test(owner) || !GITHUB_REPO_RE.test(repo)) return reject('invalid_target');
     const path = (tail ?? '').replace(/\/+$/, '');
-    if (path === '') return { ok: true, lane: 'cli', kind: 'cli', target: input };
+    // owner/repo is the one spelling the result routes and the CLI lane's
+    // validator both read; a target that keeps the URL's scheme has no
+    // result path, and one that keeps its host fails validation.
+    if (path === '') return { ok: true, lane: 'cli', kind: 'cli', target: `${owner}/${repo}` };
     if (!path.startsWith('tree/')) return reject('invalid_target');
     const branch = safeDecode(path.slice('tree/'.length));
     if (!branch) return reject('invalid_target');

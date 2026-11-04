@@ -19,8 +19,11 @@ use serde_json::{Value, json};
 
 const LEDGER: &str = "tests/fixtures/web-audit-divergences.toml";
 const PIN_FILE: &str = "src/web_audit/vendored/SITE_SHA";
-const REGISTRY: &str = "src/web_audit/vendored/registry.yaml";
-const CORPUS: &str = "tests/fixtures/web-audit-conformance/scenarios";
+const REGISTRY: &str = "src/web_audit/vendored/contract/registry.json";
+/// Where the corpus lands in this repository.
+const CORPUS: &str = "tests/fixtures/web-audit-contract/conformance/scenarios";
+/// Where the site keeps it, and where the ledger generator reads its history.
+const SITE_CORPUS: &str = "src/data/web-audit/contract/test/conformance/scenarios";
 const SCRIPTS: [&str; 7] = [
     "sync-web-audit.sh",
     "hardened-git.sh",
@@ -31,15 +34,10 @@ const SCRIPTS: [&str; 7] = [
     "cargo-inputs.sh",
 ];
 /// The site paths the sync script reads, as fixture files.
-const SITE_FILES: [&str; 8] = [
-    "src/data/web-audit/registry.yaml",
-    "src/data/web-audit/remediation.yaml",
-    "src/data/web-audit/server-card.schema.json",
-    "src/shared/user-agents.ts",
-    "src/shared/site-url.ts",
-    "src/shared/audit-routes.ts",
-    "tests/fixtures/web-audit-score-parity.json",
-    "tests/fixtures/web-audit-conformance/scenarios/run-a/scorecard.json",
+const SITE_FILES: [&str; 3] = [
+    "src/data/web-audit/contract/build/registry.json",
+    "src/data/web-audit/contract/test/score-parity.json",
+    "src/data/web-audit/contract/test/conformance/scenarios/run-a/scorecard.json",
 ];
 
 const CARGO_SHIM: &str = r#"#!/usr/bin/env bash
@@ -139,6 +137,10 @@ fn git_command(dir: &Path) -> Command {
             "user.email=fixture@example.invalid",
             "-c",
             "commit.gpgsign=false",
+            // A developer's global ignore file commonly lists `build/`, which the
+            // site's contract uses as a directory name.
+            "-c",
+            "core.excludesFile=/dev/null",
         ])
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_SYSTEM", "/dev/null");
@@ -193,10 +195,7 @@ impl Fixture {
         for file in SITE_FILES {
             write(&site.join(file), &format!("{file}: first\n"));
         }
-        write(
-            &site.join("tests/fixtures/web-audit-conformance/scenarios/run-a/scorecard.json"),
-            "{\"score\": 1}\n",
-        );
+        write(&site.join(SITE_FILES[2]), "{\"score\": 1}\n");
         let first_pin = commit(&site, "feat: the first site commit (#1)");
 
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -583,7 +582,7 @@ fn a_dry_run_reports_the_bump_and_restores_the_tree() {
     let f = Fixture::new();
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     let new = f.site_commit(
-        &format!("{CORPUS}/run-b/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-b/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a new scenario (#3)",
     );
@@ -640,11 +639,11 @@ fn deleted_vendored_files_are_called_out_because_no_test_can_see_a_shrink() {
             "rm",
             "--quiet",
             "--",
-            &format!("{CORPUS}/run-a/scorecard.json"),
+            &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         ],
     );
     f.site_commit(
-        &format!("{CORPUS}/run-b/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-b/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a scenario replaced (#3)",
     );
@@ -792,7 +791,7 @@ fn a_suite_that_cannot_build_says_so() {
 fn divergences_land_green_as_ledger_entries_grouped_by_owning_site_pr() {
     let f = Fixture::new();
     f.site_commit(
-        &format!("{CORPUS}/run-a/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         "{\"score\": 2, \"results\": [{\"id\": \"robots\", \"status\": \"pass\"}]}\n",
         "feat: a golden moves (#9001)",
     );
@@ -1004,7 +1003,7 @@ fn a_body_past_githubs_limit_is_cut_and_keeps_its_template() {
 #[test]
 fn a_divergence_a_commit_with_no_pr_set_names_that_commit_rather_than_another_pr() {
     let f = Fixture::new();
-    let golden = format!("{CORPUS}/run-a/scorecard.json");
+    let golden = format!("{SITE_CORPUS}/run-a/scorecard.json");
     f.site_commit(
         &golden,
         "{\"score\": 1, \"other\": 2}\n",
@@ -1048,11 +1047,11 @@ fn a_first_publish_signs_on_a_scratch_ref_then_creates_the_branch_and_the_pr() {
             "rm",
             "--quiet",
             "--",
-            &format!("{CORPUS}/run-a/scorecard.json"),
+            &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         ],
     );
     let new = f.site_commit(
-        &format!("{CORPUS}/run-b/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-b/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a scenario replaced (#3)",
     );
@@ -1112,7 +1111,7 @@ fn a_first_publish_signs_on_a_scratch_ref_then_creates_the_branch_and_the_pr() {
 fn a_regenerated_ledger_lands_in_the_commit_with_its_pin() {
     let f = Fixture::new();
     let new = f.site_commit(
-        &format!("{CORPUS}/run-a/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a golden moves (#9001)",
     );
@@ -1921,7 +1920,7 @@ fn a_symlink_in_a_site_commit_stops_the_bump_before_anything_is_prepared() {
     let f = Fixture::new();
     std::os::unix::fs::symlink(
         "/proc/self/environ",
-        f.site.join(CORPUS).join("run-a/leak.json"),
+        f.site.join(SITE_CORPUS).join("run-a/leak.json"),
     )
     .unwrap();
     commit(&f.site, "feat: a scenario that links out (#2)");
@@ -1978,7 +1977,7 @@ fn the_token_job_checks_out_a_commit_named_before_any_test_code_ran() {
 fn two_bumps_in_a_row_carry_an_entry_no_commit_in_the_second_range_touched() {
     let f = Fixture::new();
     f.site_commit(
-        &format!("{CORPUS}/run-a/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a golden moves (#9001)",
     );

@@ -29,7 +29,7 @@ pub const API_CATALOG_DOCUMENT: &str = "api-catalog";
 pub const SERVER_CARD_DOCUMENT: &str = "server-card";
 
 // Bounds the card reads one catalog can cause, whatever it lists.
-const MAX_CATALOG_CARDS: usize = 4;
+use crate::web_audit::registry::MAX_CATALOG_CARDS;
 
 // The extension schema's remote URL template variable: `{name}`.
 static URL_TEMPLATE_VARIABLE: LazyLock<Regex> =

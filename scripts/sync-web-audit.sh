@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
-# Sync the web-audit inputs from agentnative-site at the pinned commit.
+# Sync the site's web-audit vendoring contract at the pinned commit, each directory
+# whole, so the CLI reads only the data the site generates for it.
 #
 # Build inputs (build.rs compiles them into $OUT_DIR/generated_web_registry.rs):
-#   src/data/web-audit/registry.yaml            -> src/web_audit/vendored/registry.yaml
-#   src/data/web-audit/remediation.yaml         -> src/web_audit/vendored/remediation.yaml
-#   src/data/web-audit/server-card.schema.json  -> src/web_audit/vendored/server-card.schema.json
-#   src/shared/user-agents.ts                   -> src/web_audit/vendored/user-agents.ts
-#   src/shared/site-url.ts                      -> src/web_audit/vendored/site-url.ts
-#   src/shared/audit-routes.ts                  -> src/web_audit/vendored/audit-routes.ts
+#   src/data/web-audit/contract/build/  -> src/web_audit/vendored/contract/
 # Test inputs (Cargo.toml excludes tests/ from the crates.io package):
-#   tests/fixtures/web-audit-score-parity.json  -> tests/fixtures/web-audit-score-parity.json
-#   tests/fixtures/web-audit-conformance/       -> tests/fixtures/web-audit-conformance/
+#   src/data/web-audit/contract/test/   -> tests/fixtures/web-audit-contract/
 #
-# The pin is src/web_audit/vendored/SITE_SHA, a full 40-hex commit on the
-# site's dev branch. Fetching is by commit, never by branch: `git fetch
-# --depth 1 origin <sha>` yields exactly that commit or fails naming it.
+# The pin is src/web_audit/vendored/SITE_SHA, a full 40-hex site commit, normally on
+# the site's dev branch. Fetching is by commit, never by branch: `git fetch --depth 1
+# origin <sha>` yields exactly that commit or fails naming it.
 # CI's web-audit-drift workflow runs `--check` on every PR.
 #
 # Modes:
 #   scripts/sync-web-audit.sh              Refresh every vendored copy at the pin.
 #   scripts/sync-web-audit.sh --pin <sha>  Move the pin to <sha>, then refresh.
-#   scripts/sync-web-audit.sh --check      Verify every copy matches the pin;
-#                                          exit 1 on drift, listing each path.
+#   scripts/sync-web-audit.sh --check      Verify every copy matches the pin, listings
+#                                          as well as bytes; exit 1 on drift, naming
+#                                          each path.
 #   scripts/sync-web-audit.sh --list       Print every vendored path, the pin file
 #                                          last, and touch nothing.
 #   scripts/sync-web-audit.sh --site-paths Print every path read from the site, and
@@ -50,17 +46,9 @@ DEST_ROOT="${WEB_AUDIT_DEST_ROOT:-$REPO_ROOT}"
 PIN_FILE="src/web_audit/vendored/SITE_SHA"
 
 # "<site path>=<destination path>", relative to each repository root.
-SYNC_FILES=(
-  "src/data/web-audit/registry.yaml=src/web_audit/vendored/registry.yaml"
-  "src/data/web-audit/remediation.yaml=src/web_audit/vendored/remediation.yaml"
-  "src/data/web-audit/server-card.schema.json=src/web_audit/vendored/server-card.schema.json"
-  "src/shared/user-agents.ts=src/web_audit/vendored/user-agents.ts"
-  "src/shared/site-url.ts=src/web_audit/vendored/site-url.ts"
-  "src/shared/audit-routes.ts=src/web_audit/vendored/audit-routes.ts"
-  "tests/fixtures/web-audit-score-parity.json=tests/fixtures/web-audit-score-parity.json"
-)
 SYNC_DIRS=(
-  "tests/fixtures/web-audit-conformance=tests/fixtures/web-audit-conformance"
+  "src/data/web-audit/contract/build=src/web_audit/vendored/contract"
+  "src/data/web-audit/contract/test=tests/fixtures/web-audit-contract"
 )
 
 fail() {
@@ -109,14 +97,14 @@ done
 [[ $mode != "update" && -n $pin_arg ]] && usage
 
 if [[ $mode == "list" ]]; then
-  for entry in "${SYNC_FILES[@]}" "${SYNC_DIRS[@]}"; do
+  for entry in "${SYNC_DIRS[@]}"; do
     echo "${entry#*=}"
   done
   echo "$PIN_FILE"
   exit 0
 fi
 if [[ $mode == "site-paths" ]]; then
-  for entry in "${SYNC_FILES[@]}" "${SYNC_DIRS[@]}"; do
+  for entry in "${SYNC_DIRS[@]}"; do
     echo "${entry%%=*}"
   done
   exit 0
@@ -165,17 +153,10 @@ else
 fi
 
 # === Stage every vendored copy under $tmp_root/stage ===================
-# File-based extraction throughout: variable capture would strip trailing
-# newlines and break byte parity with the committed copies.
+# File-based extraction: variable capture would strip trailing newlines and break
+# byte parity with the committed copies.
 stage="$tmp_root/stage"
 mkdir -p "$stage"
-for entry in "${SYNC_FILES[@]}"; do
-  src="${entry%%=*}"
-  dest="${entry#*=}"
-  mkdir -p "$stage/$(dirname "$dest")"
-  hardened_git -C "$src_repo" show "$rev:$src" >"$stage/$dest" 2>/dev/null \
-    || fail "commit $sha has no $src"
-done
 for entry in "${SYNC_DIRS[@]}"; do
   src="${entry%%=*}"
   dest="${entry#*=}"
@@ -186,6 +167,7 @@ for entry in "${SYNC_DIRS[@]}"; do
   [[ -d "$extract/$src" ]] || fail "commit $sha has no $src/"
   mv "$extract/$src" "$stage/$dest"
 done
+mkdir -p "$stage/$(dirname "$PIN_FILE")"
 printf '%s\n' "$sha" >"$stage/$PIN_FILE"
 
 # cp and upload-artifact follow a link, so a symlink in a site commit would carry
@@ -196,12 +178,6 @@ links="$(find "$stage" -type l)"
 # === Mode-specific behavior ============================================
 case "$mode" in
   update)
-    for entry in "${SYNC_FILES[@]}"; do
-      dest="${entry#*=}"
-      mkdir -p "$DEST_ROOT/$(dirname "$dest")"
-      cp "$stage/$dest" "$DEST_ROOT/$dest"
-      echo "wrote $dest"
-    done
     for entry in "${SYNC_DIRS[@]}"; do
       dest="${entry#*=}"
       mkdir -p "$DEST_ROOT/$(dirname "$dest")"
@@ -210,6 +186,7 @@ case "$mode" in
       echo "wrote $dest/"
     done
     if [[ -n $pin_arg || ! -f "$DEST_ROOT/$PIN_FILE" ]]; then
+      mkdir -p "$DEST_ROOT/$(dirname "$PIN_FILE")"
       cp "$stage/$PIN_FILE" "$DEST_ROOT/$PIN_FILE"
       echo "wrote $PIN_FILE ($sha)"
     fi
@@ -218,17 +195,17 @@ case "$mode" in
     ;;
   check)
     drifted=()
-    for entry in "${SYNC_FILES[@]}"; do
-      dest="${entry#*=}"
-      if ! cmp -s "$DEST_ROOT/$dest" "$stage/$dest"; then
-        drifted+=("$dest")
-      fi
-    done
+    # `diff -rq` reports a file only one side holds as well as one whose bytes differ,
+    # so a listing change names its path.
     for entry in "${SYNC_DIRS[@]}"; do
       dest="${entry#*=}"
-      if ! diff -rq "$DEST_ROOT/$dest" "$stage/$dest" >/dev/null 2>&1; then
-        drifted+=("$dest/")
+      if [[ ! -d "$DEST_ROOT/$dest" ]]; then
+        drifted+=("$dest/: missing")
+        continue
       fi
+      while IFS= read -r line; do
+        drifted+=("$line")
+      done < <(diff -rq "$DEST_ROOT/$dest" "$stage/$dest" 2>&1 | sed -e "s|$DEST_ROOT/||g" -e "s|$stage/||g" || true)
     done
     if ! cmp -s "$DEST_ROOT/$PIN_FILE" "$stage/$PIN_FILE"; then
       drifted+=("$PIN_FILE")
@@ -238,14 +215,10 @@ case "$mode" in
       exit 0
     fi
     echo "error: vendored web-audit copies drifted from agentnative-site $sha:" >&2
-    for dest in "${drifted[@]}"; do
-      echo "       $dest" >&2
+    for line in "${drifted[@]}"; do
+      echo "       $line" >&2
     done
     echo "       run \`scripts/sync-web-audit.sh\` to refresh, then commit." >&2
-    echo >&2
-    for dest in "${drifted[@]}"; do
-      diff -ru "$DEST_ROOT/${dest%/}" "$stage/${dest%/}" || true
-    done
     exit 1
     ;;
 esac

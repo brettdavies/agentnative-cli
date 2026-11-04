@@ -1,0 +1,108 @@
+[
+  {
+    "method": "GET",
+    "url": "https://example.com/",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/ai-catalog.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/api-catalog",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/mcp.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/mcp/server-card.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/mcp",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-method": "tools/list",
+      "mcp-protocol-version": "2026-07-28",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/mcp",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/message",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-method": "tools/list",
+      "mcp-protocol-version": "2026-07-28",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/message",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/sse",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-method": "tools/list",
+      "mcp-protocol-version": "2026-07-28",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/sse",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"}}}"
+  }
+]

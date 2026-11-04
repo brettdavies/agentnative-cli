@@ -45,13 +45,13 @@ use crate::web_audit::scorecard::{
 };
 
 /// Worker threads per wave.
-pub const DEFAULT_CONCURRENCY: usize = 6;
-/// Per-request timeout when the root answered.
-pub const DEFAULT_PER_CHECK_TIMEOUT: Duration = Duration::from_millis(8_000);
+pub use crate::web_audit::registry::DEFAULT_CONCURRENCY;
 /// Wall-clock budget for the whole run.
-pub const DEFAULT_PER_AUDIT_DEADLINE: Duration = Duration::from_millis(25_000);
+pub use crate::web_audit::registry::DEFAULT_PER_AUDIT_DEADLINE;
+/// Per-request timeout when the root answered.
+pub use crate::web_audit::registry::DEFAULT_PER_CHECK_TIMEOUT;
 /// Per-request timeout once the root fetch has failed at the network level.
-pub const DEGRADED_PER_CHECK_TIMEOUT: Duration = Duration::from_millis(2_000);
+pub use crate::web_audit::registry::DEGRADED_PER_CHECK_TIMEOUT;
 
 /// The evidence line on a DNS row the locality gate withheld.
 pub const EXTERNAL_DNS_WITHHELD: &str = "needs public DNS: verified on anc.dev";

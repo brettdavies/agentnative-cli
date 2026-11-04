@@ -27,7 +27,7 @@ use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
 /// Links probed when the check names no cap.
-pub const DEFAULT_MAX_LINKS: usize = 8;
+pub use crate::web_audit::registry::DEFAULT_MAX_LINKS;
 
 const BUDGET_EXHAUSTED: &str = "nested-probe budget exhausted";
 

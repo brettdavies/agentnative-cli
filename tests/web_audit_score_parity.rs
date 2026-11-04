@@ -42,7 +42,7 @@ struct Fixture {
 /// scoring config.
 fn parity_cases() -> Vec<Fixture> {
     let raw: Value = serde_json::from_str(
-        &fs::read_to_string(fixtures().join("web-audit-score-parity.json")).unwrap(),
+        &fs::read_to_string(fixtures().join("web-audit-contract/score-parity.json")).unwrap(),
     )
     .unwrap();
     let w = &raw["weights"];
@@ -148,7 +148,7 @@ fn an_unknown_field_fails_to_deserialize_naming_the_field() {
 }
 
 fn golden_paths() -> Vec<PathBuf> {
-    let dir = fixtures().join("web-audit-conformance/scenarios");
+    let dir = fixtures().join("web-audit-contract/conformance/scenarios");
     let mut paths: Vec<PathBuf> = fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
         .map(|entry| entry.unwrap().path().join("scorecard.json"))

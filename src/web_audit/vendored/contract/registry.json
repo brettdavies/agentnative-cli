@@ -1,0 +1,1681 @@
+{
+  "version": 1,
+  "mcp_discovery": {
+    "ai_catalog": "/.well-known/ai-catalog.json",
+    "card_suffix": "/server-card",
+    "well_known": [
+      "/.well-known/mcp.json",
+      "/.well-known/mcp/server-card.json"
+    ],
+    "common_paths": [
+      "/mcp",
+      "/sse",
+      "/message"
+    ],
+    "protocol_version": "2025-06-18"
+  },
+  "category_order": [
+    "discoverability",
+    "content-for-agents",
+    "bot-crawl-policy",
+    "api",
+    "mcp",
+    "agent-discovery-auth"
+  ],
+  "categories": {
+    "discoverability": "Discoverability",
+    "content-for-agents": "Content for agents",
+    "bot-crawl-policy": "Bot & crawl policy",
+    "api": "API",
+    "mcp": "MCP",
+    "agent-discovery-auth": "Agent discovery & auth"
+  },
+  "mcp_lanes": {
+    "shared": {
+      "label": "Every MCP server",
+      "note": "transport, discovery, and card checks that apply whichever protocol the server speaks"
+    },
+    "legacy": {
+      "label": "Legacy lane · 2025-06-18",
+      "note": "initialize, then a session"
+    },
+    "modern": {
+      "label": "Modern lane · 2026-07-28",
+      "note": "header-routed and stateless; no initialize or session"
+    },
+    "browser": {
+      "label": "In-page tools · WebMCP",
+      "note": "browser tools exposed by the site's HTML, not by the MCP server"
+    }
+  },
+  "alternatives": [
+    {
+      "group": "mcp-access",
+      "variants": {
+        "open": {
+          "antecedents": [],
+          "presented_by": [
+            "mcp-session"
+          ]
+        },
+        "protected": {
+          "antecedents": [
+            "mcp-auth-required"
+          ],
+          "presented_by": [
+            "mcp-auth-required"
+          ]
+        }
+      }
+    }
+  ],
+  "retired": {
+    "well-known-mcp-card": {
+      "successor": "mcp-server-card",
+      "reason": "the card check scores the server card discovery keeps, SEP-2127 or SEP-1649, instead of requesting one SEP-1649 path"
+    }
+  },
+  "checks": [
+    {
+      "id": "openapi",
+      "category": "api",
+      "tier": "required",
+      "keyword": "must",
+      "principle": "P2",
+      "site_types": [
+        "api"
+      ],
+      "antecedent": "api-surface",
+      "eval": "api-description",
+      "weight": 2,
+      "title": "An OpenAPI description is published",
+      "breadcrumb": "OpenAPI description",
+      "hint": "Publish an OpenAPI 3.1 description for the REST surface so non-MCP agents can call it.",
+      "handler": "http",
+      "with": {
+        "path_any": [
+          "/openapi.json",
+          "/openapi.yaml",
+          "/.well-known/openapi.json"
+        ],
+        "retain_body": true,
+        "expect": {
+          "status": [
+            200
+          ],
+          "body_regex": "openapi|swagger"
+        }
+      }
+    },
+    {
+      "id": "json-schemas",
+      "category": "api",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "api"
+      ],
+      "antecedent": "schemas-ref",
+      "weight": 1,
+      "title": "Referenced JSON Schemas resolve as application/schema+json",
+      "breadcrumb": "JSON Schemas",
+      "hint": "Serve input/output JSON Schemas so agents can validate payloads before calling.",
+      "handler": "http",
+      "with": {
+        "path_any": [
+          "/api/schema/input.json",
+          "/api/schema/output.json",
+          "/schema.json"
+        ],
+        "expect": {
+          "status": [
+            200
+          ],
+          "content_type": "json"
+        }
+      }
+    },
+    {
+      "id": "api-catalog",
+      "category": "api",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "api"
+      ],
+      "antecedent": "api-surface",
+      "eval": "retained-document",
+      "weight": 2,
+      "title": "/.well-known/api-catalog published (RFC 9727)",
+      "breadcrumb": "API catalog",
+      "hint": "Serve /.well-known/api-catalog as application/linkset+json with a linkset[] of anchor + service-desc entries.",
+      "handler": "http",
+      "with": {
+        "retained": "api-catalog",
+        "expect": {
+          "status": [
+            200
+          ],
+          "body_regex": "linkset"
+        }
+      }
+    },
+    {
+      "id": "json-errors",
+      "category": "api",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "api"
+      ],
+      "antecedent": "api-surface",
+      "weight": 2,
+      "title": "API client errors return JSON, not HTML",
+      "breadcrumb": "JSON errors",
+      "hint": "Answer unknown or documented 4xx API GETs with a JSON error body, not an HTML page.",
+      "handler": "api-hygiene",
+      "with": {
+        "op": "json-errors"
+      }
+    },
+    {
+      "id": "rate-limit-headers",
+      "category": "api",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P6",
+      "site_types": [
+        "api"
+      ],
+      "antecedent": "api-surface",
+      "weight": 2,
+      "title": "API responses advertise rate-limit headers",
+      "breadcrumb": "Rate-limit headers",
+      "hint": "Send RateLimit-* or X-RateLimit-* (or Retry-After) on API responses so agents can back off.",
+      "handler": "api-hygiene",
+      "with": {
+        "op": "rate-limit"
+      }
+    },
+    {
+      "id": "mcp-initialize",
+      "category": "mcp",
+      "tier": "required",
+      "keyword": "must",
+      "principle": "P2",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 5,
+      "title": "initialize handshake returns serverInfo + protocolVersion",
+      "breadcrumb": "MCP initialize",
+      "lane": "legacy",
+      "hint": "Answer JSON-RPC `initialize` with serverInfo{name,version} and protocolVersion.",
+      "handler": "mcp",
+      "with": {
+        "op": "initialize"
+      }
+    },
+    {
+      "id": "mcp-capabilities",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 2,
+      "title": "initialize advertises capabilities (tools / resources / prompts)",
+      "breadcrumb": "MCP capabilities",
+      "lane": "legacy",
+      "hint": "Populate `capabilities` in the initialize result so clients gate feature use.",
+      "handler": "mcp",
+      "with": {
+        "op": "initialize",
+        "assert": "capabilities"
+      }
+    },
+    {
+      "id": "mcp-tools-list",
+      "category": "mcp",
+      "tier": "required",
+      "keyword": "must",
+      "principle": "P2",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 4,
+      "title": "tools/list returns a tools array with input schemas",
+      "breadcrumb": "MCP tools/list",
+      "lane": "legacy",
+      "hint": "Return `result.tools[]`, each with `name`, `description`, and a JSON `inputSchema`.",
+      "handler": "mcp",
+      "with": {
+        "op": "tools-list"
+      }
+    },
+    {
+      "id": "mcp-resources-list",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-resources",
+      "weight": 3,
+      "title": "resources/list returns at least one resource when advertised",
+      "breadcrumb": "MCP resources/list",
+      "lane": "legacy",
+      "hint": "When initialize advertises capabilities.resources, return a non-empty result.resources array from resources/list.",
+      "handler": "mcp",
+      "with": {
+        "op": "resources-list"
+      }
+    },
+    {
+      "id": "mcp-modern-tools-list",
+      "category": "mcp",
+      "tier": "required",
+      "keyword": "must",
+      "principle": "P2",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 4,
+      "title": "header-routed tools/list (2026-07-28) returns tools without initialize",
+      "breadcrumb": "MCP tools/list (modern)",
+      "lane": "modern",
+      "hint": "Answer a header-routed tools/list (MCP-Protocol-Version 2026-07-28, Mcp-Method, _meta envelope) without requiring initialize.",
+      "handler": "mcp",
+      "with": {
+        "op": "modern-tools-list"
+      }
+    },
+    {
+      "id": "mcp-server-discover",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 3,
+      "title": "server/discover answers with server identity on the modern lane",
+      "breadcrumb": "MCP server discovery",
+      "lane": "modern",
+      "hint": "Answer server/discover with a well-formed discovery result on protocol 2026-07-28.",
+      "handler": "mcp",
+      "with": {
+        "op": "server-discover"
+      }
+    },
+    {
+      "id": "mcp-unknown-method",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "unknown JSON-RPC method returns -32601",
+      "breadcrumb": "MCP unknown method",
+      "lane": "legacy",
+      "hint": "Reject unknown methods with JSON-RPC error -32601 (Method not found), not a hang or 500.",
+      "handler": "mcp",
+      "with": {
+        "op": "error",
+        "method": "nonexistent/method",
+        "expect_code": -32601
+      }
+    },
+    {
+      "id": "mcp-malformed-body",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "a non-JSON body draws -32700 (or a typed HTTP 400/415 refusal)",
+      "breadcrumb": "MCP malformed body",
+      "lane": "legacy",
+      "hint": "Answer an unparseable POST body with JSON-RPC -32700 (Parse error) or a bare HTTP 400/415, never a 200 with garbage or a hang.",
+      "handler": "mcp",
+      "with": {
+        "op": "malformed-body"
+      }
+    },
+    {
+      "id": "mcp-batch-reject",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "a batch carrying a modern-envelope request is rejected -32600",
+      "breadcrumb": "MCP batch reject",
+      "lane": "legacy",
+      "hint": "Reject a JSON array batch whose element carries the modern _meta envelope with JSON-RPC -32600 (Invalid Request).",
+      "handler": "mcp",
+      "with": {
+        "op": "batch-reject"
+      }
+    },
+    {
+      "id": "mcp-unknown-tool",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 2,
+      "title": "tools/call with an unknown tool name returns -32602",
+      "breadcrumb": "MCP unknown tool",
+      "lane": "legacy",
+      "hint": "Reject an unknown tool name on tools/call with JSON-RPC -32602 (Invalid params), not a hang or a 200 result.",
+      "handler": "mcp",
+      "with": {
+        "op": "unknown-tool"
+      }
+    },
+    {
+      "id": "mcp-modern-unknown-method",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "an unknown method on the modern lane returns -32601",
+      "breadcrumb": "MCP unknown method (modern)",
+      "lane": "modern",
+      "hint": "Reject an unknown header-routed method (2026-07-28) with JSON-RPC -32601; HTTP 404 delivery conforms when the body carries the envelope.",
+      "handler": "mcp",
+      "with": {
+        "op": "modern-unknown-method"
+      }
+    },
+    {
+      "id": "mcp-modern-clientcaps",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "_meta missing clientCapabilities is rejected (-32602 or -32600)",
+      "breadcrumb": "MCP clientCapabilities",
+      "lane": "modern",
+      "hint": "Reject a modern request whose _meta omits io.modelcontextprotocol/clientCapabilities with -32602 (or -32600); the key is mandatory on every modern request.",
+      "handler": "mcp",
+      "with": {
+        "op": "modern-clientcaps"
+      }
+    },
+    {
+      "id": "mcp-modern-header-mismatch",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "an Mcp-Method header disagreeing with the body method draws -32020",
+      "breadcrumb": "MCP header mismatch",
+      "lane": "modern",
+      "hint": "Validate the SEP-2243 header mirror and reject a request whose Mcp-Method header names a different method than the body with -32020.",
+      "handler": "mcp",
+      "with": {
+        "op": "modern-header-mismatch"
+      }
+    },
+    {
+      "id": "mcp-modern-version-reject",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "an unsupported protocol version is rejected -32022 with data.supported",
+      "breadcrumb": "MCP version reject",
+      "lane": "modern",
+      "hint": "Reject an unsupported MCP-Protocol-Version claim with -32022 (UnsupportedProtocolVersion) and list the served revisions in error.data.supported.",
+      "handler": "mcp",
+      "with": {
+        "op": "modern-version-reject"
+      }
+    },
+    {
+      "id": "mcp-modern-resources-miss",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-resources",
+      "weight": 2,
+      "title": "modern resources/read with an unknown URI returns -32602",
+      "breadcrumb": "MCP resources miss",
+      "lane": "modern",
+      "hint": "Answer a modern resources/read whose Mcp-Name mirrors an unknown URI with JSON-RPC -32602 (-32002 tolerated), never a hang or a 200 result.",
+      "handler": "mcp",
+      "with": {
+        "op": "modern-resources-miss"
+      }
+    },
+    {
+      "id": "mcp-accept-json",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 3,
+      "title": "a JSON-only Accept is answered without SSE framing",
+      "breadcrumb": "MCP Accept JSON",
+      "lane": "legacy",
+      "hint": "Answer a POST whose Accept names only application/json with a single application/json response, never a text/event-stream body a JSON-only client cannot read.",
+      "handler": "mcp",
+      "with": {
+        "op": "accept-json"
+      }
+    },
+    {
+      "id": "mcp-accept-unsatisfiable",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-session",
+      "weight": 3,
+      "title": "an unsatisfiable Accept draws a 406 rather than an unasked-for type",
+      "breadcrumb": "MCP Accept unsatisfiable",
+      "lane": "legacy",
+      "hint": "Refuse a POST whose Accept allows neither application/json nor text/event-stream with HTTP 406 Not Acceptable, never a 200 carrying a type the client did not ask for.",
+      "handler": "mcp",
+      "with": {
+        "op": "accept-unsatisfiable"
+      }
+    },
+    {
+      "id": "mcp-get-fast-fail",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P4",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 3,
+      "title": "GET on the MCP endpoint answers fast (not a held-open hang)",
+      "breadcrumb": "MCP GET fast-fail",
+      "lane": "shared",
+      "hint": "Answer GET with Accept: text/event-stream promptly. Return 405 Method Not Allowed, or 200 with Content-Type text/event-stream. A 200 that serves HTML or markdown fails. A held-open hang or a 5xx also fails.",
+      "handler": "http",
+      "with": {
+        "path": "{mcp_endpoint}",
+        "method": "GET",
+        "headers": {
+          "Accept": "text/event-stream"
+        },
+        "timeout": 8,
+        "expect": {
+          "status_below": 500,
+          "sse_when_success": true
+        }
+      }
+    },
+    {
+      "id": "mcp-cors-preflight",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P6",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 3,
+      "title": "CORS preflight (OPTIONS) succeeds with Access-Control-Allow-* headers",
+      "breadcrumb": "MCP CORS preflight",
+      "lane": "shared",
+      "hint": "Answer OPTIONS with 204 + Access-Control-Allow-Origin/Methods/Headers so browser-origin agents work.",
+      "handler": "cors-preflight",
+      "with": {
+        "path": "{mcp_endpoint}",
+        "origin": "https://example.com",
+        "request_method": "POST",
+        "request_headers": "content-type",
+        "surface": "preflight"
+      }
+    },
+    {
+      "id": "mcp-cors-actual",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P6",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 2,
+      "title": "POST response carries Access-Control-Allow-Origin",
+      "breadcrumb": "MCP CORS actual",
+      "lane": "shared",
+      "hint": "Echo Access-Control-Allow-Origin on the actual POST, not only the preflight.",
+      "handler": "cors-preflight",
+      "with": {
+        "path": "{mcp_endpoint}",
+        "origin": "https://example.com",
+        "request_method": "POST",
+        "request_headers": "content-type",
+        "surface": "actual"
+      }
+    },
+    {
+      "id": "mcp-server-card",
+      "category": "mcp",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P8",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "eval": "retained-document",
+      "weight": 3,
+      "title": "An MCP server card is published",
+      "breadcrumb": "MCP server card",
+      "lane": "shared",
+      "hint": "Publish a SEP-2127 server card at <endpoint>/server-card and list it in /.well-known/ai-catalog.json.",
+      "handler": "server-card",
+      "with": {
+        "retained": "server-card",
+        "required": [
+          {
+            "field": "$schema",
+            "type": [
+              "string"
+            ]
+          },
+          {
+            "field": "description",
+            "type": [
+              "string"
+            ]
+          },
+          {
+            "field": "name",
+            "type": [
+              "string"
+            ]
+          },
+          {
+            "field": "version",
+            "type": [
+              "string"
+            ]
+          }
+        ],
+        "remote_required": [
+          {
+            "field": "type",
+            "type": [
+              "string"
+            ]
+          },
+          {
+            "field": "url",
+            "type": [
+              "string"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "mcp-card-legacy-aliases",
+      "category": "mcp",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "eval": "legacy-alias-redirects",
+      "weight": 1,
+      "title": "Legacy MCP card paths redirect to the canonical card",
+      "breadcrumb": "MCP card legacy aliases",
+      "lane": "shared",
+      "hint": "301 whichever legacy card paths you serve to /.well-known/mcp/server-card.json rather than answering with a copy.",
+      "handler": "http",
+      "with": {
+        "canonical": "/.well-known/mcp/server-card.json",
+        "aliases": [
+          "/.well-known/mcp",
+          "/.well-known/mcp.json",
+          "/mcp.json"
+        ]
+      }
+    },
+    {
+      "id": "mcp-usage-doc",
+      "category": "mcp",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-present",
+      "weight": 1,
+      "title": "A human/agent usage doc for the server resolves",
+      "breadcrumb": "MCP usage doc",
+      "lane": "shared",
+      "hint": "Link a short markdown usage doc (curl examples, tool list, auth, rate limits) from the card and llms.txt.",
+      "handler": "http",
+      "with": {
+        "path_any": [
+          "/mcp-skill.md",
+          "/mcp.md",
+          "/.well-known/mcp/usage.md"
+        ],
+        "expect": {
+          "status": [
+            200
+          ]
+        }
+      }
+    },
+    {
+      "id": "mcp-auth-challenge",
+      "category": "mcp",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P1",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-auth-required",
+      "weight": 1,
+      "title": "a 401 names the RFC 9728 metadata in its WWW-Authenticate challenge",
+      "breadcrumb": "MCP auth challenge",
+      "lane": "shared",
+      "hint": "Answer an unauthenticated request with 401 and WWW-Authenticate Bearer resource_metadata=\"<metadata URL>\" so a client finds the authorization server without guessing.",
+      "handler": "protected-resource",
+      "with": {
+        "op": "challenge"
+      }
+    },
+    {
+      "id": "mcp-auth-servers",
+      "category": "mcp",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P1",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-auth-required",
+      "weight": 1,
+      "title": "protected-resource metadata lists public https authorization_servers",
+      "breadcrumb": "MCP authorization servers",
+      "lane": "shared",
+      "hint": "List at least one public https issuer URL in the authorization_servers array of the RFC 9728 metadata.",
+      "handler": "protected-resource",
+      "with": {
+        "op": "metadata"
+      }
+    },
+    {
+      "id": "mcp-auth-enforced",
+      "category": "mcp",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P1",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-auth-required",
+      "weight": 1,
+      "title": "a tools/list without an access token is refused with 401",
+      "breadcrumb": "MCP unauthenticated tools/list",
+      "lane": "shared",
+      "hint": "Refuse every request that carries no access token with 401 and the same WWW-Authenticate challenge, tools/list included, never with a tools result.",
+      "handler": "mcp",
+      "with": {
+        "op": "unauthenticated-tools-list"
+      }
+    },
+    {
+      "id": "webmcp",
+      "category": "mcp",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 1,
+      "title": "Root HTML exposes WebMCP browser tools",
+      "breadcrumb": "WebMCP",
+      "lane": "browser",
+      "hint": "Expose page tools via WebMCP (script type=\"application/webmcp+json\" or a navigator.modelContext provider) so browser agents can call them.",
+      "handler": "webmcp",
+      "with": {}
+    },
+    {
+      "id": "llms-txt",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 4,
+      "title": "/llms.txt present with a summary and link index",
+      "breadcrumb": "llms.txt",
+      "hint": "Serve /llms.txt (llmstxt.org): H1 title, summary blockquote, categorized link index.",
+      "handler": "http",
+      "with": {
+        "path": "/llms.txt",
+        "retain_body": true,
+        "expect": {
+          "status": [
+            200
+          ],
+          "body_regex": "^#|\\]\\(https?://"
+        }
+      }
+    },
+    {
+      "id": "llms-txt-format",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "root-llms-txt",
+      "weight": 1,
+      "title": "llms.txt has H1, summary, and a link index",
+      "breadcrumb": "llms.txt format",
+      "hint": "Structure /llms.txt with an H1 title, a blockquote summary, and a markdown link index (llmstxt.org). Presence alone is not enough.",
+      "handler": "llms-txt-quality",
+      "with": {
+        "op": "format"
+      }
+    },
+    {
+      "id": "llms-txt-links",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "root-llms-txt",
+      "weight": 1,
+      "title": "llms.txt links resolve",
+      "breadcrumb": "llms.txt links",
+      "hint": "Keep every markdown href in /llms.txt https and fetchable (2xx/3xx). An http link, or one that redirects to http, is never requested; a dead index link wastes an agent round-trip.",
+      "handler": "llms-txt-quality",
+      "with": {
+        "op": "links",
+        "max_candidates": 8
+      }
+    },
+    {
+      "id": "llms-txt-when-to-use",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "root-llms-txt",
+      "weight": 1,
+      "title": "llms.txt has a when-to-use or programmatic-access section",
+      "breadcrumb": "llms.txt when-to-use",
+      "hint": "Add a short heading such as \"When to use\" or \"Programmatic access\" so an agent knows when the MCP or docs apply.",
+      "handler": "llms-txt-quality",
+      "with": {
+        "op": "when-to-use"
+      }
+    },
+    {
+      "id": "llms-full-txt",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "content"
+      ],
+      "antecedent": "docs-site",
+      "weight": 2,
+      "title": "/llms-full.txt present (single-fetch full corpus)",
+      "breadcrumb": "llms-full.txt",
+      "hint": "For docs sites, concatenate every page as markdown at /llms-full.txt for one-fetch ingestion.",
+      "handler": "http",
+      "with": {
+        "path": "/llms-full.txt",
+        "expect": {
+          "status": [
+            200
+          ]
+        }
+      }
+    },
+    {
+      "id": "llms-txt-scoped",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "content"
+      ],
+      "antecedent": "root-llms-txt",
+      "eval": "scoped-discovery",
+      "weight": 1,
+      "title": "Per-section llms.txt files resolve under content subdirectories",
+      "breadcrumb": "llms.txt scoped",
+      "hint": "Serve scoped llms.txt files (e.g. /docs/llms.txt) for major content sections linked from the root index.",
+      "handler": "scoped-llms",
+      "with": {
+        "file": "llms.txt",
+        "max_candidates": 8
+      }
+    },
+    {
+      "id": "llms-full-txt-scoped",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "content"
+      ],
+      "antecedent": "root-llms-full-txt",
+      "eval": "scoped-discovery",
+      "weight": 1,
+      "title": "Per-section llms-full.txt files resolve under content subdirectories",
+      "breadcrumb": "llms-full.txt scoped",
+      "hint": "Serve scoped llms-full.txt corpora (e.g. /docs/llms-full.txt) so agents can ingest one section in one fetch.",
+      "handler": "scoped-llms",
+      "with": {
+        "file": "llms-full.txt",
+        "max_candidates": 8
+      }
+    },
+    {
+      "id": "accept-markdown",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 2,
+      "title": "Accept text/markdown content negotiation returns markdown",
+      "breadcrumb": "Accept markdown",
+      "hint": "Honor `Accept: text/markdown` on content URLs; return raw markdown, not HTML chrome.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "headers": {
+          "Accept": "text/markdown"
+        },
+        "expect": {
+          "content_type": "markdown|text/plain"
+        }
+      }
+    },
+    {
+      "id": "markdown-cli-ua",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "markdown-twin",
+      "weight": 1,
+      "title": "Bare CLI User-Agent receives the markdown twin",
+      "breadcrumb": "Markdown for a CLI UA",
+      "hint": "Serve the markdown twin to shell HTTP clients (curl/wget/library UAs) that state no content-type preference, so scripted fetches get source, not HTML chrome.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "headers": {
+          "User-Agent": "curl/8.7.1",
+          "Accept": "*/*"
+        },
+        "expect": {
+          "content_type": "markdown|text/plain"
+        }
+      }
+    },
+    {
+      "id": "markdown-agent-ua",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "markdown-twin",
+      "weight": 1,
+      "title": "AI user-fetch User-Agent receives the markdown twin",
+      "breadcrumb": "Markdown for an agent UA",
+      "hint": "Serve the markdown twin to AI on-demand user-fetchers (ChatGPT-User, Claude-User, Perplexity-User) that state no content-type preference.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "headers": {
+          "User-Agent": "ChatGPT-User/1.0 (+https://openai.com/bot)",
+          "Accept": "*/*"
+        },
+        "expect": {
+          "content_type": "markdown|text/plain"
+        }
+      }
+    },
+    {
+      "id": "agent-ua-reachable",
+      "category": "bot-crawl-policy",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P7",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "http-root",
+      "weight": 1,
+      "title": "AI user-fetch User-Agent can reach the homepage",
+      "breadcrumb": "Agent UA reachable",
+      "hint": "Allow on-demand user-fetchers (ChatGPT-User and peers) to GET / with Accept */* and receive 2xx, not a bot-challenge interstitial. Distinct from serving markdown to that UA.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "headers": {
+          "User-Agent": "ChatGPT-User/1.0 (+https://openai.com/bot)",
+          "Accept": "*/*"
+        },
+        "expect": {
+          "status_below": 300,
+          "body_not_regex": "just a moment|attention required|cf-challenge|enable javascript and cookies|captcha"
+        }
+      }
+    },
+    {
+      "id": "markdown-accept-plain",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "markdown-twin",
+      "weight": 1,
+      "title": "Accept text/plain returns the markdown twin",
+      "breadcrumb": "Markdown Accept plain",
+      "hint": "Treat Accept text/plain as a markdown request: return the raw markdown source, not HTML chrome.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "headers": {
+          "Accept": "text/plain"
+        },
+        "expect": {
+          "content_type": "markdown|text/plain"
+        }
+      }
+    },
+    {
+      "id": "markdown-vary",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "markdown-twin",
+      "weight": 1,
+      "title": "Negotiated responses carry Vary Accept",
+      "breadcrumb": "Markdown Vary",
+      "hint": "Name every request header the markdown twin is negotiated on in Vary (Accept, plus User-Agent when agent User-Agents also get markdown), so shared caches never serve one client the wrong variant.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "header_regex": {
+            "name": "vary",
+            "pattern": "(?:^|[\\s,])(?:accept|\\*)(?:[\\s,]|$)"
+          }
+        }
+      }
+    },
+    {
+      "id": "markdown-frontmatter",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "markdown-twin",
+      "weight": 1,
+      "title": "Markdown twin carries YAML frontmatter",
+      "breadcrumb": "Markdown frontmatter",
+      "hint": "Prefix each markdown twin with YAML frontmatter (title, description, canonical url) so agents ingest page metadata without parsing the body.",
+      "handler": "markdown-frontmatter",
+      "with": {
+        "path": "/",
+        "headers": {
+          "Accept": "text/markdown"
+        }
+      }
+    },
+    {
+      "id": "root-meta-description",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P3",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 2,
+      "title": "Root HTML has a descriptive <meta name=\"description\">",
+      "breadcrumb": "Root meta description",
+      "hint": "Add a meta description that states what the service does and names its agent entry points.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "body_regex": "<meta[^>]+name=[\"']description[\"']"
+        }
+      }
+    },
+    {
+      "id": "schema-org-jsonld",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 1,
+      "title": "Root HTML embeds Schema.org JSON-LD",
+      "breadcrumb": "Schema.org JSON-LD",
+      "hint": "Embed Schema.org JSON-LD (e.g. TechArticle / WebAPI) in <head> for structured metadata.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "body_regex": "application/ld\\+json"
+        }
+      }
+    },
+    {
+      "id": "content-without-js",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P2",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 1,
+      "title": "Root HTML has an H1 and readable text without JavaScript",
+      "breadcrumb": "Content without JS",
+      "hint": "Serve an H1 and at least ~200 characters of visible text in the raw root HTML. A thin shell is acceptable only when llms.txt links resolvable same-origin content.",
+      "handler": "content-without-js",
+      "with": {}
+    },
+    {
+      "id": "semantic-html",
+      "category": "content-for-agents",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P3",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 1,
+      "title": "Root HTML uses semantic landmarks",
+      "breadcrumb": "Semantic HTML",
+      "hint": "Use <main>/<article>/<section>/<nav> landmarks; the HTML path should be parseable too.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "body_regex": "<(main|article|section|nav)\\b"
+        }
+      }
+    },
+    {
+      "id": "noscript-fallback",
+      "category": "content-for-agents",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P1",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 2,
+      "title": "Root HTML has a <noscript> with machine entry points",
+      "breadcrumb": "noscript fallback",
+      "hint": "Link your machine entry points (llms.txt, an OpenAPI or MCP endpoint, .well-known cards) from a <noscript> block so non-JS agents get an in-body list.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "body_regex": "<noscript"
+        }
+      }
+    },
+    {
+      "id": "robots",
+      "category": "discoverability",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P7",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 2,
+      "title": "/robots.txt present",
+      "breadcrumb": "robots.txt",
+      "hint": "Publish robots.txt; declare content-signal / AI-usage policy explicitly rather than by omission.",
+      "handler": "http",
+      "with": {
+        "path": "/robots.txt",
+        "expect": {
+          "status": [
+            200
+          ]
+        }
+      }
+    },
+    {
+      "id": "sitemap",
+      "category": "discoverability",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P7",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 1,
+      "title": "/sitemap.xml present",
+      "breadcrumb": "Sitemap",
+      "hint": "Publish sitemap.xml so crawlers and agents can enumerate content URLs.",
+      "handler": "http",
+      "with": {
+        "path": "/sitemap.xml",
+        "retain_body": true,
+        "expect": {
+          "status": [
+            200
+          ]
+        }
+      }
+    },
+    {
+      "id": "agent-friendly-404",
+      "category": "discoverability",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P8",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "http-root",
+      "weight": 1,
+      "title": "Unknown paths return HTTP 404 or 410",
+      "breadcrumb": "Agent-friendly 404",
+      "hint": "Return a real HTTP 404 or 410 for unknown paths. A 200 SPA shell is a soft-404 and hides recovery from agents.",
+      "handler": "http",
+      "with": {
+        "path": "/anc-web-audit-no-such-page",
+        "expect": {
+          "status": [
+            404,
+            410
+          ]
+        }
+      }
+    },
+    {
+      "id": "agent-friendly-404-md",
+      "category": "discoverability",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P8",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "http-root",
+      "weight": 1,
+      "title": "404 body is markdown with a recovery link",
+      "breadcrumb": "Agent-friendly 404 markdown",
+      "hint": "On Accept text/markdown, serve a short 404 markdown body that links at least one recovery surface (sitemap, llms.txt, or a docs index). Verify with curl -sS -o /dev/null -w \"%{http_code}\".",
+      "handler": "http",
+      "with": {
+        "path": "/anc-web-audit-no-such-page",
+        "headers": {
+          "Accept": "text/markdown"
+        },
+        "expect": {
+          "status": [
+            404,
+            410
+          ],
+          "content_type": "markdown|text/plain",
+          "same_origin_recovery_link": true
+        }
+      }
+    },
+    {
+      "id": "link-headers",
+      "category": "discoverability",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P3",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "http-root",
+      "weight": 3,
+      "title": "Homepage sends RFC 8288 Link headers pointing at agent resources",
+      "breadcrumb": "Link headers",
+      "hint": "Add Link response headers on / with rel=service-desc / describedby / api-catalog pointing at machine surfaces.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "header_regex": {
+            "name": "link",
+            "pattern": "rel=\"?(service-desc|describedby|api-catalog|service-doc)\"?"
+          }
+        }
+      }
+    },
+    {
+      "id": "root-link-rel",
+      "category": "discoverability",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P3",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "html-root",
+      "weight": 3,
+      "title": "Root HTML links to machine surfaces via <link rel>",
+      "breadcrumb": "Root link rel",
+      "hint": "Add <link rel=\"service-desc\" href=\"/openapi.json\">, service-doc, and alternate to llms.txt / mcp card.",
+      "handler": "http",
+      "with": {
+        "path": "/",
+        "expect": {
+          "body_regex": "rel=[\"'](service-desc|service-doc|alternate)[\"']"
+        }
+      }
+    },
+    {
+      "id": "dns-aid",
+      "category": "discoverability",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 1,
+      "title": "DNS for AI Discovery (DNS-AID) records under _agents (IETF draft)",
+      "breadcrumb": "DNS-AID",
+      "hint": "Publish SVCB/HTTPS records under _agents (e.g. _index._agents.<domain>), DNSSEC-signed (draft-mozleywilliams-dnsop-dnsaid).",
+      "handler": "dns-doh",
+      "with": {
+        "names": [
+          "_index._agents.{host}",
+          "_a2a._agents.{host}",
+          "_mcp._agents.{host}"
+        ],
+        "type": "SVCB"
+      }
+    },
+    {
+      "id": "robots-ai-rules",
+      "category": "bot-crawl-policy",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P7",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "robots-present",
+      "weight": 2,
+      "title": "robots.txt declares AI-crawler rules (RFC 9309)",
+      "breadcrumb": "robots.txt AI rules",
+      "hint": "Add explicit User-agent rules for AI crawlers (GPTBot, ClaudeBot, Google-Extended, ...) or a wildcard policy.",
+      "handler": "http",
+      "with": {
+        "path": "/robots.txt",
+        "expect": {
+          "body_regex": "^\\s*User-agent:\\s*(\\*|GPTBot|OAI-SearchBot|ChatGPT-User|Claude|ClaudeBot|Anthropic|Google-Extended|PerplexityBot|CCBot|Bytespider)"
+        }
+      }
+    },
+    {
+      "id": "content-signals",
+      "category": "bot-crawl-policy",
+      "tier": "recommended",
+      "keyword": "should",
+      "principle": "P7",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "robots-present",
+      "weight": 2,
+      "title": "robots.txt declares Content-Signal AI-usage preferences",
+      "breadcrumb": "Content signals",
+      "hint": "Add Content-Signal directives to robots.txt: ai-train / search / ai-input = yes|no (contentsignals.org).",
+      "handler": "http",
+      "with": {
+        "path": "/robots.txt",
+        "expect": {
+          "body_regex": "^\\s*Content-Signal:\\s*(ai-train|search|ai-input)"
+        }
+      }
+    },
+    {
+      "id": "web-bot-auth",
+      "category": "bot-crawl-policy",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P6",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 1,
+      "title": "Web Bot Auth signature directory present (informational)",
+      "breadcrumb": "Web Bot Auth",
+      "hint": "Informational only. Publish an HTTP Message Signatures JWKS directory only if the site sends authenticated bot traffic.",
+      "handler": "http",
+      "with": {
+        "path": "/.well-known/http-message-signatures-directory",
+        "expect": {
+          "status": [
+            200
+          ],
+          "body_regex": "keys|jwk"
+        }
+      }
+    },
+    {
+      "id": "security-txt",
+      "category": "bot-crawl-policy",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P4",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 1,
+      "title": "/.well-known/security.txt present (RFC 9116)",
+      "breadcrumb": "security.txt",
+      "hint": "Publish /.well-known/security.txt (RFC 9116) with a Contact and Expires field.",
+      "handler": "http",
+      "with": {
+        "path": "/.well-known/security.txt",
+        "expect": {
+          "status": [
+            200
+          ],
+          "body_regex": "Contact:"
+        }
+      }
+    },
+    {
+      "id": "a2a-agent-card",
+      "category": "agent-discovery-auth",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 2,
+      "title": "A2A Agent Card published for agent-to-agent discovery",
+      "breadcrumb": "A2A agent card",
+      "hint": "Serve /.well-known/agent-card.json (a2a-protocol.org) with name, version, and supportedInterfaces.",
+      "handler": "http",
+      "with": {
+        "path_any": [
+          "/.well-known/agent-card.json",
+          "/.well-known/agent.json"
+        ],
+        "expect": {
+          "status": [
+            200
+          ],
+          "content_type": "json",
+          "body_regex": "\"name\"|supportedInterfaces|skills"
+        }
+      }
+    },
+    {
+      "id": "ai-catalog",
+      "category": "agent-discovery-auth",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 1,
+      "title": "/.well-known/ai-catalog.json published (ARD)",
+      "breadcrumb": "AI catalog",
+      "hint": "Serve /.well-known/ai-catalog.json with specVersion and an entries array (Agentic Resource Discovery).",
+      "handler": "http",
+      "with": {
+        "path": "/.well-known/ai-catalog.json",
+        "expect": {
+          "status": [
+            200
+          ],
+          "content_type": "json",
+          "body_regex": "specVersion|entries"
+        }
+      }
+    },
+    {
+      "id": "agent-skills",
+      "category": "agent-discovery-auth",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P8",
+      "site_types": [
+        "all"
+      ],
+      "antecedent": "none",
+      "weight": 2,
+      "title": "Agent-skills discovery index published",
+      "breadcrumb": "Agent skills",
+      "hint": "Publish /.well-known/agent-skills/index.json (Cloudflare agent-skills-discovery RFC) with a skills[] array.",
+      "handler": "http",
+      "with": {
+        "path_any": [
+          "/.well-known/agent-skills/index.json",
+          "/.well-known/skills/index.json"
+        ],
+        "expect": {
+          "status": [
+            200
+          ],
+          "content_type": "json",
+          "body_regex": "skills"
+        }
+      }
+    },
+    {
+      "id": "oauth-discovery",
+      "category": "agent-discovery-auth",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P1",
+      "site_types": [
+        "api",
+        "mcp"
+      ],
+      "antecedent": "auth-present",
+      "weight": 1,
+      "title": "OAuth/OIDC discovery metadata published",
+      "breadcrumb": "OAuth discovery",
+      "hint": "Publish OAuth/OIDC discovery (RFC 8414 / OIDC Discovery) if agents authenticate; expected absent for open servers.",
+      "handler": "http",
+      "with": {
+        "path_any": [
+          "/.well-known/openid-configuration",
+          "/.well-known/oauth-authorization-server"
+        ],
+        "expect": {
+          "status": [
+            200
+          ],
+          "content_type": "json",
+          "body_regex": "issuer|authorization_endpoint|token_endpoint"
+        }
+      }
+    },
+    {
+      "id": "oauth-protected-resource",
+      "category": "agent-discovery-auth",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P1",
+      "site_types": [
+        "mcp"
+      ],
+      "antecedent": "mcp-auth",
+      "weight": 1,
+      "title": "OAuth Protected Resource Metadata published (RFC 9728)",
+      "breadcrumb": "OAuth protected resource",
+      "hint": "For an authenticated MCP server, publish /.well-known/oauth-protected-resource (RFC 9728); expected absent for open servers.",
+      "handler": "http",
+      "with": {
+        "path": "{mcp_origin}/.well-known/oauth-protected-resource",
+        "expect": {
+          "status": [
+            200
+          ],
+          "content_type": "json",
+          "body_regex": "authorization_servers|resource"
+        }
+      }
+    },
+    {
+      "id": "auth-md",
+      "category": "agent-discovery-auth",
+      "tier": "optional",
+      "keyword": "may",
+      "principle": "P1",
+      "site_types": [
+        "api",
+        "mcp"
+      ],
+      "antecedent": "auth-present",
+      "weight": 1,
+      "title": "Agent auth/registration metadata doc published",
+      "breadcrumb": "auth.md",
+      "hint": "Publish an auth.md (agent auth/registration guide) at /.well-known/auth.md describing how agents obtain credentials.",
+      "handler": "auth-md",
+      "with": {
+        "path_any": [
+          "/.well-known/auth.md",
+          "/auth.md"
+        ]
+      }
+    }
+  ]
+}

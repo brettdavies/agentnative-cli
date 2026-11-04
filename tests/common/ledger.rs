@@ -19,7 +19,9 @@ use agentnative::web_audit::scorecard::to_wire_json;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::corpus::{Case, Golden, corpus_dir, replay};
+use super::corpus::{
+    Case, Golden, SentRequest, corpus_dir, recorded_requests, replay_on, transport_for,
+};
 
 /// The element key an unreachable-outcome mismatch is recorded under.
 pub const UNREACHABLE: &str = "unreachable";
@@ -29,8 +31,12 @@ pub const DOCUMENT: &str = "document";
 /// The prefix a result row's element key carries before its check id.
 pub const ROW: &str = "row:";
 
+/// The element key for a scenario whose distinct requests differ from its
+/// `requests.json`.
+pub const REQUESTS: &str = "requests";
+
 /// `(scenario, element)`: a top-level scorecard field, `row:<check id>`,
-/// `unreachable`, or `document`.
+/// `unreachable`, `document`, or `requests`.
 pub type Element = (String, String);
 
 #[derive(Deserialize)]
@@ -127,6 +133,16 @@ pub fn element(scenario: &str, element: &str) -> (String, String) {
     (scenario.to_string(), element.to_string())
 }
 
+/// Whether a run's requests differ from its recorded set. The set compares as parsed
+/// entries, so header order and name case do not count. A request sent twice counts,
+/// because the shared request memo should have answered the second send; a second send
+/// the memo's own rules require, such as a body cut at a smaller cap than a later
+/// reader's, is a ledger entry the port closes or the owner accepts.
+pub fn requests_differ(sent: &[SentRequest], recorded: &BTreeSet<SentRequest>) -> bool {
+    let distinct: BTreeSet<&SentRequest> = sent.iter().collect();
+    distinct.len() != sent.len() || !distinct.iter().copied().eq(recorded.iter())
+}
+
 /// The elements of one scenario the engine does not reproduce.
 pub fn divergences_of(case: &Case) -> BTreeSet<String> {
     divergences_against(case, &golden_text(&case.name))
@@ -136,7 +152,16 @@ pub fn divergences_of(case: &Case) -> BTreeSet<String> {
 /// An unreachable scenario's golden is its reason, read from `case`.
 pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    let outcome = replay(&case.scenario, Arc::new(default_handlers()));
+    let transport = transport_for(&case.scenario);
+    let outcome = replay_on(
+        &case.scenario,
+        Arc::new(default_handlers()),
+        transport.clone(),
+    );
+    let sent: Vec<SentRequest> = transport.requests().iter().map(SentRequest::from).collect();
+    if requests_differ(&sent, &recorded_requests(&case.name)) {
+        out.insert(REQUESTS.to_string());
+    }
     match (&case.golden, outcome) {
         (Golden::Unreachable(want), RunOutcome::Unreachable { reason, .. }) => {
             if want != &reason {
@@ -180,7 +205,7 @@ pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
                     out.insert(format!("{ROW}{id}"));
                 }
             }
-            if out.is_empty() {
+            if out.iter().all(|element| element == REQUESTS) {
                 out.insert(DOCUMENT.to_string());
             }
         }

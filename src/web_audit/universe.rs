@@ -101,7 +101,7 @@ pub fn universe_max<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::web_audit::registry::{ALTERNATIVES, CHECKS};
+    use crate::web_audit::registry::{ALTERNATIVES, AlternativeVariant, CHECKS};
 
     fn universe(rows: &[(&'static str, ScorecardStatus, Option<NaReason>)]) -> f64 {
         universe_max(
@@ -114,6 +114,60 @@ mod tests {
             }),
             &ScoreConfig::default(),
         )
+    }
+
+    fn weight_of(checks: impl Iterator<Item = &'static WebCheck>) -> f64 {
+        checks
+            .map(|c| ScoreConfig::default().weights.for_keyword(c.keyword))
+            .sum()
+    }
+
+    fn antecedent_of(id: &str) -> AntecedentToken {
+        CHECKS
+            .iter()
+            .find(|c| c.id == id)
+            .expect("a check this test names")
+            .antecedent
+    }
+
+    fn size_of(variant: &AlternativeVariant) -> f64 {
+        weight_of(
+            CHECKS
+                .iter()
+                .filter(|c| variant.antecedents.contains(&c.antecedent)),
+        )
+    }
+
+    /// The variant the row a test names presents.
+    fn design_of(id: &str) -> &'static AlternativeVariant {
+        let token = antecedent_of(id);
+        ALTERNATIVES
+            .iter()
+            .flat_map(|group| group.variants)
+            .find(|variant| variant.presented_by.contains(&token))
+            .expect("a design this row presents")
+    }
+
+    fn design_sizes() -> (f64, f64) {
+        (
+            size_of(design_of("mcp-tools-list")),
+            size_of(design_of("mcp-auth-challenge")),
+        )
+    }
+
+    /// What counts whatever these tests' rows present: every check outside a group of
+    /// alternatives, and the largest design of each group but theirs.
+    fn outside_the_group() -> f64 {
+        let open = design_of("mcp-tools-list");
+        let mut total = weight_of(CHECKS.iter());
+        for group in ALTERNATIVES {
+            let sizes: Vec<f64> = group.variants.iter().map(size_of).collect();
+            total -= sizes.iter().sum::<f64>();
+            if !group.variants.iter().any(|variant| variant == open) {
+                total += sizes.iter().copied().fold(0.0, f64::max);
+            }
+        }
+        total
     }
 
     #[test]
@@ -136,24 +190,17 @@ mod tests {
             ("mcp-tools-list", Pass, None),
             ("mcp-auth-challenge", Pass, None),
         ]);
-        let sizes: Vec<f64> = ALTERNATIVES
-            .iter()
-            .flat_map(|group| group.variants)
-            .map(|variant| {
-                CHECKS
-                    .iter()
-                    .filter(|c| variant.antecedents.contains(&c.antecedent))
-                    .map(|c| ScoreConfig::default().weights.for_keyword(c.keyword))
-                    .sum()
-            })
-            .collect();
-        let largest = sizes.iter().copied().fold(f64::MIN, f64::max);
-        let smallest = sizes.iter().copied().fold(f64::MAX, f64::min);
-        assert!(largest > smallest);
+        let (open_size, protected_size) = design_sizes();
+        let base = outside_the_group();
         assert_eq!(
-            (no_mcp - open, protected, hybrid),
-            (largest - smallest, no_mcp, no_mcp),
-            "the open design counts less than the largest; every other design counts the largest"
+            (no_mcp, open, protected, hybrid),
+            (
+                base + open_size.max(protected_size),
+                base + open_size,
+                base + protected_size,
+                base + open_size + protected_size
+            ),
+            "a site counts each design it presents, or the largest when it presents none"
         );
     }
 
@@ -186,7 +233,11 @@ mod tests {
                 Some(NaReason::AntecedentUnmet),
             ),
         ]);
-        assert_eq!((optional_absent, auth_required), (no_mcp, no_mcp));
+        let (open_size, protected_size) = design_sizes();
+        assert_eq!(
+            (optional_absent, auth_required),
+            (outside_the_group() + open_size + protected_size, no_mcp)
+        );
     }
 
     #[test]

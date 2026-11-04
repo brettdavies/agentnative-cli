@@ -122,6 +122,11 @@ pub fn golden_text(name: &str) -> String {
     .expect("a golden scorecard")
 }
 
+/// A ledger key.
+pub fn element(scenario: &str, element: &str) -> (String, String) {
+    (scenario.to_string(), element.to_string())
+}
+
 /// The elements of one scenario the engine does not reproduce.
 pub fn divergences_of(case: &Case) -> BTreeSet<String> {
     divergences_against(case, &golden_text(&case.name))

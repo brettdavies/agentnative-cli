@@ -255,7 +255,7 @@ fn the_readme_exit_table_matches_the_codes_the_binary_returns() {
 /// prints it, and the scorecard the report renders. A scored scenario that replays as
 /// unreachable has no report to read; the ledger holds that outcome.
 fn corpus_reports(verbose: bool) -> Vec<(String, String, WebScorecard)> {
-    load_cases()
+    let reports: Vec<(String, String, WebScorecard)> = load_cases()
         .into_iter()
         .filter(|case| matches!(case.golden, Golden::Scorecard(_)))
         .filter_map(|case| {
@@ -273,7 +273,9 @@ fn corpus_reports(verbose: bool) -> Vec<(String, String, WebScorecard)> {
             );
             Some((case.name, out, report.scorecard))
         })
-        .collect()
+        .collect();
+    assert!(!reports.is_empty(), "no scored scenario reports");
+    reports
 }
 
 /// A section's outline: each row as its indent and check id, each lane
@@ -346,19 +348,20 @@ fn expected_outline(rows: &[&ResultRow], all: &[ResultRow]) -> Vec<String> {
     lines
 }
 
-/// A section holds exactly what the rule beside it selects. An empty one may not
-/// print at all, and `--verbose` prints its sections regardless.
+/// A section holds exactly what the rule beside it selects. An empty one does not
+/// print, except the two `--verbose` always shows, whose bare heading reads as none.
 fn assert_section(
     out: &str,
     heading: &str,
     card: &WebScorecard,
+    prints_when_empty: bool,
     keep: impl Fn(&ResultRow) -> bool,
 ) {
     let rows: Vec<&ResultRow> = card.results.iter().filter(|row| keep(row)).collect();
     let printed = out.split("\n\n").any(|block| block.starts_with(heading));
     if rows.is_empty() {
         assert!(
-            !printed || outline(out, heading).is_empty(),
+            !printed || (prints_when_empty && outline(out, heading).is_empty()),
             "nothing belongs in {heading:?}:\n{out}"
         );
     } else {
@@ -388,12 +391,16 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
     let (mut lane_rows, mut notes) = (0, 0);
     for (name, out, card) in corpus_reports(false) {
         let endpoint = card.mcp_endpoint.as_deref();
-        assert_section(&out, "Failures (", &card, |row| is_prefixed(row, "FAIL"));
-        assert_section(&out, "Warnings (", &card, |row| is_prefixed(row, "WARN"));
-        assert_section(&out, "Could not check (", &card, |row| {
+        assert_section(&out, "Failures (", &card, false, |row| {
+            is_prefixed(row, "FAIL")
+        });
+        assert_section(&out, "Warnings (", &card, false, |row| {
+            is_prefixed(row, "WARN")
+        });
+        assert_section(&out, "Could not check (", &card, false, |row| {
             matches!(row.status, ScorecardStatus::Error | ScorecardStatus::Skip)
         });
-        assert_section(&out, "Advisories (", &card, |row| {
+        assert_section(&out, "Advisories (", &card, false, |row| {
             row.status == ScorecardStatus::Pass && advisory_note(row, endpoint).is_some()
         });
         // A lane's rows keep the row layout, two columns deeper.
@@ -419,9 +426,23 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
                 && let Some(note) = advisory_note(row, endpoint)
             {
                 notes += 1;
+                let heading = format!(
+                    "    [{}] {} ({}) ({})",
+                    prefix_for(row),
+                    row.label,
+                    row.id,
+                    row.keyword.as_str()
+                );
+                // The note reads the same under every advised row, so it has to be found
+                // under this one, before the next row starts.
+                let under = out
+                    .split(&heading)
+                    .nth(1)
+                    .unwrap_or_else(|| panic!("{name}: {heading:?}:\n{out}"));
+                let block = under.split("\n    [").next().unwrap_or(under);
                 assert!(
-                    out.contains(&format!("\n           Note: {note}")),
-                    "{name}: {note:?}:\n{out}"
+                    block.contains(&format!("\n           Note: {note}")),
+                    "{name}: {note:?} under {heading:?}:\n{out}"
                 );
             }
         }
@@ -432,12 +453,25 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
 
 #[test]
 fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
+    let mut lane_rows = 0;
     for (_, out, card) in corpus_reports(true) {
-        assert_section(&out, "Passed (", &card, |row| {
+        assert_section(&out, "Passed (", &card, true, |row| {
             row.status == ScorecardStatus::Pass
         });
-        assert_section(&out, "Not applicable (", &card, |row| {
+        assert_section(&out, "Not applicable (", &card, true, |row| {
             row.status == ScorecardStatus::NA
         });
+        lane_rows += card
+            .results
+            .iter()
+            .filter(|row| {
+                lane_of(&row.id).is_some()
+                    && matches!(row.status, ScorecardStatus::Pass | ScorecardStatus::NA)
+            })
+            .count();
     }
+    assert!(
+        lane_rows > 0,
+        "no corpus scenario passes or skips a lane row"
+    );
 }

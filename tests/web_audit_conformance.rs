@@ -25,7 +25,7 @@ use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
 use common::ledger::{
     compare_with_ledger, corpus_divergences, divergences_against, divergences_of, golden_text,
-    load_ledger, parse_ledger,
+    load_ledger,
 };
 use std::sync::Arc;
 
@@ -215,37 +215,6 @@ fn a_field_only_the_engine_writes_is_a_divergence() {
     assert!(divergences_against(case, &without).contains("spec_version"));
 }
 
-fn element(scenario: &str, element: &str) -> (String, String) {
-    (scenario.to_string(), element.to_string())
-}
-
-#[test]
-fn an_unledgered_divergence_and_a_stale_entry_are_both_problems() {
-    let actual = BTreeSet::from([element("a", "score")]);
-    let ledger = BTreeMap::from([(element("b", "score"), "#1".to_string())]);
-    let problems = compare_with_ledger(&actual, &ledger, |_| true);
-    assert_eq!(problems.len(), 2, "{problems:?}");
-    assert!(problems[0].starts_with("a/score: diverges"), "{problems:?}");
-    assert!(
-        problems[1].starts_with("b/score: now matches"),
-        "{problems:?}"
-    );
-}
-
-#[test]
-fn a_stale_entry_outside_the_suites_scope_is_not_a_problem() {
-    let ledger = BTreeMap::from([(element("b", "score"), "#1".to_string())]);
-    let problems = compare_with_ledger(&BTreeSet::new(), &ledger, |_| false);
-    assert!(problems.is_empty(), "{problems:?}");
-}
-
-#[test]
-fn a_ledgered_divergence_is_not_a_problem() {
-    let actual = BTreeSet::from([element("a", "score")]);
-    let ledger = BTreeMap::from([(element("a", "score"), "#1".to_string())]);
-    assert!(compare_with_ledger(&actual, &ledger, |_| true).is_empty());
-}
-
 /// A dropped directory or a filter bug in the loader would shrink every suite's
 /// input without failing any of them; the corpus's own index names each scenario.
 #[test]
@@ -256,56 +225,4 @@ fn the_loader_reads_every_scenario_the_corpus_indexes() {
     let indexed: BTreeSet<String> = index.into_keys().collect();
     let loaded: BTreeSet<String> = load_cases().into_iter().map(|case| case.name).collect();
     assert_eq!(loaded, indexed);
-}
-
-const PIN: &str = "0123456789abcdef0123456789abcdef01234567";
-const OTHER_PIN: &str = "76543210fedcba9876543210fedcba9876543210";
-const ENTRY: &str =
-    "[[divergence]]\nscenario = \"run-healthy\"\nelement = \"score\"\nowner = \"#1\"\n";
-
-#[test]
-fn an_empty_ledger_holds_at_any_pin() {
-    let ledger = parse_ledger("# header only\n", PIN).expect("an empty ledger names no pin");
-    assert!(ledger.is_empty());
-}
-
-#[test]
-fn a_ledger_with_entries_holds_only_at_its_own_pin() {
-    let at = |pin: &str| format!("site_sha = \"{pin}\"\n{ENTRY}");
-    assert_eq!(parse_ledger(&at(PIN), PIN).expect("its own pin").len(), 1);
-    let stale = parse_ledger(&at(OTHER_PIN), PIN).expect_err("another pin");
-    assert!(
-        stale.contains(OTHER_PIN) && stale.contains("regenerate"),
-        "{stale}"
-    );
-    let unnamed = parse_ledger(ENTRY, PIN).expect_err("entries with no pin");
-    assert!(unnamed.contains("regenerate"), "{unnamed}");
-}
-
-#[test]
-fn an_empty_ledger_naming_a_pin_is_refused() {
-    let raw = format!("site_sha = \"{PIN}\"\n");
-    let problem = parse_ledger(&raw, PIN).expect_err("a stale claim waiting to happen");
-    assert!(problem.contains("names no site pin"), "{problem}");
-}
-
-#[test]
-fn an_unsorted_or_duplicated_ledger_is_refused() {
-    let row = |scenario: &str| {
-        format!("[[divergence]]\nscenario = \"{scenario}\"\nelement = \"score\"\nowner = \"#1\"\n")
-    };
-    let pinned = format!("site_sha = \"{PIN}\"\n");
-    for rows in [row("b") + &row("a"), row("a") + &row("a")] {
-        let problem = parse_ledger(&(pinned.clone() + &rows), PIN).expect_err("out of order");
-        assert!(problem.contains("sorted"), "{problem}");
-    }
-}
-
-#[test]
-fn an_owner_that_names_no_site_pr_is_refused() {
-    let raw = format!(
-        "site_sha = \"{PIN}\"\n[[divergence]]\nscenario = \"a\"\nelement = \"score\"\nowner = \"someone\"\n"
-    );
-    let problem = parse_ledger(&raw, PIN).expect_err("no PR number");
-    assert!(problem.contains("must name a site PR"), "{problem}");
 }

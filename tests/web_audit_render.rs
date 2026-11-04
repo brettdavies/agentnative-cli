@@ -316,6 +316,20 @@ fn lines(parts: &[&[&str]]) -> Vec<String> {
     parts.concat().into_iter().map(str::to_string).collect()
 }
 
+/// A section's lane rows, once its rows outside any lane have come first. Which
+/// rows those are is the scenario's business, not the layout's.
+fn lane_outline(out: &str, heading: &str) -> Vec<String> {
+    let section = outline(out, heading);
+    let lane_at = first_lane(&section);
+    assert!(
+        section[..lane_at]
+            .iter()
+            .all(|line| line.starts_with("  ") && !line.starts_with("   ")),
+        "the rows outside any lane come first:\n{out}"
+    );
+    section[lane_at..].to_vec()
+}
+
 /// The position of the first lane heading in a section outline.
 fn first_lane(outline: &[String]) -> usize {
     outline
@@ -328,22 +342,13 @@ fn first_lane(outline: &[String]) -> usize {
 fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
     let out = corpus_report("mcp-negotiation-defects", false);
     assert_eq!(
-        outline(&out, "Failures ("),
-        lines(&[&["  openapi"], &MODERN, &["    mcp-modern-tools-list"]]),
+        lane_outline(&out, "Failures ("),
+        lines(&[&MODERN, &["    mcp-modern-tools-list"]]),
         "{out}"
     );
     assert_eq!(
-        outline(&out, "Warnings ("),
+        lane_outline(&out, "Warnings ("),
         lines(&[
-            &[
-                "  json-errors",
-                "  rate-limit-headers",
-                "  llms-txt",
-                "  accept-markdown",
-                "  robots",
-                "  agent-friendly-404-md",
-                "  link-headers",
-            ],
             &LEGACY,
             &["    mcp-accept-json", "    mcp-accept-unsatisfiable"],
             &MODERN,

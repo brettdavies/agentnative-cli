@@ -125,9 +125,11 @@ fn assert_only_the_endpoint_was_signed(server: &Server) {
 #[test]
 fn a_token_in_the_environment_signs_the_run_in_and_is_never_printed() {
     let server = protected_site();
+    let host = host_of(&server);
     let assert = anc()
-        .args(["web", &host_of(&server), "--output", "json"])
+        .args(["web", &host, "--output", "json"])
         .env("ANC_WEB_TOKEN", TOKEN)
+        .env("ANC_WEB_TOKEN_HOST", &host)
         .assert();
     let output = assert.get_output();
     assert_no_token(output);
@@ -148,8 +150,9 @@ fn a_token_in_the_environment_signs_the_run_in_and_is_never_printed() {
     assert_only_the_endpoint_was_signed(&server);
 
     let text = anc()
-        .args(["web", &host_of(&server), "--verbose"])
+        .args(["web", &host, "--verbose"])
         .env("ANC_WEB_TOKEN", TOKEN)
+        .env("ANC_WEB_TOKEN_HOST", &host)
         .assert();
     assert_no_token(text.get_output());
 
@@ -166,14 +169,10 @@ fn a_token_in_the_environment_signs_the_run_in_and_is_never_printed() {
 #[test]
 fn a_token_on_stdin_signs_the_run_in() {
     let server = protected_site();
+    let host = host_of(&server);
     let assert = anc()
-        .args([
-            "web",
-            &host_of(&server),
-            "--output",
-            "json",
-            "--token-stdin",
-        ])
+        .args(["web", &host, "--output", "json", "--token-stdin"])
+        .args(["--token-host", &host])
         .write_stdin(format!("{TOKEN}\n"))
         .assert();
     let output = assert.get_output();
@@ -222,7 +221,7 @@ fn quiet_does_not_hide_that_a_bare_target_left_the_token_unread() {
     assert!(
         stderr.contains(&format!(
             "ANC_WEB_TOKEN is set and not read: only \
-             `anc web -q {host} --no-follow --output json` sends it"
+             `anc web -q {host} --no-follow --output json` with ANC_WEB_TOKEN_HOST set sends it"
         )),
         "{stderr}"
     );
@@ -249,8 +248,10 @@ fn a_bare_target_with_an_empty_variable_is_not_refused() {
 #[test]
 fn a_bare_target_still_takes_a_token_on_stdin() {
     let server = protected_site();
+    let host = host_of(&server);
     let assert = anc()
-        .args([&host_of(&server), "--token-stdin", "--output", "json"])
+        .args([&host, "--token-stdin", "--output", "json"])
+        .args(["--token-host", &host])
         .write_stdin(format!("{TOKEN}\n"))
         .assert();
     let output = assert.get_output();
@@ -261,7 +262,8 @@ fn a_bare_target_still_takes_a_token_on_stdin() {
 
     // Stdin is the token's source here, so the variable is not news.
     let assert = anc()
-        .args([&host_of(&server), "--token-stdin", "--output", "json"])
+        .args([&host, "--token-stdin", "--output", "json"])
+        .args(["--token-host", &host])
         .env("ANC_WEB_TOKEN", "another-token")
         .write_stdin(format!("{TOKEN}\n"))
         .assert();
@@ -309,7 +311,7 @@ fn help_documents_both_token_inputs_and_where_the_token_goes() {
     let assert = anc().args(["web", "--help"]).assert().code(0);
     let help = stdout_of(assert.get_output());
     for needle in [
-        "ANC_WEB_TOKEN=<token> anc web <target>",
+        "export ANC_WEB_TOKEN=<token> ANC_WEB_TOKEN_HOST=<host>",
         "--token-stdin",
         "goes only to the audited MCP endpoint's handshake and session",
     ] {

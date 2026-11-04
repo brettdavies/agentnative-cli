@@ -12,7 +12,8 @@ use super::{RawRequest, RawResponse, Server};
 pub fn anc() -> Command {
     let mut cmd = Command::cargo_bin("anc").expect("binary should exist");
     cmd.env("SSL_CERT_FILE", super::test_ca_path())
-        .env_remove("SSL_CERT_DIR");
+        .env_remove("SSL_CERT_DIR")
+        .env_remove("ANC_WEB_TOKEN_HOST");
     cmd
 }
 

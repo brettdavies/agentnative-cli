@@ -747,7 +747,7 @@ _anc() {
             return 0
             ;;
         anc__subcmd__web)
-            opts="-q -v -h --site-type --check --external-dns --no-external-dns --no-follow --ca-cert --token-stdin --output --quiet --verbose --examples --json --color --raw --help"
+            opts="-q -v -h --site-type --check --external-dns --no-external-dns --no-follow --ca-cert --token-stdin --token-host --output --quiet --verbose --examples --json --color --raw --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -774,6 +774,10 @@ _anc() {
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o filenames
                     fi
+                    return 0
+                    ;;
+                --token-host)
+                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --output)

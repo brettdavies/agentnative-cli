@@ -2248,6 +2248,7 @@ fn an_audited_binary_never_inherits_the_web_token() {
             "json",
         ])
         .env("ANC_WEB_TOKEN", "fixture-token-must-not-leak")
+        .env("ANC_WEB_TOKEN_HOST", "fixture-host-must-not-leak")
         .env("ANC_TEST_ENV_DUMP", dump.path())
         .output()
         .expect("anc runs");
@@ -2257,8 +2258,10 @@ fn an_audited_binary_never_inherits_the_web_token() {
         "the fixture never ran: {seen:?}"
     );
     assert!(
-        !seen.contains("ANC_WEB_TOKEN") && !seen.contains("fixture-token-must-not-leak"),
-        "an audited binary inherited the web token:\n{seen}"
+        !seen.contains("ANC_WEB_TOKEN")
+            && !seen.contains("fixture-token-must-not-leak")
+            && !seen.contains("fixture-host-must-not-leak"),
+        "an audited binary inherited the web token or its host:\n{seen}"
     );
 }
 

@@ -387,7 +387,8 @@
           "enum": ["public", "local"]
         },
         "credentialed": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "A request of this run carried the token. A token the run held and did not send reads false."
         }
       }
     }

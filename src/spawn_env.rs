@@ -5,11 +5,14 @@ use std::process::Command;
 /// The variable `anc web` reads the audited MCP endpoint's sign-in token from.
 pub const WEB_TOKEN_ENV: &str = "ANC_WEB_TOKEN";
 
+/// The variable that names the URL host `ANC_WEB_TOKEN` belongs to.
+pub const WEB_TOKEN_HOST_ENV: &str = "ANC_WEB_TOKEN_HOST";
+
 /// Remove from `cmd`'s inherited environment every variable only anc may
-/// read, so a secret exported for anc never reaches an audited binary or a
-/// tool anc runs.
+/// read, so a secret exported for anc, or the private host it is bound to,
+/// never reaches an audited binary or a tool anc runs.
 pub fn withhold_anc_secrets(cmd: &mut Command) -> &mut Command {
-    cmd.env_remove(WEB_TOKEN_ENV)
+    cmd.env_remove(WEB_TOKEN_ENV).env_remove(WEB_TOKEN_HOST_ENV)
 }
 
 /// What a probe gets in place of the operator's display and desktop session
@@ -51,7 +54,13 @@ mod tests {
         let mut cmd = Command::new("true");
         withhold_anc_secrets(&mut cmd);
         let envs: Vec<_> = cmd.get_envs().collect();
-        assert_eq!(envs, vec![(std::ffi::OsStr::new(WEB_TOKEN_ENV), None)]);
+        assert_eq!(
+            envs,
+            vec![
+                (std::ffi::OsStr::new(WEB_TOKEN_ENV), None),
+                (std::ffi::OsStr::new(WEB_TOKEN_HOST_ENV), None),
+            ]
+        );
     }
 
     #[test]

@@ -30,12 +30,12 @@ use agentnative::scorecard::{
     AncInfo, PlatformInfo, RunInfo, RunMetadata, TargetInfo, TextOptions, ToolInfo, audience,
     build_row_results, compute_badge, exit_code, format_json, format_text,
 };
-#[cfg(feature = "web")]
-use agentnative::spawn_env::WEB_TOKEN_ENV;
 use agentnative::spawn_env::withhold_anc_secrets;
+#[cfg(feature = "web")]
+use agentnative::spawn_env::{WEB_TOKEN_ENV, WEB_TOKEN_HOST_ENV};
 use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
 #[cfg(feature = "web")]
-use agentnative::web_audit::credential::read_token;
+use agentnative::web_audit::credential::{TokenSource, read_token};
 #[cfg(feature = "web")]
 use agentnative::web_audit::emit as web_emit;
 #[cfg(feature = "web")]
@@ -52,6 +52,8 @@ use agentnative::web_audit::registry::{AUDIT_USER_AGENT, check_by_id};
 use agentnative::web_audit::scorecard::to_wire_json;
 #[cfg(feature = "web")]
 use agentnative::web_audit::target as web_target;
+#[cfg(feature = "web")]
+use agentnative::web_audit::token_host::{TokenBinding, read_token_binding};
 #[cfg(feature = "web")]
 use agentnative::web_audit::{render, transport::UreqTransport};
 use agentnative::{anc_toml, argv, audits, color, json_error, output, skill_install};
@@ -192,6 +194,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             no_follow,
             ca_cert,
             token_stdin,
+            token_host,
             output,
         }) => {
             return run_web(WebRun {
@@ -203,6 +206,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 follow_declarations: !no_follow,
                 ca_cert,
                 token_stdin,
+                token_host,
                 // Routing inserts one token, so equal lengths mean `web` was typed.
                 web_typed: argv.len() == raw_argv.len(),
                 argv: raw_argv.clone(),
@@ -1113,6 +1117,8 @@ struct WebRun {
     follow_declarations: bool,
     ca_cert: Vec<std::path::PathBuf>,
     token_stdin: bool,
+    /// The host `--token-host` binds the token to, as typed.
+    token_host: Option<String>,
     /// Whether the user typed `web`, rather than a bare target that argv
     /// routing sent here. A sniffed token can be a typo, so it must not
     /// reach for a credential.
@@ -1209,6 +1215,22 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         }
     };
 
+    let token_source = credential.as_ref().map(|_| {
+        if run.token_stdin {
+            TokenSource::Stdin
+        } else {
+            TokenSource::Env
+        }
+    });
+    let token_binding = match read_token_binding(
+        token_source,
+        run.token_host.as_deref(),
+        std::env::var_os(WEB_TOKEN_HOST_ENV).as_deref(),
+    ) {
+        Ok(binding) => binding,
+        Err(error) => return Ok(emit_web_failure(&render::token_host_failure(&error), json)),
+    };
+
     let scheme_less = !web_target::names_a_scheme(&run.target);
     let normalized = match web_target::normalize_target(&run.target) {
         Ok(url) => url,
@@ -1247,6 +1269,10 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     input.external_dns = run.external_dns;
     input.no_external_dns = run.no_external_dns;
     input.follow_declarations = run.follow_declarations;
+    input.token_host = match &token_binding {
+        Some(TokenBinding::Bound(host)) => Some(host.clone()),
+        _ => None,
+    };
     if show_progress {
         input.progress = Some(&mut progress);
     }
@@ -1286,6 +1312,20 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
                 render::warning_line(render::WarningCode::RoutedToWeb, &notice)
             );
         }
+    }
+
+    if let Some(not_sent) = &report.token_not_sent {
+        let unbound = match &token_binding {
+            Some(TokenBinding::Unbound(why)) => Some(why),
+            _ => None,
+        };
+        eprintln!(
+            "{}",
+            render::warning_line(
+                render::WarningCode::TokenNotSent,
+                &render::token_not_sent_message(not_sent, unbound),
+            )
+        );
     }
 
     // The non-comparable note is a fact about the run, not about the

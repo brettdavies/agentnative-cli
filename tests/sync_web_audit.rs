@@ -275,6 +275,34 @@ fn check_names_a_file_whose_bytes_differ() {
     assert!(!stderr.contains("score-parity.json"), "{stderr}");
 }
 
+#[test]
+fn check_finds_drift_under_a_path_holding_a_sed_delimiter() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let nested = tmp.path().join("a|b");
+    fs::create_dir(&nested).unwrap();
+    let (site, dest, _) = synced_copy(&nested);
+    fs::write(
+        dest.join("src/web_audit/vendored/contract/registry.json"),
+        "{\"edited\": true}\n",
+    )
+    .unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("registry.json"), "{stderr}");
+}
+
+#[test]
+fn check_names_a_copy_that_is_missing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (site, dest, _) = synced_copy(tmp.path());
+    fs::remove_dir_all(dest.join("tests/fixtures/web-audit-contract")).unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("web-audit-contract"), "{stderr}");
+}
+
 /// Reaches the site repository; set `WEB_AUDIT_SYNC_ONLINE=1` to run it.
 #[test]
 #[ignore = "fetches the pinned commit from GitHub"]

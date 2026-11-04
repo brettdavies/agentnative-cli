@@ -166,6 +166,17 @@ elif [[ $WEB_AUDIT_SITE_REPO == "$work/site" ]]; then
   hardened_git -C "$WEB_AUDIT_SITE_REPO" fetch --quiet origin "$old" || true
 fi
 
+# A pin off dev can carry paths dev has not received, as when this repository lands a
+# contract before the site merges it. That is a wait. With the pin on dev, the same
+# missing path means the site dropped it, and the sync below fails where someone sees it.
+if [[ -z $on_dev ]]; then
+  while IFS= read -r site_path; do
+    if ! hardened_git -C "$WEB_AUDIT_SITE_REPO" cat-file -e "$new:$site_path" 2>/dev/null; then
+      nothing_to_bump "site dev ${new:0:7} has no $site_path yet, which pin ${old:0:7} carries"
+    fi
+  done < <(bash scripts/sync-web-audit.sh --site-paths)
+fi
+
 bash scripts/sync-web-audit.sh --pin "$new" >/dev/null
 mapfile -d '' -t changed < <(git status --porcelain -z --no-renames --untracked-files=all -- "${vendored[@]}")
 changed=("${changed[@]#???}")

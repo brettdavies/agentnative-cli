@@ -195,8 +195,11 @@ mod tests {
         );
         assert_eq!(shown(&json!("<b>é\n")), "%3Cb%3E%C3%A9%0A");
         assert_eq!(shown(&json!(7)), "7");
-        let long = "a".repeat(250);
-        assert_eq!(shown(&json!(long)), format!("{}...", "a".repeat(200)));
+        let long = "a".repeat(MAX_SHOWN_LENGTH + 50);
+        assert_eq!(
+            shown(&json!(long)),
+            format!("{}...", "a".repeat(MAX_SHOWN_LENGTH))
+        );
     }
 
     #[test]

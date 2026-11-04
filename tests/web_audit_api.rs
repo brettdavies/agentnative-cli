@@ -248,11 +248,14 @@ fn the_api_rows_evaluate_at_the_catalog_anchor_hosts() {
 
 #[test]
 fn a_description_larger_than_the_read_cap_counts_present_only_when_shaped_like_one() {
-    let padding = format!("\"{}\"", "x".repeat(600 * 1024));
+    let padding = format!(
+        "\"{}\"",
+        "x".repeat(agentnative::web_audit::registry::OPENAPI_MAX_BODY_BYTES + 1024)
+    );
     let over_cap = format!(r#"{{"components":{{"pad":{padding}}},"openapi":"3.1.0"}}"#);
     let page = format!(
         "<html><body>{}openapi</body></html>",
-        "x".repeat(600 * 1024)
+        "x".repeat(agentnative::web_audit::registry::OPENAPI_MAX_BODY_BYTES + 1024)
     );
     let anchored = |body: &str, content_type: &str| {
         run(vec![
@@ -271,7 +274,10 @@ fn a_description_larger_than_the_read_cap_counts_present_only_when_shaped_like_o
         item["why"],
         json!([
             "status 200 in [200]",
-            "description larger than 512 KiB; read in part, presence counted"
+            format!(
+                "description larger than {} KiB; read in part, presence counted",
+                agentnative::web_audit::registry::OPENAPI_MAX_BODY_BYTES / 1024
+            )
         ])
     );
     // A truncated body never parses, so the probe falls back to the nonsense path.

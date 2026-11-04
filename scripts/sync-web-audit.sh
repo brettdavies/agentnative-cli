@@ -203,9 +203,17 @@ case "$mode" in
         drifted+=("$dest/: missing")
         continue
       fi
-      while IFS= read -r line; do
-        drifted+=("$line")
-      done < <(diff -rq "$DEST_ROOT/$dest" "$stage/$dest" 2>&1 | sed -e "s|$DEST_ROOT/||g" -e "s|$stage/||g" || true)
+      status=0
+      diff -rq "$DEST_ROOT/$dest" "$stage/$dest" >"$tmp_root/diff" 2>&1 || status=$?
+      if ((status != 0)); then
+        named=""
+        while IFS= read -r line; do
+          line="${line//"$DEST_ROOT/"/}"
+          drifted+=("${line//"$stage/"/}")
+          named="yes"
+        done <"$tmp_root/diff"
+        [[ -n $named ]] || drifted+=("$dest/: diff exited $status")
+      fi
     done
     if ! cmp -s "$DEST_ROOT/$PIN_FILE" "$stage/$PIN_FILE"; then
       drifted+=("$PIN_FILE")

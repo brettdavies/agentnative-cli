@@ -7,8 +7,6 @@
 
 #[path = "../build_support/parser.rs"]
 mod parser;
-// `StringKeyed` serves web_registry/, which this driver does not include.
-#[allow(dead_code)]
 #[path = "../build_support/yaml.rs"]
 mod yaml;
 

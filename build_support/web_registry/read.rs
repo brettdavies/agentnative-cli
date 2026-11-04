@@ -4,17 +4,20 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use super::patterns::collect_patterns;
-use super::vocab::{ANTECEDENTS, EVAL_RULES, HANDLER_KINDS, SITE_TYPES, TIERS};
+use super::vocab::{
+    ANTECEDENTS, CARD_FIELD_PARAMS, CORS_SURFACES, EVAL_RULES, HANDLER_KINDS,
+    PROTECTED_RESOURCE_OPS, RETAINED_DOCUMENT_HANDLERS, RETAINED_DOCUMENT_KEYS, SITE_TYPES, TIERS,
+};
 use super::{
     AlternativeGroup, AlternativeVariant, McpDiscovery, McpLane, NormalizedCheck,
-    NormalizedRegistry, RemediationEntry, RemediationResource, RetiredCheck,
+    NormalizedRegistry, RemediationEntry, RetiredCheck,
 };
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawRegistry {
     version: u64,
-    mcp_discovery: RawDiscovery,
+    mcp_discovery: McpDiscovery,
     category_order: Vec<String>,
     categories: Map<String, Value>,
     mcp_lanes: Map<String, Value>,
@@ -25,40 +28,9 @@ struct RawRegistry {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawDiscovery {
-    ai_catalog: String,
-    card_suffix: String,
-    well_known: Vec<String>,
-    common_paths: Vec<String>,
-    protocol_version: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawGroup {
     group: String,
     variants: Map<String, Value>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawVariant {
-    antecedents: Vec<String>,
-    presented_by: Vec<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawLane {
-    label: String,
-    note: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawRetired {
-    successor: String,
-    reason: String,
 }
 
 #[derive(Deserialize)]
@@ -81,23 +53,6 @@ struct RawCheck {
     with: Map<String, Value>,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawRemediation {
-    title: String,
-    goal: String,
-    fix: String,
-    #[serde(default)]
-    resources: Vec<RawResource>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawResource {
-    label: String,
-    url: String,
-}
-
 fn entry<T: for<'de> Deserialize<'de>>(what: &str, value: Value) -> Result<T, String> {
     serde_json::from_value(value).map_err(|e| format!("registry.json: {what}: {e}"))
 }
@@ -111,6 +66,64 @@ fn known(id: &str, field: &str, value: &str, allowed: &[&str]) -> Result<(), Str
             allowed.join(", ")
         ))
     }
+}
+
+/// Whether a server-card field rule is one the handler can apply: a field name and
+/// the types that field may hold.
+fn is_field_rule(rule: &Value) -> bool {
+    rule.get("field").is_some_and(Value::is_string)
+        && rule
+            .get("type")
+            .and_then(Value::as_array)
+            .is_some_and(|types| !types.is_empty() && types.iter().all(Value::is_string))
+}
+
+/// What a ported handler reads from `with` it has no way to report on: a value it does
+/// not know would read as a missing document or an empty rule list, a wrong verdict
+/// rather than a skip. An unported handler or eval rule binds Unsupported instead.
+fn check_with(id: &str, raw: &RawCheck) -> Result<(), String> {
+    let text = |key: &str| {
+        raw.with
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("<absent>")
+    };
+    if raw.eval.as_deref() == Some("retained-document") {
+        known(
+            id,
+            "with.retained",
+            text("retained"),
+            RETAINED_DOCUMENT_KEYS,
+        )?;
+        known(
+            id,
+            "retained-document handler",
+            &raw.handler,
+            RETAINED_DOCUMENT_HANDLERS,
+        )?;
+    }
+    match raw.handler.as_str() {
+        "server-card" => {
+            if raw.eval.as_deref() != Some("retained-document") || text("retained") != "server-card"
+            {
+                return Err(format!(
+                    "registry.json: check \"{id}\": the server-card handler needs eval retained-document and with.retained \"server-card\""
+                ));
+            }
+            for param in CARD_FIELD_PARAMS {
+                let rules = raw.with.get(*param).and_then(Value::as_array);
+                if !rules.is_some_and(|r| !r.is_empty() && r.iter().all(is_field_rule)) {
+                    return Err(format!(
+                        "registry.json: check \"{id}\": with.{param} must list field rules"
+                    ));
+                }
+            }
+        }
+        "protected-resource" => known(id, "with.op", text("op"), PROTECTED_RESOURCE_OPS)?,
+        "cors-preflight" => known(id, "with.surface", text("surface"), CORS_SURFACES)?,
+        _ => {}
+    }
+    Ok(())
 }
 
 fn read_check(value: Value, lanes: &[McpLane]) -> Result<NormalizedCheck, String> {
@@ -132,6 +145,7 @@ fn read_check(value: Value, lanes: &[McpLane]) -> Result<NormalizedCheck, String
         let ids: Vec<&str> = lanes.iter().map(|l| l.id.as_str()).collect();
         known(&id, "lane", lane, &ids)?;
     }
+    check_with(&id, &raw)?;
     let patterns = collect_patterns(&id, &raw.with)?;
     let with_json = serde_json::to_string(&Value::Object(raw.with))
         .map_err(|e| format!("registry.json: check \"{id}\": with: {e}"))?;
@@ -167,24 +181,16 @@ pub fn read_registry(json: &str) -> Result<NormalizedRegistry, String> {
         .mcp_lanes
         .into_iter()
         .map(|(id, value)| {
-            let lane: RawLane = entry(&format!("mcp_lanes.{id}"), value)?;
-            Ok(McpLane {
-                id,
-                label: lane.label,
-                note: lane.note,
-            })
+            let lane: McpLane = entry(&format!("mcp_lanes.{id}"), value)?;
+            Ok(McpLane { id, ..lane })
         })
         .collect::<Result<Vec<_>, String>>()?;
     let retired = raw
         .retired
         .into_iter()
         .map(|(id, value)| {
-            let retired: RawRetired = entry(&format!("retired.{id}"), value)?;
-            Ok(RetiredCheck {
-                id,
-                successor: retired.successor,
-                reason: retired.reason,
-            })
+            let retired: RetiredCheck = entry(&format!("retired.{id}"), value)?;
+            Ok(RetiredCheck { id, ..retired })
         })
         .collect::<Result<Vec<_>, String>>()?;
     let alternatives = raw
@@ -196,7 +202,7 @@ pub fn read_registry(json: &str) -> Result<NormalizedRegistry, String> {
                 .into_iter()
                 .map(|(name, value)| {
                     let what = format!("alternatives.{}.{name}", group.group);
-                    let variant: RawVariant = entry(&what, value)?;
+                    let variant: AlternativeVariant = entry(&what, value)?;
                     for token in variant.antecedents.iter().chain(&variant.presented_by) {
                         if !ANTECEDENTS.contains(&token.as_str()) {
                             return Err(format!(
@@ -204,11 +210,7 @@ pub fn read_registry(json: &str) -> Result<NormalizedRegistry, String> {
                             ));
                         }
                     }
-                    Ok(AlternativeVariant {
-                        name,
-                        antecedents: variant.antecedents,
-                        presented_by: variant.presented_by,
-                    })
+                    Ok(AlternativeVariant { name, ..variant })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             Ok(AlternativeGroup {
@@ -235,13 +237,7 @@ pub fn read_registry(json: &str) -> Result<NormalizedRegistry, String> {
         .collect::<Result<Vec<_>, String>>()?;
     Ok(NormalizedRegistry {
         version: raw.version,
-        mcp_discovery: McpDiscovery {
-            ai_catalog: raw.mcp_discovery.ai_catalog,
-            card_suffix: raw.mcp_discovery.card_suffix,
-            well_known: raw.mcp_discovery.well_known,
-            common_paths: raw.mcp_discovery.common_paths,
-            protocol_version: raw.mcp_discovery.protocol_version,
-        },
+        mcp_discovery: raw.mcp_discovery,
         category_order: raw.category_order,
         categories,
         checks,
@@ -258,22 +254,9 @@ pub fn read_remediation(json: &str) -> Result<Vec<RemediationEntry>, String> {
     let mut entries = raw
         .into_iter()
         .map(|(id, value)| {
-            let raw: RawRemediation = serde_json::from_value(value)
+            let raw: RemediationEntry = serde_json::from_value(value)
                 .map_err(|e| format!("remediation.json: \"{id}\": {e}"))?;
-            Ok(RemediationEntry {
-                id,
-                title: raw.title,
-                goal: raw.goal,
-                fix: raw.fix,
-                resources: raw
-                    .resources
-                    .into_iter()
-                    .map(|r| RemediationResource {
-                        label: r.label,
-                        url: r.url,
-                    })
-                    .collect(),
-            })
+            Ok(RemediationEntry { id, ..raw })
         })
         .collect::<Result<Vec<_>, String>>()?;
     entries.sort_by(|a, b| a.id.cmp(&b.id));

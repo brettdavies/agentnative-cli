@@ -48,6 +48,14 @@ pub(super) const TIERS: &[(&str, &str)] = &[
     ("optional", "may"),
 ];
 pub(super) const LANE_CATEGORY: &str = "mcp";
+pub(super) const CORS_SURFACES: &[&str] = &["preflight", "actual"];
+pub(super) const PROTECTED_RESOURCE_OPS: &[&str] = &["challenge", "metadata"];
+/// Documents discovery keeps for a `retained-document` check.
+pub(super) const RETAINED_DOCUMENT_KEYS: &[&str] = &["ai-catalog", "api-catalog", "server-card"];
+/// Handlers that score a retained document instead of issuing a request.
+pub(super) const RETAINED_DOCUMENT_HANDLERS: &[&str] = &["http", "server-card"];
+/// The field rules a server-card check reads; with none it would pass every card.
+pub(super) const CARD_FIELD_PARAMS: &[&str] = &["required", "remote_required"];
 /// Regex-bearing `with` values: path inside `with`, short field name, and the
 /// JavaScript flags `assert.ts` evaluates the value under.
 pub(super) const PATTERN_FIELDS: &[(&[&str], &str, &str)] = &[

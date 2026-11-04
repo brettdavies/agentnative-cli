@@ -24,8 +24,8 @@ use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::{ScorecardStatus, to_wire_json};
 use common::corpus::{Case, Golden, SentRequest, corpus_dir, load_cases, replay};
 use common::ledger::{
-    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, golden_text,
-    element, load_ledger, requests_differ,
+    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, element,
+    golden_text, load_ledger, request_differences, requests_differ,
 };
 use std::sync::Arc;
 
@@ -74,10 +74,30 @@ fn every_corpus_scenario_reproduces_the_site_scorecard_or_is_ledgered() {
     let problems = compare_with_ledger(&actual, &ledger, |_| true);
     let mut detail: Vec<String> = Vec::new();
     for case in &cases {
-        let unledgered = actual
+        let unledgered: Vec<&String> = actual
             .iter()
-            .any(|(s, e)| s == &case.name && !ledger.contains_key(&(s.clone(), e.clone())));
-        if unledgered && let Ok(json) = scorecard_json(case) {
+            .filter(|(s, e)| s == &case.name && !ledger.contains_key(&(s.clone(), e.clone())))
+            .map(|(_, e)| e)
+            .collect();
+        if unledgered.iter().any(|e| *e == common::ledger::REQUESTS) {
+            let transport = common::corpus::transport_for(&case.scenario);
+            let _ = common::corpus::replay_on(
+                &case.scenario,
+                Arc::new(default_handlers()),
+                transport.clone(),
+            );
+            let sent: Vec<SentRequest> =
+                transport.requests().iter().map(SentRequest::from).collect();
+            detail.push(format!(
+                "{} requests:\n{}",
+                case.name,
+                request_differences(&sent, &common::corpus::recorded_requests(&case.name))
+                    .join("\n")
+            ));
+        }
+        if unledgered.iter().any(|e| *e != common::ledger::REQUESTS)
+            && let Ok(json) = scorecard_json(case)
+        {
             detail.push(format!(
                 "{} differs at {}",
                 case.name,
@@ -271,8 +291,7 @@ fn a_request_the_replay_does_not_reproduce_reads_as_the_requests_element() {
         .iter()
         .find(|c| c.name == "run-healthy")
         .expect("the healthy whole-run scenario");
-    let mut recorded = common::corpus::recorded_requests(&case.name);
-    assert!(!recorded.is_empty());
+    assert!(!common::corpus::recorded_requests(&case.name).is_empty());
     let transport = common::corpus::transport_for(&case.scenario);
     let _ = common::corpus::replay_on(
         &case.scenario,
@@ -280,10 +299,9 @@ fn a_request_the_replay_does_not_reproduce_reads_as_the_requests_element() {
         transport.clone(),
     );
     let replayed: Vec<SentRequest> = transport.requests().iter().map(SentRequest::from).collect();
-    assert!(
-        !requests_differ(&replayed, &recorded),
-        "the corpus reproduces"
-    );
+    // Compared with the replay itself: a bump may ledger this scenario's requests.
+    let mut recorded: BTreeSet<SentRequest> = replayed.iter().cloned().collect();
+    assert!(!requests_differ(&replayed, &recorded));
     let dropped = recorded.iter().next().cloned().unwrap();
     recorded.remove(&dropped);
     assert!(requests_differ(&replayed, &recorded));
@@ -338,4 +356,43 @@ fn every_unported_binding_the_site_scores_is_ledgered() {
             check.id
         );
     }
+}
+
+#[test]
+fn a_requests_divergence_names_what_differs() {
+    let request = |url: &str| SentRequest {
+        method: "GET".to_string(),
+        url: url.to_string(),
+        headers: BTreeMap::new(),
+        body: None,
+    };
+    let sent = [
+        request("https://a.test/sent"),
+        request("https://a.test/twice"),
+        request("https://a.test/twice"),
+    ];
+    let recorded = BTreeSet::from([
+        request("https://a.test/recorded"),
+        request("https://a.test/twice"),
+    ]);
+    let lines = request_differences(&sent, &recorded);
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("sent, not recorded") && l.contains("/sent")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("recorded, not sent") && l.contains("/recorded")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("sent twice") && l.contains("/twice")),
+        "{lines:?}"
+    );
 }

@@ -1,6 +1,9 @@
-//! The normalized registry and remediation types the validators produce and the emitter reads.
+//! The normalized registry and remediation types the read produces and the emitter reads.
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Deserialize;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct McpDiscovery {
     pub ai_catalog: String,
     pub card_suffix: String,
@@ -56,22 +59,31 @@ pub struct NormalizedRegistry {
     pub alternatives: Vec<AlternativeGroup>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct McpLane {
+    /// The entry's key in the contract's map.
+    #[serde(skip)]
     pub id: String,
     pub label: String,
     pub note: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RetiredCheck {
+    /// The entry's key in the contract's map.
+    #[serde(skip)]
     pub id: String,
     pub successor: String,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AlternativeVariant {
+    /// The entry's key in the contract's map.
+    #[serde(skip)]
     pub name: String,
     pub antecedents: Vec<String>,
     /// The tokens whose applied check presents this variant; defaults to
@@ -85,17 +97,22 @@ pub struct AlternativeGroup {
     pub variants: Vec<AlternativeVariant>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemediationResource {
     pub label: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RemediationEntry {
+    /// The entry's key in the contract's map.
+    #[serde(skip)]
     pub id: String,
     pub title: String,
     pub goal: String,
     pub fix: String,
+    #[serde(default)]
     pub resources: Vec<RemediationResource>,
 }

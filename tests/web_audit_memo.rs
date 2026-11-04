@@ -34,6 +34,7 @@ use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
+use agentnative::web_audit::registry::{MEMO_BODY_MAX_BYTES, MEMO_TOTAL_MAX_BYTES};
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use common::corpus::{load_cases, replay_on, transport_for};
 
@@ -882,7 +883,7 @@ fn a_connection_error_answers_a_later_caller_whose_deadline_it_arrived_within() 
 
 #[test]
 fn a_body_past_the_memo_cap_reaches_its_reader_but_is_asked_for_again_by_the_next_reader() {
-    let big = vec![b'x'; 1024 * 1024 + 1];
+    let big = vec![b'x'; MEMO_BODY_MAX_BYTES + 1];
     let (transport, shared) = mock(MockResponse::ok(200, &[], &big));
     let memo = RequestMemo::new();
     let first = fetch(&shared, Some(&memo), URL_A, Opts::default());
@@ -914,19 +915,20 @@ fn a_body_past_the_memo_cap_reaches_its_reader_but_is_asked_for_again_by_the_nex
 }
 
 #[test]
-fn the_memo_stops_holding_bodies_once_an_audit_holds_8_mib_of_them() {
-    let megabyte = vec![b'y'; 1024 * 1024];
-    let (transport, shared) = mock(MockResponse::ok(200, &[], &megabyte));
+fn the_memo_stops_holding_bodies_once_an_audit_holds_its_total_of_them() {
+    let body = vec![b'y'; MEMO_BODY_MAX_BYTES];
+    let held = MEMO_TOTAL_MAX_BYTES / MEMO_BODY_MAX_BYTES;
+    let (transport, shared) = mock(MockResponse::ok(200, &[], &body));
     let memo = RequestMemo::new();
-    let urls: Vec<String> = (0..9)
+    let urls: Vec<String> = (0..=held)
         .map(|i| format!("https://example.com/page-{i}"))
         .collect();
     for url in &urls {
         fetch(&shared, Some(&memo), url, Opts::default());
     }
     fetch(&shared, Some(&memo), &urls[0], Opts::default());
-    fetch(&shared, Some(&memo), &urls[8], Opts::default());
-    assert_eq!(transport.requests().len(), 10);
+    fetch(&shared, Some(&memo), &urls[held], Opts::default());
+    assert_eq!(transport.requests().len(), held + 2);
     let stats = memo.stats();
     assert_eq!(
         (
@@ -938,7 +940,7 @@ fn the_memo_stops_holding_bodies_once_an_audit_holds_8_mib_of_them() {
             stats.over_body_cap,
             stats.over_total_cap
         ),
-        (10, 1, 8 * megabyte.len(), 8, megabyte.len(), 0, 2)
+        (held + 2, 1, held * body.len(), held, body.len(), 0, 2)
     );
 }
 

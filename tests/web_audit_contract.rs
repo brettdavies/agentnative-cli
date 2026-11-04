@@ -3,13 +3,24 @@
 
 #![cfg(feature = "web")]
 
+mod common;
+
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 
+use agentnative::web_audit::engine::{FetchHandle, RunInput};
+use agentnative::web_audit::fetch::FetchOptions;
+use agentnative::web_audit::handlers::default_handlers;
+use agentnative::web_audit::mock::{MockResponse, MockTransport};
 use agentnative::web_audit::registry::{
     ALTERNATIVES, AUDIT_USER_AGENT, CATEGORIES, CATEGORY_ORDER, CHECKS, CONTRACT_FINGERPRINT,
     MCP_DISCOVERY, MCP_LANES, PROBE_UA_TOKENS, REGISTRY_VERSION, REMEDIATION, RETIRED_CHECK_IDS,
 };
+use common::corpus::PublicResolver;
+use regex::Regex;
 use serde_json::{Map, Value};
 
 fn root() -> PathBuf {
@@ -116,6 +127,12 @@ fn the_other_tables_equal_registry_json() {
             assert_eq!(strings(&row["antecedents"]), tokens(variant.antecedents));
             assert_eq!(strings(&row["presented_by"]), tokens(variant.presented_by));
         }
+        assert_eq!(
+            raw["variants"].as_object().unwrap().len(),
+            group.variants.len(),
+            "{}",
+            group.group
+        );
     }
 }
 
@@ -185,16 +202,100 @@ fn emitted_name(key: &str) -> &str {
     key.strip_suffix("_MS").unwrap_or(key)
 }
 
+/// Production code only: a re-export, a comment or a test reads nothing.
+fn production_code(text: &str) -> String {
+    let body = text.split("#[cfg(test)]").next().unwrap_or(text);
+    let mut out = String::new();
+    let mut in_use = false;
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        if in_use
+            || trimmed.starts_with("use ")
+            || (trimmed.starts_with("pub") && trimmed.contains(" use "))
+        {
+            in_use = !trimmed.contains(';');
+        } else if !trimmed.starts_with("//") {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn engine_code() -> Vec<(PathBuf, String)> {
+    engine_sources()
+        .into_iter()
+        .map(|(path, text)| (path, production_code(&text)))
+        .collect()
+}
+
+fn parse_int(digits: &str) -> Option<u64> {
+    digits.replace('_', "").parse().ok()
+}
+
 #[test]
-fn no_engine_literal_duplicates_a_site_setting() {
+fn no_engine_constant_duplicates_a_site_setting() {
     let doc = contract("constants.json");
-    let sources = engine_sources();
-    for key in doc.as_object().unwrap().keys() {
-        let definition = format!("const {}:", emitted_name(key));
-        for (path, text) in &sources {
+    let definition =
+        Regex::new(r"(?m)^\s*(?:pub(?:\([a-z]+\))?\s+)?(?:const|static)\s+([A-Z0-9_]+)\s*:")
+            .unwrap();
+    for (path, code) in engine_code() {
+        for found in definition.captures_iter(&code) {
+            let name = &found[1];
             assert!(
-                !text.contains(&definition),
-                "{} defines {definition}; read it from the contract",
+                !doc.as_object()
+                    .unwrap()
+                    .keys()
+                    .any(|key| emitted_name(key) == name),
+                "{} defines {name}; read it from the contract",
+                path.display()
+            );
+        }
+    }
+}
+
+/// A small count is too common a literal to search for, and a setting under a thousand
+/// is one, so this finds the sizes and durations a copied value would show up as.
+#[test]
+fn no_engine_literal_repeats_a_site_setting() {
+    const SEARCHED_FROM: u64 = 1_000;
+    let doc = contract("constants.json");
+    let settings: Vec<(&str, u64)> = doc
+        .as_object()
+        .unwrap()
+        .iter()
+        .filter_map(|(key, value)| Some((key.as_str(), value.as_u64()?)))
+        .filter(|(_, value)| *value >= SEARCHED_FROM)
+        .collect();
+    let millis = Regex::new(r"from_millis\((\d[\d_]*)\)").unwrap();
+    let secs = Regex::new(r"from_secs\((\d[\d_]*)\)").unwrap();
+    let product = Regex::new(r"\b\d[\d_]*(?:\s*\*\s*\d[\d_]*)*\b").unwrap();
+    // A number inside a string is text: a Unicode range, or a line of a message.
+    let string = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
+    for (path, code) in engine_code() {
+        let code = string.replace_all(&code, "\"\"");
+        let mut written: Vec<u64> = Vec::new();
+        written.extend(millis.captures_iter(&code).filter_map(|c| parse_int(&c[1])));
+        written.extend(
+            secs.captures_iter(&code)
+                .filter_map(|c| parse_int(&c[1]).map(|s| s * 1_000)),
+        );
+        for found in product.find_iter(&code) {
+            let factors: Option<Vec<u64>> = found
+                .as_str()
+                .split('*')
+                .map(|f| parse_int(f.trim()))
+                .collect();
+            if let Some(value) =
+                factors.and_then(|f| f.into_iter().try_fold(1_u64, u64::checked_mul))
+            {
+                written.push(value);
+            }
+        }
+        for (key, value) in &settings {
+            assert!(
+                !written.contains(value),
+                "{} writes {value}, the value of {key}; read it from the contract",
                 path.display()
             );
         }
@@ -204,15 +305,16 @@ fn no_engine_literal_duplicates_a_site_setting() {
 #[test]
 fn the_engine_reads_every_numeric_setting() {
     let doc = contract("constants.json");
-    let sources = engine_sources();
+    let code = engine_code();
     for (key, value) in doc.as_object().unwrap() {
         if !value.is_u64() {
             continue;
         }
-        let name = emitted_name(key);
+        let name = Regex::new(&format!(r"\b{}\b", emitted_name(key))).unwrap();
         assert!(
-            sources.iter().any(|(_, text)| text.contains(name)),
-            "nothing under src/web_audit reads {name}"
+            code.iter().any(|(_, text)| name.is_match(text)),
+            "no production code under src/web_audit reads {}",
+            emitted_name(key)
         );
     }
 }
@@ -228,7 +330,148 @@ fn the_settings_reach_the_engine_from_the_contract() {
     );
 }
 
-/// The crate carries what `build.rs` reads and leaves the test corpus behind.
+/// The corpus cannot exercise wall-clock settings, so these read what a run and a fetch
+/// are actually given.
+#[test]
+fn a_run_and_a_fetch_take_their_defaults_from_the_contract() {
+    let doc = contract("constants.json");
+    let millis = |key: &str| Duration::from_millis(doc[key].as_u64().unwrap());
+    let fetch = FetchOptions::default();
+    assert_eq!(fetch.timeout, millis("DEFAULT_TIMEOUT_MS"));
+    assert_eq!(
+        fetch.max_redirects,
+        doc["DEFAULT_MAX_REDIRECTS"].as_u64().unwrap() as usize
+    );
+    let (_, handle) = {
+        let transport = Arc::new(MockTransport::new(
+            Vec::new(),
+            MockResponse::ok(200, &[], b""),
+        ));
+        let handle = FetchHandle::new(
+            transport.clone(),
+            Arc::new(PublicResolver),
+            AUDIT_USER_AGENT,
+        );
+        (transport, handle)
+    };
+    let input = RunInput::new("https://example.com/", handle, Arc::new(default_handlers()));
+    assert_eq!(
+        input.concurrency,
+        doc["DEFAULT_CONCURRENCY"].as_u64().unwrap() as usize
+    );
+    assert_eq!(
+        input.per_check_timeout,
+        millis("DEFAULT_PER_CHECK_TIMEOUT_MS")
+    );
+    assert_eq!(
+        input.per_audit_deadline,
+        millis("DEFAULT_PER_AUDIT_DEADLINE_MS")
+    );
+}
+
+// The cross-field rules the site's normalizer owns, read here so a bump that breaks one
+// goes red rather than reaching the engine.
+
+#[test]
+fn check_ids_are_unique() {
+    let doc = contract("registry.json");
+    let ids: Vec<&str> = doc["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    let distinct: BTreeSet<&&str> = ids.iter().collect();
+    assert_eq!(distinct.len(), ids.len());
+}
+
+#[test]
+fn every_retired_id_is_gone_and_names_a_live_successor() {
+    let doc = contract("registry.json");
+    let live: BTreeSet<&str> = doc["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    for (id, retired) in doc["retired"].as_object().unwrap() {
+        assert!(!live.contains(id.as_str()), "{id} is retired and live");
+        let successor = retired["successor"].as_str().unwrap();
+        assert!(live.contains(successor), "{id} names {successor}");
+    }
+}
+
+#[test]
+fn every_alternatives_group_offers_a_choice_and_claims_an_antecedent_once() {
+    for group in ALTERNATIVES {
+        assert!(group.variants.len() >= 2, "{}", group.group);
+        let mut claimed = BTreeSet::new();
+        for variant in group.variants {
+            for token in variant.antecedents {
+                assert!(
+                    claimed.insert(token.as_str()),
+                    "{}: {}",
+                    group.group,
+                    token.as_str()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn every_principle_is_one_the_spec_has() {
+    let principle = Regex::new(r"^P[1-8]$").unwrap();
+    for check in CHECKS {
+        assert!(
+            principle.is_match(check.principle),
+            "{}: {}",
+            check.id,
+            check.principle
+        );
+    }
+}
+
+#[test]
+fn discovery_paths_are_absolute() {
+    let paths = MCP_DISCOVERY
+        .well_known
+        .iter()
+        .chain(MCP_DISCOVERY.common_paths)
+        .chain([&MCP_DISCOVERY.ai_catalog, &MCP_DISCOVERY.card_suffix]);
+    for path in paths {
+        assert!(path.starts_with('/'), "{path}");
+    }
+}
+
+#[test]
+fn every_fix_links_to_an_absolute_url() {
+    for fix in REMEDIATION {
+        for resource in fix.resources {
+            assert!(
+                resource.url.starts_with("https://") || resource.url.starts_with("http://"),
+                "{}: {}",
+                fix.id,
+                resource.url
+            );
+        }
+    }
+}
+
+#[test]
+fn nothing_is_vendored_beside_the_pin_and_the_contract() {
+    let listed: BTreeSet<String> = fs::read_dir(root().join("src/web_audit/vendored"))
+        .expect("the vendored directory")
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        listed,
+        BTreeSet::from(["SITE_SHA".to_string(), "contract".to_string()])
+    );
+}
+
+/// The crate carries what `build.rs` reads and leaves behind the corpus and the card
+/// schema, whose field rules the site already wrote into `registry.json`.
 #[test]
 fn the_published_crate_holds_the_build_inputs_and_not_the_corpus() {
     let cargo = std::env::var("CARGO").expect("cargo sets CARGO for a test");
@@ -250,7 +493,6 @@ fn the_published_crate_holds_the_build_inputs_and_not_the_corpus() {
         "registry.json",
         "remediation.json",
         "constants.json",
-        "server-card.schema.json",
         "FINGERPRINT",
     ] {
         let path = format!("src/web_audit/vendored/contract/{name}");
@@ -262,5 +504,9 @@ fn the_published_crate_holds_the_build_inputs_and_not_the_corpus() {
     assert!(
         !listing.contains("web-audit-contract"),
         "the corpus stays out of the crate:\n{listing}"
+    );
+    assert!(
+        !listing.contains("server-card.schema.json"),
+        "nothing reads the card schema:\n{listing}"
     );
 }

@@ -143,6 +143,30 @@ pub fn requests_differ(sent: &[SentRequest], recorded: &BTreeSet<SentRequest>) -
     distinct.len() != sent.len() || !distinct.iter().copied().eq(recorded.iter())
 }
 
+/// What a `requests` divergence consists of, one line per request.
+pub fn request_differences(sent: &[SentRequest], recorded: &BTreeSet<SentRequest>) -> Vec<String> {
+    let mut distinct = BTreeSet::new();
+    let mut lines = Vec::new();
+    for request in sent {
+        if !distinct.insert(request) {
+            lines.push(format!("sent twice: {request:?}"));
+        }
+    }
+    lines.extend(
+        distinct
+            .iter()
+            .filter(|request| !recorded.contains(**request))
+            .map(|request| format!("sent, not recorded: {request:?}")),
+    );
+    lines.extend(
+        recorded
+            .iter()
+            .filter(|request| !distinct.contains(request))
+            .map(|request| format!("recorded, not sent: {request:?}")),
+    );
+    lines
+}
+
 /// The elements of one scenario the engine does not reproduce.
 pub fn divergences_of(case: &Case) -> BTreeSet<String> {
     divergences_against(case, &golden_text(&case.name))

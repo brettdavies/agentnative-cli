@@ -25,7 +25,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "tests/fixtures/web-audit-divergences.toml"
-CORPUS = "src/data/web-audit/contract/test/conformance/scenarios"
+# The sync script owns where the site keeps what is vendored; the test tree is its last path.
+CORPUS = subprocess.run(
+    ["bash", str(ROOT / "scripts/sync-web-audit.sh"), "--site-paths"],
+    check=True, capture_output=True, text=True,
+).stdout.split()[-1] + "/conformance/scenarios"
 HEADER = """\
 # Web-audit divergence ledger: every element of the vendored conformance
 # corpus the engine does not yet reproduce, one entry per (scenario, element).
@@ -127,9 +131,11 @@ def main():
         owner = None
         latest_touch = None
         for sha, subject in commits:
-            before = golden_at(repo, f"{sha}^", scenario, cache)
-            after = golden_at(repo, sha, scenario, cache)
-            if before != after:
+            touched = any(
+                recorded_at(repo, f"{sha}^", scenario, cache, name) != recorded_at(repo, sha, scenario, cache, name)
+                for name in ("scorecard.json", "requests.json")
+            )
+            if touched:
                 latest_touch = subject
             if element_at(repo, f"{sha}^", scenario, cache, element) != element_at(repo, sha, scenario, cache, element):
                 owner = (sha, subject)

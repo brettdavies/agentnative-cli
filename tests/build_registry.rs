@@ -264,6 +264,121 @@ fn an_enumerated_value_this_build_does_not_know_fails_naming_the_check() {
 }
 
 #[test]
+fn a_with_value_a_ported_handler_could_only_misread_fails_naming_the_check() {
+    let rule = json!([{ "field": "name", "type": ["string"] }]);
+    for (what, handler, eval, with, named) in [
+        (
+            "surface",
+            "cors-preflight",
+            None,
+            json!({ "surface": "sideways" }),
+            "sideways",
+        ),
+        (
+            "no surface",
+            "cors-preflight",
+            None,
+            json!({}),
+            "with.surface",
+        ),
+        (
+            "op",
+            "protected-resource",
+            None,
+            json!({ "op": "dance" }),
+            "dance",
+        ),
+        ("no op", "protected-resource", None, json!({}), "with.op"),
+        (
+            "retained",
+            "http",
+            Some("retained-document"),
+            json!({ "retained": "no-such" }),
+            "no-such",
+        ),
+        (
+            "no retained",
+            "http",
+            Some("retained-document"),
+            json!({}),
+            "with.retained",
+        ),
+        (
+            "a handler that cannot score a retained document",
+            "mcp",
+            Some("retained-document"),
+            json!({ "retained": "server-card" }),
+            "retained-document handler",
+        ),
+        (
+            "a card with no eval",
+            "server-card",
+            None,
+            json!({ "retained": "server-card" }),
+            "needs eval",
+        ),
+        (
+            "a card with no required",
+            "server-card",
+            Some("retained-document"),
+            json!({ "retained": "server-card", "remote_required": rule }),
+            "with.required",
+        ),
+        (
+            "a card with no remote_required",
+            "server-card",
+            Some("retained-document"),
+            json!({ "retained": "server-card", "required": rule }),
+            "with.remote_required",
+        ),
+        (
+            "a rule with no types",
+            "server-card",
+            Some("retained-document"),
+            json!({ "retained": "server-card", "required": rule, "remote_required": [{ "field": "name" }] }),
+            "with.remote_required",
+        ),
+    ] {
+        let e = check_err(|c| {
+            c["handler"] = json!(handler);
+            c["with"] = with;
+            if let Some(eval) = eval {
+                c["eval"] = json!(eval);
+            }
+        });
+        assert!(e.contains("\"robots\"") && e.contains(named), "{what}: {e}");
+    }
+}
+
+#[test]
+fn a_with_a_ported_handler_can_read_builds() {
+    let rule = json!([{ "field": "name", "type": ["string"] }]);
+    for (handler, eval, with) in [
+        ("cors-preflight", None, json!({ "surface": "actual" })),
+        ("protected-resource", None, json!({ "op": "metadata" })),
+        (
+            "http",
+            Some("retained-document"),
+            json!({ "retained": "api-catalog" }),
+        ),
+        (
+            "server-card",
+            Some("retained-document"),
+            json!({ "retained": "server-card", "required": rule, "remote_required": rule }),
+        ),
+    ] {
+        let mut one = check();
+        one["handler"] = json!(handler);
+        one["with"] = with;
+        if let Some(eval) = eval {
+            one["eval"] = json!(eval);
+        }
+        let result = read(&registry_with(vec![one]));
+        assert!(result.is_ok(), "{handler}: {result:?}");
+    }
+}
+
+#[test]
 fn a_pattern_the_build_cannot_run_fails_naming_the_check() {
     for (pattern, needle) in [
         ("(?=a)", "lookaround"),

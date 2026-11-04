@@ -453,7 +453,10 @@ fn a_sep_1649_card_passes_with_the_superseded_advisory_and_a_sep_2127_card_witho
     assert_eq!(truncated.evidence[0]["truncated"], true);
     assert_eq!(
         why(&truncated),
-        ["the card was cut at the 256 KiB read cap"]
+        [format!(
+            "the card was cut at the {} KiB read cap",
+            agentnative::web_audit::registry::DOCUMENT_MAX_BODY_BYTES / 1024
+        )]
     );
     assert!(transport.requests().is_empty());
 }

@@ -330,15 +330,17 @@ fn without_an_endpoint_every_row_is_a_reasonless_na_that_probes_nothing() {
 
 #[test]
 fn an_mcp_probe_stops_reading_at_the_shared_body_cap() {
-    // A stream whose first data line sits past the 64 KiB cap never
-    // reaches the parser, so the row reads as a broken surface rather
-    // than buffering the whole body.
-    let padding = ": keep-alive\n".repeat(6000);
+    // A stream whose first data line sits past the cap never reaches the
+    // parser, so the row reads as a broken surface rather than buffering
+    // the whole body.
+    let cap = agentnative::web_audit::registry::AUDIT_PROBE_MAX_BODY_BYTES;
+    let keep_alive = ": keep-alive\n";
+    let padding = keep_alive.repeat(cap / keep_alive.len() + 1);
     let body = format!(
         "{padding}data: {}\n\n",
         json!({ "jsonrpc": "2.0", "id": 1, "result": { "tools": [] } })
     );
-    assert!(padding.len() > 64 * 1024);
+    assert!(padding.len() > cap);
     let stream = MockResponse::ok(
         200,
         &[("content-type", "text/event-stream")],

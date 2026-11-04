@@ -6,20 +6,21 @@
 use serde_json::{Map, Value};
 
 /// How a key is emitted.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Text,
-    TokenMap,
     /// A count or a byte size.
     Size,
     /// Milliseconds, emitted as a `Duration` under the name without `_MS`.
     Millis,
 }
 
+const USER_AGENT: &str = "AUDIT_USER_AGENT";
+const UA_TOKENS: &str = "PROBE_UA_TOKENS";
+
+/// Every key but `USER_AGENT` and `UA_TOKENS`, which `emit_rust` documents itself.
 const KEYS: &[(&str, Kind)] = &[
     ("REGISTRY_FINGERPRINT", Kind::Text),
-    ("AUDIT_USER_AGENT", Kind::Text),
-    ("PROBE_UA_TOKENS", Kind::TokenMap),
     ("DEFAULT_CONCURRENCY", Kind::Size),
     ("DEFAULT_PER_CHECK_TIMEOUT_MS", Kind::Millis),
     ("DEFAULT_PER_AUDIT_DEADLINE_MS", Kind::Millis),
@@ -59,60 +60,57 @@ pub struct Constants {
     pub audit_user_agent: String,
     /// Registry `{ua:...}` token to literal User-Agent, sorted.
     pub probe_ua_tokens: Vec<(String, String)>,
-    items: Vec<(&'static str, Value)>,
+    items: Vec<(&'static str, Kind, Value)>,
 }
 
 const REFRESH: &str =
     "run `scripts/sync-web-audit.sh`, or bind the key in build_support/web_registry/constants.rs";
 
+fn take(raw: &mut Map<String, Value>, key: &str) -> Result<Value, String> {
+    raw.remove(key)
+        .ok_or_else(|| format!("constants.json: missing \"{key}\"; {REFRESH}"))
+}
+
+fn wrong_shape(key: &str, value: &Value) -> String {
+    format!("constants.json: \"{key}\" has the wrong shape: {value}")
+}
+
 /// Read `constants.json`. A missing key or a key no binding reads fails naming it.
 pub fn read_constants(json: &str) -> Result<Constants, String> {
     let mut raw: Map<String, Value> =
         serde_json::from_str(json).map_err(|e| format!("constants.json: {e}"))?;
+    let agent = take(&mut raw, USER_AGENT)?;
+    let audit_user_agent = agent
+        .as_str()
+        .ok_or_else(|| wrong_shape(USER_AGENT, &agent))?
+        .to_string();
+    let tokens = take(&mut raw, UA_TOKENS)?;
+    let mut probe_ua_tokens = tokens
+        .as_object()
+        .and_then(|map| {
+            map.iter()
+                .map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+                .collect::<Option<Vec<_>>>()
+        })
+        .ok_or_else(|| wrong_shape(UA_TOKENS, &tokens))?;
+    probe_ua_tokens.sort();
     let mut items = Vec::new();
     for (key, kind) in KEYS {
-        let value = raw
-            .remove(*key)
-            .ok_or_else(|| format!("constants.json: missing \"{key}\"; {REFRESH}"))?;
+        let value = take(&mut raw, key)?;
         let fits = match kind {
             Kind::Text => value.is_string(),
-            Kind::TokenMap => value
-                .as_object()
-                .is_some_and(|map| map.values().all(Value::is_string)),
             Kind::Size | Kind::Millis => value.is_u64(),
         };
         if !fits {
-            return Err(format!(
-                "constants.json: \"{key}\" has the wrong shape: {value}"
-            ));
+            return Err(wrong_shape(key, &value));
         }
-        items.push((*key, value));
+        items.push((*key, *kind, value));
     }
     if let Some(key) = raw.keys().next() {
         return Err(format!(
             "constants.json: \"{key}\" is a key nothing in this build reads; {REFRESH}"
         ));
     }
-    let text = |key: &str| -> String {
-        items
-            .iter()
-            .find(|(k, _)| *k == key)
-            .and_then(|(_, v)| v.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
-    let audit_user_agent = text("AUDIT_USER_AGENT");
-    let mut probe_ua_tokens: Vec<(String, String)> = items
-        .iter()
-        .find(|(k, _)| *k == "PROBE_UA_TOKENS")
-        .and_then(|(_, v)| v.as_object())
-        .map(|map| {
-            map.iter()
-                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
-    probe_ua_tokens.sort();
     Ok(Constants {
         audit_user_agent,
         probe_ua_tokens,
@@ -121,17 +119,10 @@ pub fn read_constants(json: &str) -> Result<Constants, String> {
 }
 
 impl Constants {
-    /// The generated constant for every key but the two `emit_rust` documents itself.
+    /// The generated constant for every key in `KEYS`.
     pub(super) fn emit(&self, src: &mut String) {
-        for (key, value) in &self.items {
-            let kind = KEYS
-                .iter()
-                .find(|(k, _)| k == key)
-                .map(|(_, kind)| *kind)
-                .expect("a bound key");
+        for (key, kind, value) in &self.items {
             match kind {
-                Kind::TokenMap => {}
-                Kind::Text if *key == "AUDIT_USER_AGENT" => {}
                 Kind::Text => {
                     let text = value.as_str().unwrap_or_default();
                     src.push_str(&format!(

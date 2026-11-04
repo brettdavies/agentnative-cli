@@ -4,8 +4,10 @@
 //!
 //! The site normalizes its registry and writes the result into the contract, so
 //! nothing here re-derives a value. The read is strict: a key this build does not
-//! know or an enumerated value outside its vocabulary fails naming the entry, so a
-//! contract the build cannot read stops it. Two things stay here because only Rust
+//! know, an enumerated value outside its vocabulary, or a `with` value a ported handler
+//! could only misread fails naming the entry, so a contract the build cannot read stops
+//! it. Cross-field rules the site's normalizer owns are tested over the contract in
+//! `tests/web_audit_contract.rs`. Two things stay here because only Rust
 //! can do them: every regex-bearing value is translated and compiled with the `regex`
 //! crate (`js_regex`), and an entry naming a handler kind or eval rule outside the
 //! ported set binds to `Unsupported` instead of failing, so the engine reports it as a
@@ -25,7 +27,7 @@ pub use constants::{Constants, read_constants};
 pub use emit::emit_rust;
 pub use model::{
     AlternativeGroup, AlternativeVariant, McpDiscovery, McpLane, NormalizedCheck,
-    NormalizedRegistry, PatternSpec, RemediationEntry, RemediationResource, RetiredCheck,
+    NormalizedRegistry, PatternSpec, RemediationEntry, RetiredCheck,
 };
 pub use read::{read_registry, read_remediation};
 pub use vocab::{EVAL_RULES, HANDLER_KINDS};

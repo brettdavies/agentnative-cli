@@ -881,9 +881,26 @@ fn a_divergence_with_no_attributable_site_change_fails_visibly() {
 }
 
 #[test]
+fn a_divergence_falls_back_to_the_commit_that_touched_only_the_scenarios_requests() {
+    let f = Fixture::new();
+    f.site_commit(
+        &format!("{SITE_CORPUS}/run-a/requests.json"),
+        "[]\n",
+        "feat: the requests move (#9003)",
+    );
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#9004)");
+    f.answer("divergences.json", "[[\"run-a\", \"score\"]]");
+    let output = f.bump(&["--dry-run"]);
+    assert_ok(&output);
+    let out = stdout(&output);
+    assert!(!out.contains("no site PR owns"), "{out}");
+    assert!(out.contains("#9003"), "{out}");
+}
+
+#[test]
 fn a_commit_with_no_pr_changing_a_standing_entry_names_that_commit_too() {
     let f = Fixture::new();
-    let golden = format!("{CORPUS}/run-a/scorecard.json");
+    let golden = format!("{SITE_CORPUS}/run-a/scorecard.json");
     write(
         &f.repo.join(LEDGER),
         &format!(
@@ -912,7 +929,7 @@ fn a_path_git_would_quote_reaches_the_commit_and_the_body_as_it_is() {
     let f = Fixture::new();
     let path = format!("{CORPUS}/café/scorecard.json");
     f.site_commit(
-        &path,
+        &format!("{SITE_CORPUS}/café/scorecard.json"),
         "{\"score\": 3}\n",
         "feat: a scenario with an accent (#2)",
     );
@@ -1299,7 +1316,8 @@ fn a_bump_too_large_for_one_commit_lands_as_a_chain_of_verified_commits() {
     let base = run_git(&f.repo, &["rev-parse", "HEAD"]);
     for n in 0..FILES {
         write(
-            &f.site.join(format!("{CORPUS}/many-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/many-{n:03}/scorecard.json")),
             "{\"score\": 1}\n",
         );
     }
@@ -1352,7 +1370,7 @@ fn a_bump_of_large_files_splits_by_size_too() {
     let body = format!("{{\"pad\": \"{}\"}}\n", "x".repeat(1_600_000));
     for n in 0..3 {
         write(
-            &f.site.join(format!("{CORPUS}/big-{n}/scorecard.json")),
+            &f.site.join(format!("{SITE_CORPUS}/big-{n}/scorecard.json")),
             &body,
         );
     }
@@ -1705,6 +1723,77 @@ impl Fixture {
         commit(&self.repo, "chore: pin to the PR's head");
         self.site_commit("OTHER.md", "not vendored\n", "docs: dev moves on (#3)");
         head
+    }
+}
+
+const SITE_BUILD: &str = "src/data/web-audit/contract/build";
+
+#[test]
+fn a_contract_site_dev_has_not_received_is_a_wait_and_not_a_failure() {
+    let f = Fixture::new();
+    f.pin_to_a_site_pr_head();
+    run_git(&f.site, &["rm", "-r", "--quiet", "--", SITE_BUILD]);
+    commit(&f.site, "docs: site dev without the contract (#4)");
+
+    let decide = f.bump(&["--decide"]);
+    assert_ok(&decide);
+    assert!(stdout(&decide).contains("bump=no"), "{}", stdout(&decide));
+    assert!(
+        stdout(&decide).contains(&format!("has no {SITE_BUILD} yet")),
+        "{}",
+        stdout(&decide)
+    );
+
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        stdout(&output).contains("nothing to bump"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(!f.calls().contains("cargo"), "{}", f.calls());
+    f.assert_tree_clean();
+}
+
+#[test]
+fn a_site_dev_that_drops_a_path_its_own_pin_carries_fails_visibly() {
+    let f = Fixture::new();
+    run_git(&f.site, &["rm", "-r", "--quiet", "--", SITE_BUILD]);
+    commit(&f.site, "refactor: the contract moves away (#4)");
+    let output = f.bump(&["--decide"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(SITE_BUILD),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    f.assert_tree_clean();
+}
+
+#[test]
+fn the_changelog_says_when_a_bump_changes_more_than_the_pin() {
+    for (file, bullet) in [
+        (SITE_FILES[0].to_string(), "checks, fixes and settings"),
+        (
+            format!("{SITE_BUILD}/constants.json"),
+            "checks, fixes and settings",
+        ),
+        (
+            format!("{SITE_BUILD}/remediation.json"),
+            "checks, fixes and settings",
+        ),
+        (
+            format!("{SITE_CORPUS}/run-c/scorecard.json"),
+            "reported site pin",
+        ),
+    ] {
+        let f = Fixture::new();
+        f.site_commit(&file, "moved\n", "feat: a move (#2)");
+        let output = f.bump(&["--dry-run"]);
+        assert_ok(&output);
+        let out = stdout(&output);
+        let section = out.split("## Changelog").nth(1).expect("a changelog");
+        assert!(section.contains(bullet), "{file}: {section}");
     }
 }
 

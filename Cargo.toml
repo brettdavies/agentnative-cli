@@ -23,6 +23,7 @@ exclude = [
     "rustfmt.toml",
     "scripts/",
     "src/runner/help_probe/snapshots/",
+    "src/web_audit/vendored/contract/server-card.schema.json",
     "tests/",
 ]
 

@@ -22,6 +22,10 @@
 #   scripts/sync-web-audit.sh --pin <sha>  Move the pin to <sha>, then refresh.
 #   scripts/sync-web-audit.sh --check      Verify every copy matches the pin;
 #                                          exit 1 on drift, listing each path.
+#   scripts/sync-web-audit.sh --list       Print every vendored path, the pin file
+#                                          last, and touch nothing.
+#   scripts/sync-web-audit.sh --site-paths Print every path read from the site, and
+#                                          touch nothing.
 #
 # Env vars:
 #   WEB_AUDIT_SITE_SHA         Commit to use for this run instead of SITE_SHA
@@ -33,12 +37,12 @@
 #   WEB_AUDIT_DEST_ROOT        Repository root to write into or check.
 #                              Default: the repository this script lives in.
 #
-# Every git call runs with the same hardening src/skill_install.rs applies to
-# `anc skill install`: user and system git config disabled, credential
-# prompts off, SSH/proxy/askpass/exec-path overrides stripped, and the five
-# `-c` flags below. tests/sync_web_audit.rs pins that surface.
+# Every git call goes through scripts/hardened-git.sh.
 
 set -euo pipefail
+
+# shellcheck source=scripts/hardened-git.sh disable=SC1091
+. "$(dirname "$0")/hardened-git.sh"
 
 WEB_AUDIT_SITE_REMOTE_URL="${WEB_AUDIT_SITE_REMOTE_URL:-https://github.com/brettdavies/agentnative-site.git}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -59,27 +63,13 @@ SYNC_DIRS=(
   "tests/fixtures/web-audit-conformance=tests/fixtures/web-audit-conformance"
 )
 
-GIT_HARDEN_FLAGS=(
-  -c credential.helper=
-  -c core.askPass=
-  -c protocol.allow=never
-  -c protocol.https.allow=always
-  -c http.followRedirects=false
-)
-
-hardened_git() {
-  env -u GIT_SSH -u GIT_SSH_COMMAND -u GIT_PROXY_COMMAND -u GIT_ASKPASS -u GIT_EXEC_PATH \
-    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0 \
-    git "${GIT_HARDEN_FLAGS[@]}" "$@"
-}
-
 fail() {
   echo "error: $*" >&2
   exit 1
 }
 
 usage() {
-  echo "usage: $0 [--check | --pin <sha>]" >&2
+  echo "usage: $0 [--check | --pin <sha> | --list | --site-paths]" >&2
   exit 2
 }
 
@@ -96,6 +86,14 @@ while [[ $# -gt 0 ]]; do
       mode="check"
       shift
       ;;
+    --list)
+      mode="list"
+      shift
+      ;;
+    --site-paths)
+      mode="site-paths"
+      shift
+      ;;
     --pin)
       [[ $# -ge 2 ]] || usage
       pin_arg="$2"
@@ -108,7 +106,21 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-[[ $mode == "check" && -n $pin_arg ]] && usage
+[[ $mode != "update" && -n $pin_arg ]] && usage
+
+if [[ $mode == "list" ]]; then
+  for entry in "${SYNC_FILES[@]}" "${SYNC_DIRS[@]}"; do
+    echo "${entry#*=}"
+  done
+  echo "$PIN_FILE"
+  exit 0
+fi
+if [[ $mode == "site-paths" ]]; then
+  for entry in "${SYNC_FILES[@]}" "${SYNC_DIRS[@]}"; do
+    echo "${entry%%=*}"
+  done
+  exit 0
+fi
 
 # === Resolve the pin ===================================================
 sha=""
@@ -175,6 +187,11 @@ for entry in "${SYNC_DIRS[@]}"; do
   mv "$extract/$src" "$stage/$dest"
 done
 printf '%s\n' "$sha" >"$stage/$PIN_FILE"
+
+# cp and upload-artifact follow a link, so a symlink in a site commit would carry
+# whatever it points at on the runner into a public bump commit.
+links="$(find "$stage" -type l)"
+[[ -z $links ]] || fail "commit $sha vendors a symlink, which a sync refuses: ${links//$stage\//}"
 
 # === Mode-specific behavior ============================================
 case "$mode" in

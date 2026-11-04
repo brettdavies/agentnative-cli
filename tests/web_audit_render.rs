@@ -18,12 +18,17 @@ use agentnative::web_audit::render::{RenderOptions, advisory_note, format_text, 
 use agentnative::web_audit::score::is_scored;
 use agentnative::web_audit::scorecard::{ResultRow, ScorecardStatus, WebScorecard};
 use common::corpus::{Golden, load_cases, replay};
-use common::web_cli::{anc, fixture_site, host_of, stderr_of, stdout_of};
+use common::web_cli::{
+    anc, fixture_site, full_run_code, host_of, stderr_of, stdout_of, verdict_is_pinned,
+};
 
 #[test]
 fn a_reachable_site_reports_the_verdict_then_its_misses_with_fixes() {
     let server = fixture_site();
-    let assert = anc().args(["web", &host_of(&server)]).assert().code(1);
+    let assert = anc()
+        .args(["web", &host_of(&server)])
+        .assert()
+        .code(full_run_code(1));
     let out = stdout_of(assert.get_output());
 
     assert!(out.starts_with("anc web https://"), "{out}");
@@ -32,13 +37,22 @@ fn a_reachable_site_reports_the_verdict_then_its_misses_with_fixes() {
     assert!(out.contains("spec "), "{out}");
     assert!(out.contains("mcp endpoint: none"), "{out}");
     // The verdict leads, before any row.
-    let verdict = out.find("Verdict: WARN").expect("a verdict line");
+    let verdict = out.find("Verdict: ").expect("a verdict line");
     let first_row = out.find("[WARN]").expect("a warning row");
     assert!(
         verdict < first_row,
         "the verdict must precede the rows:\n{out}"
     );
-    assert!(out.contains("warnings only ("), "{out}");
+    if verdict_is_pinned() {
+        assert!(out.contains("Verdict: WARN"), "{out}");
+        assert!(out.contains("warnings only ("), "{out}");
+        let closing = out.trim_end().lines().last().unwrap_or_default();
+        assert!(
+            closing.starts_with("exit 1: warnings only ("),
+            "the closing line names the code and what earned it: {closing:?}"
+        );
+        assert!(closing.ends_with("misses)"), "{closing:?}");
+    }
     assert!(out.contains("Score: "), "{out}");
     // A failing row carries its fix and its docs.
     assert!(out.contains("Warnings ("), "{out}");
@@ -49,12 +63,6 @@ fn a_reachable_site_reports_the_verdict_then_its_misses_with_fixes() {
     assert!(out.contains("(run with --verbose to list them)"), "{out}");
     assert!(!out.contains("[PASS]"), "{out}");
     assert!(!out.contains("[N/A "), "{out}");
-    let closing = out.trim_end().lines().last().unwrap_or_default();
-    assert!(
-        closing.starts_with("exit 1: warnings only ("),
-        "the closing line names the code and what earned it: {closing:?}"
-    );
-    assert!(closing.ends_with("misses)"), "{closing:?}");
     // The probes reached the target and nothing else could have: every
     // request the server saw came from this run.
     let hits = server.hits();
@@ -86,14 +94,20 @@ fn a_reachable_site_reports_the_verdict_then_its_misses_with_fixes() {
 fn verbose_lists_the_passing_and_inapplicable_rows_and_quiet_drops_them() {
     let server = fixture_site();
     let host = host_of(&server);
-    let verbose = anc().args(["web", &host, "--verbose"]).assert().code(1);
+    let verbose = anc()
+        .args(["web", &host, "--verbose"])
+        .assert()
+        .code(full_run_code(1));
     let out = stdout_of(verbose.get_output());
     assert!(out.contains("Passed ("), "{out}");
     assert!(out.contains("[PASS]"), "{out}");
     assert!(out.contains("Not applicable ("), "{out}");
     assert!(out.contains("[N/A "), "{out}");
 
-    let quiet = anc().args(["web", &host, "--quiet"]).assert().code(1);
+    let quiet = anc()
+        .args(["web", &host, "--quiet"])
+        .assert()
+        .code(full_run_code(1));
     let out = stdout_of(quiet.get_output());
     assert!(out.contains("Verdict: "), "{out}");
     assert!(out.contains("[WARN]"), "{out}");
@@ -108,7 +122,7 @@ fn json_mode_puts_nothing_but_the_scorecard_on_stdout() {
     for flags in [vec!["--output", "json"], vec!["--json"]] {
         let mut args = vec!["web", host.as_str()];
         args.extend(flags.iter().copied());
-        let assert = anc().args(&args).assert().code(1);
+        let assert = anc().args(&args).assert().code(full_run_code(1));
         let out = stdout_of(assert.get_output());
         let scorecard: WebScorecard = serde_json::from_str(&out)
             .unwrap_or_else(|e| panic!("stdout is a scorecard: {e}\n{out}"));
@@ -133,7 +147,7 @@ const SCORE_NOTE: &str = "relative to the checks that apply to this site; global
 fn the_score_line_says_what_relative_and_global_measure_unless_quiet() {
     let server = fixture_site();
     let host = host_of(&server);
-    let assert = anc().args(["web", &host]).assert().code(1);
+    let assert = anc().args(["web", &host]).assert().code(full_run_code(1));
     let out = stdout_of(assert.get_output());
     let mut lines = out.lines().skip_while(|l| !l.starts_with("Score: "));
     assert!(lines.next().is_some(), "a score line:\n{out}");
@@ -143,7 +157,10 @@ fn the_score_line_says_what_relative_and_global_measure_unless_quiet() {
         "{out}"
     );
 
-    let quiet = anc().args(["web", &host, "--quiet"]).assert().code(1);
+    let quiet = anc()
+        .args(["web", &host, "--quiet"])
+        .assert()
+        .code(full_run_code(1));
     let out = stdout_of(quiet.get_output());
     assert!(out.contains("Score: "), "{out}");
     assert!(!out.contains("maximally agent-ready"), "{out}");
@@ -172,7 +189,7 @@ fn no_color_strips_styling_and_color_always_adds_it() {
         .args(["web", &host])
         .env("NO_COLOR", "1")
         .assert()
-        .code(1);
+        .code(full_run_code(1));
     assert!(
         !stdout_of(plain.get_output()).contains("\u{1b}["),
         "NO_COLOR must strip styling"
@@ -181,7 +198,7 @@ fn no_color_strips_styling_and_color_always_adds_it() {
         .args(["web", &host, "--color", "never"])
         .env_remove("NO_COLOR")
         .assert()
-        .code(1);
+        .code(full_run_code(1));
     assert!(
         !stdout_of(never.get_output()).contains("\u{1b}["),
         "--color never must strip styling"
@@ -190,7 +207,7 @@ fn no_color_strips_styling_and_color_always_adds_it() {
         .args(["web", &host, "--color", "always"])
         .env_remove("NO_COLOR")
         .assert()
-        .code(1);
+        .code(full_run_code(1));
     assert!(
         stdout_of(styled.get_output()).contains("\u{1b}["),
         "--color always must style"
@@ -200,7 +217,10 @@ fn no_color_strips_styling_and_color_always_adds_it() {
 #[test]
 fn progress_stays_off_when_stdout_is_not_a_terminal() {
     let server = fixture_site();
-    let assert = anc().args(["web", &host_of(&server)]).assert().code(1);
+    let assert = anc()
+        .args(["web", &host_of(&server)])
+        .assert()
+        .code(full_run_code(1));
     let err = stderr_of(assert.get_output());
     assert!(
         err.is_empty(),

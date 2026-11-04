@@ -1,0 +1,105 @@
+# Opens or updates the one PR that moves the vendored web-audit inputs to
+# agentnative-site's dev head, when that head changes any of them.
+# scripts/web-audit-bump.sh holds the logic, and scripts/SYNCS.md places it among
+# the other syncs.
+#
+# GitHub runs `schedule` only from the default branch, main, whose tree this file
+# reaches only through a release; the jobs still bump dev, so the checkout names
+# dev whichever copy of this file started it. Until a release carries the file,
+# `push` to dev is what runs it, and it registers the workflow for
+# `gh workflow run web-audit-bump.yml --ref dev`.
+name: web-audit-bump
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+  push:
+    branches: [dev]
+
+# Neither job writes with its own token. CI_RELEASE_TOKEN lands the commit and the PR,
+# because events GITHUB_TOKEN causes start no workflows and the PR's required checks
+# would never run. It lives only in the second job: a step boundary does not isolate
+# it, since $GITHUB_ENV, $GITHUB_PATH and running processes carry over, and the first
+# job runs this repository's and the site's test code. The first job's read token
+# reaches only its Decide step, before any of that code.
+permissions:
+  contents: read
+  pull-requests: read
+
+# One bump branch: a run that started later must see what the earlier one pushed.
+concurrency:
+  group: web-audit-bump
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    outputs:
+      ready: ${{ steps.bump.outputs.ready }}
+      # The second job runs this commit's scripts with the token, so it comes from the
+      # step before any test code, which could otherwise rewrite HEAD or the output file.
+      base: ${{ steps.decide.outputs.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          persist-credentials: false
+
+      # Most runs end here, before the toolchain and the cache are fetched. A run per
+      # dev merge leaves an open PR alone when it already carries the site's head and
+      # the merge touched nothing the suites read; the daily and dispatched runs also
+      # move an open PR onto dev's tip.
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/web-audit-bump.sh --decide ${{ github.event_name == 'push' && '--on-dev-push' || '' }}
+
+      - name: Install Rust
+        if: steps.decide.outputs.bump == 'yes'
+        run: rustup toolchain install
+
+      - name: Cache dependencies
+        if: steps.decide.outputs.bump == 'yes'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          cache-on-failure: true
+
+      - name: Bump and test
+        id: bump
+        if: steps.decide.outputs.bump == 'yes'
+        run: bash scripts/web-audit-bump.sh --prepare "$RUNNER_TEMP/web-audit-bump"
+
+      - name: Hand the prepared bump to the next job
+        if: steps.bump.outputs.ready == 'yes'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-audit-bump
+          path: ${{ runner.temp }}/web-audit-bump
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 1
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'yes'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      # The scripts come from this checkout, never from the artifact.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.base }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-audit-bump
+          path: ${{ runner.temp }}/web-audit-bump
+
+      - name: Commit and open the PR
+        env:
+          GH_TOKEN: ${{ secrets.CI_RELEASE_TOKEN }}
+        run: bash scripts/web-audit-bump-publish.sh "$RUNNER_TEMP/web-audit-bump"

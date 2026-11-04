@@ -258,6 +258,22 @@ fn the_loader_reads_every_scenario_the_corpus_indexes() {
     assert_eq!(loaded, indexed);
 }
 
+/// A check this build cannot run skips where the site scores it, so the bump
+/// that brought it lands ledgered, and the release gate's empty ledger means every
+/// check runs.
+#[test]
+fn every_unported_binding_is_ledgered() {
+    let ledger = load_ledger();
+    for check in CHECKS {
+        let element = format!("{}{}", common::ledger::ROW, check.id);
+        assert!(
+            check.is_ported() || ledger.keys().any(|(_, e)| *e == element),
+            "{}: bound Unsupported with no {element} ledger entry",
+            check.id
+        );
+    }
+}
+
 const PIN: &str = "0123456789abcdef0123456789abcdef01234567";
 const OTHER_PIN: &str = "76543210fedcba9876543210fedcba9876543210";
 const ENTRY: &str =

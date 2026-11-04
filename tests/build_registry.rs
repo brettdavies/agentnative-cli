@@ -12,7 +12,6 @@ mod web_registry;
 #[path = "../build_support/yaml.rs"]
 mod yaml;
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -195,27 +194,6 @@ fn vendored_registry_normalizes() {
     let reg = vendored_registry(&consts.probe_ua_tokens);
     assert!(!reg.checks.is_empty());
     assert!(!reg.category_order.is_empty());
-    let unported_handlers: BTreeSet<&str> = reg
-        .checks
-        .iter()
-        .filter(|c| !c.handler_supported)
-        .map(|c| c.handler.as_str())
-        .collect();
-    assert_eq!(
-        unported_handlers,
-        BTreeSet::new(),
-        "unported handler kinds (shrink as each port lands)"
-    );
-    let unported_evals: BTreeSet<&str> = reg
-        .checks
-        .iter()
-        .filter(|c| !c.eval_supported)
-        .filter_map(|c| c.eval.as_deref())
-        .collect();
-    assert!(
-        unported_evals.is_empty(),
-        "unported eval rules (shrink as each port lands): {unported_evals:?}"
-    );
     let card = reg
         .checks
         .iter()

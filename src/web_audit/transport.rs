@@ -287,9 +287,8 @@ fn agent(
 /// target: a server that closes idle keep-alive connections, or that
 /// answers HTTP/1.0 and so closes every one, would otherwise scatter
 /// `error` rows across a site that is serving perfectly, and push the run
-/// to the could-not-check exit code. Each failure discards the dead
-/// connection, so a bounded retry walks past the stale entries the pool
-/// accumulated while six threads probed at once.
+/// to the could-not-check exit code. The pool can hold more dead connections
+/// than a request has attempts, so the last attempt does not use it.
 const MAX_ATTEMPTS: u32 = 3;
 
 impl Transport for UreqTransport {
@@ -297,7 +296,7 @@ impl Transport for UreqTransport {
         let started = Instant::now();
         let mut attempt = 1;
         loop {
-            let outcome = self.send_once(request);
+            let outcome = self.send_once(request, attempt == MAX_ATTEMPTS);
             // Only a connection-level failure is retried, and only while a
             // further attempt still fits inside this request's own budget,
             // so the per-audit deadline keeps its meaning. A timeout or a
@@ -314,7 +313,7 @@ impl Transport for UreqTransport {
 }
 
 impl UreqTransport {
-    fn send_once(&self, request: &Request) -> Result<Response, TransportError> {
+    fn send_once(&self, request: &Request, fresh: bool) -> Result<Response, TransportError> {
         let agent = match (request.trust, &self.proxied, request.via_proxy) {
             (TrustClass::Local, _, _) => self.local_agent(),
             (TrustClass::Public, Some(proxied), true) => proxied,
@@ -330,8 +329,8 @@ impl UreqTransport {
             builder = builder.header(name.as_str(), value.as_str());
         }
         let response = match &request.body {
-            Some(body) => run(agent, builder.body(body.clone()), request.timeout),
-            None => run(agent, builder.body(()), request.timeout),
+            Some(body) => run(agent, builder.body(body.clone()), request.timeout, fresh),
+            None => run(agent, builder.body(()), request.timeout, fresh),
         }
         .map_err(|e| e.checked_against(trust_set))?;
         Ok(Response::from_ureq(response))
@@ -342,13 +341,20 @@ fn run<S: ureq::AsSendBody>(
     agent: &ureq::Agent,
     built: Result<ureq::http::Request<S>, ureq::http::Error>,
     timeout: Duration,
+    fresh: bool,
 ) -> Result<ureq::http::Response<ureq::Body>, TransportError> {
     let request = built.map_err(|e| TransportError::Network(e.to_string()))?;
-    let request = agent
+    let config = agent
         .configure_request(request)
-        .timeout_global(Some(timeout))
-        .build();
-    Ok(agent.run(request)?)
+        .timeout_global(Some(timeout));
+    // No idle connection is young enough to be reused at an age of zero, so ureq
+    // opens a new one and lets go of this host's idle ones on the way.
+    let config = if fresh {
+        config.max_idle_age(Duration::ZERO)
+    } else {
+        config
+    };
+    Ok(agent.run(config.build())?)
 }
 
 impl Response {

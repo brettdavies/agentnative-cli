@@ -1,5 +1,5 @@
 {
-  "description": "every https request, the root included, redirects to the http root, which would answer: the run ends unreachable after the root request alone, and nothing is requested over http",
+  "description": "every https request, the root included, redirects to the http root, which would answer: the run ends unreachable on the root answer, the first document reads having gone out beside it, and nothing is requested over http",
   "covers": [
     "agent-ua-reachable",
     "content-without-js"
@@ -20,6 +20,58 @@
       "request": {
         "method": "GET",
         "url": "https://example.com/"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "http://example.com/"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp.json"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "http://example.com/"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp/server-card.json"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "http://example.com/"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/ai-catalog.json"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "http://example.com/"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/api-catalog"
       },
       "response": {
         "status": 301,

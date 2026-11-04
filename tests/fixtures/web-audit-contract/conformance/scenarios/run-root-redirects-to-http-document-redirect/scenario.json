@@ -1,0 +1,98 @@
+{
+  "description": "the root redirects to http while a first-pass document redirects to another https path: the run ends unreachable on the root answer, and the document hop is never requested, whichever of the two answers first",
+  "covers": [
+    "agent-ua-reachable",
+    "mcp-server-card"
+  ],
+  "target": "https://example.com/",
+  "site_type": null,
+  "spec_version": "0.0.0-corpus",
+  "unmatched": {
+    "status": 404,
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+  },
+  "allow_unmatched": false,
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "http://example.com/"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp.json"
+      },
+      "response": {
+        "status": 301,
+        "headers": {
+          "location": "/moved-card.json"
+        },
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/moved-card.json"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"name\":\"example\",\"version\":\"1.0.0\",\"mcp_endpoint\":\"https://example.com/mcp\",\"documentation\":\"https://example.com/mcp-skill.md\"}"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/mcp/server-card.json"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/ai-catalog.json"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://example.com/.well-known/api-catalog"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "content-type": "text/html; charset=utf-8"
+        },
+        "body": "<html><body><h1>Not found</h1><p>No such page.</p></body></html>"
+      }
+    }
+  ]
+}

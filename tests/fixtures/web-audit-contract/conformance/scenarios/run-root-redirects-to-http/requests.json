@@ -6,5 +6,37 @@
       "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
     },
     "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/ai-catalog.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/api-catalog",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/mcp.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/mcp/server-card.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
   }
 ]

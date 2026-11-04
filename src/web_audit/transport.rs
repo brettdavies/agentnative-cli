@@ -67,7 +67,8 @@ pub struct Response {
     pub status: u16,
     /// Response headers, names lowercased.
     pub headers: Headers,
-    /// The body, decoded of any content encoding, not yet read.
+    /// The body, not yet read. A gzip body is decoded; any other encoding
+    /// arrives as the server sent it.
     pub body: Box<dyn Read>,
 }
 

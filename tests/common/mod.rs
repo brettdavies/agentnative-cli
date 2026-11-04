@@ -63,6 +63,8 @@ pub struct RawResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Send the body as one chunk rather than with a `content-length`.
+    pub chunked: bool,
 }
 
 impl RawResponse {
@@ -74,6 +76,15 @@ impl RawResponse {
                 .map(|(n, v)| (n.to_string(), v.to_string()))
                 .collect(),
             body: body.to_vec(),
+            chunked: false,
+        }
+    }
+
+    /// This response with its body sent as one chunk.
+    pub fn chunked(self) -> Self {
+        RawResponse {
+            chunked: true,
+            ..self
         }
     }
 }
@@ -181,10 +192,20 @@ fn write_response_ending<W: Write>(mut stream: W, resp: &RawResponse, connection
     for (n, v) in &resp.headers {
         out.push_str(&format!("{n}: {v}\r\n"));
     }
-    out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
+    if resp.chunked {
+        out.push_str("transfer-encoding: chunked\r\n");
+    } else {
+        out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
+    }
     out.push_str(&format!("connection: {connection}\r\n\r\n"));
     let _ = stream.write_all(out.as_bytes());
-    let _ = stream.write_all(&resp.body);
+    if resp.chunked {
+        let _ = write!(stream, "{:x}\r\n", resp.body.len());
+        let _ = stream.write_all(&resp.body);
+        let _ = stream.write_all(b"\r\n0\r\n\r\n");
+    } else {
+        let _ = stream.write_all(&resp.body);
+    }
     let _ = stream.flush();
 }
 
@@ -355,36 +376,7 @@ pub fn spawn_https<F>(handler: F) -> Server
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
-    let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
-    let addr = listener.local_addr().unwrap();
-    let hits: Arc<Mutex<Vec<RawRequest>>> = Arc::new(Mutex::new(Vec::new()));
-    let recorder = Arc::clone(&hits);
-    let handler = Arc::new(handler);
-    thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(stream) = stream else { break };
-            let recorder = Arc::clone(&recorder);
-            let handler = Arc::clone(&handler);
-            let config = Arc::clone(&config);
-            thread::spawn(move || {
-                let conn = rustls::ServerConnection::new(config).expect("server connection");
-                let mut tls = rustls::StreamOwned::new(conn, stream);
-                if let Some(req) = read_request_from(&mut tls) {
-                    recorder.lock().unwrap().push(req.clone());
-                    let resp = handler(&req);
-                    write_response(&mut tls, &resp);
-                    tls.conn.send_close_notify();
-                    let _ = tls.flush();
-                }
-            });
-        }
-    });
-    Server {
-        addr,
-        hits,
-        scheme: "https",
-    }
+    https_server(handler, false).server
 }
 
 /// An HTTPS server that holds its connections open between requests, and how
@@ -411,6 +403,14 @@ pub fn spawn_https_keep_alive<F>(handler: F) -> KeepAliveServer
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
+    https_server(handler, true)
+}
+
+#[cfg(feature = "web")]
+fn https_server<F>(handler: F, keep_alive: bool) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
     let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().unwrap();
@@ -431,8 +431,13 @@ where
                 while let Some(req) = read_request_from(&mut tls) {
                     recorder.lock().unwrap().push(req.clone());
                     let resp = handler(&req);
-                    write_response_ending(&mut tls, &resp, "keep-alive");
-                    let _ = tls.flush();
+                    let connection = if keep_alive { "keep-alive" } else { "close" };
+                    write_response_ending(&mut tls, &resp, connection);
+                    if !keep_alive {
+                        tls.conn.send_close_notify();
+                        let _ = tls.flush();
+                        break;
+                    }
                 }
             });
         }

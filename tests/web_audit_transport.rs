@@ -565,6 +565,66 @@ fn ureq_transport_decodes_gzip_bodies() {
     assert_eq!(resp.body, "compressed hello");
 }
 
+fn gzip_of(bytes: &[u8]) -> Vec<u8> {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(bytes).unwrap();
+    encoder.finish().unwrap()
+}
+
+fn fetch_gzip(body: Vec<u8>) -> ProbeResponse {
+    let server =
+        common::spawn_https(move |_| RawResponse::new(200, &[("content-encoding", "gzip")], &body));
+    let transport = UreqTransport::with_trust(UA, None, TrustConfig::new(test_ca()));
+    fetch(&transport, &server.url("/"), &FetchOptions::default())
+}
+
+// The site engine's runtime reads each of these as a body. flate2 reports an
+// error once it reads past the member, or finds no member at all.
+#[test]
+fn a_gzip_body_with_trailing_bytes_or_none_at_all_is_a_body() {
+    let whole = gzip_of(b"decoded");
+    let followed_by = |tail: &[u8]| [whole.as_slice(), tail].concat();
+    let cases = [
+        ("a newline after the member", followed_by(b"\n"), "decoded"),
+        ("zeros after the member", followed_by(&[0; 4]), "decoded"),
+        (
+            "garbage after the member",
+            followed_by(b"this is not a gzip member at all, it is trailing text"),
+            "decoded",
+        ),
+        ("no bytes at all", Vec::new(), ""),
+    ];
+    for (label, body, decoded) in cases {
+        let resp = fetch_gzip(body);
+        assert_eq!(resp.error, None, "{label}");
+        assert_eq!(resp.status, Some(200), "{label}");
+        assert_eq!(resp.body, decoded, "{label}");
+    }
+}
+
+#[test]
+fn a_gzip_body_that_does_not_decode_is_a_failed_read() {
+    let whole = gzip_of(&b"decoded ".repeat(400));
+    let mut corrupt = gzip_of(b"decoded");
+    corrupt[14] ^= 0xff;
+    let cases = [
+        ("a stream cut short", whole[..24].to_vec()),
+        ("a checksum that does not match", corrupt),
+        (
+            "not gzip at all",
+            b"plain text that never was gzip".to_vec(),
+        ),
+    ];
+    for (label, body) in cases {
+        let resp = fetch_gzip(body);
+        assert_eq!(resp.status, None, "{label}");
+        let error = resp.error.expect(label);
+        assert!(error.contains("gzip"), "{label}: {error}");
+    }
+}
+
 #[test]
 fn gzip_body_inflating_past_the_root_ceiling_truncates_with_the_flag() {
     let bomb = gzip_of_zeros(AUDIT_ROOT_MAX_BODY_BYTES + (1 << 20));

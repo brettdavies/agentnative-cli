@@ -6,7 +6,7 @@
 
 mod common;
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::time::Duration;
 
@@ -42,13 +42,13 @@ fn read_body(transport: &UreqTransport, url: &str) -> Vec<u8> {
     body
 }
 
-/// `hello gzip body\n`, through `gzip -n`.
-const GZIP_BODY: &[u8] = &[
-    0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xcb, 0x48, 0xcd, 0xc9, 0xc9, 0x57,
-    0x48, 0xaf, 0xca, 0x2c, 0x50, 0x48, 0xca, 0x4f, 0xa9, 0xe4, 0x02, 0x00, 0x10, 0x10, 0xfc, 0x9a,
-    0x10, 0x00, 0x00, 0x00,
-];
 const DECODED: &[u8] = b"hello gzip body\n";
+
+fn gzip_body() -> Vec<u8> {
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(DECODED).expect("write to a vec");
+    encoder.finish().expect("finish a vec")
+}
 
 /// `hello gzip body\n`, through a brotli encoder.
 const BROTLI_BODY: &[u8] = &[
@@ -62,7 +62,7 @@ fn negotiated(request: &RawRequest) -> RawResponse {
     if accepted.split(',').any(|e| e.trim() == "br") {
         RawResponse::new(200, &[("content-encoding", "br")], BROTLI_BODY)
     } else {
-        RawResponse::new(200, &[("content-encoding", "gzip")], GZIP_BODY)
+        RawResponse::new(200, &[("content-encoding", "gzip")], &gzip_body())
     }
 }
 
@@ -80,6 +80,28 @@ fn a_negotiated_body_decodes_and_leaves_its_connection_for_the_next_request() {
         1,
         "every request after the first reuses the first connection"
     );
+}
+
+#[test]
+fn a_chunked_gzip_body_decodes_and_leaves_its_connection_for_the_next_request() {
+    let server = common::spawn_https_keep_alive(|_| {
+        RawResponse::new(200, &[("content-encoding", "gzip")], &gzip_body()).chunked()
+    });
+    let transport = transport();
+    let url = server.server.url("/");
+    for _ in 0..4 {
+        assert_eq!(read_body(&transport, &url), DECODED);
+    }
+    assert_eq!(server.accepted(), 1);
+}
+
+#[test]
+fn a_brotli_body_sent_unasked_reaches_the_reader_as_it_was_sent() {
+    let server = common::spawn_https_keep_alive(|_| {
+        RawResponse::new(200, &[("content-encoding", "br")], BROTLI_BODY)
+    });
+    let transport = transport();
+    assert_eq!(read_body(&transport, &server.server.url("/")), BROTLI_BODY);
 }
 
 #[test]

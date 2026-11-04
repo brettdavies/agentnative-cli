@@ -251,14 +251,23 @@ gate_examples_resolve() {
 
 gate_web_parity() {
   header "Web audit parity with anc.dev"
-  local verdict name detail
+  local out verdict name detail refused="" status=0
+  out="$("$REPO_ROOT/scripts/release/web-parity-gate.sh" --bin "$BIN")" || status=$?
   while IFS=$'\t' read -r verdict name detail; do
     case "$verdict" in
       pass) gate_pass "$name" ;;
-      fail) gate_fail "$name" "$detail" ;;
+      fail)
+        gate_fail "$name" "$detail"
+        refused="yes"
+        ;;
       skip) gate_skip "$name" "$detail" ;;
     esac
-  done < <("$REPO_ROOT/scripts/release/web-parity-gate.sh" --bin "$BIN" || true)
+  done <<<"$out"
+  # A gate that died, or printed nothing, has not cleared the release.
+  if [[ -z $refused && ($status -ne 0 || -z $out) ]]; then
+    gate_fail "web-audit-gate: the parity gate did not finish" \
+      "web-parity-gate.sh exited $status. Fix: run scripts/release/web-parity-gate.sh --bin $BIN and read its error. Docs: RELEASES.md#handling-a-bump-pr"
+  fi
 }
 
 usage() {

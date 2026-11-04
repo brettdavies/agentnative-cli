@@ -20,7 +20,7 @@ use std::fs;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
-use agentnative::web_audit::registry::{CHECKS, EvalBinding, HandlerBinding};
+use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
 use common::ledger::{
@@ -265,11 +265,9 @@ fn the_loader_reads_every_scenario_the_corpus_indexes() {
 fn every_unported_binding_is_ledgered() {
     let ledger = load_ledger();
     for check in CHECKS {
-        let unported = matches!(check.handler, HandlerBinding::Unsupported(_))
-            || matches!(check.eval, Some(EvalBinding::Unsupported(_)));
         let element = format!("{}{}", common::ledger::ROW, check.id);
         assert!(
-            !unported || ledger.keys().any(|(_, e)| *e == element),
+            check.is_ported() || ledger.keys().any(|(_, e)| *e == element),
             "{}: bound Unsupported with no {element} ledger entry",
             check.id
         );

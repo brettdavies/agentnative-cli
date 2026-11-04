@@ -20,11 +20,11 @@ use agentnative::web_audit::registry::AUDIT_USER_AGENT;
 use agentnative::web_audit::scorecard::{NaReason, ScorecardStatus, WebScorecard, to_wire_json};
 use agentnative::web_audit::transport::Request;
 use common::corpus::{
-    Exchange, Golden, PublicResolver, Recorded, RecordedRequest, Scenario, load_cases, replay_as,
-    transport_for,
+    Exchange, Golden, PublicResolver, Recorded, RecordedRequest, Scenario, load_cases, replay,
+    replay_as, transport_for,
 };
 use common::ledger::load_ledger;
-use common::web_cli::verdict_is_pinned;
+use common::web_cli::scenario_verdict_is_pinned;
 use serde_json::{Map, Value, json};
 
 const TOKEN: &str = "corpus-token-7f3a";
@@ -191,7 +191,7 @@ fn a_signed_in_run_scores_a_protected_server_in_full() {
     // The server is run-all-pass behind a sign-in, so a full score needs that
     // scenario to reproduce and every check to run. The rows above hold regardless.
     let ledgered = load_ledger().keys().any(|(s, _)| s == "run-all-pass");
-    if !ledgered && verdict_is_pinned() {
+    if scenario_verdict_is_pinned("run-all-pass", ledgered) {
         assert_eq!((card.score.relative, card.score.global), (100, 100));
     }
     assert!(sent.iter().any(|r| authorization(r) == Some(&bearer())));
@@ -225,6 +225,14 @@ fn across_the_corpus_the_token_reaches_only_the_endpoint_of_record() {
     let mut signed = 0;
     for case in load_cases() {
         if !matches!(case.golden, Golden::Scorecard(_)) {
+            continue;
+        }
+        // A scored scenario that replays as unreachable has no report to compare; the
+        // ledger holds that outcome.
+        if matches!(
+            replay(&case.scenario, Arc::new(default_handlers())),
+            RunOutcome::Unreachable { .. }
+        ) {
             continue;
         }
         let (without_token, _) = run(&case.scenario, None);

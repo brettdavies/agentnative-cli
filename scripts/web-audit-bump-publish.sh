@@ -10,7 +10,8 @@
 # <prepared-dir> is what `web-audit-bump.sh --prepare` wrote: title, body.md, and tree/,
 # a copy of the vendored paths. It comes from a job that ran test code, so it is data:
 # this checkout decides the branch and the paths, anything else in tree/ is ignored,
-# and a symlink anywhere in it stops the run.
+# and a symlink anywhere in the directory, or a missing part, stops the run before
+# this job's token reads or sends any of it.
 #
 # dev requires verified signatures and a runner holds no key. GitHub signs what
 # createCommitOnBranch creates; it leaves a REST `POST git/commits` unsigned. The
@@ -30,6 +31,7 @@ BRANCH="bot/web-audit-bump"
 LEDGER="tests/fixtures/web-audit-divergences.toml"
 
 mapfile -t paths < <(bash scripts/sync-web-audit.sh --list)
+pin_file="${paths[-1]}"
 paths+=("$LEDGER")
 
 case "${1:-}" in
@@ -48,14 +50,33 @@ esac
   exit 2
 }
 prepared="$(cd "$invoked_from" && cd "$1" && pwd)"
+
+if [[ -n $(find "$prepared" -type l -print -quit) ]]; then
+  echo "error: the prepared directory holds a symlink; refusing to read it" >&2
+  exit 1
+fi
+# A tree without the pin would read as a bump that deletes every vendored path.
+if [[ ! -f $prepared/title || ! -f $prepared/body.md || ! -f $prepared/tree/$pin_file ]]; then
+  echo "error: $prepared lacks title, body.md, or tree/$pin_file; refusing to publish from it" >&2
+  exit 1
+fi
 read -r title <"$prepared/title"
+read -r new_pin <"$prepared/tree/$pin_file" || [[ -n $new_pin ]]
 body="$prepared/body.md"
 branch="$BRANCH"
 
-if [[ -n $(find "$prepared/tree" -type l -print -quit) ]]; then
-  echo "error: the prepared tree holds a symlink; refusing to commit from it" >&2
-  exit 1
+BASE="dev"
+repo="${GITHUB_REPOSITORY:-brettdavies/agentnative-cli}"
+
+# The first job runs for most of an hour. A merge inside that window leaves this pin on
+# dev, and a PR opened for it would never close on its own.
+dev_pin="$(gh api "repos/$repo/contents/$pin_file?ref=$BASE" \
+  --header 'Accept: application/vnd.github.raw+json' 2>/dev/null)" || dev_pin=""
+if [[ ${dev_pin%$'\n'} == "$new_pin" ]]; then
+  echo "$BASE already holds pin ${new_pin:0:7}; nothing to publish"
+  exit 0
 fi
+
 for path in "${paths[@]}"; do
   rm -rf "$path"
   if [[ -e "$prepared/tree/$path" ]]; then
@@ -64,8 +85,6 @@ for path in "${paths[@]}"; do
   fi
 done
 
-BASE="dev"
-repo="${GITHUB_REPOSITORY:-brettdavies/agentnative-cli}"
 scratch="$branch-next"
 base_sha="$(git rev-parse HEAD)"
 
@@ -92,14 +111,30 @@ pr="$(gh api "repos/$repo/pulls?head=${repo%%/*}:$branch&base=$BASE&state=open" 
 head="$(gh api "repos/$repo/git/ref/heads/$branch" --jq .object.sha 2>/dev/null)" || head=""
 
 # A commit past the bump's own is someone's port work, which a forced update would
-# destroy; it is theirs to carry to the next pin.
-if [[ -n $pr && -n $head ]]; then
-  ahead="$(gh api "repos/$repo/compare/$BASE...$head" --jq .ahead_by)"
-  if [[ $ahead -gt 1 ]]; then
-    echo "standing down: PR #$pr has $ahead commits on $branch, so a forced update would drop port work"
-    exit 0
+# destroy whether or not a PR is open; it is theirs to carry to the next pin. A merge
+# from dev, as "Update branch" makes, is not port work, and a branch a merged PR left
+# behind holds nothing a forced update could lose.
+if [[ -n $head ]]; then
+  own="$(gh api "repos/$repo/compare/$BASE...$head" --jq '[.commits[] | select(.parents | length == 1)] | length')"
+  if [[ $own -gt 1 ]]; then
+    merged="$(gh api "repos/$repo/pulls?head=${repo%%/*}:$branch&base=$BASE&state=closed" \
+      --jq "[.[] | select(.merged_at != null and .head.sha == \"$head\")] | length")"
+    if [[ $merged -eq 0 ]]; then
+      echo "::warning::standing down: $branch has $own commits past $BASE, so a forced update would drop port work; delete the branch to start over"
+      exit 0
+    fi
   fi
 fi
+
+# GraphQL can answer HTTP 200 with an errors array, so the exit code alone does not
+# prove the mutation landed.
+graphql() {
+  gh api graphql --input "$1" >"$work/response.json"
+  if jq -e '.errors' "$work/response.json" >/dev/null; then
+    jq -r '.errors[].message' "$work/response.json" >&2
+    exit 1
+  fi
+}
 
 commit_changes() {
   local status path
@@ -129,13 +164,7 @@ commit_changes() {
   gh api -X DELETE "repos/$repo/git/refs/heads/$scratch" >/dev/null 2>&1 || true
   gh api -X POST "repos/$repo/git/refs" -f ref="refs/heads/$scratch" -f sha="$base_sha" >/dev/null
   scratch_made="yes"
-  # GraphQL can answer HTTP 200 with an errors array, so the exit code alone
-  # does not prove the commit exists.
-  gh api graphql --input "$work/payload.json" >"$work/response.json"
-  if jq -e '.errors' "$work/response.json" >/dev/null; then
-    jq -r '.errors[].message' "$work/response.json" >&2
-    exit 1
-  fi
+  graphql "$work/payload.json"
   local oid verified
   oid="$(jq -r '.data.createCommitOnBranch.commit.oid' "$work/response.json")"
   verified="$(gh api "repos/$repo/commits/$oid" --jq .commit.verification.verified)"
@@ -144,7 +173,14 @@ commit_changes() {
     exit 1
   fi
   if [[ -n $head ]]; then
-    gh api -X PATCH "repos/$repo/git/refs/heads/$branch" -f sha="$oid" -F force=true >/dev/null
+    # beforeOid makes the forced move conditional: a port commit pushed since the read
+    # above refuses it, where a REST forced update would drop that commit.
+    jq -n --arg id "$(gh api "repos/$repo" --jq .node_id)" --arg name "refs/heads/$branch" \
+      --arg before "$head" --arg after "$oid" \
+      '{query: "mutation($input: UpdateRefsInput!) { updateRefs(input: $input) { clientMutationId } }",
+        variables: {input: {repositoryId: $id, refUpdates: [{name: $name, beforeOid: $before, afterOid: $after, force: true}]}}}' \
+      >"$work/move.json"
+    graphql "$work/move.json"
   else
     gh api -X POST "repos/$repo/git/refs" -f ref="refs/heads/$branch" -f sha="$oid" >/dev/null
   fi

@@ -121,11 +121,15 @@ def main():
             if before != after:
                 latest_touch = subject
             if element_of(before, element) != element_of(after, element):
-                owner = subject
+                owner = (sha, subject)
         # A commit in range that changed this element owns it. Otherwise a standing
         # entry keeps its owner, so a divergence that outlives a bump never stops the
         # next one, and only a new element falls back to the scenario's newest commit.
-        pr = (owner and pr_of(owner)) or standing.get((scenario, element))
+        # A commit that changed the element and names no PR stops here: the scenario's
+        # newest commit would be a guess about someone else's PR.
+        pr = (owner and pr_of(owner[1])) or standing.get((scenario, element))
+        if pr is None and owner is not None:
+            sys.exit(f"error: site commit {owner[0][:7]} changed {scenario}/{element} and names no PR")
         if pr is None and latest_touch is not None:
             pr = pr_of(latest_touch)
         if pr is None:

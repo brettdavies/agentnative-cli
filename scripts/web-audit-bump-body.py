@@ -78,7 +78,7 @@ def unported_section(path):
     return [
         "### Unported handler kinds and eval rules",
         "",
-        f"Port work owed. These checks skip on every site, so every full `anc web` run reads could not check, and the release gate refuses a release until they run (`web-audit-unported`, see {HANDLING}):",
+        f"Port work owed. These checks skip wherever they apply, so a full `anc web` run there reads could not check, and the release gate refuses a release until they run (`web-audit-unported`, see {HANDLING}):",
         "",
     ] + rows
 
@@ -86,13 +86,14 @@ def unported_section(path):
 def suite_section(args):
     log = Path(args.suite_log).read_text(errors="replace")
     stood_down = sorted(set(STAND_DOWN.findall(log)))
+    gave_up = []
+    if stood_down:
+        gave_up = ["Tests that gave up a verdict:", ""]
+        gave_up += capped([f"- `{line}`" for line in stood_down], PROBLEM_LINES, "this run's log")
+        gave_up.append("")
     if args.suite_status == 0 and args.ledger_status == 0:
-        out = ["### Web suites", "", "Passing at this pin, with the ledger above."]
-        if stood_down:
-            out += ["", "Tests that gave up a verdict while a check is unported:", ""]
-            out += capped([f"- `{line}`" for line in stood_down], PROBLEM_LINES, "this run's log")
-        return out
-    out = ["### Web suites", ""]
+        return ["### Web suites", "", "Passing at this pin, with the ledger above.", ""] + gave_up
+    out = ["### Web suites", ""] + gave_up
     if args.ledger_status != 0:
         ledger_log = Path(args.ledger_log).read_text(errors="replace").splitlines()
         out += ["The ledger did not regenerate, so the committed one stands:", "", "```text"]
@@ -113,6 +114,13 @@ def suite_section(args):
     return out
 
 
+def count_of_vendored(paths):
+    if not paths:
+        return "None."
+    noun = "file" if len(paths) == 1 else "files"
+    return f"{len(paths)} vendored {noun}, listed under Vendored files above."
+
+
 def changelog_bullet(changed, new):
     if any(re.search(r"(^|/)(registry|remediation)\.", f) for f in changed):
         return f"- Update `anc web`'s checks and fixes to match agentnative-site `{new[:7]}`."
@@ -121,13 +129,14 @@ def changelog_bullet(changed, new):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    for flag in ("old", "new", "changed", "deleted", "ledger", "unported", "ledger-log", "suite-log"):
+    for flag in ("old", "new", "changed", "created", "deleted", "ledger", "unported", "ledger-log", "suite-log"):
         parser.add_argument(f"--{flag}", required=True)
     for flag in ("ledger-status", "suite-status"):
         parser.add_argument(f"--{flag}", required=True, type=int)
     args = parser.parse_args()
 
     changed = Path(args.changed).read_text().splitlines()
+    created = Path(args.created).read_text().splitlines()
     divergences, total = ledger_section(Path(args.ledger).read_text())
     green = args.suite_status == 0 and args.ledger_status == 0
     run_url = ""
@@ -184,11 +193,11 @@ def main():
         "",
         "**Modified:** the vendored files above, `src/web_audit/vendored/SITE_SHA`, and `tests/fixtures/web-audit-divergences.toml` when its entries moved.",
         "",
-        "**Created:** None.",
+        f"**Created:** {count_of_vendored(created)}",
         "",
         "**Renamed:** None.",
         "",
-        "**Deleted:** None.",
+        f"**Deleted:** {count_of_vendored(deleted)}",
         "",
         "## Breaking Changes",
         "",

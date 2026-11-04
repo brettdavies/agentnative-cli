@@ -1,7 +1,7 @@
 # Refuses a release PR whose `anc web` differs from anc.dev: a divergence ledger
-# entry or a vendored check this build does not run. The manual preflight runs the
-# same script, scripts/release/web-parity-gate.sh. Not a required check; a release
-# tree that strips the web audit skips it.
+# entry, a vendored check this build does not run, or a pin off or behind site dev.
+# The manual preflight runs the same script, scripts/release/web-parity-gate.sh. Not a
+# required check; a release tree that strips the web audit skips it.
 name: web-audit-release-gate
 
 on:

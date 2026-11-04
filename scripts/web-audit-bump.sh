@@ -20,7 +20,7 @@
 #   scripts/web-audit-bump.sh --decide [--on-dev-push]
 #                                        Print bump=yes or bump=no and stop, with
 #                                        no Rust toolchain. --on-dev-push also
-#                                        answers no when the bump branch already
+#                                        answers no when an open bump PR already
 #                                        carries the site head and dev has touched
 #                                        nothing the suites read since its base.
 #
@@ -37,8 +37,8 @@
 #                              to read instead of cloning.
 #   WEB_AUDIT_SITE_REMOTE_URL  Remote to clone.
 #                              Default: https://github.com/brettdavies/agentnative-site.git
-#   GITHUB_OUTPUT              --decide appends its answer here too, and --prepare
-#                              appends ready=yes and the commit it prepared against.
+#   GITHUB_OUTPUT              --decide appends its answer here too, and on a yes the
+#                              commit it read; --prepare appends ready=yes.
 #   GITHUB_REPOSITORY          Repository that holds the bump branch.
 #                              Default: brettdavies/agentnative-cli
 #   GH_TOKEN                   The token publishing runs with; see
@@ -94,6 +94,9 @@ report_decision() {
   echo "bump=$1"
   if [[ -n ${GITHUB_OUTPUT:-} ]]; then
     echo "bump=$1" >>"$GITHUB_OUTPUT"
+    if [[ $1 == "yes" ]]; then
+      echo "base=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+    fi
   fi
 }
 
@@ -111,7 +114,7 @@ dev_touched_what_the_suites_read() {
   branch_head="$(gh api "repos/$REPO/git/ref/heads/$BOT_BRANCH" --jq .object.sha)" || return 0
   branch_base="$(gh api "repos/$REPO/git/commits/$branch_head" --jq '.parents[0].sha')" || return 0
   touched="$(gh api "repos/$REPO/compare/$branch_base...$(git rev-parse HEAD)" --jq '.files[].filename')" || return 0
-  grep -Eq '^(src/|tests/|scripts/|build\.rs$|Cargo\.)' <<<"$touched"
+  grep -Eq '^(src/|tests/|scripts/|build_support/|schema/|build\.rs$|Cargo\.|rust-toolchain\.toml$|README\.md$)' <<<"$touched"
 }
 
 mapfile -t vendored < <(bash scripts/sync-web-audit.sh --list)
@@ -123,7 +126,7 @@ mapfile -t tracked < <(bash scripts/web-audit-bump-publish.sh --paths)
 if [[ -n $(git status --porcelain --untracked-files=all -- "${tracked[@]}") ]]; then
   fail "commit or discard the changes to the vendored paths first: a bump compares them with HEAD"
 fi
-read -r old <"$pin_file"
+read -r old <"$pin_file" || [[ -n $old ]]
 
 work="$(mktemp -d -t agentnative-web-audit-bump-XXXXXX)"
 restore() {
@@ -171,8 +174,10 @@ if [[ $mode == "decide" ]]; then
   if [[ -n $on_dev_push ]]; then
     carried="$(gh api "repos/$REPO/contents/$pin_file?ref=$BOT_BRANCH" \
       --header 'Accept: application/vnd.github.raw+json' 2>/dev/null)" || carried=""
-    if [[ ${carried%$'\n'} == "$new" ]] && ! dev_touched_what_the_suites_read; then
-      nothing_to_bump "$BOT_BRANCH already carries site dev ${new:0:7}, and dev touched nothing the suites read"
+    open_pr="$(gh api "repos/$REPO/pulls?head=${REPO%%/*}:$BOT_BRANCH&base=dev&state=open" \
+      --jq '.[0].number // empty' 2>/dev/null)" || open_pr=""
+    if [[ -n $open_pr && ${carried%$'\n'} == "$new" ]] && ! dev_touched_what_the_suites_read; then
+      nothing_to_bump "the open PR on $BOT_BRANCH already carries site dev ${new:0:7}, and dev touched nothing the suites read"
     fi
   fi
   report_decision yes
@@ -194,8 +199,10 @@ if [[ ${#changed[@]} -gt 0 ]]; then
   printf '%s\n' "${changed[@]}" >"$work/changed.txt"
 fi
 git ls-files --deleted -- "${vendored[@]}" >"$work/deleted.txt"
+git ls-files --others --exclude-standard -- "${vendored[@]}" >"$work/created.txt"
 python3 -B scripts/web-audit-bump-body.py \
-  --old "$old" --new "$new" --changed "$work/changed.txt" --deleted "$work/deleted.txt" --ledger "${tracked[-1]}" \
+  --old "$old" --new "$new" --changed "$work/changed.txt" --created "$work/created.txt" \
+  --deleted "$work/deleted.txt" --ledger "${tracked[-1]}" \
   --unported "$work/unported.json" \
   --ledger-status "$ledger_status" --ledger-log "$work/ledger.log" \
   --suite-status "$suite_status" --suite-log "$work/suite.log" >"$work/body.md"
@@ -221,10 +228,7 @@ done
 if [[ $mode == "prepare" ]]; then
   echo "prepared: $title"
   if [[ -n ${GITHUB_OUTPUT:-} ]]; then
-    {
-      echo "ready=yes"
-      echo "base=$(git rev-parse HEAD)"
-    } >>"$GITHUB_OUTPUT"
+    echo "ready=yes" >>"$GITHUB_OUTPUT"
   fi
   exit 0
 fi

@@ -144,6 +144,13 @@ pub struct WebRemediation {
 include!(concat!(env!("OUT_DIR"), "/generated_web_registry.rs"));
 
 impl WebCheck {
+    /// Whether this build can run the check: neither its handler kind nor its eval
+    /// rule is bound Unsupported.
+    pub fn is_ported(&self) -> bool {
+        !matches!(self.handler, HandlerBinding::Unsupported(_))
+            && !matches!(self.eval, Some(EvalBinding::Unsupported(_)))
+    }
+
     /// The translated pattern for a `with` field, when the check carries one.
     pub fn pattern(&self, field: &str) -> Option<&'static RegexPattern> {
         self.patterns.iter().find(|p| p.field == field)

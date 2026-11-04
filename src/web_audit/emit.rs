@@ -7,8 +7,8 @@ use serde::Serialize;
 
 use crate::principles::registry::SPEC_VERSION;
 use crate::web_audit::registry::{
-    CATEGORIES, CHECKS, EvalBinding, HandlerBinding, MCP_DISCOVERY, REGISTRY_VERSION, REMEDIATION,
-    SITE_SHA, WebCheck, WebRemediation,
+    CATEGORIES, CHECKS, MCP_DISCOVERY, REGISTRY_VERSION, REMEDIATION, SITE_SHA, WebCheck,
+    WebRemediation,
 };
 
 /// One check, as `anc emit web-checks` prints it.
@@ -66,8 +66,7 @@ impl From<&'static WebCheck> for CheckEntry {
             weight: check.weight,
             breadcrumb: check.breadcrumb,
             hint: check.hint,
-            ported: !matches!(check.handler, HandlerBinding::Unsupported(_))
-                && !matches!(check.eval, Some(EvalBinding::Unsupported(_))),
+            ported: check.is_ported(),
         }
     }
 }
@@ -204,9 +203,12 @@ mod tests {
         let entries = parsed["checks"].as_array().unwrap();
         assert_eq!(entries.len(), CHECKS.len());
         for (entry, check) in entries.iter().zip(CHECKS) {
-            let unported = matches!(check.handler, HandlerBinding::Unsupported(_))
-                || matches!(check.eval, Some(EvalBinding::Unsupported(_)));
-            assert_eq!(entry["ported"], Value::from(!unported), "{}", check.id);
+            assert_eq!(
+                entry["ported"],
+                Value::from(check.is_ported()),
+                "{}",
+                check.id
+            );
         }
     }
 

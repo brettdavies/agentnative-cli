@@ -40,3 +40,34 @@ openssl x509 -req -in leaf.csr -CA ca.cert.pem -CAkey ca.key.pem -CAcreateserial
   -out ca-signed.cert.pem -days 36500 -extfile leaf.ext
 rm ca.key.pem ca.cert.srl leaf.csr leaf.ext
 ```
+
+## A stale root
+
+`stale-root.cert.pem` has the same subject as `ca.cert.pem` and a different key, the shape of a development CA that was
+regenerated, so the chain names it and its signature does not verify. Its key is discarded. Regenerate with:
+
+```bash
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout /dev/null \
+  -out stale-root.cert.pem -days 36500 -subj "/CN=anc-web-audit test CA" \
+  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
+```
+
+## Rejected-certificate fixtures
+
+Three self-signed certificates for `localhost` that fail a check no root waives, sharing `rejected.key.pem`: a `CA:TRUE`
+leaf (`ca-flagged.cert.pem`), a leaf for another name (`wrong-name.cert.pem`), and a leaf whose dates have passed
+(`expired.cert.pem`). `tests/web_audit_trust.rs` passes each as its own `--ca-cert`, so the chain is trusted and the
+failure is the certificate's. Regenerate all four with:
+
+```bash
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out rejected.key.pem
+mint() {
+  openssl req -x509 -key rejected.key.pem -subj "/CN=anc-web-audit rejected test" "$@"
+}
+mint -days 36500 -out ca-flagged.cert.pem -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+mint -days 36500 -out wrong-name.cert.pem -addext "subjectAltName=DNS:not-this-host.example" \
+  -addext "basicConstraints=critical,CA:FALSE" -addext "extendedKeyUsage=serverAuth"
+mint -not_before 20200101000000Z -not_after 20200102000000Z -out expired.cert.pem \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+  -addext "basicConstraints=critical,CA:FALSE" -addext "extendedKeyUsage=serverAuth"
+```

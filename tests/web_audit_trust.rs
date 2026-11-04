@@ -7,6 +7,8 @@
 
 mod common;
 
+use std::io::Write;
+
 use common::web_cli::{anc, fixture_site, stderr_of, stdout_of};
 use common::{empty_home_config, test_ca_path};
 use serde_json::Value;
@@ -67,6 +69,157 @@ fn a_private_ca_ends_the_run_naming_the_rejection_and_the_ca_cert_fix() {
         Value::from(format!("anc web {target} --ca-cert <FILE>"))
     );
     assert!(envelope["next_step"].get("command").is_none());
+}
+
+/// A certificate that fails a check no root waives, served by a server that
+/// `--ca-cert` trusts: the file is the certificate itself, so the chain is never
+/// the question.
+fn rejected_certificate_run(cert: &[u8], fixture: &str, output: &[&str]) -> std::process::Output {
+    let key = include_bytes!("fixtures/tls/rejected.key.pem");
+    let addr = common::spawn_tls(cert, key);
+    let root = format!(
+        "{}/tests/fixtures/tls/{fixture}",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let target = format!("https://localhost:{}/", addr.port());
+    anc()
+        .args(["web", &target, "--ca-cert", &root])
+        .args(output)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn a_certificate_no_root_can_save_ends_the_run_naming_the_certificate() {
+    let cases: [(&str, &[u8], &str); 3] = [
+        (
+            "ca-flagged.cert.pem",
+            include_bytes!("fixtures/tls/ca-flagged.cert.pem"),
+            "CaUsedAsEndEntity",
+        ),
+        (
+            "wrong-name.cert.pem",
+            include_bytes!("fixtures/tls/wrong-name.cert.pem"),
+            "not valid for name",
+        ),
+        (
+            "expired.cert.pem",
+            include_bytes!("fixtures/tls/expired.cert.pem"),
+            "expired",
+        ),
+    ];
+    for (fixture, cert, names_it) in cases {
+        let output = rejected_certificate_run(cert, fixture, &["--output", "json"]);
+        assert_eq!(output.status.code(), Some(3), "{fixture}: {output:?}");
+        assert!(
+            stdout_of(&output).is_empty(),
+            "{fixture}: stdout must stay empty"
+        );
+        let envelope = envelope(&output);
+        assert_eq!(envelope["kind"], "runtime", "{fixture}");
+        assert_eq!(envelope["error"], "invalid-certificate", "{fixture}");
+        assert_eq!(envelope["exit_code"], 3, "{fixture}");
+        assert_eq!(envelope["argument"], "<TARGET>", "{fixture}");
+        assert_eq!(envelope["next_step"]["action"], "retry", "{fixture}");
+        let message = envelope["message"].as_str().unwrap();
+        assert!(message.contains(names_it), "{fixture}: {message}");
+        let command = envelope["next_step"]["command"].as_str().unwrap();
+        assert!(command.contains(" --ca-cert "), "{fixture}: {command}");
+        assert!(command.ends_with(" --verbose"), "{fixture}: {command}");
+
+        let text = rejected_certificate_run(cert, fixture, &[]);
+        assert_eq!(text.status.code(), Some(3), "{fixture}: {text:?}");
+        let err = stderr_of(&text);
+        assert!(
+            err.contains("or a redirect from it presented a certificate anc web rejects"),
+            "{fixture}: {err}"
+        );
+        assert!(
+            err.contains("TlsError: certificate rejected ("),
+            "{fixture}: {err}"
+        );
+        assert!(err.contains(names_it), "{fixture}: {err}");
+        assert!(err.contains("`--ca-cert` adds a root"), "{fixture}: {err}");
+    }
+}
+
+#[test]
+fn a_root_with_the_right_name_and_the_wrong_key_is_a_root_problem() {
+    let addr = common::spawn_tls(common::CA_SIGNED_CERT_PEM, common::CA_SIGNED_KEY_PEM);
+    let target = format!("https://localhost:{}/", addr.port());
+    let stale = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/tls/stale-root.cert.pem"
+    );
+    let output = anc()
+        .env_remove("SSL_CERT_FILE")
+        .args(["web", &target, "--ca-cert", stale, "--output", "json"])
+        .output()
+        .unwrap();
+    let envelope = envelope(&output);
+    assert_eq!(envelope["error"], "untrusted-certificate", "{envelope}");
+    assert_eq!(envelope["next_step"]["action"], "add-ca-cert");
+}
+
+#[test]
+fn the_template_to_add_a_root_keeps_the_runs_roots() {
+    let server = fixture_site();
+    let target = server.url("/");
+    let other = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/tls/localhost.cert.pem"
+    );
+    let output = anc()
+        .env_remove("SSL_CERT_FILE")
+        .args(["web", &target, "--ca-cert", other, "--output", "json"])
+        .output()
+        .unwrap();
+    let envelope = envelope(&output);
+    assert_eq!(envelope["error"], "untrusted-certificate", "{envelope}");
+    assert_eq!(
+        envelope["next_step"]["template"],
+        Value::from(format!(
+            "anc web {target} --ca-cert {other} --ca-cert <FILE>"
+        ))
+    );
+}
+
+#[test]
+fn a_failed_handshake_says_so_rather_than_calling_the_server_silent() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let _ = stream.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n");
+        }
+    });
+    let target = format!("https://127.0.0.1:{port}/");
+    let output = anc()
+        .args(["web", &target, "--output", "json"])
+        .output()
+        .unwrap();
+    let envelope = envelope(&output);
+    assert_eq!(envelope["error"], "target-unreachable", "{envelope}");
+    let message = envelope["message"].as_str().unwrap();
+    assert!(
+        message.contains("did not complete a TLS handshake"),
+        "{message}"
+    );
+    assert!(message.contains("TlsError: "), "{message}");
+}
+
+#[test]
+fn the_command_to_try_again_keeps_the_runs_roots() {
+    let ca = test_ca_path();
+    let output = anc()
+        .args(["web", "127.0.0.1:9", "--ca-cert", ca, "--output", "json"])
+        .output()
+        .unwrap();
+    let envelope = envelope(&output);
+    assert_eq!(envelope["error"], "target-unreachable");
+    let command = envelope["next_step"]["command"].as_str().unwrap();
+    assert!(command.contains(&format!(" --ca-cert {ca}")), "{command}");
 }
 
 #[test]

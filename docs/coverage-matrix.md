@@ -8,7 +8,7 @@ When a requirement has no verifier, the cell reads **UNCOVERED** and the reader 
 ## Summary
 
 - **Total**: 60 requirements (57 covered / 3 uncovered)
-- **Dual-layer**: 9 of 57 covered requirements have verifiers in two layers (behavioral + source or project)
+- **Dual-layer**: 6 of 57 covered requirements have verifiers in two layers (behavioral + source or project)
 - **MUST**: 28 of 28 covered
 - **SHOULD**: 19 of 22 covered
 - **MAY**: 10 of 10 covered

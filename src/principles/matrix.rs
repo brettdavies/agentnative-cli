@@ -72,10 +72,10 @@ pub struct MatrixSummary {
     pub total: usize,
     pub covered: usize,
     pub uncovered: usize,
-    /// Covered requirements that have at least two verifiers, spanning
-    /// behavioral + source (or project) layers. Dual-layer coverage is the
-    /// headline signal that a requirement is pinned down from more than
-    /// one angle — useful for spotting surface-only verifiers.
+    /// Covered requirements with a behavioral verifier and a source or project
+    /// verifier. Dual-layer coverage is the headline signal that a requirement
+    /// is pinned down from more than one angle — useful for spotting
+    /// surface-only verifiers.
     pub dual_layer: usize,
     pub must: LevelSummary,
     pub should: LevelSummary,
@@ -176,7 +176,10 @@ fn summarize(rows: &[MatrixRow]) -> MatrixSummary {
         if !row.verifiers.is_empty() {
             bucket.covered += 1;
             covered += 1;
-            if row.verifiers.len() >= 2 {
+            let has_layer = |layer| row.verifiers.iter().any(|v| v.layer == layer);
+            if has_layer(AuditLayer::Behavioral)
+                && (has_layer(AuditLayer::Source) || has_layer(AuditLayer::Project))
+            {
                 dual_layer += 1;
             }
         }
@@ -478,6 +481,39 @@ mod tests {
             .expect("requirement row");
         let verifiers: Vec<&str> = row.verifiers.iter().map(|v| v.audit_id.as_str()).collect();
         assert_eq!(verifiers, ["p8-bundle-exists"]);
+    }
+
+    // A Rust audit and a Python audit that share an id are two source verifiers
+    // of one requirement, which is one layer however many verifiers it has.
+    #[test]
+    fn dual_layer_counts_behavioral_plus_source_or_project() {
+        use AuditLayer::{Behavioral, Project, Source};
+
+        let cases: [(&[AuditLayer], usize); 8] = [
+            (&[Behavioral, Source], 1),
+            (&[Behavioral, Project], 1),
+            (&[Behavioral, Behavioral, Project], 1),
+            (&[Behavioral, Source, Source], 1),
+            (&[Source, Source], 0),
+            (&[Project, Source], 0),
+            (&[Behavioral, Behavioral], 0),
+            (&[Behavioral], 0),
+        ];
+        for (layers, expected) in cases {
+            let mut matrix = build(&[]);
+            matrix.rows[0].verifiers = layers
+                .iter()
+                .map(|&layer| Verifier {
+                    audit_id: "fake-audit".to_string(),
+                    layer,
+                })
+                .collect();
+            assert_eq!(
+                summarize(&matrix.rows).dual_layer,
+                expected,
+                "verifier layers {layers:?}"
+            );
+        }
     }
 
     // `--principle <N>` filters on an audit's group, so an audit grouped under

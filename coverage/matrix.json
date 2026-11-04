@@ -972,7 +972,7 @@
     "total": 60,
     "covered": 57,
     "uncovered": 3,
-    "dual_layer": 9,
+    "dual_layer": 6,
     "must": {
       "total": 28,
       "covered": 28

@@ -29,13 +29,18 @@
 
 set -euo pipefail
 
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  echo "error: bash >= 4.4 required, but this is bash ${BASH_VERSION:-unknown}. Install a newer bash: brew install bash" >&2
+  exit 1
+fi
+
 invoked_from="$PWD"
 cd "$(dirname "$0")/.."
 
 BRANCH="bot/web-audit-bump"
 MAX_FILES_PER_COMMIT=100
 MAX_BYTES_PER_COMMIT=$((3 * 1024 * 1024))
-# In the body of every commit this script makes, which is how it tells them from port work.
+# In the body of every commit this script makes.
 COMMIT_MARK="Web-Audit-Bump: part"
 LEDGER="tests/fixtures/web-audit-divergences.toml"
 
@@ -97,6 +102,14 @@ done
 scratch="$branch-next"
 base_sha="$(git rev-parse HEAD)"
 
+# A base holding commits dev lacks would carry them into the bump PR, and the next run
+# would read them as port work and stand down for good.
+past_dev="$(gh api "repos/$repo/compare/$BASE...$base_sha" --jq .ahead_by)"
+if [[ $past_dev -ne 0 ]]; then
+  echo "error: $base_sha holds $past_dev commits $BASE lacks; run a bump from $BASE" >&2
+  exit 1
+fi
+
 work="$(mktemp -d -t agentnative-web-audit-publish-XXXXXX)"
 scratch_made=""
 cleanup() {
@@ -120,12 +133,13 @@ pr="$(gh api "repos/$repo/pulls?head=${repo%%/*}:$branch&base=$BASE&state=open" 
 head="$(gh api "repos/$repo/git/ref/heads/$branch" --jq .object.sha 2>/dev/null)" || head=""
 
 # A commit past the bump's own is someone's port work, which a forced update would
-# destroy whether or not a PR is open; it is theirs to carry to the next pin. A merge
-# from dev, as "Update branch" makes, is not port work, and a branch a merged PR left
-# behind holds nothing a forced update could lose.
+# destroy whether or not a PR is open; it is theirs to carry to the next pin. The bump's
+# own are the ones GitHub committed: a local amend keeps the mark and loses that, and
+# GitHub's "Update branch" merge is the only merge that is not a person's hand. A branch
+# a merged PR left behind holds nothing a forced update could lose.
 if [[ -n $head ]]; then
   port="$(gh api "repos/$repo/compare/$BASE...$head" \
-    --jq "[.commits[] | select(.parents | length == 1) | select(.commit.message | contains(\"$COMMIT_MARK\") | not)] | length")"
+    --jq "[.commits[] | select((.commit.committer.name != \"GitHub\") or ((.parents | length == 1) and (.commit.message | test(\"\\n$COMMIT_MARK [0-9]+\\\\s*\$\") | not)))] | length")"
   if [[ $port -gt 0 ]]; then
     merged="$(gh api "repos/$repo/pulls?head=${repo%%/*}:$branch&base=$BASE&state=closed" \
       --jq "[.[] | select(.merged_at != null and .head.sha == \"$head\")] | length")"

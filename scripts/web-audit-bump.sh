@@ -46,6 +46,11 @@
 
 set -euo pipefail
 
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  echo "error: bash >= 4.4 required, but this is bash ${BASH_VERSION:-unknown}. Install a newer bash: brew install bash" >&2
+  exit 1
+fi
+
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/hardened-git.sh disable=SC1091
 . scripts/hardened-git.sh
@@ -114,7 +119,7 @@ dev_touched_what_the_suites_read() {
   branch_head="$(gh api "repos/$REPO/git/ref/heads/$BOT_BRANCH" --jq .object.sha)" || return 0
   branch_base="$(gh api "repos/$REPO/git/commits/$branch_head" --jq '.parents[0].sha')" || return 0
   touched="$(gh api "repos/$REPO/compare/$branch_base...$(git rev-parse HEAD)" --jq '.files[].filename')" || return 0
-  grep -Eq '^(src/|tests/|scripts/|build_support/|schema/|build\.rs$|Cargo\.|rust-toolchain\.toml$|README\.md$)' <<<"$touched"
+  [[ -n $(bash scripts/cargo-inputs.sh <<<"$touched") ]]
 }
 
 mapfile -t vendored < <(bash scripts/sync-web-audit.sh --list)
@@ -184,6 +189,13 @@ if [[ $mode == "decide" ]]; then
   report_decision yes
   exit 0
 fi
+
+# A download failure owes no port, so it must not reach the PR titled as one. Everything
+# the suites build is on disk after this.
+cargo fetch --locked >"$work/fetch.log" 2>&1 || {
+  cat "$work/fetch.log" >&2
+  fail "cargo fetch failed, so nothing is published"
+}
 
 ledger_status=0
 WEB_AUDIT_UNPORTED_OUT="$work/unported.json" python3 -B scripts/web-audit-divergence-ledger.py --since "$old" \

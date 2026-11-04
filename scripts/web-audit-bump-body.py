@@ -25,8 +25,10 @@ PROBLEM_LINES = 40
 LINE_CHARS = 200
 
 FAILED_TEST = re.compile(r"^test (\S+) \.\.\. FAILED$", re.M)
+# libtest's closing list, which a line split by another test's output cannot hide.
+FAILURES_BLOCK = re.compile(r"^failures:\n\n?((?:    \S+\n)+)", re.M)
 LEDGER_PROBLEM = re.compile(r"^\S+/\S+: (?:diverges from the site|now matches the site).*$", re.M)
-STAND_DOWN = re.compile(r"^standing down: (.*)$", re.M)
+STAND_DOWN = re.compile(r"standing down: (.*)$", re.M)
 ENTRY = re.compile(r'^scenario = "(.*)"\nelement = "(.*)"\nowner = "#(\d+)"$', re.M)
 
 
@@ -100,7 +102,10 @@ def suite_section(args):
         ledger_log = Path(args.ledger_log).read_text(errors="replace").splitlines()
         out += ["The ledger did not regenerate, so the committed one stands:", "", "```text"]
         out += [line[:LINE_CHARS] for line in ledger_log[-LOG_LINES:]] + ["```", ""]
-    failed = FAILED_TEST.findall(log)
+    failed = sorted(
+        set(FAILED_TEST.findall(log))
+        | {name.strip() for block in FAILURES_BLOCK.findall(log) for name in block.splitlines()}
+    )
     problems = LEDGER_PROBLEM.findall(log)
     if failed:
         out += ["Failing tests:", ""]
@@ -111,7 +116,8 @@ def suite_section(args):
         out += capped([f"- `{p}`" for p in sorted(set(problems))], PROBLEM_LINES, "this run's log")
         out.append("")
     if args.suite_status != 0 and not failed:
-        out += ["The suites did not build:", "", "```text"]
+        heading = "The suites failed without naming a test:" if "test result:" in log else "The suites did not build:"
+        out += [heading, "", "```text"]
         out += [line[:LINE_CHARS] for line in log.splitlines()[-LOG_LINES:]] + ["```", ""]
     return out
 
@@ -120,9 +126,15 @@ def fit_the_limit(report, template):
     """The report and the template below it, cutting the report when both won't fit."""
     text = "\n".join(report)
     rest = "\n".join(template)
-    room = MAX_BODY - len(rest) - len(CUT_NOTE) - 2
+    room = MAX_BODY - len(rest) - len(CUT_NOTE) - len("\n```\n\n</details>") - 2
     if len(text) > room:
-        text = text[:room] + CUT_NOTE
+        text = text[:room]
+        # Whatever the cut left open would swallow the template below it.
+        if text.count("```") % 2:
+            text += "\n```"
+        if text.count("<details>") > text.count("</details>"):
+            text += "\n\n</details>"
+        text += CUT_NOTE
     return f"{text}\n\n{rest}"
 
 
@@ -134,8 +146,8 @@ def count_of_vendored(paths):
 
 
 def changelog_bullet(changed, new):
-    if any(re.search(r"(^|/)(registry|remediation)\.", f) for f in changed):
-        return f"- Update `anc web`'s checks and fixes to match agentnative-site `{new[:7]}`."
+    if any(re.search(r"(^|/)(registry|remediation|constants|user-agents|site-url|audit-routes|server-card)\.", f) for f in changed):
+        return f"- Update `anc web`'s checks, fixes and settings to match agentnative-site `{new[:7]}`."
     return f"- Update `anc web`'s reported site pin to agentnative-site `{new[:7]}`."
 
 

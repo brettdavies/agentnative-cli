@@ -551,11 +551,12 @@ release tree that strips `anc web` skips it. [Handling a bump PR](#handling-a-bu
 input or the pin is not on site `dev`. It updates that PR on later runs, and stands down once the branch carries port
 commits, with or without an open PR, so push port work as new commits. A merge from `dev` does not count as port work.
 Delete the branch to start over. A large bump arrives as several commits, each marked `Web-Audit-Bump: part <n>`,
-because GitHub times out a single large signed commit, and a commit without that mark is what counts as port work. Once
-the bot stands down it no longer edits the PR, so before merging a bump that carries port commits, retitle it and
-refresh its body: the squash commit records both. A `dev` merge leaves an open PR alone when it already carries the site's head and the
-merge touched nothing under `src/`, `tests/`, `scripts/`, `build_support/` or `schema/`, nor `build.rs`, `Cargo.*`,
-`rust-toolchain.toml` or `README.md`, so its CI is not restarted for nothing.
+because GitHub times out a single large signed commit. What counts as the bot's own is a commit GitHub signed that
+carries the mark, or a merge GitHub made for "Update branch", so an amended commit or a hand-resolved merge counts as
+port work. Once the bot stands down it no longer edits the PR, so before merging a bump that carries port commits,
+retitle it and refresh its body: the squash commit records both. A `dev` merge leaves an open PR alone when it already
+carries the site's head and the merge touched nothing `scripts/cargo-inputs.sh` counts as a cargo input, so its CI is
+not restarted for nothing.
 
 When the site reverts what an open bump carries, no later run updates that PR, because `dev`'s pin already matches the
 site's head: close it. If it merges anyway, the next run moves the pin, and `web-audit-stale` holds a release until
@@ -597,7 +598,8 @@ The gate refuses a release with a stable code, what is wrong, and its fix:
 | `web-audit-gate`     | The gate died or printed nothing                  | Run `scripts/release/web-parity-gate.sh --bin <anc>` and read its error    |
 
 A release waits on an open bump PR by design: the CLI does not ship behind site `dev`. The gate skips, and says so, a
-tree that strips the web audit or whose default features leave `web` out, because neither ships an `anc web` to differ.
+tree that strips the web audit. A tree that keeps the source ships `anc web` through `cargo install --features web`
+whatever its default features, so the gate runs there and needs a binary built with `--features web`.
 
 ### Required secrets
 

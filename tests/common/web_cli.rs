@@ -23,11 +23,12 @@ pub fn unported_checks() -> Vec<&'static str> {
 /// cannot pass unseen.
 fn stand_down(what: &str, why: &str) {
     let test = std::thread::current();
-    let _ = writeln!(
-        std::io::stderr(),
-        "standing down: {}: {what}, because {why}",
+    let line = format!(
+        "standing down: {}: {what}, because {why}\n",
         test.name().unwrap_or("a test"),
     );
+    // One write: libtest shares this log, and a line split by its output would be lost.
+    let _ = std::io::stderr().write_all(line.as_bytes());
 }
 
 /// A check this build cannot run skips wherever it applies, which makes that full

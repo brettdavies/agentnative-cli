@@ -17,6 +17,13 @@ concurrency:
   group: web-audit-release-gate-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # ci.yml records why each of these is set.
+  CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_TERM_COLOR: always
+
 jobs:
   gate:
     runs-on: ubuntu-22.04

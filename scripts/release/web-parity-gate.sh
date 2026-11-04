@@ -33,6 +33,11 @@
 
 set -euo pipefail
 
+if ((BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4))); then
+  echo "error: bash >= 4.4 required, but this is bash ${BASH_VERSION:-unknown}. Install a newer bash: brew install bash" >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WEB_LEDGER="tests/fixtures/web-audit-divergences.toml"
 SITE_REMOTE_URL="${WEB_AUDIT_SITE_REMOTE_URL:-https://github.com/brettdavies/agentnative-site.git}"
@@ -71,24 +76,6 @@ done
 failed=""
 if [[ ! -d "$REPO_ROOT/src/web_audit" ]]; then
   report skip "web audit parity" "this release tree strips anc web, so nothing it ships can differ"
-  exit 0
-fi
-
-# A release builds default features, so a tree that keeps the source and leaves the
-# feature out ships no `anc web`. Only a clear no skips: a gate that cannot tell has
-# not cleared the release, so anything else runs the conditions below.
-web_by_default="$(cargo metadata --no-deps --offline --format-version 1 --manifest-path "$REPO_ROOT/Cargo.toml" 2>/dev/null | python3 -c '
-import json, sys
-features = json.load(sys.stdin)["packages"][0]["features"]
-seen, todo = set(), ["default"]
-while todo:
-    name = todo.pop()
-    if name in features and name not in seen:
-        seen.add(name)
-        todo.extend(features[name])
-print("yes" if "web" in seen else "no")' 2>/dev/null || true)"
-if [[ $web_by_default == "no" ]]; then
-  report skip "web audit parity" "Cargo.toml's default features leave web out, so nothing this tree releases can differ"
   exit 0
 fi
 

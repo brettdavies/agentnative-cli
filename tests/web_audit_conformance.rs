@@ -21,7 +21,7 @@ use std::fs;
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::registry::CHECKS;
-use agentnative::web_audit::scorecard::to_wire_json;
+use agentnative::web_audit::scorecard::{ScorecardStatus, to_wire_json};
 use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
 use common::ledger::{
     compare_with_ledger, corpus_divergences, divergences_against, divergences_of, golden_text,
@@ -234,16 +234,24 @@ fn the_loader_reads_every_scenario_the_corpus_indexes() {
 }
 
 /// A check this build cannot run skips where the site scores it, so the bump
-/// that brought it lands ledgered, and the release gate's empty ledger means every
-/// check runs.
+/// that brought it lands ledgered. One the corpus settles n_a everywhere never reaches
+/// its handler, so nothing diverges; `web-audit-unported` still holds the release.
 #[test]
-fn every_unported_binding_is_ledgered() {
+fn every_unported_binding_the_site_scores_is_ledgered() {
     let ledger = load_ledger();
-    for check in CHECKS {
+    let cases = load_cases();
+    for check in CHECKS.iter().filter(|check| !check.is_ported()) {
+        let scored = cases.iter().any(|case| match &case.golden {
+            Golden::Scorecard(card) => card
+                .results
+                .iter()
+                .any(|row| row.id == check.id && row.status != ScorecardStatus::NA),
+            Golden::Unreachable(_) => false,
+        });
         let element = format!("{}{}", common::ledger::ROW, check.id);
         assert!(
-            check.is_ported() || ledger.keys().any(|(_, e)| *e == element),
-            "{}: bound Unsupported with no {element} ledger entry",
+            !scored || ledger.keys().any(|(_, e)| *e == element),
+            "{}: scored by the site, bound Unsupported, and no {element} ledger entry",
             check.id
         );
     }

@@ -9,9 +9,8 @@ This document is the check-by-check diff between the skill and the live anc.dev 
 between their result models, and a walkthrough showing that the skill's report is constructible from one
 `anc web --output json` run plus the exit code, so the skill can consume one probe engine instead of carrying its own.
 
-`anc web` and the `anc emit web-checks` / `anc emit web-remediation` readers the walkthrough cites are built with the
-`web` cargo feature (`cargo install agentnative --features web`, or `cargo build --features web` from a checkout), which
-is off by default, so the released binaries do not include them. The vendored registry and
+`anc web` and the `anc emit web-checks` / `anc emit web-remediation` readers the walkthrough cites are in the default
+build and the released binaries; a `--no-default-features` build leaves them out. The vendored registry and
 `schema/web-scorecard.schema.json` are part of every build.
 
 ## Summary

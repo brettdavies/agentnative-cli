@@ -116,9 +116,7 @@ Run immediately after the tag push triggers `release.yml`.
   subject the script gives the backport, `chore(release): sync dev after <tag>` (its PR title and squash commit) or
   `chore(release): backport <tag> artifacts to dev` (its commit), first on `dev`'s first-parent history, so a backport
   committed without a PR counts, then among merged PRs to `dev`. A feature PR that only mentions the version does not
-  count. A release that withholds `anc web` takes the hand backport in
-  [`RELEASES.md` § After publish](./RELEASES.md#after-publish-sync-dev-with-the-release) under the same title, so the
-  gate finds it the same way. Its SKIP and FAIL name the sync command to run.
+  count. Its SKIP and FAIL name the sync command to run.
 
 ## Related docs
 

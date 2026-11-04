@@ -128,15 +128,14 @@ if $run_cargo; then
 
   # 2. Clippy with warnings-as-errors: CI's RUSTFLAGS=-Dwarnings as a clippy
   # argument, since cargo keys every dependency build on RUSTFLAGS.
-  step "clippy" "cargo clippy -- -D warnings" check_clippy || fail=1
-  # The `web` feature (the local web audit, off by default), as CI's "Web
-  # feature" job builds it.
-  step "clippy (web feature)" "cargo clippy --all-targets --features web -- -D warnings" \
-    check_clippy --all-targets --features web || fail=1
+  step "clippy" "cargo clippy --all-targets -- -D warnings" check_clippy --all-targets || fail=1
+  # The build without the `web` feature, as CI's "Web feature" job builds it.
+  step "clippy (no default features)" "cargo clippy --all-targets --no-default-features -- -D warnings" \
+    check_clippy --all-targets --no-default-features || fail=1
 
-  # 3. Tests, for the default feature set and for the `web` feature.
+  # 3. Tests, for the default feature set and for the build without `web`.
   step "test" "cargo test" check_tests || fail=1
-  step "test (web feature)" "cargo test --features web" check_tests --features web || fail=1
+  step "test (no default features)" "cargo test --no-default-features" check_tests --no-default-features || fail=1
 
   # 4. MSRV check: compile against the rust-version declared in Cargo.toml,
   # which equals rust-toolchain.toml's channel (RELEASES.md § Versioning), as
@@ -151,14 +150,16 @@ if $run_cargo; then
   # a library whose docs.rs page is the README plus the `web_audit` surface, and
   # `#![deny(missing_docs)]` in src/lib.rs makes an undocumented public item a
   # failure too. docs.rs builds with every feature on
-  # ([package.metadata.docs.rs]), so the `web` build's pages are the published
-  # ones.
+  # ([package.metadata.docs.rs]), so the default build's pages are the published
+  # ones. The build without `web` compiles a smaller surface whose intra-doc
+  # links have to resolve on their own.
   step "doc" "cargo doc --no-deps (RUSTDOCFLAGS=-D warnings)" check_doc || fail=1
-  check_doc_web() {
-    cargo_ready "doc (web feature)" || return
-    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet --features web 2>&1
+  check_doc_no_default() {
+    cargo_ready "doc (no default features)" || return
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet --no-default-features 2>&1
   }
-  step "doc (web feature)" "cargo doc --no-deps --features web (RUSTDOCFLAGS=-D warnings)" check_doc_web || fail=1
+  step "doc (no default features)" "cargo doc --no-deps --no-default-features (RUSTDOCFLAGS=-D warnings)" \
+    check_doc_no_default || fail=1
 
   # 6. Security audit (licenses + advisories)
   step "deny" "cargo deny check" check_deny || fail=1
@@ -229,9 +230,7 @@ fi
 # Requirements (one-time setup):
 #   sudo apt install mingw-w64                          # the C linker tree-sitter needs
 #   rustup target add x86_64-pc-windows-gnu             # the Windows std library
-#   brew install nasm                                   # the `web` feature only: aws-lc-sys assembles with it on x86-64 Windows
 #
-# The `web` feature also needs cmake, which the native build already uses.
 # If a tool is missing its step is skipped with a one-line note rather than
 # failing: but local Windows coverage is then absent, and CI's Windows jobs
 # become the only backstop. Install all of them to close that gap.
@@ -242,20 +241,19 @@ check_windows_clippy() {
       "install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\`" || return
   cargo clippy --target x86_64-pc-windows-gnu --all-targets --quiet -- -D warnings 2>&1
 }
-check_windows_clippy_web() {
+check_windows_clippy_no_default() {
   have x86_64-w64-mingw32-gcc \
     && grep -q '^x86_64-pc-windows-gnu$' <<<"$(rustup target list --installed 2>/dev/null)" \
-    || skip "windows clippy (cross-target, web feature)" \
+    || skip "windows clippy (cross-target, no default features)" \
       "install \`mingw-w64\` + \`rustup target add x86_64-pc-windows-gnu\`" || return
-  have nasm || skip "windows clippy (cross-target, web feature)" "install \`nasm\` to enable" || return
-  cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web --quiet -- -D warnings 2>&1
+  cargo clippy --target x86_64-pc-windows-gnu --all-targets --no-default-features --quiet -- -D warnings 2>&1
 }
 if $run_cargo; then
-  step "windows clippy (cross-target)" "cargo clippy --target x86_64-pc-windows-gnu -- -D warnings" \
+  step "windows clippy (cross-target)" "cargo clippy --target x86_64-pc-windows-gnu --all-targets -- -D warnings" \
     check_windows_clippy || fail=1
-  step "windows clippy (cross-target, web feature)" \
-    "cargo clippy --target x86_64-pc-windows-gnu --all-targets --features web -- -D warnings" \
-    check_windows_clippy_web || fail=1
+  step "windows clippy (cross-target, no default features)" \
+    "cargo clippy --target x86_64-pc-windows-gnu --all-targets --no-default-features -- -D warnings" \
+    check_windows_clippy_no_default || fail=1
 fi
 
 [ "$fail" -eq 0 ] || {

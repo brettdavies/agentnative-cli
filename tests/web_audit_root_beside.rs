@@ -14,13 +14,17 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use agentnative::web_audit::engine::discovery::API_CATALOG_PATH;
 use agentnative::web_audit::engine::{
     DEGRADED_PER_CHECK_TIMEOUT, FetchHandle, HandlerSet, ProbeOutcome, ProbeStatus, RunInput,
     RunOutcome, run_web_audit,
 };
+use agentnative::web_audit::fetch::launch::Launch;
+use agentnative::web_audit::fetch::memo::RequestMemo;
 use agentnative::web_audit::fetch::{FetchInit, FetchOptions};
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
+use agentnative::web_audit::registry::MCP_DISCOVERY;
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 
 const BASE: &str = "https://example.com/";
@@ -150,20 +154,20 @@ fn a_document_read_goes_out_while_the_root_is_unanswered_and_the_root_reads_whil
 fn a_redirect_hop_of_a_first_read_waits_for_the_root_and_the_wait_is_not_its_budget() {
     // The hop's answer arrives after the read's own timeout counted from its
     // start, and after any grace on it: only a budget moved by the wait reaches it.
-    let timeout = Duration::from_millis(500);
+    let timeout = Duration::from_secs(2);
     let root_answered = Arc::new(AtomicBool::new(false));
     let hop_before_root = Arc::new(AtomicBool::new(false));
     let (answered, before) = (root_answered.clone(), hop_before_root.clone());
     let transport = site(move |path| match path {
         "/" => {
-            thread::sleep(Duration::from_millis(450));
+            thread::sleep(Duration::from_millis(1500));
             answered.store(true, Ordering::SeqCst);
             html()
         }
         DOCUMENT => answer(302, &[("location", "/moved")], ""),
         "/moved" => {
             before.store(!answered.load(Ordering::SeqCst), Ordering::SeqCst);
-            thread::sleep(Duration::from_millis(400));
+            thread::sleep(Duration::from_millis(900));
             answer(404, &[], "")
         }
         _ => answer(404, &[], ""),
@@ -340,7 +344,6 @@ fn a_root_redirecting_to_http_means_a_held_redirect_hop_is_never_sent() {
     });
     let outcome = run_web_audit(input(transport.clone()));
     assert!(matches!(outcome, RunOutcome::Unreachable { .. }));
-    thread::sleep(Duration::from_millis(30));
     let asked = transport.seen.lock().unwrap();
     assert!(
         !asked.iter().any(|url| url.ends_with("/moved")),
@@ -377,7 +380,7 @@ fn a_root_failing_at_the_network_level_cuts_a_read_in_flight_to_the_degraded_bud
 
 #[test]
 fn a_target_that_answers_nothing_costs_its_root_timeout_not_that_plus_a_turn_for_the_reads() {
-    let timeout = Duration::from_millis(400);
+    let timeout = Duration::from_secs(1);
     let release = Arc::new(Latch::default());
     let held = release.clone();
     let transport = site(move |_| {
@@ -391,9 +394,11 @@ fn a_target_that_answers_nothing_costs_its_root_timeout_not_that_plus_a_turn_for
     let elapsed = started.elapsed();
     release.release();
     assert!(matches!(outcome, RunOutcome::Unreachable { .. }));
-    // The root and the first reads together, then the common-path POSTs.
+    // The root and the first reads together, then the common-path POSTs, then the
+    // moment the run's end gives a transport that ignores its stop. A turn of its
+    // own for the reads would add a whole timeout.
     assert!(
-        elapsed < timeout * 3 - Duration::from_millis(100),
+        elapsed < timeout * 2 + Duration::from_millis(250) + timeout / 2,
         "{elapsed:?}"
     );
 }
@@ -424,4 +429,143 @@ fn a_root_redirecting_to_http_ends_the_run_on_its_answer_and_stops_reads_in_flig
         asked.iter().all(|url| !url.starts_with("http:")),
         "{asked:?}"
     );
+}
+
+/// Blocks on one host's name, where no request timeout reaches.
+struct StallsOn {
+    host: &'static str,
+    release: Arc<Latch>,
+}
+
+impl Resolver for StallsOn {
+    fn resolve(&self, host: &str) -> Result<Vec<IpAddr>, String> {
+        if host == self.host {
+            self.release.wait(Duration::from_secs(30));
+        }
+        Ok(vec!["93.184.216.34".parse().unwrap()])
+    }
+}
+
+#[test]
+fn a_first_read_stuck_on_a_name_lookup_does_not_hold_the_run_and_sends_nothing_when_it_ends() {
+    let transport = site(|path| match path {
+        "/" => html(),
+        DOCUMENT => answer(302, &[("location", "https://stall.example/card")], ""),
+        _ => answer(404, &[], ""),
+    });
+    let release = Arc::new(Latch::default());
+    let resolver = StallsOn {
+        host: "stall.example",
+        release: release.clone(),
+    };
+    let fetch = FetchHandle::new(transport.clone(), Arc::new(resolver), "test-ua");
+    let mut run = RunInput::new(BASE, fetch, Arc::new(HandlerSet::new()));
+    run.per_check_timeout = Duration::from_millis(300);
+    run.per_audit_deadline = Duration::from_secs(20);
+    let started = Instant::now();
+    let outcome = run_web_audit(run);
+    let elapsed = started.elapsed();
+    assert!(matches!(outcome, RunOutcome::Complete(_)));
+    assert!(elapsed < Duration::from_secs(5), "{elapsed:?}");
+    // The abandoned read goes on once its lookup ends. Time for it to send, if it
+    // were going to.
+    release.release();
+    thread::sleep(Duration::from_millis(100));
+    let asked = transport.seen.lock().unwrap();
+    assert!(
+        !asked.iter().any(|url| url.contains("stall.example")),
+        "{asked:?}"
+    );
+}
+
+#[test]
+fn a_redirect_hop_a_cut_has_already_spent_is_not_sent_and_reads_as_the_deadline() {
+    // The first answer lands past the cut's budget, before the root has said
+    // anything, so what the root's failure leaves the hop is nothing.
+    let answered = Arc::new(Latch::default());
+    let opened = answered.clone();
+    let transport = site(move |path| match path {
+        DOCUMENT => {
+            thread::sleep(Duration::from_millis(200));
+            opened.release();
+            answer(302, &[("location", "/moved")], "")
+        }
+        _ => answer(404, &[], ""),
+    });
+    let memo = RequestMemo::new();
+    let launch = Launch::new();
+    let read = {
+        let fetch = FetchHandle::new(transport.clone(), Arc::new(PublicResolver), "test-ua")
+            .with_memo(memo.clone());
+        let launch = launch.clone();
+        thread::spawn(move || {
+            fetch.fetch(
+                &format!("https://example.com{DOCUMENT}"),
+                &FetchInit::default(),
+                &FetchOptions {
+                    timeout: Duration::from_secs(5),
+                    cut_to: Some(Duration::from_millis(100)),
+                    launch: Some(launch),
+                    ..FetchOptions::default()
+                },
+            )
+        })
+    };
+    assert!(answered.wait(GIVE_UP * 5));
+    // Time for the answer to reach the hop that waits on the root.
+    thread::sleep(Duration::from_millis(50));
+    memo.cut();
+    launch.root_settled();
+    let response = read.join().expect("the read ends");
+    memo.close();
+    assert_eq!(
+        response.error.as_deref(),
+        Some("TimeoutError: deadline exceeded"),
+        "{response:?}"
+    );
+    let asked = transport.seen.lock().unwrap();
+    assert!(
+        !asked.iter().any(|url| url.ends_with("/moved")),
+        "{asked:?}"
+    );
+}
+
+/// Every name lookup after the run's first two, its classification and the root's
+/// own, takes a moment, so the root's answer comes back ahead of the first reads.
+#[derive(Default)]
+struct SlowAfterTheRoot(AtomicUsize);
+
+impl Resolver for SlowAfterTheRoot {
+    fn resolve(&self, _host: &str) -> Result<Vec<IpAddr>, String> {
+        if self.0.fetch_add(1, Ordering::SeqCst) >= 2 {
+            thread::sleep(Duration::from_millis(100));
+        }
+        Ok(vec!["93.184.216.34".parse().unwrap()])
+    }
+}
+
+#[test]
+fn a_root_refusing_ahead_of_the_first_reads_still_lets_every_one_go_out() {
+    let transport = site(|path| match path {
+        "/" => answer(301, &[("location", "http://example.com/")], ""),
+        _ => answer(404, &[], ""),
+    });
+    let fetch = FetchHandle::new(
+        transport.clone(),
+        Arc::new(SlowAfterTheRoot::default()),
+        "test-ua",
+    );
+    let outcome = run_web_audit(RunInput::new(BASE, fetch, Arc::new(HandlerSet::new())));
+    assert!(matches!(outcome, RunOutcome::Unreachable { .. }));
+    let asked = transport.seen.lock().unwrap();
+    let wanted = MCP_DISCOVERY
+        .well_known
+        .iter()
+        .chain([&MCP_DISCOVERY.ai_catalog, &API_CATALOG_PATH]);
+    for path in wanted {
+        assert!(
+            asked.iter().any(|url| url.ends_with(path)),
+            "{path} never went out: {asked:?}"
+        );
+    }
 }

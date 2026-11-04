@@ -14,7 +14,9 @@ use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::handlers::api_hygiene::HostProbes;
 use crate::web_audit::locality::{ClassifyError, Locality, Resolver, classify_host};
-use crate::web_audit::scorecard::{EvidenceItem, NaReason, RowAdvisory, ScorecardStatus};
+use crate::web_audit::scorecard::{
+    EngineResult, EvidenceItem, NaReason, RowAdvisory, ScorecardStatus,
+};
 use crate::web_audit::transport::Transport;
 
 /// A handler's verdict before the engine finalizes it.
@@ -315,6 +317,23 @@ pub struct HandlerContext {
     /// The audit's cap, for a row's side-by-side probes; absent, they run one
     /// at a time.
     pub slots: Option<AuditSlots>,
+}
+
+/// Receives results as the run finalizes them.
+pub trait ProgressSink {
+    /// Discovery finished.
+    fn discovery(&mut self, _endpoint: Option<&str>) {}
+    /// One row finalized.
+    fn result(&mut self, _result: &EngineResult) {}
+}
+
+/// A check whose handler kind or eval rule the engine has not ported.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unported {
+    /// The check id.
+    pub check_id: &'static str,
+    /// The unported kind or rule.
+    pub kind: &'static str,
 }
 
 impl HandlerContext {

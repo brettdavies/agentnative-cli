@@ -173,8 +173,9 @@ pub struct RootBeside<'r> {
     pub cut_to: Duration,
     /// The first pass's requests going out together.
     pub launch: Launch,
-    /// Waits for the root, and gives the per-request timeout from then on.
-    pub settled: &'r dyn Fn() -> Duration,
+    /// Waits for the root, and gives the per-request timeout from then on and
+    /// the moment it settled.
+    pub settled: &'r dyn Fn() -> (Duration, Instant),
 }
 
 impl std::fmt::Debug for RootBeside<'_> {
@@ -278,9 +279,11 @@ fn read_documents_within<'a>(
         root.launch.expect(requests.len());
         first_pass.cut_to = Some(root.cut_to);
         first_pass.launch = Some(root.launch.clone());
-        // A redirect hop's budget moves forward by its wait for the root, so what
-        // bounds a read here is the read itself, and past that the audit.
-        fetch_until(fetch, requests, &first_pass, deadline)
+        // A redirect hop's budget moves forward by its wait for the root, which
+        // lasts no longer than the root's own timeout. A read past both is blocked
+        // on a name lookup or a connection, which no timeout reaches.
+        let bound = deadline.min(Instant::now() + timeout * 2 + PASS_GRACE);
+        fetch_until(fetch, requests, &first_pass, bound)
     } else {
         fetch_all(fetch, requests, &first_pass)
     };
@@ -331,8 +334,9 @@ fn read_documents_within<'a>(
     // A slow root must not leave the POSTs less time than they would have had
     // with the reads waiting for it, or a slow site could lose its MCP endpoint.
     if let Some(root) = root {
-        timeout = (root.settled)();
-        deadline_at = deadline.min(Instant::now() + budget);
+        let settled_at;
+        (timeout, settled_at) = (root.settled)();
+        deadline_at = deadline.min(settled_at + budget);
     }
 
     // The catalog's card entries: inline in place, same-origin URLs fetched.
@@ -544,7 +548,7 @@ mod tests {
         let budget = Duration::from_millis(40);
         let slow_root = || {
             std::thread::sleep(budget * 3);
-            Duration::from_secs(2)
+            (Duration::from_secs(2), Instant::now())
         };
         let root = RootBeside {
             cut_to: Duration::from_secs(2),
@@ -566,6 +570,66 @@ mod tests {
         assert!(
             transport.requests().iter().any(|r| r.method == "POST"),
             "the budget ran out while the root was out"
+        );
+    }
+
+    /// Each read takes this long; a POST is only counted.
+    struct SlowReads {
+        took: Duration,
+        posts: std::sync::atomic::AtomicUsize,
+    }
+
+    impl crate::web_audit::transport::Transport for SlowReads {
+        fn send(
+            &self,
+            request: &Request,
+        ) -> Result<
+            crate::web_audit::transport::Response,
+            crate::web_audit::transport::TransportError,
+        > {
+            if request.method == "POST" {
+                self.posts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            } else {
+                std::thread::sleep(self.took);
+            }
+            Ok(crate::web_audit::transport::Response {
+                status: 404,
+                headers: crate::web_audit::headers::Headers::new(),
+                body: Box::new(std::io::Cursor::new(Vec::new())),
+            })
+        }
+    }
+
+    #[test]
+    fn a_first_read_that_outlasts_the_budget_leaves_the_posts_nothing_once_the_root_has_settled() {
+        let budget = Duration::from_millis(40);
+        let transport = Arc::new(SlowReads {
+            took: budget * 3,
+            posts: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let fetch = FetchHandle::new(transport.clone(), Arc::new(PublicResolver), "test-ua");
+        let settled_at = Instant::now();
+        let settled = move || (Duration::from_secs(2), settled_at);
+        let root = RootBeside {
+            cut_to: Duration::from_secs(2),
+            launch: Launch::new(),
+            settled: &settled,
+        };
+        let cfg = cfg();
+        let documents = read_documents_within(
+            budget,
+            &fetch,
+            BASE,
+            &cfg,
+            Duration::from_secs(2),
+            Instant::now() + Duration::from_secs(20),
+            Some(&root),
+        );
+        documents.probe_endpoint();
+        assert_eq!(
+            transport.posts.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the budget started over when the first pass ended"
         );
     }
 

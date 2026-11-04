@@ -6,6 +6,7 @@ use std::time::Instant;
 use super::handlers::{Dispatch, HandlerSet};
 use super::summary::summarize_evidence;
 use super::types::{HandlerContext, ProbeOutcome, why_item};
+use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::{HandlerBinding, WebCheck, WebCheckKeyword};
 use crate::web_audit::scorecard::{EngineResult, EvidenceItem, NaReason, ScorecardStatus};
 
@@ -117,9 +118,9 @@ pub(super) fn probe_one(
     check: &'static WebCheck,
     ctx: &HandlerContext,
     handlers: &HandlerSet,
-    deadline: Instant,
-    local_target: bool,
 ) -> Probed {
+    let deadline = ctx.deadline;
+    let local_target = ctx.target_locality == Some(Locality::Local);
     let done = |result: EngineResult, incomplete: bool| Probed {
         check,
         outcome: None,

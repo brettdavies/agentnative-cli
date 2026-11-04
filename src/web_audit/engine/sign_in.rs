@@ -205,16 +205,37 @@ impl SignInResolver {
         self.settled.get_or_init(|| self.backed(answer)).clone()
     }
 
-    fn backed(&self, answer: &SignInChallenge) -> Option<Arc<McpAuthRequired>> {
+    /// What has settled, or else what the metadata already in hand says. It
+    /// neither reads nor waits on a read another thread has open.
+    pub fn resolve_without_reading(
+        &self,
+        answer: &SignInChallenge,
+    ) -> Option<Arc<McpAuthRequired>> {
+        if let Some(settled) = self.settled.get() {
+            return settled.clone();
+        }
         let raw = self.endpoint.as_deref()?;
-        let endpoint = normalize_endpoint_url(raw)?;
+        normalize_endpoint_url(raw)?;
+        Some(required(raw, answer, self.known_for(answer)?))
+    }
+
+    /// Known metadata stands unless the 401's challenge names another location.
+    fn known_for(&self, answer: &SignInChallenge) -> Option<MetadataMatch> {
         let named = answer
             .challenge
             .as_deref()
             .and_then(resource_metadata_from_challenge);
-        let found = match &self.known {
-            Some(known) if named.as_ref().is_none_or(|n| *n == known.url) => known.clone(),
-            _ => {
+        self.known
+            .clone()
+            .filter(|known| named.as_ref().is_none_or(|n| *n == known.url))
+    }
+
+    fn backed(&self, answer: &SignInChallenge) -> Option<Arc<McpAuthRequired>> {
+        let raw = self.endpoint.as_deref()?;
+        let endpoint = normalize_endpoint_url(raw)?;
+        let found = match self.known_for(answer) {
+            Some(known) => known,
+            None => {
                 let query = MetadataQuery {
                     challenge: answer.challenge.as_deref(),
                     of_record: true,
@@ -223,31 +244,51 @@ impl SignInResolver {
                 protected_resource_metadata(&mut *source, &endpoint, query).ok()??
             }
         };
-        Some(Arc::new(McpAuthRequired {
-            endpoint: raw.to_string(),
-            challenge: answer.challenge.clone(),
-            lane: answer.lane,
-            metadata_url: found.url,
-            metadata: found.metadata,
-        }))
+        Some(required(raw, answer, found))
     }
 }
 
-/// Whether the endpoint of record requires sign-in, once both wire probes have
-/// answered, read from them as a client without a token saw them.
+fn required(raw: &str, answer: &SignInChallenge, found: MetadataMatch) -> Arc<McpAuthRequired> {
+    Arc::new(McpAuthRequired {
+        endpoint: raw.to_string(),
+        challenge: answer.challenge.clone(),
+        lane: answer.lane,
+        metadata_url: found.url,
+        metadata: found.metadata,
+    })
+}
+
 /// Their 401 is read first. When neither wire probe drew one, nor was
 /// served a result, the 401 discovery drew while finding the endpoint still
 /// stands: a timeout, a rate limit, or a server error on the handshake says
 /// nothing about whether the endpoint requires sign-in.
+fn sign_in_answer(
+    observed: Option<&SignInChallenge>,
+    token_less: &HashMap<String, ProbeOutcome>,
+) -> Option<SignInChallenge> {
+    wire_challenge(token_less).or_else(|| {
+        (!wire_probe_served(token_less))
+            .then(|| observed.cloned())
+            .flatten()
+    })
+}
+
+/// Whether the endpoint of record requires sign-in, once both wire probes have
+/// answered, read from them as a client without a token saw them.
 pub fn settle_mcp_auth(
     observed: Option<&SignInChallenge>,
     token_less: &HashMap<String, ProbeOutcome>,
     resolver: &SignInResolver,
 ) -> Option<Arc<McpAuthRequired>> {
-    let answer = wire_challenge(token_less).or_else(|| {
-        (!wire_probe_served(token_less))
-            .then(|| observed.cloned())
-            .flatten()
-    })?;
-    resolver.resolve(&answer)
+    resolver.resolve(&sign_in_answer(observed, token_less)?)
+}
+
+/// [`settle_mcp_auth`] for a run out of time, through
+/// [`SignInResolver::resolve_without_reading`].
+pub fn settle_mcp_auth_without_reading(
+    observed: Option<&SignInChallenge>,
+    token_less: &HashMap<String, ProbeOutcome>,
+    resolver: &SignInResolver,
+) -> Option<Arc<McpAuthRequired>> {
+    resolver.resolve_without_reading(&sign_in_answer(observed, token_less)?)
 }

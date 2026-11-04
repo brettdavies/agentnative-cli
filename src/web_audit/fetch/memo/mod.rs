@@ -62,12 +62,12 @@ use super::launch::Boarding;
 use crate::web_audit::transport::{Request, Transport};
 use key::Key;
 pub use retention::{MEMO_BODY_MAX_BYTES, MEMO_TOTAL_MAX_BYTES};
+use stages::{Entry, run_hop};
+use waiters::Joined;
 
 /// How long [`RequestMemo::join`] waits for a thread that has not yet been
 /// scheduled to reach the transport. Past this the machine is not running it.
 const START_LIMIT: Duration = Duration::from_secs(5);
-use stages::{Entry, run_hop};
-use waiters::Joined;
 
 /// What one audit's memo did with the hops it saw and the bodies it kept.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

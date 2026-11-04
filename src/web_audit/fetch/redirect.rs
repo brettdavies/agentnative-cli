@@ -238,6 +238,11 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
             keeps_redirect,
         };
         let cut = matches!(chain.sender, HopSender::Memo(memo, _) if memo.was_cut());
+        // A cut during the wait can leave no budget, and the floor on a hop's
+        // timeout would send the request anyway.
+        if hop > 0 && chain.boarding.is_some() && started >= ctx.deadline_given(cut) {
+            return Err(hop::DEADLINE_EXCEEDED.to_string());
+        }
         let request = Request {
             method: chain.method.to_string(),
             url: current.to_string(),

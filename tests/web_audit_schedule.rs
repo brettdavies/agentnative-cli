@@ -24,7 +24,7 @@ use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::registry::{CHECKS, HANDLER_KINDS, WebCheck};
 use agentnative::web_audit::scorecard::{
-    DeclaredSiteType, EngineResult, EvidenceItem, ScorecardStatus,
+    DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardStatus,
 };
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use serde_json::{Value, json};
@@ -32,8 +32,10 @@ use serde_json::{Value, json};
 const BASE: &str = "https://example.com/";
 
 /// How long a held answer waits for what it is watching before giving up, so
-/// an engine that never starts it fails the assertion instead of hanging.
-const GIVE_UP: Duration = Duration::from_secs(1);
+/// an engine that never starts it fails the assertion instead of hanging. Shorter
+/// than the run's request timeout: a held request that timed out would settle its
+/// source and let the check it is waiting for start, on any engine.
+const GIVE_UP: Duration = Duration::from_secs(5);
 
 struct PublicResolver;
 
@@ -51,16 +53,18 @@ struct Gate {
 }
 
 impl Gate {
-    fn wait(&self) {
+    /// Whether it opened, rather than the wait giving up.
+    fn wait(&self) -> bool {
         let until = Instant::now() + GIVE_UP;
         let mut open = self.open.lock().unwrap();
         while !*open {
             let left = until.saturating_duration_since(Instant::now());
             if left.is_zero() {
-                return;
+                return false;
             }
             open = self.changed.wait_timeout(open, left).unwrap().0;
         }
+        true
     }
 
     fn open(&self) {
@@ -158,8 +162,8 @@ fn input<'a>(
 ) -> RunInput<'a> {
     let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), "test-ua");
     let mut input = RunInput::new(BASE, fetch, Arc::new(handlers));
-    input.per_check_timeout = Duration::from_secs(3);
-    input.per_audit_deadline = Duration::from_secs(20);
+    input.per_check_timeout = GIVE_UP * 4;
+    input.per_audit_deadline = GIVE_UP * 8;
     input.concurrency = concurrency;
     input
 }
@@ -181,62 +185,64 @@ fn row<'a>(report: &'a RunReport, id: &str) -> &'a EngineResult {
 
 #[test]
 fn a_check_with_nothing_to_read_starts_while_a_source_is_still_reading() {
-    let seen = Arc::new(Gate::default());
-    let open = Arc::new(AtomicBool::new(false));
-    let started_while_open = Arc::new(AtomicBool::new(false));
-    let (s, o, w) = (seen.clone(), open.clone(), started_while_open.clone());
+    // The source holds its answer until the other check's request arrives, which
+    // only happens if that check does not wait for the source.
+    let other_out = Arc::new(Gate::default());
+    let met = Arc::new(AtomicBool::new(false));
+    let (out, m) = (other_out.clone(), met.clone());
     let transport = site(move |_, path| {
         match path {
-            "/__probe/llms-full-txt" => {
-                o.store(true, Ordering::SeqCst);
-                s.wait();
-                o.store(false, Ordering::SeqCst);
-            }
-            "/__probe/security-txt" => {
-                w.store(o.load(Ordering::SeqCst), Ordering::SeqCst);
-                s.open();
-            }
+            "/__probe/llms-full-txt" => m.store(out.wait(), Ordering::SeqCst),
+            "/__probe/security-txt" => out.open(),
             _ => {}
         }
         None
     });
     complete(run_web_audit(input(transport, stand_ins(), 6)));
-    assert!(started_while_open.load(Ordering::SeqCst));
+    assert!(
+        met.load(Ordering::SeqCst),
+        "the check waited for a source it does not read"
+    );
 }
 
 #[test]
 fn a_dependent_check_starts_once_its_own_source_settles_while_an_unrelated_source_reads() {
-    let seen = Arc::new(Gate::default());
-    let open = Arc::new(AtomicBool::new(false));
+    let other_out = Arc::new(Gate::default());
+    let met = Arc::new(AtomicBool::new(false));
     let robots_answered = Arc::new(AtomicBool::new(false));
-    let watched = Arc::new(Mutex::new((false, false)));
-    let (s, o, r, w) = (
-        seen.clone(),
-        open.clone(),
+    let saw_robots = Arc::new(AtomicBool::new(false));
+    let (out, m, r, w) = (
+        other_out.clone(),
+        met.clone(),
         robots_answered.clone(),
-        watched.clone(),
+        saw_robots.clone(),
     );
     let transport = site(move |_, path| {
         match path {
-            "/__probe/llms-full-txt" => {
-                o.store(true, Ordering::SeqCst);
-                s.wait();
-                o.store(false, Ordering::SeqCst);
-            }
+            "/__probe/llms-full-txt" => m.store(out.wait(), Ordering::SeqCst),
             "/__probe/robots" => {
-                thread::sleep(Duration::from_millis(5));
+                // Time for a check that did not wait to arrive early. An engine that
+                // waits passes however long this takes.
+                thread::sleep(Duration::from_millis(100));
                 r.store(true, Ordering::SeqCst);
             }
             "/__probe/robots-ai-rules" => {
-                *w.lock().unwrap() = (o.load(Ordering::SeqCst), r.load(Ordering::SeqCst));
-                s.open();
+                w.store(r.load(Ordering::SeqCst), Ordering::SeqCst);
+                out.open();
             }
             _ => {}
         }
         None
     });
     let report = complete(run_web_audit(input(transport, stand_ins(), 6)));
-    assert_eq!(*watched.lock().unwrap(), (true, true));
+    assert!(
+        met.load(Ordering::SeqCst),
+        "the check waited for a source it does not read"
+    );
+    assert!(
+        saw_robots.load(Ordering::SeqCst),
+        "the check started before its own source answered"
+    );
     assert_eq!(
         row(&report, "robots-ai-rules").status,
         ScorecardStatus::Pass
@@ -315,12 +321,14 @@ fn a_check_its_gate_rules_out_takes_no_slot_and_reports_while_every_slot_is_held
     // With one slot the sources run in registry order, and `sitemap` follows
     // `robots`, so the row gated on `robots` has no slot to take.
     let release = Arc::new(Gate::default());
+    let sitemap_out = Arc::new(Gate::default());
     let held = Arc::new(AtomicBool::new(false));
-    let (rel, h) = (release.clone(), held.clone());
+    let (rel, out, h) = (release.clone(), sitemap_out.clone(), held.clone());
     let transport = site(move |_, path| match path {
         "/__probe/robots" => Some(respond(404, "text/plain", "")),
         "/__probe/sitemap" => {
             h.store(true, Ordering::SeqCst);
+            out.open();
             rel.wait();
             h.store(false, Ordering::SeqCst);
             None
@@ -328,16 +336,17 @@ fn a_check_its_gate_rules_out_takes_no_slot_and_reports_while_every_slot_is_held
         _ => None,
     });
     let gated_while_held = Arc::new(Mutex::new(None));
-    let (gated, h, rel) = (gated_while_held.clone(), held.clone(), release.clone());
+    let (gated, out, h, rel) = (
+        gated_while_held.clone(),
+        sitemap_out.clone(),
+        held.clone(),
+        release.clone(),
+    );
     let mut progress = ProgressOf {
         on_result: Box::new(move |result| {
             if result.check.id == "robots-ai-rules" {
-                // The next source takes the slot as this row reports. Past the
-                // wait, the row reported only because the slot came free.
-                let until = Instant::now() + Duration::from_millis(300);
-                while !h.load(Ordering::SeqCst) && Instant::now() < until {
-                    thread::sleep(Duration::from_millis(1));
-                }
+                // The next source takes the slot as this row reports.
+                out.wait();
                 *gated.lock().unwrap() =
                     Some(h.load(Ordering::SeqCst) && result.status == ScorecardStatus::NA);
                 rel.open();
@@ -352,16 +361,19 @@ fn a_check_its_gate_rules_out_takes_no_slot_and_reports_while_every_slot_is_held
 
 #[test]
 fn every_later_mcp_request_follows_the_notification_and_a_check_outside_mcp_does_not_wait() {
-    let seen = Arc::new(Gate::default());
-    let notifying = Arc::new(AtomicBool::new(false));
+    // The notification holds until a row outside MCP arrives, and that row's source
+    // holds until the notification has started, so the two overlap on any engine
+    // that does not make the row wait.
+    let notifying = Arc::new(Gate::default());
+    let other_out = Arc::new(Gate::default());
+    let met = Arc::new(AtomicBool::new(false));
     let notified = Arc::new(AtomicBool::new(false));
-    let other_while_notifying = Arc::new(AtomicBool::new(false));
     let tools_after_notified = Arc::new(AtomicBool::new(false));
-    let (s, ing, ed, other, tools) = (
-        seen.clone(),
+    let (ing, out, m, ed, tools) = (
         notifying.clone(),
+        other_out.clone(),
+        met.clone(),
         notified.clone(),
-        other_while_notifying.clone(),
         tools_after_notified.clone(),
     );
     let transport = site(move |request, path| match path {
@@ -372,22 +384,21 @@ fn every_later_mcp_request_follows_the_notification_and_a_check_outside_mcp_does
             r#"{"session_id":"sess-1"}"#,
         )),
         "/mcp" => {
-            ing.store(true, Ordering::SeqCst);
-            s.wait();
-            ing.store(false, Ordering::SeqCst);
-            ed.store(true, Ordering::SeqCst);
             assert_eq!(request.method, "POST");
+            ing.open();
+            m.store(out.wait(), Ordering::SeqCst);
+            // Time for a session row that did not wait to arrive early. An engine
+            // that waits passes however long this takes.
+            thread::sleep(Duration::from_millis(100));
+            ed.store(true, Ordering::SeqCst);
             Some(respond(202, "text/plain", ""))
         }
         "/__probe/robots" => {
-            // Later than the wire probes, so the row it opens can land inside
-            // the notification.
-            thread::sleep(Duration::from_millis(30));
+            ing.wait();
             None
         }
         "/__probe/robots-ai-rules" => {
-            other.store(ing.load(Ordering::SeqCst), Ordering::SeqCst);
-            s.open();
+            out.open();
             None
         }
         "/__probe/mcp-tools-list" => {
@@ -397,8 +408,14 @@ fn every_later_mcp_request_follows_the_notification_and_a_check_outside_mcp_does
         _ => None,
     });
     complete(run_web_audit(input(transport, stand_ins(), 6)));
-    assert!(other_while_notifying.load(Ordering::SeqCst));
-    assert!(tools_after_notified.load(Ordering::SeqCst));
+    assert!(
+        met.load(Ordering::SeqCst),
+        "a row outside MCP waited for the notification"
+    );
+    assert!(
+        tools_after_notified.load(Ordering::SeqCst),
+        "a session row started before the notification settled"
+    );
 }
 
 #[test]
@@ -426,32 +443,25 @@ fn a_server_with_no_session_is_sent_no_notification_and_its_rows_still_run() {
 
 #[test]
 fn a_credentialed_runs_re_ask_starts_when_the_wire_probes_finish_and_sign_in_waits_for_it() {
-    let seen = Arc::new(Gate::default());
-    let open = Arc::new(AtomicBool::new(false));
-    let re_ask_while_open = Arc::new(AtomicBool::new(false));
+    // A source holds its answer until the re-ask arrives, which only happens if the
+    // re-ask does not wait for it.
+    let re_ask_out = Arc::new(Gate::default());
+    let met = Arc::new(AtomicBool::new(false));
     let asked = Arc::new(AtomicUsize::new(0));
     let asked_when_row_ran = Arc::new(AtomicUsize::new(usize::MAX));
     let mut set = stand_ins();
     {
-        let (s, o, w, a, r) = (
-            seen.clone(),
-            open.clone(),
-            re_ask_while_open.clone(),
+        let (out, a, r) = (
+            re_ask_out.clone(),
             asked.clone(),
             asked_when_row_ran.clone(),
         );
         set.register("mcp", move |check, ctx| {
             if is_wire_probe(check.id) && !ctx.fetch.credentialed() {
-                // Started beside the wire probes, the held source may not have
-                // reached the transport yet; an engine that waited for it to end
-                // never sees it open.
-                let until = Instant::now() + Duration::from_millis(300);
-                while !o.load(Ordering::SeqCst) && Instant::now() < until {
-                    thread::sleep(Duration::from_millis(1));
-                }
-                w.fetch_or(o.load(Ordering::SeqCst), Ordering::SeqCst);
-                s.open();
-                thread::sleep(Duration::from_millis(10));
+                out.open();
+                // Time for a row that did not wait for the re-ask to arrive early.
+                // An engine that waits passes however long this takes.
+                thread::sleep(Duration::from_millis(200));
                 let outcome = probe(check, ctx);
                 a.fetch_add(1, Ordering::SeqCst);
                 return outcome;
@@ -462,15 +472,11 @@ fn a_credentialed_runs_re_ask_starts_when_the_wire_probes_finish_and_sign_in_wai
             probe(check, ctx)
         });
     }
-    let (s, o) = (seen.clone(), open.clone());
+    let (out, m) = (re_ask_out.clone(), met.clone());
     let transport = site(move |_, path| {
         match path {
             "/.well-known/mcp.json" => return Some(card()),
-            "/__probe/llms-full-txt" => {
-                o.store(true, Ordering::SeqCst);
-                s.wait();
-                o.store(false, Ordering::SeqCst);
-            }
+            "/__probe/llms-full-txt" => m.store(out.wait(), Ordering::SeqCst),
             _ => {}
         }
         None
@@ -480,7 +486,7 @@ fn a_credentialed_runs_re_ask_starts_when_the_wire_probes_finish_and_sign_in_wai
     run.fetch = run.fetch.with_credential(token);
     complete(run_web_audit(run));
     assert!(
-        re_ask_while_open.load(Ordering::SeqCst),
+        met.load(Ordering::SeqCst),
         "the re-ask waited for a source it does not read"
     );
     assert_eq!(asked_when_row_ran.load(Ordering::SeqCst), 2);
@@ -516,13 +522,21 @@ fn the_scorecard_lists_rows_in_registry_order_however_the_probes_finish() {
 }
 
 fn assert_peak_in_flight(cap: usize) {
+    // Nothing answers until the cap is in flight, so the peak reaches it whatever
+    // the threads do, and the wait after that is an engine over the cap's chance to
+    // show it.
+    let full = Arc::new(Gate::default());
     let running = Arc::new(AtomicUsize::new(0));
     let peak = Arc::new(AtomicUsize::new(0));
-    let (r, p) = (running.clone(), peak.clone());
+    let (f, r, p) = (full.clone(), running.clone(), peak.clone());
     let transport = site(move |_, path| {
         if path.starts_with("/__probe/") {
             let now = r.fetch_add(1, Ordering::SeqCst) + 1;
             p.fetch_max(now, Ordering::SeqCst);
+            if now >= cap {
+                f.open();
+            }
+            f.wait();
             thread::sleep(Duration::from_millis(3));
             r.fetch_sub(1, Ordering::SeqCst);
         }
@@ -599,14 +613,14 @@ fn a_source_still_out_at_the_deadline_keeps_its_skip_row_and_what_is_gated_on_it
     let mut set = stand_ins();
     set.register("http", |check, ctx| {
         if check.id == "llms-full-txt" {
-            thread::sleep(Duration::from_millis(600));
+            thread::sleep(Duration::from_secs(2));
         }
         probe(check, ctx)
     });
     let transport =
         site(|_, path| (path == "/__probe/llms-txt").then(|| respond(404, "text/plain", "")));
     let mut run = input(transport, set, 6);
-    run.per_audit_deadline = Duration::from_millis(250);
+    run.per_audit_deadline = Duration::from_secs(1);
     let report = complete(run_web_audit(run));
     let source = row(&report, "llms-full-txt");
     assert_eq!(source.status, ScorecardStatus::Skip, "{source:?}");
@@ -650,4 +664,146 @@ fn a_handler_panic_is_that_rows_error_and_the_run_goes_on() {
         row(&report, "mcp-capabilities").raw_evidence[0].get("status"),
         Some(&Value::from(200))
     );
+}
+
+#[test]
+fn a_row_on_a_request_as_the_deadline_passes_answers_for_itself() {
+    let mut set = stand_ins();
+    set.register("http", |check, ctx| {
+        if check.id == "security-txt" {
+            thread::sleep(ctx.deadline.saturating_duration_since(Instant::now()));
+            return ProbeOutcome::error("TimeoutError: deadline exceeded");
+        }
+        probe(check, ctx)
+    });
+    let mut run = input(site(|_, _| None), set, 6);
+    run.per_audit_deadline = Duration::from_millis(500);
+    let report = complete(run_web_audit(run));
+    let row = row(&report, "security-txt");
+    assert_eq!(row.status, ScorecardStatus::Error, "{row:?}");
+    assert!(!report.complete);
+}
+
+#[test]
+fn a_row_that_waited_for_a_slot_takes_its_timeout_from_what_the_deadline_leaves_at_its_start() {
+    let longest_past = Arc::new(Mutex::new(Duration::ZERO));
+    let mut set = HandlerSet::new();
+    for kind in HANDLER_KINDS {
+        let longest = longest_past.clone();
+        set.register(kind, move |check, ctx| {
+            let left = ctx.deadline.saturating_duration_since(Instant::now());
+            let past = ctx.default_timeout.saturating_sub(left);
+            let mut longest = longest.lock().unwrap();
+            *longest = past.max(*longest);
+            drop(longest);
+            thread::sleep(Duration::from_millis(15));
+            probe(check, ctx)
+        });
+    }
+    let mut run = input(site(|_, _| None), set, 1);
+    run.per_check_timeout = Duration::from_secs(10);
+    run.per_audit_deadline = Duration::from_secs(2);
+    complete(run_web_audit(run));
+    let longest = *longest_past.lock().unwrap();
+    assert!(
+        longest < Duration::from_millis(500),
+        "a request could outlast the deadline by {longest:?}"
+    );
+}
+
+#[test]
+fn a_cap_below_one_is_refused_before_any_request_goes_out() {
+    let asked = Arc::new(AtomicUsize::new(0));
+    let a = asked.clone();
+    let transport = site(move |_, _| {
+        a.fetch_add(1, Ordering::SeqCst);
+        None
+    });
+    let outcome = run_web_audit(input(transport, stand_ins(), 0));
+    let RunOutcome::Unreachable { reason, .. } = outcome else {
+        panic!("a run with no slots scored");
+    };
+    assert_eq!(reason, "blocked: concurrency must be at least 1");
+    assert_eq!(asked.load(Ordering::SeqCst), 0);
+}
+
+/// `/mcp` asks for sign-in, and its metadata names it, so discovery finds the
+/// endpoint with what settles sign-in already in hand.
+fn signed_in_site() -> Arc<dyn Transport + Send + Sync> {
+    site(|_, path| match path {
+        "/mcp" => Some(Response {
+            status: 401,
+            headers: Headers::from_pairs([("www-authenticate", "Bearer realm=\"mcp\"")]),
+            body: Box::new(Cursor::new(Vec::new())),
+        }),
+        "/.well-known/oauth-protected-resource/mcp" => Some(respond(
+            200,
+            "application/json",
+            r#"{"resource":"https://example.com/mcp"}"#,
+        )),
+        _ => None,
+    })
+}
+
+#[test]
+fn a_re_ask_still_out_when_the_run_gives_up_leaves_sign_in_read_from_the_401_discovery_drew() {
+    let mut set = stand_ins();
+    set.register("mcp", |check, ctx| {
+        if is_wire_probe(check.id) && !ctx.fetch.credentialed() {
+            thread::sleep(Duration::from_secs(2));
+        }
+        probe(check, ctx)
+    });
+    let token = Credential::bearer("fixture-token", TokenSource::Stdin).expect("a valid token");
+    let mut run = input(signed_in_site(), set, 6);
+    run.fetch = run.fetch.with_credential(token);
+    // Past discovery, which has to find the endpoint and its 401 first.
+    run.per_audit_deadline = Duration::from_secs(1);
+    let report = complete(run_web_audit(run));
+    let row = row(&report, "mcp-tools-list");
+    assert_eq!(row.status, ScorecardStatus::NA, "{row:?}");
+    assert_eq!(row.na_reason, Some(NaReason::AuthRequired), "{row:?}");
+    assert!(!report.complete);
+}
+
+/// Answers at once until told to stall, then blocks where no timeout reaches.
+struct StallingResolver(Arc<AtomicBool>);
+
+impl Resolver for StallingResolver {
+    fn resolve(&self, _host: &str) -> Result<Vec<IpAddr>, String> {
+        if self.0.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_secs(4));
+        }
+        Ok(vec!["93.184.216.34".parse().unwrap()])
+    }
+}
+
+#[test]
+fn the_end_of_a_run_does_not_wait_on_a_metadata_read_still_open() {
+    // The wire probe's challenge names metadata nothing has read, so settling reads
+    // it, and from that answer on every name lookup stalls.
+    let stall = Arc::new(AtomicBool::new(false));
+    let s = stall.clone();
+    let transport = site(move |_, path| match path {
+        "/.well-known/mcp.json" => Some(card()),
+        "/__probe/mcp-initialize" => {
+            s.store(true, Ordering::SeqCst);
+            Some(Response {
+                status: 401,
+                headers: Headers::from_pairs([(
+                    "www-authenticate",
+                    "Bearer resource_metadata=\"https://example.com/held\"",
+                )]),
+                body: Box::new(Cursor::new(Vec::new())),
+            })
+        }
+        _ => None,
+    });
+    let fetch = FetchHandle::new(transport, Arc::new(StallingResolver(stall)), "test-ua");
+    let mut run = RunInput::new(BASE, fetch, Arc::new(stand_ins()));
+    run.per_audit_deadline = Duration::from_millis(500);
+    let started = Instant::now();
+    complete(run_web_audit(run));
+    let elapsed = started.elapsed();
+    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
 }

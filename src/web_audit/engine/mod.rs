@@ -30,6 +30,7 @@ pub mod provenance;
 pub mod reciprocity;
 pub mod reciprocity_metadata;
 pub mod retained;
+mod root_read;
 pub mod run;
 mod schedule;
 pub mod sign_in;
@@ -41,10 +42,9 @@ pub use handlers::{Dispatch, HandlerFn, HandlerSet};
 pub use probe::EXTERNAL_DNS_WITHHELD;
 pub use run::{
     DEFAULT_CONCURRENCY, DEFAULT_PER_AUDIT_DEADLINE, DEFAULT_PER_CHECK_TIMEOUT,
-    DEGRADED_PER_CHECK_TIMEOUT, ProgressSink, RunInput, RunOutcome, RunReport, Unported,
-    run_web_audit,
+    DEGRADED_PER_CHECK_TIMEOUT, RunInput, RunOutcome, RunReport, run_web_audit,
 };
 pub use types::{
     FetchHandle, HandlerContext, McpAuthRequired, McpLaneEvidence, McpModernLane, ProbeOutcome,
-    ProbeStatus, why_item,
+    ProbeStatus, ProgressSink, Unported, why_item,
 };

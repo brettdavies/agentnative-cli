@@ -2,10 +2,8 @@
 //! discovery, the reachability gate, the schedule over every check, and
 //! scorecard assembly. A mirror of the site's `runWebAudit`.
 
-use std::cell::OnceCell;
 use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
-use std::thread;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use url::Url;
@@ -16,14 +14,14 @@ use super::discovery::{DiscoveryResult, RootBeside, read_discovery_documents};
 use super::discovery_documents::API_CATALOG_DOCUMENT;
 use super::endpoint_of_record::{Settle, settle_endpoint_of_record};
 use super::handlers::HandlerSet;
+use super::root_read::RootRead;
 use super::schedule::{Plan, run_checks};
 use super::sign_in::{DirectSource, SignInResolver};
-use super::types::{FetchHandle, HandlerContext, McpLaneEvidence};
+use super::slots::AuditSlots;
+use super::types::{FetchHandle, HandlerContext, McpLaneEvidence, ProgressSink, Unported};
 use crate::web_audit::fetch::launch::Launch;
 use crate::web_audit::fetch::memo::RequestMemo;
-use crate::web_audit::fetch::{
-    FetchInit, FetchOptions, NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal,
-};
+use crate::web_audit::fetch::{NO_PLAINTEXT_REQUEST, ProbeResponse, Refusal};
 use crate::web_audit::handlers::api_hygiene::HostProbes;
 use crate::web_audit::locality::Locality;
 use crate::web_audit::registry::{ALTERNATIVES, CATEGORIES, CATEGORY_ORDER, CHECKS, MCP_DISCOVERY};
@@ -46,14 +44,6 @@ pub use crate::web_audit::registry::DEGRADED_PER_CHECK_TIMEOUT;
 /// has not ended. A stopped read ends within a moment; a transport still blocked
 /// past this, on a name lookup or a connection, can send nothing on it.
 const STOP_GRACE: Duration = Duration::from_millis(250);
-
-/// Receives results as the run finalizes them.
-pub trait ProgressSink {
-    /// Discovery finished.
-    fn discovery(&mut self, _endpoint: Option<&str>) {}
-    /// One row finalized.
-    fn result(&mut self, _result: &EngineResult) {}
-}
 
 /// Everything a run needs.
 pub struct RunInput<'a> {
@@ -116,15 +106,6 @@ impl<'a> RunInput<'a> {
     }
 }
 
-/// A check whose handler kind or eval rule the engine has not ported.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Unported {
-    /// The check id.
-    pub check_id: &'static str,
-    /// The unported kind or rule.
-    pub kind: &'static str,
-}
-
 /// A completed run.
 #[derive(Debug)]
 pub struct RunReport {
@@ -145,7 +126,8 @@ pub struct RunReport {
 /// How a run ended.
 #[derive(Debug)]
 pub enum RunOutcome {
-    /// Nothing from the target answered, so there is nothing to score.
+    /// Nothing from the target answered, so there is nothing to score, or the run
+    /// refused its input before asking.
     Unreachable {
         /// The site's wording for why.
         reason: String,
@@ -187,80 +169,26 @@ pub(crate) fn is_edge_error_status(status: Option<u16>) -> bool {
     matches!(status, Some(530) | Some(520..=527))
 }
 
-/// The root fetch, running beside discovery's first document reads. What the
-/// root turns out to be takes effect before anything waiting on it resumes.
-struct RootRead {
-    answer: mpsc::Receiver<ProbeResponse>,
-    response: OnceCell<ProbeResponse>,
-}
-
-impl RootRead {
-    fn start(
-        fetch: &FetchHandle,
-        base: &str,
-        timeout: Duration,
-        memo: RequestMemo,
-        launch: Launch,
-    ) -> Self {
-        let (fetch, base) = (fetch.clone(), base.to_string());
-        let (tx, answer) = mpsc::channel();
-        thread::spawn(move || {
-            let _settled = RootSettled(launch.clone());
-            let opts = FetchOptions {
-                timeout,
-                ..FetchOptions::default()
-            };
-            let response = fetch.fetch(&base, &FetchInit::default(), &opts);
-            if response.refused == Some(Refusal::InsecureScheme) {
-                // The first reads go out before the root's answer is read on
-                // every https target, however fast it comes.
-                launch.wait(timeout);
-                memo.close();
-            } else if response.status.is_none() {
-                memo.cut();
-            }
-            let _ = tx.send(response);
-        });
-        RootRead {
-            answer,
-            response: OnceCell::new(),
-        }
-    }
-
-    fn wait(&self) -> &ProbeResponse {
-        self.response.get_or_init(|| {
-            self.answer
-                .recv()
-                .unwrap_or_else(|_| ProbeResponse::failed("root fetch panicked".to_string(), 0))
-        })
-    }
-}
-
-/// However the root fetch ends, a redirect hop waiting on it goes on.
-struct RootSettled(Launch);
-
-impl Drop for RootSettled {
-    fn drop(&mut self) {
-        self.0.root_settled();
-    }
-}
-
 /// A run's requests end with it, on every way out: the request set is complete
 /// when the report exists, and nothing is sent after it.
 struct RunEnd {
+    slots: AuditSlots,
     memo: RequestMemo,
     fetch: FetchHandle,
 }
 
 impl Drop for RunEnd {
     fn drop(&mut self) {
+        self.slots.close();
         self.memo.close();
         self.fetch.stop_requests();
         self.memo.join(STOP_GRACE);
     }
 }
 
-/// Run the audit.
+/// Run the audit. Input it cannot run, a URL that does not parse or a concurrency
+/// of 0, comes back as [`RunOutcome::Unreachable`] with its reason, before any
+/// request goes out.
 pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     let Some(Base { base, host, domain }) = normalize_base(&input.url) else {
         return RunOutcome::Unreachable {
@@ -269,11 +197,20 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             root_error: None,
         };
     };
+    if input.concurrency == 0 {
+        return RunOutcome::Unreachable {
+            reason: "blocked: concurrency must be at least 1".to_string(),
+            discovery: Vec::new(),
+            root_error: None,
+        };
+    }
+    let slots = AuditSlots::new(input.concurrency);
     let deadline = Instant::now() + input.per_audit_deadline;
     // One memo per audit, so each distinct request goes out once.
     let memo = RequestMemo::new();
     input.fetch = input.fetch.with_memo(memo.clone());
     let _run_end = RunEnd {
+        slots: slots.clone(),
         memo: memo.clone(),
         fetch: input.fetch.clone(),
     };
@@ -296,11 +233,12 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         launch.clone(),
     );
     let settled = || {
-        if root_read.wait().status.is_none() {
+        let timeout = if root_read.wait().status.is_none() {
             input.per_check_timeout.min(DEGRADED_PER_CHECK_TIMEOUT)
         } else {
             input.per_check_timeout
-        }
+        };
+        (timeout, root_read.settled_at())
     };
     let documents = read_discovery_documents(
         &input.fetch,
@@ -328,7 +266,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         };
     }
     let root: Option<Arc<ProbeResponse>> = root_resp.status.map(|_| Arc::new(root_resp.clone()));
-    let per_check_timeout = settled();
+    let (per_check_timeout, _) = settled();
 
     let root_from_target = root
         .as_ref()
@@ -428,15 +366,14 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         deadline,
         external_dns: input.external_dns,
         target_locality,
-        slots: None,
+        slots: Some(slots.clone()),
     };
     let scheduled = run_checks(
         Plan {
             template,
             handlers: Arc::clone(&input.handlers),
-            concurrency: input.concurrency,
+            slots,
             per_check_timeout,
-            local_target,
             site_type: input.site_type,
             discovery_evidence: &discovery.evidence,
             follow_unmet: declared.unmet.as_ref(),

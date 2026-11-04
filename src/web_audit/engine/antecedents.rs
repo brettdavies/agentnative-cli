@@ -539,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn mcp_and_auth_tokens_read_wave_one_evidence() {
+    fn mcp_and_auth_tokens_read_source_evidence() {
         let mut sources = HashMap::new();
         let html = root(Some(200), "text/html", "", None);
         let no_endpoint = ctx(None, None, Some(&html), &sources, &[]);

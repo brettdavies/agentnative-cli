@@ -117,8 +117,9 @@ pub enum NextAction {
     /// target with `--ca-cert <FILE>`, the file being the CA's PEM
     /// certificate.
     AddCaCert,
-    /// A bug in anc: run `command`, the same invocation with `--verbose`, and
-    /// report what it prints at `docs`, the issue tracker.
+    /// A bug in anc: run `command`, the same invocation with `--verbose`, or
+    /// `template` when it read a token from stdin, and report what it prints at
+    /// `docs`, the issue tracker.
     ReportBug,
 }
 
@@ -171,11 +172,18 @@ impl NextStep {
         }
     }
 
-    pub fn report_bug(command: String) -> Self {
+    /// `rerun` runs as printed unless it reads a token from stdin, which whatever
+    /// supplied it has to supply again.
+    pub fn report_bug(rerun: String, token_on_stdin: bool) -> Self {
+        let (command, template) = if token_on_stdin {
+            (None, Some(format!("{rerun} < <TOKEN_FILE>")))
+        } else {
+            (Some(rerun), None)
+        };
         Self {
             action: NextAction::ReportBug,
-            command: Some(command),
-            template: None,
+            command,
+            template,
             docs: Some(ISSUE_TRACKER),
         }
     }
@@ -448,7 +456,16 @@ mod tests {
         assert_eq!(action(NextStep::fix_target("x".into())), "fix-target");
         assert_eq!(action(NextStep::list_checks("x".into())), "list-checks");
         assert_eq!(action(NextStep::add_ca_cert("x".into())), "add-ca-cert");
-        assert_eq!(action(NextStep::report_bug("x".into())), "report-bug");
+        assert_eq!(
+            action(NextStep::report_bug("x".into(), false)),
+            "report-bug"
+        );
+        let stdin = NextStep::report_bug("anc --verbose web x --token-stdin".into(), true);
+        assert_eq!(stdin.command, None);
+        assert_eq!(
+            stdin.template.as_deref(),
+            Some("anc --verbose web x --token-stdin < <TOKEN_FILE>")
+        );
     }
 
     #[test]

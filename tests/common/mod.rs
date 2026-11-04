@@ -12,6 +12,8 @@ pub mod corpus;
 pub mod handler_context;
 #[cfg(feature = "web")]
 pub mod ledger;
+#[cfg(feature = "web")]
+pub mod panicking;
 pub mod self_audit;
 #[cfg(feature = "web")]
 pub mod web_cli;

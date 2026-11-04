@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use crate::panics::panic_message;
+use crate::panics::describe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -378,7 +378,7 @@ fn probe_one(
         }
     }));
     dispatched.unwrap_or_else(|panic| {
-        let message = panic_message(&*panic);
+        let message = describe(&*panic);
         done(
             error_result(check, &format!("handler error: {message}")),
             false,

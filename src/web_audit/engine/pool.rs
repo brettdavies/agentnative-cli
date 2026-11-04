@@ -5,8 +5,9 @@
 //! the remaining budget, and the collector stops waiting when the budget is
 //! gone. Workers are never joined; one stalled on a request that has its own
 //! timeout finishes on its own and exits, and a worker that has not yet
-//! started a job sees the cancellation flag and stops. A job that panics panics
-//! the caller, so it never reads as a job the deadline cut short.
+//! started a job sees the cancellation flag and stops. A job that panics sets the
+//! flag and panics the caller, so it does not read as a job the deadline cut short;
+//! a panic past the deadline is as late as any other late job.
 //!
 //! ```text
 //! caller                                     workers (N threads, detached)
@@ -73,6 +74,9 @@ where
                 let next = queue.lock().ok().and_then(|mut q| q.pop_front());
                 let Some((index, item)) = next else { return };
                 let result = catch_unwind(AssertUnwindSafe(|| job(item)));
+                if result.is_err() {
+                    cancelled.store(true, Ordering::Relaxed);
+                }
                 if tx.send((index, result)).is_err() {
                     return;
                 }
@@ -142,6 +146,23 @@ mod tests {
         })
         .expect_err("the panic reaches the caller");
         assert_eq!(crate::panics::panic_message(&*panic), "job bug");
+    }
+
+    #[test]
+    fn a_job_that_panics_stops_the_jobs_not_yet_started() {
+        use std::sync::atomic::AtomicUsize;
+        let started = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&started);
+        let panic = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            run_bounded((0..20).collect(), 1, deadline, move |_: u32| {
+                counted.fetch_add(1, Ordering::SeqCst);
+                panic!("job bug");
+            })
+        }));
+        assert!(panic.is_err());
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(started.load(Ordering::SeqCst), 1);
     }
 
     #[test]

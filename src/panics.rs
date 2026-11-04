@@ -5,7 +5,8 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Mutex;
 
-static LOCATION: Mutex<Option<String>> = Mutex::new(None);
+/// Each panic's message and where it was raised, newest last.
+static LOCATIONS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
 /// The path a bug report shows, which is public: a dependency's is absolute and
 /// holds the builder's home directory, so it keeps only its file name, and this
@@ -18,20 +19,35 @@ fn reported(file: &str) -> Cow<'_, str> {
     }
 }
 
-/// Keep each panic's location for [`last_location`] and print nothing, so stderr
-/// can carry a JSON envelope alone.
-pub fn hold_location_quietly() {
-    std::panic::set_hook(Box::new(|info| {
-        let location = info
-            .location()
-            .map(|at| format!("{}:{}", reported(at.file()), at.line()));
-        *LOCATION.lock().unwrap_or_else(|e| e.into_inner()) = location;
+/// Keep each panic's location for [`describe`]. `print` also runs the default hook;
+/// without it, stderr can carry a JSON envelope alone.
+pub fn keep_locations(print: bool) {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Some(at) = info.location() {
+            let location = format!("{}:{}", reported(at.file()), at.line());
+            LOCATIONS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push((panic_message(info.payload()), location));
+        }
+        if print {
+            default(info);
+        }
     }));
 }
 
-/// Where the last panic [`hold_location_quietly`] saw was raised.
-pub fn last_location() -> Option<String> {
-    LOCATION.lock().unwrap_or_else(|e| e.into_inner()).clone()
+/// A panic's message and, when [`keep_locations`] saw it, where it was raised. The
+/// message finds it because other panics can land between the raise and this read,
+/// and a panic re-raised from another thread keeps only its message.
+pub fn describe(payload: &(dyn Any + Send)) -> String {
+    let message = panic_message(payload);
+    let locations = LOCATIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let location = locations.iter().rev().find(|(said, _)| *said == message);
+    match location {
+        Some((_, at)) => format!("{message} ({at})"),
+        None => message,
+    }
 }
 
 /// A joined thread's result, its panic going on up rather than reading as an

@@ -226,7 +226,7 @@ if grep -q panicked "$stderr_log"; then
 fi
 # shellcheck disable=SC2016 # $id is jaq's variable, not the shell's.
 row=$(jaq -r --arg id "$probe_id" '.results[] | select(.id == $id) | "\(.status): \(.evidence)"' <"$probed")
-if [[ "$row" != "error: handler error: panic probe in $probe_id"* ]]; then
+if [[ "$row" != "error: handler error: panic probe in $probe_id (src/panics.rs:"* ]]; then
   printf 'error: the %s row reads %q; expected the handler error\n' "$probe_id" "$row" >&2
   exit 1
 fi
@@ -254,6 +254,35 @@ if ! grep -q 'error: anc panicked: panic probe in run' "$stderr_log"; then
   exit 1
 fi
 printf 'panic in the run, text: exit %s, named on stderr\n' "$code"
+
+# The command the envelope hands out has to run as printed, under the quiet
+# environment `--verbose` overrides, and `--verbose` has to print the panic.
+probe_run run --output json --verbose
+if ! grep -q 'panicked at' "$stderr_log"; then
+  printf 'error: --verbose printed no panic in JSON mode:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in the run, JSON --verbose: exit %s, printed on stderr\n' "$code"
+AGENTNATIVE_QUIET=1 probe_run run --output json
+rerun=$(jaq -r '.next_step.command' "$stderr_log")
+case "$rerun" in
+  "anc --verbose "*) ;;
+  *)
+    printf 'error: the command under AGENTNATIVE_QUIET was %q\n' "$rerun" >&2
+    exit 1
+    ;;
+esac
+printf -v quoted_binary %q "$BINARY"
+rerun_status=0
+AGENTNATIVE_QUIET=1 timeout "$BUDGET_SECONDS" bash -c "${rerun/#anc /$quoted_binary }" \
+  >"$probed" 2>"$stderr_log" || rerun_status=$?
+if grep -q 'cannot be used with' "$stderr_log" || ((rerun_status > 2)); then
+  printf 'error: the command under AGENTNATIVE_QUIET returned %s. anc wrote:\n' "$rerun_status" >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'the command under AGENTNATIVE_QUIET: exit %s\n' "$rerun_status"
 
 set +e
 ANC_PANIC_PROBE=p3-help timeout "$BUDGET_SECONDS" "$BINARY" audit --command ls --output json \

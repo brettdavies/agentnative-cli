@@ -93,7 +93,7 @@ grade_one_target() {
   local label="$name${profile:+ (--audit-profile $profile)}"
 
   if [[ "$code" -gt 2 ]]; then
-    gate_fail "$label" "anc exited $code (panic or signal, not a verdict): $(head -c 200 "$err")"
+    gate_fail "$label" "anc exited $code (an errored audit, a panic, or a signal, not a verdict): $(head -c 200 "$err")"
     return
   fi
 

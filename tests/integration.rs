@@ -2068,6 +2068,31 @@ fn source_audit(
 }
 
 #[test]
+fn an_explicit_verbose_overrides_a_quiet_environment_but_not_a_quiet_flag() {
+    let tmp = tiny_crate();
+    let verbose = source_audit(tmp.path(), &[], &["--verbose"]);
+    let over_env = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", "1")], &["--verbose"]);
+    assert_eq!(
+        over_env.status.code(),
+        verbose.status.code(),
+        "{over_env:?}"
+    );
+    assert_eq!(over_env.stdout, verbose.stdout, "--verbose beats the env");
+
+    let both = source_audit(tmp.path(), &[], &["-q", "--verbose"]);
+    assert_eq!(both.status.code(), Some(2), "{both:?}");
+    let stderr = String::from_utf8_lossy(&both.stderr);
+    assert!(stderr.contains("cannot be used with"), "{stderr}");
+
+    let quiet_env_only = source_audit(tmp.path(), &[("AGENTNATIVE_QUIET", "1")], &[]);
+    let quiet = source_audit(tmp.path(), &[], &["-q"]);
+    assert_eq!(
+        quiet_env_only.stdout, quiet.stdout,
+        "the env still means -q"
+    );
+}
+
+#[test]
 fn agentnative_quiet_accepts_one_and_zero() {
     let tmp = tiny_crate();
     let quiet = source_audit(tmp.path(), &[], &["-q"]);

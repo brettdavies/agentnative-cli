@@ -886,7 +886,7 @@ is one of a closed set, and a newer release can add to it:
 | `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                                                                                                  |
 | `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                                                                                                      |
 | `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                                                                                                              |
-| `report-bug`  | `command`: the same invocation with `--verbose`; `docs`: the issue tracker to report it at   | `panic`                                                                                                                                              |
+| `report-bug`  | `command` or, after `--token-stdin`, `template`: the same with `--verbose`; `docs`: tracker  | `panic`                                                                                                                                              |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error, or the issue tracker for `report-bug`. The offending input is echoed beside the

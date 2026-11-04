@@ -777,9 +777,10 @@ fn format_text_raw(results: &[AuditResult]) -> String {
 }
 
 /// Fan one probe-level result out into one entry per requirement-row in
-/// the audit's `Audit::covers()` slice. The probe's status, label, group,
-/// layer, and confidence propagate to every row; the `id` field is
-/// replaced with the row id. Returns a pair `(row_result, audit_id)` per
+/// the audit's `Audit::covers()` slice. The probe's label, group, layer, and
+/// confidence propagate to every row, and its status to every row that
+/// `row_statuses` does not name; the `id` field is replaced with the row id.
+/// Returns a pair `(row_result, audit_id)` per
 /// emitted row so downstream consumers (AuditResultView, propagation) know
 /// the originating probe without a registry walk.
 ///
@@ -802,6 +803,9 @@ pub fn fan_out_per_row(
         for row_id in covers {
             let mut row = r.clone();
             row.id = (*row_id).to_string();
+            if let Some((_, status)) = r.row_statuses.iter().find(|(id, _)| id == row_id) {
+                row.status = status.clone();
+            }
             out.push((row, r.id.clone()));
         }
     }
@@ -1040,6 +1044,7 @@ mod tests {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            row_statuses: Vec::new(),
             pass_evidence: None,
         }
     }

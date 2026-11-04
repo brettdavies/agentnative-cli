@@ -76,6 +76,7 @@ impl Audit for JsonOutputAudit {
             confidence: Confidence::High,
             mitigation: verdict.mitigation,
             config_hint: None,
+            row_statuses: Vec::new(),
             pass_evidence: None,
         })
     }

@@ -160,6 +160,11 @@ pub struct AuditResult {
     /// when no config supplied it. `None` for every other row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_hint: Option<ConfigHint>,
+    /// Verdicts for requirements in `Audit::covers()` that do not take
+    /// `status`, keyed by requirement id, for an audit whose rows can
+    /// disagree. Empty for every other audit.
+    #[serde(skip)]
+    pub row_statuses: Vec<(&'static str, AuditStatus)>,
     /// What a Pass matched, for an audit whose Pass names the subcommands or
     /// flags it found. Surfaces as the row's `evidence`, ahead of any
     /// `mitigation` prose. `None` for every other row; a non-Pass status

@@ -19,6 +19,8 @@ const VERSION: Meaning = Meaning {
     words: &["version"],
 };
 
+const SHORT_ALIAS_ROW: &str = "p3-should-version-short";
+
 pub struct VersionAudit;
 
 impl Audit for VersionAudit {
@@ -27,7 +29,7 @@ impl Audit for VersionAudit {
     }
 
     fn label(&self) -> &'static str {
-        "Version flag works (`--version` plus short alias)"
+        "Version flags (`--version`, short alias)"
     }
 
     fn group(&self) -> AuditGroup {
@@ -39,7 +41,7 @@ impl Audit for VersionAudit {
     }
 
     fn covers(&self) -> &'static [&'static str] {
-        &["p3-must-version", "p3-should-version-short"]
+        &["p3-must-version", SHORT_ALIAS_ROW]
     }
 
     fn applicable(&self, project: &Project) -> bool {
@@ -49,12 +51,22 @@ impl Audit for VersionAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let runner = project.runner_ref();
 
-        // A failed `--version` decides the verdict, so probing the help and
-        // the aliases after it only spends more runner timeouts on a CLI
-        // that hangs.
-        let status = match probe_version_flag(runner, "--version") {
-            Ok(()) => audit_short_alias(runner, project.help_output()),
-            Err(reason) => AuditStatus::Fail(reason),
+        // A `--version` that does not return leaves the alias row unmeasured,
+        // because probing the help and the aliases after it only spends more
+        // runner timeouts on a CLI that hangs.
+        let (status, short_alias) = match probe_version_flag(runner, "--version") {
+            FlagProbe::Answered => (
+                AuditStatus::Pass,
+                audit_short_alias(runner, project.help_output()),
+            ),
+            FlagProbe::Rejected(reason) => (
+                AuditStatus::Fail(reason),
+                audit_short_alias(runner, project.help_output()),
+            ),
+            FlagProbe::NoReturn(reason) => {
+                let skip = AuditStatus::Skip(format!("{reason}, so no short alias was run."));
+                (AuditStatus::Fail(reason), skip)
+            }
         };
 
         Ok(AuditResult {
@@ -66,6 +78,7 @@ impl Audit for VersionAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            row_statuses: vec![(SHORT_ALIAS_ROW, short_alias)],
             pass_evidence: None,
         })
     }
@@ -86,13 +99,12 @@ pub fn declared_short_aliases(help: &HelpOutput) -> Vec<&'static str> {
         .collect()
 }
 
-/// The verdict once `--version` works: probe each declared short alias, and
+/// The verdict on the short alias row: probe each declared short alias, and
 /// run none the help does not declare.
 fn audit_short_alias(runner: &BinaryRunner, help: Option<&HelpOutput>) -> AuditStatus {
     let Some(help) = help else {
         return AuditStatus::Warn(
-            "`--version` works, but `--help` could not be probed, so no short alias was run."
-                .into(),
+            "`--help` could not be probed, so no short alias was run.".into(),
         );
     };
     let declared = declared_short_aliases(help);
@@ -102,40 +114,50 @@ fn audit_short_alias(runner: &BinaryRunner, help: Option<&HelpOutput>) -> AuditS
             SHORT_VERSION_FLAGS,
             &VERSION,
             &format!(
-                "`--version` works, but `--help` declares no short alias for it ({}), so none \
-                 was run. Declaring one shortens version probes for agents.",
+                "`--help` declares no short alias for `--version` ({}), so none was run. \
+                 Declaring one shortens version probes for agents.",
                 SHORT_VERSION_FLAGS.join(", "),
             ),
         ));
     }
     if declared
         .iter()
-        .any(|alias| probe_version_flag(runner, alias).is_ok())
+        .any(|alias| matches!(probe_version_flag(runner, alias), FlagProbe::Answered))
     {
         AuditStatus::Pass
     } else {
         AuditStatus::Warn(format!(
-            "`--version` works but no declared short alias responded (tried {}). Adding one \
-             shortens version probes for agents.",
+            "no declared short alias responded (tried {}). A working one shortens version \
+             probes for agents.",
             declared.join(", "),
         ))
     }
 }
 
-/// Probe a single version flag against the target binary. Returns `Ok(())`
-/// when the binary exits 0 with non-empty stdout (the same heuristic the
-/// original `--version`-only audit used). Returns `Err(reason)` otherwise,
-/// with a human-readable failure cause suitable for evidence text.
-fn probe_version_flag(runner: &BinaryRunner, flag: &str) -> Result<(), String> {
+/// What one version flag did when run. Each reason is evidence text.
+enum FlagProbe {
+    /// Exited 0 with non-empty stdout.
+    Answered,
+    /// Returned, with a non-zero exit or no output.
+    Rejected(String),
+    /// Timed out, crashed, or could not start.
+    NoReturn(String),
+}
+
+fn probe_version_flag(runner: &BinaryRunner, flag: &str) -> FlagProbe {
     let result = runner.run(&[flag], &[]);
     match result.status {
-        RunStatus::Ok if result.exit_code == Some(0) && !result.stdout.trim().is_empty() => Ok(()),
-        RunStatus::Ok if result.exit_code == Some(0) => Err(format!("`{flag}` produced no output")),
-        RunStatus::Ok => Err(format!(
+        RunStatus::Ok if result.exit_code == Some(0) && !result.stdout.trim().is_empty() => {
+            FlagProbe::Answered
+        }
+        RunStatus::Ok if result.exit_code == Some(0) => {
+            FlagProbe::Rejected(format!("`{flag}` produced no output"))
+        }
+        RunStatus::Ok => FlagProbe::Rejected(format!(
             "`{flag}` exited with code {}",
             result.exit_code.unwrap_or(-1)
         )),
-        _ => Err(format!("`{flag}` failed: {:?}", result.status)),
+        _ => FlagProbe::NoReturn(format!("`{flag}` failed: {:?}", result.status)),
     }
 }
 
@@ -143,6 +165,7 @@ fn probe_version_flag(runner: &BinaryRunner, flag: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::audits::behavioral::tests::{test_project_with_runner, test_project_with_sh_script};
+    use crate::scorecard::build_row_results;
     use crate::types::AuditStatus;
 
     /// A script project whose `--help` prints `help`, whose `answers` case
@@ -168,6 +191,23 @@ mod tests {
             .collect()
     }
 
+    /// `p3-must-version` and `p3-should-version-short`, as the scorecard
+    /// reads them.
+    fn rows(project: &Project) -> (AuditStatus, AuditStatus) {
+        let raw = VersionAudit.run(project).expect("audit should run");
+        let catalog: Vec<Box<dyn Audit>> = vec![Box::new(VersionAudit)];
+        let rows = build_row_results(&[raw], &catalog);
+        let status = |id: &str| {
+            rows.iter()
+                .find(|(row, _)| row.id == id)
+                .unwrap_or_else(|| panic!("no row {id}"))
+                .0
+                .status
+                .clone()
+        };
+        (status("p3-must-version"), status("p3-should-version-short"))
+    }
+
     fn warn_message(status: AuditStatus) -> String {
         match status {
             AuditStatus::Warn(msg) => msg,
@@ -177,31 +217,74 @@ mod tests {
 
     #[test]
     fn version_fail_non_zero_exit() {
-        // `/bin/false` exits 1 regardless of args, so `--version` fails and
-        // the audit returns Fail (the MUST is not satisfied).
-        let project = test_project_with_runner("/bin/false");
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert!(matches!(result.status, AuditStatus::Fail(_)));
+        // `/bin/false` exits 1 regardless of args, so `--version` fails the
+        // MUST, and its empty help declares no alias for the SHOULD.
+        let (must, should) = rows(&test_project_with_runner("/bin/false"));
+        assert!(matches!(must, AuditStatus::Fail(_)), "{must:?}");
+        assert!(matches!(should, AuditStatus::Warn(_)), "{should:?}");
     }
 
     #[test]
     fn version_handles_crash() {
-        let project = test_project_with_sh_script("kill -11 $$");
-        let result = VersionAudit
-            .run(&project)
-            .expect("audit should not panic on crash");
-        assert!(matches!(result.status, AuditStatus::Fail(_)));
+        let (must, should) = rows(&test_project_with_sh_script("kill -11 $$"));
+        assert!(matches!(must, AuditStatus::Fail(_)), "{must:?}");
+        assert!(matches!(should, AuditStatus::Skip(_)), "{should:?}");
     }
 
-    /// A failed `--version` decides the verdict, so neither the help nor the
-    /// short aliases are probed: against a CLI that hangs on version flags,
-    /// each extra probe costs a full runner timeout.
+    /// A `--version` that does not return leaves the SHOULD unmeasured, and
+    /// neither the help nor an alias is probed: against a CLI that hangs on
+    /// version flags, each extra probe costs a full runner timeout.
     #[test]
-    fn short_aliases_not_probed_after_long_flag_fails() {
-        let project = logging_project("Options:\n  -V, --version  Print version", "-V");
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert!(matches!(result.status, AuditStatus::Fail(_)));
+    fn no_alias_is_run_when_the_long_flag_does_not_return() {
+        let project = test_project_with_sh_script(
+            "echo \"$1\" >> \"$(dirname \"$0\")/argv.log\"\n\
+             case \"$1\" in\n\
+             --version) kill -11 $$ ;;\n\
+             --help) echo 'Options:'; echo '  -V, --version  Print version' ;;\n\
+             -V) echo 1.0.0 ;;\n\
+             esac",
+        );
+        let (must, should) = rows(&project);
+        assert!(matches!(must, AuditStatus::Fail(_)), "{must:?}");
+        match should {
+            AuditStatus::Skip(msg) => assert!(msg.contains("no short alias was run"), "{msg}"),
+            other => panic!("expected Skip, got {other:?}"),
+        }
         assert_eq!(probed(&project), vec!["--version"]);
+    }
+
+    /// `--version` returning non-zero costs no timeout, so the alias still
+    /// gets its own verdict. Old Unix tools reject `--version` and answer a
+    /// declared `-V`.
+    #[test]
+    fn a_rejected_long_flag_leaves_the_should_row_to_the_alias() {
+        let project = logging_project("Options:\n  -V, --version  Print version", "-V");
+        let (must, should) = rows(&project);
+        assert!(matches!(must, AuditStatus::Fail(_)), "{must:?}");
+        assert_eq!(should, AuditStatus::Pass);
+        assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
+    }
+
+    #[test]
+    fn a_rejected_long_flag_with_no_alias_warns_the_should_row() {
+        let project = logging_project("Options:\n  -h, --help  Print help", "-V");
+        let (must, should) = rows(&project);
+        assert!(matches!(must, AuditStatus::Fail(_)), "{must:?}");
+        let msg = warn_message(should);
+        assert!(msg.contains("declares no short alias"), "{msg}");
+        assert!(!msg.contains("`--version` works"), "{msg}");
+        assert_eq!(probed(&project), vec!["--version", "--help"]);
+    }
+
+    /// git, gh, and rclone print their version from `--version` and declare
+    /// no short alias: the MUST is met, and only the SHOULD has anything to
+    /// say.
+    #[test]
+    fn a_working_long_flag_passes_the_must_row_with_no_alias() {
+        let project = logging_project("Options:\n      --version  Print version", "--version");
+        let (must, should) = rows(&project);
+        assert_eq!(must, AuditStatus::Pass);
+        assert!(matches!(should, AuditStatus::Warn(_)), "{should:?}");
     }
 
     #[test]
@@ -210,8 +293,7 @@ mod tests {
             "Options:\n  -V, --version  Print version\n  -h, --help     Print help",
             "--version|-V",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(rows(&project), (AuditStatus::Pass, AuditStatus::Pass));
         assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
     }
 
@@ -223,8 +305,7 @@ mod tests {
             "Options:\n  -v, --version  Print version\n  -h, --help     Print help",
             "--version|-v|-V",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(rows(&project), (AuditStatus::Pass, AuditStatus::Pass));
         let probed = probed(&project);
         assert!(
             !probed.iter().any(|arg| arg == "-V"),
@@ -239,8 +320,9 @@ mod tests {
             "Options:\n  -v, --verbose  More output\n      --version  Print version",
             "--version|-v|-V",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        let msg = warn_message(result.status);
+        let (must, should) = rows(&project);
+        assert_eq!(must, AuditStatus::Pass);
+        let msg = warn_message(should);
         assert!(msg.contains("declares no short alias"), "{msg}");
         assert!(
             msg.contains(
@@ -258,10 +340,11 @@ mod tests {
             "Options:\n      --version  Print version",
             "--version|-v|-V|-version",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        let msg = warn_message(result.status);
+        let (must, should) = rows(&project);
+        assert_eq!(must, AuditStatus::Pass);
+        let msg = warn_message(should);
         assert!(
-            msg.contains("`--help` declares no short alias for it"),
+            msg.contains("`--help` declares no short alias for `--version`"),
             "{msg}"
         );
         assert_eq!(probed(&project), vec!["--version", "--help"]);
@@ -270,8 +353,9 @@ mod tests {
     #[test]
     fn a_declared_alias_that_fails_warns() {
         let project = logging_project("Options:\n  -V, --version  Print version", "--version");
-        let result = VersionAudit.run(&project).expect("audit should run");
-        let msg = warn_message(result.status);
+        let (must, should) = rows(&project);
+        assert_eq!(must, AuditStatus::Pass);
+        let msg = warn_message(should);
         assert!(
             msg.contains("no declared short alias responded (tried -V)"),
             "{msg}"
@@ -287,8 +371,7 @@ mod tests {
              -V  ........  --version\n                  Display the version number of \"less\".",
             "--version|-V",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(rows(&project), (AuditStatus::Pass, AuditStatus::Pass));
         assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
     }
 
@@ -301,8 +384,7 @@ mod tests {
             "Options:\n  -h/--help     Print help\n  -V/--version  Print the release and exit",
             "--version|-V",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(rows(&project), (AuditStatus::Pass, AuditStatus::Pass));
         assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
     }
 
@@ -312,8 +394,7 @@ mod tests {
             "Options:\n  --help (-h)       Print help\n  --version (-V)    Print the version",
             "--version|-V",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(rows(&project), (AuditStatus::Pass, AuditStatus::Pass));
         assert_eq!(probed(&project), vec!["--version", "--help", "-V"]);
     }
 
@@ -325,8 +406,7 @@ mod tests {
             "Usage: depot [options]\n\n  -help      Show help.\n  -version   Show the current version.",
             "--version|-version",
         );
-        let result = VersionAudit.run(&project).expect("audit should run");
-        assert_eq!(result.status, AuditStatus::Pass);
+        assert_eq!(rows(&project), (AuditStatus::Pass, AuditStatus::Pass));
         assert_eq!(probed(&project), vec!["--version", "--help", "-version"]);
     }
 }

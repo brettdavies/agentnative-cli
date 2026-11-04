@@ -51,6 +51,7 @@ impl Audit for ColorFlagAudit {
             confidence: Confidence::High,
             mitigation: None,
             config_hint: None,
+            row_statuses: Vec::new(),
             pass_evidence: None,
         })
     }

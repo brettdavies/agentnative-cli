@@ -207,6 +207,7 @@ impl Audit for StandardNamesAudit {
             confidence: Confidence::Low,
             mitigation: result.mitigation.map(Mitigation::DomainVerbs),
             config_hint: result.config_hint,
+            row_statuses: Vec::new(),
             pass_evidence: None,
         })
     }

@@ -1,0 +1,56 @@
+# Throwaway wall-clock benchmark for the scheduling port; lives only on bench/** branches.
+name: bench-fanout
+
+on:
+  push:
+    branches: ['bench/fanout-wallclock']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-fanout-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      SITE_BEFORE_SHA: 4d9fcba314bda79f7c7fad7f17a9a1c59448bee6
+      SITE_AFTER_SHA: e45012a20ac0b00a4ebc71c59f2536c2c6c3afb2
+      PORT_BEFORE_REF: origin/bench/fanout-before
+      ROUNDS: "9"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build the port after U20
+        run: cargo build --release --features web && ls -la target/release/anc
+      - name: Build the port before U20
+        run: |
+          git worktree add -q "$RUNNER_TEMP/before" "$PORT_BEFORE_REF"
+          cd "$RUNNER_TEMP/before"
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target-before" cargo build --release --features web
+          ls -la "$GITHUB_WORKSPACE/target-before/release/anc"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Site engine before and after
+        run: |
+          for pair in "site-before:$SITE_BEFORE_SHA" "site-after:$SITE_AFTER_SHA"; do
+            dir=${pair%%:*}; sha=${pair##*:}
+            git init -q "$dir"
+            (cd "$dir"
+             git fetch -q --depth 1 https://github.com/brettdavies/agentnative-site.git "$sha"
+             git checkout -q FETCH_HEAD
+             PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 bun install --frozen-lockfile
+             bun run build > /dev/null)
+          done
+      - name: Benchmark
+        run: bash bench/run.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bench-fanout
+          path: bench/out/

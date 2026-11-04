@@ -188,7 +188,9 @@ fn a_mutated_golden_fails_the_comparison() {
     let spec = format!("\"spec_version\": \"{}\"", case.scenario.spec_version);
     let mutated = golden.replacen(&spec, "\"spec_version\": \"0.0.0\"", 1);
     assert_ne!(mutated, golden, "the mutation must change the document");
+    // `document` only reads when no field differs, and this mutation makes one differ.
     let mut expected = divergences_of(case);
+    expected.remove("document");
     assert!(
         expected.insert("spec_version".to_string()),
         "the anchor element must be one the engine reproduces"

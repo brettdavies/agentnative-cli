@@ -8,6 +8,7 @@ mod common;
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
@@ -163,4 +164,21 @@ fn the_hosts_of_one_audit_keep_their_connections_side_by_side() {
     for server in &servers {
         assert_eq!(server.accepted(), BURST);
     }
+}
+
+#[test]
+fn a_request_outlasts_more_dead_connections_than_it_has_attempts() {
+    let arrived = Arc::new(Barrier::new(BURST));
+    let seen = Arc::new(AtomicUsize::new(0));
+    let server = common::spawn_https_dying_on_reuse(move |_| {
+        if seen.fetch_add(1, Ordering::SeqCst) < BURST {
+            arrived.wait();
+        }
+        RawResponse::new(200, &[], b"ok")
+    });
+    let transport = transport();
+    let url = server.server.url("/");
+    at_once(&transport, &url, BURST);
+    assert_eq!(read_body(&transport, &url), b"ok");
+    assert_eq!(server.accepted(), BURST + 1);
 }

@@ -376,7 +376,7 @@ pub fn spawn_https<F>(handler: F) -> Server
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
-    https_server(handler, false).server
+    https_server(handler, Connections::CloseAfterOne).server
 }
 
 /// An HTTPS server that holds its connections open between requests, and how
@@ -403,11 +403,30 @@ pub fn spawn_https_keep_alive<F>(handler: F) -> KeepAliveServer
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
-    https_server(handler, true)
+    https_server(handler, Connections::KeepAlive)
+}
+
+/// [`spawn_https_keep_alive`], where a connection answers one request and dies
+/// when it is reused: it reads the next request and closes without answering,
+/// which a client holding it idle cannot see coming.
+#[cfg(feature = "web")]
+pub fn spawn_https_dying_on_reuse<F>(handler: F) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
+    https_server(handler, Connections::DieOnReuse)
 }
 
 #[cfg(feature = "web")]
-fn https_server<F>(handler: F, keep_alive: bool) -> KeepAliveServer
+#[derive(Clone, Copy, PartialEq)]
+enum Connections {
+    CloseAfterOne,
+    KeepAlive,
+    DieOnReuse,
+}
+
+#[cfg(feature = "web")]
+fn https_server<F>(handler: F, connections: Connections) -> KeepAliveServer
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
@@ -428,12 +447,18 @@ where
             thread::spawn(move || {
                 let conn = rustls::ServerConnection::new(config).expect("server connection");
                 let mut tls = rustls::StreamOwned::new(conn, stream);
+                let mut answered = false;
                 while let Some(req) = read_request_from(&mut tls) {
+                    if answered && connections == Connections::DieOnReuse {
+                        break;
+                    }
                     recorder.lock().unwrap().push(req.clone());
                     let resp = handler(&req);
-                    let connection = if keep_alive { "keep-alive" } else { "close" };
-                    write_response_ending(&mut tls, &resp, connection);
-                    if !keep_alive {
+                    let closes = connections == Connections::CloseAfterOne;
+                    let header = if closes { "close" } else { "keep-alive" };
+                    write_response_ending(&mut tls, &resp, header);
+                    answered = true;
+                    if closes {
                         tls.conn.send_close_notify();
                         let _ = tls.flush();
                         break;

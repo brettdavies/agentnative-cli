@@ -15,6 +15,7 @@ use super::discovery::resolve_url;
 use super::follow_trail::{Declaration, Kind};
 use crate::web_audit::fetch::ProbeResponse;
 use crate::web_audit::pattern::fixed;
+use crate::web_audit::registry::MAX_CATALOG_CARDS;
 use crate::web_audit::scorecard::EvidenceItem;
 
 /// The media type an AI catalog entry names a server card by, and the
@@ -27,9 +28,6 @@ pub const AI_CATALOG_DOCUMENT: &str = "ai-catalog";
 pub const API_CATALOG_DOCUMENT: &str = "api-catalog";
 /// Retained-document key of the card of record.
 pub const SERVER_CARD_DOCUMENT: &str = "server-card";
-
-// Bounds the card reads one catalog can cause, whatever it lists.
-use crate::web_audit::registry::MAX_CATALOG_CARDS;
 
 // The extension schema's remote URL template variable: `{name}`.
 static URL_TEMPLATE_VARIABLE: LazyLock<Regex> =

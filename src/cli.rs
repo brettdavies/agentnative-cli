@@ -263,8 +263,8 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// issued from here. Besides the target, it contacts the hosts the
     /// target declares (an MCP endpoint a server card names, wire-probed
     /// only after that host publishes a document naming it; an API host the
-    /// api-catalog anchors), at most 4 hosts and 12 follow requests in a
-    /// 6-second window, unless `--no-follow` is set; and the public DNS
+    /// api-catalog anchors), within the host, request, and time limits the
+    /// site publishes, unless `--no-follow` is set; and the public DNS
     /// resolvers the `dns-aid` check queries, which are withheld for a
     /// local target unless `--external-dns` is set.
     ///

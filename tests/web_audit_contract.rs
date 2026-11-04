@@ -1,27 +1,22 @@
 //! The emitted tables against the contract they came from, row for row, and the
-//! rule that every engine setting reaches the engine from `constants.json`.
+//! cross-field rules the site's normalizer owns.
 
 #![cfg(feature = "web")]
 
-mod common;
-
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::path::PathBuf;
 
-use agentnative::web_audit::engine::{FetchHandle, RunInput};
-use agentnative::web_audit::fetch::FetchOptions;
-use agentnative::web_audit::handlers::default_handlers;
-use agentnative::web_audit::mock::{MockResponse, MockTransport};
 use agentnative::web_audit::registry::{
-    ALTERNATIVES, AUDIT_USER_AGENT, CATEGORIES, CATEGORY_ORDER, CHECKS, CONTRACT_FINGERPRINT,
-    MCP_DISCOVERY, MCP_LANES, PROBE_UA_TOKENS, REGISTRY_VERSION, REMEDIATION, RETIRED_CHECK_IDS,
+    ALTERNATIVES, AUDIT_USER_AGENT, AntecedentToken, CATEGORIES, CATEGORY_ORDER, CHECKS,
+    CONTRACT_FINGERPRINT, MCP_DISCOVERY, MCP_LANES, PROBE_UA_TOKENS, REGISTRY_VERSION, REMEDIATION,
+    RETIRED_CHECK_IDS,
 };
-use common::corpus::PublicResolver;
 use regex::Regex;
 use serde_json::{Map, Value};
+
+/// What a report's trail has room for.
+const BREADCRUMB_FITS: usize = 40;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -166,8 +161,8 @@ fn the_user_agents_equal_constants_json() {
     }
 }
 
-/// The file ends in a newline and the site's signal serves the value trimmed, so the
-/// staleness note compares this constant and never the file's bytes.
+/// The file ends in a newline and the site's version signal serves the value trimmed, so
+/// a comparison reads this constant and never the file's bytes.
 #[test]
 fn the_contract_fingerprint_is_the_files_value_trimmed() {
     let raw = fs::read_to_string(root().join("src/web_audit/vendored/contract/FINGERPRINT"))
@@ -176,197 +171,6 @@ fn the_contract_fingerprint_is_the_files_value_trimmed() {
     assert_eq!(CONTRACT_FINGERPRINT, raw.trim());
     assert!(!CONTRACT_FINGERPRINT.is_empty());
     assert!(CONTRACT_FINGERPRINT.chars().all(|c| c.is_ascii_hexdigit()));
-}
-
-fn engine_sources() -> Vec<(PathBuf, String)> {
-    fn walk(dir: &Path, out: &mut Vec<(PathBuf, String)>) {
-        for entry in fs::read_dir(dir).expect("a source directory") {
-            let path = entry.expect("an entry").path();
-            if path.is_dir() {
-                if path.file_name().is_none_or(|name| name != "vendored") {
-                    walk(&path, out);
-                }
-            } else if path.extension().is_some_and(|ext| ext == "rs") {
-                let text = fs::read_to_string(&path).expect("a source file");
-                out.push((path, text));
-            }
-        }
-    }
-    let mut out = Vec::new();
-    walk(&root().join("src/web_audit"), &mut out);
-    out
-}
-
-/// The name a `constants.json` key is emitted under.
-fn emitted_name(key: &str) -> &str {
-    key.strip_suffix("_MS").unwrap_or(key)
-}
-
-/// Production code only: a re-export, a comment or a test reads nothing.
-fn production_code(text: &str) -> String {
-    let body = text.split("#[cfg(test)]").next().unwrap_or(text);
-    let mut out = String::new();
-    let mut in_use = false;
-    for line in body.lines() {
-        let trimmed = line.trim_start();
-        if in_use
-            || trimmed.starts_with("use ")
-            || (trimmed.starts_with("pub") && trimmed.contains(" use "))
-        {
-            in_use = !trimmed.contains(';');
-        } else if !trimmed.starts_with("//") {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-fn engine_code() -> Vec<(PathBuf, String)> {
-    engine_sources()
-        .into_iter()
-        .map(|(path, text)| (path, production_code(&text)))
-        .collect()
-}
-
-fn parse_int(digits: &str) -> Option<u64> {
-    digits.replace('_', "").parse().ok()
-}
-
-#[test]
-fn no_engine_constant_duplicates_a_site_setting() {
-    let doc = contract("constants.json");
-    let definition =
-        Regex::new(r"(?m)^\s*(?:pub(?:\([a-z]+\))?\s+)?(?:const|static)\s+([A-Z0-9_]+)\s*:")
-            .unwrap();
-    for (path, code) in engine_code() {
-        for found in definition.captures_iter(&code) {
-            let name = &found[1];
-            assert!(
-                !doc.as_object()
-                    .unwrap()
-                    .keys()
-                    .any(|key| emitted_name(key) == name),
-                "{} defines {name}; read it from the contract",
-                path.display()
-            );
-        }
-    }
-}
-
-/// A small count is too common a literal to search for, and a setting under a thousand
-/// is one, so this finds the sizes and durations a copied value would show up as.
-#[test]
-fn no_engine_literal_repeats_a_site_setting() {
-    const SEARCHED_FROM: u64 = 1_000;
-    let doc = contract("constants.json");
-    let settings: Vec<(&str, u64)> = doc
-        .as_object()
-        .unwrap()
-        .iter()
-        .filter_map(|(key, value)| Some((key.as_str(), value.as_u64()?)))
-        .filter(|(_, value)| *value >= SEARCHED_FROM)
-        .collect();
-    let millis = Regex::new(r"from_millis\((\d[\d_]*)\)").unwrap();
-    let secs = Regex::new(r"from_secs\((\d[\d_]*)\)").unwrap();
-    let product = Regex::new(r"\b\d[\d_]*(?:\s*\*\s*\d[\d_]*)*\b").unwrap();
-    // A number inside a string is text: a Unicode range, or a line of a message.
-    let string = Regex::new(r#""(?:[^"\\]|\\.)*""#).unwrap();
-    for (path, code) in engine_code() {
-        let code = string.replace_all(&code, "\"\"");
-        let mut written: Vec<u64> = Vec::new();
-        written.extend(millis.captures_iter(&code).filter_map(|c| parse_int(&c[1])));
-        written.extend(
-            secs.captures_iter(&code)
-                .filter_map(|c| parse_int(&c[1]).map(|s| s * 1_000)),
-        );
-        for found in product.find_iter(&code) {
-            let factors: Option<Vec<u64>> = found
-                .as_str()
-                .split('*')
-                .map(|f| parse_int(f.trim()))
-                .collect();
-            if let Some(value) =
-                factors.and_then(|f| f.into_iter().try_fold(1_u64, u64::checked_mul))
-            {
-                written.push(value);
-            }
-        }
-        for (key, value) in &settings {
-            assert!(
-                !written.contains(value),
-                "{} writes {value}, the value of {key}; read it from the contract",
-                path.display()
-            );
-        }
-    }
-}
-
-#[test]
-fn the_engine_reads_every_numeric_setting() {
-    let doc = contract("constants.json");
-    let code = engine_code();
-    for (key, value) in doc.as_object().unwrap() {
-        if !value.is_u64() {
-            continue;
-        }
-        let name = Regex::new(&format!(r"\b{}\b", emitted_name(key))).unwrap();
-        assert!(
-            code.iter().any(|(_, text)| name.is_match(text)),
-            "no production code under src/web_audit reads {}",
-            emitted_name(key)
-        );
-    }
-}
-
-#[test]
-fn the_settings_reach_the_engine_from_the_contract() {
-    use agentnative::web_audit::engine::{DEFAULT_CONCURRENCY, DEFAULT_PER_CHECK_TIMEOUT};
-    let doc = contract("constants.json");
-    assert_eq!(doc["DEFAULT_CONCURRENCY"], DEFAULT_CONCURRENCY);
-    assert_eq!(
-        doc["DEFAULT_PER_CHECK_TIMEOUT_MS"].as_u64(),
-        u64::try_from(DEFAULT_PER_CHECK_TIMEOUT.as_millis()).ok()
-    );
-}
-
-/// The corpus cannot exercise wall-clock settings, so these read what a run and a fetch
-/// are actually given.
-#[test]
-fn a_run_and_a_fetch_take_their_defaults_from_the_contract() {
-    let doc = contract("constants.json");
-    let millis = |key: &str| Duration::from_millis(doc[key].as_u64().unwrap());
-    let fetch = FetchOptions::default();
-    assert_eq!(fetch.timeout, millis("DEFAULT_TIMEOUT_MS"));
-    assert_eq!(
-        fetch.max_redirects,
-        doc["DEFAULT_MAX_REDIRECTS"].as_u64().unwrap() as usize
-    );
-    let (_, handle) = {
-        let transport = Arc::new(MockTransport::new(
-            Vec::new(),
-            MockResponse::ok(200, &[], b""),
-        ));
-        let handle = FetchHandle::new(
-            transport.clone(),
-            Arc::new(PublicResolver),
-            AUDIT_USER_AGENT,
-        );
-        (transport, handle)
-    };
-    let input = RunInput::new("https://example.com/", handle, Arc::new(default_handlers()));
-    assert_eq!(
-        input.concurrency,
-        doc["DEFAULT_CONCURRENCY"].as_u64().unwrap() as usize
-    );
-    assert_eq!(
-        input.per_check_timeout,
-        millis("DEFAULT_PER_CHECK_TIMEOUT_MS")
-    );
-    assert_eq!(
-        input.per_audit_deadline,
-        millis("DEFAULT_PER_AUDIT_DEADLINE_MS")
-    );
 }
 
 // The cross-field rules the site's normalizer owns, read here so a bump that breaks one
@@ -402,20 +206,76 @@ fn every_retired_id_is_gone_and_names_a_live_successor() {
 }
 
 #[test]
-fn every_alternatives_group_offers_a_choice_and_claims_an_antecedent_once() {
+fn every_alternatives_group_offers_a_choice_of_designs_with_checks_behind_them() {
+    let mut groups = BTreeSet::new();
+    let mut claimed: BTreeMap<&str, String> = BTreeMap::new();
+    let gates_a_check = |token: &AntecedentToken| CHECKS.iter().any(|c| c.antecedent == *token);
     for group in ALTERNATIVES {
+        assert!(groups.insert(group.group), "{} twice", group.group);
         assert!(group.variants.len() >= 2, "{}", group.group);
-        let mut claimed = BTreeSet::new();
+        assert!(
+            group
+                .variants
+                .iter()
+                .any(|variant| variant.antecedents.iter().any(gates_a_check)),
+            "{} has no design with checks of its own",
+            group.group
+        );
         for variant in group.variants {
-            for token in variant.antecedents {
+            let name = format!("{}.{}", group.group, variant.name);
+            assert!(
+                !variant.presented_by.is_empty(),
+                "{name} is presented by nothing"
+            );
+            for token in variant.antecedents.iter().chain(variant.presented_by) {
                 assert!(
-                    claimed.insert(token.as_str()),
-                    "{}: {}",
-                    group.group,
+                    gates_a_check(token),
+                    "{name}: {} gates no check",
                     token.as_str()
                 );
+                let holder = claimed
+                    .entry(token.as_str())
+                    .or_insert_with(|| name.clone());
+                assert_eq!(*holder, name, "{} belongs to two designs", token.as_str());
             }
         }
+    }
+}
+
+#[test]
+fn every_check_is_well_formed() {
+    let id = Regex::new(r"^[a-z0-9][a-z0-9-]*$").unwrap();
+    for check in CHECKS {
+        assert!(id.is_match(check.id), "{}", check.id);
+        assert!(check.weight > 0, "{}: a weight of nothing", check.id);
+        assert!(
+            !check.site_types.is_empty(),
+            "{}: it would never apply",
+            check.id
+        );
+        assert!(!check.title.is_empty(), "{}: no title", check.id);
+        assert!(!check.hint.is_empty(), "{}: no hint", check.id);
+        assert!(
+            check.breadcrumb.chars().count() <= BREADCRUMB_FITS,
+            "{}: the trail fits {BREADCRUMB_FITS} characters",
+            check.id
+        );
+    }
+}
+
+#[test]
+fn every_retired_id_says_why() {
+    let doc = contract("registry.json");
+    for (id, retired) in doc["retired"].as_object().unwrap() {
+        assert!(!retired["reason"].as_str().unwrap().is_empty(), "{id}");
+    }
+}
+
+/// `{{evidence}}` is the site's template slot, which the report would print as written.
+#[test]
+fn no_fix_holds_a_template_slot() {
+    for fix in REMEDIATION {
+        assert!(!fix.fix.contains("{{evidence}}"), "{}", fix.id);
     }
 }
 

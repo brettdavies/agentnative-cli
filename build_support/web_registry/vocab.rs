@@ -56,6 +56,15 @@ pub(super) const RETAINED_DOCUMENT_KEYS: &[&str] = &["ai-catalog", "api-catalog"
 pub(super) const RETAINED_DOCUMENT_HANDLERS: &[&str] = &["http", "server-card"];
 /// The field rules a server-card check reads; with none it would pass every card.
 pub(super) const CARD_FIELD_PARAMS: &[&str] = &["required", "remote_required"];
+/// The JSON Schema type names `has_type` in the server-card handler knows. Any other
+/// reads as a mismatch on every card.
+pub(super) const JSON_TYPES: &[&str] = &[
+    "string", "number", "integer", "boolean", "object", "array", "null",
+];
+/// Any other op runs the JSON-errors probe under the check's own id.
+pub(super) const API_HYGIENE_OPS: &[&str] = &["json-errors", "rate-limit"];
+/// Any other op runs the link crawl under the check's own id.
+pub(super) const LLMS_TXT_OPS: &[&str] = &["format", "links", "when-to-use"];
 /// Regex-bearing `with` values: path inside `with`, short field name, and the
 /// JavaScript flags `assert.ts` evaluates the value under.
 pub(super) const PATTERN_FIELDS: &[(&[&str], &str, &str)] = &[

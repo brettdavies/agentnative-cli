@@ -6,7 +6,7 @@ use super::PatternSpec;
 use super::vocab::PATTERN_FIELDS;
 use crate::js_regex;
 
-fn check_err(id: &str, message: String) -> String {
+pub(super) fn check_err(id: &str, message: String) -> String {
     format!("registry.json: check \"{id}\": {message}")
 }
 

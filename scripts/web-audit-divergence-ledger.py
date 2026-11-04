@@ -15,6 +15,7 @@ usage: WEB_AUDIT_SITE_REPO=<agentnative-site checkout> \\
 """
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -25,11 +26,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "tests/fixtures/web-audit-divergences.toml"
-# The sync script owns where the site keeps what is vendored; the test tree is its last path.
-CORPUS = subprocess.run(
-    ["bash", str(ROOT / "scripts/sync-web-audit.sh"), "--site-paths"],
-    check=True, capture_output=True, text=True,
-).stdout.split()[-1] + "/conformance/scenarios"
 HEADER = """\
 # Web-audit divergence ledger: every element of the vendored conformance
 # corpus the engine does not yet reproduce, one entry per (scenario, element).
@@ -47,6 +43,19 @@ HEADER = """\
 # re-pin:
 #   WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
 """
+
+
+@functools.lru_cache(maxsize=None)
+def site_corpus():
+    """Where the site keeps the corpus, from the sync script, which owns what is vendored."""
+    paths = subprocess.run(
+        ["bash", str(ROOT / "scripts/sync-web-audit.sh"), "--site-paths"],
+        check=True, capture_output=True, text=True,
+    ).stdout.split()
+    tests = [path for path in paths if path.endswith("/test")]
+    if len(tests) != 1:
+        sys.exit(f"error: sync-web-audit.sh --site-paths names no single test tree: {paths}")
+    return f"{tests[0]}/conformance/scenarios"
 
 
 def standing_owners():
@@ -68,7 +77,7 @@ def recorded_at(repo, rev, scenario, cache, name):
     key = (rev, scenario, name)
     if key not in cache:
         try:
-            text = git(repo, "show", f"{rev}:{CORPUS}/{scenario}/{name}")
+            text = git(repo, "show", f"{rev}:{site_corpus()}/{scenario}/{name}")
             cache[key] = json.loads(text)
         except subprocess.CalledProcessError:
             cache[key] = None
@@ -122,7 +131,7 @@ def main():
 
     # With nothing to attribute, the range may not even resolve: a pin off site dev can
     # name a commit a single-branch clone lacks.
-    log = git(repo, "log", "--reverse", "--format=%H %s", f"{args.since}..{pin}", "--", CORPUS) if pairs else ""
+    log = git(repo, "log", "--reverse", "--format=%H %s", f"{args.since}..{pin}", "--", site_corpus()) if pairs else ""
     commits = [line.split(" ", 1) for line in log.splitlines() if line]
     cache = {}
     standing = standing_owners()

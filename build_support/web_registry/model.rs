@@ -86,8 +86,7 @@ pub struct AlternativeVariant {
     #[serde(skip)]
     pub name: String,
     pub antecedents: Vec<String>,
-    /// The tokens whose applied check presents this variant; defaults to
-    /// `antecedents`.
+    /// The tokens whose applied check presents this variant.
     pub presented_by: Vec<String>,
 }
 

@@ -268,6 +268,20 @@ fn a_with_value_a_ported_handler_could_only_misread_fails_naming_the_check() {
     let rule = json!([{ "field": "name", "type": ["string"] }]);
     for (what, handler, eval, with, named) in [
         (
+            "an api op",
+            "api-hygiene",
+            None,
+            json!({ "op": "cache-headers" }),
+            "cache-headers",
+        ),
+        (
+            "an llms op",
+            "llms-txt-quality",
+            None,
+            json!({ "op": "sections" }),
+            "sections",
+        ),
+        (
             "surface",
             "cors-preflight",
             None,
@@ -332,6 +346,13 @@ fn a_with_value_a_ported_handler_could_only_misread_fails_naming_the_check() {
             "with.remote_required",
         ),
         (
+            "a type no schema names",
+            "server-card",
+            Some("retained-document"),
+            json!({ "retained": "server-card", "required": rule, "remote_required": [{ "field": "name", "type": ["String"] }] }),
+            "with.remote_required",
+        ),
+        (
             "a rule with no types",
             "server-card",
             Some("retained-document"),
@@ -355,6 +376,15 @@ fn a_with_a_ported_handler_can_read_builds() {
     let rule = json!([{ "field": "name", "type": ["string"] }]);
     for (handler, eval, with) in [
         ("cors-preflight", None, json!({ "surface": "actual" })),
+        ("api-hygiene", None, json!({ "op": "rate-limit" })),
+        ("llms-txt-quality", None, json!({ "op": "links" })),
+        // Dispatch binds an unported kind before any handler reads `with`.
+        (
+            "card-lint",
+            Some("retained-document"),
+            json!({ "retained": "brand-new" }),
+        ),
+        ("server-card", Some("a-new-rule"), json!({})),
         ("protected-resource", None, json!({ "op": "metadata" })),
         (
             "http",

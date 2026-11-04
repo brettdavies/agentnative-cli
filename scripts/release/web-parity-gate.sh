@@ -144,8 +144,18 @@ elif hardened_git -C "$site" merge-base --is-ancestor "$pin" refs/heads/dev 2>/d
       "$(wc -l <<<"$moved" | tr -d ' ') files since $pin, first $(head -n 1 <<<"$moved"). Fix: merge the open bump PR ($BUMP_PRS), or run the bump workflow: gh workflow run web-audit-bump.yml --ref dev. Docs: $DOCS"
   fi
 else
-  report fail "web-audit-pin: the site pin is not on site dev" \
-    "$pin is not reachable from site dev. Fix: gh workflow run web-audit-bump.yml --ref dev, then merge the PR it opens. Docs: $DOCS"
+  # Until site dev holds what the sync reads, a bump run waits, so running it alone fixes nothing.
+  undelivered=""
+  while IFS= read -r site_path; do
+    hardened_git -C "$site" cat-file -e "refs/heads/dev:$site_path" 2>/dev/null || undelivered="$site_path"
+  done < <(bash "$REPO_ROOT/scripts/sync-web-audit.sh" --site-paths)
+  if [[ -n $undelivered ]]; then
+    report fail "web-audit-pin: the site pin is not on site dev" \
+      "$pin is not reachable from site dev, and site dev has no $undelivered yet. Fix: land the site PR that carries it, then gh workflow run web-audit-bump.yml --ref dev and merge the PR it opens. Docs: $DOCS"
+  else
+    report fail "web-audit-pin: the site pin is not on site dev" \
+      "$pin is not reachable from site dev. Fix: gh workflow run web-audit-bump.yml --ref dev, then merge the PR it opens. Docs: $DOCS"
+  fi
 fi
 
 if [[ -n $failed ]]; then

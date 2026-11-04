@@ -4,10 +4,8 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use super::patterns::collect_patterns;
-use super::vocab::{
-    ANTECEDENTS, CARD_FIELD_PARAMS, CORS_SURFACES, EVAL_RULES, HANDLER_KINDS,
-    PROTECTED_RESOURCE_OPS, RETAINED_DOCUMENT_HANDLERS, RETAINED_DOCUMENT_KEYS, SITE_TYPES, TIERS,
-};
+use super::vocab::{ANTECEDENTS, EVAL_RULES, HANDLER_KINDS, SITE_TYPES, TIERS};
+use super::with::{check_with, known};
 use super::{
     AlternativeGroup, AlternativeVariant, McpDiscovery, McpLane, NormalizedCheck,
     NormalizedRegistry, RemediationEntry, RetiredCheck,
@@ -57,75 +55,6 @@ fn entry<T: for<'de> Deserialize<'de>>(what: &str, value: Value) -> Result<T, St
     serde_json::from_value(value).map_err(|e| format!("registry.json: {what}: {e}"))
 }
 
-fn known(id: &str, field: &str, value: &str, allowed: &[&str]) -> Result<(), String> {
-    if allowed.contains(&value) {
-        Ok(())
-    } else {
-        Err(format!(
-            "registry.json: check \"{id}\": {field} \"{value}\" is not one this build knows ({})",
-            allowed.join(", ")
-        ))
-    }
-}
-
-/// Whether a server-card field rule is one the handler can apply: a field name and
-/// the types that field may hold.
-fn is_field_rule(rule: &Value) -> bool {
-    rule.get("field").is_some_and(Value::is_string)
-        && rule
-            .get("type")
-            .and_then(Value::as_array)
-            .is_some_and(|types| !types.is_empty() && types.iter().all(Value::is_string))
-}
-
-/// What a ported handler reads from `with` it has no way to report on: a value it does
-/// not know would read as a missing document or an empty rule list, a wrong verdict
-/// rather than a skip. An unported handler or eval rule binds Unsupported instead.
-fn check_with(id: &str, raw: &RawCheck) -> Result<(), String> {
-    let text = |key: &str| {
-        raw.with
-            .get(key)
-            .and_then(Value::as_str)
-            .unwrap_or("<absent>")
-    };
-    if raw.eval.as_deref() == Some("retained-document") {
-        known(
-            id,
-            "with.retained",
-            text("retained"),
-            RETAINED_DOCUMENT_KEYS,
-        )?;
-        known(
-            id,
-            "retained-document handler",
-            &raw.handler,
-            RETAINED_DOCUMENT_HANDLERS,
-        )?;
-    }
-    match raw.handler.as_str() {
-        "server-card" => {
-            if raw.eval.as_deref() != Some("retained-document") || text("retained") != "server-card"
-            {
-                return Err(format!(
-                    "registry.json: check \"{id}\": the server-card handler needs eval retained-document and with.retained \"server-card\""
-                ));
-            }
-            for param in CARD_FIELD_PARAMS {
-                let rules = raw.with.get(*param).and_then(Value::as_array);
-                if !rules.is_some_and(|r| !r.is_empty() && r.iter().all(is_field_rule)) {
-                    return Err(format!(
-                        "registry.json: check \"{id}\": with.{param} must list field rules"
-                    ));
-                }
-            }
-        }
-        "protected-resource" => known(id, "with.op", text("op"), PROTECTED_RESOURCE_OPS)?,
-        "cors-preflight" => known(id, "with.surface", text("surface"), CORS_SURFACES)?,
-        _ => {}
-    }
-    Ok(())
-}
-
 fn read_check(value: Value, lanes: &[McpLane]) -> Result<NormalizedCheck, String> {
     let id = value
         .get("id")
@@ -145,7 +74,7 @@ fn read_check(value: Value, lanes: &[McpLane]) -> Result<NormalizedCheck, String
         let ids: Vec<&str> = lanes.iter().map(|l| l.id.as_str()).collect();
         known(&id, "lane", lane, &ids)?;
     }
-    check_with(&id, &raw)?;
+    check_with(&id, &raw.handler, raw.eval.as_deref(), &raw.with)?;
     let patterns = collect_patterns(&id, &raw.with)?;
     let with_json = serde_json::to_string(&Value::Object(raw.with))
         .map_err(|e| format!("registry.json: check \"{id}\": with: {e}"))?;

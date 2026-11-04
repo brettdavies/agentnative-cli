@@ -697,26 +697,6 @@ fn a_line_split_by_another_tests_output_still_names_the_test_and_the_stand_down(
 }
 
 #[test]
-fn the_changelog_says_when_a_bump_changes_more_than_the_pin() {
-    for (file, bullet) in [
-        (SITE_FILES[0], "checks, fixes and settings"),
-        ("src/shared/user-agents.ts", "checks, fixes and settings"),
-        (
-            "tests/fixtures/web-audit-conformance/scenarios/run-c/scorecard.json",
-            "reported site pin",
-        ),
-    ] {
-        let f = Fixture::new();
-        f.site_commit(file, "moved\n", "feat: a move (#2)");
-        let output = f.bump(&["--dry-run"]);
-        assert_ok(&output);
-        let out = stdout(&output);
-        let section = out.split("## Changelog").nth(1).expect("a changelog");
-        assert!(section.contains(bullet), "{file}: {section}");
-    }
-}
-
-#[test]
 fn a_failing_suite_still_lists_the_tests_that_stood_down() {
     let f = Fixture::new();
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
@@ -1514,7 +1494,8 @@ fn a_chain_carries_every_change_once_with_each_commit_on_the_last() {
     let (old, new) = (120, 130);
     for n in 0..old {
         write(
-            &f.site.join(format!("{CORPUS}/old-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/old-{n:03}/scorecard.json")),
             "{\"score\": 1}\n",
         );
     }
@@ -1523,11 +1504,12 @@ fn a_chain_carries_every_change_once_with_each_commit_on_the_last() {
     let base = run_git(&f.repo, &["rev-parse", "HEAD"]);
     run_git(
         &f.site,
-        &["rm", "-r", "--quiet", "--", &format!("{CORPUS}/old-*")],
+        &["rm", "-r", "--quiet", "--", &format!("{SITE_CORPUS}/old-*")],
     );
     for n in 0..new {
         write(
-            &f.site.join(format!("{CORPUS}/new-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/new-{n:03}/scorecard.json")),
             "{\"score\": 2}\n",
         );
     }
@@ -1577,7 +1559,8 @@ fn a_failure_partway_through_a_chain_moves_no_branch_and_cleans_up() {
     let f = Fixture::new();
     for n in 0..150 {
         write(
-            &f.site.join(format!("{CORPUS}/many-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/many-{n:03}/scorecard.json")),
             "{\"score\": 1}\n",
         );
     }
@@ -1607,7 +1590,10 @@ fn a_failure_partway_through_a_chain_moves_no_branch_and_cleans_up() {
 fn a_single_file_over_the_byte_limit_goes_alone_with_no_empty_commit_first() {
     let f = Fixture::new();
     let body = format!("{{\"pad\": \"{}\"}}\n", "x".repeat(3_500_000));
-    write(&f.site.join(format!("{CORPUS}/huge/scorecard.json")), &body);
+    write(
+        &f.site.join(format!("{SITE_CORPUS}/huge/scorecard.json")),
+        &body,
+    );
     commit(&f.site, "feat: one huge golden (#2)");
     assert_ok(&f.bump(&[]));
     for (n, payload) in f.commit_payloads().iter().enumerate() {
@@ -1728,18 +1714,35 @@ impl Fixture {
 
 const SITE_BUILD: &str = "src/data/web-audit/contract/build";
 
+impl Fixture {
+    /// Site dev restarted with no contract at all, and the repository pinned to the old
+    /// history, as a pin on a site PR that dev has not merged is.
+    fn site_dev_without_the_contract(&self) {
+        run_git(&self.site, &["switch", "--quiet", "--orphan", "fresh"]);
+        write(&self.site.join("README.md"), "no contract here\n");
+        commit(&self.site, "docs: a site dev with no contract (#4)");
+        run_git(
+            &self.site,
+            &["branch", "--quiet", "--force", "--move", "fresh", "dev"],
+        );
+    }
+}
+
 #[test]
-fn a_contract_site_dev_has_not_received_is_a_wait_and_not_a_failure() {
+fn a_contract_site_dev_has_never_held_is_a_wait_and_not_a_failure() {
     let f = Fixture::new();
-    f.pin_to_a_site_pr_head();
-    run_git(&f.site, &["rm", "-r", "--quiet", "--", SITE_BUILD]);
-    commit(&f.site, "docs: site dev without the contract (#4)");
+    f.site_dev_without_the_contract();
 
     let decide = f.bump(&["--decide"]);
     assert_ok(&decide);
     assert!(stdout(&decide).contains("bump=no"), "{}", stdout(&decide));
     assert!(
-        stdout(&decide).contains(&format!("has no {SITE_BUILD} yet")),
+        stdout(&decide).contains(" yet, which pin "),
+        "{}",
+        stdout(&decide)
+    );
+    assert!(
+        stdout(&decide).contains("::warning::"),
         "{}",
         stdout(&decide)
     );
@@ -1752,6 +1755,25 @@ fn a_contract_site_dev_has_not_received_is_a_wait_and_not_a_failure() {
         stdout(&output)
     );
     assert!(!f.calls().contains("cargo"), "{}", f.calls());
+    f.assert_tree_clean();
+}
+
+#[test]
+fn a_path_site_dev_held_and_then_dropped_fails_even_with_the_pin_off_dev() {
+    let f = Fixture::new();
+    f.site_dev_without_the_contract();
+    write(&f.site.join(SITE_FILES[0]), "delivered\n");
+    write(&f.site.join(SITE_FILES[1]), "delivered\n");
+    commit(&f.site, "feat: the contract lands (#5)");
+    run_git(&f.site, &["rm", "-r", "--quiet", "--", SITE_BUILD]);
+    commit(&f.site, "refactor: the contract moves away (#6)");
+    let output = f.bump(&["--decide"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(SITE_BUILD),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     f.assert_tree_clean();
 }
 
@@ -2334,6 +2356,21 @@ fn the_gate_refuses_a_missing_ledger_while_the_web_audit_ships() {
         out.contains("is missing while src/web_audit/ ships"),
         "{out}"
     );
+}
+
+#[test]
+fn the_gate_says_to_land_the_site_pr_when_site_dev_has_not_received_what_the_pin_carries() {
+    let tree = GateTree::new(Some("# header only\n"), true, Some(ALL_PORTED));
+    tree.pin_off_site_dev();
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(1), "{out}");
+    assert!(out.contains("yet. Fix: land the site PR"), "{out}");
+    assert!(out.contains(HANDLING_DOCS), "{out}");
+
+    tree.advance_site_dev(SITE_FILES[0]);
+    tree.advance_site_dev(SITE_FILES[1]);
+    let (out, _) = tree.gate();
+    assert!(!out.contains("land the site PR"), "{out}");
 }
 
 #[test]

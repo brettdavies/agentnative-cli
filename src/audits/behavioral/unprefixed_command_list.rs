@@ -19,6 +19,7 @@
 
 use crate::audit::Audit;
 use crate::project::Project;
+use crate::runner::help_probe::is_placeholder;
 use crate::runner::{CommandBlock, HelpOutput};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
@@ -162,15 +163,6 @@ fn prefixed_commands(help: &HelpOutput) -> impl Iterator<Item = (&str, &str)> {
 /// argument placeholders.
 fn is_bare_invocation(command: &str) -> bool {
     command.split_whitespace().all(is_placeholder)
-}
-
-/// An argument placeholder as help text writes one: bracketed (`[project]`,
-/// `<path>`, `[options]`) or an all-caps metavariable (`FILE`, `FILE...`,
-/// `KEY=VALUE`). A command word has a lowercase letter, so `run` and `Run` are
-/// neither.
-fn is_placeholder(token: &str) -> bool {
-    token.starts_with(['[', '<'])
-        || (token.starts_with(char::is_uppercase) && !token.chars().any(char::is_lowercase))
 }
 
 #[cfg(test)]

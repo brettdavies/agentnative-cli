@@ -1,7 +1,8 @@
 # Web-audit divergence ledger: every element of the vendored conformance
 # corpus the engine does not yet reproduce, one entry per (scenario, element).
 # An element is a top-level scorecard field, `row:<check id>`, `unreachable`,
-# or `document` (bytes differ, fields match). `owner` is the site PR that set
+# `document` (bytes differ, fields match), or `requests` (the distinct requests
+# differ from the scenario's requests.json). `owner` is the site PR that set
 # the golden value the engine misses.
 #
 # The conformance and handlers suites assert the observed divergences EQUAL

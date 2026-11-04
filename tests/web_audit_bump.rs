@@ -19,8 +19,11 @@ use serde_json::{Value, json};
 
 const LEDGER: &str = "tests/fixtures/web-audit-divergences.toml";
 const PIN_FILE: &str = "src/web_audit/vendored/SITE_SHA";
-const REGISTRY: &str = "src/web_audit/vendored/registry.yaml";
-const CORPUS: &str = "tests/fixtures/web-audit-conformance/scenarios";
+const REGISTRY: &str = "src/web_audit/vendored/contract/registry.json";
+/// Where the corpus lands in this repository.
+const CORPUS: &str = "tests/fixtures/web-audit-contract/conformance/scenarios";
+/// Where the site keeps it, and where the ledger generator reads its history.
+const SITE_CORPUS: &str = "src/data/web-audit/contract/test/conformance/scenarios";
 const SCRIPTS: [&str; 7] = [
     "sync-web-audit.sh",
     "hardened-git.sh",
@@ -31,15 +34,10 @@ const SCRIPTS: [&str; 7] = [
     "cargo-inputs.sh",
 ];
 /// The site paths the sync script reads, as fixture files.
-const SITE_FILES: [&str; 8] = [
-    "src/data/web-audit/registry.yaml",
-    "src/data/web-audit/remediation.yaml",
-    "src/data/web-audit/server-card.schema.json",
-    "src/shared/user-agents.ts",
-    "src/shared/site-url.ts",
-    "src/shared/audit-routes.ts",
-    "tests/fixtures/web-audit-score-parity.json",
-    "tests/fixtures/web-audit-conformance/scenarios/run-a/scorecard.json",
+const SITE_FILES: [&str; 3] = [
+    "src/data/web-audit/contract/build/registry.json",
+    "src/data/web-audit/contract/test/score-parity.json",
+    "src/data/web-audit/contract/test/conformance/scenarios/run-a/scorecard.json",
 ];
 
 const CARGO_SHIM: &str = r#"#!/usr/bin/env bash
@@ -139,6 +137,10 @@ fn git_command(dir: &Path) -> Command {
             "user.email=fixture@example.invalid",
             "-c",
             "commit.gpgsign=false",
+            // A developer's global ignore file commonly lists `build/`, which the
+            // site's contract uses as a directory name.
+            "-c",
+            "core.excludesFile=/dev/null",
         ])
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_SYSTEM", "/dev/null");
@@ -193,10 +195,7 @@ impl Fixture {
         for file in SITE_FILES {
             write(&site.join(file), &format!("{file}: first\n"));
         }
-        write(
-            &site.join("tests/fixtures/web-audit-conformance/scenarios/run-a/scorecard.json"),
-            "{\"score\": 1}\n",
-        );
+        write(&site.join(SITE_FILES[2]), "{\"score\": 1}\n");
         let first_pin = commit(&site, "feat: the first site commit (#1)");
 
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -583,7 +582,7 @@ fn a_dry_run_reports_the_bump_and_restores_the_tree() {
     let f = Fixture::new();
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     let new = f.site_commit(
-        &format!("{CORPUS}/run-b/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-b/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a new scenario (#3)",
     );
@@ -640,11 +639,11 @@ fn deleted_vendored_files_are_called_out_because_no_test_can_see_a_shrink() {
             "rm",
             "--quiet",
             "--",
-            &format!("{CORPUS}/run-a/scorecard.json"),
+            &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         ],
     );
     f.site_commit(
-        &format!("{CORPUS}/run-b/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-b/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a scenario replaced (#3)",
     );
@@ -695,26 +694,6 @@ fn a_line_split_by_another_tests_output_still_names_the_test_and_the_stand_down(
     assert!(out.contains("- `a_test`"), "{out}");
     assert!(out.contains("other: a full run may exit 3"), "{out}");
     assert!(!out.contains("did not build"), "{out}");
-}
-
-#[test]
-fn the_changelog_says_when_a_bump_changes_more_than_the_pin() {
-    for (file, bullet) in [
-        (SITE_FILES[0], "checks, fixes and settings"),
-        ("src/shared/user-agents.ts", "checks, fixes and settings"),
-        (
-            "tests/fixtures/web-audit-conformance/scenarios/run-c/scorecard.json",
-            "reported site pin",
-        ),
-    ] {
-        let f = Fixture::new();
-        f.site_commit(file, "moved\n", "feat: a move (#2)");
-        let output = f.bump(&["--dry-run"]);
-        assert_ok(&output);
-        let out = stdout(&output);
-        let section = out.split("## Changelog").nth(1).expect("a changelog");
-        assert!(section.contains(bullet), "{file}: {section}");
-    }
 }
 
 #[test]
@@ -792,7 +771,7 @@ fn a_suite_that_cannot_build_says_so() {
 fn divergences_land_green_as_ledger_entries_grouped_by_owning_site_pr() {
     let f = Fixture::new();
     f.site_commit(
-        &format!("{CORPUS}/run-a/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         "{\"score\": 2, \"results\": [{\"id\": \"robots\", \"status\": \"pass\"}]}\n",
         "feat: a golden moves (#9001)",
     );
@@ -882,9 +861,26 @@ fn a_divergence_with_no_attributable_site_change_fails_visibly() {
 }
 
 #[test]
+fn a_divergence_falls_back_to_the_commit_that_touched_only_the_scenarios_requests() {
+    let f = Fixture::new();
+    f.site_commit(
+        &format!("{SITE_CORPUS}/run-a/requests.json"),
+        "[]\n",
+        "feat: the requests move (#9003)",
+    );
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#9004)");
+    f.answer("divergences.json", "[[\"run-a\", \"score\"]]");
+    let output = f.bump(&["--dry-run"]);
+    assert_ok(&output);
+    let out = stdout(&output);
+    assert!(!out.contains("no site PR owns"), "{out}");
+    assert!(out.contains("#9003"), "{out}");
+}
+
+#[test]
 fn a_commit_with_no_pr_changing_a_standing_entry_names_that_commit_too() {
     let f = Fixture::new();
-    let golden = format!("{CORPUS}/run-a/scorecard.json");
+    let golden = format!("{SITE_CORPUS}/run-a/scorecard.json");
     write(
         &f.repo.join(LEDGER),
         &format!(
@@ -913,7 +909,7 @@ fn a_path_git_would_quote_reaches_the_commit_and_the_body_as_it_is() {
     let f = Fixture::new();
     let path = format!("{CORPUS}/café/scorecard.json");
     f.site_commit(
-        &path,
+        &format!("{SITE_CORPUS}/café/scorecard.json"),
         "{\"score\": 3}\n",
         "feat: a scenario with an accent (#2)",
     );
@@ -1004,7 +1000,7 @@ fn a_body_past_githubs_limit_is_cut_and_keeps_its_template() {
 #[test]
 fn a_divergence_a_commit_with_no_pr_set_names_that_commit_rather_than_another_pr() {
     let f = Fixture::new();
-    let golden = format!("{CORPUS}/run-a/scorecard.json");
+    let golden = format!("{SITE_CORPUS}/run-a/scorecard.json");
     f.site_commit(
         &golden,
         "{\"score\": 1, \"other\": 2}\n",
@@ -1048,11 +1044,11 @@ fn a_first_publish_signs_on_a_scratch_ref_then_creates_the_branch_and_the_pr() {
             "rm",
             "--quiet",
             "--",
-            &format!("{CORPUS}/run-a/scorecard.json"),
+            &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         ],
     );
     let new = f.site_commit(
-        &format!("{CORPUS}/run-b/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-b/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a scenario replaced (#3)",
     );
@@ -1112,7 +1108,7 @@ fn a_first_publish_signs_on_a_scratch_ref_then_creates_the_branch_and_the_pr() {
 fn a_regenerated_ledger_lands_in_the_commit_with_its_pin() {
     let f = Fixture::new();
     let new = f.site_commit(
-        &format!("{CORPUS}/run-a/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a golden moves (#9001)",
     );
@@ -1300,7 +1296,8 @@ fn a_bump_too_large_for_one_commit_lands_as_a_chain_of_verified_commits() {
     let base = run_git(&f.repo, &["rev-parse", "HEAD"]);
     for n in 0..FILES {
         write(
-            &f.site.join(format!("{CORPUS}/many-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/many-{n:03}/scorecard.json")),
             "{\"score\": 1}\n",
         );
     }
@@ -1353,7 +1350,7 @@ fn a_bump_of_large_files_splits_by_size_too() {
     let body = format!("{{\"pad\": \"{}\"}}\n", "x".repeat(1_600_000));
     for n in 0..3 {
         write(
-            &f.site.join(format!("{CORPUS}/big-{n}/scorecard.json")),
+            &f.site.join(format!("{SITE_CORPUS}/big-{n}/scorecard.json")),
             &body,
         );
     }
@@ -1497,7 +1494,8 @@ fn a_chain_carries_every_change_once_with_each_commit_on_the_last() {
     let (old, new) = (120, 130);
     for n in 0..old {
         write(
-            &f.site.join(format!("{CORPUS}/old-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/old-{n:03}/scorecard.json")),
             "{\"score\": 1}\n",
         );
     }
@@ -1506,11 +1504,12 @@ fn a_chain_carries_every_change_once_with_each_commit_on_the_last() {
     let base = run_git(&f.repo, &["rev-parse", "HEAD"]);
     run_git(
         &f.site,
-        &["rm", "-r", "--quiet", "--", &format!("{CORPUS}/old-*")],
+        &["rm", "-r", "--quiet", "--", &format!("{SITE_CORPUS}/old-*")],
     );
     for n in 0..new {
         write(
-            &f.site.join(format!("{CORPUS}/new-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/new-{n:03}/scorecard.json")),
             "{\"score\": 2}\n",
         );
     }
@@ -1560,7 +1559,8 @@ fn a_failure_partway_through_a_chain_moves_no_branch_and_cleans_up() {
     let f = Fixture::new();
     for n in 0..150 {
         write(
-            &f.site.join(format!("{CORPUS}/many-{n:03}/scorecard.json")),
+            &f.site
+                .join(format!("{SITE_CORPUS}/many-{n:03}/scorecard.json")),
             "{\"score\": 1}\n",
         );
     }
@@ -1590,7 +1590,10 @@ fn a_failure_partway_through_a_chain_moves_no_branch_and_cleans_up() {
 fn a_single_file_over_the_byte_limit_goes_alone_with_no_empty_commit_first() {
     let f = Fixture::new();
     let body = format!("{{\"pad\": \"{}\"}}\n", "x".repeat(3_500_000));
-    write(&f.site.join(format!("{CORPUS}/huge/scorecard.json")), &body);
+    write(
+        &f.site.join(format!("{SITE_CORPUS}/huge/scorecard.json")),
+        &body,
+    );
     commit(&f.site, "feat: one huge golden (#2)");
     assert_ok(&f.bump(&[]));
     for (n, payload) in f.commit_payloads().iter().enumerate() {
@@ -1706,6 +1709,113 @@ impl Fixture {
         commit(&self.repo, "chore: pin to the PR's head");
         self.site_commit("OTHER.md", "not vendored\n", "docs: dev moves on (#3)");
         head
+    }
+}
+
+const SITE_BUILD: &str = "src/data/web-audit/contract/build";
+
+impl Fixture {
+    /// Site dev restarted with no contract at all, and the repository pinned to the old
+    /// history, as a pin on a site PR that dev has not merged is.
+    fn site_dev_without_the_contract(&self) {
+        run_git(&self.site, &["switch", "--quiet", "--orphan", "fresh"]);
+        write(&self.site.join("README.md"), "no contract here\n");
+        commit(&self.site, "docs: a site dev with no contract (#4)");
+        run_git(
+            &self.site,
+            &["branch", "--quiet", "--force", "--move", "fresh", "dev"],
+        );
+    }
+}
+
+#[test]
+fn a_contract_site_dev_has_never_held_is_a_wait_and_not_a_failure() {
+    let f = Fixture::new();
+    f.site_dev_without_the_contract();
+
+    let decide = f.bump(&["--decide"]);
+    assert_ok(&decide);
+    assert!(stdout(&decide).contains("bump=no"), "{}", stdout(&decide));
+    assert!(
+        stdout(&decide).contains(" yet, which pin "),
+        "{}",
+        stdout(&decide)
+    );
+    assert!(
+        stdout(&decide).contains("::warning::"),
+        "{}",
+        stdout(&decide)
+    );
+
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        stdout(&output).contains("nothing to bump"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(!f.calls().contains("cargo"), "{}", f.calls());
+    f.assert_tree_clean();
+}
+
+#[test]
+fn a_path_site_dev_held_and_then_dropped_fails_even_with_the_pin_off_dev() {
+    let f = Fixture::new();
+    f.site_dev_without_the_contract();
+    write(&f.site.join(SITE_FILES[0]), "delivered\n");
+    write(&f.site.join(SITE_FILES[1]), "delivered\n");
+    commit(&f.site, "feat: the contract lands (#5)");
+    run_git(&f.site, &["rm", "-r", "--quiet", "--", SITE_BUILD]);
+    commit(&f.site, "refactor: the contract moves away (#6)");
+    let output = f.bump(&["--decide"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(SITE_BUILD),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    f.assert_tree_clean();
+}
+
+#[test]
+fn a_site_dev_that_drops_a_path_its_own_pin_carries_fails_visibly() {
+    let f = Fixture::new();
+    run_git(&f.site, &["rm", "-r", "--quiet", "--", SITE_BUILD]);
+    commit(&f.site, "refactor: the contract moves away (#4)");
+    let output = f.bump(&["--decide"]);
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(SITE_BUILD),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    f.assert_tree_clean();
+}
+
+#[test]
+fn the_changelog_says_when_a_bump_changes_more_than_the_pin() {
+    for (file, bullet) in [
+        (SITE_FILES[0].to_string(), "checks, fixes and settings"),
+        (
+            format!("{SITE_BUILD}/constants.json"),
+            "checks, fixes and settings",
+        ),
+        (
+            format!("{SITE_BUILD}/remediation.json"),
+            "checks, fixes and settings",
+        ),
+        (
+            format!("{SITE_CORPUS}/run-c/scorecard.json"),
+            "reported site pin",
+        ),
+    ] {
+        let f = Fixture::new();
+        f.site_commit(&file, "moved\n", "feat: a move (#2)");
+        let output = f.bump(&["--dry-run"]);
+        assert_ok(&output);
+        let out = stdout(&output);
+        let section = out.split("## Changelog").nth(1).expect("a changelog");
+        assert!(section.contains(bullet), "{file}: {section}");
     }
 }
 
@@ -1921,7 +2031,7 @@ fn a_symlink_in_a_site_commit_stops_the_bump_before_anything_is_prepared() {
     let f = Fixture::new();
     std::os::unix::fs::symlink(
         "/proc/self/environ",
-        f.site.join(CORPUS).join("run-a/leak.json"),
+        f.site.join(SITE_CORPUS).join("run-a/leak.json"),
     )
     .unwrap();
     commit(&f.site, "feat: a scenario that links out (#2)");
@@ -1978,7 +2088,7 @@ fn the_token_job_checks_out_a_commit_named_before_any_test_code_ran() {
 fn two_bumps_in_a_row_carry_an_entry_no_commit_in_the_second_range_touched() {
     let f = Fixture::new();
     f.site_commit(
-        &format!("{CORPUS}/run-a/scorecard.json"),
+        &format!("{SITE_CORPUS}/run-a/scorecard.json"),
         "{\"score\": 2}\n",
         "feat: a golden moves (#9001)",
     );
@@ -2246,6 +2356,21 @@ fn the_gate_refuses_a_missing_ledger_while_the_web_audit_ships() {
         out.contains("is missing while src/web_audit/ ships"),
         "{out}"
     );
+}
+
+#[test]
+fn the_gate_says_to_land_the_site_pr_when_site_dev_has_not_received_what_the_pin_carries() {
+    let tree = GateTree::new(Some("# header only\n"), true, Some(ALL_PORTED));
+    tree.pin_off_site_dev();
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(1), "{out}");
+    assert!(out.contains("yet. Fix: land the site PR"), "{out}");
+    assert!(out.contains(HANDLING_DOCS), "{out}");
+
+    tree.advance_site_dev(SITE_FILES[0]);
+    tree.advance_site_dev(SITE_FILES[1]);
+    let (out, _) = tree.gate();
+    assert!(!out.contains("land the site PR"), "{out}");
 }
 
 #[test]

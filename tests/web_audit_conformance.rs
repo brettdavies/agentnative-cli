@@ -3,7 +3,7 @@
 //! for byte to the JSON the anc.dev engine wrote for the same exchanges.
 //!
 //! The corpus is the site's own recording at the single-hop fetch seam
-//! (`tests/fixtures/web-audit-conformance/README.md`), so a divergence
+//! (`tests/fixtures/web-audit-contract/conformance/README.md`), so a divergence
 //! here is a divergence in a verdict, an evidence line, a score, or a key
 //! order, not in a test double. An element the Rust engine cannot yet
 //! reproduce at the vendored pin is an entry in the divergence ledger
@@ -22,10 +22,10 @@ use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::{ScorecardStatus, to_wire_json};
-use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
+use common::corpus::{Case, Golden, SentRequest, corpus_dir, load_cases, replay};
 use common::ledger::{
-    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, golden_text,
-    load_ledger,
+    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, element,
+    golden_text, load_ledger, request_differences, requests_differ,
 };
 use std::sync::Arc;
 
@@ -74,10 +74,30 @@ fn every_corpus_scenario_reproduces_the_site_scorecard_or_is_ledgered() {
     let problems = compare_with_ledger(&actual, &ledger, |_| true);
     let mut detail: Vec<String> = Vec::new();
     for case in &cases {
-        let unledgered = actual
+        let unledgered: Vec<&String> = actual
             .iter()
-            .any(|(s, e)| s == &case.name && !ledger.contains_key(&(s.clone(), e.clone())));
-        if unledgered && let Ok(json) = scorecard_json(case) {
+            .filter(|(s, e)| s == &case.name && !ledger.contains_key(&(s.clone(), e.clone())))
+            .map(|(_, e)| e)
+            .collect();
+        if unledgered.iter().any(|e| *e == common::ledger::REQUESTS) {
+            let transport = common::corpus::transport_for(&case.scenario);
+            let _ = common::corpus::replay_on(
+                &case.scenario,
+                Arc::new(default_handlers()),
+                transport.clone(),
+            );
+            let sent: Vec<SentRequest> =
+                transport.requests().iter().map(SentRequest::from).collect();
+            detail.push(format!(
+                "{} requests:\n{}",
+                case.name,
+                request_differences(&sent, &common::corpus::recorded_requests(&case.name))
+                    .join("\n")
+            ));
+        }
+        if unledgered.iter().any(|e| *e != common::ledger::REQUESTS)
+            && let Ok(json) = scorecard_json(case)
+        {
             detail.push(format!(
                 "{} differs at {}",
                 case.name,
@@ -221,6 +241,87 @@ fn a_field_only_the_engine_writes_is_a_divergence() {
     assert!(divergences_against(case, &without).contains("spec_version"));
 }
 
+fn sent(url: &str) -> SentRequest {
+    SentRequest {
+        method: "GET".to_string(),
+        url: url.to_string(),
+        headers: BTreeMap::from([("accept".to_string(), "*/*".to_string())]),
+        body: None,
+    }
+}
+
+#[test]
+fn a_request_set_compares_as_parsed_entries_and_each_request_once() {
+    let recorded = BTreeSet::from([sent("https://a/"), sent("https://b/")]);
+    let same = [sent("https://b/"), sent("https://a/")];
+    assert!(!requests_differ(&same, &recorded), "order does not count");
+    assert!(
+        requests_differ(&[sent("https://a/")], &recorded),
+        "a request the port never sent"
+    );
+    let extra = [sent("https://a/"), sent("https://b/"), sent("https://c/")];
+    assert!(
+        requests_differ(&extra, &recorded),
+        "a request the site never sent"
+    );
+    let twice = [sent("https://a/"), sent("https://a/"), sent("https://b/")];
+    assert!(requests_differ(&twice, &recorded), "a request sent twice");
+    let mut other_header = sent("https://b/");
+    other_header
+        .headers
+        .insert("accept".to_string(), "text/html".to_string());
+    assert!(
+        requests_differ(&[sent("https://a/"), other_header], &recorded),
+        "a header value"
+    );
+    let mut other_body = sent("https://b/");
+    other_body.body = Some("{}".to_string());
+    assert!(
+        requests_differ(&[sent("https://a/"), other_body], &recorded),
+        "a body"
+    );
+}
+
+/// A site that records a request a replay does not send shows up under the scenario's
+/// `requests` element, which the ledger holds like any other.
+#[test]
+fn a_request_the_replay_does_not_reproduce_reads_as_the_requests_element() {
+    let cases = load_cases();
+    let case = cases
+        .iter()
+        .find(|c| c.name == "run-healthy")
+        .expect("the healthy whole-run scenario");
+    assert!(!common::corpus::recorded_requests(&case.name).is_empty());
+    let transport = common::corpus::transport_for(&case.scenario);
+    let _ = common::corpus::replay_on(
+        &case.scenario,
+        Arc::new(default_handlers()),
+        transport.clone(),
+    );
+    let replayed: Vec<SentRequest> = transport.requests().iter().map(SentRequest::from).collect();
+    // Compared with the replay itself: a bump may ledger this scenario's requests.
+    let mut recorded: BTreeSet<SentRequest> = replayed.iter().cloned().collect();
+    assert!(!requests_differ(&replayed, &recorded));
+    let dropped = recorded.iter().next().cloned().unwrap();
+    recorded.remove(&dropped);
+    assert!(requests_differ(&replayed, &recorded));
+
+    let actual = BTreeSet::from([element(&case.name, common::ledger::REQUESTS)]);
+    assert_eq!(
+        compare_with_ledger(&actual, &BTreeMap::new(), |_| true).len(),
+        1
+    );
+    let ledger = BTreeMap::from([(
+        element(&case.name, common::ledger::REQUESTS),
+        "#1".to_string(),
+    )]);
+    assert!(compare_with_ledger(&actual, &ledger, |_| true).is_empty());
+    assert_eq!(
+        compare_with_ledger(&BTreeSet::new(), &ledger, |_| true).len(),
+        1
+    );
+}
+
 /// A dropped directory or a filter bug in the loader would shrink every suite's
 /// input without failing any of them; the corpus's own index names each scenario.
 #[test]
@@ -255,4 +356,43 @@ fn every_unported_binding_the_site_scores_is_ledgered() {
             check.id
         );
     }
+}
+
+#[test]
+fn a_requests_divergence_names_what_differs() {
+    let request = |url: &str| SentRequest {
+        method: "GET".to_string(),
+        url: url.to_string(),
+        headers: BTreeMap::new(),
+        body: None,
+    };
+    let sent = [
+        request("https://a.test/sent"),
+        request("https://a.test/twice"),
+        request("https://a.test/twice"),
+    ];
+    let recorded = BTreeSet::from([
+        request("https://a.test/recorded"),
+        request("https://a.test/twice"),
+    ]);
+    let lines = request_differences(&sent, &recorded);
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("sent, not recorded") && l.contains("/sent")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("recorded, not sent") && l.contains("/recorded")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("sent twice") && l.contains("/twice")),
+        "{lines:?}"
+    );
 }

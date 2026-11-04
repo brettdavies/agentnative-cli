@@ -25,8 +25,9 @@
 #                                        nothing the suites read since its base.
 #
 # "Nothing to bump" means the pin is on site dev and dev's head changes no vendored
-# file. A pin off dev, such as a site PR's head, always moves onto dev, even when the
-# bytes match, because that commit can vanish from the site's history.
+# file, or the pin is off dev and dev has never held a path the sync reads. Otherwise a
+# pin off dev, such as a site PR's head, moves onto dev, even when the bytes match,
+# because that commit can vanish from the site's history.
 #
 # Every mode but --prepare leaves the vendored paths as it found them, and every mode
 # refuses to start when one is dirty. sync-web-audit.sh owns what is vendored and how
@@ -164,6 +165,19 @@ if hardened_git -C "$WEB_AUDIT_SITE_REPO" merge-base --is-ancestor "$old" "$new"
 elif [[ $WEB_AUDIT_SITE_REPO == "$work/site" ]]; then
   # A single-branch clone lacks a PR head; the ledger generator walks from it.
   hardened_git -C "$WEB_AUDIT_SITE_REPO" fetch --quiet origin "$old" || true
+fi
+
+# A pin off dev can carry paths dev has never held, as when this repository lands a
+# contract before the site merges it. That is a wait. A path dev once held and has since
+# dropped is a site change someone must see, so it goes on to fail in the sync below.
+if [[ -z $on_dev ]]; then
+  while IFS= read -r site_path; do
+    if ! hardened_git -C "$WEB_AUDIT_SITE_REPO" cat-file -e "$new:$site_path" 2>/dev/null \
+      && [[ -z $(hardened_git -C "$WEB_AUDIT_SITE_REPO" log -1 --format=%H "$new" -- "$site_path") ]]; then
+      echo "::warning::site dev ${new:0:7} has no $site_path yet; the pin moves once the site merges it"
+      nothing_to_bump "site dev ${new:0:7} has no $site_path yet, which pin ${old:0:7} carries"
+    fi
+  done < <(bash scripts/sync-web-audit.sh --site-paths)
 fi
 
 bash scripts/sync-web-audit.sh --pin "$new" >/dev/null

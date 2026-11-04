@@ -1,9 +1,8 @@
 //! The vendored web-audit check registry, compiled into the binary.
 //!
-//! `build.rs` normalizes `src/web_audit/vendored/registry.yaml` and its
-//! companions the way `agentnative-site:src/build/13-web-audit-registry.mjs`
-//! does and emits every table as a `const` into
-//! `$OUT_DIR/generated_web_registry.rs`, which this module includes. The
+//! `build.rs` reads the site's vendoring contract under
+//! `src/web_audit/vendored/contract/` and emits every table and engine setting as a
+//! `const` into `$OUT_DIR/generated_web_registry.rs`, which this module includes. The
 //! tables are the check definitions (`CHECKS`, in registry order, which is
 //! also scorecard row order), the display categories, the MCP protocol
 //! lanes, MCP discovery configuration, the fix catalog, the probe User-Agent strings, and the

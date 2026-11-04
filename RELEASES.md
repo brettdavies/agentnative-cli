@@ -562,6 +562,9 @@ When the site reverts what an open bump carries, no later run updates that PR, b
 site's head: close it. If it merges anyway, the next run moves the pin, and `web-audit-stale` holds a release until
 then.
 
+While the pin sits on a site PR whose paths site `dev` has never held, a run reports `nothing to bump` with a warning,
+and `web-audit-pin` names the path, so the site PR lands first. A path `dev` held and then dropped fails the run.
+
 **A green bump** moved the pin and reproduces the site, or records where it does not. Read its body's Divergences and
 Unported sections: when both say None, `anc web` matches anc.dev at the new pin, and merging it is all the work there is.
 A body that lists deleted vendored files needs a closer read, because a site change that removes scenarios shrinks the

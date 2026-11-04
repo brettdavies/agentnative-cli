@@ -15,6 +15,7 @@ usage: WEB_AUDIT_SITE_REPO=<agentnative-site checkout> \\
 """
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -25,12 +26,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "tests/fixtures/web-audit-divergences.toml"
-CORPUS = "tests/fixtures/web-audit-conformance/scenarios"
 HEADER = """\
 # Web-audit divergence ledger: every element of the vendored conformance
 # corpus the engine does not yet reproduce, one entry per (scenario, element).
 # An element is a top-level scorecard field, `row:<check id>`, `unreachable`,
-# or `document` (bytes differ, fields match). `owner` is the site PR that set
+# `document` (bytes differ, fields match), or `requests` (the distinct requests
+# differ from the scenario's requests.json). `owner` is the site PR that set
 # the golden value the engine misses.
 #
 # The conformance and handlers suites assert the observed divergences EQUAL
@@ -42,6 +43,19 @@ HEADER = """\
 # re-pin:
 #   WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
 """
+
+
+@functools.lru_cache(maxsize=None)
+def site_corpus():
+    """Where the site keeps the corpus, from the sync script, which owns what is vendored."""
+    paths = subprocess.run(
+        ["bash", str(ROOT / "scripts/sync-web-audit.sh"), "--site-paths"],
+        check=True, capture_output=True, text=True,
+    ).stdout.split()
+    tests = [path for path in paths if path.endswith("/test")]
+    if len(tests) != 1:
+        sys.exit(f"error: sync-web-audit.sh --site-paths names no single test tree: {paths}")
+    return f"{tests[0]}/conformance/scenarios"
 
 
 def standing_owners():
@@ -59,15 +73,25 @@ def git(repo, *args):
     ).stdout
 
 
-def golden_at(repo, rev, scenario, cache):
-    key = (rev, scenario)
+def recorded_at(repo, rev, scenario, cache, name):
+    key = (rev, scenario, name)
     if key not in cache:
         try:
-            text = git(repo, "show", f"{rev}:{CORPUS}/{scenario}/scorecard.json")
+            text = git(repo, "show", f"{rev}:{site_corpus()}/{scenario}/{name}")
             cache[key] = json.loads(text)
         except subprocess.CalledProcessError:
             cache[key] = None
     return cache[key]
+
+
+def golden_at(repo, rev, scenario, cache):
+    return recorded_at(repo, rev, scenario, cache, "scorecard.json")
+
+
+def element_at(repo, rev, scenario, cache, element):
+    if element == "requests":
+        return recorded_at(repo, rev, scenario, cache, "requests.json")
+    return element_of(golden_at(repo, rev, scenario, cache), element)
 
 
 def element_of(doc, element):
@@ -107,7 +131,7 @@ def main():
 
     # With nothing to attribute, the range may not even resolve: a pin off site dev can
     # name a commit a single-branch clone lacks.
-    log = git(repo, "log", "--reverse", "--format=%H %s", f"{args.since}..{pin}", "--", CORPUS) if pairs else ""
+    log = git(repo, "log", "--reverse", "--format=%H %s", f"{args.since}..{pin}", "--", site_corpus()) if pairs else ""
     commits = [line.split(" ", 1) for line in log.splitlines() if line]
     cache = {}
     standing = standing_owners()
@@ -116,11 +140,13 @@ def main():
         owner = None
         latest_touch = None
         for sha, subject in commits:
-            before = golden_at(repo, f"{sha}^", scenario, cache)
-            after = golden_at(repo, sha, scenario, cache)
-            if before != after:
+            touched = any(
+                recorded_at(repo, f"{sha}^", scenario, cache, name) != recorded_at(repo, sha, scenario, cache, name)
+                for name in ("scorecard.json", "requests.json")
+            )
+            if touched:
                 latest_touch = subject
-            if element_of(before, element) != element_of(after, element):
+            if element_at(repo, f"{sha}^", scenario, cache, element) != element_at(repo, sha, scenario, cache, element):
                 owner = (sha, subject)
         # A commit in range that changed this element owns it, and one that names no PR
         # stops here, because any other owner would be a guess. Otherwise a standing entry

@@ -1,0 +1,357 @@
+[
+  {
+    "method": "GET",
+    "url": "https://cloudflare-dns.com/dns-query?name=_a2a._agents.example.com&type=SVCB",
+    "headers": {
+      "accept": "application/dns-json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://cloudflare-dns.com/dns-query?name=_index._agents.example.com&type=SVCB",
+    "headers": {
+      "accept": "application/dns-json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://cloudflare-dns.com/dns-query?name=_mcp._agents.example.com&type=SVCB",
+    "headers": {
+      "accept": "application/dns-json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://dns.google/resolve?name=_a2a._agents.example.com&type=SVCB",
+    "headers": {
+      "accept": "application/dns-json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://dns.google/resolve?name=_index._agents.example.com&type=SVCB",
+    "headers": {
+      "accept": "application/dns-json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://dns.google/resolve?name=_mcp._agents.example.com&type=SVCB",
+    "headers": {
+      "accept": "application/dns-json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/",
+    "headers": {
+      "accept": "*/*",
+      "user-agent": "ChatGPT-User/1.0 (+https://openai.com/bot)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/",
+    "headers": {
+      "accept": "text/markdown",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/agent-card.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/agent-skills/index.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/agent.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/ai-catalog.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/api-catalog",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/http-message-signatures-directory",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/mcp.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/mcp/server-card.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/oauth-authorization-server",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/openapi.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/openid-configuration",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/security.txt",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/.well-known/skills/index.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/anc-web-audit-no-such-api",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/anc-web-audit-no-such-page",
+    "headers": {
+      "accept": "text/markdown",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/anc-web-audit-no-such-page",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/llms-full.txt",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/llms.txt",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/openapi.json",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/openapi.yaml",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/robots.txt",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://example.com/sitemap.xml",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://h1.example.net/mcp",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://h2.example.net/mcp",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://h3.example.net/mcp",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "GET",
+    "url": "https://h4.example.net/mcp",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/mcp",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-method": "tools/list",
+      "mcp-protocol-version": "2026-07-28",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/mcp",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/message",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-method": "tools/list",
+      "mcp-protocol-version": "2026-07-28",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/message",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/sse",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "mcp-method": "tools/list",
+      "mcp-protocol-version": "2026-07-28",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}"
+  },
+  {
+    "method": "POST",
+    "url": "https://example.com/sse",
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"agent-web-audit\",\"version\":\"1.0\"}}}"
+  }
+]

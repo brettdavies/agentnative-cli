@@ -2,7 +2,7 @@
 
 The `agent-web-audit` skill runs a 32-check registry through its own Python probe script. The anc.dev registry it is
 compared against here holds 68 checks and lives in `agentnative-site` at `src/data/web-audit/registry.yaml`. This
-repository vendors that registry at `src/web_audit/vendored/registry.yaml`, at the site commit
+repository vendors its normalized form at `src/web_audit/vendored/contract/registry.json`, at the site commit
 `src/web_audit/vendored/SITE_SHA` names.
 
 This document is the check-by-check diff between the skill and the live anc.dev registry, the vocabulary translation

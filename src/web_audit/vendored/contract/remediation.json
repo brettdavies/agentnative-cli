@@ -1,0 +1,825 @@
+{
+  "mcp-initialize": {
+    "title": "initialize handshake returns serverInfo + protocolVersion",
+    "goal": "Answer JSON-RPC initialize with serverInfo and protocolVersion so clients can begin a session",
+    "fix": "Answer the JSON-RPC `initialize` method on your MCP endpoint with a `result` that carries\n`serverInfo` (an object with `name` and `version`) and `protocolVersion`. Accept `POST` with\n`Content-Type: application/json` and `Accept: application/json, text/event-stream`, and echo\nthe negotiated `protocolVersion` (the current pinned value is `2025-06-18`).\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-capabilities": {
+    "title": "initialize advertises capabilities",
+    "goal": "Advertise the capability groups your MCP server implements in the initialize result",
+    "fix": "Populate the `capabilities` object in your `initialize` result. Clients gate feature use on\nit: an empty or missing `capabilities` tells a client nothing is available, so it will not\ncall `tools/list`, `resources/list`, or `prompts/list`. Advertise the groups your server\nactually implements (for example `{ \"tools\": {} }`).\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-tools-list": {
+    "title": "tools/list returns a tools array with input schemas",
+    "goal": "Return tools/list entries with name, description, and a JSON inputSchema",
+    "fix": "Return `result.tools` as an array from the `tools/list` method. Each tool needs a `name`, a\n`description`, and a JSON Schema `inputSchema` so an agent can validate arguments before\ncalling. A tool without an `inputSchema` forces the agent to guess argument shapes.\n",
+    "resources": [
+      {
+        "label": "MCP tools",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools"
+      }
+    ]
+  },
+  "mcp-resources-list": {
+    "title": "resources/list returns at least one resource when advertised",
+    "goal": "Honor capabilities.resources with a non-empty resources/list result",
+    "fix": "If `initialize` advertises `capabilities.resources`, implement `resources/list` and return a\n`result.resources` array with at least one entry (`uri` plus a name or description). An empty\nlist or a transport failure means the capability was advertised but is not actually there.\nOmit `capabilities.resources` entirely if the server has no resources.\n",
+    "resources": [
+      {
+        "label": "MCP resources",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/resources"
+      }
+    ]
+  },
+  "mcp-modern-tools-list": {
+    "title": "header-routed tools/list (2026-07-28) returns tools without initialize",
+    "goal": "Answer a modern header-routed tools/list without requiring an initialize handshake",
+    "fix": "Serve the modern MCP era (protocol revision `2026-07-28`): answer a `POST` whose headers\ncarry `MCP-Protocol-Version: 2026-07-28` and `Mcp-Method: tools/list` with a `result.tools`\narray, with no prior `initialize` or `notifications/initialized`. Modern requests are\nper-request enveloped: `params._meta` carries `io.modelcontextprotocol/protocolVersion`,\n`io.modelcontextprotocol/clientInfo`, and `io.modelcontextprotocol/clientCapabilities`.\nThe `clientCapabilities` key is mandatory on every modern request; reject a request that\nomits it with a well-formed `-32602`. `Mcp-Name` rides only `tools/call` (the tool name)\nand `resources/read` (the resource URI), never `tools/list`.\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle"
+      },
+      {
+        "label": "MCP tools (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/tools"
+      }
+    ]
+  },
+  "mcp-server-discover": {
+    "title": "server/discover answers with server identity on the modern lane",
+    "goal": "Answer server/discover with supported versions, capabilities, and server identity",
+    "fix": "Implement `server/discover` (protocol revision `2026-07-28`): return a result carrying\n`supportedVersions` (the modern revisions you serve) and your advertised `capabilities`,\nand identify the server in the result's `_meta` under\n`io.modelcontextprotocol/serverInfo` (`name` plus `version`). The request arrives\nheader-routed (`MCP-Protocol-Version: 2026-07-28`, `Mcp-Method: server/discover`) with the\n`params._meta` envelope, whose `io.modelcontextprotocol/clientCapabilities` key is\nmandatory. No `initialize` precedes it: `server/discover` is how a modern client learns\nwhat the server offers before any session state exists. Answering it is also what brings\nthe rest of the modern-lane checks into scoring, so serve the `2026-07-28` revision behind\nit rather than this one method on its own.\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-unknown-method": {
+    "title": "unknown JSON-RPC method returns -32601",
+    "goal": "Reject unknown JSON-RPC methods with error -32601 instead of a hang or 500",
+    "fix": "Reject an unknown JSON-RPC method with the standard error code `-32601` (Method not found),\nnot a hang, a 500, or a silent empty body. Agents rely on `-32601` to distinguish\n\"unsupported\" from \"failed\"; anything else looks like an outage.\n",
+    "resources": [
+      {
+        "label": "JSON-RPC 2.0",
+        "url": "https://www.jsonrpc.org/specification#error_object"
+      }
+    ]
+  },
+  "mcp-malformed-body": {
+    "title": "a non-JSON body draws -32700 (or a typed HTTP 400/415 refusal)",
+    "goal": "Refuse an unparseable request body with a parse-error envelope or a typed HTTP refusal",
+    "fix": "Answer a `POST` whose body is not valid JSON with the JSON-RPC parse-error envelope\n(`error.code: -32700`, `id: null`); delivering it at HTTP `400` is fine. A bare HTTP `400`\nor `415` with no envelope also conforms as a typed refusal. What fails the check: a `200`\nwith garbage, a hang, or any other bare status (a bare `404` reads as a dead endpoint, not\na refusal).\n",
+    "resources": [
+      {
+        "label": "JSON-RPC 2.0",
+        "url": "https://www.jsonrpc.org/specification#error_object"
+      }
+    ]
+  },
+  "mcp-batch-reject": {
+    "title": "a batch carrying a modern-envelope request is rejected -32600",
+    "goal": "Refuse JSON array batches that carry modern-era envelopes with -32600",
+    "fix": "Reject a JSON array batch whose element carries the modern `params._meta` envelope\n(protocol revision `2026-07-28`) with `error.code: -32600` (Invalid Request) and `id: null`.\nModern-era requests are single-request only: an envelope-bearing element inside an array is\nnever valid, so serving it (or answering anything other than `-32600`) is non-conforming.\n",
+    "resources": [
+      {
+        "label": "JSON-RPC 2.0",
+        "url": "https://www.jsonrpc.org/specification#error_object"
+      },
+      {
+        "label": "MCP transports (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/transports"
+      }
+    ]
+  },
+  "mcp-unknown-tool": {
+    "title": "tools/call with an unknown tool name returns -32602",
+    "goal": "Reject an unknown tool name with -32602 instead of a hang, a 500, or a fake result",
+    "fix": "Answer a `tools/call` whose `params.name` matches no registered tool with\n`error.code: -32602` (Invalid params). Agents rely on the code to distinguish \"no such\ntool\" from a transport failure; a hang, a `500`, or a `200` result for a tool that does\nnot exist all read as a broken server.\n",
+    "resources": [
+      {
+        "label": "MCP tools",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/server/tools"
+      },
+      {
+        "label": "JSON-RPC 2.0",
+        "url": "https://www.jsonrpc.org/specification#error_object"
+      }
+    ]
+  },
+  "mcp-modern-unknown-method": {
+    "title": "an unknown method on the modern lane returns -32601",
+    "goal": "Reject unknown header-routed methods with -32601 on the 2026-07-28 lane",
+    "fix": "Reject a modern request (`MCP-Protocol-Version: 2026-07-28`, `Mcp-Method` naming a method\nyou do not implement) with `error.code: -32601` (Method not found). Delivering the envelope\nat HTTP `404` conforms; a bare `404` with no envelope does not (it is indistinguishable\nfrom a dead endpoint).\n",
+    "resources": [
+      {
+        "label": "JSON-RPC 2.0",
+        "url": "https://www.jsonrpc.org/specification#error_object"
+      },
+      {
+        "label": "MCP lifecycle (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-modern-clientcaps": {
+    "title": "_meta missing clientCapabilities is rejected (-32602 or -32600)",
+    "goal": "Enforce the mandatory clientCapabilities key on every modern request",
+    "fix": "Reject a modern request whose `params._meta` omits\n`io.modelcontextprotocol/clientCapabilities` with a well-formed error envelope. The check\naccepts two codes: `-32602` (Invalid params, the SDK-typed refusal) as the primary, and\n`-32600` (Invalid Request family) from conforming non-SDK servers. The key is mandatory on\nevery `2026-07-28` request even when the client has no capabilities to declare; an empty\nobject is valid.\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-modern-header-mismatch": {
+    "title": "an Mcp-Method header disagreeing with the body method draws -32020",
+    "goal": "Validate the SEP-2243 header mirror between Mcp-Method and the body method",
+    "fix": "Reject a request whose `Mcp-Method` header names a different method than the JSON-RPC body\nwith `error.code: -32020` (header mismatch). The SEP-2243 headers exist so infrastructure\ncan route without parsing bodies; a disagreeing pair means the routing layer and the\nhandler would act on different methods, so it must be refused rather than silently\nresolved in either direction.\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-modern-version-reject": {
+    "title": "an unsupported protocol version is rejected -32022 with data.supported",
+    "goal": "Refuse unsupported protocol version claims with -32022 and advertise the served revisions",
+    "fix": "Reject a request claiming an unsupported `MCP-Protocol-Version` with\n`error.code: -32022` (UnsupportedProtocolVersion) and populate `error.data.supported` with\nthe revisions you serve (for example `[\"2026-07-28\"]`); echoing the claim in\n`error.data.requested` helps debugging. The `data.supported` array is what lets a typed\nclient fall back to a revision you both speak, so an envelope without it fails the check.\n",
+    "resources": [
+      {
+        "label": "MCP lifecycle (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/lifecycle"
+      }
+    ]
+  },
+  "mcp-modern-resources-miss": {
+    "title": "modern resources/read with an unknown URI returns -32602",
+    "goal": "Answer an unknown resource URI with the typed miss code, not a hang or a fake result",
+    "fix": "Answer a modern `resources/read` (with `Mcp-Name` mirroring `params.uri`) for a URI that\nmatches no resource with `error.code: -32602`. That is the code current SDK lines put on\nthe wire for a resource miss; `-32002` (the legacy resource-not-found code) is also\ntolerated from non-SDK servers. A hang, a `500`, or a fabricated `200` result fails. This\ncheck only runs when the server advertises resources on either era lane.\n",
+    "resources": [
+      {
+        "label": "MCP resources (2026-07-28)",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/server/resources"
+      },
+      {
+        "label": "JSON-RPC 2.0",
+        "url": "https://www.jsonrpc.org/specification#error_object"
+      }
+    ]
+  },
+  "mcp-accept-json": {
+    "title": "a JSON-only Accept is answered without SSE framing",
+    "goal": "Serve a single application/json response to a client whose Accept names only application/json",
+    "fix": "Read the request `Accept` header and answer within it. Streamable HTTP lets the server reply\neither with one `application/json` body or with a `text/event-stream`, and the choice is the\nclient's to constrain: a caller that sends `Accept: application/json` alone is telling you its\nHTTP client cannot read a stream. Answering that caller with `text/event-stream` returns a\n`200` over a body it cannot parse, and no status code tells it what went wrong.\nParse the header with q-value semantics rather than a substring match, buffer the response,\nand emit `Content-Type: application/json`. Reserve the stream for callers that accept it. If\nyour server genuinely cannot produce a single JSON body, refuse with `406 Not Acceptable`\ninstead: that at least fails the caller immediately and in the open.\n",
+    "resources": [
+      {
+        "label": "MCP transports",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports"
+      },
+      {
+        "label": "RFC 9110 section 12.5.1 (Accept)",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110#name-accept"
+      }
+    ]
+  },
+  "mcp-accept-unsatisfiable": {
+    "title": "an unsatisfiable Accept draws a 406 rather than an unasked-for type",
+    "goal": "Refuse an Accept you cannot satisfy with 406, never a 200 carrying a type the client did not request",
+    "fix": "When the request `Accept` allows neither `application/json` nor `text/event-stream`, refuse\nwith `406 Not Acceptable` before any JSON-RPC parsing runs. Those two media types are the\nwhole of what the streamable-HTTP transport is defined over, so an `Accept` naming neither\ncannot be served.\nThe failure this check looks for is a server that ignores `Accept` and answers with its one\nrepresentation under a success status, leaving the caller to sniff the body to find out the\nnegotiation never happened. Worse is a `200` that echoes the requested type back in\n`Content-Type` while carrying a JSON-RPC body: the caller routes on your label and the parse\nfails downstream.\nDo the check at the transport edge and keep the body plain text, so no client mistakes the\nrefusal for a JSON-RPC error envelope.\n",
+    "resources": [
+      {
+        "label": "RFC 9110 section 15.5.7 (406 Not Acceptable)",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110#name-406-not-acceptable"
+      },
+      {
+        "label": "MCP transports",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports"
+      }
+    ]
+  },
+  "mcp-get-fast-fail": {
+    "title": "GET on the MCP endpoint answers fast",
+    "goal": "Answer GET with 405 or an SSE stream, never a document and never a held-open hang",
+    "fix": "Answer a `GET` on the MCP endpoint promptly, and answer it as streamable HTTP defines.\nThe probe sends `Accept: text/event-stream`. A `200` whose `Content-Type` is `text/html`,\n`text/markdown`, or any other non-SSE type fails: a catalog client treats that document as a\ntransport error. Return one of two answers. Fast-fail at the router with `405 Method Not\nAllowed`, `Allow: POST`, and `Cache-Control: no-store`. Or return `200` with\n`Content-Type: text/event-stream` and an SSE body. Put the human-readable description on a\ndifferent path. A held-open connection and a `5xx` also fail. A `408` or `429` asks to be\nretried and is not scored.\n",
+    "resources": [
+      {
+        "label": "MCP transports",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports"
+      }
+    ]
+  },
+  "mcp-cors-preflight": {
+    "title": "CORS preflight succeeds with Access-Control-Allow-* headers",
+    "goal": "Serve one consistent CORS posture on the MCP endpoint, full preflight support or none",
+    "fix": "The audit scores CORS posture, not presence. Omitting `Access-Control-Allow-Origin` from\nboth the `OPTIONS` preflight and the `POST` response is a consistent no-CORS posture (a\nserver-to-agent-only endpoint) and scores `n_a` with no penalty. This check fails only when\nthe posture is partial or misconfigured: the preflight carries `Access-Control-Allow-Origin`\non a non-2xx response, or the `POST` carries it while the preflight does not. To support\nbrowser-origin agents, answer the preflight with `204` (or `200`) plus\n`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and\n`Access-Control-Allow-Headers`, and mirror `Access-Control-Allow-Origin` on the `POST`\nresponse. To stay no-CORS, strip the headers from both surfaces.\n",
+    "resources": [
+      {
+        "label": "MDN CORS preflight",
+        "url": "https://developer.mozilla.org/en-US/docs/Glossary/Preflight_request"
+      }
+    ]
+  },
+  "mcp-cors-actual": {
+    "title": "POST response carries Access-Control-Allow-Origin",
+    "goal": "Mirror the declared CORS posture on the actual MCP POST response",
+    "fix": "Echo `Access-Control-Allow-Origin` on the actual `POST` response whenever the preflight\ndeclares CORS: a browser blocks the response body when the header is absent even though the\npreflight passed. Omitting the header from both the preflight and the `POST` is a consistent\nno-CORS posture and scores `n_a` with no penalty; this check fails when the preflight\ndeclares CORS but the `POST` omits the header.\n",
+    "resources": [
+      {
+        "label": "MDN CORS",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS"
+      }
+    ]
+  },
+  "mcp-server-card": {
+    "title": "An MCP server card is published",
+    "goal": "Publish a SEP-2127 server card for your MCP server and list it in your AI catalog",
+    "fix": "Serve a SEP-2127 server card at `<endpoint>/server-card` (`/mcp/server-card` for an endpoint at\n`/mcp`) as `application/mcp-server-card+json`. It carries `$schema`\n(`https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json`), `name` in reverse-DNS\nform (`com.example/server`), `version`, `description`, and `remotes`, one entry per endpoint with\n`type` (`streamable-http`) and `url`. List it in `/.well-known/ai-catalog.json` as an entry of type\n`application/mcp-server-card+json` with the card's `url`. A card at `/.well-known/mcp/server-card.json`\nis the legacy SEP-1649 shape: it still passes, and SEP-2127 is the shape to publish.\n",
+    "resources": [
+      {
+        "label": "SEP-2127",
+        "url": "https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127"
+      },
+      {
+        "label": "Server card discovery",
+        "url": "https://github.com/modelcontextprotocol/experimental-ext-server-card/blob/main/docs/discovery.md"
+      },
+      {
+        "label": "AI catalog",
+        "url": "https://github.com/Agent-Card/ai-catalog/blob/main/specification/ai-catalog.md"
+      }
+    ]
+  },
+  "well-known-mcp-card": {
+    "title": "A .well-known MCP server card is published",
+    "goal": "Publish a SEP-2127 server card for your MCP server and list it in your AI catalog",
+    "fix": "This check is retired in favor of `mcp-server-card`, which scores the server card. Serve a SEP-2127 card at\n`<endpoint>/server-card` carrying `$schema`, `name`, `version`, `description`, and `remotes` (each\nwith `type` and `url`), and list it in `/.well-known/ai-catalog.json`. The SEP-1649 path,\n`/.well-known/mcp/server-card.json`, is the legacy location.\n",
+    "resources": [
+      {
+        "label": "SEP-2127",
+        "url": "https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127"
+      }
+    ]
+  },
+  "mcp-card-legacy-aliases": {
+    "title": "Legacy MCP card paths redirect to the canonical card",
+    "goal": "Point every legacy MCP card path at the canonical card instead of serving its own copy",
+    "fix": "Serve whichever legacy pointer paths you publish (`/.well-known/mcp`, `/.well-known/mcp.json`,\n`/mcp.json`) as `301` redirects to `/.well-known/mcp/server-card.json`. A legacy path that\nanswers with its own JSON body is a second source of truth that may drift from the canonical\ncard, and a `302`/`307` or a redirect to any other location sends agents somewhere else.\nPaths you never published need no redirect.\n",
+    "resources": [
+      {
+        "label": "SEP-1649",
+        "url": "https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127"
+      }
+    ]
+  },
+  "mcp-usage-doc": {
+    "title": "A human/agent usage doc for the server resolves",
+    "goal": "Publish a one-fetch markdown usage doc for your MCP server",
+    "fix": "Link a short markdown usage doc for your MCP server (curl examples, the tool list, auth, and\nrate limits) at a stable path such as `/mcp-skill.md`, `/mcp.md`, or `/.well-known/mcp/usage.md`,\nand reference it from the server card and `llms.txt`. It gives an agent a one-fetch orientation.\n",
+    "resources": [
+      {
+        "label": "anc.dev example",
+        "url": "https://anc.dev/mcp-skill.md"
+      }
+    ]
+  },
+  "mcp-auth-challenge": {
+    "title": "a 401 names the RFC 9728 metadata in its WWW-Authenticate challenge",
+    "goal": "Name your protected-resource metadata in the WWW-Authenticate challenge of every 401",
+    "fix": "When the MCP endpoint refuses a request that carries no access token, answer `401` with\n`WWW-Authenticate: Bearer resource_metadata=\"https://<host>/.well-known/oauth-protected-resource\"`,\nnaming the URL of your RFC 9728 metadata. A client reads the challenge to find the authorization\nserver; without `resource_metadata` it falls back to guessing well-known locations. The MCP\nauthorization specification requires the header on every `401`.\n",
+    "resources": [
+      {
+        "label": "MCP authorization",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+      },
+      {
+        "label": "RFC 9728 section 5.1",
+        "url": "https://www.rfc-editor.org/rfc/rfc9728#section-5.1"
+      }
+    ]
+  },
+  "mcp-auth-servers": {
+    "title": "protected-resource metadata lists public https authorization_servers",
+    "goal": "List the authorization servers that issue tokens for your MCP server in its RFC 9728 metadata",
+    "fix": "Publish `authorization_servers` in your protected-resource metadata as an array of at least one\nissuer URL. Each entry must be an absolute `https` URL on a public host, because a client fetches\nthat authorization server's own metadata to begin the OAuth flow. A private, loopback, or `http`\nURL leaves every client outside your network unable to sign in.\n",
+    "resources": [
+      {
+        "label": "RFC 9728 section 2",
+        "url": "https://www.rfc-editor.org/rfc/rfc9728#section-2"
+      },
+      {
+        "label": "MCP authorization",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+      }
+    ]
+  },
+  "mcp-auth-enforced": {
+    "title": "a tools/list without an access token is refused with 401",
+    "goal": "Refuse every MCP request that carries no access token with 401",
+    "fix": "Check the access token before dispatching any JSON-RPC method, `tools/list` included, and answer a\nrequest without one with `401` and the same `WWW-Authenticate` challenge `initialize` receives. A\nserver that challenges some methods but serves `tools/list` to anyone exposes its tool catalog to\ncallers that never signed in, and leaves a client unable to tell which calls need a token.\n",
+    "resources": [
+      {
+        "label": "MCP authorization",
+        "url": "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization"
+      }
+    ]
+  },
+  "llms-txt": {
+    "title": "/llms.txt present with a summary and link index",
+    "goal": "Serve /llms.txt with a title, summary, and categorized link index",
+    "fix": "Serve `/llms.txt` (llmstxt.org): an H1 title, a one-line summary blockquote, and a categorized\nindex of links to your most important pages as markdown. It is the canonical entry point an\nagent fetches to understand what a site offers and where to look next.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "llms-full-txt": {
+    "title": "/llms-full.txt present",
+    "goal": "Serve the whole docs corpus as markdown at /llms-full.txt for one-fetch ingestion",
+    "fix": "For a docs site, concatenate every page as markdown at `/llms-full.txt` so an agent can ingest\nthe whole corpus in one fetch instead of crawling. Keep it generated from source so it never\ndrifts from the live pages.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "llms-txt-scoped": {
+    "title": "Per-section llms.txt files resolve",
+    "goal": "Serve a scoped llms.txt inside each major content section",
+    "fix": "Serve a scoped `llms.txt` inside each major content section linked from your root index (for\nexample `/docs/llms.txt`). A section-scoped index lets an agent working inside that section\norient itself without re-reading the whole site index.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "llms-full-txt-scoped": {
+    "title": "Per-section llms-full.txt files resolve",
+    "goal": "Serve a scoped llms-full.txt corpus inside each major content section",
+    "fix": "Serve a scoped `llms-full.txt` inside each major content section (for example\n`/docs/llms-full.txt`): the section's pages concatenated as markdown. An agent can then ingest\none section in one fetch instead of crawling it.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "openapi": {
+    "title": "An OpenAPI description is published",
+    "goal": "Publish an OpenAPI description so non-MCP agents can call your HTTP API",
+    "fix": "If your service exposes an HTTP/REST API (separate from any MCP endpoint), publish an OpenAPI\n3.1 description of it at `/openapi.json` (or `/openapi.yaml`, or `/.well-known/openapi.json`).\nWhen your `/.well-known/api-catalog` lists API anchors, the description scored is the one each\nanchor's `service-desc` links to, wherever it is hosted, not these paths: publish it at that URL.\nNon-MCP agents use it to discover endpoints, parameters, and response shapes, and to generate\ntyped clients. A service whose only machine surface is MCP has no REST API to describe here.\n",
+    "resources": [
+      {
+        "label": "OpenAPI 3.1",
+        "url": "https://spec.openapis.org/oas/latest.html"
+      }
+    ]
+  },
+  "json-schemas": {
+    "title": "Referenced JSON Schemas resolve",
+    "goal": "Serve the JSON Schemas your API references so agents can validate payloads pre-flight",
+    "fix": "Serve the input and output JSON Schemas your API references (for example\n`/api/schema/input.json`) as `application/schema+json`. Agents validate payloads against them\nbefore calling, which turns a class of runtime failures into pre-flight validation.\n",
+    "resources": [
+      {
+        "label": "JSON Schema",
+        "url": "https://json-schema.org/specification"
+      }
+    ]
+  },
+  "accept-markdown": {
+    "title": "Accept text/markdown returns markdown",
+    "goal": "Honor Accept text/markdown on content URLs with raw markdown, not HTML chrome",
+    "fix": "Honor `Accept: text/markdown` on content URLs and return raw markdown rather than HTML chrome.\nAgents parse markdown far more reliably than a JS-rendered page. Serve the markdown twin at the\nsame URL via content negotiation, invisibly to crawlers.\n",
+    "resources": [
+      {
+        "label": "RFC 7763 (text/markdown)",
+        "url": "https://www.rfc-editor.org/rfc/rfc7763"
+      }
+    ]
+  },
+  "markdown-cli-ua": {
+    "title": "Bare CLI User-Agent receives the markdown twin",
+    "goal": "Serve the markdown twin to shell HTTP clients that state no content-type preference",
+    "fix": "Sniff the request User-Agent and serve the markdown twin to bare shell clients (`curl`, `wget`,\nand language HTTP libraries) that send `Accept: */*` or no `Accept` at all. A scripted `curl\nhttps://your.site/` should get the raw markdown source, not the HTML shell, so pipelines parse\ncontent instead of scraping chrome. Return the same twin you already expose to\n`Accept: text/markdown`, keyed on the User-Agent this time.\n",
+    "resources": [
+      {
+        "label": "RFC 7763 (text/markdown)",
+        "url": "https://www.rfc-editor.org/rfc/rfc7763"
+      },
+      {
+        "label": "RFC 9110 (User-Agent)",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110#name-user-agent"
+      }
+    ]
+  },
+  "markdown-agent-ua": {
+    "title": "AI user-fetch User-Agent receives the markdown twin",
+    "goal": "Serve the markdown twin to AI on-demand user-fetchers that state no content-type preference",
+    "fix": "Recognize the AI on-demand user-fetch User-Agents (`ChatGPT-User`, `Claude-User`,\n`Perplexity-User`) and serve them the markdown twin when they send `Accept: */*` or no `Accept`.\nThese fetchers retrieve a page on a person's behalf and parse markdown far more reliably than a\nJS-rendered page, so handing them source improves what the assistant reads back. Match the token\ncase-insensitively and fall through to HTML for everything you do not recognize.\n",
+    "resources": [
+      {
+        "label": "RFC 7763 (text/markdown)",
+        "url": "https://www.rfc-editor.org/rfc/rfc7763"
+      },
+      {
+        "label": "OpenAI bots and User-Agents",
+        "url": "https://platform.openai.com/docs/bots"
+      }
+    ]
+  },
+  "markdown-accept-plain": {
+    "title": "Accept text/plain returns the markdown twin",
+    "goal": "Treat Accept text/plain as a request for the raw markdown source",
+    "fix": "Treat `Accept: text/plain` as a markdown request and return the raw markdown source rather than\nthe HTML shell. Many clients and libraries default to `text/plain` when they want the bytes, not\na rendered document, so honoring it hands them the same twin you serve for `Accept:\ntext/markdown`. Set the response `Content-Type` to `text/markdown` (or `text/plain`) so the\nnegotiated content type is unambiguous.\n",
+    "resources": [
+      {
+        "label": "RFC 7763 (text/markdown)",
+        "url": "https://www.rfc-editor.org/rfc/rfc7763"
+      }
+    ]
+  },
+  "markdown-vary": {
+    "title": "Negotiated responses carry Vary Accept",
+    "goal": "Name every negotiated request header in Vary so shared caches never serve one client the wrong variant",
+    "fix": "When the same URL serves HTML or markdown depending on the request, emit a `Vary` header on\nevery response that names each request header the choice depends on: `Vary: Accept` when you\nnegotiate on `Accept` alone, and `Vary: Accept, User-Agent` when agent User-Agents also receive\nthe markdown twin. Without it a shared cache (a CDN or a corporate proxy) can store the markdown\ntwin under the bare URL and then hand it to a browser, or the reverse. If the CDN ignores or\nstrips Vary (Cloudflare's zone cache historically keeps only `Accept-Encoding`), do not give\nthat cache a long `s-maxage` on negotiated responses: HIT replies would then reach clients with\nno Vary, and the check still fails.\n",
+    "resources": [
+      {
+        "label": "RFC 9110 (Vary)",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110#name-vary"
+      }
+    ]
+  },
+  "markdown-frontmatter": {
+    "title": "Markdown twin carries YAML frontmatter",
+    "goal": "Prefix the markdown twin with a YAML frontmatter block so agents read page metadata without parsing the body",
+    "fix": "Open each markdown twin with a YAML frontmatter block: a `---` fence line, `title`, `description`, and a\ncanonical `url` key, then a closing `---` fence, before the first heading. An agent then lifts the page's\ntitle, summary, and canonical URL from structured keys instead of inferring them from prose, which is both\ncheaper and less error-prone. Keep the block well-formed: an opened fence with no terminator, or a fence pair\nwith no keys, is worse than no frontmatter because it misleads a parser.\n",
+    "resources": [
+      {
+        "label": "YAML front matter (Jekyll)",
+        "url": "https://jekyllrb.com/docs/front-matter/"
+      },
+      {
+        "label": "RFC 7763 (text/markdown)",
+        "url": "https://www.rfc-editor.org/rfc/rfc7763"
+      }
+    ]
+  },
+  "root-meta-description": {
+    "title": "Root HTML has a descriptive meta description",
+    "goal": "Add a meta description naming what the service does and its agent entry points",
+    "fix": "Add a `<meta name=\"description\">` to your root HTML that states what the service does and names\nits agent entry points (MCP endpoint, `llms.txt`, OpenAPI). It is the cheapest machine-readable\nsummary and it feeds link previews and search snippets too.\n",
+    "resources": [
+      {
+        "label": "MDN meta description",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta/name"
+      }
+    ]
+  },
+  "root-link-rel": {
+    "title": "Root HTML links to machine surfaces via link rel",
+    "goal": "Point link rel elements at your machine surfaces from the root HTML head",
+    "fix": "Add `<link rel>` elements in your root HTML head pointing at your machine surfaces:\n`rel=\"service-desc\"` to the OpenAPI doc, `rel=\"service-doc\"` to human docs, and\n`rel=\"alternate\"` to `llms.txt` and the MCP card. An agent that lands on the HTML can then\ndiscover the structured surfaces without scraping.\n",
+    "resources": [
+      {
+        "label": "RFC 8631 (service-desc/doc)",
+        "url": "https://www.rfc-editor.org/rfc/rfc8631"
+      }
+    ]
+  },
+  "noscript-fallback": {
+    "title": "Root HTML has a noscript with machine entry points",
+    "goal": "Give non-JS agents a noscript block listing your machine entry points",
+    "fix": "Add a `<noscript>` block to your root HTML that links your machine entry points: `llms.txt`,\nyour OpenAPI or MCP endpoint, and any `.well-known` cards. It hands a fetch-only crawler or a\nnon-JS agent a concrete, in-body list of where the structured surfaces live, so it never has to\nrun the client bundle or infer them from the visible page.\n",
+    "resources": [
+      {
+        "label": "MDN noscript",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/noscript"
+      }
+    ]
+  },
+  "schema-org-jsonld": {
+    "title": "Root HTML embeds Schema.org JSON-LD",
+    "goal": "Embed Schema.org JSON-LD so agents get typed facts without inference",
+    "fix": "Embed Schema.org JSON-LD (for example `TechArticle`, `WebAPI`, or `SoftwareApplication`) in a\n`<script type=\"application/ld+json\">` in your head. Structured metadata gives agents and search\nengines typed facts about the page without inference.\n",
+    "resources": [
+      {
+        "label": "Schema.org",
+        "url": "https://schema.org/docs/gs.html"
+      }
+    ]
+  },
+  "semantic-html": {
+    "title": "Root HTML uses semantic landmarks",
+    "goal": "Use semantic landmarks so the HTML path is parseable structure, not div soup",
+    "fix": "Use `<main>`, `<article>`, `<section>`, and `<nav>` landmarks so the HTML path is parseable.\nAn agent that has to fall back to reading the DOM should find structure, not a wall of\n`<div>`s.\n",
+    "resources": [
+      {
+        "label": "MDN content sectioning",
+        "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements#content_sectioning"
+      }
+    ]
+  },
+  "robots": {
+    "title": "/robots.txt present",
+    "goal": "Publish robots.txt and state your crawl policy explicitly",
+    "fix": "Publish a `robots.txt`. Declare your crawl and AI-usage policy explicitly rather than leaving\nit to inference. An absent `robots.txt` is ambiguous; a present one is a clear signal.\n",
+    "resources": [
+      {
+        "label": "RFC 9309",
+        "url": "https://www.rfc-editor.org/rfc/rfc9309"
+      }
+    ]
+  },
+  "sitemap": {
+    "title": "/sitemap.xml present",
+    "goal": "Publish sitemap.xml so agents can enumerate your content URLs",
+    "fix": "Publish a `sitemap.xml` so crawlers and agents can enumerate your content URLs instead of\ndiscovering them by following links. Keep it generated so it stays current.\n",
+    "resources": [
+      {
+        "label": "sitemaps.org",
+        "url": "https://www.sitemaps.org/protocol.html"
+      }
+    ]
+  },
+  "robots-ai-rules": {
+    "title": "robots.txt declares AI-crawler rules",
+    "goal": "State your AI-crawler policy in robots.txt with explicit User-agent rules",
+    "fix": "Add explicit `User-agent` rules for AI crawlers (GPTBot, ClaudeBot, Google-Extended,\nPerplexityBot, CCBot, and others) to `robots.txt`, or a wildcard policy. Stating your stance\n(RFC 9309) removes ambiguity about whether AI systems may fetch your content.\n",
+    "resources": [
+      {
+        "label": "RFC 9309",
+        "url": "https://www.rfc-editor.org/rfc/rfc9309"
+      }
+    ]
+  },
+  "content-signals": {
+    "title": "robots.txt declares Content-Signal preferences",
+    "goal": "Declare Content-Signal AI-usage preferences in robots.txt",
+    "fix": "Add `Content-Signal` directives to `robots.txt` (contentsignals.org): `ai-train`, `search`,\nand `ai-input` set to `yes` or `no`. They express usage preferences at a finer grain than a\nblanket allow/deny.\n",
+    "resources": [
+      {
+        "label": "contentsignals.org",
+        "url": "https://contentsignals.org/"
+      }
+    ]
+  },
+  "security-txt": {
+    "title": "/.well-known/security.txt present",
+    "goal": "Publish security.txt with a Contact and Expires field",
+    "fix": "Publish `/.well-known/security.txt` (RFC 9116) with a `Contact` and an `Expires` field so a\nresearcher or agent can find how to report a problem. It is a small, standard trust signal.\n",
+    "resources": [
+      {
+        "label": "RFC 9116",
+        "url": "https://www.rfc-editor.org/rfc/rfc9116"
+      }
+    ]
+  },
+  "web-bot-auth": {
+    "title": "Web Bot Auth signature directory present",
+    "goal": "Publish an HTTP Message Signatures directory if your site sends signed bot traffic",
+    "fix": "Informational only. If your site sends authenticated bot traffic, publish an HTTP Message\nSignatures JWKS directory at `/.well-known/http-message-signatures-directory` so recipients can\nverify your bot's signatures. Skip it if you do not send signed bot requests.\n",
+    "resources": [
+      {
+        "label": "Web Bot Auth draft",
+        "url": "https://datatracker.ietf.org/doc/draft-meunier-web-bot-auth-architecture/"
+      }
+    ]
+  },
+  "link-headers": {
+    "title": "Homepage sends RFC 8288 Link headers",
+    "goal": "Advertise machine surfaces in a Link response header on / for header-only discovery",
+    "fix": "Send a `Link` response header on `/` (RFC 8288) whose `rel` points at your machine surfaces, so an\nagent reading only response headers finds them without parsing HTML or probing `/.well-known`. Use\nthe RFC 8631 service trio and the RFC 9727 catalog: `rel=\"service-desc\"` at a machine-readable\ndescription (OpenAPI, or an MCP server card), `rel=\"service-doc\"` at the human-readable doc,\n`rel=\"service-meta\"` at the service-context declaration, and `rel=\"api-catalog\"` at your\n`/.well-known/api-catalog` index. Example:\n`Link: </.well-known/api-catalog>; rel=\"api-catalog\", </.well-known/mcp/server-card.json>; rel=\"service-desc\"`.\n",
+    "resources": [
+      {
+        "label": "RFC 8288 (Link)",
+        "url": "https://www.rfc-editor.org/rfc/rfc8288"
+      },
+      {
+        "label": "RFC 8631 (service links)",
+        "url": "https://www.rfc-editor.org/rfc/rfc8631"
+      },
+      {
+        "label": "RFC 9727 (api-catalog)",
+        "url": "https://www.rfc-editor.org/rfc/rfc9727"
+      }
+    ]
+  },
+  "api-catalog": {
+    "title": "/.well-known/api-catalog published",
+    "goal": "Serve an RFC 9727 api-catalog linkset indexing your API descriptions",
+    "fix": "Serve `/.well-known/api-catalog` (RFC 9727) as `application/linkset+json` with a `linkset[]` of\nanchor plus `service-desc` entries. It is the standard index that points agents at every API\ndescription you publish.\n",
+    "resources": [
+      {
+        "label": "RFC 9727",
+        "url": "https://www.rfc-editor.org/rfc/rfc9727"
+      }
+    ]
+  },
+  "json-errors": {
+    "title": "API client errors return JSON, not HTML",
+    "goal": "Return a JSON error body on client-error API responses so agents can parse the failure",
+    "fix": "On a client-error API response (4xx), return `Content-Type: application/json` and a JSON object\n(for example `{ \"error\": { \"code\": \"not_found\", \"message\": \"...\" } }`), not an HTML error page.\nAgents cannot recover from a soft-HTML 404. The audit probes a documented OpenAPI 4xx GET when\none exists, otherwise `GET /anc-web-audit-no-such-api`.\n",
+    "resources": [
+      {
+        "label": "RFC 9457 (problem+json)",
+        "url": "https://www.rfc-editor.org/rfc/rfc9457"
+      }
+    ]
+  },
+  "rate-limit-headers": {
+    "title": "API responses advertise rate-limit headers",
+    "goal": "Advertise remaining quota on API responses so agents can back off instead of retrying blindly",
+    "fix": "Send IETF RateLimit headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`) or\nthe common `X-RateLimit-*` aliases on API responses. A 429 should also carry `Retry-After`.\nWithout them an agent has no budget and will retry until it is locked out.\n",
+    "resources": [
+      {
+        "label": "IETF RateLimit header draft",
+        "url": "https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers/"
+      }
+    ]
+  },
+  "a2a-agent-card": {
+    "title": "A2A Agent Card published",
+    "goal": "Publish an A2A Agent Card for agent-to-agent discovery",
+    "fix": "Serve an A2A Agent Card at `/.well-known/agent-card.json` (a2a-protocol.org) with `name`,\n`version`, and `supportedInterfaces`. It lets other agents discover and interoperate with yours\nover the agent-to-agent protocol.\n",
+    "resources": [
+      {
+        "label": "A2A protocol",
+        "url": "https://a2a-protocol.org/latest/specification/"
+      }
+    ]
+  },
+  "ai-catalog": {
+    "title": "/.well-known/ai-catalog.json published",
+    "goal": "Publish an Agentic Resource Discovery catalog so agents can enumerate your AI artifacts",
+    "fix": "Serve `/.well-known/ai-catalog.json` as JSON with `specVersion` and an `entries` array (the\nAI Catalog / ARD envelope). Each entry should identify an artifact (`identifier`, `type`, and\na `url` or inline `data`). Missing the file is fine (this check is MAY); a 200 that is not a\ncatalog is worse than absence.\n",
+    "resources": [
+      {
+        "label": "AI Catalog",
+        "url": "https://agenticresourcediscovery.org/ai_catalog_spec/"
+      }
+    ]
+  },
+  "agent-skills": {
+    "title": "Agent-skills discovery index published",
+    "goal": "Publish an agent-skills discovery index so agents can enumerate your skills",
+    "fix": "Publish an agent-skills discovery index at `/.well-known/agent-skills/index.json` (the\nCloudflare agent-skills-discovery draft) with a `skills[]` array, so agents can enumerate the\nskills your site exposes.\n",
+    "resources": [
+      {
+        "label": "Agent Skills Discovery",
+        "url": "https://github.com/cloudflare/agent-skills-discovery"
+      }
+    ]
+  },
+  "dns-aid": {
+    "title": "DNS-AID records under _agents",
+    "goal": "Publish DNSSEC-signed SVCB records under _agents for DNS-level agent discovery",
+    "fix": "Publish SVCB/HTTPS records under the `_agents` namespace (for example\n`_index._agents.<domain>`, `_mcp._agents.<domain>`), DNSSEC-signed\n(draft-mozleywilliams-dnsop-dnsaid). DNS-level discovery lets an agent find your endpoints\nbefore any HTTP request.\n",
+    "resources": [
+      {
+        "label": "DNS-AID draft",
+        "url": "https://datatracker.ietf.org/doc/draft-mozleywilliams-dnsop-dnsaid/"
+      }
+    ]
+  },
+  "oauth-discovery": {
+    "title": "OAuth/OIDC discovery metadata published",
+    "goal": "Publish OAuth/OIDC discovery metadata if agents authenticate to your service",
+    "fix": "If agents authenticate to your service, publish OAuth/OIDC discovery metadata at\n`/.well-known/openid-configuration` or `/.well-known/oauth-authorization-server` (RFC 8414 /\nOIDC Discovery). Absent metadata is expected for an open server; present metadata is required\nfor an authenticated one.\n",
+    "resources": [
+      {
+        "label": "RFC 8414",
+        "url": "https://www.rfc-editor.org/rfc/rfc8414"
+      }
+    ]
+  },
+  "oauth-protected-resource": {
+    "title": "OAuth Protected Resource Metadata published",
+    "goal": "Publish RFC 9728 protected-resource metadata for your authenticated MCP server",
+    "fix": "For an authenticated MCP server, publish `/.well-known/oauth-protected-resource` (RFC 9728) so\na client can discover which authorization servers issue tokens for your resource. Expected\nabsent for an open, no-auth server.\n",
+    "resources": [
+      {
+        "label": "RFC 9728",
+        "url": "https://www.rfc-editor.org/rfc/rfc9728"
+      }
+    ]
+  },
+  "auth-md": {
+    "title": "Agent auth/registration metadata doc published",
+    "goal": "Publish an auth.md telling agents how to obtain credentials",
+    "fix": "Publish an `auth.md` at `/.well-known/auth.md` (or `/auth.md`): a short markdown guide that\ntells an agent how to obtain credentials, including where to register, which OAuth flows are\nsupported, token endpoints, and scopes. It turns \"figure out our auth\" into a one-fetch\norientation.\n",
+    "resources": [
+      {
+        "label": "anc.dev example",
+        "url": "https://anc.dev/auth.md"
+      }
+    ]
+  },
+  "webmcp": {
+    "title": "Root HTML exposes WebMCP browser tools",
+    "goal": "Expose page tools to browser agents via WebMCP",
+    "fix": "Expose page functionality to browser agents via WebMCP: register a `navigator.modelContext`\nprovider or declare tools in a `<script type=\"application/webmcp+json\">` block. In-page tools\nlet a browser-hosted agent act on the page without scraping the DOM.\n",
+    "resources": [
+      {
+        "label": "WebMCP spec",
+        "url": "https://webmachinelearning.github.io/webmcp/"
+      }
+    ]
+  },
+  "agent-friendly-404": {
+    "title": "Unknown paths return HTTP 404 or 410",
+    "goal": "Return a real HTTP 404 or 410 for unknown paths instead of a 200 SPA shell",
+    "fix": "Configure the origin so a nonsense path under the site returns HTTP 404 or 410, not 200 with\nthe application shell. A soft-404 hides recovery from agents: they treat the page as content\nand never look for a sitemap or `llms.txt`. Verify with\n`curl -sS -o /dev/null -w \"%{http_code}\" https://example.com/this-path-does-not-exist` — it\nMUST print `404` (or `410`).\n",
+    "resources": [
+      {
+        "label": "RFC 9110 status codes",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110#name-status-codes"
+      }
+    ]
+  },
+  "agent-friendly-404-md": {
+    "title": "404 body is markdown with a recovery link",
+    "goal": "Serve a short markdown 404 that links at least one agent recovery surface",
+    "fix": "When `Accept: text/markdown` hits an unknown path, return 404 or 410 with a short markdown\nbody that includes at least one recovery link: sitemap, `llms.txt`, a docs index, or an\nequivalent same-origin href. Linking both sitemap and `llms.txt` as absolute URLs is the\nstronger pattern. Zero links is a miss even when the status is correct.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "content-without-js": {
+    "title": "Root HTML has an H1 and readable text without JavaScript",
+    "goal": "Put an H1 and enough visible text in the raw root HTML that a non-JS agent can read the page",
+    "fix": "Render an `<h1>` and at least about 200 characters of visible text in the raw HTML of `/` so\na client that does not execute JavaScript still gets a page. A thin SPA shell is acceptable\nonly when `/llms.txt` is present and links resolvable same-origin content (the audit then\nmarks this check not applicable, not a pass). Dead `llms.txt` links do not soften the floor.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "agent-ua-reachable": {
+    "title": "AI user-fetch User-Agent can reach the homepage",
+    "goal": "Let on-demand user-fetchers GET / with Accept */* and receive 2xx, not a challenge page",
+    "fix": "Allow AI user-fetch clients such as `ChatGPT-User` to `GET /` with `Accept: */*` and receive\na 2xx response whose body is not an obvious bot-challenge interstitial. This is reachability,\nnot content type: serving HTML is fine. Blocklists that 403 these UAs, or challenge pages that\nsay \"Just a moment\", fail the check.\n",
+    "resources": [
+      {
+        "label": "OpenAI user-fetchers",
+        "url": "https://platform.openai.com/docs/bots"
+      }
+    ]
+  },
+  "llms-txt-format": {
+    "title": "llms.txt has H1, summary, and a link index",
+    "goal": "Structure /llms.txt with an H1, a blockquote summary, and a markdown link index",
+    "fix": "Follow the llmstxt.org shape: start with `# Title`, add a `>` summary blockquote, then a\ncategorized list of markdown links. A file that is present but is only a heading, or only a\nblob of prose, fails this row even when the presence check passes.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "llms-txt-links": {
+    "title": "llms.txt links resolve",
+    "goal": "Make every markdown href in /llms.txt https and fetchable",
+    "fix": "Probe the markdown links in `/llms.txt` and replace 404s. An agent that follows a dead index\nlink wastes a round-trip and may conclude the project has no docs. Write every link as an\n`https` URL that answers over https without redirecting to `http`: an `http` link, or one\nthat redirects to `http`, is never requested and reads noncompliant. Keep the list short\nand current; drop links you are not willing to keep alive.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  },
+  "llms-txt-when-to-use": {
+    "title": "llms.txt has a when-to-use or programmatic-access section",
+    "goal": "Tell agents when to use the MCP or docs from a short llms.txt heading",
+    "fix": "Add a heading such as `## When to use` or `## Programmatic access` with a few lines on when\nan agent should connect (for example: \"Use the MCP when you need to search or score a CLI\").\nThe audit looks for that heading; it does not grade the prose with an LLM.\n",
+    "resources": [
+      {
+        "label": "llmstxt.org",
+        "url": "https://llmstxt.org/"
+      }
+    ]
+  }
+}

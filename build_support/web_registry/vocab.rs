@@ -47,56 +47,24 @@ pub(super) const TIERS: &[(&str, &str)] = &[
     ("recommended", "should"),
     ("optional", "may"),
 ];
+pub(super) const LANE_CATEGORY: &str = "mcp";
 pub(super) const CORS_SURFACES: &[&str] = &["preflight", "actual"];
 pub(super) const PROTECTED_RESOURCE_OPS: &[&str] = &["challenge", "metadata"];
-/// Documents discovery keeps for a `retained-document` check, mirroring the
-/// site's `RETAINED_DOCUMENT_KEYS` (`src/shared/web-audit-documents.ts`).
+/// Documents discovery keeps for a `retained-document` check.
 pub(super) const RETAINED_DOCUMENT_KEYS: &[&str] = &["ai-catalog", "api-catalog", "server-card"];
 /// Handlers that score a retained document instead of issuing a request.
 pub(super) const RETAINED_DOCUMENT_HANDLERS: &[&str] = &["http", "server-card"];
-/// `with` parameters the build splices into a server-card check from the
-/// vendored schema; hand-authoring one is a build error.
+/// The field rules a server-card check reads; with none it would pass every card.
 pub(super) const CARD_FIELD_PARAMS: &[&str] = &["required", "remote_required"];
-pub(super) const TOP_LEVEL_KEYS: &[&str] = &[
-    "version",
-    "mcp_discovery",
-    "category_order",
-    "categories",
-    "mcp_lanes",
-    "retired",
-    "alternatives",
-    "checks",
+/// The JSON Schema type names `has_type` in the server-card handler knows. Any other
+/// reads as a mismatch on every card.
+pub(super) const JSON_TYPES: &[&str] = &[
+    "string", "number", "integer", "boolean", "object", "array", "null",
 ];
-pub(super) const DISCOVERY_KEYS: &[&str] = &[
-    "ai_catalog",
-    "card_suffix",
-    "well_known",
-    "common_paths",
-    "protocol_version",
-];
-pub(super) const CHECK_KEYS: &[&str] = &[
-    "id",
-    "category",
-    "tier",
-    "principle",
-    "site_types",
-    "antecedent",
-    "eval",
-    "lane",
-    "weight",
-    "title",
-    "breadcrumb",
-    "hint",
-    "handler",
-    "with",
-];
-pub(super) const LANE_FIELDS: &[&str] = &["label", "note"];
-pub(super) const RETIRED_FIELDS: &[&str] = &["successor", "reason"];
-pub(super) const GROUP_FIELDS: &[&str] = &["group", "variants"];
-pub(super) const VARIANT_FIELDS: &[&str] = &["antecedents", "presented_by"];
-/// The category whose checks group under a protocol lane.
-pub(super) const LANE_CATEGORY: &str = "mcp";
-pub(super) const BREADCRUMB_MAX: usize = 40;
+/// Any other op runs the JSON-errors probe under the check's own id.
+pub(super) const API_HYGIENE_OPS: &[&str] = &["json-errors", "rate-limit"];
+/// Any other op runs the link crawl under the check's own id.
+pub(super) const LLMS_TXT_OPS: &[&str] = &["format", "links", "when-to-use"];
 /// Regex-bearing `with` values: path inside `with`, short field name, and the
 /// JavaScript flags `assert.ts` evaluates the value under.
 pub(super) const PATTERN_FIELDS: &[(&[&str], &str, &str)] = &[

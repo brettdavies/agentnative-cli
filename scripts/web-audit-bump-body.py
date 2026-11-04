@@ -146,7 +146,7 @@ def count_of_vendored(paths):
 
 
 def changelog_bullet(changed, new):
-    if any(re.search(r"(^|/)(registry|remediation|constants|user-agents|site-url|audit-routes|server-card)\.", f) for f in changed):
+    if any(re.search(r"(^|/)(registry|remediation|constants)\.", f) for f in changed):
         return f"- Update `anc web`'s checks, fixes and settings to match agentnative-site `{new[:7]}`."
     return f"- Update `anc web`'s reported site pin to agentnative-site `{new[:7]}`."
 

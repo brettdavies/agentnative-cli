@@ -7,7 +7,7 @@
 //! discovery to read; any other card is held to SEP-2127 and passes when it
 //! carries every field the extension schema requires, at its top level and
 //! in each `remotes[]` item, with the JSON type the schema gives. The field
-//! lists arrive in `with`, spliced from the vendored schema at build.
+//! lists arrive in `with`, from the site's `registry.json`.
 
 use serde_json::{Value, json};
 
@@ -23,7 +23,7 @@ use crate::web_audit::scorecard::RowAdvisory;
 const REMOTES: &str = "remotes";
 
 /// Whether `value` holds the JSON type the schema names. The build admits
-/// only the seven JSON Schema type names.
+/// only the seven JSON Schema type names (`JSON_TYPES`).
 fn has_type(value: &Value, json_type: &str) -> bool {
     match json_type {
         "string" => value.is_string(),

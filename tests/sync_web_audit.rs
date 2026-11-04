@@ -165,8 +165,142 @@ fn list_names_every_vendored_path_with_the_pin_last() {
             "{path} is not in this repository"
         );
     }
-    assert!(paths.contains(&"src/web_audit/vendored/registry.yaml"));
-    assert!(paths.contains(&"tests/fixtures/web-audit-conformance"));
+    assert!(paths.contains(&"src/web_audit/vendored/contract"));
+    assert!(paths.contains(&"tests/fixtures/web-audit-contract"));
+}
+
+/// A throwaway site whose contract the sync script reads, and a destination synced
+/// to it.
+fn synced_copy(tmp: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf, String) {
+    let git = |dir: &std::path::Path, args: &[&str]| -> String {
+        let mut cmd = Command::new("git");
+        cmd.current_dir(dir)
+            .args([
+                "-c",
+                "user.name=fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                // A developer's global ignore file commonly lists `build/`, which the
+                // site's contract uses as a directory name.
+                "-c",
+                "core.excludesFile=/dev/null",
+            ])
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null");
+        for var in ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"] {
+            cmd.env_remove(var);
+        }
+        let output = cmd.output().expect("git runs");
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    let site = tmp.join("site");
+    for file in [
+        "src/data/web-audit/contract/build/registry.json",
+        "src/data/web-audit/contract/test/score-parity.json",
+    ] {
+        let path = site.join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "{}\n").unwrap();
+    }
+    git(&site, &["init", "--quiet", "--initial-branch=dev"]);
+    git(&site, &["add", "-A"]);
+    git(&site, &["commit", "--quiet", "-m", "the contract"]);
+    let sha = git(&site, &["rev-parse", "HEAD"]);
+    let dest = tmp.join("dest");
+    fs::create_dir(&dest).unwrap();
+    let output = sync(&site, &dest).arg("--pin").arg(&sha).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    (site, dest, sha)
+}
+
+fn sync(site: &std::path::Path, dest: &std::path::Path) -> Command {
+    let mut cmd = Command::new("bash");
+    cmd.arg(repo_root().join("scripts/sync-web-audit.sh"))
+        .env("WEB_AUDIT_SITE_REPO", site)
+        .env("WEB_AUDIT_DEST_ROOT", dest);
+    cmd
+}
+
+#[test]
+fn check_passes_a_copy_that_matches_the_pin() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (site, dest, _) = synced_copy(tmp.path());
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
+fn check_names_a_file_only_the_copy_holds() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (site, dest, _) = synced_copy(tmp.path());
+    fs::write(
+        dest.join("src/web_audit/vendored/contract/extra.json"),
+        "{}\n",
+    )
+    .unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("extra.json"), "{stderr}");
+}
+
+#[test]
+fn check_names_a_file_only_the_site_holds() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (site, dest, _) = synced_copy(tmp.path());
+    fs::remove_file(dest.join("tests/fixtures/web-audit-contract/score-parity.json")).unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("score-parity.json"), "{stderr}");
+}
+
+#[test]
+fn check_names_a_file_whose_bytes_differ() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (site, dest, _) = synced_copy(tmp.path());
+    fs::write(
+        dest.join("src/web_audit/vendored/contract/registry.json"),
+        "{\"edited\": true}\n",
+    )
+    .unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("registry.json"), "{stderr}");
+    assert!(!stderr.contains("score-parity.json"), "{stderr}");
+}
+
+#[test]
+fn check_finds_drift_under_a_path_holding_a_sed_delimiter() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let nested = tmp.path().join("a|b");
+    fs::create_dir(&nested).unwrap();
+    let (site, dest, _) = synced_copy(&nested);
+    fs::write(
+        dest.join("src/web_audit/vendored/contract/registry.json"),
+        "{\"edited\": true}\n",
+    )
+    .unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("registry.json"), "{stderr}");
+}
+
+#[test]
+fn check_names_a_copy_that_is_missing() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let (site, dest, _) = synced_copy(tmp.path());
+    fs::remove_dir_all(dest.join("tests/fixtures/web-audit-contract")).unwrap();
+    let output = sync(&site, &dest).arg("--check").output().unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("web-audit-contract"), "{stderr}");
 }
 
 /// Reaches the site repository; set `WEB_AUDIT_SYNC_ONLINE=1` to run it.

@@ -1,8 +1,8 @@
-# Drift gate for the vendored web-audit inputs against the agentnative-site
+# Drift gate for the vendored web-audit contract against the agentnative-site
 # commit pinned in src/web_audit/vendored/SITE_SHA. build.rs compiles the
-# registry, remediation catalog, and probe User-Agent constants under
-# src/web_audit/vendored/ into $OUT_DIR/generated_web_registry.rs, and the
-# conformance corpus under tests/fixtures/web-audit-conformance/ drives the
+# registry, remediation catalog, and engine settings under
+# src/web_audit/vendored/contract/ into $OUT_DIR/generated_web_registry.rs, and
+# the conformance corpus under tests/fixtures/web-audit-contract/ drives the
 # parity suite.
 #
 # Failure means a vendored copy no longer matches the pinned commit. Run

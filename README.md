@@ -457,8 +457,8 @@ catalog lists by URL, an API host or description the api-catalog anchors, or whe
 POSTs. An MCP endpoint on a declared host gets GETs for the documents that could confirm it (a card at
 `<endpoint>/server-card`, its host's `/.well-known/ai-catalog.json`, RFC 9728 protected-resource metadata) and receives
 wire probes only after one of those documents on its own host names that exact endpoint; a POST is never re-sent to
-another origin. Following stops at 4 hosts and 12 requests inside a 6-second window, takes at most one redirect hop per
-declared URL, and never reaches a host of another class than the target's. The scorecard's `declared_hosts` trail
+another origin. Following stops at the host, request, and time limits the site publishes, takes at most one redirect hop
+per declared URL, and never reaches a host of another class than the target's. The scorecard's `declared_hosts` trail
 records how each declared URL was treated. `--no-follow` audits the target alone: rows that depend on a declared host
 then report `n_a` (`follow-disabled`).
 

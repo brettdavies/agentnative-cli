@@ -18,14 +18,12 @@ use super::discovery::{API_CATALOG_PATH, resolve_url};
 use super::discovery_documents::{RetainedDocument, is_templated_url, parse_json_object};
 use super::follow_trail::{Declaration, Kind};
 use crate::web_audit::pattern::fixed;
+use crate::web_audit::registry::MAX_CATALOG_ANCHORS;
 
 /// A link target that is an MCP surface (a card, the endpoint, its usage
 /// doc) rather than an API description.
 pub static MCP_TARGET_RE: LazyLock<Regex> =
     LazyLock::new(|| fixed(r"(?i)\.well-known/mcp|server-card|mcp-skill|/mcp(?-u:\b)"));
-
-// Bounds the declarations one catalog can add to the trail, whatever it lists.
-const MAX_CATALOG_ANCHORS: usize = 8;
 
 /// A URL the catalog declares, with the JSON Pointer into the catalog where it does.
 #[derive(Clone, Debug, PartialEq, Eq)]

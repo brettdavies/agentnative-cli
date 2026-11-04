@@ -20,11 +20,11 @@ use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::locality::Locality;
 
 /// The follow slice's share of the per-audit deadline.
-pub const FOLLOW_SLICE: Duration = Duration::from_millis(6_000);
-/// Distinct hosts the slice admits.
-pub const MAX_FOLLOWED_HOSTS: usize = 4;
+pub use crate::web_audit::registry::FOLLOW_SLICE;
 /// Requests the slice sends.
-pub const MAX_FOLLOW_REQUESTS: usize = 12;
+pub use crate::web_audit::registry::MAX_FOLLOW_REQUESTS;
+/// Distinct hosts the slice admits.
+pub use crate::web_audit::registry::MAX_FOLLOWED_HOSTS;
 
 /// What stopped a request before it started.
 pub type Cause = &'static str;

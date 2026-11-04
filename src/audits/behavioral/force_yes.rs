@@ -8,10 +8,11 @@
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
 //! less any the `.anc.toml` chain declares in `[p5] not_destructive`, probe
-//! each one's `--help`, and audit for one of [`CONFIRM_FLAGS`] or a flag the
-//! chain declares in `[p5] confirm_flags`. Fail when any destructive
-//! subcommand lists none. Vacuous Skip when the binary has no destructive
-//! subcommands.
+//! each one's `--help`, and audit for one of [`CONFIRM_FLAGS`], one of
+//! [`DESCRIBED_CONFIRM_FLAGS`] whose help line says it confirms without a
+//! prompt, or a flag the chain declares in `[p5] confirm_flags`. Fail when any
+//! destructive subcommand lists none. Vacuous Skip when the binary has no
+//! destructive subcommands.
 
 use std::borrow::Cow;
 
@@ -27,15 +28,13 @@ use crate::types::{
 };
 
 /// Flags that confirm a destructive operation non-interactively.
-const CONFIRM_FLAGS: &[&str] = &[
-    "--force",
-    "--yes",
-    "-y",
-    "-f",
-    "--auto-approve",
-    "--assume-yes",
-    "--confirm",
-];
+const CONFIRM_FLAGS: &[&str] = &["--force", "--yes", "-y", "-f"];
+
+/// Names P5 does not give, which count under its clause for a flag under
+/// another name: the command's `--help` documents it as confirming without a
+/// prompt. pacman's `--confirm` asks for confirmation, and a `--confirm <ID>`
+/// can confirm an order rather than the operation.
+const DESCRIBED_CONFIRM_FLAGS: &[&str] = &["--auto-approve", "--assume-yes", "--confirm"];
 
 /// What `-y` and `-f` must mean to confirm. `-f` is also `--file` (tar,
 /// sed), `--filter` (lazygit) and `--format` (shellcheck). The words are the
@@ -45,6 +44,59 @@ const CONFIRM: Meaning = Meaning {
     what: "force or yes",
     long_names: &[],
     words: &["force", "yes", "confirm", "confirmation"],
+};
+
+/// What a description says of a flag that confirms without a prompt. Each
+/// phrase pairs the prompt with what removes it, because the bare words also
+/// describe the opposite: `--confirm  Prompt for confirmation before deleting`.
+const CONFIRMS_WITHOUT_PROMPT: Meaning = Meaning {
+    what: "confirming without a prompt",
+    long_names: &[],
+    words: &[
+        "answer yes",
+        "assume yes",
+        "auto approve",
+        "auto confirm",
+        "automatic yes",
+        "automatically approve",
+        "automatically approves",
+        "automatically confirm",
+        "automatically confirms",
+        "bypass confirmation",
+        "bypass the confirmation",
+        "bypass the prompt",
+        "do not ask",
+        "do not prompt",
+        "don't ask",
+        "don't prompt",
+        "never ask",
+        "never prompt",
+        "no confirmation",
+        "no prompt",
+        "no prompts",
+        "non interactive",
+        "non interactively",
+        "noninteractive",
+        "skip approval",
+        "skip confirmation",
+        "skip interactive",
+        "skip prompt",
+        "skip prompts",
+        "skip the confirmation",
+        "skip the prompt",
+        "skips approval",
+        "skips confirmation",
+        "skips interactive",
+        "skips the confirmation",
+        "skips the prompt",
+        "without a prompt",
+        "without asking",
+        "without confirmation",
+        "without confirming",
+        "without prompt",
+        "without prompting",
+        "without prompts",
+    ],
 };
 
 pub struct ForceYesAudit;
@@ -148,7 +200,10 @@ pub(crate) fn audit_force_yes(
             missing.push(verb.as_str());
             continue;
         };
-        if flag_meaning::find(help, CONFIRM_FLAGS, &CONFIRM).is_some() {
+        if flag_meaning::find(help, CONFIRM_FLAGS, &CONFIRM).is_some()
+            || flag_meaning::find_described(help, DESCRIBED_CONFIRM_FLAGS, &CONFIRMS_WITHOUT_PROMPT)
+                .is_some()
+        {
             continue;
         }
         match declared_flags
@@ -176,16 +231,18 @@ pub(crate) fn audit_force_yes(
         .collect();
     let wanted: Vec<&str> = CONFIRM_FLAGS
         .iter()
+        .chain(DESCRIBED_CONFIRM_FLAGS)
         .copied()
         .chain(declared_names.iter().map(AsRef::as_ref))
         .collect();
     AuditStatus::Fail(format!(
         "destructive subcommand(s) whose --help lists no confirmation flag: {}. \
          Accepted flags: {}. Irreversible operations must require explicit \
-         confirmation so they can't be invoked accidentally.{}",
+         confirmation so they can't be invoked accidentally.{}{}",
         missing.join(", "),
         accepted_flags(declared_flags),
         dash_rule_notes(&missing, subhelp, &wanted, Some(&CONFIRM)),
+        undescribed_notes(&missing, subhelp),
     ))
     .into()
 }
@@ -219,11 +276,16 @@ fn with_exclusions(verdict: Verdict, excluded: &[String]) -> Verdict {
     verdict.crediting(declared, &note)
 }
 
-/// The built-in names, then each declared flag with the file it came from.
+/// The built-in names, the names that count by their description, then each
+/// declared flag with the file it came from.
 fn accepted_flags(declared_flags: &[Sourced<String>]) -> String {
     CONFIRM_FLAGS
         .iter()
         .map(|flag| (*flag).to_string())
+        .chain(std::iter::once(format!(
+            "{} (when its help says it confirms without a prompt)",
+            DESCRIBED_CONFIRM_FLAGS.join(", ")
+        )))
         .chain(
             declared_flags
                 .iter()
@@ -231,6 +293,23 @@ fn accepted_flags(declared_flags: &[Sourced<String>]) -> String {
         )
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// For each of `names`, the described flag its help declares without saying it
+/// confirms without a prompt.
+fn undescribed_notes(names: &[&str], subhelp: &[(String, HelpOutput)]) -> String {
+    names
+        .iter()
+        .filter_map(|name| {
+            let (_, help) = subhelp.iter().find(|(sub, _)| sub == name)?;
+            let note = flag_meaning::undescribed_note(
+                help,
+                DESCRIBED_CONFIRM_FLAGS,
+                &CONFIRMS_WITHOUT_PROMPT,
+            )?;
+            Some(format!(" In `{name}`, {note}"))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -522,7 +601,10 @@ mod tests {
         .status
         {
             AuditStatus::Fail(msg) => assert!(
-                msg.contains("--confirm, -auto-approve via .anc.toml [p5].confirm_flags."),
+                msg.contains(
+                    "--confirm (when its help says it confirms without a prompt), -auto-approve \
+                     via .anc.toml [p5].confirm_flags."
+                ),
                 "{msg}"
             ),
             other => panic!("expected Fail, got {other:?}"),
@@ -648,21 +730,110 @@ esac"#,
         );
     }
 
+    fn destroy_status(option_line: &str) -> AuditStatus {
+        let subhelp = vec![(
+            "destroy".to_string(),
+            hp(&format!(
+                "Usage: tool destroy\n\nOptions:\n      {option_line}\n  -h, --help    Show help.\n"
+            )),
+        )];
+        audit_force_yes(&["destroy".to_string()], &subhelp, &[]).status
+    }
+
     #[test]
-    fn pass_on_widely_used_confirmation_flags() {
+    fn pass_on_described_confirmation_flags() {
         for flag in ["--auto-approve", "--assume-yes", "--confirm"] {
-            let subhelp = vec![(
-                "destroy".to_string(),
-                hp(&format!(
-                    "Usage: tool destroy\n\nOptions:\n      {flag}    Skip the prompt.\n  -h, --help    Show help.\n"
-                )),
-            )];
             assert_eq!(
-                audit_force_yes(&["destroy".to_string()], &subhelp, &[]).status,
+                destroy_status(&format!("{flag}    Skip the prompt.")),
                 AuditStatus::Pass,
                 "{flag} confirms a destructive subcommand"
             );
         }
+    }
+
+    #[test]
+    fn a_described_flag_passes_on_each_way_help_says_no_prompt() {
+        for line in [
+            "--confirm    Skip the confirmation prompt",
+            "--confirm    Delete without prompting",
+            "--confirm    Do not ask for confirmation",
+            "--confirm    Don't ask before deleting",
+            "--auto-approve    Skip interactive approval of plan before applying.",
+            "--auto-approve    Automatically approve every step",
+            "--assume-yes    Assume yes to all prompts",
+            "--assume-yes    Automatic yes to prompts",
+            "--assume-yes    Run non-interactively",
+        ] {
+            assert_eq!(destroy_status(line), AuditStatus::Pass, "{line}");
+        }
+    }
+
+    #[test]
+    fn a_described_flag_gives_no_credit_when_its_help_says_otherwise() {
+        for line in [
+            "--confirm <ID>    Confirm a pending order",
+            // pacman's own line.
+            "--confirm    Always ask for confirmation",
+            "--confirm    Prompt for confirmation before deleting",
+            "--auto-approve    Approve the plan",
+            "--assume-yes",
+        ] {
+            match destroy_status(line) {
+                AuditStatus::Fail(msg) => {
+                    let name = line.split_whitespace().next().expect("a flag name");
+                    assert!(
+                        msg.contains(&format!(
+                            "In `destroy`, `{name}` is declared, but its definition"
+                        )) && msg.contains("does not mean confirming without a prompt."),
+                        "{line}: {msg}"
+                    );
+                }
+                other => panic!("{line}: expected Fail, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn yes_and_force_pass_whatever_their_help_says() {
+        for line in [
+            "--yes    Proceed",
+            "--force",
+            "--force    Overwrite the target",
+        ] {
+            assert_eq!(destroy_status(line), AuditStatus::Pass, "{line}");
+        }
+    }
+
+    #[test]
+    fn a_declared_flag_skips_the_description_test() {
+        let subhelp = vec![(
+            "destroy".to_string(),
+            hp("Options:\n      --confirm <ID>    Confirm a pending order\n"),
+        )];
+        let verdict = audit_force_yes(
+            &["destroy".to_string()],
+            &subhelp,
+            &[declared("--confirm", ".anc.toml")],
+        );
+        assert_eq!(verdict.status, AuditStatus::Pass);
+        assert_eq!(
+            verdict.mitigation,
+            Some(Mitigation::Config(
+                "destroy accepts --confirm via .anc.toml [p5].confirm_flags".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_letter_beside_a_described_flag_answers_to_its_own_description() {
+        assert_eq!(
+            destroy_status("-y, --assume-yes    Assume yes"),
+            AuditStatus::Pass
+        );
+        assert!(matches!(
+            destroy_status("-c, --confirm <ID>    Confirm a pending order"),
+            AuditStatus::Fail(_)
+        ));
     }
 
     #[test]
@@ -673,7 +844,10 @@ esac"#,
         )];
         match audit_force_yes(&["delete".to_string()], &subhelp, &[]).status {
             AuditStatus::Fail(msg) => assert!(
-                msg.contains("Accepted flags: --force, --yes, -y, -f, --auto-approve, --assume-yes, --confirm."),
+                msg.contains(
+                    "Accepted flags: --force, --yes, -y, -f, --auto-approve, --assume-yes, \
+                     --confirm (when its help says it confirms without a prompt)."
+                ),
                 "{msg}"
             ),
             other => panic!("expected Fail, got {other:?}"),

@@ -175,14 +175,14 @@ not list leaves the row failing, and the evidence says so. A built-in `schema` s
 lowercase. The nearest file that declares `schema_command` supplies it, and an empty list declares nothing.
 
 `confirm_flags`: `p5-must-force-yes` requires each destructive subcommand's own `--help` to list a confirmation flag.
-The built-in names are `--force`, `--yes`, `-y`, `-f`, `--auto-approve`, `--assume-yes`, and `--confirm`. A declared
-flag counts beside them, and only where the subcommand's `--help` lists it, so a declaration names the flag and cannot
-stand in for one. Built-in and declared names match whole: `-f` does not match `-force-copy`. In a help that declares no
-double-dash name, a single-dash name matches its double-dash spelling, so terraform's `-auto-approve` meets the built-in
-`--auto-approve` without a declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. An entry written
-without dashes is read as a flag: `noconfirm` is `--noconfirm`, and `y` is `-y`. A pass that needed a declared flag says
-so in the row's evidence, naming the subcommand, the flag, and the file:
-`destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`.
+The built-in names are `--force`, `--yes`, `-y`, and `-f`. `--auto-approve`, `--assume-yes`, and `--confirm` count when
+the subcommand's help line says the flag confirms without a prompt. A declared flag counts beside them, and only where
+the subcommand's `--help` lists it, so a declaration names the flag and cannot stand in for one. Built-in and declared
+names match whole: `-f` does not match `-force-copy`. In a help that declares no double-dash name, a single-dash name
+matches its double-dash spelling, so terraform's `-auto-approve` meets the built-in `--auto-approve` without a
+declaration, and a declared `--noconfirm` meets a listed `-noconfirm`. An entry written without dashes is read as a
+flag: `noconfirm` is `--noconfirm`, and `y` is `-y`. A pass that needed a declared flag says so in the row's evidence,
+naming the subcommand, the flag, and the file: `destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`.
 
 `not_destructive`: `p5-must-force-yes` treats a subcommand as destructive by its name (`delete`, `rm`, `purge`, `clean`,
 and names built on them). A tool whose `clean` clears regenerable caches, for one, declares it here, and the audit

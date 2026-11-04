@@ -58,6 +58,34 @@ pub(crate) fn find<'h>(
         .find_map(|flag| accepts(flag, names, meaning).map(|spelling| FlagMatch { flag, spelling }))
 }
 
+/// The first flag, in help order, that declares one of `names` and whose own
+/// description says `meaning`, for a long name that does not say what it does
+/// by itself: `--confirm` skips the prompt in one tool and asks in another.
+pub(crate) fn find_described<'h>(
+    help: &'h HelpOutput,
+    names: &[&str],
+    meaning: &Meaning,
+) -> Option<FlagMatch<'h>> {
+    help.flags().iter().find_map(|flag| {
+        let spelling = flag.declares_any(names)?;
+        names_any(flag.description(), meaning.words).then_some(FlagMatch { flag, spelling })
+    })
+}
+
+/// When `help` declares one of `names` whose description does not say
+/// `meaning`: the name, its definition, and that it does not count.
+pub(crate) fn undescribed_note(
+    help: &HelpOutput,
+    names: &[&str],
+    meaning: &Meaning,
+) -> Option<String> {
+    help.flags().iter().find_map(|flag| {
+        let spelling = flag.declares_any(names)?;
+        (!names_any(flag.description(), meaning.words))
+            .then(|| does_not_mean(spelling, flag, meaning))
+    })
+}
+
 /// When `help` declares a single letter from `names` whose definition does
 /// not give `meaning`: the letter, its definition, and that it does not
 /// count.
@@ -71,14 +99,16 @@ pub(crate) fn rejected_note(
             .iter()
             .filter(|name| is_single_letter(name))
             .find_map(|name| flag.declares(name))?;
-        (!meaning.is_meant_by(flag, names)).then(|| {
-            format!(
-                "`{letter}` is declared, but its definition (`{}`) does not mean {}.",
-                first_sentence(&flag.definition()),
-                meaning.what
-            )
-        })
+        (!meaning.is_meant_by(flag, names)).then(|| does_not_mean(letter, flag, meaning))
     })
+}
+
+fn does_not_mean(name: &str, flag: &Flag, meaning: &Meaning) -> String {
+    format!(
+        "`{name}` is declared, but its definition (`{}`) does not mean {}.",
+        first_sentence(&flag.definition()),
+        meaning.what
+    )
 }
 
 /// [`HelpOutput::dash_rule_note`] and [`rejected_note`], each that applies,

@@ -11,6 +11,7 @@ use super::shared::{
     resolve_url, retry_shaped_why, same_origin_recovery_link, substitute_endpoint, worst,
 };
 use crate::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
+use crate::web_audit::fetch::body::STATUS_ONLY_BODY_BYTES;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
@@ -125,6 +126,15 @@ pub(crate) fn assess_response(
     (ok, row)
 }
 
+/// A row reads no body when nothing it asserts or keeps is in one, so a 70 MB
+/// llms-full.txt costs its headers; the memo keeps reading the start of the
+/// body for a later row that needs it. `with.timeout` opts a row into hang
+/// detection, whose failure is a body held open after a clean status
+/// (`mcp-get-fast-fail`), so that row reads through.
+fn reads_status_only(w: &HttpWith, expect: &ExpectBlock) -> bool {
+    w.retain_body != Some(true) && w.timeout.is_none() && !expect.reads_body()
+}
+
 /// Resolve `path` or each `path_any` candidate, issue the method with the
 /// headers under the check's timeout, and evaluate the expectation.
 pub fn run_http(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
@@ -137,15 +147,19 @@ pub fn run_http(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
     let method = w.method.as_deref().unwrap_or("GET");
     let headers = header_pairs(w.headers.as_ref());
     let expect = w.expect.clone().unwrap_or_default();
+    let status_only = reads_status_only(&w, &expect);
     let mut evidence = Vec::new();
     let mut misses: Vec<Miss> = Vec::new();
     for raw_path in &paths {
-        let opts = endpoint_redirects(
+        let mut opts = endpoint_redirects(
             ctx.fetch_options(w.timeout),
             raw_path,
             ctx.mcp_endpoint_followed,
             method,
         );
+        if status_only {
+            opts.max_body_bytes = Some(STATUS_ONLY_BODY_BYTES);
+        }
         let url = resolve_url(
             &ctx.base,
             &substitute_endpoint(raw_path, ctx.mcp_endpoint.as_deref()),

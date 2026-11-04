@@ -11,6 +11,7 @@
 
 pub mod body;
 pub mod hop;
+pub mod launch;
 pub mod memo;
 pub mod proxy;
 pub mod redirect;
@@ -23,6 +24,7 @@ use super::credential::RedactedHeaders;
 use super::headers::Headers;
 use super::locality::Resolver;
 use super::transport::Transport;
+use launch::Launch;
 use memo::RequestMemo;
 use redirect::HopSender;
 
@@ -78,6 +80,11 @@ pub struct FetchOptions {
     /// When set, only hops that keep the scheme, host and port are taken,
     /// so the method and body are never re-sent to another origin.
     pub cross_origin_redirects: Option<CrossOriginRedirects>,
+    /// Shortens this request to this budget from its start once the audit's
+    /// memo is cut, in flight or before it starts. It never lengthens one.
+    pub cut_to: Option<Duration>,
+    /// The group this request goes out with.
+    pub launch: Option<Launch>,
 }
 
 /// What a chain does with a redirect to another origin.
@@ -98,6 +105,8 @@ impl Default for FetchOptions {
             follow_redirects: true,
             refuse_redirects: false,
             cross_origin_redirects: None,
+            cut_to: None,
+            launch: None,
         }
     }
 }
@@ -205,6 +214,7 @@ impl<'a> Fetcher<'a> {
     /// Fetch through the guard. Never returns an error; failures come back
     /// as a response with `status: None`.
     pub fn fetch(&self, url: &str, init: &FetchInit, opts: &FetchOptions) -> ProbeResponse {
+        let boarding = opts.launch.as_ref().map(Launch::boarding);
         let started = Instant::now();
         let elapsed =
             |started: Instant| u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -236,6 +246,8 @@ impl<'a> Fetcher<'a> {
             body: init.body.as_deref(),
             started,
             deadline: started + opts.timeout,
+            cut_at: opts.cut_to.map(|to| started + opts.timeout.min(to)),
+            boarding: boarding.as_ref(),
             max_body_bytes: opts.max_body_bytes,
             follow_redirects: opts.follow_redirects,
             refuse_redirects: opts.refuse_redirects,

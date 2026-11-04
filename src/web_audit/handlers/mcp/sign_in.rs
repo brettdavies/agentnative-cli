@@ -54,7 +54,7 @@ fn sign_in_required(ev: &EvidenceItem) -> ProbeOutcome {
     }
 }
 
-/// A wave-1 outcome read again once the endpoint is known to require
+/// A wire probe's outcome read again once the endpoint is known to require
 /// sign-in, through the arm every later row takes; `None` when that arm
 /// would not reach it (a failed request or a rate-limit refusal).
 pub fn sign_in_required_outcome(outcome: &ProbeOutcome) -> Option<ProbeOutcome> {
@@ -63,7 +63,7 @@ pub fn sign_in_required_outcome(outcome: &ProbeOutcome) -> Option<ProbeOutcome> 
     (outcome.status != ProbeStatus::Error && drew_401).then(|| sign_in_required(first))
 }
 
-/// The row's 401 asks for sign-in: wave 1 settled that the endpoint
+/// The row's 401 asks for sign-in: the wire probes settled that the endpoint
 /// requires it, or this 401 is the first that metadata naming the endpoint
 /// backs. Settled ahead of every arm that reads the answer, which would
 /// read it as a broken surface or as an era the server does not serve.

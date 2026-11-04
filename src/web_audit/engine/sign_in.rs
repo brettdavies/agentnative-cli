@@ -24,7 +24,7 @@ use super::types::{ProbeOutcome, ProbeStatus};
 use crate::web_audit::handlers::mcp::ops::Era;
 use crate::web_audit::scorecard::EvidenceItem;
 
-/// The wave-1 wire probes whose answer decides it, in the order a 401's
+/// The wire probes whose answer decides it, in the order a 401's
 /// challenge is read, with the lane each asks on.
 const WIRE_PROBES: [(&str, Era); 2] = [
     ("mcp-initialize", Era::Legacy),
@@ -58,7 +58,7 @@ pub struct SignInChallenge {
     pub lane: Era,
 }
 
-/// The wave-1 wire probes' evidence, in the order a 401's challenge is read.
+/// The wire probes' evidence, in the order a 401's challenge is read.
 pub fn wire_probe_evidence(sources: &HashMap<String, ProbeOutcome>) -> Vec<&EvidenceItem> {
     WIRE_PROBES
         .iter()
@@ -78,12 +78,12 @@ pub fn handshake_served(outcome: Option<&ProbeOutcome>) -> bool {
     })
 }
 
-/// Whether a check is one of the wave-1 wire probes.
+/// Whether a check is one of the wire probes.
 pub fn is_wire_probe(id: &str) -> bool {
     WIRE_PROBES.iter().any(|(probe, _)| *probe == id)
 }
 
-/// A wave-1 wire probe was served a result, so the client that sent it
+/// A wire probe was served a result, so the client that sent it
 /// holds a session: one without a token when the outcomes are token-less,
 /// the run's own token otherwise.
 pub fn wire_probe_served(sources: &HashMap<String, ProbeOutcome>) -> bool {
@@ -104,7 +104,7 @@ pub fn lane_refused(sources: &HashMap<String, ProbeOutcome>, lane: Era) -> bool 
     })
 }
 
-/// The 401 a wave-1 wire probe drew from the endpoint.
+/// The 401 a wire probe drew from the endpoint.
 fn wire_challenge(sources: &HashMap<String, ProbeOutcome>) -> Option<SignInChallenge> {
     WIRE_PROBES.iter().find_map(|(id, lane)| {
         let outcome = sources.get(*id)?;
@@ -233,8 +233,8 @@ impl SignInResolver {
     }
 }
 
-/// Whether the endpoint of record requires sign-in, once wave 1 has probed
-/// it, read from the wire probes as a client without a token saw them.
+/// Whether the endpoint of record requires sign-in, once both wire probes have
+/// answered, read from them as a client without a token saw them.
 /// Their 401 is read first. When neither wire probe drew one, nor was
 /// served a result, the 401 discovery drew while finding the endpoint still
 /// stands: a timeout, a rate limit, or a server error on the handshake says

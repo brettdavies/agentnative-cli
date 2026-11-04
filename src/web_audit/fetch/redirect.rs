@@ -34,6 +34,7 @@ use url::Url;
 
 use super::CrossOriginRedirects;
 use super::hop::{self, HopAnswer, HopContext, HopRecord};
+use super::launch::Boarding;
 use super::memo::RequestMemo;
 use super::proxy;
 use super::trust::TrustClass;
@@ -150,6 +151,10 @@ pub struct ChainRequest<'a> {
     pub started: Instant,
     /// The deadline for the whole chain.
     pub deadline: Instant,
+    /// When the chain's budget ends instead once the audit's memo is cut.
+    pub cut_at: Option<Instant>,
+    /// This chain's place in the group it goes out with.
+    pub(crate) boarding: Option<&'a Boarding>,
     /// The caller's cap for the body of the response it keeps.
     pub max_body_bytes: Option<usize>,
     /// Whether a 3xx is followed or returned as-is.
@@ -203,7 +208,20 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
     let mut current = target.url;
     let keeps_redirect = !chain.follow_redirects
         || chain.cross_origin_redirects == Some(CrossOriginRedirects::Return);
+    // Time a hop spends waiting for the root is not the read's: its budget moves
+    // forward by what it waited, a cut's included.
+    let mut held = Duration::ZERO;
     for hop in 0..=chain.max_redirects {
+        if hop > 0
+            && let Some(boarding) = chain.boarding
+        {
+            let waiting_from = Instant::now();
+            boarding.wait_for_root();
+            held += waiting_from.elapsed();
+            if matches!(chain.sender, HopSender::Memo(memo, _) if memo.is_ended()) {
+                return Err("audit ended".to_string());
+            }
+        }
         // A first hop's budget runs from the same instant as the deadline,
         // so callers with the same timeout compare equal; a later hop gets
         // what is left of it.
@@ -214,17 +232,19 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
         };
         let ctx = HopContext {
             started,
-            deadline: chain.deadline,
+            deadline: chain.deadline + held,
+            cut_at: chain.cut_at.map(|cut_at| cut_at + held),
             body_cap: chain.max_body_bytes,
             keeps_redirect,
         };
+        let cut = matches!(chain.sender, HopSender::Memo(memo, _) if memo.was_cut());
         let request = Request {
             method: chain.method.to_string(),
             url: current.to_string(),
             headers: hop_headers(chain.headers, current.origin() == origin),
             body: chain.body.map(<[u8]>::to_vec),
-            timeout: chain
-                .deadline
+            timeout: ctx
+                .deadline_given(cut)
                 .saturating_duration_since(started)
                 .max(MIN_HOP_TIMEOUT),
             via_proxy,
@@ -232,7 +252,7 @@ pub fn follow(chain: &ChainRequest<'_>, target: Validated) -> Result<ChainEnd, S
         };
         let record = match chain.sender {
             HopSender::Direct(transport) => hop::take(transport, &request, &ctx),
-            HopSender::Memo(memo, transport) => memo.take(transport, request, ctx),
+            HopSender::Memo(memo, transport) => memo.take(transport, request, ctx, chain.boarding),
         };
         let answer = match record {
             HopRecord::Answer(answer) => answer,

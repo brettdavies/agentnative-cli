@@ -3,7 +3,8 @@
 //! A check is scored only when its antecedent holds; otherwise it is `n_a`
 //! with the `antecedent-unmet` reason. Antecedents resolve from the declared
 //! site type, from MCP discovery, from the single canonical root fetch, or
-//! from another check's wave-1 outcome, never from a fresh fetch.
+//! from a source check's outcome, never from a fresh fetch. Beside each
+//! token's logic, [`prerequisites`] names what that logic reads.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -13,6 +14,7 @@ use regex::Regex;
 use super::antecedents_mcp::{self as mcp, no_mcp_endpoint};
 use super::api_catalog::MCP_TARGET_RE;
 use super::follow_trail::DeclaredHostReason;
+use super::prerequisites::Prerequisite;
 use super::sign_in::McpAuthRequired;
 use super::types::{ProbeOutcome, ProbeStatus};
 use crate::web_audit::fetch::ProbeResponse;
@@ -21,9 +23,10 @@ use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::{AntecedentToken, WebCheckSiteType};
 use crate::web_audit::scorecard::{DeclaredSiteType, EvidenceItem};
 
-/// Checks probed in wave 1 because their results feed antecedent tokens or
-/// retained bodies consumed by wave-2 checks.
-pub const WAVE1_CHECK_IDS: &[&str] = &[
+/// Checks probed as soon as discovery settles, whatever their own antecedent
+/// says, because their results feed antecedent tokens or retained bodies other
+/// checks read. Their own antecedents apply once those signals are in.
+pub const SOURCE_CHECK_IDS: &[&str] = &[
     "robots",
     "llms-txt",
     "llms-full-txt",
@@ -35,12 +38,31 @@ pub const WAVE1_CHECK_IDS: &[&str] = &[
     "accept-markdown",
 ];
 
-/// Whether a check id is probed in wave 1.
-pub fn is_wave1(id: &str) -> bool {
-    WAVE1_CHECK_IDS.contains(&id)
+/// Whether a check id is a source check.
+pub fn is_source_check(id: &str) -> bool {
+    SOURCE_CHECK_IDS.contains(&id)
 }
 
-/// What the wave-1 evidence says about a token.
+/// What must have settled before `token` can resolve.
+pub fn prerequisites(token: AntecedentToken) -> &'static [Prerequisite] {
+    use AntecedentToken as T;
+    use Prerequisite::{McpNotified, McpSettled, Source};
+    match token {
+        T::None | T::HttpRoot | T::HtmlRoot => &[],
+        T::McpPresent | T::McpAuth | T::McpSession | T::McpAuthRequired | T::McpResources => {
+            &[McpNotified]
+        }
+        T::ApiSurface => &[Source("openapi"), Source("llms-txt"), Source("sitemap")],
+        T::SchemasRef => &[Source("openapi")],
+        T::DocsSite | T::RootLlmsTxt => &[Source("llms-txt")],
+        T::RootLlmsFullTxt => &[Source("llms-full-txt")],
+        T::MarkdownTwin => &[Source("accept-markdown"), Source("llms-txt")],
+        T::RobotsPresent => &[Source("robots")],
+        T::AuthPresent => &[Source("oauth-discovery"), Source("openapi"), McpSettled],
+    }
+}
+
+/// What the settled sources say about a token.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Resolution {
     /// The check applies and is probed.
@@ -60,7 +82,7 @@ pub enum Resolution {
     Error,
 }
 
-/// The wave-1 facts every resolver reads.
+/// The facts every resolver reads; each reads only what its prerequisites name.
 #[derive(Clone, Copy, Debug)]
 pub struct AntecedentContext<'a> {
     /// The declared site type; `None` runs everything.
@@ -71,9 +93,9 @@ pub struct AntecedentContext<'a> {
     pub discovery_evidence: &'a [EvidenceItem],
     /// The canonical root response; `None` when it failed at the network level.
     pub root: Option<&'a ProbeResponse>,
-    /// Wave-1 outcomes keyed by check id.
+    /// Source-check outcomes keyed by check id.
     pub sources: &'a HashMap<String, ProbeOutcome>,
-    /// The wave-1 wire probes as a client without a token saw them:
+    /// The wire probes as a client without a token saw them:
     /// `sources` itself in a run that presents none, and the probes asked
     /// again without the token in one that does.
     pub token_less: &'a HashMap<String, ProbeOutcome>,
@@ -102,7 +124,7 @@ pub fn site_type_applies(site_types: &[WebCheckSiteType], ctx: &AntecedentContex
     }
 }
 
-/// Resolve one token against the wave-1 context.
+/// Resolve one token, once its prerequisites have settled.
 pub fn resolve(token: AntecedentToken, ctx: &AntecedentContext<'_>) -> Resolution {
     use AntecedentToken as T;
     match token {
@@ -210,7 +232,7 @@ fn source_evidence<'a>(ctx: &AntecedentContext<'a>, id: &str) -> &'a [EvidenceIt
     ctx.sources.get(id).map_or(&[], |o| o.evidence.as_slice())
 }
 
-/// A wave-1 row's evidence from the audited origin, without what it read
+/// A source row's evidence from the audited origin, without what it read
 /// from hosts the site declares.
 fn own_origin_evidence(ctx: &AntecedentContext<'_>, id: &str) -> Vec<EvidenceItem> {
     source_evidence(ctx, id)
@@ -230,7 +252,7 @@ fn own_openapi_passed(ctx: &AntecedentContext<'_>) -> bool {
             .any(|item| item.get("ok") == Some(&serde_json::Value::Bool(true)))
 }
 
-/// The retained body of a wave-1 check, or empty.
+/// The retained body of a source check, or empty.
 pub fn retained_body<'a>(ctx: &AntecedentContext<'a>, id: &str) -> &'a str {
     source_evidence(ctx, id)
         .iter()
@@ -662,10 +684,10 @@ mod tests {
     }
 
     #[test]
-    fn wave_one_membership_and_unmet_lines_match_the_site() {
-        assert_eq!(WAVE1_CHECK_IDS.len(), 9);
-        assert!(is_wave1("mcp-server-discover"));
-        assert!(!is_wave1("llms-txt-format"));
+    fn source_membership_and_unmet_lines_match_the_site() {
+        assert_eq!(SOURCE_CHECK_IDS.len(), 9);
+        assert!(is_source_check("mcp-server-discover"));
+        assert!(!is_source_check("llms-txt-format"));
         assert_eq!(
             unmet_evidence(AntecedentToken::McpPresent),
             "no MCP endpoint discovered"

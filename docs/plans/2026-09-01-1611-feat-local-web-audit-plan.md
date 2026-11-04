@@ -128,8 +128,14 @@ audience that most needs local auditing is exactly the audience that can't assem
 - KD18. **The speed bar is the user-visible wall clock.** (session-settled: user-directed.) A run is measured start to
   finish, startup included, on a clean GitHub Actions runner, because a loaded host inflates startup and reversed an
   earlier comparison. A comparison is like for like: a transport fix applies to every engine compared, at the same pin.
-  The target is at least the site engine's wall clock. Progress feedback is part of the bar, so a user can tell a run is
-  still working and when it is done. Peak memory is reported and is not a bar. Governs R23.
+  The target is at least the site engine's wall clock, and the release gate is one run's noise of it: within one
+  interleaved run, the port's sum of per-target medians is at or below the site engine's plus the larger of 5% and that
+  run's own round-to-round spread. That gate needs U19 and U21 landed. U20 ships in the same release if it is ready and
+  follows if it is not. The evidence: on the second clean run the pool alone left a 2.8% gap (23.36 s against 22.72 s),
+  brotli off at least halves handshakes on top of that, U20 speeds both engines and so barely moves the ratio, and Bun's
+  own total swung from 20.10 s to 22.72 s between runs, so an exact "at or below" gate would flake. Progress feedback is
+  part of the bar, so a user can tell a run is still working and when it is done. Peak memory is reported and is not a
+  bar. Governs R23.
 - KD19. **Bump PRs track site `dev`.** (session-settled: orchestrator decision under the owner's delegation — chosen
   over site `main`: the sync script's rule is that a pin names a commit on site `dev`.) anc.dev deploys from site
   `main`, so `dev` can sit ahead of it, and staleness wording compares fingerprints ("differs from anc.dev") and never
@@ -185,8 +191,8 @@ flowchart TB
 - R22. `--ca-cert <file>` adds the PEM roots in that file to the trust set for any target, and may be repeated;
   certificate chain and hostname verification always run, and no option skips them.
 - R23. A run's user-visible wall clock, process start to exit, is the speed measure, and on the same clean runner and
-  pin it is no slower than the site engine's (KD18). While a run works it says so on stderr on a terminal, and it says
-  when it is done.
+  pin it stays within one run's noise of the site engine's (KD18). While a run works it says so on stderr on a terminal,
+  and it says when it is done.
 
 **Output**
 
@@ -291,6 +297,13 @@ flowchart TB
 - AE12. **Covers R23.** Given a run on a terminal against a target that takes twenty seconds, when the dev watches it,
   then progress appears on stderr until the run says it is done; given the same run piped, then stderr stays silent and
   stdout holds only the report.
+- AE13. **Covers R2, R16.** Given `anc missing.dev` where no such path exists, when the host does not resolve, then the
+  error says the token was read as a website because `.dev` is a top-level domain, and its next step is
+  `anc audit ./missing.dev`; when the host does answer, then a `routed-to-web` warning on stderr names the same path
+  form.
+- AE14. **Covers R4, R16.** Given a handler that panics in the release build, when a run reaches it, then that check
+  reports an error row with the panic's message, every other check still reports, and the process exits through KTD12's
+  table.
 
 ### Success Criteria
 
@@ -368,7 +381,8 @@ The landing order, once the owner merges:
 3. The next CLI `dev` push runs the bump, which opens the re-pin to that site `dev` SHA even though no vendored file
    changed (U12). Until the workflow file reaches `main`, `scripts/web-audit-bump.sh` run by hand covers a quiet `dev`.
 4. S3 and C6 follow in that order, site first (KTD19), and the bump between them carries any `requests` entries in the
-   ledger until C6 deletes them.
+   ledger until C6 deletes them. C6 does not hold the release: if it is not ready, the release pins the site commit
+   before S3, and U20 follows (KD18).
 5. The rest of the CLI stack merges with `gh stack merge`, default-on last.
 6. The next anc release carries `anc web`. Preflight refuses to tag while the ledger has entries, a vendored check binds
    an unported kind, or the pin is off site `dev`, and the release PR shows the same verdict (U12).
@@ -382,6 +396,10 @@ The landing order, once the owner merges:
 - `DRIFT_MANIFEST_COMPARE="version"` stays in `scripts/release/release.env` until a tag newer than v0.7.0 exists.
   v0.7.0's manifest is the stripped one, so drift gate 0 can only compare it with `dev`'s manifest by version until a
   later tag carries the web lines.
+- A known CI cost: `scripts/cargo-inputs.sh` classifies every `docs/` path as a cargo input, because it normalizes the
+  URL-path literal `"/docs"` in Rust test fixtures (for example `src/web_audit/engine/retained.rs:62`) to the directory
+  `docs`. Every docs-only push here runs the full cargo pre-push, over 8 minutes under load. The script is canon-owned
+  and stays as it is; the orchestrator carries it to the owner.
 
 ### Dependencies / Assumptions
 
@@ -707,6 +725,12 @@ The landing order, once the owner merges:
   PR, reaches the CLI through a bump with `requests` entries in the ledger, and the port PR deletes those entries. A
   port-only speed change (U19, the port-only items in U20) sits below the Transport seam or changes only when a request
   goes out, so it leaves the set alone and U15's concurrency check keeps holding. Governs R20, R23.
+- KTD20. **Release builds unwind, so a panicking handler is one error row.** `probe_one` wraps each handler in
+  `catch_unwind` (`src/web_audit/engine/waves.rs:358`) and turns a panic into an error row, which is what R4 and R16 ask
+  for. `[profile.release]` sets `panic = "abort"`, under which `catch_unwind` catches nothing: the release binary dies
+  on SIGABRT with exit 134, no scorecard and no envelope, while every test passes, because the test profile always
+  unwinds. The release profile takes `panic = "unwind"`, and a test reads the profile so the two cannot drift apart
+  again. The size cost is unmeasured and U21 records it; the binary has twice its size in headroom. Governs R4, R8, R16.
 
 ### Speed and size findings
 
@@ -828,9 +852,9 @@ stateDiagram-v2
 
 - **Bare-invocation behavior delta.** Scripts relying on bare `anc "$X"` today get a fast offline exit 2 for any bad
   token; after KTD7, a grammar-passing token drives a network-touching run in KTD12's result space (0 to 3) instead. U7
-  documents the split in `--help`, the release notes carry it as a `### Breaking changes` bullet and recommend explicit
-  `anc audit` in scripts; U10 regression-tests a corpus of previously-valid bare invocations to prove they still route
-  to audit.
+  documents the split in `--help`, names the path form in a `routed-to-web` warning, the release notes carry it as a
+  `### Breaking changes` bullet and recommend explicit `anc audit` in scripts; U10 regression-tests a corpus of
+  previously-valid bare invocations to prove they still route to audit.
 - **Emit symmetry.** `anc emit schema` self-describes the CLI scorecard; the web family gets the same treatment in U7 —
   `anc emit web-checks` (vocabulary) and `anc emit web-schema` (scorecard shape) — so agents can validate either output
   family offline (R14).
@@ -1224,6 +1248,11 @@ stateDiagram-v2
      (in AE6's words); release notes carry the bare-invocation migration note (System-Wide Impact).
   6. The verb, its `--help` entry, the bare URL-ish routing and the "did you mean anc web" hint are present in every
      build that compiles `web`, which is the default build (KD16, KTD16).
+  7. Stderr warnings in JSON mode carry a stable code, `warning: <code>: <message>`, from a closed set:
+     `non-comparable`, `contract-differs`, `routed-to-web`. A sniffed target emits `routed-to-web`, naming
+     `anc audit ./<token>`, and on a failure with no scorecard its envelope's `next_step` is
+     `{action: "fix-target", command: "anc audit ./<token>"}`, because the reader may have meant a path. An
+     `insecure-scheme` failure's `next_step.command` is the `https` form of the target, not `anc web --help`.
 - **Patterns to follow:** `src/cli.rs` `Audit` variant; the seven gotchas in
   `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`;
   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`.
@@ -1244,6 +1273,11 @@ stateDiagram-v2
   - Edge: a run with an unported-handler skip carries the non-comparable-score flag naming the kind.
   - Edge: `anc web http://localhost:8787` exits 3 naming the no-plaintext reason, with no connection attempted. Covers
     AE2.
+  - Error: a sniffed target that does not resolve names the top-level-domain reading and `anc audit ./<token>`, in text
+    and in the envelope. Covers AE13.
+  - Edge: a sniffed target that answers prints `warning: routed-to-web: ...` on stderr, and an explicit
+    `anc web <target>` does not. Covers AE13.
+  - Error: `anc web http://localhost:8787` has `next_step.command` `anc web https://localhost:8787/`.
   - Error: unresolvable bare token gets the existing audit error path plus a "did you mean anc web" hint; exit codes
     match KTD12's table for clean, warning, failure and could-not-check scorecards.
   - Integration: `--help` and `--version` make zero network calls (assert via a transport that panics on use).
@@ -1373,7 +1407,12 @@ stateDiagram-v2
 - **Approach:**
   1. README gains a web section: what `anc web` audits, the single command, the two scorecard schema families and which
      verb emits which, and the fix-guidance surfaces. The exit-code table is rewritten for KTD12's single table,
-     including the new could-not-check code.
+     including the new could-not-check code. The section states the routing rule (the IANA list minus the extension
+     denylist, a path always wins, `anc audit` forces a path) and carries no literal check count, because the count
+     moves with every bump: `README.md:8` and `:357` say 65 where the registry holds 68. The install section says that a
+     target with no prebuilt aws-lc bindings (anything outside x86-64 and aarch64 Linux gnu and musl, x86-64 and aarch64
+     macOS, and x86-64 Windows) needs cmake and bindgen for `cargo install`, or `--no-default-features` to build without
+     the verb.
   2. The anc.dev refusal for a local, private or internal target points at the local command. This is the highest-intent
      moment in the funnel: the visitor has just proved they want exactly this. `ANC_WEB_RELEASED` in
      `src/worker/audit-web/provenance-copy.ts` gates the two not-run strings (`notRunRemedy`, `notRunScoreNote`), and
@@ -1441,19 +1480,27 @@ stateDiagram-v2
   6. **Release gate.** `scripts/web-audit-release-gate.sh` fails when `tests/fixtures/web-audit-divergences.toml` has
      entries, naming them; when `anc emit web-checks` reports a check with `ported: false`, naming it; and when
      `src/web_audit/vendored/SITE_SHA` is not a commit on site `dev`, read through the sync script's hardened fetch. It
-     fails closed: an unreachable site is a failure, not a skip, since a tag needs the network anyway. Two callers run
-     it. `scripts/release/smoke.sh`, the project-specific body `preflight.sh smoke` delegates to, is the refusal. A step
-     in `ci.yml`'s release binary job with `if: github.base_ref == 'main'` shows the same verdict on the release PR,
+     fails closed: an unreachable site is a failure, not a skip, since a tag needs the network anyway. Each refusal
+     states its cause and its fix under a stable code: `web-audit-ledger` (the entries, then "port each owner's change
+     and delete its entries"), `web-audit-unported` (the check and kind, then "port the kind in
+     `src/web_audit/handlers/`"), and `web-audit-pin` (the SHA, then `scripts/web-audit-bump.sh`). Two callers run it.
+     `scripts/release/smoke.sh`, the project-specific body `preflight.sh smoke` delegates to, is the refusal. A step in
+     `ci.yml`'s release binary job with `if: github.base_ref == 'main'` shows the same verdict on the release PR,
      because preflight runs by hand and `release.yml` does not run it; that step stays out of `protect-main.json`'s
      required list, so no ruleset changes. `anc emit web-checks` gains an additive per-row `ported` boolean, and the
      assertion in `the_unported_bindings_are_exactly_the_known_ones` (`src/web_audit/registry.rs`) moves into this gate,
      because it would turn a bump with an unported kind red. `RELEASES-PREFLIGHT.md` documents the gate.
   7. **Staleness note.** Per KTD9: fetched on its own thread for targets the locality classifier labels public, with a
      bounded timeout, and silently skipped on any failure, any non-200, or a body with no `contract_fingerprint`; inline
-     in text mode, on stderr in JSON mode (AE9); `--help` discloses the public-target fetch. It says "differs from
-     anc.dev", never "behind", because a CLI pinned to site `dev` can be ahead of what anc.dev deploys (KD19).
+     in text mode, on stderr in JSON mode as `warning: contract-differs: ...` (AE9); `--help` discloses the
+     public-target fetch. It says "differs from anc.dev", never "behind", because a CLI pinned to site `dev` can be
+     ahead of what anc.dev deploys (KD19). `--verbose` states the check's result every time (`anc.dev contract: same`,
+     `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
   8. The new version literals join the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
+  9. A short "Handling a bump PR" section in `RELEASES.md` says what each state means and what to do: green with no
+     entries, merge; green with entries, merge and port each owner's change; red, read the body's failure, which needs a
+     code change first. The bump PR's body links it.
 - **Test scenarios:**
   - Happy path: against a deliberately stale pin, `--dry-run` reports the old and new pin and the changed files; against
     the current pin, it reports nothing to bump. Covers AE11.
@@ -1476,6 +1523,8 @@ stateDiagram-v2
     fetch fails, on a non-200, and on a body with no `contract_fingerprint`.
   - Edge: a signal that stalls adds nothing to the run's wall clock.
   - Integration: the signal fetch honors the configured proxy, sends the identifying user agent, and carries no token.
+  - Edge: `--verbose` prints `same`, `differs` or `not checked` with its reason on every public-target run.
+  - Error: each gate refusal prints its code, cause and fix.
   - Integration: `--help` and `--version` still make zero network calls.
 - **Verification:** A bump PR opened by the workflow from a stale pin carries a verified commit and runs CI, on a
   corpus-wide bump as well as a small one, since `createCommitOnBranch` takes every changed file in one request;
@@ -1754,8 +1803,9 @@ stateDiagram-v2
     stalling remainder returns the caller at its cap.
   - Edge: the first progress line appears before the root fetch, and a run that hits the deadline still prints the
     closing line. Covers AE12.
-- **Verification:** The committed benchmark shows the port at or below the site engine's sum of medians at the same pin,
-  with every score matching; the corpus and the transport suite are green; the aws-lc call and its numbers sit in KTD1.
+- **Verification:** The committed benchmark shows the port within one run's noise of the site engine's sum of medians at
+  the same pin (KD18), with every score matching; the corpus and the transport suite are green; the aws-lc call and its
+  numbers sit in KTD1.
 
 ### U20. Request sharing and fan-out
 
@@ -1819,18 +1869,23 @@ stateDiagram-v2
     the ledger empty once the port lands.
 - **Verification:** The site PR regenerates the contract wherever a set moves, and U15's concurrency check passes. The
   port PR empties the `requests` entries that bump opened. The committed benchmark (U19) shows both engines faster at
-  the same pin, with the port at or below the site engine.
+  the same pin, with the port still within one run's noise of the site engine.
 
 ### U21. Release size
 
 - **Goal:** Take the measured size savings that cost no speed.
 - **Requirements:** Serves the 20 MiB ceiling. Implements the size half of KTD1.
 - **Dependencies:** U1. The `brotli` removal lands first, in U19.
-- **Files:** `Cargo.toml` (`[profile.release.package.<crate>]`, ureq's features), `scripts/check-binary-size.sh`.
+- **Files:** `Cargo.toml` (`[profile.release]`, `[profile.release.package.<crate>]`, ureq's features),
+  `scripts/check-binary-size.sh`, `tests/release_profile.rs`.
 - **Approach:** Build the web-only crates at `opt-level = "s"`, which fat LTO honors per package: -217,536 bytes on the
   9,381,616-byte base, with no slowdown. Drop ureq's `brotli`: -188,096 bytes, since requests advertise gzip and no
-  check reads the encoding. The rest of the matrix is not built (NOT in scope).
-- **Test scenarios:** Test expectation: none — a build profile change whose proof is measurement below.
+  check reads the encoding. Record the cost of `panic = "unwind"` (KTD20) in the same table. The rest of the matrix is
+  not built (NOT in scope).
+- **Test scenarios:**
+  - Edge: `tests/release_profile.rs` fails when `[profile.release]` names `panic = "abort"`, since the test profile
+    always unwinds and nothing else would notice. Covers AE14.
+  - The opt-level and feature changes have no test of their own: their proof is the measurement below.
 - **Verification:** `scripts/check-binary-size.sh` green with the new size recorded; the committed benchmark shows no
   slowdown; `anc audit --source` wall clock unchanged, since `agentnative` itself stays at the default level.
 
@@ -1851,11 +1906,12 @@ stateDiagram-v2
 | Release gate     | `scripts/release/preflight.sh smoke`; the same script on PRs to `main` in `ci.yml`                                        | R24: no tag with ledger entries, an unported kind, or a pin off `dev`   |
 | Conformance      | `cargo test --test web_audit_conformance`                                                                                 | R5 and R20 parity against the vendored corpus and ledger (KTD16, KTD17) |
 | Size             | `scripts/check-binary-size.sh` in `ci.yml`'s release binary size job                                                      | The 20 MiB ceiling, on the default release build (KD2)                  |
-| Speed            | `.github/workflows/web-audit-bench.yml`, not in any ruleset                                                               | R23: wall clock on a clean runner against the site engine, one pin      |
+| Speed            | `.github/workflows/web-audit-bench.yml`, not in any ruleset                                                               | R23: within one run's noise of the site engine at one pin (KD18)        |
 | Dogfood          | `anc audit .` green + bare-invocation regression corpus                                                                   | New verb regresses neither anc's audit nor existing routing             |
 | Exit codes       | `cargo test --test integration exit_code`                                                                                 | KTD12's single table across both verbs, including could-not-check       |
 | First fix        | `cargo test --test web_audit_render`                                                                                      | Every failing row carries goal, fix and links (R15)                     |
 | Failure paths    | `cargo test --test web_audit_failures`                                                                                    | Each scorecard-less path emits the envelope and a next action (R16)     |
+| Release profile  | `cargo test --test release_profile`                                                                                       | Release builds unwind, so a handler panic is one error row (KTD20)      |
 | Rustdoc          | `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`                                                                          | The `xurl-rs` docs standard holds; no broken intra-doc links (U13)      |
 | TTHW             | CI smoke: `scripts/smoke-web-audit.sh` on the default release build, against a local fixture server, asserting wall clock | The under-2-minute first-run promise (DX review D3)                     |
 | Site side        | `bun test`, `bun run build`, corpus-completeness gate, `bun scripts/web-audit/gen-fixtures.ts --check`                    | U8 corpus, U9 endpoint, U15 contract regeneration and listings          |
@@ -1867,7 +1923,7 @@ stateDiagram-v2
   Verification Contract green in CI, both repos. Phase 2: U9 and U12's staleness note landed, reading
   `contract_fingerprint`.
 - `web` is in `default`, and no release branch strips web code (KD16).
-- AE1–AE12 each enforced by a named test (the `Covers` links in unit test scenarios).
+- AE1–AE14 each enforced by a named test (the `Covers` links in unit test scenarios).
 - **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, the site's
   refusal points a local target at the local command, and this crate meets the `xurl-rs` docs standard: every public
   item documented under `#![deny(missing_docs)]`, the README wired in as the rustdoc landing page, the docs.rs metadata
@@ -1878,8 +1934,9 @@ stateDiagram-v2
 - Every path that ends without a scorecard emits the structured envelope in JSON mode and a problem-cause-next-action
   message in text mode (R16).
 - One exit-code table across both verbs, named in each run's output and pinned by a test (R17).
-- The committed benchmark shows the port at or below the site engine's wall clock on a clean runner at one pin, with
-  every score matching (R23, U19, U20), and a run says it started and that it finished (AE12).
+- The committed benchmark shows the port within one run's noise of the site engine on a clean runner at one pin, with
+  every score matching (R23, KD18, U19), and a run says it started and that it finished (AE12). U20 is not a condition
+  of the first release (KD18).
 - The bump workflow has opened a real re-pin PR with a verified commit and green CI, and `preflight.sh smoke` refuses a
   seeded ledger (R24, U12).
 - The first release that carries `anc web` tags with an empty ledger, no unported binding, and a pin on site `dev`, and
@@ -1972,8 +2029,9 @@ Existing code that partially solves a sub-problem, and whether the plan reuses i
 
 Developer-facing surfaces the DX review found already built, which U7 and U13 reuse rather than invent:
 
-- `src/json_error.rs`: the structured error envelope, with its shape settled September 2026 (`error` true, a coarse
-  `kind`, the precise `reason` beneath it, `message`, `next_step`). R16 reuses it verbatim.
+- `src/json_error.rs`: the structured error envelope: a coarse `kind`, the stable reason in `error`, `message`,
+  `exit_code`, `next_step {action, command, docs}`, and the offending `argument` and `value`. R16 reuses it verbatim,
+  and the sniffed-target `next_step` (U7) adds no key.
 - `src/color.rs` and `src/output.rs`: terminal detection and the `NO_COLOR` contract that D6's render rules inherit.
 - `--quiet` and its `AGENTNATIVE_QUIET` binding on the audit path: the behavior the web verb matches.
 - The README's tier mapping table (MUST miss → fail, SHOULD and MAY miss → warn): the mapping KTD12 uses to turn web
@@ -2092,7 +2150,9 @@ user sees. No critical gaps remain (a critical gap is no test, no handling, and 
 | bump workflow       | a pin off site `dev` with identical contract bytes     | yes  | bump     | a re-pin PR with no vendored file changed                          |
 | generated constants | a site setting changes                                 | yes  | rebind   | the engine uses the new value; a key nothing reads fails the build |
 | per-audit resolver  | a resolver that never answers                          | yes  | deadline | the caller times out at its own deadline                           |
-| staleness note      | signal stalls, errors, or lacks the field              | yes  | skip     | no note, and the run takes no longer                               |
+| `engine/waves.rs`   | a handler panics in the release build                  | yes  | catch    | that row reports the panic; the rest of the run stands             |
+| `argv.rs` sniff     | a missing path shaped like a host (`anc missing.dev`)  | yes  | warn     | `routed-to-web` or an error naming `anc audit ./<token>`           |
+| staleness note      | signal stalls, errors, or lacks the field              | yes  | skip     | no note, and `--verbose` says `not checked`                        |
 | per-audit resolver  | a host re-resolves to a private address mid-audit      | yes  | pin      | the connect goes to the address already classified                 |
 | `fetch/body.rs`     | a body over the drain bound after a capped read        | yes  | close    | nothing; the connection closes as it does today                    |
 | U18 report          | the CLI does not build, or cannot read the contract    | yes  | report   | "report unavailable" in the summary, job still green               |
@@ -2257,6 +2317,44 @@ checkbox as you ship.
   - Files: `src/web_audit/locality.rs`, `src/web_audit/transport.rs`, `src/web_audit/fetch/hop/`.
   - Verify: a never-answering resolver and a stalling remainder each return the caller at its own deadline.
 
+### From the go-live DX review
+
+- [ ] **T26 (P1, human: ~2 h / CC: ~15 min)** — KTD20 — Make release builds unwind, and pin that with a test.
+  - Surfaced by: DX Pass 3, X2 — `panic = "abort"` makes the `catch_unwind` at `engine/waves.rs:358` dead code in the
+    only build users run.
+  - Files: `Cargo.toml`, `tests/release_profile.rs`.
+  - Verify: the test fails against today's profile; U21's table records the size change.
+- [ ] **T27 (P1, human: ~4 h / CC: ~20 min)** — U7 — Sniffed targets name the path form; warnings carry codes;
+  `insecure-scheme` names the `https` command.
+  - Surfaced by: DX Pass 2 and 3, X1, X4, X8 — a script author whose path is missing sees only
+    `next: anc web <token> --verbose`.
+  - Files: `src/main.rs`, `src/web_audit/render/failure.rs`, `src/web_audit/render/text.rs`,
+    `tests/web_audit_failures.rs`.
+  - Verify: AE13's two scenarios, and `next_step.command` on an `http` target.
+- [ ] **T28 (P2, human: ~2 h / CC: ~10 min)** — U13 — Drop the README's literal check count, state the routing rule, and
+  name the targets outside the prebuilt bindings.
+  - Surfaced by: DX Pass 1 and 4, X5, X6 — `README.md:8` says 65 where the registry holds 68, and #291's "needs nothing"
+    holds only on the prebuilt targets.
+  - Files: `README.md`.
+  - Verify: `rg -n '\b(65|68)\b' README.md` finds no check count; the install section names the escape.
+- [ ] **T29 (P2, human: ~1 h / CC: ~10 min)** — U12 — Gate refusals name their fix, `--verbose` states the signal
+  result, and `RELEASES.md` says how to handle a bump PR.
+  - Surfaced by: DX Pass 3 and 4, X3, X7, X9.
+  - Files: `scripts/web-audit-release-gate.sh`, `src/web_audit/render/`, `RELEASES.md`.
+  - Verify: each refusal prints its code, cause and fix; `--verbose` prints one of the three results.
+- [ ] **T30 (P1, human: ~1 h / CC: ~15 min, on the owner's approval)** — Release cut — Reword the changelog bullets that
+  say `anc web` is held back. 33 bullets in v0.8.0's generated section do, and none is edited until the owner approves.
+  Run `scripts/generate-changelog.py --from-dev-prs --tag v0.8.0 --dry-run <repo>` in a throwaway clone on a
+  `release/v0.8.0` branch; the task is done when its output has no match for
+  `built with the|absent from|--features web|off by default|not in the release`.
+  - Surfaced by: the default-on slot's dry run at `dev` `717faa0`. 22 bullets cite a PR: #97, #104, #208, #209 (2), #210
+    (2), #211, #212, #216, #217, #219, #221, #222, #223, #224 (3), #226 (2), #230, #232. 11 cite none and are found by
+    searching merged PR bodies for their opening words, and #204 and #214 matched that search with no bullet citing
+    them, so each may be a source or may sit outside the generator's window. The bullet "Add `anc web <target>`, built
+    with the `web` cargo feature..." also overlaps #291's `### Added` line, so one goes.
+  - Files: the merged PR bodies, through the owner.
+  - Verify: the grep above is empty.
+
 ### From the DX review
 
 - [x] **T13 (P1, human: ~2 days / CC: ~45 min)** — U2, U7 — Vendor the fix catalog and deliver it on both surfaces.
@@ -2307,7 +2405,8 @@ checkbox as you ship.
 ## Go-live engineering review
 
 Target: this plan. Mode: FULL_REVIEW, with scope accepted as-is. The review ran unattended, so each choice below cites
-its evidence in place of an answer, and the one question only the owner can settle went to the orchestrator.
+its evidence in place of an answer, and the one question beyond the evidence went to the orchestrator, whose answer is
+recorded as E1.
 
 ### Scope challenge
 
@@ -2346,7 +2445,7 @@ REALITY: contract-assumptions pass the signal fields and the pin rule were read 
 REALITY: units pass millisecond keys become Duration in U16 with no threshold retuned src/web_audit/engine/waves.rs:50
 REALITY: perf-table pass interleaved rounds on one clean runner image with medians and no p95 docs/plans/spikes/2026-11-03-anc-web-engine-speed-and-size-spike.md:48
 REALITY: dependency-fallback pass the contract slipping holds the release through the gate that joins this list scripts/release/smoke.sh:285
-REALITY: obligation-tiers finding whether U19 and U20 block the release is the open owner question docs/plans/2026-09-01-1611-feat-local-web-audit-plan.md:5
+REALITY: obligation-tiers pass the release needs U19 and U21 and takes U20 if ready, per the orchestrator's answer to E1 docs/plans/2026-09-01-1611-feat-local-web-audit-plan.md:5
 ```
 
 ### Findings and decisions
@@ -2369,6 +2468,7 @@ REALITY: obligation-tiers finding whether U19 and U20 block the release is the o
 | P1 | INFORMATIONAL, 7/10 | `src/web_audit/locality.rs:113` `.to_socket_addrs()` | A coalesced lookup that stalls holds every waiter | Lookups run off the callers' threads, bounded by each deadline (KTD18, U19) |
 | P2 | INFORMATIONAL, 7/10 | U19 step 4 | An inline drain lengthens the caller's run on a slow body | Drain on a detached reader, with byte and deadline bounds (U19) |
 | P3 | INFORMATIONAL, 8/10 | Bun 20.10 s and 22.72 s across two runs | Totals move between runs, so a cross-run comparison misleads | Compare only within one run (U19) |
+| E1 | Decision | KD18's evidence | Does the first release wait on the wall-clock target and on U20? | The orchestrator chose: U19 and U21 landed, within one run's noise; U20 follows if not ready (KD18) |
 
 Test review: the coverage map above is current, and six gaps closed through the scenarios these decisions added: the pin
 off site `dev`, the constants binding, the signal's proxy and token handling, the resolver stall, the drain stall, and
@@ -2394,7 +2494,9 @@ one audit and holds one entry per host.
 
 ## Developer Experience
 
-From `/plan-devex-review`, 2026-09-17, mode DX POLISH. Product type: CLI tool with a machine contract.
+From `/plan-devex-review`, mode DX POLISH. Product type: CLI tool with a machine contract. The go-live run carried the
+persona, clock and target forward, because no evidence reopens them, and ran unattended, so each choice below cites its
+evidence.
 
 ### Developer persona
 
@@ -2410,8 +2512,10 @@ Expects:   A: to be told what is broken and what to change.
            C: every fact it needs inside the payload, with a schema to validate it.
 ```
 
-The agent as co-primary is what forces KTD13's reader: an agent cannot read a rendered web page, so any guidance that
-exists only on anc.dev does not exist for it.
+A third reader arrives with the bump workflow, secondary to those two: (M) the maintainer or agent who picks up a bump
+PR or a refused tag, who has no context beyond the PR body and the gate's output, and who needs the next command, not
+the history. The agent as co-primary is what forces KTD13's reader: an agent cannot read a rendered web page, so any
+guidance that exists only on anc.dev does not exist for it.
 
 ### Developer empathy narrative
 
@@ -2429,21 +2533,33 @@ The agent, same run: *"I get a scorecard: ids, labels, categories, statuses, evi
 failed and name them. I cannot say what to change, because no fix text is in the payload, and I have no schema to
 validate against. The registry's hint field is compiled into the binary and I have no way to reach it."*
 
-Both were confirmed accurate before scoring. R15, R16 and U13 exist to end them.
+R15, R16 and U13 exist to end them.
+
+The script author, upgrading to 0.8.0 (prediction, from `README.md:386` and the observed output): *"My CI runs
+`anc "$TOOL"`. A path went missing, and `anc` used to fail in milliseconds with exit 2. Now the token looks like a
+hostname, so it took a few seconds, sent requests to a stranger's site, and exited 1 with a scorecard shaped nothing
+like the one I parse. If that host does not exist, I get `next: anc web missing.dev --verbose`, which sends me further
+the wrong way."* AE13 and the `### Breaking changes` bullet exist to end this.
+
+The maintainer, seeing a bump PR (prediction, from U12): *"A bot opened a PR, CI is green, and it adds nine ledger
+entries. Do I merge? What happens at release? The gate later refuses my tag, and I need to know whether that means port
+something or re-pin."* U12's refusal codes and the `RELEASES.md` section exist to end this.
 
 ### Competitive benchmark
 
-| Tool                        | TTHW         | Prerequisites       | Notable DX choice                                                    |
-| --------------------------- | ------------ | ------------------- | -------------------------------------------------------------------- |
-| MDN HTTP Observatory        | ~1 min       | Node                | One npx command, JSON out, no install                                |
-| Lighthouse CLI              | 2–5 min      | Node LTS and Chrome | 30–60 s per audit, throttling on by default                          |
-| site-audit-cli              | ~1 min       | Node                | Exit 0 met, 1 budget missed, 2 could not run                         |
-| seo-audit-skill             | ~1 min       | Node                | A specific fix suggestion per rule; unmeasurable reported, not faked |
-| **`anc web`** (post-review) | **~1–2 min** | **none**            | Single static binary, bundled TLS roots, and the fix in the terminal |
+| Tool                        | TTHW                    | Prerequisites       | Notable DX choice                                                                                                                        |
+| --------------------------- | ----------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| MDN HTTP Observatory        | ~1 min                  | Node                | One npx command, JSON out, no install                                                                                                    |
+| Lighthouse CLI              | 2–5 min                 | Node LTS and Chrome | 30–60 s per audit, throttling on by default                                                                                              |
+| site-audit-cli              | ~1 min                  | Node                | Exit 0 met, 1 budget missed, 2 could not run                                                                                             |
+| seo-audit-skill             | ~1 min                  | Node                | A specific fix suggestion per rule; unmeasurable reported, not faked                                                                     |
+| **`anc web`** (post-review) | **~1–2 min, estimated** | **none**            | Single static binary, bundled TLS roots, the fix in the terminal, and a run of about 2.4 s per public target (24.06 s over 10, measured) |
 
-Two facts shape the plan. The install story already leads the category, because every peer needs Node or Chrome and this
-needs neither, so D3 makes it a stated promise with a smoke test rather than an accident of the build. And the closest
-functional peer ships a fix per rule, which is what KTD13 matches and then beats by working offline.
+The peers carry forward with no new research this run, since the journey and target did not change; the install and
+first-run clock remains an estimate until the post-ship `/devex-review`. Two facts shape the plan. The install story
+already leads the category, because every peer needs Node or Chrome and this needs neither, so D3 makes it a stated
+promise with a smoke test rather than an accident of the build. And the closest functional peer ships a fix per rule,
+which is what KTD13 matches and then beats by working offline.
 
 ### Magical moment
 
@@ -2454,15 +2570,16 @@ checks as a count. The agent gets the same catalog through `anc emit web-remedia
 
 ### Developer journey
 
-| Stage       | Developer does                                | Friction found                                   | Status            |
-| ----------- | --------------------------------------------- | ------------------------------------------------ | ----------------- |
-| Discover    | Hits the anc.dev refusal, or reads the README | Neither mentions the verb                        | Fixed (U13)       |
-| Install     | One command, no runtime                       | None; leads the category                         | Already good      |
-| Hello world | `anc web <target>`                            | Up to 25 s of silence reads as a hang            | Fixed (D6)        |
-| Real usage  | Reads 65 rows                                 | 12 failures buried among 53 passes, no fix text  | Fixed (D6, KTD13) |
-| Debug       | Hits a wrong port or an unreachable host      | Only one failure path specified                  | Fixed (R16)       |
-| Automate    | Gates a script on the exit code               | Exit 1 meant two opposite things in one binary   | Fixed (KTD12)     |
-| Upgrade     | Takes a new release                           | Registry pin and version now named in the report | Already handled   |
+| Stage       | Developer does                                | Friction found                                                        | Status            |
+| ----------- | --------------------------------------------- | --------------------------------------------------------------------- | ----------------- |
+| Discover    | Hits the anc.dev refusal, or reads the README | The flag behind the refusal's pointer misses the direct refusal       | Fixed (U13)       |
+| Install     | One command, no runtime                       | `cargo install` off the prebuilt targets needs cmake                  | Fixed (U13, X5)   |
+| Hello world | `anc web <target>`                            | Up to 25 s of silence reads as a hang                                 | Fixed (D6)        |
+| Real usage  | Reads 65 rows                                 | 12 failures buried among 53 passes, no fix text                       | Fixed (D6, KTD13) |
+| Debug       | Hits a wrong port or an unreachable host      | A sniffed target's failure names no path form; a handler panic aborts | Fixed (U7, KTD20) |
+| Automate    | Gates a script on the exit code               | Exit 1 meant two opposite things in one binary                        | Fixed (KTD12)     |
+| Upgrade     | Takes 0.8.0                                   | A missing hostname-shaped path now reaches the network                | Fixed (U7, X10)   |
+| Maintain    | Handles a bump PR or a refused tag            | No stated meaning for entries or refusals                             | Fixed (U12)       |
 
 ### First-time confusion report
 
@@ -2478,76 +2595,100 @@ T+3:00  Opens a browser tab to search the spec. The context switch the tool     
         was installed to avoid.
 ```
 
-### DX scorecard
+### Go-live findings
+
+Observed against a `dev` web build and by reading source.
+
+```text
+ERROR PATH MATRIX (agent-ready-v1), before this review
+Path                      | Class      | what | fix  | recovery | code | context | trace | redaction | channel | Cap
+anc web http://host       | usage      | pass | fail | N/A      | pass | N/A     | N/A   | pass      | pass    | CAP6:fix
+anc missing.dev, no host  | dependency | pass | fail | pass     | pass | pass    | N/A   | pass      | pass    | CAP6:fix
+release gate refusal      | environment| pass | gap  | gap      | gap  | pass    | N/A   | pass      | pass    | CAP6:fix
+handler panic, release    | unexpected | fail | fail | fail     | fail | fail    | fail  | pass      | fail    | CAP6:trace
+```
+
+| ID | Pass, severity | Evidence | Finding | Decision |
+| -- | -------------- | -------- | ------- | -------- |
+| X1 | 2 and 3, CAP6 `sniffed-target:fix` | Observed: `next: anc web nosuch.invalid --verbose`; `anc nosuch.dev` ran a public audit and exited 1 | A reader who meant a path gets no path form, and on success has no sign the token was read as a site | `routed-to-web` warning, and a `fix-target` next step of `anc audit ./<token>` (U7, AE13) |
+| X2 | 3, CAP6 `handler-panic:trace` | `Cargo.toml` `panic = "abort"`; `src/web_audit/engine/waves.rs:358` `catch_unwind` | In the release build a handler panic aborts with exit 134, no scorecard and no envelope, while every test passes | KTD20: release builds unwind, pinned by a test (U21, AE14) |
+| X3 | 3, CAP6 `release-gate:fix` | U12 said only "naming them" | A refused tag gave no next action and no stable code | Three codes, each with a fix (U12) |
+| X4 | 2, agents | `src/main.rs:1257` `eprintln!("warning: {note}")` | Stderr notes are bare prose, and an agent would have to match wording | `warning: <code>: <message>` from a closed set (U7) |
+| X5 | 1 and 6 | The spike's prebuilt list; #291's "needs nothing beyond what it needed before" | True on the listed targets only; elsewhere `cargo install` now needs cmake and bindgen | README names the escape, `--no-default-features` (U13) |
+| X6 | 4 | `README.md:8`, `:357` say 65; `registry.yaml` has 68 at `031ec6e` | A literal count goes stale on every bump, and no bump can edit prose | No literal count, plus the routing rule stated (U13) |
+| X7 | 4, maintainer | RELEASES has only a manual registry-pin step | Nothing says what a bump PR's states mean | "Handling a bump PR" in `RELEASES.md`, linked from the PR body (U12) |
+| X8 | 3, usage | Observed: `"next_step":{"action":"fix-target","command":"anc web --help"...` | An `http` target's fix is a help page when the exact command is known | `next_step.command` is the `https` form (U7) |
+| X9 | 2 | R6: no note on any skip | No note means either "same" or "could not check" | `--verbose` always states the result (U12) |
+| X10 | 5 | #291 lists "No breaking changes"; KTD7 says this is one | The bullet must say what changes and what to run | `### Breaking changes`: "A missing path shaped like a hostname (`anc missing.dev`) now runs a web audit and reaches the network, where it exited 2 offline. Scripts that pass a path should call `anc audit`." `--features web` keeps working |
+| X11 | 5 | The default-on slot's dry run: 33 generated bullets say the verb is held back | v0.8.0's notes would contradict the release | T30, on the owner's approval |
+
+### DX implementation checklist
+
+```text
+[x] Time to hello world under 2 minutes, promised and smoke-tested   (D3, T19; install half estimated)
+[x] Installation is one command with no prerequisites                (already true)
+[x] First run produces meaningful output, and says it is working     (D6, T15)
+[x] Magical moment delivered via the terminal                        (KTD13, T13)
+[ ] Every failure path has problem + cause + fix + envelope          (R16, T16; T26, T27, T29 open)
+[x] CLI naming guessable; one exit table across verbs                (KTD12, T14)
+[x] Every flag's argument is discoverable offline                    (D9, T18)
+[ ] Docs ship with the feature, on the xurl-rs standard              (U13, T17; T28 open)
+[x] Examples show real use, not hello world                          (README web section)
+[x] Works in CI without special configuration                        (exit table + JSON)
+[ ] Changelog exists and is generated                                (T30 open, on the owner's approval)
+[ ] Editor integration / language server                             (n/a for this product)
+```
+
+## DX Review Scorecard
 
 ```text
 +====================================================================+
 |              DX PLAN REVIEW — SCORECARD                            |
 +====================================================================+
-| Dimension            | Before | After  | Prior  |
-|----------------------|--------|--------|--------|
-| Getting Started      |  7/10  |  9/10  |   —    |
-| API/CLI/SDK          |  6/10  |  9/10  |   —    |
-| Error Messages       |  5/10  |  9/10  |   —    |
-| Documentation        |  3/10  |  9/10  |   —    |
-| Upgrade Path         |  7/10  |  8/10  |   —    |
-| Dev Environment      |  7/10  |  8/10  |   —    |
-| Community            |  8/10  |  8/10  |   —    |
-| DX Measurement       |  6/10  |  8/10  |   —    |
+| Dimension            | Score  | Prior  | Trend                      |
+|----------------------|--------|--------|----------------------------|
+| Getting Started      |  9/10  |  9/10  | held; install half estimated|
+| API/CLI/SDK          |  9/10  |  9/10  | rubric changed, not comparable |
+| Error Messages       |  9/10  |  9/10  | rubric changed, not comparable; 6/10 before this run's fixes |
+| Documentation        |  9/10  |  9/10  | held, with X5-X7 folded    |
+| Upgrade Path         |  9/10  |  8/10  | up: the breaking bullet and the bump runbook |
+| Dev Environment      |  8/10  |  8/10  | held                       |
+| Community            |  8/10  |  8/10  | held                       |
+| DX Measurement       |  8/10  |  8/10  | held; speed benchmark added |
 +--------------------------------------------------------------------+
-| TTHW                 | ~1-2 min, now promised and smoke-tested      |
+| TTHW                 | ~1-2 min, estimated; first run smoke-tested  |
 | Competitive Rank     | Champion (install); Champion (time to fix)   |
 | Magical Moment       | designed, via the terminal itself            |
-| Product Type         | CLI tool with a machine contract            |
-| Mode                 | POLISH                                      |
-| Overall DX           |  6/10  |  8.5/10 |   —   |
+| Product Type         | CLI tool with a machine contract             |
+| Mode                 | POLISH                                       |
+| Overall DX           | 8.5/10 | 8.5/10 | rubric changed, not comparable |
 +====================================================================+
 | DX PRINCIPLE COVERAGE                                              |
-| Zero Friction                | covered (no runtime, one command)    |
-| Learn by Doing               | covered (fix text at the failure)    |
-| Fight Uncertainty            | covered (R16 + progress + verdict)   |
-| Opinionated + Escape Hatches | covered (defaults, --check, --verbose)|
+| Zero Friction                | covered (no runtime, one command)   |
+| Learn by Doing               | covered (fix text at the failure)   |
+| Fight Uncertainty            | covered (R16, progress, verdict)    |
+| Opinionated + Escape Hatches | covered (defaults, --check, audit)  |
 | Code in Context              | covered (real fixes, not hello world)|
 | Magical Moments              | covered (offline fix in the terminal)|
+| Agents Are Users             | covered (codes on warnings, envelope)|
 +====================================================================+
 ```
 
-Documentation was the lowest score in the review at 3/10: no unit listed `README.md` and the Definition of Done had no
-docs item, on a plan that also changes the README's published exit-code table.
-
-### DX implementation checklist
-
-```text
-[x] Time to hello world under 2 minutes, promised and smoke-tested   (D3, T19)
-[x] Installation is one command with no prerequisites                (already true)
-[x] First run produces meaningful output, and says it is working     (D6, T15)
-[x] Magical moment delivered via the terminal                        (KTD13, T13)
-[x] Every failure path has problem + cause + fix + envelope          (R16, T16)
-[x] CLI naming guessable; one exit table across verbs                (KTD12, T14)
-[x] Every flag's argument is discoverable offline                    (D9, T18)
-[x] Docs ship with the feature, on the xurl-rs standard              (U13, T17)
-[x] Examples show real use, not hello world                          (README web section)
-[x] Works in CI without special configuration                        (exit table + JSON)
-[x] Changelog exists and is generated                                (already true)
-[ ] Editor integration / language server                             (n/a for this product)
-```
+The scores describe the plan with its open tasks built. Error Messages reads 6/10 until T26, T27 and T29 land.
 
 ## GSTACK REVIEW REPORT
 
 | Review         | Trigger                    | Why                             | Runs | Status                                                           | Findings                                     |
 | -------------- | -------------------------- | ------------------------------- | ---- | ---------------------------------------------------------------- | -------------------------------------------- |
 | CEO Review     | `/plan-ceo-review`         | Scope & strategy                | 0    | —                                                                | —                                            |
-| Outside Review | codex via the plan reviews | Independent 2nd opinion         | 4    | disabled; no outside process ran                                 | none this run (`codex_reviews=disabled`)     |
+| Outside Review | codex via the plan reviews | Independent 2nd opinion         | 5    | disabled; no outside process ran                                 | none this run (`codex_reviews=disabled`)     |
 | Eng Review     | `/plan-eng-review`         | Architecture & tests (required) | 4    | ISSUES OPEN (PLAN) 2026-11-04, mode FULL_REVIEW, findings folded | 18 issues, 0 critical gaps                   |
 | Design Review  | `/plan-design-review`      | UI/UX gaps                      | 0    | —                                                                | —                                            |
-| DX Review      | `/plan-devex-review`       | Developer experience gaps       | 1    | CLEAR 2026-09-17, mode POLISH; older than the go-live changes    | score 6/10 → 8.5/10, TTHW ~1–2 min, 5 issues |
+| DX Review      | `/plan-devex-review`       | Developer experience gaps       | 2    | CLEAR 2026-11-04, mode POLISH                                    | score 7/10 → 8.5/10, TTHW ~1–2 min estimated |
 
 - **OUTSIDE COVERAGE:** provider codex, phase plan-review, status disabled by `codex_reviews=disabled`; no native
   fallback dispatched, since a disabled review is a terminal opt-out.
-- **VERDICT:** ENG findings are folded into the plan with one owner decision open, so eng review is not yet CLEAR. CEO
-  review not run (optional for a feature this size).
+- **VERDICT:** DX CLEARED. Eng findings are folded into the plan, with E1 answered, and its status stays ISSUES OPEN
+  because T20–T25 are mapped work, not done. CEO review not run (optional for a feature this size).
 
-**UNRESOLVED DECISIONS:**
-
-- E1: Does the first release that carries `anc web` wait on the wall-clock target, and on U20? Sent to the orchestrator
-  with options and a recommendation; the Definition of Done reads as blocking until answered.
+NO UNRESOLVED DECISIONS

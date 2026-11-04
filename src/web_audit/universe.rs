@@ -137,8 +137,9 @@ mod tests {
             ("mcp-auth-challenge", Pass, None),
         ]);
         assert_eq!(
-            (no_mcp, open, protected, hybrid),
-            (158.0, 155.0, 158.0, 158.0)
+            (no_mcp - open, protected, hybrid),
+            (3.0, no_mcp, no_mcp),
+            "an open server drops the sign-in group; every other design counts it"
         );
     }
 
@@ -154,7 +155,19 @@ mod tests {
             ScorecardStatus::NA,
             Some(NaReason::AuthRequired),
         )]);
-        assert_eq!((optional_absent, auth_required), (158.0, 158.0));
+        let no_mcp = universe(&[
+            (
+                "mcp-tools-list",
+                ScorecardStatus::NA,
+                Some(NaReason::AntecedentUnmet),
+            ),
+            (
+                "mcp-auth-challenge",
+                ScorecardStatus::NA,
+                Some(NaReason::AntecedentUnmet),
+            ),
+        ]);
+        assert_eq!((optional_absent, auth_required), (no_mcp, no_mcp));
     }
 
     #[test]

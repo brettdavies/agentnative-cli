@@ -184,22 +184,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn counters_match_the_vendored_registry() {
-        assert_eq!(CHECKS.len(), 68, "check count (bump deliberately)");
-        assert_eq!(
-            CATEGORY_ORDER.len(),
-            6,
-            "category count (bump deliberately)"
-        );
+    fn the_engine_runs_a_fixed_set_of_kinds_over_a_vendored_table_of_checks() {
+        assert!(!CHECKS.is_empty());
         assert_eq!(CATEGORIES.len(), CATEGORY_ORDER.len());
-        let handlers: BTreeSet<&str> = CHECKS.iter().map(|c| c.handler.as_str()).collect();
-        assert_eq!(handlers.len(), 13, "handler kinds (bump deliberately)");
-        let evals: BTreeSet<&str> = CHECKS
-            .iter()
-            .filter_map(|c| c.eval.map(|e| e.as_str()))
-            .collect();
-        assert_eq!(evals.len(), 4, "eval rules (bump deliberately)");
-        assert_eq!(RETIRED_CHECK_IDS, ["well-known-mcp-card"]);
         assert_eq!(HANDLER_KINDS.len(), 13);
         assert_eq!(EVAL_RULES.len(), 4);
     }

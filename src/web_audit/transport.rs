@@ -260,6 +260,11 @@ impl UreqTransport {
         }
     }
 
+    /// The resolver this transport's connections use, for classifying through.
+    pub fn resolver(&self) -> Arc<AuditResolver> {
+        Arc::clone(&self.resolver)
+    }
+
     fn local_agent(&self) -> &ureq::Agent {
         self.local.get_or_init(|| {
             let local = tls::client_config(&self.trust, TrustClass::Local);

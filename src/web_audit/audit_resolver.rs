@@ -32,15 +32,17 @@ use ureq::http::Uri;
 use ureq::unversioned::resolver::{self, DefaultResolver, ResolvedSocketAddrs};
 use ureq::unversioned::transport::NextTimeout;
 
-use super::locality::{Resolver, SystemResolver};
+use super::fetch::DEFAULT_TIMEOUT;
+use super::locality::{Resolver, SystemResolver, name_of};
 
-type Answer = Result<Arc<[IpAddr]>, String>;
+type Answer = Result<Arc<[SocketAddr]>, String>;
 type Names = Mutex<HashMap<String, Arc<Pending>>>;
 
 /// The addresses one audit's names resolve to, each looked up once.
 pub struct AuditResolver {
     lookup: Arc<dyn Resolver + Send + Sync>,
     names: Arc<Names>,
+    classify_wait: Duration,
 }
 
 impl std::fmt::Debug for AuditResolver {
@@ -57,6 +59,18 @@ impl AuditResolver {
         AuditResolver {
             lookup,
             names: Arc::default(),
+            classify_wait: DEFAULT_TIMEOUT,
+        }
+    }
+
+    /// This resolver, with classification waiting no longer than `wait` for a
+    /// lookup. A stalled lookup holds every caller of its name, and classification
+    /// runs on the audit's own threads, so without a limit a hung resolver would
+    /// outlast the audit's deadline.
+    pub fn waiting_at_most(self, wait: Duration) -> Self {
+        AuditResolver {
+            classify_wait: wait,
+            ..self
         }
     }
 
@@ -66,16 +80,19 @@ impl AuditResolver {
     }
 
     /// The answer for `host`, or `None` when `within` passed first.
-    fn answer(&self, host: &str, within: Option<Duration>) -> Option<Answer> {
+    fn answer(&self, host: &str, within: Duration) -> Option<Answer> {
         let name = name_of(host);
         let pending = {
             let mut names = lock(&self.names);
             match names.get(&name) {
                 Some(pending) => Arc::clone(pending),
                 None => {
+                    // Entered once its thread exists: a spawn that fails leaves no
+                    // entry that nothing would ever answer. The thread cannot reach
+                    // `names` until this lock is released.
                     let pending = Arc::new(Pending::default());
-                    names.insert(name.clone(), Arc::clone(&pending));
-                    self.spawn_lookup(name, Arc::clone(&pending));
+                    self.spawn_lookup(name.clone(), Arc::clone(&pending));
+                    names.insert(name, Arc::clone(&pending));
                     pending
                 }
             }
@@ -87,9 +104,9 @@ impl AuditResolver {
         let (lookup, names) = (Arc::clone(&self.lookup), Arc::clone(&self.names));
         thread::spawn(move || {
             // A lookup that panics still answers, so no caller waits on it forever.
-            let answer = catch_unwind(AssertUnwindSafe(|| lookup.resolve(&name)))
+            let answer = catch_unwind(AssertUnwindSafe(|| lookup.resolve_sockets(&name)))
                 .unwrap_or_else(|_| Err("the name lookup panicked".to_string()))
-                .map(Arc::<[IpAddr]>::from);
+                .map(Arc::<[SocketAddr]>::from);
             if answer.as_ref().map_or(true, |addrs| addrs.is_empty()) {
                 lock(&names).remove(&name);
             }
@@ -101,8 +118,13 @@ impl AuditResolver {
 
 impl Resolver for AuditResolver {
     fn resolve(&self, host: &str) -> Result<Vec<IpAddr>, String> {
-        self.answer(host, None)
-            .unwrap_or_else(|| Err("lookup ended without an answer".to_string()))
+        let addrs = self.resolve_sockets(host)?;
+        Ok(addrs.into_iter().map(|a| a.ip()).collect())
+    }
+
+    fn resolve_sockets(&self, host: &str) -> Result<Vec<SocketAddr>, String> {
+        self.answer(host, self.classify_wait)
+            .unwrap_or_else(|| Err("the lookup did not answer in time".to_string()))
             .map(|addrs| addrs.to_vec())
     }
 }
@@ -131,13 +153,15 @@ impl resolver::Resolver for ConnectResolver {
             addrs.push(SocketAddr::new(ip, port));
             return Ok(addrs);
         }
-        match self.0.answer(host, Some(*timeout.after)) {
+        match self.0.answer(host, *timeout.after) {
             None => Err(ureq::Error::Timeout(timeout.reason)),
             Some(Err(detail)) => Err(ureq::Error::Io(io::Error::other(detail))),
-            Some(Ok(ips)) if ips.is_empty() => Err(ureq::Error::HostNotFound),
-            Some(Ok(ips)) => {
-                for ip in ips.iter() {
-                    if addrs.try_push(SocketAddr::new(*ip, port)).is_err() {
+            Some(Ok(answer)) if answer.is_empty() => Err(ureq::Error::HostNotFound),
+            Some(Ok(answer)) => {
+                for addr in answer.iter() {
+                    let mut addr = *addr;
+                    addr.set_port(port);
+                    if addrs.try_push(addr).is_err() {
                         break;
                     }
                 }
@@ -152,13 +176,6 @@ fn split_host_port(host_port: &str) -> Option<(&str, u16)> {
     Some((host, port.parse().ok()?))
 }
 
-// DNS names are case-insensitive, and the fetch layer's URL and ureq's URI can
-// spell one name with and without its root dot: both must reach one answer, or
-// the connection looks the name up again.
-fn name_of(host: &str) -> String {
-    host.trim().trim_end_matches('.').to_ascii_lowercase()
-}
-
 #[derive(Default)]
 struct Pending {
     answer: Mutex<Option<Answer>>,
@@ -166,21 +183,13 @@ struct Pending {
 }
 
 impl Pending {
-    fn wait(&self, within: Option<Duration>) -> Option<Answer> {
-        let unsettled = |answer: &mut Option<Answer>| answer.is_none();
+    fn wait(&self, within: Duration) -> Option<Answer> {
         let answer = lock(&self.answer);
-        let answer = match within {
-            None => self
-                .settled
-                .wait_while(answer, unsettled)
-                .unwrap_or_else(PoisonError::into_inner),
-            Some(limit) => {
-                self.settled
-                    .wait_timeout_while(answer, limit, unsettled)
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .0
-            }
-        };
+        let answer = self
+            .settled
+            .wait_timeout_while(answer, within, |answer| answer.is_none())
+            .unwrap_or_else(PoisonError::into_inner)
+            .0;
         answer.clone()
     }
 }
@@ -193,6 +202,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
+    use std::net::SocketAddrV6;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Barrier, mpsc};
 
@@ -201,6 +211,8 @@ mod tests {
     use ureq::unversioned::transport::time;
 
     use super::*;
+
+    const LIMIT: Duration = Duration::from_millis(100);
 
     /// Answers by how many lookups came before, counting them.
     struct Counted {
@@ -298,11 +310,47 @@ mod tests {
     fn a_lookup_that_panics_answers_its_callers_with_a_failure() {
         let lookup = Counted::new(|_| panic!("resolver bug"));
         let resolver = AuditResolver::new(lookup);
-        let answer = resolver.answer("panics.example", Some(Duration::from_secs(5)));
+        let answer = resolver.answer("panics.example", Duration::from_secs(5));
         assert_eq!(
             answer.expect("the wait ends with an answer"),
             Err("the name lookup panicked".to_string())
         );
+    }
+
+    #[test]
+    fn a_lookup_that_stalls_ends_a_classification_at_its_limit() {
+        struct Stalled;
+        impl Resolver for Stalled {
+            fn resolve(&self, _: &str) -> Result<Vec<IpAddr>, String> {
+                thread::sleep(Duration::from_secs(5));
+                public(0)
+            }
+        }
+        let resolver = AuditResolver::new(Arc::new(Stalled)).waiting_at_most(LIMIT);
+        let started = std::time::Instant::now();
+        let answer = resolver.resolve("stalled.example");
+        assert!(started.elapsed() < Duration::from_secs(4));
+        assert_eq!(answer.unwrap_err(), "the lookup did not answer in time",);
+    }
+
+    #[test]
+    fn a_connection_keeps_a_link_local_addresss_scope() {
+        struct LinkLocal;
+        impl Resolver for LinkLocal {
+            fn resolve(&self, _: &str) -> Result<Vec<IpAddr>, String> {
+                Ok(vec!["fe80::1".parse().unwrap()])
+            }
+            fn resolve_sockets(&self, _: &str) -> Result<Vec<SocketAddr>, String> {
+                let scoped = SocketAddrV6::new("fe80::1".parse().unwrap(), 0, 0, 3);
+                Ok(vec![SocketAddr::V6(scoped)])
+            }
+        }
+        let addrs = connect_answer(Arc::new(LinkLocal), "https://printer.local/").unwrap();
+        let [SocketAddr::V6(addr)] = addrs[..] else {
+            panic!("{addrs:?}");
+        };
+        assert_eq!(addr.scope_id(), 3);
+        assert_eq!(addr.port(), 443);
     }
 
     #[test]
@@ -357,7 +405,7 @@ mod tests {
         }
         let (release, held) = mpsc::channel();
         let resolver = AuditResolver::new(Arc::new(Held(Mutex::new(held))));
-        let waited = resolver.answer("slow.example", Some(Duration::from_millis(20)));
+        let waited = resolver.answer("slow.example", Duration::from_millis(20));
         assert!(waited.is_none(), "{waited:?}");
         release.send(()).unwrap();
         assert_eq!(resolver.resolve("slow.example"), public(0));

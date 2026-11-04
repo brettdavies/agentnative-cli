@@ -22,7 +22,7 @@ use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, load_cases, replay};
-use common::ledger::{compare_with_ledger, corpus_divergences, load_ledger};
+use common::ledger::{compare_with_ledger, corpus_divergences, load_ledger, parse_ledger};
 use std::sync::Arc;
 
 /// The first differing line of two JSON documents, with its neighbours, so
@@ -198,4 +198,35 @@ fn a_mutated_golden_fails_the_comparison() {
         diff.contains("spec_version"),
         "the failure must name the field: {diff}"
     );
+}
+
+const PIN: &str = "0123456789abcdef0123456789abcdef01234567";
+const OTHER_PIN: &str = "76543210fedcba9876543210fedcba9876543210";
+const ENTRY: &str =
+    "[[divergence]]\nscenario = \"run-healthy\"\nelement = \"score\"\nowner = \"#1\"\n";
+
+#[test]
+fn an_empty_ledger_holds_at_any_pin() {
+    let ledger = parse_ledger("# header only\n", PIN).expect("an empty ledger names no pin");
+    assert!(ledger.is_empty());
+}
+
+#[test]
+fn a_ledger_with_entries_holds_only_at_its_own_pin() {
+    let at = |pin: &str| format!("site_sha = \"{pin}\"\n{ENTRY}");
+    assert_eq!(parse_ledger(&at(PIN), PIN).expect("its own pin").len(), 1);
+    let stale = parse_ledger(&at(OTHER_PIN), PIN).expect_err("another pin");
+    assert!(
+        stale.contains(OTHER_PIN) && stale.contains("regenerate"),
+        "{stale}"
+    );
+    let unnamed = parse_ledger(ENTRY, PIN).expect_err("entries with no pin");
+    assert!(unnamed.contains("regenerate"), "{unnamed}");
+}
+
+#[test]
+fn an_empty_ledger_naming_a_pin_is_refused() {
+    let raw = format!("site_sha = \"{PIN}\"\n");
+    let problem = parse_ledger(&raw, PIN).expect_err("a stale claim waiting to happen");
+    assert!(problem.contains("names no site pin"), "{problem}");
 }

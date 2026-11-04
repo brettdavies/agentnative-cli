@@ -27,16 +27,18 @@ LEDGER = ROOT / "tests/fixtures/web-audit-divergences.toml"
 CORPUS = "tests/fixtures/web-audit-conformance/scenarios"
 HEADER = """\
 # Web-audit divergence ledger: every element of the vendored conformance
-# corpus the engine does not yet reproduce at site_sha, one entry per
-# (scenario, element). An element is a top-level scorecard field,
-# `row:<check id>`, `unreachable`, or `document` (bytes differ, fields match).
-# `owner` is the site PR that set the golden value the engine misses.
+# corpus the engine does not yet reproduce, one entry per (scenario, element).
+# An element is a top-level scorecard field, `row:<check id>`, `unreachable`,
+# or `document` (bytes differ, fields match). `owner` is the site PR that set
+# the golden value the engine misses.
 #
 # The conformance and handlers suites assert the observed divergences EQUAL
 # this ledger: an unledgered divergence fails, and an entry that starts
 # matching fails until it is removed, so each port PR drops the entries it
-# closes. Regenerate after a re-pin or a port rather than editing by hand;
-# --since is the pin before the re-pin that opened these entries:
+# closes. Entries hold only at the pin they were generated at, which site_sha
+# names; an empty ledger names no pin and holds at any. Regenerate after a
+# re-pin or a port rather than editing by hand; --since is the pin before the
+# re-pin:
 #   WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
 """
 
@@ -114,7 +116,9 @@ def main():
             sys.exit(f"error: no site commit in range touched {scenario}; widen --since")
         entries.append((scenario, element, pr_of(subject)))
 
-    lines = [HEADER, f'site_sha = "{pin}"\n']
+    lines = [HEADER]
+    if entries:
+        lines.append(f'site_sha = "{pin}"\n')
     for scenario, element, owner in entries:
         lines.append(
             f'\n[[divergence]]\nscenario = "{scenario}"\nelement = "{element}"\nowner = "{owner}"\n'

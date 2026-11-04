@@ -13,13 +13,16 @@
 //! agents: a public one that never touches a proxy, a public one carrying
 //! the configured proxy, chosen by [`Request::via_proxy`], and a local one,
 //! chosen by [`Request::trust`] and built the first time a local request
-//! needs it, so a public run never reads the OS store.
+//! needs it, so a public run never reads the OS store. All three resolve names
+//! through one [`AuditResolver`], the one the fetch layer classifies hosts
+//! with, so a connection goes to the addresses its hop was classified by.
 
 use std::fmt;
 use std::io::Read;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
+use super::audit_resolver::{AuditResolver, ConnectResolver};
 use super::credential::RedactedHeaders;
 use super::fetch::proxy;
 use super::fetch::trust::{TrustClass, TrustConfig};
@@ -67,7 +70,8 @@ pub struct Response {
     pub status: u16,
     /// Response headers, names lowercased.
     pub headers: Headers,
-    /// The body, decoded of any content encoding, not yet read.
+    /// The body, not yet read. A gzip body is decoded; any other encoding
+    /// arrives as the server sent it.
     pub body: Box<dyn Read>,
 }
 
@@ -197,6 +201,7 @@ impl TransportError {
 pub struct UreqTransport {
     user_agent: String,
     trust: TrustConfig,
+    resolver: Arc<AuditResolver>,
     direct: ureq::Agent,
     proxied: Option<ureq::Agent>,
     local: OnceLock<ureq::Agent>,
@@ -228,25 +233,55 @@ impl UreqTransport {
         Self::with_trust(user_agent, proxy, TrustConfig::default())
     }
 
-    /// A transport with an explicit proxy and trust configuration.
+    /// A transport with an explicit proxy and trust configuration, and name
+    /// lookups of its own.
     pub fn with_trust(user_agent: &str, proxy: Option<ureq::Proxy>, trust: TrustConfig) -> Self {
+        let resolver = Arc::new(AuditResolver::system());
+        Self::with_resolver(user_agent, proxy, trust, resolver)
+    }
+
+    /// A transport whose connections use the addresses `resolver` answered.
+    /// The fetch layer classifying its hops through the same resolver is what
+    /// holds a connection to the address that was classified.
+    pub fn with_resolver(
+        user_agent: &str,
+        proxy: Option<ureq::Proxy>,
+        trust: TrustConfig,
+        resolver: Arc<AuditResolver>,
+    ) -> Self {
         let public = tls::client_config(&trust, TrustClass::Public);
         UreqTransport {
             user_agent: user_agent.to_string(),
-            direct: agent(user_agent, None, public.clone()),
-            proxied: proxy.map(|p| agent(user_agent, Some(p), public)),
+            direct: agent(user_agent, None, public.clone(), &resolver),
+            proxied: proxy.map(|p| agent(user_agent, Some(p), public, &resolver)),
             local: OnceLock::new(),
             trust,
+            resolver,
         }
+    }
+
+    /// The resolver this transport's connections use, for classifying through.
+    pub fn resolver(&self) -> Arc<AuditResolver> {
+        Arc::clone(&self.resolver)
     }
 
     fn local_agent(&self) -> &ureq::Agent {
         self.local.get_or_init(|| {
             let local = tls::client_config(&self.trust, TrustClass::Local);
-            agent(&self.user_agent, None, local)
+            agent(&self.user_agent, None, local, &self.resolver)
         })
     }
 }
+
+/// Idle connections an agent keeps per host. It sits above the engine's
+/// concurrency: a check can fan out, and a detached body read keeps its
+/// connection after its worker moves on, so one host can have more in flight
+/// than the engine has workers.
+pub const IDLE_CONNECTIONS_PER_HOST: usize = 16;
+
+/// Idle connections an agent keeps in all, room for the four hosts the audits of
+/// five public targets reached at most.
+pub const IDLE_CONNECTIONS: usize = 4 * IDLE_CONNECTIONS_PER_HOST;
 
 // Redirects stay off so a 3xx returns as a response and the fetch layer
 // decides whether the next hop may be contacted. Status codes are never
@@ -255,42 +290,52 @@ impl UreqTransport {
 fn agent(
     user_agent: &str,
     proxy: Option<ureq::Proxy>,
-    tls_config: std::sync::Arc<rustls::ClientConfig>,
+    tls_config: Arc<rustls::ClientConfig>,
+    resolver: &Arc<AuditResolver>,
 ) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .user_agent(user_agent)
         .http_status_as_error(false)
         .max_redirects(0)
         .max_redirects_will_error(false)
+        .max_idle_connections(IDLE_CONNECTIONS)
+        .max_idle_connections_per_host(IDLE_CONNECTIONS_PER_HOST)
         .proxy(proxy)
         .build();
-    tls::agent(config, tls_config)
+    tls::agent(config, tls_config, ConnectResolver(Arc::clone(resolver)))
 }
 
 /// Attempts a single probe may cost, counting the first.
 ///
-/// A connection the pool kept but the server had already closed fails
-/// before the request reaches anything, which is not a fact about the
-/// target: a server that closes idle keep-alive connections, or that
-/// answers HTTP/1.0 and so closes every one, would otherwise scatter
-/// `error` rows across a site that is serving perfectly, and push the run
-/// to the could-not-check exit code. Each failure discards the dead
-/// connection, so a bounded retry walks past the stale entries the pool
-/// accumulated while six threads probed at once.
+/// A connection the pool kept can die before or just after the request reaches
+/// it, which is not a fact about the target: a server that closes idle keep-alive
+/// connections, or that answers HTTP/1.0 and so closes every one, would otherwise
+/// scatter `error` rows across a site that is serving perfectly, and push the run
+/// to the could-not-check exit code. Every attempt after the first opens a new
+/// connection, so a pool full of dead ones costs one attempt.
 const MAX_ATTEMPTS: u32 = 3;
+
+/// Attempts for a method that may change something on the server. The request
+/// may have reached it before its connection died, so it goes again only once.
+const MAX_ATTEMPTS_UNSAFE: u32 = 2;
 
 impl Transport for UreqTransport {
     fn send(&self, request: &Request) -> Result<Response, TransportError> {
         let started = Instant::now();
         let mut attempt = 1;
         loop {
-            let outcome = self.send_once(request);
+            let remaining = request.timeout.saturating_sub(started.elapsed());
+            let outcome = self.send_once(request, remaining, attempt > 1);
+            let attempts = match request.method.as_str() {
+                "GET" | "HEAD" | "OPTIONS" => MAX_ATTEMPTS,
+                _ => MAX_ATTEMPTS_UNSAFE,
+            };
             // Only a connection-level failure is retried, and only while a
             // further attempt still fits inside this request's own budget,
             // so the per-audit deadline keeps its meaning. A timeout or a
             // TLS rejection is the target's answer, not a stale socket.
             let retryable = matches!(outcome, Err(TransportError::Network(_)))
-                && attempt < MAX_ATTEMPTS
+                && attempt < attempts
                 && started.elapsed() * 2 < request.timeout;
             if !retryable {
                 return outcome;
@@ -301,7 +346,12 @@ impl Transport for UreqTransport {
 }
 
 impl UreqTransport {
-    fn send_once(&self, request: &Request) -> Result<Response, TransportError> {
+    fn send_once(
+        &self,
+        request: &Request,
+        timeout: Duration,
+        fresh: bool,
+    ) -> Result<Response, TransportError> {
         let agent = match (request.trust, &self.proxied, request.via_proxy) {
             (TrustClass::Local, _, _) => self.local_agent(),
             (TrustClass::Public, Some(proxied), true) => proxied,
@@ -317,8 +367,8 @@ impl UreqTransport {
             builder = builder.header(name.as_str(), value.as_str());
         }
         let response = match &request.body {
-            Some(body) => run(agent, builder.body(body.clone()), request.timeout),
-            None => run(agent, builder.body(()), request.timeout),
+            Some(body) => run(agent, builder.body(body.clone()), timeout, fresh),
+            None => run(agent, builder.body(()), timeout, fresh),
         }
         .map_err(|e| e.checked_against(trust_set))?;
         Ok(Response::from_ureq(response))
@@ -329,13 +379,23 @@ fn run<S: ureq::AsSendBody>(
     agent: &ureq::Agent,
     built: Result<ureq::http::Request<S>, ureq::http::Error>,
     timeout: Duration,
+    fresh: bool,
 ) -> Result<ureq::http::Response<ureq::Body>, TransportError> {
     let request = built.map_err(|e| TransportError::Network(e.to_string()))?;
-    let request = agent
+    let config = agent
         .configure_request(request)
-        .timeout_global(Some(timeout))
-        .build();
-    Ok(agent.run(request)?)
+        .timeout_global(Some(timeout));
+    // A request whose buffers differ from the agent's neither borrows from ureq's
+    // pool nor returns to it (`Config::can_share_pool_with`), so it opens a new
+    // connection and leaves the host's idle ones alone. ureq's own
+    // `max_idle_age(0)` would drop them all.
+    let config = if fresh {
+        let buffer = agent.config().input_buffer_size();
+        config.input_buffer_size(buffer + 1)
+    } else {
+        config
+    };
+    Ok(agent.run(config.build())?)
 }
 
 impl Response {

@@ -4,8 +4,8 @@
 //! notes when more followed, and `None` reads everything up to the root
 //! ceiling, past which the read stops with the same note. Truncation is never
 //! an error: a check evaluates what it received, with the flag as evidence.
-//! Bytes are counted after decompression, so a compression bomb stops at the
-//! ceiling too.
+//! Gzip bytes are counted after decompression, so a compression bomb stops at
+//! the ceiling too.
 
 use std::io::{self, Read};
 
@@ -84,7 +84,10 @@ pub fn read_capped_until<R: Read>(
     let mut buf = [0u8; CHUNK];
     while bytes.len() < limit {
         let want = (limit - bytes.len()).min(CHUNK);
-        let n = check(read_some(&mut reader, &mut buf[..want])?)?;
+        let n = match read_some(&mut reader, &mut buf[..want]) {
+            Err(err) if gzip_body_ended(&err, &bytes) => 0,
+            read => check(read?)?,
+        };
         if n == 0 {
             return Ok(BodyRead {
                 bytes,
@@ -94,8 +97,27 @@ pub fn read_capped_until<R: Read>(
         bytes.extend_from_slice(&buf[..n]);
     }
     let mut probe = [0u8; 1];
-    let truncated = check(read_some(&mut reader, &mut probe)?)? > 0;
+    let truncated = match read_some(&mut reader, &mut probe) {
+        Err(err) if gzip_body_ended(&err, &bytes) => false,
+        read => check(read?)? > 0,
+    };
     Ok(BodyRead { bytes, truncated })
+}
+
+/// Whether a read error is gzip's decoder reading past a body it has finished:
+/// out of input on an empty body or after a member, or finding no second member
+/// after one. The decoder reads on to look for another member, and reports what
+/// it finds as an error even though the body already decoded, which the site
+/// engine's runtime reads as a body. A stream cut off exactly at the member's
+/// trailer looks the same from here, and reads as a body too.
+fn gzip_body_ended(err: &io::Error, decoded: &[u8]) -> bool {
+    let Some(ureq::Error::Decompress("gzip", cause)) =
+        err.get_ref().and_then(|inner| inner.downcast_ref())
+    else {
+        return false;
+    };
+    let cause = cause.to_string();
+    cause == "unexpected end of file" || (!decoded.is_empty() && cause == "invalid gzip header")
 }
 
 fn read_some<R: Read>(reader: &mut R, buf: &mut [u8]) -> io::Result<usize> {

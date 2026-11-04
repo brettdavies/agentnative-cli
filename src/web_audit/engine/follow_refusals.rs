@@ -40,7 +40,7 @@ pub(super) fn refusal(
     match fetch.validate(url) {
         Err(reason) if reason.starts_with("blocked") => return Some(Settled::of(Outcome::Blocked)),
         Err(_) => return Some(Settled::of(Outcome::ReciprocityRefused)),
-        Ok(class) if target_locality.is_some_and(|t| t != class) => {
+        Ok(class) if target_locality != Some(class) => {
             return Some(Settled::of(Outcome::Blocked));
         }
         Ok(_) => {}
@@ -133,7 +133,23 @@ mod tests {
     fn refused(url: &str, kind: Kind) -> Option<(Outcome, Option<&'static str>)> {
         let transport = Arc::new(MockTransport::new(vec![], MockResponse::ok(200, &[], b"")));
         let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), "anc-test/0");
-        refusal(url, kind, &fetch, None).map(|s| (s.outcome, s.reason))
+        refusal(url, kind, &fetch, Some(Locality::Public)).map(|s| (s.outcome, s.reason))
+    }
+
+    #[test]
+    fn a_host_is_refused_while_the_targets_class_is_unknown() {
+        let transport = Arc::new(MockTransport::new(vec![], MockResponse::ok(200, &[], b"")));
+        let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), "anc-test/0");
+        let settled = refusal(
+            "https://mcp.example.net/mcp",
+            Kind::McpEndpoint,
+            &fetch,
+            None,
+        );
+        assert_eq!(
+            settled.map(|s| (s.outcome, s.reason)),
+            Some((Outcome::Blocked, None))
+        );
     }
 
     #[test]

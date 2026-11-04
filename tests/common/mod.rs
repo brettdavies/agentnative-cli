@@ -63,6 +63,8 @@ pub struct RawResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Send the body as one chunk rather than with a `content-length`.
+    pub chunked: bool,
 }
 
 impl RawResponse {
@@ -74,6 +76,15 @@ impl RawResponse {
                 .map(|(n, v)| (n.to_string(), v.to_string()))
                 .collect(),
             body: body.to_vec(),
+            chunked: false,
+        }
+    }
+
+    /// This response with its body sent as one chunk.
+    pub fn chunked(self) -> Self {
+        RawResponse {
+            chunked: true,
+            ..self
         }
     }
 }
@@ -165,7 +176,11 @@ fn read_request_from<R: Read>(stream: R) -> Option<RawRequest> {
     })
 }
 
-fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
+fn write_response<W: Write>(stream: W, resp: &RawResponse) {
+    write_response_ending(stream, resp, "close");
+}
+
+fn write_response_ending<W: Write>(mut stream: W, resp: &RawResponse, connection: &str) {
     let reason = match resp.status {
         200 => "OK",
         301 => "Moved Permanently",
@@ -177,10 +192,20 @@ fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
     for (n, v) in &resp.headers {
         out.push_str(&format!("{n}: {v}\r\n"));
     }
-    out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
-    out.push_str("connection: close\r\n\r\n");
+    if resp.chunked {
+        out.push_str("transfer-encoding: chunked\r\n");
+    } else {
+        out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
+    }
+    out.push_str(&format!("connection: {connection}\r\n\r\n"));
     let _ = stream.write_all(out.as_bytes());
-    let _ = stream.write_all(&resp.body);
+    if resp.chunked {
+        let _ = write!(stream, "{:x}\r\n", resp.body.len());
+        let _ = stream.write_all(&resp.body);
+        let _ = stream.write_all(b"\r\n0\r\n\r\n");
+    } else {
+        let _ = stream.write_all(&resp.body);
+    }
     let _ = stream.flush();
 }
 
@@ -351,34 +376,106 @@ pub fn spawn_https<F>(handler: F) -> Server
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
+    https_server(handler, Connections::CloseAfterOne).server
+}
+
+/// An HTTPS server that holds its connections open between requests, and how
+/// many connections it has accepted.
+#[cfg(feature = "web")]
+pub struct KeepAliveServer {
+    pub server: Server,
+    accepted: Arc<Mutex<usize>>,
+}
+
+#[cfg(feature = "web")]
+impl KeepAliveServer {
+    /// Connections accepted so far.
+    pub fn accepted(&self) -> usize {
+        *self.accepted.lock().unwrap()
+    }
+}
+
+/// Spawn an HTTPS server on a loopback port that answers every request on a
+/// connection, presenting the leaf the test CA signed. It is the server a
+/// connection pool can save a handshake against.
+#[cfg(feature = "web")]
+pub fn spawn_https_keep_alive<F>(handler: F) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
+    https_server(handler, Connections::KeepAlive)
+}
+
+/// [`spawn_https_keep_alive`], where a connection answers one request and dies
+/// when a later request on it matches `dies`: it reads that request and closes
+/// without answering, which a client holding it idle cannot see coming.
+#[cfg(feature = "web")]
+pub fn spawn_https_dying_on_reuse<F>(handler: F, dies: fn(&RawRequest) -> bool) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
+    https_server(handler, Connections::DieOnReuse(dies))
+}
+
+#[cfg(feature = "web")]
+#[derive(Clone, Copy)]
+enum Connections {
+    CloseAfterOne,
+    KeepAlive,
+    DieOnReuse(fn(&RawRequest) -> bool),
+}
+
+#[cfg(feature = "web")]
+fn https_server<F>(handler: F, connections: Connections) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
     let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().unwrap();
     let hits: Arc<Mutex<Vec<RawRequest>>> = Arc::new(Mutex::new(Vec::new()));
-    let recorder = Arc::clone(&hits);
+    let accepted: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let (recorder, counter) = (Arc::clone(&hits), Arc::clone(&accepted));
     let handler = Arc::new(handler);
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(stream) = stream else { break };
+            *counter.lock().unwrap() += 1;
             let recorder = Arc::clone(&recorder);
             let handler = Arc::clone(&handler);
             let config = Arc::clone(&config);
             thread::spawn(move || {
                 let conn = rustls::ServerConnection::new(config).expect("server connection");
                 let mut tls = rustls::StreamOwned::new(conn, stream);
-                if let Some(req) = read_request_from(&mut tls) {
+                let mut answered = false;
+                while let Some(req) = read_request_from(&mut tls) {
+                    if let Connections::DieOnReuse(dies) = connections
+                        && answered
+                        && dies(&req)
+                    {
+                        break;
+                    }
                     recorder.lock().unwrap().push(req.clone());
                     let resp = handler(&req);
-                    write_response(&mut tls, &resp);
-                    tls.conn.send_close_notify();
-                    let _ = tls.flush();
+                    let closes = matches!(connections, Connections::CloseAfterOne);
+                    let header = if closes { "close" } else { "keep-alive" };
+                    write_response_ending(&mut tls, &resp, header);
+                    answered = true;
+                    if closes {
+                        tls.conn.send_close_notify();
+                        let _ = tls.flush();
+                        break;
+                    }
                 }
             });
         }
     });
-    Server {
-        addr,
-        hits,
-        scheme: "https",
+    KeepAliveServer {
+        server: Server {
+            addr,
+            hits,
+            scheme: "https",
+        },
+        accepted,
     }
 }

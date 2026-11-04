@@ -2,7 +2,7 @@
 title: Local Web Audit - Plan
 type: feat
 status: active
-prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230", "#289", "#291", "#293", "brettdavies/agentnative-site#503", "brettdavies/agentnative-site#504"]
+prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230", "#289", "#291", "#293", "#295", "#296", "#297", "#298", "brettdavies/agentnative-site#503", "brettdavies/agentnative-site#504", "brettdavies/agentnative-site#506", "brettdavies/agentnative-site#507"]
 date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
@@ -182,8 +182,8 @@ flowchart TB
 - R6 (phase 2). When the vendored contract fingerprint differs from the one anc.dev serves, the report carries a note
   saying so, that a verdict can differ as a result, and the pinned site SHA — inline in text mode, on stderr in JSON
   mode so the verbatim shape holds; when that version signal is skipped, unreachable or answers anything but 200, the
-  note is omitted and the run is otherwise unaffected. Every report names the vendored registry fingerprint and the
-  pinned site SHA, and a run against a local or private target makes no anc.dev connection.
+  note is omitted and the run is otherwise unaffected. Every report names the vendored registry version and the pinned
+  site SHA, and a run against a local or private target makes no anc.dev connection.
 - R12. Checks that query external DNS resolvers do not fire for local or private targets (IPv4 and IPv6 alike); gated
   checks report n_a with a stated reason. `--external-dns` forces them on, `--no-external-dns` withholds them for any
   target with the same reason, and the two override each other, the last one winning.
@@ -354,31 +354,35 @@ committed in `agentnative-site`, planned here, with no separate site plan).
 
 **On `dev`.** The engine and its verb, gated behind the cargo feature `web`: U1–U7, U10, U11, U14, U17 and U13's docs
 standard (#97–#106, #202, #204, #207–#230), with U8 on site `dev`. `src/web_audit/vendored/SITE_SHA` pins raw vendored
-files at site `dev` `d5772289`, and the divergence ledger holds no entry, so the engine reproduces every scenario of the
-vendored corpus. No release carries `anc web`: v0.7.0's release branch strips the web code (#241), and the go-live stack
-ends that.
+files at site `dev` `d5772289`, #289 moves that pin to `031ec6e`, and U16 re-pins to the contract at #504's head once it
+is stable. The divergence ledger holds no entry, so the engine reproduces every scenario of the vendored corpus. No
+release carries `anc web`: v0.7.0's release branch strips the web code (#241), and the go-live stack ends that.
 
 **The go-live stack.** Every PR below stays open and unmerged until the owner merges it. On the site, #504 stacks
 on #503, and U18 and U20 each sit on #504. The CLI's PRs stack where they touch the same files. #291 sits on `dev` and
-merges after C7, and U20's port never holds it.
+merges after C2, whose gate it needs, and U20's port never holds it.
 
-| Order | Repo | Unit | PR             | What it lands                                                                                                    |
-| ----- | ---- | ---- | -------------- | ---------------------------------------------------------------------------------------------------------------- |
-| S1    | site | U9   | #503           | `GET /api/web-audit/version`, the served signal                                                                  |
-| S2    | site | U15  | #504           | `src/data/web-audit/contract/`, `build/FINGERPRINT`, and `contract_fingerprint` on the signal                    |
-| S4    | site | U18  | on top of #504 | The informational CLI-parity report on contract-changing PRs                                                     |
-| S3    | site | U20  | on top of #504 | Ranks 1–4 of the fan-out design, regenerating `requests.json` wherever a set moves                               |
-| —     | site | U13  | independent    | The local-target pointer and `ANC_WEB_RELEASED = true`; merges only after the anc release that carries `anc web` |
-| C1    | cli  | U12  | #289           | Re-pin to site `dev` `031ec6e`: an empty ledger holds at any pin, and site-owned counts read the vendored data   |
-| C2    | cli  | U12  | #293           | `scripts/web-audit-bump.sh` and `.github/workflows/web-audit-bump.yml`                                           |
-| C3    | cli  | U16  | on top of C2   | Re-pin to the contract at #504's head SHA; `ts_consts.rs` and the normalizer mirror deleted                      |
-| C7    | cli  | U12  | on top of C3   | The staleness note consuming U9, and the release gate                                                            |
-| C4    | cli  | U19  | own PRs        | ureq's `brotli` off first, then the DNS cache, idle pool, one worker pool per audit, the aws-lc opt-level call   |
-| C5    | cli  | U21  | with C4        | Release builds unwind (KTD20), web-only crates at `opt-level = "s"`, with the `brotli` saving from C4            |
-| C8    | cli  | KD16 | #291           | `feat(web): ship anc web in the default build`, with `--no-external-dns` and U13's README changes                |
-| C6    | cli  | U20  | after S3       | The port's mirror of ranks 1–4                                                                                   |
+| Order | Repo | Unit  | PR, on its base      | What it lands                                                                                                    |
+| ----- | ---- | ----- | -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| S1    | site | U9    | #503, on `dev`       | `GET /api/web-audit/version`, the served signal                                                                  |
+| S2    | site | U15   | #504, on #503        | `src/data/web-audit/contract/`, `build/FINGERPRINT`, and `contract_fingerprint` on the signal                    |
+| S4    | site | U18   | not opened, on #504  | The informational CLI-parity report on contract-changing PRs                                                     |
+| S3    | site | U20   | #507, on #504        | Ranks 1–4 of the fan-out design, regenerating `requests.json` wherever a set moves                               |
+| —     | site | U13   | not opened, on `dev` | The local-target pointer and `ANC_WEB_RELEASED = true`; merges only after the anc release that carries `anc web` |
+| —     | site | —     | #506, on `dev`       | Postflight reads page bodies without a pipe that SIGPIPEs, so the site's release checks hold                     |
+| C1    | cli  | U12   | #289, on `dev`       | Re-pin to site `dev` `031ec6e`: an empty ledger holds at any pin, and site-owned counts read the vendored data   |
+| C2    | cli  | U12   | #293, on #289        | `scripts/web-audit-bump.sh`, its workflow, the release gate, and `ported` on `anc emit web-checks`               |
+| C3    | cli  | U16   | not opened, on #293  | Re-pin to the contract at #504's head SHA; `ts_consts.rs` and the normalizer mirror deleted                      |
+| C7    | cli  | U12   | not opened, on C3    | The staleness note consuming U9                                                                                  |
+| C4    | cli  | U19   | #296, on `dev`       | ureq's `brotli` off, so brotli responses stop losing their connections                                           |
+| C4    | cli  | U19   | #297, on #296        | The idle pool sized for what the engine runs at once                                                             |
+| C4    | cli  | U19   | #298, on #297        | One lookup per name per audit, connecting to the classified address                                              |
+| C5    | cli  | KTD20 | #295, on `dev`       | Release builds keep a handler panic to one error row                                                             |
+| C5    | cli  | U21   | not opened, with C4  | Web-only crates at `opt-level = "s"`                                                                             |
+| C8    | cli  | KD16  | #291, on `dev`       | `feat(web): ship anc web in the default build`, with `--no-external-dns` and U13's README changes                |
+| C6    | cli  | U20   | not opened, after S3 | The port's mirror of ranks 1–4                                                                                   |
 
-The landing order, as the owner merges:
+The landing order, as the owner merges them:
 
 1. C1, C2 and C3 merge to CLI `dev`, so its sync script reads the contract layout before site `dev` carries it. An
    old-layout script fails hard on every `dev` push once the corpus moves. C3 still pins #504's head SHA, which stays
@@ -387,7 +391,7 @@ The landing order, as the owner merges:
 2. S1 and S2 merge to site `dev`. The squash gives the contract a new SHA with the same bytes.
 3. The next CLI `dev` push runs the bump, which opens the re-pin to that site `dev` SHA even though no vendored file
    changed (U12). Until the workflow file reaches `main`, `scripts/web-audit-bump.sh` run by hand covers a quiet `dev`.
-4. C7, C4 and C5 merge, then #291. S4 merges once CLI `dev` reads the contract, and it holds nothing else.
+4. C7, C4 and C5 merge, with #291 after C2. S4 merges once CLI `dev` reads the contract, and it holds nothing else.
 5. If U20 is ready, S3 merges once C6 is green against S3's head SHA (KTD3 lets a stack pin it), the bump brings its
    request sets, and C6 merges and deletes any `requests` entries (KTD19). If it is not, S3 stays open and the release
    pins site `dev` as it stands (KD18).
@@ -624,15 +628,15 @@ The landing order, as the owner merges:
   best-effort parity gap under KD2.
 - KTD9 (phase 2). **Staleness compares the vendored contract fingerprint with the one anc.dev serves, for public targets
   only.** The CLI reads `GET https://anc.dev/api/web-audit/version` (U9) and compares the trimmed `contract_fingerprint`
-  with its vendored `build/FINGERPRINT`, whose file ends in a newline. The hash covers `build/**` minus itself and
-  `test/**`, minus every `README.md`, goldens included, so it moves on a handler or scoring change that
-  `registry_fingerprint` misses, and the CLI compares site-generated bytes. The note says "differs" and never "behind"
-  (KD19). The CLI fetches the signal only during `anc web` runs against targets the locality classifier labels public —
-  a local or private target's run makes no anc.dev connection at all. The fetch runs beside the audit on its own thread
-  with a bounded timeout, so it adds nothing to the wall clock (KD18). Any failure, any non-200, an unparseable body, or
-  a body with no `contract_fingerprint` skips the note silently (per KD5 and R6). The remaining public-target fetch is
-  disclosed in `anc web --help`. The version literals have rows in the ecosystem version-model table
-  (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
+  with `CONTRACT_FINGERPRINT`, which U16 emits in `web_audit::registry`, trimmed from the vendored file. The hash covers
+  `build/**` minus itself and `test/**`, minus every `README.md`, goldens included, so it moves on a handler or scoring
+  change that `registry_fingerprint` misses, and the CLI compares site-generated bytes. The note says "differs" and
+  never "behind" (KD19). The CLI fetches the signal only during `anc web` runs against targets the locality classifier
+  labels public — a local or private target's run makes no anc.dev connection at all. The fetch runs beside the audit on
+  its own thread with a bounded timeout, so it adds nothing to the wall clock (KD18). Any failure, any non-200, an
+  unparseable body, or a body with no `contract_fingerprint` skips the note silently (per KD5 and R6). The remaining
+  public-target fetch is disclosed in `anc web --help`. The version literals have rows in the ecosystem version-model
+  table (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
 - KTD10. **Locality classification mirrors the site's `ssrf.ts` and gates the whole request chain.** `locality.rs` ports
   the site's classifier verbatim: IPv4 literals in every inet_aton form (dotted, short-dotted, decimal, octal, hex),
   IPv6 literals bracketed or bare with zone ids stripped, IPv4-mapped (`::ffff:a.b.c.d`) and IPv4-compatible forms
@@ -678,7 +682,7 @@ The landing order, as the owner merges:
     the site's `bun test` gate through `tests/web-audit-contract.test.ts`, so a stale file fails the site PR that caused
     it. `src/build/web-audit-contract-paths.mjs` owns every contract path and the `CONTRACT_LISTING` pin.
 
-  The CLI's sync maps by consumer: `build/` to `src/web_audit/vendored/contract/build/`, inside the crate,
+  The CLI's sync maps by consumer: `build/` to `src/web_audit/vendored/contract/`, inside the crate,
   and `test/` to `tests/fixtures/web-audit-contract/`, outside it. Neither repo keeps a per-file list beyond the site's
   listing pin. Chosen over vendoring `registry.yaml` with its normalizer inputs: the projection is the engine's actual
   input, and vendoring it deletes the Rust copy of the site normalizer instead of extending it to the server-card schema
@@ -838,7 +842,7 @@ Contract layout (KTD14):
 ```text
 src/data/web-audit/contract/        agentnative-site
   README.md                         site-only: consumers, the regenerate command
-    build/                            -> anc: src/web_audit/vendored/contract/build/
+    build/                            -> anc: src/web_audit/vendored/contract/
     registry.json                   generated: normalized registry projection, readable
     remediation.json                generated: normalized fix catalog, readable
     server-card.schema.json         generated: the vendored schema, byte for byte
@@ -1046,10 +1050,10 @@ stateDiagram-v2
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
      pinning the hardening surface.
-  3. Sync set, split by consumer: the contract's `build/` directory vendors under
-     `src/web_audit/vendored/contract/build/` because `build.rs` needs it in the crates.io package, and its `test/`
-     directory vendors under `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14).
-     Both map whole, and the drift check compares both listings and bytes.
+  3. Sync set, split by consumer: the contract's `build/` directory vendors under `src/web_audit/vendored/contract/`
+     because `build.rs` needs it in the crates.io package, and its `test/` directory vendors under
+     `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14). Both map whole, and the
+     drift check compares both listings and bytes.
   4. `build.rs` gains `emit_web_registry` per KTD3: strict reads of the three contract files against a pinned list of
      the files it reads, strict enum parsing, registry regex compilation with the `regex` crate under JS-matching flags
      (fail on lookaround, backreferences, or any rejected pattern, naming the check id), top-level block emission,
@@ -1253,8 +1257,8 @@ stateDiagram-v2
      One test per path. 3c. Exit codes per KTD12: the closing line names the code and what earned it; `--help` carries
      the single table.
   3. Text renderer follows `anc` text conventions through `output::emit`/`color::should_color`; JSON mode prints the U3
-     scorecard verbatim on stdout; exit codes per KTD12; the report header names the vendored registry fingerprint and
-     the pinned site SHA so a reader can compare against anc.dev by hand until U12 automates it.
+     scorecard verbatim on stdout; exit codes per KTD12; the report header names the vendored registry version and the
+     pinned site SHA.
   4. When any unported-handler or unported-eval skip is present, flag the headline score as non-comparable — inline in
      text mode, on stderr in JSON mode — naming the unported kinds and skipped check ids (KTD3's degradation-honesty
      rule). 4a. Offline readers (DX review D9, phase 1): `anc emit web-remediation` serves KTD13's whole fix catalog,
@@ -1468,8 +1472,9 @@ stateDiagram-v2
 - **Files:** `scripts/web-audit-bump.sh`, `.github/workflows/web-audit-bump.yml`,
   `scripts/web-audit-divergence-ledger.py`, `tests/common/ledger.rs`, `tests/fixtures/web-audit-divergences.toml`,
   `scripts/release/web-parity-gate.sh`, `scripts/release/smoke.sh`, `.github/workflows/web-audit-release-gate.yml`,
-  `RELEASES.md`, `RELEASES-PREFLIGHT.md`, `scripts/SYNCS.md`, `src/web_audit/registry.rs`, `src/web_audit/emit.rs`,
-  `src/web_audit/render/`, `src/cli.rs`, `src/main.rs`, `tests/web_audit_render.rs`, `tests/integration.rs`.
+  `RELEASES.md`, `RELEASES-PREFLIGHT.md`, `scripts/SYNCS.md`, `README.md`, `src/web_audit/registry.rs`,
+  `src/web_audit/emit.rs`, `src/web_audit/signal.rs`, `src/web_audit/render/`, `src/cli.rs`, `src/main.rs`,
+  `tests/web_audit_signal.rs`, `tests/web_audit_render.rs`, `tests/integration.rs`.
 - **Approach:**
   1. **Triggers: `push` to `dev`, `schedule` (daily), `workflow_dispatch`.** GitHub runs `schedule` and
      `workflow_dispatch` only from a workflow file on the default branch, and this file reaches `main` only with a
@@ -1526,9 +1531,9 @@ stateDiagram-v2
      ahead of what anc.dev deploys (KD19). It states that a verdict can differ as a result and names the pinned site
      SHA. It may say a newer anc release can carry anc.dev's contract, and does not present upgrading as the action,
      because the hash moves on any site release touching scoring, so the latest anc can differ with nothing newer to
-     take. #291 rewrites README's "What `anc web` Sends" to name this fetch and the DoH resolvers and to point at
-     `--no-external-dns`, where it says the audit contacts "nothing else". `--verbose` states the check's result every
-     time (`anc.dev contract: same`, `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
+     take. #291 rewrites README's "What `anc web` Sends" to name the DoH resolvers and `--no-external-dns`, and the
+     note's own PR adds this fetch there. `--verbose` states the check's result every time (`anc.dev contract: same`,
+     `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
   8. The new version literals join the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
   9. A short "Handling a bump PR" section in `RELEASES.md` says what each state means and what to do: green with no

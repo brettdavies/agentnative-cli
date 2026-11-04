@@ -2,7 +2,7 @@
 title: Local Web Audit - Plan
 type: feat
 status: active
-prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230", "#289", "#291", "brettdavies/agentnative-site#503", "brettdavies/agentnative-site#504"]
+prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230", "#289", "#291", "#293", "brettdavies/agentnative-site#503", "brettdavies/agentnative-site#504"]
 date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
@@ -185,7 +185,8 @@ flowchart TB
   note is omitted and the run is otherwise unaffected. Every report names the vendored registry fingerprint and the
   pinned site SHA, and a run against a local or private target makes no anc.dev connection.
 - R12. Checks that query external DNS resolvers do not fire for local or private targets (IPv4 and IPv6 alike); gated
-  checks report n_a with a stated reason, and `--external-dns` forces them on.
+  checks report n_a with a stated reason. `--external-dns` forces them on, `--no-external-dns` withholds them for any
+  target with the same reason, and the two override each other, the last one winning.
 - R13. A run against an unresponsive or tarpitting target completes within the engine's per-audit deadline, reporting
   partial results per R4 rather than hanging the shell or CI step.
 - R20. For each conformance scenario the local engine sends the requests the site engine recorded, each distinct request
@@ -280,7 +281,9 @@ flowchart TB
   neither, then the run ends unreachable, naming the chain rejection and the trust set that rejected it, and exits 3.
 - AE6. **Covers R12.** Given target `https://intranet.corp.internal`, when audited without flags, then no query reaches
   a third-party DoH resolver — the hostname touches only the machine's own configured resolver — and DNS checks report
-  n_a ("needs public DNS — verified on anc.dev"); when audited with `--external-dns`, the DoH queries fire.
+  n_a ("needs public DNS — verified on anc.dev"); when audited with `--external-dns`, the DoH queries fire. Given a host
+  that resolves to a routable address, when audited with `--no-external-dns`, then no query reaches a third-party
+  resolver and the DNS checks report the same n_a reason.
 - AE7. **Covers R13.** Given a target that accepts connections but never responds, when audited, then the run completes
   within the per-audit deadline with unprobed checks reported per R4 and a failing exit code per R8.
 - AE8. **Covers R2, R18.** Given `anc report.json`, `anc main.go`, `anc a.out` or `anc main.rs:42`, where no such path
@@ -367,12 +370,12 @@ merges after C7, and U20's port never holds it.
 | S3    | site | U20  | on top of #504 | Ranks 1–4 of the fan-out design, regenerating `requests.json` wherever a set moves                               |
 | —     | site | U13  | independent    | The local-target pointer and `ANC_WEB_RELEASED = true`; merges only after the anc release that carries `anc web` |
 | C1    | cli  | U12  | #289           | Re-pin to site `dev` `031ec6e`: an empty ledger holds at any pin, and site-owned counts read the vendored data   |
-| C2    | cli  | U12  | on top of #289 | `scripts/web-audit-bump.sh` and `.github/workflows/web-audit-bump.yml`                                           |
+| C2    | cli  | U12  | #293           | `scripts/web-audit-bump.sh` and `.github/workflows/web-audit-bump.yml`                                           |
 | C3    | cli  | U16  | on top of C2   | Re-pin to the contract at #504's head SHA; `ts_consts.rs` and the normalizer mirror deleted                      |
 | C7    | cli  | U12  | on top of C3   | The staleness note consuming U9, and the release gate                                                            |
 | C4    | cli  | U19  | own PRs        | ureq's `brotli` off first, then the DNS cache, idle pool, one worker pool per audit, the aws-lc opt-level call   |
 | C5    | cli  | U21  | with C4        | Release builds unwind (KTD20), web-only crates at `opt-level = "s"`, with the `brotli` saving from C4            |
-| C8    | cli  | KD16 | #291           | `feat(web): ship anc web in the default build`, with U13's README changes                                        |
+| C8    | cli  | KD16 | #291           | `feat(web): ship anc web in the default build`, with `--no-external-dns` and U13's README changes                |
 | C6    | cli  | U20  | after S3       | The port's mirror of ranks 1–4                                                                                   |
 
 The landing order, as the owner merges:
@@ -639,7 +642,8 @@ The landing order, as the owner merges:
   classes: IPv4 loopback/RFC1918/link-local, IPv6 loopback (`::1`), ULA (`fc00::/7`), and link-local (`fe80::/10`) — an
   IPv6-only internal host must gate exactly like an IPv4 one or KD8's privacy property fails. The U4 scenario table is
   the site's `web-audit-ssrf.test.ts` table, one case per form. The gate wraps the dns-doh handler and the KTD9 version
-  fetch; `--external-dns` bypasses the DNS gate. Redirect hops are classified per KTD1: metadata ranges and
+  fetch; `--external-dns` bypasses the DNS gate, and `--no-external-dns` closes it for any target, public included,
+  because a host on a routable address can still be internal. Redirect hops are classified per KTD1: metadata ranges and
   class-crossing hops are refused and recorded as `blocked:` evidence — never a silent public egress from a run the user
   believes is local. Cites R12 (KD8's governed requirement).
 - KTD11. **`anc web` mirrors the site runner's `--site-type` and `--check` surface.** `site_type` is caller-supplied on
@@ -674,7 +678,7 @@ The landing order, as the owner merges:
     the site's `bun test` gate through `tests/web-audit-contract.test.ts`, so a stale file fails the site PR that caused
     it. `src/build/web-audit-contract-paths.mjs` owns every contract path and the `CONTRACT_LISTING` pin.
 
-  The CLI's sync maps by consumer: `build/` to `src/web_audit/vendored/contract/`, inside the crate,
+  The CLI's sync maps by consumer: `build/` to `src/web_audit/vendored/contract/build/`, inside the crate,
   and `test/` to `tests/fixtures/web-audit-contract/`, outside it. Neither repo keeps a per-file list beyond the site's
   listing pin. Chosen over vendoring `registry.yaml` with its normalizer inputs: the projection is the engine's actual
   input, and vendoring it deletes the Rust copy of the site normalizer instead of extending it to the server-card schema
@@ -834,7 +838,7 @@ Contract layout (KTD14):
 ```text
 src/data/web-audit/contract/        agentnative-site
   README.md                         site-only: consumers, the regenerate command
-    build/                              -> anc: src/web_audit/vendored/contract/
+    build/                            -> anc: src/web_audit/vendored/contract/build/
     registry.json                   generated: normalized registry projection, readable
     remediation.json                generated: normalized fix catalog, readable
     server-card.schema.json         generated: the vendored schema, byte for byte
@@ -1042,10 +1046,10 @@ stateDiagram-v2
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
      pinning the hardening surface.
-  3. Sync set, split by consumer: the contract's `build/` directory vendors under `src/web_audit/vendored/contract/`
-     because `build.rs` needs it in the crates.io package, and its `test/` directory vendors under
-     `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14). Both map whole, and the
-     drift check compares both listings and bytes.
+  3. Sync set, split by consumer: the contract's `build/` directory vendors under
+     `src/web_audit/vendored/contract/build/` because `build.rs` needs it in the crates.io package, and its `test/`
+     directory vendors under `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14).
+     Both map whole, and the drift check compares both listings and bytes.
   4. `build.rs` gains `emit_web_registry` per KTD3: strict reads of the three contract files against a pinned list of
      the files it reads, strict enum parsing, registry regex compilation with the `regex` crate under JS-matching flags
      (fail on lookaround, backreferences, or any rejected pattern, naming the check id), top-level block emission,
@@ -1231,8 +1235,9 @@ stateDiagram-v2
 - **Files:** `src/cli.rs`, `src/argv.rs`, `src/main.rs`, `src/web_audit/render.rs`, `tests/integration.rs`.
 - **Approach:**
   1. `Commands::Web` as a flat top-level variant (the `Audit` shape, not the nested `Skill` shape), routed to a
-     `run_web` helper; flags per KTD11 (`--site-type content|api`, `--check <id>`) plus `--external-dns` (KD8), the
-     repeatable `--ca-cert <file>` (R22), and the standard `--output` pair.
+     `run_web` helper; flags per KTD11 (`--site-type content|api`, `--check <id>`) plus `--external-dns` and
+     `--no-external-dns` (KD8), which override each other, the repeatable `--ca-cert <file>` (R22), and the standard
+     `--output` pair.
   2. URL-ish pre-dispatch sniff per KTD7's grammar; path/binary existence wins; scheme-less targets default https for
      every target (R21); grammar misses fall through to today's behavior unchanged. 3a. Render contract (DX review D6).
      Progress goes to stderr, emitted only when stdout is a terminal and silenced by `--quiet`, its env binding,
@@ -1281,6 +1286,8 @@ stateDiagram-v2
     Covers AE8.
   - Edge: `anc localhost:8787` routes to web with https; `anc ./localhost:8787` (explicit path form) routes to audit;
     `--` separator and value-flag tokens still behave per the existing argv tests.
+  - Edge: `--no-external-dns` on a public target sends no DoH query and reports the local gate's n_a reason, and
+    `--external-dns` and `--no-external-dns` given together follow the last one, in each order. Covers AE6.
   - Edge: `--check <id>` runs the single check with KTD12's exit codes (clean 0, warnings 1, failures 2, could not check
     3); `--site-type api` filters as the site's `siteTypeApplies` does; omitted site-type runs everything.
   - Integration: a run against a local target makes no connection to anc.dev (transport panics on any non-target host).
@@ -1460,8 +1467,8 @@ stateDiagram-v2
   vendored layout. The ledger's `requests` element needs U16. The note needs U7 and U9.
 - **Files:** `scripts/web-audit-bump.sh`, `.github/workflows/web-audit-bump.yml`,
   `scripts/web-audit-divergence-ledger.py`, `tests/common/ledger.rs`, `tests/fixtures/web-audit-divergences.toml`,
-  `scripts/web-audit-release-gate.sh`, `scripts/release/smoke.sh`, `.github/workflows/ci.yml`, `RELEASES.md`,
-  `RELEASES-PREFLIGHT.md`, `scripts/SYNCS.md`, `README.md`, `src/web_audit/registry.rs`, `src/web_audit/emit.rs`,
+  `scripts/release/web-parity-gate.sh`, `scripts/release/smoke.sh`, `.github/workflows/web-audit-release-gate.yml`,
+  `RELEASES.md`, `RELEASES-PREFLIGHT.md`, `scripts/SYNCS.md`, `src/web_audit/registry.rs`, `src/web_audit/emit.rs`,
   `src/web_audit/render/`, `src/cli.rs`, `src/main.rs`, `tests/web_audit_render.rs`, `tests/integration.rs`.
 - **Approach:**
   1. **Triggers: `push` to `dev`, `schedule` (daily), `workflow_dispatch`.** GitHub runs `schedule` and
@@ -1499,19 +1506,19 @@ stateDiagram-v2
      refuses any path outside the sync script's destinations and the ledger, commits through GraphQL, and opens the PR.
      A step boundary would not isolate the token, because a compile step's `$GITHUB_ENV` and `$GITHUB_PATH` writes and
      still-running processes carry into later steps of one job. A bot PR never merges itself.
-  6. **Release gate.** `scripts/web-audit-release-gate.sh` fails when `tests/fixtures/web-audit-divergences.toml` has
+  6. **Release gate.** `scripts/release/web-parity-gate.sh` fails when `tests/fixtures/web-audit-divergences.toml` has
      entries, naming them; when `anc emit web-checks` reports a check with `ported: false`, naming it; and when
      `src/web_audit/vendored/SITE_SHA` is not a commit on site `dev`, read through the sync script's hardened fetch. It
      fails closed: an unreachable site is a failure, not a skip, since a tag needs the network anyway. Each refusal
      states its cause and its fix under a stable code: `web-audit-ledger` (the entries, then "port each owner's change
      and delete its entries"), `web-audit-unported` (the check and kind, then "port the kind in
      `src/web_audit/handlers/`"), and `web-audit-pin` (the SHA, then `scripts/web-audit-bump.sh`). Two callers run it.
-     `scripts/release/smoke.sh`, the project-specific body `preflight.sh smoke` delegates to, is the refusal. A step in
-     `ci.yml`'s release binary job with `if: github.base_ref == 'main'` shows the same verdict on the release PR,
-     because preflight runs by hand and `release.yml` does not run it; that step stays out of `protect-main.json`'s
-     required list, so no ruleset changes. `anc emit web-checks` gains an additive per-row `ported` boolean, and the
-     assertion in `the_unported_bindings_are_exactly_the_known_ones` (`src/web_audit/registry.rs`) moves into this gate,
-     because it would turn a bump with an unported kind red. `RELEASES-PREFLIGHT.md` documents the gate.
+     `scripts/release/smoke.sh`, the project-specific body `preflight.sh smoke` delegates to, is the refusal.
+     `.github/workflows/web-audit-release-gate.yml`, on PRs to `main`, shows the same verdict on the release PR, because
+     preflight runs by hand and `release.yml` does not run it; that workflow stays out of `protect-main.json`'s required
+     list, so no ruleset changes. `anc emit web-checks` gains an additive per-row `ported` boolean, and the assertion in
+     `the_unported_bindings_are_exactly_the_known_ones` (`src/web_audit/registry.rs`) moves into this gate, because it
+     would turn a bump with an unported kind red. `RELEASES-PREFLIGHT.md` documents the gate.
   7. **Staleness note.** Per KTD9: fetched on its own thread for targets the locality classifier labels public, with a
      bounded timeout, and silently skipped on any failure, any non-200, or a body with no `contract_fingerprint`; inline
      in text mode, on stderr in JSON mode as `warning: contract-differs: ...` (AE9); `--help` discloses the
@@ -1519,9 +1526,9 @@ stateDiagram-v2
      ahead of what anc.dev deploys (KD19). It states that a verdict can differ as a result and names the pinned site
      SHA. It may say a newer anc release can carry anc.dev's contract, and does not present upgrading as the action,
      because the hash moves on any site release touching scoring, so the latest anc can differ with nothing newer to
-     take. README's "What `anc web` Sends" names this fetch and the DoH resolvers, where it says the audit contacts
-     "nothing else". `--verbose` states the check's result every time (`anc.dev contract: same`, `differs`, or
-     `not checked (<reason>)`), so no note is not ambiguous.
+     take. #291 rewrites README's "What `anc web` Sends" to name this fetch and the DoH resolvers and to point at
+     `--no-external-dns`, where it says the audit contacts "nothing else". `--verbose` states the check's result every
+     time (`anc.dev contract: same`, `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
   8. The new version literals join the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
   9. A short "Handling a bump PR" section in `RELEASES.md` says what each state means and what to do: green with no
@@ -1559,7 +1566,8 @@ stateDiagram-v2
   - Integration: `--help` and `--version` still make zero network calls.
 - **Verification:** A bump PR opened by the workflow from a stale pin carries a verified commit and runs CI, on a
   corpus-wide bump as well as a small one, since `createCommitOnBranch` takes every changed file in one request;
-  integration tests green; `preflight.sh smoke` refuses a seeded ledger, and a PR to `main` with one shows the red step.
+  integration tests green; `preflight.sh smoke` refuses a seeded ledger, and a PR to `main` with one shows the red
+  check.
 
 ### U14. Credentialed MCP probes and the local vantage
 
@@ -1947,7 +1955,7 @@ stateDiagram-v2
 | Release matrix   | `release-matrix-check.yml`                                                                                                | Every release row builds aws-lc-sys with nothing provisioned (KTD1)     |
 | Vendor drift     | `scripts/sync-web-audit.sh --check` (CI: `web-audit-drift.yml`)                                                           | R9's sync against the pinned SHA, every contract listing                |
 | Vendor freshness | `.github/workflows/web-audit-bump.yml`; `scripts/web-audit-bump.sh --dry-run`                                             | R24: the pin moves through a verified-commit PR with no hand edit       |
-| Release gate     | `scripts/release/preflight.sh smoke`; the same script on PRs to `main` in `ci.yml`                                        | R24: no tag with ledger entries, an unported kind, or a pin off `dev`   |
+| Release gate     | `scripts/release/preflight.sh smoke`; the same script on PRs to `main`                                                    | R24: no tag with ledger entries, an unported kind, or a pin off `dev`   |
 | Conformance      | `cargo test --test web_audit_conformance`                                                                                 | R5 and R20 parity against the vendored corpus and ledger (KTD16, KTD17) |
 | Size             | `scripts/check-binary-size.sh` in `ci.yml`'s release binary size job                                                      | The 20 MiB ceiling, on the default release build (KD2)                  |
 | Speed            | `.github/workflows/web-audit-bench.yml`, not in any ruleset                                                               | R23: within KD18's margin of the site engine at one pin                 |
@@ -2341,8 +2349,8 @@ checkbox as you ship.
   read.
   - Surfaced by: Architecture A1, A2 — preflight runs by hand, and nothing a shell can read says a check binds an
     unported kind.
-  - Files: `scripts/web-audit-release-gate.sh`, `scripts/release/smoke.sh`, `.github/workflows/ci.yml`,
-    `src/web_audit/emit.rs`, `src/web_audit/registry.rs`.
+  - Files: `scripts/release/web-parity-gate.sh`, `scripts/release/smoke.sh`,
+    `.github/workflows/web-audit-release-gate.yml`, `src/web_audit/emit.rs`, `src/web_audit/registry.rs`.
   - Verify: `preflight.sh smoke` refuses a seeded ledger and an unported kind, and a PR to `main` with one shows the red
     step.
 - [ ] **T23 (P2, human: ~2 h / CC: ~10 min)** — U12 workflow — Check out `dev` on every trigger, keep the token in a
@@ -2386,7 +2394,7 @@ checkbox as you ship.
 - [ ] **T29 (P2, human: ~1 h / CC: ~10 min)** — U12 — Gate refusals name their fix, `--verbose` states the signal
   result, and `RELEASES.md` says how to handle a bump PR.
   - Surfaced by: DX Pass 3 and 4, X3, X7, X9.
-  - Files: `scripts/web-audit-release-gate.sh`, `src/web_audit/render/`, `RELEASES.md`.
+  - Files: `scripts/release/web-parity-gate.sh`, `src/web_audit/render/`, `RELEASES.md`.
   - Verify: each refusal prints its code, cause and fix; `--verbose` prints one of the three results.
 - [ ] **T30 (P1, human: ~1 h / CC: ~15 min, on the owner's approval)** — Release cut — Reword the changelog bullets that
   say `anc web` is held back. 33 bullets in v0.8.0's generated section do, and none is edited until the owner approves.
@@ -2400,6 +2408,14 @@ checkbox as you ship.
     with the `web` cargo feature..." also overlaps #291's `### Added` line, so one goes.
   - Files: the merged PR bodies, through the owner.
   - Verify: the grep above is empty.
+
+### From the go-live document review
+
+- [ ] **T31 (P1, human: ~2 h / CC: ~15 min)** — U7 — Add `--no-external-dns` in #291, and rewrite README's "What
+  `anc web` Sends".
+  - Surfaced by: the document review's security lens, decided by the orchestrator as E2.
+  - Files: `src/cli.rs`, `src/main.rs`, `src/web_audit/engine/waves.rs`, `README.md`, `completions/`.
+  - Verify: AE6's routable-address case, and each flag order.
 
 ### From the DX review
 
@@ -2502,7 +2518,7 @@ REALITY: obligation-tiers pass the release needs U19 and U21 and takes U20 if re
 | S2 | CRITICAL, 9/10 | U12's "nothing to bump" rule | A squash merge gives the same bytes a new commit, so no vendored file changes, no PR opens, and the gate refuses forever | A pin off site `dev` always bumps (U12) |
 | S3 | INFORMATIONAL, 9/10 | GitHub `schedule` semantics | A scheduled run starts from `main` and would bump the last release's pin | `ref: dev` on every trigger (U12) |
 | S4 | INFORMATIONAL, 9/10 | U12's dependency line against Delivery C2 | U12 named U16 as a dependency while C2 lands before it | Dependencies split by piece (U12) |
-| A1 | CRITICAL, 8/10 | `RELEASES.md:196`; `release.yml` runs no preflight | R24's refusal rests on a step someone runs by hand | One script, two callers, with the CI step on PRs to `main`; no ruleset change (U12) |
+| A1 | CRITICAL, 8/10 | `RELEASES.md:196`; `release.yml` runs no preflight | R24's refusal rests on a step someone runs by hand | One script, two callers, with a workflow on PRs to `main`; no ruleset change (U12) |
 | A2 | INFORMATIONAL, 9/10 | `src/web_audit/registry.rs` `the_unported_bindings_are_exactly_the_known_ones`; `emit.rs` | That test turns a bump with an unported kind red, and a shell cannot read the binding | The assertion moves to the gate, and `emit web-checks` gains `ported` (U12) |
 | A3 | INFORMATIONAL, 8/10 | U12 PR mechanics | `CI_RELEASE_TOKEN` on a runner that compiles and runs tests is more reach than it needs | The token sits in a second job on a fresh runner (U12) |
 | A4 | INFORMATIONAL, 8/10 | The PR body is the changelog source | A bump that adds a check would ship with no changelog line | A `### Changed` bullet on a check change (U12) |
@@ -2514,7 +2530,8 @@ REALITY: obligation-tiers pass the release needs U19 and U21 and takes U20 if re
 | P1 | INFORMATIONAL, 7/10 | `src/web_audit/locality.rs:113` `.to_socket_addrs()` | A coalesced lookup that stalls holds every waiter | Lookups run off the callers' threads, bounded by each deadline (KTD18, U19) |
 | P2 | INFORMATIONAL, 7/10 | U19 step 4 | An inline drain lengthens the caller's run on a slow body | Drain on a detached reader, with byte and deadline bounds (U19) |
 | P3 | INFORMATIONAL, 8/10 | Bun 20.10 s and 22.72 s across two runs | Totals move between runs, so a cross-run comparison misleads | Compare only within one run (U19) |
-| E1 | Decision | KD18's evidence | Does the first release wait on the wall-clock target and on U20? | The orchestrator chose: U19 and U21 landed, within a margin of the site engine; U20 follows if not ready. Its example margin, the larger of 5% and the run's spread, would pass the unfixed port, so the doc review fixed it at 5% (KD18) |
+| E1 | Decision | KD18's evidence | Does the first release wait on the wall-clock target and on U20? | The orchestrator chose: U19 and U21 landed, within a margin of the site engine; U20 follows if not ready. Its example margin, the larger of 5% and the run's spread, would pass the unfixed port, so the doc review fixed it at 5%, and the orchestrator accepted that (KD18) |
+| E2 | Decision | `src/web_audit/locality.rs` labels a routable address public | An internal host on a routable address sent its name to public DoH resolvers with no way to stop it | The orchestrator chose `--no-external-dns` in #291, because default-on widens the audience this hits and a hostname leak cannot be recalled (R12, AE6) |
 
 Test review: the coverage map above is current, and six gaps closed through the scenarios these decisions added: the pin
 off site `dev`, the constants binding, the signal's proxy and token handling, the resolver stall, the drain stall, and
@@ -2685,17 +2702,6 @@ handler panic, release    | unexpected | fail | fail | fail     | fail | fail   
 [ ] Editor integration / language server                             (n/a for this product)
 ```
 
-## Deferred / Open Questions
-
-### From 2026-11-04 review
-
-- **An internal host on a routable address cannot withhold DoH** — Product Contract, R12 (P2, security-lens, confidence
-  75). A dev auditing an internal host on a public address, such as an IP-allowlisted VM behind split-horizon DNS, sends
-  its hostname to `cloudflare-dns.com` and `dns.google` with no flag to stop it, because the classifier labels that
-  address public and `--external-dns` only forces queries on. Proposed: `--no-external-dns`, withholding DoH checks for
-  any target with the same `n_a` reason, plus an acceptance example beside AE6. It adds a flag name to the surface
-  before the verb ships by default, so the orchestrator decides.
-
 ## DX Review Scorecard
 
 ```text
@@ -2748,6 +2754,4 @@ The scores describe the plan with its open tasks built. Error Messages reads 6/1
 - **VERDICT:** DX CLEARED. Eng findings are folded into the plan, with E1 answered, and its status stays ISSUES OPEN
   because T20–T25 are mapped work, not done. CEO review not run (optional for a feature this size).
 
-**UNRESOLVED DECISIONS:**
-
-- Whether `--no-external-dns` lands before the first release (Deferred / Open Questions); sent to the orchestrator.
+NO UNRESOLVED DECISIONS

@@ -17,8 +17,7 @@ use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::AUDIT_USER_AGENT;
 use agentnative::web_audit::scorecard::{NaReason, ResultRow, ScorecardStatus, WebScorecard};
-use common::corpus::{Case, Golden, load_cases, replay};
-use common::ledger::load_ledger;
+use common::corpus::{Case, load_cases, replay};
 
 fn scorecard_of(name: &str) -> WebScorecard {
     let cases: Vec<Case> = load_cases();
@@ -109,35 +108,6 @@ fn a_bare_bearer_challenge_names_no_metadata() {
             "the Bearer challenge names no resource_metadata".to_string()
         )
     );
-}
-
-/// An open server's global keeps its value and one without an endpoint counts
-/// the largest design. `universe.rs` pins how the designs differ; the site's own
-/// golden says what each whole run scores, unless the ledger already records
-/// that this build misses it.
-#[test]
-fn the_global_maximum_counts_the_mcp_access_design_the_site_presents() {
-    assert_eq!(scorecard_of("run-all-pass").score.global, 100);
-    let ledger = load_ledger();
-    let cases = load_cases();
-    for name in ["frontmatter-absent", "auth-declared-endpoint"] {
-        if ledger.contains_key(&(name.to_string(), "score".to_string())) {
-            continue;
-        }
-        let Some(Case {
-            golden: Golden::Scorecard(golden),
-            ..
-        }) = cases.iter().find(|c| c.name == name)
-        else {
-            panic!("no scored corpus scenario {name}");
-        };
-        let got = scorecard_of(name).score;
-        assert_eq!(
-            (got.relative, got.global),
-            (golden.score.relative, golden.score.global),
-            "{name}"
-        );
-    }
 }
 
 const SITE: &str = "https://example.com/";

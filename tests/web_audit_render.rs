@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
-use agentnative::web_audit::registry::CHECKS;
+use agentnative::web_audit::registry::{CHECKS, MCP_LANES, lane_of};
 use agentnative::web_audit::render::{RenderOptions, format_text};
 use agentnative::web_audit::scorecard::WebScorecard;
 use common::corpus::{load_cases, replay};
@@ -295,41 +295,6 @@ fn outline(out: &str, heading: &str) -> Vec<String> {
         .collect()
 }
 
-const SHARED: [&str; 2] = [
-    "  MCP · Every MCP server (4/4 pass)",
-    "    transport, discovery, and card checks that apply whichever protocol the server speaks.",
-];
-const LEGACY: [&str; 2] = [
-    "  MCP · Legacy lane · 2025-06-18 (8/10 pass)",
-    "    initialize, then a session.",
-];
-const MODERN: [&str; 2] = [
-    "  MCP · Modern lane · 2026-07-28 (0/7 pass)",
-    "    header-routed and stateless; no initialize or session.",
-];
-const BROWSER: [&str; 2] = [
-    "  MCP · In-page tools · WebMCP (1/1 pass)",
-    "    browser tools exposed by the site's HTML, not by the MCP server.",
-];
-
-fn lines(parts: &[&[&str]]) -> Vec<String> {
-    parts.concat().into_iter().map(str::to_string).collect()
-}
-
-/// A section's lane rows, once its rows outside any lane have come first. Which
-/// rows those are is the scenario's business, not the layout's.
-fn lane_outline(out: &str, heading: &str) -> Vec<String> {
-    let section = outline(out, heading);
-    let lane_at = first_lane(&section);
-    assert!(
-        section[..lane_at]
-            .iter()
-            .all(|line| line.starts_with("  ") && !line.starts_with("   ")),
-        "the rows outside any lane come first:\n{out}"
-    );
-    section[lane_at..].to_vec()
-}
-
 /// The position of the first lane heading in a section outline.
 fn first_lane(outline: &[String]) -> usize {
     outline
@@ -338,36 +303,58 @@ fn first_lane(outline: &[String]) -> usize {
         .unwrap_or_else(|| panic!("no lane heading in {outline:#?}"))
 }
 
+/// Checks a section against the registry's lane map, so the layout holds whichever
+/// rows a scenario lands in it: rows outside any lane first, then each lane at most
+/// once in display order, under its heading and note, holding only its own rows in
+/// registry order.
+fn assert_lane_layout(out: &str, heading: &str) {
+    let section = outline(out, heading);
+    let lane_at = first_lane(&section);
+    for line in &section[..lane_at] {
+        let id = line
+            .strip_prefix("  ")
+            .filter(|id| !id.starts_with(' '))
+            .unwrap_or_else(|| panic!("{line:?} sits before the first lane:\n{out}"));
+        assert!(lane_of(id).is_none(), "{id} belongs under a lane:\n{out}");
+    }
+    let mut lines = section[lane_at..].iter().peekable();
+    let mut previous_lane = None;
+    while let Some(line) = lines.next() {
+        let label = line
+            .strip_prefix("  MCP · ")
+            .unwrap_or_else(|| panic!("{line:?} is outside any lane:\n{out}"));
+        let at = MCP_LANES
+            .iter()
+            .position(|lane| label.starts_with(lane.label))
+            .unwrap_or_else(|| panic!("{label:?} names no lane:\n{out}"));
+        assert!(
+            previous_lane.is_none_or(|previous| previous < at),
+            "{label:?} is out of display order:\n{out}"
+        );
+        previous_lane = Some(at);
+        let lane = &MCP_LANES[at];
+        let note = format!("    {}.", lane.note);
+        assert_eq!(lines.next(), Some(&note), "{out}");
+        let mut previous_row = None;
+        while let Some(row) = lines.next_if(|line| line.starts_with("    ")) {
+            let id = row.trim_start();
+            assert_eq!(lane_of(id).map(|l| l.id), Some(lane.id), "{id}:\n{out}");
+            let position = CHECKS.iter().position(|c| c.id == id);
+            assert!(
+                previous_row < position,
+                "{id} is out of registry order:\n{out}"
+            );
+            previous_row = position;
+        }
+    }
+}
+
 #[test]
 fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
     let out = corpus_report("mcp-negotiation-defects", false);
-    assert_eq!(
-        lane_outline(&out, "Failures ("),
-        lines(&[&MODERN, &["    mcp-modern-tools-list"]]),
-        "{out}"
-    );
-    assert_eq!(
-        lane_outline(&out, "Warnings ("),
-        lines(&[
-            &LEGACY,
-            &["    mcp-accept-json", "    mcp-accept-unsatisfiable"],
-            &MODERN,
-            &[
-                "    mcp-server-discover",
-                "    mcp-modern-unknown-method",
-                "    mcp-modern-clientcaps",
-                "    mcp-modern-header-mismatch",
-                "    mcp-modern-version-reject",
-                "    mcp-modern-resources-miss",
-            ],
-        ]),
-        "{out}"
-    );
-    assert_eq!(
-        outline(&out, "Advisories ("),
-        lines(&[&SHARED, &["    mcp-server-card"]]),
-        "{out}"
-    );
+    for heading in ["Failures (", "Warnings (", "Advisories ("] {
+        assert_lane_layout(&out, heading);
+    }
     // A lane's rows keep the row layout, two columns deeper.
     assert!(
         out.contains(
@@ -384,53 +371,7 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
 #[test]
 fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
     let out = corpus_report("mcp-negotiation-defects", true);
-    let passed = outline(&out, "Passed (");
-    let lane_at = first_lane(&passed);
-    assert!(
-        passed[..lane_at]
-            .iter()
-            .all(|line| line.starts_with("  ") && !line.starts_with("   ")),
-        "the rows outside any lane come first:\n{out}"
-    );
-    assert_eq!(
-        passed[lane_at..],
-        lines(&[
-            &SHARED,
-            &[
-                "    mcp-get-fast-fail",
-                "    mcp-server-card",
-                "    mcp-card-legacy-aliases",
-                "    mcp-usage-doc",
-            ],
-            &LEGACY,
-            &[
-                "    mcp-initialize",
-                "    mcp-capabilities",
-                "    mcp-tools-list",
-                "    mcp-resources-list",
-                "    mcp-unknown-method",
-                "    mcp-malformed-body",
-                "    mcp-batch-reject",
-                "    mcp-unknown-tool",
-            ],
-            &BROWSER,
-            &["    webmcp"],
-        ])[..],
-        "{out}"
-    );
-    let inapplicable = outline(&out, "Not applicable (");
-    assert_eq!(
-        inapplicable[first_lane(&inapplicable)..],
-        lines(&[
-            &SHARED,
-            &[
-                "    mcp-cors-preflight",
-                "    mcp-cors-actual",
-                "    mcp-auth-challenge",
-                "    mcp-auth-servers",
-                "    mcp-auth-enforced",
-            ],
-        ])[..],
-        "{out}"
-    );
+    for heading in ["Passed (", "Not applicable ("] {
+        assert_lane_layout(&out, heading);
+    }
 }

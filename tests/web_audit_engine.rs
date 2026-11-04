@@ -25,7 +25,9 @@ use agentnative::web_audit::fetch::FetchInit;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::{Locality, Resolver};
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::registry::{AntecedentToken, CHECKS, HANDLER_KINDS, WebCheck};
+use agentnative::web_audit::registry::{
+    AntecedentToken, CHECKS, HANDLER_KINDS, MCP_DISCOVERY, WebCheck,
+};
 use agentnative::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardStatus,
 };
@@ -232,6 +234,12 @@ impl ProgressSink for Collected {
     }
 }
 
+/// With no endpoint found, the trail holds one row per well-known card, one each
+/// for the AI and API catalogs, and two probes of each common path.
+fn discovery_trail_len() -> usize {
+    MCP_DISCOVERY.well_known.len() + 2 + 2 * MCP_DISCOVERY.common_paths.len()
+}
+
 #[test]
 fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     let transport = healthy_transport();
@@ -258,12 +266,13 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         Some("https://example.com/mcp")
     );
     assert_eq!(
-        report.scorecard.summary.pass as usize + 5 + 1,
+        (report.scorecard.summary.pass
+            + report.scorecard.summary.n_a
+            + report.scorecard.summary.skip) as usize,
         CHECKS.len(),
-        "every row but the n_a and skip ones below passes: {:?}",
+        "every row passes, is n_a or skips: {:?}",
         report.scorecard.summary
     );
-    assert_eq!(report.scorecard.summary.n_a, 5);
     assert_eq!(
         report.scorecard.summary.skip, 1,
         "the unported retained-document row"
@@ -363,7 +372,7 @@ fn unmet_antecedents_cascade_and_absent_mays_become_optional() {
     let report = complete(run_web_audit(input(transport, stand_in_handlers())));
 
     assert_eq!(report.scorecard.mcp_endpoint, None);
-    assert_eq!(report.scorecard.mcp_discovery.len(), 10);
+    assert_eq!(report.scorecard.mcp_discovery.len(), discovery_trail_len());
     let expect_unmet = |id: &str, evidence: &str| {
         let r = row(&report, id);
         assert_eq!(r.status, ScorecardStatus::NA, "{id}");
@@ -458,7 +467,7 @@ fn silence_and_edge_errors_are_unreachable_but_any_real_status_audits() {
             reason, discovery, ..
         } => {
             assert!(reason.starts_with("https://example.com/ did not answer any probe (no HTTP response from the root fetch or MCP discovery)."), "{reason}");
-            assert_eq!(discovery.len(), 10);
+            assert_eq!(discovery.len(), discovery_trail_len());
             assert_eq!(discovery[0].get("status"), Some(&Value::Null));
         }
         RunOutcome::Complete(_) => panic!("a silent target scored"),

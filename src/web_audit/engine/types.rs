@@ -15,7 +15,7 @@ use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
 use crate::web_audit::handlers::api_hygiene::HostProbes;
 use crate::web_audit::locality::{ClassifyError, Locality, Resolver, classify_host};
 use crate::web_audit::scorecard::{EvidenceItem, NaReason, RowAdvisory, ScorecardStatus};
-use crate::web_audit::transport::Transport;
+use crate::web_audit::transport::{Transport, UreqTransport};
 
 /// A handler's verdict before the engine finalizes it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,6 +197,14 @@ impl FetchHandle {
         }
     }
 
+    /// Bind a run to the production transport, classifying through the resolver
+    /// its connections use, so a connection goes to the addresses its hop was
+    /// classified by.
+    pub fn over_ureq(transport: UreqTransport, user_agent: &str) -> Self {
+        let resolver = transport.resolver();
+        Self::new(Arc::new(transport), resolver, user_agent)
+    }
+
     /// This handle presenting `credential` to the MCP endpoint. Only
     /// [`crate::web_audit::engine::mcp_wire::post_as_client`] sends it;
     /// [`FetchHandle::fetch`] never does.
@@ -362,22 +370,24 @@ impl HandlerContext {
     /// Validate a URL a handler found in the target's own documents. A
     /// class-crossing candidate is refused with a `blocked:` reason: a
     /// local run never egresses to a public host it was not pointed at,
-    /// and a public run never probes the auditor's private network.
+    /// and a public run never probes the auditor's private network. While the
+    /// target's class is unknown every candidate is refused, since neither can
+    /// be ruled out.
     pub fn validate_nested(&self, url: &str) -> Result<(), String> {
         let class = self.fetch.validate(url)?;
-        match self.target_locality {
-            Some(target) if class != target => {
-                let host = url::Url::parse(url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(str::to_string))
-                    .unwrap_or_default();
-                let reason =
-                    crate::web_audit::locality::site_block_reason(&host).unwrap_or_else(|| {
-                        format!("{host} is a {class} host outside the {target} target")
-                    });
-                Err(format!("blocked: {reason}"))
-            }
-            _ => Ok(()),
+        if self.target_locality == Some(class) {
+            return Ok(());
         }
+        let host = url::Url::parse(url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_default();
+        let reason = crate::web_audit::locality::site_block_reason(&host).unwrap_or_else(|| {
+            match self.target_locality {
+                Some(target) => format!("{host} is a {class} host outside the {target} target"),
+                None => format!("{host} is a {class} host, and the target's class is unknown"),
+            }
+        });
+        Err(format!("blocked: {reason}"))
     }
 }

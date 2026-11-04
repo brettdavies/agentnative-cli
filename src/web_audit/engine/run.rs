@@ -284,8 +284,6 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         memo: memo.clone(),
         fetch: input.fetch.clone(),
     };
-    let target_locality = input.fetch.classify(&host).ok();
-    let local_target = target_locality == Some(Locality::Local);
 
     // The single canonical root fetch every root-HTML check and several
     // antecedents read, with discovery's first document reads beside it. It
@@ -334,6 +332,11 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             root_error: root_resp.error.clone(),
         };
     }
+    // The class is read once the root settles, so a lookup that answers late
+    // still decides it. A class still unknown counts as not public: the DNS gate
+    // keeps the target's name from public resolvers rather than guess.
+    let target_locality = input.fetch.classify(&host).ok();
+    let withhold_dns = target_locality != Some(Locality::Public);
     let root: Option<Arc<ProbeResponse>> = root_resp.status.map(|_| Arc::new(root_resp.clone()));
     let per_check_timeout = settled();
 
@@ -443,7 +446,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             handlers: Arc::clone(&input.handlers),
             concurrency: input.concurrency,
             per_check_timeout,
-            local_target,
+            withhold_dns,
             site_type: input.site_type,
             discovery_evidence: &discovery.evidence,
             follow_unmet: declared.unmet.as_ref(),
@@ -467,7 +470,12 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         follow_declarations: input.follow_declarations,
         declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
         vantage: WebVantage {
-            network: if local_target { "local" } else { "public" }.to_string(),
+            network: if target_locality == Some(Locality::Local) {
+                "local"
+            } else {
+                "public"
+            }
+            .to_string(),
             credentialed: input.fetch.credentialed(),
         },
     };

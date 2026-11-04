@@ -118,7 +118,7 @@ pub(super) fn probe_one(
     ctx: &HandlerContext,
     handlers: &HandlerSet,
     deadline: Instant,
-    local_target: bool,
+    withhold_dns: bool,
 ) -> Probed {
     let done = |result: EngineResult, incomplete: bool| Probed {
         check,
@@ -130,7 +130,7 @@ pub(super) fn probe_one(
     if Instant::now() >= deadline {
         return done(deadline_skip(check), true);
     }
-    if check.handler == HandlerBinding::DnsDoh && local_target && !ctx.external_dns {
+    if check.handler == HandlerBinding::DnsDoh && withhold_dns && !ctx.external_dns {
         return done(
             EngineResult {
                 check,

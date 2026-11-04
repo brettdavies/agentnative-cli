@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use agentnative::web_audit::audit_resolver::AuditResolver;
 use agentnative::web_audit::engine::{
     DEGRADED_PER_CHECK_TIMEOUT, EXTERNAL_DNS_WITHHELD, FetchHandle, HandlerContext, HandlerSet,
     ProbeOutcome, ProbeStatus, ProgressSink, RunInput, RunOutcome, RunReport, Unported,
@@ -617,6 +618,64 @@ fn an_unported_handler_skips_its_rows_by_name_without_failing_the_run() {
     // A source that was skipped does not satisfy its dependents.
     assert_eq!(row(&report, "robots-ai-rules").status, ScorecardStatus::NA);
     assert_eq!(report.scorecard.summary.skip as usize, skipped);
+}
+
+/// Answers a lookup by how many came before it.
+struct Lookups {
+    seen: Mutex<usize>,
+    answer: fn(usize) -> Result<Vec<IpAddr>, String>,
+}
+
+impl Resolver for Lookups {
+    fn resolve(&self, _host: &str) -> Result<Vec<IpAddr>, String> {
+        let mut seen = self.seen.lock().unwrap();
+        *seen += 1;
+        (self.answer)(*seen - 1)
+    }
+}
+
+fn run_with_lookups(
+    resolver: Arc<dyn Resolver + Send + Sync>,
+) -> (Box<RunReport>, Arc<MockTransport>) {
+    let transport = Arc::new(MockTransport::new(vec![], html(200)));
+    let fetch = FetchHandle::new(Arc::clone(&transport) as Arc<_>, resolver, UA);
+    let mut input = RunInput::new("https://intranet.example/", fetch, stand_in_handlers());
+    input.per_check_timeout = Duration::from_secs(2);
+    input.per_audit_deadline = Duration::from_secs(20);
+    (complete(run_web_audit(input)), transport)
+}
+
+#[test]
+fn a_lookup_that_answers_late_still_decides_the_dns_gate() {
+    let lookups = Arc::new(Lookups {
+        seen: Mutex::new(0),
+        answer: |seen| match seen {
+            0 => Err("temporary failure".to_string()),
+            _ => Ok(vec!["10.0.0.5".parse().unwrap()]),
+        },
+    });
+    let (report, _) = run_with_lookups(Arc::new(AuditResolver::new(lookups)));
+    assert_eq!(report.target_locality, Some(Locality::Local));
+    assert_eq!(row(&report, "dns-aid").evidence, EXTERNAL_DNS_WITHHELD);
+}
+
+#[test]
+fn a_target_whose_class_is_still_unknown_counts_as_not_public() {
+    // The root fetch's own lookup answers, and the read of the class after it
+    // does not.
+    let lookups = Arc::new(Lookups {
+        seen: Mutex::new(0),
+        answer: |seen| match seen {
+            1 => Err("temporary failure".to_string()),
+            _ => Ok(vec!["93.184.216.34".parse().unwrap()]),
+        },
+    });
+    let (report, _) = run_with_lookups(lookups);
+    assert_eq!(report.target_locality, None);
+    assert_eq!(row(&report, "dns-aid").evidence, EXTERNAL_DNS_WITHHELD);
+    // The label stays what the locality classifier says: only a class known to
+    // be local reads local, as a run the classifier never placed always has.
+    assert_eq!(report.scorecard.vantage.network, "public");
 }
 
 #[test]

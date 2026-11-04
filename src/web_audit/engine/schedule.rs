@@ -51,7 +51,7 @@ pub(super) struct Plan<'a> {
     pub(super) handlers: Arc<HandlerSet>,
     pub(super) concurrency: usize,
     pub(super) per_check_timeout: Duration,
-    pub(super) local_target: bool,
+    pub(super) withhold_dns: bool,
     pub(super) site_type: Option<DeclaredSiteType>,
     pub(super) discovery_evidence: &'a [EvidenceItem],
     pub(super) follow_unmet: Option<&'a DeclaredHostReason>,
@@ -499,10 +499,10 @@ impl<'a> Schedule<'a> {
     ) {
         let handlers = Arc::clone(&self.plan.handlers);
         let deadline = self.plan.template.deadline;
-        let local_target = self.plan.local_target;
+        let withhold_dns = self.plan.withhold_dns;
         let tx = self.tx.clone();
         self.slots.submit(rank, move || {
-            let probed = probe_one(check, &ctx, &handlers, deadline, local_target);
+            let probed = probe_one(check, &ctx, &handlers, deadline, withhold_dns);
             let _ = tx.send(done(probed));
         });
     }

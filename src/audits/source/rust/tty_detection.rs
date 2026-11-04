@@ -1,11 +1,9 @@
-//! Audit: Detect TTY/terminal detection in source.
+//! Audit: Detect TTY detection beside color code in source.
 //!
-//! Principle: P1 (Non-Interactive by Default) SHOULD — "Auto-detect
-//! non-interactive context via TTY detection and suppress prompts when
-//! stderr is not a terminal, even without an explicit `--no-interactive`
-//! flag." The same `IsTerminal` machinery also satisfies P6's color
-//! suppression MUST, but semantically this audit verifies the P1 SHOULD
-//! (renamed from `p6-tty-detection` in v0.1.1).
+//! Principle: P6 (Composable Structure) MUST: "TTY detection plus support for
+//! `NO_COLOR` and `TERM=dumb`: color codes suppressed when stdout/stderr is not
+//! a terminal." This audit checks the TTY half; `p6-no-color` checks the env
+//! half. Prompt handling, the P1 side of TTY detection, is `prompt_tty`.
 //!
 //! This is a conditional audit:
 //!   Trigger: the source uses color/ANSI/style libraries
@@ -47,7 +45,7 @@ impl Audit for TtyDetectionAudit {
     }
 
     fn group(&self) -> AuditGroup {
-        AuditGroup::P1
+        AuditGroup::P6
     }
 
     fn layer(&self) -> AuditLayer {
@@ -55,7 +53,7 @@ impl Audit for TtyDetectionAudit {
     }
 
     fn covers(&self) -> &'static [&'static str] {
-        &["p1-should-tty-detection"]
+        &["p6-must-no-color"]
     }
 
     fn applicable(&self, project: &Project) -> bool {

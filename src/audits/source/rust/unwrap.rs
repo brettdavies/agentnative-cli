@@ -242,7 +242,7 @@ fn is_comment(kind: &str) -> bool {
 /// Strip `#[ ... ]` / `#![ ... ]` framing and check whether the inner attribute
 /// is a `cfg(...)` invocation whose argument tree mentions a bare `test`
 /// identifier.
-fn attribute_text_is_cfg_test(attr: &str) -> bool {
+pub(super) fn attribute_text_is_cfg_test(attr: &str) -> bool {
     let trimmed = attr.trim();
     let body = trimmed
         .strip_prefix("#![")

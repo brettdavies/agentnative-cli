@@ -627,7 +627,9 @@ Linux the running probe itself is set to die with `anc`, but not what it started
 `p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it as a version
 flag: on the `--version` definition, as in `-v, --version  Print version` or `--version (-V)  Print version`, or with a
 description that names the version, as in less's `-V  ........  --version`. `-v, --verbose` declares no version alias.
-An alias the help does not declare is never run.
+An alias the help does not declare is never run. `p3-must-version` judges `--version` alone, and
+`p3-should-version-short` judges the aliases, so a working `--version` with no alias passes the first row and warns on
+the second. A `--version` that times out or crashes fails the first row and runs no alias, so the second row skips.
 
 ### How behavioral audits read `--help`
 

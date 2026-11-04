@@ -280,6 +280,7 @@ pub fn run_legacy_alias_redirects(check: &WebCheck, ctx: &HandlerContext) -> Pro
     let w: AliasWith = serde_json::from_str(check.with_json).unwrap_or_default();
     let opts = FetchOptions {
         follow_redirects: false,
+        max_body_bytes: Some(STATUS_ONLY_BODY_BYTES),
         ..ctx.fetch_options(w.timeout)
     };
     let canonical_url = resolve_url(&ctx.base, &w.canonical);

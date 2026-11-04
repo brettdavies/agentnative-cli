@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use agentnative::web_audit::engine::{HandlerContext, ProbeStatus};
 use agentnative::web_audit::fetch::memo::{MEMO_BODY_MAX_BYTES, RequestMemo};
-use agentnative::web_audit::handlers::http::run_http;
+use agentnative::web_audit::handlers::http::{run_http, run_legacy_alias_redirects};
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::registry::WebCheck;
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
@@ -142,14 +142,20 @@ fn a_row_needing_no_body_passes_on_each_header_expectation_while_the_body_never_
         (*check("markdown-vary"), &[("vary", "accept, user-agent")]),
     ];
     for (case, headers) in cases {
-        let body = endless(headers);
+        // A row that read this body would run out of time on it, and say so.
+        let transport = target(move |_| Response {
+            status: 200,
+            headers: Headers::from_pairs(headers.iter().copied()),
+            body: Box::new(HeldOpenBody {
+                first: Some(b"x".to_vec()),
+                until: Instant::now() + Duration::from_secs(3),
+            }),
+        });
         let memo = RequestMemo::new();
-        let started = Instant::now();
         let outcome = run_http(
             &case,
-            &memoized(body.target.clone(), &memo, Duration::from_millis(600)),
+            &memoized(transport, &memo, Duration::from_millis(300)),
         );
-        let elapsed = started.elapsed();
         memo.close();
         assert_eq!(
             outcome.status,
@@ -162,12 +168,31 @@ fn a_row_needing_no_body_passes_on_each_header_expectation_while_the_body_never_
             "{}: {outcome:?}",
             case.with_json
         );
-        assert!(
-            elapsed < Duration::from_millis(300),
-            "{}: {elapsed:?}",
-            case.with_json
-        );
     }
+}
+
+#[test]
+fn a_legacy_alias_reads_its_status_while_its_body_never_ends() {
+    // A row that read this body would run out of time on it, and read that failure
+    // as the alias not being there.
+    let transport = target(|_| Response {
+        status: 200,
+        headers: Headers::new(),
+        body: Box::new(HeldOpenBody {
+            first: Some(b"x".to_vec()),
+            until: Instant::now() + Duration::from_secs(3),
+        }),
+    });
+    let memo = RequestMemo::new();
+    let outcome = run_legacy_alias_redirects(
+        &row(json!({
+            "canonical": "/.well-known/mcp/server-card.json",
+            "aliases": ["/.well-known/mcp.json"],
+        })),
+        &memoized(transport, &memo, Duration::from_millis(300)),
+    );
+    memo.close();
+    assert_eq!(outcome.status, ProbeStatus::Noncompliant, "{outcome:?}");
 }
 
 #[test]

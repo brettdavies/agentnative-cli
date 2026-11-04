@@ -29,7 +29,7 @@ for the user to install. Comparisons are like for like: a transport fix applies 
   about 10% (Bun pays 0.5-2 s of startup). With Bun's startup excluded, the site engine's own audit time is about 25%
   lower than the port's on the same targets. The gap is per-request cost inside the port, not scheduling: both run six
   checks at a time.
-- **Two transport costs are measured:** no per-audit DNS cache (108 resolver queries for one `vercel.com` audit against
+- **Transport costs are measured:** no per-audit DNS cache (108 resolver queries for one `vercel.com` audit against
   4 for Bun, about 0.18 s of summed lookup time) and an idle pool of 3 connections per host (ureq's default) under six
   concurrent requests. A third is suspected: the aws-lc provider built at `opt-level = "s"` handshakes in 405-420 ms on
   a local fixture where ring takes 236-249 ms.
@@ -170,5 +170,65 @@ locally; the CI Windows check and the release-matrix check cover them on the PR 
 
 ## Clean-runner benchmark
 
-Pending: the same comparison on a GitHub-hosted runner, adding a port build with an idle pool of 16 connections per
-host.
+The development host's load inflated Bun's startup (0.5-2 s there, about 20 ms on a clean runner), which made the port
+look faster process to process than it is. Three runs on a GitHub-hosted `ubuntu-24.04` runner, each five interleaved
+rounds over the ten targets with the engine order rotated per round. Network conditions vary between runs, so compare
+engines only within a run. Sum of per-target median wall clock, seconds:
+
+| Run | Site engine on Bun | Port with idle pool 16 per host, 64 total | Port as on `dev` |
+| --- | -----------------: | ----------------------------------------: | ---------------: |
+| 1   |              20.10 |                                           |            24.06 |
+| 2   |              22.72 |                                     23.36 |            25.45 |
+| 3   |              14.52 |                                     13.88 |            16.21 |
+
+Scores agree across engines on every target in every run, apart from rounds where one engine saw a transient row error.
+
+Request traces from run 3 (time to response headers per network request, two rounds per target):
+
+| Target                  | Requests | Bun median s | Pool median s | Port median s |
+| ----------------------- | -------: | -----------: | ------------: | ------------: |
+| vercel.com              |       44 |        0.049 |         0.074 |         0.082 |
+| supabase.com            |       77 |        0.061 |         0.080 |         0.080 |
+| docs.stripe.com         |       52 |        0.004 |         0.007 |         0.013 |
+| modelcontextprotocol.io |       82 |        0.116 |         0.126 |         0.132 |
+
+The engines send identical request sets, so the port's gap is per-request time to headers. Counting TLS handshakes per
+audit on the development host (load-independent) finds the cause: with ureq's `brotli` feature on, a brotli-encoded body
+does not return its connection to ureq's pool, so later requests to the host handshake again. anc.dev takes 44
+handshakes for 63 requests with `brotli` and 12 without; vercel.com 30 against 15; supabase.com 47 against 21. Raising
+the idle pool barely moves those counts while `brotli` is on. The inferred mechanism is that the brotli decoder stops
+at the end of its stream, so ureq never sees the end-of-body read that returns the connection, while gzip's
+multi-member decoder reads on. Dropping `brotli` is therefore a speed fix as well as the 188,096-byte size cut.
+
+## Where an audit's wall clock goes
+
+The site engine, instrumented under Bun (phase marks, the calling check, and a line per logical and network request),
+over the ten targets twice: 1,543 logical requests, 1,355 sent. A schedule simulation driven by the measured request
+durations reproduces the measured totals (46.4 s simulated against 46.8 s measured over 20 audits).
+
+- **Sharing already works.** The per-audit request memo answers repeats and lets a status-only caller return at the
+  headers while it keeps reading up to 1 MiB for later callers. One request in 20 audits went out twice, because its
+  body exceeded the memo's per-body cap. Reading the largest cap on first fetch would save about nothing. The other
+  same-URL repeats differ in `Accept`, `User-Agent` or body, which is what those checks measure, or are time-sensitive
+  (the MCP session and wire probes, the CORS pair, the GET fast-fail).
+- **The time is in structure.** 30% of the summed wall clock is root, discovery documents and endpoint of record run
+  one after another; multi-request checks run their requests one at a time (`llms-txt-links` up to nine link probes,
+  `scoped-llms` up to eight directories, `path_any` up to three candidates); every wave-2 check waits for wave 1's
+  slowest check (on developers.cloudflare.com, a 1.94 s full read of a 69.9 MB `llms-full-txt`); and status-only
+  expectations read whole bodies (3.45 s over the 20 audits).
+
+| Rank | Change                                                                | Saved per audit (base 2,320 ms) | Request set on the corpus                 |
+| ---- | --------------------------------------------------------------------- | ------------------------------: | ----------------------------------------- |
+| 1    | Start each wave-2 check when its own sources settle (no wave barrier) |                  245 ms (10.5%) | Unchanged                                 |
+| 2    | Fan out `llms-txt-links` probes under the audit's concurrency cap     |                          +96 ms | Unchanged                                 |
+| 3    | Root fetch and discovery documents concurrently                       |                         +163 ms | One unreachable scenario gains https GETs |
+| 4    | A status-only expectation reads headers only                          |         about 173 ms (measured) | Unchanged; some evidence keys change      |
+| 5    | Parallel `scoped-llms` candidates                                     |                          +88 ms | Superset: extra requests to targets       |
+| 6    | Endpoint-free wave-1 checks at t=0                                    |                         +143 ms | Superset on unreachable targets           |
+| 7    | Parallel `path_any` candidates                                        |                           +4 ms | Superset                                  |
+| 8    | Memo reads the largest cap on first fetch                             |                              ~0 | -                                         |
+| 9    | Concurrency cap per host instead of per audit                         |                      negligible | -                                         |
+
+Ranks 1-4 save about 0.68 s of a 2.3 s average audit (about 29%) without sending a target more requests; ranks 5-7
+send more requests to the target for a small gain. The port mirrors the same phase and barrier structure, plus three
+costs of its own: a fresh thread pool per wave, a thread per memo hop, and the `brotli` reuse failure above.

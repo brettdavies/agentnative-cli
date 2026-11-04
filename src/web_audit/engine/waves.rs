@@ -291,7 +291,7 @@ fn ask_without_token(
     ctx: &HandlerContext,
     input: &RunInput<'_>,
     deadline: Instant,
-    local_target: bool,
+    withhold_dns: bool,
 ) -> (HashMap<String, ProbeOutcome>, bool) {
     let wire = wave1
         .iter()
@@ -306,7 +306,7 @@ fn ask_without_token(
         &input.handlers,
         input.concurrency,
         deadline,
-        local_target,
+        withhold_dns,
     ) {
         incomplete |= probed.incomplete;
         if let Some(outcome) = probed.outcome {
@@ -329,7 +329,7 @@ fn probe_one(
     ctx: &HandlerContext,
     handlers: &HandlerSet,
     deadline: Instant,
-    local_target: bool,
+    withhold_dns: bool,
 ) -> Probed {
     let done = |result: EngineResult, incomplete: bool| Probed {
         check,
@@ -341,7 +341,7 @@ fn probe_one(
     if Instant::now() >= deadline {
         return done(deadline_skip(check), true);
     }
-    if check.handler == HandlerBinding::DnsDoh && local_target && !ctx.external_dns {
+    if check.handler == HandlerBinding::DnsDoh && withhold_dns && !ctx.external_dns {
         return done(
             EngineResult {
                 check,
@@ -394,12 +394,12 @@ fn run_wave(
     handlers: &Arc<HandlerSet>,
     concurrency: usize,
     deadline: Instant,
-    local_target: bool,
+    withhold_dns: bool,
 ) -> Vec<Probed> {
     let job_ctx = ctx.clone();
     let job_handlers = Arc::clone(handlers);
     let returned = run_bounded(checks.clone(), concurrency, deadline, move |check| {
-        probe_one(check, &job_ctx, &job_handlers, deadline, local_target)
+        probe_one(check, &job_ctx, &job_handlers, deadline, withhold_dns)
     });
     checks
         .into_iter()
@@ -439,8 +439,6 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     let memo = RequestMemo::new();
     let _close_memo = CloseOnDrop(memo.clone());
     input.fetch = input.fetch.with_memo(memo);
-    let target_locality = input.fetch.classify(&host).ok();
-    let local_target = target_locality == Some(Locality::Local);
 
     // The single canonical root fetch every root-HTML check and several
     // antecedents read. It runs before discovery because it doubles as the
@@ -455,6 +453,11 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             ..FetchOptions::default()
         },
     );
+    // The class is read once the root settles, so a lookup that answers late
+    // still decides it. A class still unknown counts as not public: the DNS gate
+    // keeps the target's name from public resolvers rather than guess.
+    let target_locality = input.fetch.classify(&host).ok();
+    let withhold_dns = target_locality != Some(Locality::Public);
     // A root that is not https, or that redirects to http, ends the run
     // before discovery: nothing it serves is readable without a plaintext
     // request, and the site engine ends the same way.
@@ -613,7 +616,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         &input.handlers,
         input.concurrency,
         deadline,
-        local_target,
+        withhold_dns,
     ) {
         incomplete |= probed.incomplete;
         if let Some(outcome) = probed.outcome {
@@ -641,7 +644,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             fetch: ctx1.fetch.without_credential(),
             ..ctx1.clone()
         };
-        let asked = ask_without_token(&wave1, &ctx, &input, deadline, local_target);
+        let asked = ask_without_token(&wave1, &ctx, &input, deadline, withhold_dns);
         incomplete |= asked.1;
         Some(asked.0)
     } else {
@@ -828,7 +831,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         &input.handlers,
         input.concurrency,
         deadline,
-        local_target,
+        withhold_dns,
     ) {
         incomplete |= probed.incomplete;
         if let Some(kind) = probed.unported {
@@ -859,7 +862,12 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         follow_declarations: input.follow_declarations,
         declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
         vantage: WebVantage {
-            network: if local_target { "local" } else { "public" }.to_string(),
+            network: if target_locality == Some(Locality::Local) {
+                "local"
+            } else {
+                "public"
+            }
+            .to_string(),
             credentialed: input.fetch.credentialed(),
         },
     };

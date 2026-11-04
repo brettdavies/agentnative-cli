@@ -117,6 +117,23 @@ fn a_connection_goes_to_the_address_its_name_was_classified_by() {
 }
 
 #[test]
+fn a_classification_and_a_connection_share_one_lookup_however_the_name_is_spelled() {
+    let origin = common::spawn(|_| RawResponse::new(200, &[], b"classified"));
+    let (script, resolver) =
+        audit(Script::default().answering("pinned.example", &[&[LOOPBACK], &[PUBLIC]]));
+    assert_eq!(
+        classify_host("Pinned.EXAMPLE.", &*resolver).unwrap(),
+        Locality::Local
+    );
+    let url = format!("http://pinned.example.:{}/", origin.addr.port());
+    let response = transport(&resolver)
+        .send(&plain_get(url, Duration::from_secs(5)))
+        .expect("the classified address answers");
+    assert_eq!(response.status, 200);
+    assert_eq!(script.lookups("pinned.example"), 1);
+}
+
+#[test]
 fn a_name_classified_public_never_connects_to_a_private_second_answer() {
     let origin = common::spawn(|_| RawResponse::new(200, &[], b"private"));
     let (script, resolver) =

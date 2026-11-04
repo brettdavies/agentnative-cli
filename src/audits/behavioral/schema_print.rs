@@ -104,6 +104,7 @@ impl Audit for SchemaPrintAudit {
             confidence: Confidence::Medium,
             mitigation: verdict.mitigation,
             config_hint: None,
+            row_statuses: Vec::new(),
             pass_evidence: None,
         })
     }

@@ -388,6 +388,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 confidence: Confidence::High,
                 mitigation: None,
                 config_hint: None,
+                row_statuses: Vec::new(),
                 pass_evidence: None,
             });
             continue;
@@ -403,6 +404,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 confidence: Confidence::High,
                 mitigation: None,
                 config_hint: None,
+                row_statuses: Vec::new(),
                 pass_evidence: None,
             },
         };

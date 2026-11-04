@@ -59,6 +59,7 @@ impl Audit for InstallAllAudit {
             confidence: Confidence::Medium,
             mitigation: None,
             config_hint: None,
+            row_statuses: Vec::new(),
             pass_evidence: None,
         })
     }

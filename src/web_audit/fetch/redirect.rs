@@ -96,13 +96,12 @@ fn validate_url(
         .host_str()
         .ok_or_else(|| "blocked: empty hostname".to_string())?;
     let class = classify_host(host, resolver).map_err(|e| format!("blocked: {e}"))?;
-    // A refusal the site would also make carries the site's wording, so
-    // the evidence line matches anc.dev's for the same hop.
     if class == Locality::Metadata {
-        let reason = crate::web_audit::locality::site_block_reason(host)
-            .unwrap_or_else(|| format!("{host} is a cloud metadata endpoint"));
+        let reason = crate::web_audit::locality::metadata_refusal(host);
         return Err(format!("blocked: {reason}"));
     }
+    // A refusal the site would also make carries the site's wording, so
+    // the evidence line matches anc.dev's for the same hop.
     if let Some(expected) = expected
         && class != expected
     {
@@ -337,11 +336,13 @@ mod tests {
             "blocked: ipv4 169.254.169.254 is in blocked range 169.254.0.0/16"
         );
         let err = validate_target("https://[fd20:ce::254]/", &PanicResolver).unwrap_err();
-        assert_eq!(err, "blocked: ipv6 unique-local (fc00::/7)");
+        assert_eq!(err, "blocked: [fd20:ce::254] is a cloud metadata endpoint");
         let err = validate_target("https://100.100.100.200/", &PanicResolver).unwrap_err();
+        assert_eq!(err, "blocked: 100.100.100.200 is a cloud metadata endpoint");
+        let err = validate_target("https://[fe80::a9fe:a9fe]/", &PanicResolver).unwrap_err();
         assert_eq!(
             err,
-            "blocked: ipv4 100.100.100.200 is in blocked range 100.64.0.0/10"
+            "blocked: [fe80::a9fe:a9fe] is a cloud metadata endpoint"
         );
         let err = validate_target("https://168.63.129.16/", &PanicResolver).unwrap_err();
         assert_eq!(err, "blocked: 168.63.129.16 is a cloud metadata endpoint");

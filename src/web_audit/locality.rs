@@ -29,8 +29,10 @@
 //!
 //! - `Metadata`: `169.254.0.0/16` (the range AWS, Azure, GCP and Oracle serve
 //!   instance metadata from), `fd00:ec2::254` (AWS over IPv6), `fd20:ce::254` (GCP
-//!   over IPv6), `100.100.100.200` (Alibaba Cloud), and `168.63.129.16` (Azure's
-//!   WireServer, the platform endpoint a VM's agent reads its configuration from).
+//!   over IPv6), `fe80::a9fe:a9fe` (OpenStack and Akamai over IPv6),
+//!   `fd00:a9fe:a9fe::1` (Akamai over IPv6), `fd00:42::42` (Scaleway over IPv6),
+//!   `100.100.100.200` (Alibaba Cloud), and `168.63.129.16` (Azure's WireServer, the
+//!   platform endpoint a VM's agent reads its configuration from).
 //! - `Local`: unspecified, loopback, RFC 1918, CGNAT `100.64.0.0/10`, IPv6
 //!   unique-local `fc00::/7` and link-local `fe80::/10`; IPv4-mapped and
 //!   IPv4-compatible IPv6 forms take the class of the embedded address.
@@ -119,14 +121,18 @@ impl Resolver for SystemResolver {
     }
 }
 
-/// The IPv6 addresses AWS and GCP serve instance metadata on.
-const METADATA_IPV6: [Ipv6Addr; 2] = [
+/// The IPv6 addresses AWS, GCP, OpenStack, Akamai and Scaleway serve instance
+/// metadata on.
+const METADATA_IPV6: [Ipv6Addr; 5] = [
     Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x254),
     Ipv6Addr::new(0xfd20, 0x00ce, 0, 0, 0, 0, 0, 0x254),
+    Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0xa9fe, 0xa9fe),
+    Ipv6Addr::new(0xfd00, 0xa9fe, 0xa9fe, 0, 0, 0, 0, 1),
+    Ipv6Addr::new(0xfd00, 0x0042, 0, 0, 0, 0, 0, 0x42),
 ];
 
 /// Alibaba Cloud's instance metadata address and Azure's WireServer, outside
-/// the range every other provider uses.
+/// `169.254.0.0/16`.
 const METADATA_IPV4: [Ipv4Addr; 2] = [
     Ipv4Addr::new(100, 100, 100, 200),
     Ipv4Addr::new(168, 63, 129, 16),
@@ -298,7 +304,7 @@ fn parse_ipv6_groups(segment: &str) -> Option<Vec<u16>> {
 /// only the resolver can place.
 pub fn classify_literal(raw_host: &str) -> Result<Option<Locality>, ClassifyError> {
     let host = raw_host.trim().to_ascii_lowercase();
-    let host = host.strip_suffix('.').unwrap_or(&host);
+    let host = host.trim_end_matches('.');
     if host.is_empty() {
         return Err(ClassifyError::EmptyHost);
     }
@@ -375,12 +381,31 @@ fn site_blocked_ipv6_reason(ip: Ipv6Addr) -> Option<String> {
         .map(|reason| format!("ipv4-in-ipv6: {reason}"))
 }
 
+/// How the refusal of a named metadata address, or a name that resolves to a
+/// metadata address, ends: the words a caller can tell it by once it is text.
+pub const METADATA_ENDPOINT: &str = "is a cloud metadata endpoint";
+
+/// Why a metadata host is refused. An address refused by name says so rather than
+/// giving the site's reason, which names a range: the site refuses all of
+/// `100.64.0.0/10`, and `100.100.100.201` audits as local here.
+pub fn metadata_refusal(host: &str) -> String {
+    let named = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        Some(inner) => parse_ipv6_literal(inner).is_some_and(|ip| {
+            METADATA_IPV6.contains(&ip)
+                || embedded_ipv4(ip).is_some_and(|v4| METADATA_IPV4.contains(&v4))
+        }),
+        None => parse_ipv4_literal(host).is_some_and(|ip| METADATA_IPV4.contains(&ip)),
+    };
+    let site = if named { None } else { site_block_reason(host) };
+    site.unwrap_or_else(|| format!("{host} {METADATA_ENDPOINT}"))
+}
+
 /// The reason anc.dev gives for refusing a host by its shape alone, when
 /// it has one, so a refusal the site would also make carries the site's
 /// wording. Names are never resolved here.
 pub fn site_block_reason(raw_host: &str) -> Option<String> {
     let host = raw_host.trim().to_ascii_lowercase();
-    let host = host.strip_suffix('.').unwrap_or(&host);
+    let host = host.trim_end_matches('.');
     if host.is_empty() {
         return Some("empty hostname".to_string());
     }
@@ -497,6 +522,10 @@ mod tests {
             ("cgnat 100.64/10", "100.64.0.1"),
             ("cgnat beside alibaba cloud metadata", "100.100.100.201"),
             ("unique-local beside gcp metadata", "[fd20:ce::253]"),
+            ("link-local beside openstack metadata", "[fe80::a9fe:a9fd]"),
+            ("unique-local beside scaleway metadata", "[fd00:42::41]"),
+            ("dot-internal hostname with trailing dots", "db.internal.."),
+            ("localhost with trailing dots", "localhost.."),
             ("ipv6 unique-local fc00::/7", "[fd00::1]"),
             ("ipv6 link-local fe80::/10", "[fe80::1]"),
             ("ipv6 link-local with zone id", "fe80::1%eth0"),
@@ -520,6 +549,13 @@ mod tests {
             ("ipv4-mapped metadata", "[::ffff:169.254.169.254]"),
             ("aws imds ipv6", "[fd00:ec2::254]"),
             ("gcp metadata ipv6", "[fd20:ce::254]"),
+            ("openstack and akamai metadata ipv6", "[fe80::a9fe:a9fe]"),
+            ("akamai metadata ipv6", "[fd00:a9fe:a9fe::1]"),
+            ("scaleway metadata ipv6", "[fd00:42::42]"),
+            (
+                "metadata hostname with trailing dots",
+                "metadata.google.internal..",
+            ),
             ("alibaba cloud metadata", "100.100.100.200"),
             ("alibaba cloud metadata as decimal", "1684301000"),
             (

@@ -978,6 +978,45 @@ fn a_stopped_transport_sends_nothing_more() {
     assert_eq!(server.hits().len(), 0);
 }
 
+/// Connections the kernel accepted that the test has not taken. A connect on
+/// loopback has landed here by the time the client's call returns.
+fn connections_on(listener: &std::net::TcpListener) -> usize {
+    listener
+        .set_nonblocking(true)
+        .expect("a nonblocking socket");
+    std::iter::from_fn(|| listener.accept().ok()).count()
+}
+
+#[test]
+fn a_stopped_transport_opens_no_connection() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a listener");
+    let addr = listener.local_addr().expect("an address");
+    let transport = UreqTransport::new(UA);
+    transport.stop();
+    let answer = transport.send(&request(&format!("http://{addr}/"), 5000, false));
+    assert!(answer.is_err(), "{:?}", answer.map(|r| r.status));
+    assert_eq!(connections_on(&listener), 0);
+}
+
+#[test]
+fn a_request_stopped_in_flight_opens_no_further_connection() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a listener");
+    let addr = listener.local_addr().expect("an address");
+    let transport = Arc::new(UreqTransport::new(UA));
+    let sending = transport.clone();
+    let send = thread::spawn(move || {
+        sending
+            .send(&request(&format!("http://{addr}/"), 30_000, false))
+            .map(|_| ())
+    });
+    let (first, _) = listener.accept().expect("the request's connection");
+    transport.stop();
+    let answer = send.join().expect("the send ends");
+    drop(first);
+    assert!(answer.is_err(), "{answer:?}");
+    assert_eq!(connections_on(&listener), 0, "the stopped request retried");
+}
+
 #[test]
 fn a_read_with_input_on_hand_does_not_wait_out_a_slice() {
     let server = common::spawn(|_| RawResponse::new(200, &[], b"ok"));

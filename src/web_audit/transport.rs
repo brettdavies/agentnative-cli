@@ -293,6 +293,11 @@ impl Transport for UreqTransport {
     fn send(&self, request: &Request) -> Result<Response, TransportError> {
         let started = Instant::now();
         let mut attempt = 1;
+        // The connector's own refusal comes after TCP has connected, which a target
+        // can see, so a stopped transport does not get that far.
+        if self.stop.is_stopped() {
+            return Err(TransportError::Network("audit ended".to_string()));
+        }
         loop {
             let outcome = self.send_once(request);
             // Only a connection-level failure is retried, and only while a
@@ -301,7 +306,8 @@ impl Transport for UreqTransport {
             // TLS rejection is the target's answer, not a stale socket.
             let retryable = matches!(outcome, Err(TransportError::Network(_)))
                 && attempt < MAX_ATTEMPTS
-                && started.elapsed() * 2 < request.timeout;
+                && started.elapsed() * 2 < request.timeout
+                && !self.stop.is_stopped();
             if !retryable {
                 return outcome;
             }

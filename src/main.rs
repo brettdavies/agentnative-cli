@@ -1201,13 +1201,19 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     };
     let defaulted_https = scheme_less && normalized.starts_with("https://");
 
-    let transport = Arc::new(UreqTransport::with_trust(
-        AUDIT_USER_AGENT,
-        proxy::proxy_from_env(),
-        trust::TrustConfig::new(ca_certs),
-    ));
+    let trust = trust::TrustConfig::new(ca_certs);
+    let new_transport = || {
+        Arc::new(UreqTransport::with_trust(
+            AUDIT_USER_AGENT,
+            proxy::proxy_from_env(),
+            trust.clone(),
+        ))
+    };
+    let transport = new_transport();
     let resolver = Arc::new(SystemResolver);
-    let contract_check = PendingCheck::start(&normalized, transport.clone(), resolver.clone());
+    // Its own transport: the run's end stops the run's, and the signal can still
+    // be on its way in when the report is written.
+    let contract_check = PendingCheck::start(&normalized, new_transport(), resolver.clone());
     let fetch = FetchHandle::new(transport, resolver, AUDIT_USER_AGENT);
     let fetch = match credential {
         Some(credential) => fetch.with_credential(credential),

@@ -25,8 +25,12 @@ impl StopFlag {
         self.0.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn is_stopped(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+
     fn check(&self) -> Result<(), ureq::Error> {
-        if self.0.load(Ordering::SeqCst) {
+        if self.is_stopped() {
             return Err(ureq::Error::Io(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "audit ended",
@@ -77,6 +81,11 @@ impl<T: Transport> Transport for StoppableTransport<T> {
         loop {
             self.stop.check()?;
             let left = timeout.after.saturating_sub(started.elapsed());
+            // ureq reads a zero timeout as a whole second, which would outlast the
+            // budget a slice that overran has just used up.
+            if left.is_zero() {
+                return Err(ureq::Error::Timeout(timeout.reason));
+            }
             let slice = NextTimeout {
                 after: left.min(READ_SLICE).into(),
                 ..timeout
@@ -94,5 +103,67 @@ impl<T: Transport> Transport for StoppableTransport<T> {
 
     fn is_tls(&self) -> bool {
         self.inner.is_tls()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use ureq::unversioned::transport::LazyBuffers;
+
+    use super::*;
+
+    /// Every wait overruns the slice it was given, as on a loaded machine.
+    #[derive(Debug)]
+    struct Overrunning {
+        buffers: LazyBuffers,
+        slices: Arc<Mutex<Vec<Duration>>>,
+    }
+
+    impl Transport for Overrunning {
+        fn buffers(&mut self) -> &mut dyn Buffers {
+            &mut self.buffers
+        }
+
+        fn transmit_output(
+            &mut self,
+            _amount: usize,
+            _timeout: NextTimeout,
+        ) -> Result<(), ureq::Error> {
+            Ok(())
+        }
+
+        fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+            self.slices.lock().unwrap().push(*timeout.after);
+            std::thread::sleep(Duration::from_millis(60));
+            Err(ureq::Error::Timeout(timeout.reason))
+        }
+
+        fn is_open(&mut self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn a_slice_that_overruns_the_budget_ends_the_wait_rather_than_asking_for_a_zero_read() {
+        let slices = Arc::new(Mutex::new(Vec::new()));
+        let mut transport = StoppableTransport {
+            inner: Overrunning {
+                buffers: LazyBuffers::new(64, 64),
+                slices: slices.clone(),
+            },
+            stop: StopFlag::default(),
+        };
+        let answer = transport.await_input(NextTimeout {
+            after: Duration::from_millis(40).into(),
+            reason: ureq::Timeout::Global,
+            per_read: None,
+            per_write: None,
+        });
+        assert!(matches!(answer, Err(ureq::Error::Timeout(_))), "{answer:?}");
+        let slices = slices.lock().unwrap();
+        assert!(slices.iter().all(|slice| !slice.is_zero()), "{slices:?}");
+        assert_eq!(slices.len(), 1, "{slices:?}");
     }
 }

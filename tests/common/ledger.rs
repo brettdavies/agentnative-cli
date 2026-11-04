@@ -124,6 +124,11 @@ fn golden_text(name: &str) -> String {
 
 /// The elements of one scenario the engine does not reproduce.
 pub fn divergences_of(case: &Case) -> BTreeSet<String> {
+    divergences_against(case, &golden_text(&case.name))
+}
+
+/// The same, against `want_text` in place of the scenario's golden document.
+pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let outcome = replay(&case.scenario, Arc::new(default_handlers()));
     match (&case.golden, outcome) {
@@ -137,12 +142,11 @@ pub fn divergences_of(case: &Case) -> BTreeSet<String> {
             out.insert(UNREACHABLE.to_string());
         }
         (Golden::Scorecard(_), RunOutcome::Complete(report)) => {
-            let want_text = golden_text(&case.name);
             let got_text = to_wire_json(&report.scorecard);
             if want_text == got_text {
                 return out;
             }
-            let want: Value = serde_json::from_str(&want_text).expect("golden JSON");
+            let want: Value = serde_json::from_str(want_text).expect("golden JSON");
             let got: Value = serde_json::from_str(&got_text).expect("engine JSON");
             for (key, value) in want.as_object().expect("a scorecard object") {
                 if key != "results" && got.get(key) != Some(value) {

@@ -151,11 +151,16 @@ mod tests {
 
     #[test]
     fn an_n_a_reason_only_an_applied_check_carries_presents_its_design() {
-        let optional_absent = universe(&[(
-            "mcp-auth-challenge",
-            ScorecardStatus::NA,
-            Some(NaReason::OptionalAbsent),
-        )]);
+        // Without the row's reason only the open design is presented, so this reads
+        // the smaller maximum.
+        let optional_absent = universe(&[
+            ("mcp-tools-list", ScorecardStatus::Pass, None),
+            (
+                "mcp-auth-challenge",
+                ScorecardStatus::NA,
+                Some(NaReason::OptionalAbsent),
+            ),
+        ]);
         let auth_required = universe(&[(
             "mcp-tools-list",
             ScorecardStatus::NA,

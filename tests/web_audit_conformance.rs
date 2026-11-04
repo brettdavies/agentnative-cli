@@ -22,8 +22,11 @@ use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::to_wire_json;
-use common::corpus::{Case, Golden, load_cases, replay};
-use common::ledger::{compare_with_ledger, corpus_divergences, load_ledger, parse_ledger};
+use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
+use common::ledger::{
+    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, load_ledger,
+    parse_ledger,
+};
 use std::sync::Arc;
 
 /// The first differing line of two JSON documents, with its neighbours, so
@@ -104,8 +107,7 @@ fn every_corpus_scenario_reproduces_the_site_scorecard_or_is_ledgered() {
     assert!(matching > 0, "no scenario reproduces byte for byte");
 }
 
-/// What a scenario count stood in for: however large the corpus is, a check no
-/// scenario is the subject of has no parity evidence behind it.
+/// A check no scenario is the subject of has no parity evidence behind it.
 #[test]
 fn every_check_is_the_subject_of_some_scenario() {
     let covered: BTreeSet<String> = load_cases()
@@ -184,35 +186,73 @@ fn the_fetch_parity_scenarios_are_present_and_green() {
 /// digit of a score in a copy of a golden must be caught by the same
 /// comparison the suite runs.
 /// A golden is only evidence if breaking it fails the suite: mutating an
-/// element the engine reproduces must surface as a divergence in that
-/// element, which the ledger does not hold.
+/// element must surface as a divergence in exactly that element, through the
+/// comparison the suite runs.
 #[test]
 fn a_mutated_golden_fails_the_comparison() {
-    let ledger = load_ledger();
     let cases = load_cases();
     let case = cases
         .iter()
         .find(|c| c.name == "run-healthy")
         .expect("the healthy whole-run scenario");
-    let element = ("run-healthy".to_string(), "spec_version".to_string());
-    assert!(
-        !ledger.contains_key(&element),
-        "the anchor element must be one the engine reproduces"
-    );
-    let expected = golden_text(&case.name);
-    let actual = scorecard_json(case).expect("the healthy scenario scores");
+    let golden = golden_text(&case.name);
     let spec = format!("\"spec_version\": \"{}\"", case.scenario.spec_version);
-    let mutated = expected.replacen(&spec, "\"spec_version\": \"0.0.0\"", 1);
-    assert_ne!(mutated, expected, "the mutation must change the document");
-    assert_ne!(
-        actual, mutated,
-        "the comparison must reject a scorecard whose field moved"
-    );
-    let diff = first_difference(&mutated, &actual);
+    let mutated = golden.replacen(&spec, "\"spec_version\": \"0.0.0\"", 1);
+    assert_ne!(mutated, golden, "the mutation must change the document");
+    if divergences_of(case).is_empty() {
+        assert_eq!(
+            divergences_against(case, &mutated),
+            BTreeSet::from(["spec_version".to_string()])
+        );
+    } else {
+        assert!(
+            divergences_against(case, &mutated).contains("spec_version"),
+            "the comparison must name the field that moved"
+        );
+    }
+}
+
+fn element(scenario: &str, element: &str) -> (String, String) {
+    (scenario.to_string(), element.to_string())
+}
+
+#[test]
+fn an_unledgered_divergence_and_a_stale_entry_are_both_problems() {
+    let actual = BTreeSet::from([element("a", "score")]);
+    let ledger = BTreeMap::from([(element("b", "score"), "#1".to_string())]);
+    let problems = compare_with_ledger(&actual, &ledger, |_| true);
+    assert_eq!(problems.len(), 2, "{problems:?}");
+    assert!(problems[0].starts_with("a/score: diverges"), "{problems:?}");
     assert!(
-        diff.contains("spec_version"),
-        "the failure must name the field: {diff}"
+        problems[1].starts_with("b/score: now matches"),
+        "{problems:?}"
     );
+}
+
+#[test]
+fn a_stale_entry_outside_the_suites_scope_is_not_a_problem() {
+    let ledger = BTreeMap::from([(element("b", "score"), "#1".to_string())]);
+    let problems = compare_with_ledger(&BTreeSet::new(), &ledger, |_| false);
+    assert!(problems.is_empty(), "{problems:?}");
+}
+
+#[test]
+fn a_ledgered_divergence_is_not_a_problem() {
+    let actual = BTreeSet::from([element("a", "score")]);
+    let ledger = BTreeMap::from([(element("a", "score"), "#1".to_string())]);
+    assert!(compare_with_ledger(&actual, &ledger, |_| true).is_empty());
+}
+
+/// A dropped directory or a filter bug in the loader would shrink every suite's
+/// input without failing any of them; the corpus's own index names each scenario.
+#[test]
+fn the_loader_reads_every_scenario_the_corpus_indexes() {
+    let raw = fs::read_to_string(corpus_dir().join("scores.json")).expect("scores.json");
+    let index: BTreeMap<String, serde_json::Value> =
+        serde_json::from_str(&raw).expect("scores.json parses");
+    let indexed: BTreeSet<String> = index.into_keys().collect();
+    let loaded: BTreeSet<String> = load_cases().into_iter().map(|case| case.name).collect();
+    assert_eq!(loaded, indexed);
 }
 
 const PIN: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -244,4 +284,25 @@ fn an_empty_ledger_naming_a_pin_is_refused() {
     let raw = format!("site_sha = \"{PIN}\"\n");
     let problem = parse_ledger(&raw, PIN).expect_err("a stale claim waiting to happen");
     assert!(problem.contains("names no site pin"), "{problem}");
+}
+
+#[test]
+fn an_unsorted_or_duplicated_ledger_is_refused() {
+    let row = |scenario: &str| {
+        format!("[[divergence]]\nscenario = \"{scenario}\"\nelement = \"score\"\nowner = \"#1\"\n")
+    };
+    let pinned = format!("site_sha = \"{PIN}\"\n");
+    for rows in [row("b") + &row("a"), row("a") + &row("a")] {
+        let problem = parse_ledger(&(pinned.clone() + &rows), PIN).expect_err("out of order");
+        assert!(problem.contains("sorted"), "{problem}");
+    }
+}
+
+#[test]
+fn an_owner_that_names_no_site_pr_is_refused() {
+    let raw = format!(
+        "site_sha = \"{PIN}\"\n[[divergence]]\nscenario = \"a\"\nelement = \"score\"\nowner = \"someone\"\n"
+    );
+    let problem = parse_ledger(&raw, PIN).expect_err("no PR number");
+    assert!(problem.contains("must name a site PR"), "{problem}");
 }

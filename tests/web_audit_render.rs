@@ -11,9 +11,10 @@ use std::sync::Arc;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
-use agentnative::web_audit::registry::{CHECKS, MCP_LANES, lane_of};
-use agentnative::web_audit::render::{RenderOptions, format_text};
-use agentnative::web_audit::scorecard::WebScorecard;
+use agentnative::web_audit::registry::{CHECKS, LANE_CATEGORY, MCP_LANES, category_name, lane_of};
+use agentnative::web_audit::render::{RenderOptions, advisory_note, format_text, prefix_for};
+use agentnative::web_audit::score::is_scored;
+use agentnative::web_audit::scorecard::{ResultRow, ScorecardStatus, WebScorecard};
 use common::corpus::{load_cases, replay};
 use common::web_cli::{anc, fixture_site, host_of, stderr_of, stdout_of};
 
@@ -247,21 +248,25 @@ fn the_readme_exit_table_matches_the_codes_the_binary_returns() {
     }
 }
 
-/// The text report of a corpus scenario's replay, as `anc web` prints it.
-fn corpus_report(name: &str, verbose: bool) -> String {
+/// The text report of a corpus scenario's replay, as `anc web` prints it, with
+/// the scorecard it renders.
+fn corpus_report(name: &str, verbose: bool) -> (String, WebScorecard) {
     let case = load_cases()
         .into_iter()
         .find(|c| c.name == name)
         .unwrap_or_else(|| panic!("no corpus scenario {name}"));
     match replay(&case.scenario, Arc::new(default_handlers())) {
-        RunOutcome::Complete(report) => format_text(
-            &report,
-            RenderOptions {
-                color: false,
-                quiet: false,
-                verbose,
-            },
-        ),
+        RunOutcome::Complete(report) => {
+            let out = format_text(
+                &report,
+                RenderOptions {
+                    color: false,
+                    quiet: false,
+                    verbose,
+                },
+            );
+            (out, report.scorecard)
+        }
         RunOutcome::Unreachable { reason, .. } => panic!("{name} reported unreachable: {reason}"),
     }
 }
@@ -295,83 +300,127 @@ fn outline(out: &str, heading: &str) -> Vec<String> {
         .collect()
 }
 
-/// The position of the first lane heading in a section outline.
-fn first_lane(outline: &[String]) -> usize {
-    outline
+/// The outline a section must have, from the run's rows alone: rows outside any
+/// lane in the order given, then each lane with a row here, in display order, under
+/// its heading and note, its rows in registry order. A lane's tally reads every row
+/// in the report, so a lane split across sections rolls up the same in each.
+fn expected_outline(rows: &[&ResultRow], all: &[ResultRow]) -> Vec<String> {
+    let mut lines: Vec<String> = rows
         .iter()
-        .position(|line| line.starts_with("  MCP · "))
-        .unwrap_or_else(|| panic!("no lane heading in {outline:#?}"))
+        .filter(|row| lane_of(&row.id).is_none())
+        .map(|row| format!("  {}", row.id))
+        .collect();
+    let category = category_name(LANE_CATEGORY).expect("the lane category has a name");
+    for lane in MCP_LANES {
+        let mut ids: Vec<&str> = rows
+            .iter()
+            .filter(|row| lane_of(&row.id) == Some(lane))
+            .map(|row| row.id.as_str())
+            .collect();
+        if ids.is_empty() {
+            continue;
+        }
+        ids.sort_by_key(|id| CHECKS.iter().position(|check| check.id == *id));
+        let counted: Vec<&ResultRow> = all
+            .iter()
+            .filter(|row| lane_of(&row.id) == Some(lane) && is_scored(row.status))
+            .collect();
+        let tally = if counted.is_empty() {
+            String::new()
+        } else {
+            let passed = counted
+                .iter()
+                .filter(|row| row.status == ScorecardStatus::Pass)
+                .count();
+            format!(" ({passed}/{} pass)", counted.len())
+        };
+        lines.push(format!("  {category} · {}{tally}", lane.label));
+        lines.push(format!("    {}.", lane.note));
+        lines.extend(ids.iter().map(|id| format!("    {id}")));
+    }
+    lines
 }
 
-/// Checks a section against the registry's lane map, so the layout holds whichever
-/// rows a scenario lands in it: rows outside any lane first, then each lane at most
-/// once in display order, under its heading and note, holding only its own rows in
-/// registry order.
-fn assert_lane_layout(out: &str, heading: &str) {
-    let section = outline(out, heading);
-    let lane_at = first_lane(&section);
-    for line in &section[..lane_at] {
-        let id = line
-            .strip_prefix("  ")
-            .filter(|id| !id.starts_with(' '))
-            .unwrap_or_else(|| panic!("{line:?} sits before the first lane:\n{out}"));
-        assert!(lane_of(id).is_none(), "{id} belongs under a lane:\n{out}");
-    }
-    let mut lines = section[lane_at..].iter().peekable();
-    let mut previous_lane = None;
-    while let Some(line) = lines.next() {
-        let label = line
-            .strip_prefix("  MCP · ")
-            .unwrap_or_else(|| panic!("{line:?} is outside any lane:\n{out}"));
-        let at = MCP_LANES
-            .iter()
-            .position(|lane| label.starts_with(lane.label))
-            .unwrap_or_else(|| panic!("{label:?} names no lane:\n{out}"));
+/// A section holds exactly what the rule beside it selects, or does not print.
+fn assert_section(
+    out: &str,
+    heading: &str,
+    card: &WebScorecard,
+    keep: impl Fn(&ResultRow) -> bool,
+) {
+    let rows: Vec<&ResultRow> = card.results.iter().filter(|row| keep(row)).collect();
+    if rows.is_empty() {
         assert!(
-            previous_lane.is_none_or(|previous| previous < at),
-            "{label:?} is out of display order:\n{out}"
+            !out.split("\n\n").any(|block| block.starts_with(heading)),
+            "nothing belongs in {heading:?}:\n{out}"
         );
-        previous_lane = Some(at);
-        let lane = &MCP_LANES[at];
-        let note = format!("    {}.", lane.note);
-        assert_eq!(lines.next(), Some(&note), "{out}");
-        let mut previous_row = None;
-        while let Some(row) = lines.next_if(|line| line.starts_with("    ")) {
-            let id = row.trim_start();
-            assert_eq!(lane_of(id).map(|l| l.id), Some(lane.id), "{id}:\n{out}");
-            let position = CHECKS.iter().position(|c| c.id == id);
-            assert!(
-                previous_row < position,
-                "{id} is out of registry order:\n{out}"
+    } else {
+        assert_eq!(
+            outline(out, heading),
+            expected_outline(&rows, &card.results),
+            "{heading:?}:\n{out}"
+        );
+    }
+}
+
+fn is_prefixed(row: &ResultRow, prefix: &str) -> bool {
+    prefix_for(row) == prefix
+}
+
+#[test]
+fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
+    let (out, card) = corpus_report("mcp-negotiation-defects", false);
+    assert!(
+        out.contains("  MCP · "),
+        "the scenario shows a lane:\n{out}"
+    );
+    let endpoint = card.mcp_endpoint.as_deref();
+    assert_section(&out, "Failures (", &card, |row| is_prefixed(row, "FAIL"));
+    assert_section(&out, "Warnings (", &card, |row| is_prefixed(row, "WARN"));
+    assert_section(&out, "Could not check (", &card, |row| {
+        matches!(row.status, ScorecardStatus::Error | ScorecardStatus::Skip)
+    });
+    assert_section(&out, "Advisories (", &card, |row| {
+        row.status == ScorecardStatus::Pass && advisory_note(row, endpoint).is_some()
+    });
+    // A lane's rows keep the row layout, two columns deeper.
+    for row in card.results.iter().filter(|row| lane_of(&row.id).is_some()) {
+        if is_prefixed(row, "FAIL") || is_prefixed(row, "WARN") {
+            let heading = format!(
+                "    [{}] {} ({}) ({})",
+                prefix_for(row),
+                row.label,
+                row.id,
+                row.keyword.as_str()
             );
-            previous_row = position;
+            assert!(out.contains(&heading), "{heading:?}:\n{out}");
+            if let Some(evidence) = row.evidence.as_deref().and_then(|e| e.lines().next()) {
+                assert!(
+                    out.contains(&format!("{heading}\n           {evidence}")),
+                    "{heading:?}:\n{out}"
+                );
+            }
+        }
+        if let Some(note) = advisory_note(row, endpoint) {
+            assert!(
+                out.contains(&format!("\n           Note: {note}")),
+                "{note:?}:\n{out}"
+            );
         }
     }
 }
 
 #[test]
-fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
-    let out = corpus_report("mcp-negotiation-defects", false);
-    for heading in ["Failures (", "Warnings (", "Advisories ("] {
-        assert_lane_layout(&out, heading);
-    }
-    // A lane's rows keep the row layout, two columns deeper.
-    assert!(
-        out.contains(
-            "    [WARN] a JSON-only Accept is answered without SSE framing (mcp-accept-json) (should)\n           https://example.com/mcp -> 200"
-        ),
-        "{out}"
-    );
-    assert!(
-        out.contains("\n           Note: Superseded shape (SEP-1649)."),
-        "{out}"
-    );
-}
-
-#[test]
 fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
-    let out = corpus_report("mcp-negotiation-defects", true);
-    for heading in ["Passed (", "Not applicable ("] {
-        assert_lane_layout(&out, heading);
-    }
+    let (out, card) = corpus_report("mcp-negotiation-defects", true);
+    assert!(
+        out.contains("  MCP · "),
+        "the scenario shows a lane:\n{out}"
+    );
+    assert_section(&out, "Passed (", &card, |row| {
+        row.status == ScorecardStatus::Pass
+    });
+    assert_section(&out, "Not applicable (", &card, |row| {
+        row.status == ScorecardStatus::NA
+    });
 }

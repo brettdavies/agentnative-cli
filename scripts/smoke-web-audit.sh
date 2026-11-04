@@ -147,8 +147,19 @@ if ((code == 124)); then
   exit 1
 fi
 # 0, 1 and 2 are verdicts; 3 means nothing answered, which for a fixture
-# this script just started is a failure of the run, not of the fixture.
-if ((code > 2)); then
+# this script just started is a failure of the run, not of the fixture. A check
+# this build cannot run also ends a run in 3, and a web-audit bump lands one on
+# purpose: the release gate holds it, so only the verdict stands down here. A row
+# that errored is still a failure, and the rows below are still read.
+unported=""
+errored=""
+if ((code == 3)) && [[ -s "$scorecard" ]]; then
+  unported=$("$BINARY" emit web-checks | jaq -r '[.checks[] | select(.ported != true) | .id] | join(", ")') || unported=""
+  errored=$(jaq '[.results[]? | select(.status == "error")] | length' <"$scorecard" 2>/dev/null) || errored=""
+fi
+if [[ -n "$unported" && "$errored" == "0" ]]; then
+  printf 'standing down: the run exited 3, not a verdict, because of checks bound Unsupported: %s\n' "$unported" >&2
+elif ((code > 2)); then
   printf 'error: the run returned %s; expected a verdict (0, 1 or 2). anc wrote:\n' "$code" >&2
   sed 's/^/  /' "$stderr_log" >&2
   # Exit 3 with a scorecard on stdout means rows errored or were cut short

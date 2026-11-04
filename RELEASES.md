@@ -549,9 +549,14 @@ release tree that strips `anc web` skips it. [Handling a bump PR](#handling-a-bu
 
 `web-audit-bump.yml` opens one PR, from `bot/web-audit-bump`, whenever agentnative-site's `dev` head changes a vendored
 input or the pin is not on site `dev`. It updates that PR on later runs, and stands down once the branch carries port
-commits, so push port work as new commits. A `dev` merge leaves an open PR alone when it already carries the site's head
-and the merge touched nothing under `src/`, `tests/`, `scripts/`, `build.rs` or `Cargo.*`, so its CI is not restarted
-for nothing.
+commits, with or without an open PR, so push port work as new commits. A merge from `dev` does not count as port work.
+Delete the branch to start over. A `dev` merge leaves an open PR alone when it already carries the site's head and the
+merge touched nothing under `src/`, `tests/`, `scripts/`, `build_support/` or `schema/`, nor `build.rs`, `Cargo.*`,
+`rust-toolchain.toml` or `README.md`, so its CI is not restarted for nothing.
+
+When the site reverts what an open bump carries, no later run updates that PR, because `dev`'s pin already matches the
+site's head: close it. If it merges anyway, the next run moves the pin, and `web-audit-stale` holds a release until
+then.
 
 **A green bump** moved the pin and reproduces the site, or records where it does not. Read its body's Divergences and
 Unported sections: when both say None, `anc web` matches anc.dev at the new pin, and merging it is all the work there is.
@@ -571,9 +576,10 @@ is what makes them pass. Regenerate instead of editing by hand when many move:
 WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
 ```
 
-**An unported entry** is a handler kind or eval rule this build cannot run. Its checks skip on every site, so every full
-`anc web` run exits 3, reads `could not check`, and flags its score as not comparable with anc.dev. Tests that pin a full
-run's verdict give up only that verdict and name the checks in the bump PR. To close one, add the handler to
+**An unported entry** is a handler kind or eval rule this build cannot run. Its checks skip wherever they apply, so a
+full `anc web` run there exits 3, reads `could not check`, and flags its score as not comparable with anc.dev. Where the
+site's type or an antecedent rules a check out, the run keeps its verdict. Tests that pin a full run's verdict give up
+only that verdict and name the checks in the bump PR. To close one, add the handler to
 `src/web_audit/handlers/` and the kind or rule to `build_support/web_registry/vocab.rs`, then port what the ledger holds
 for those checks. The binding, the skip, and the stand-downs all clear together.
 
@@ -584,6 +590,8 @@ The gate refuses a release with a stable code, what is wrong, and its fix:
 | `web-audit-ledger`   | The divergence ledger has entries                 | Port the site PRs the entries name and delete the entries they close       |
 | `web-audit-unported` | A vendored check binds Unsupported                | Port the handler kind or eval rule the check names                         |
 | `web-audit-pin`      | The vendored pin is not reachable from site `dev` | `gh workflow run web-audit-bump.yml --ref dev`, then merge the PR it opens |
+| `web-audit-stale`    | Site `dev` moved a vendored input past the pin    | Merge the open bump PR, or run `web-audit-bump.yml` and merge its new PR   |
+| `web-audit-gate`     | The gate died or printed nothing                  | Run `scripts/release/web-parity-gate.sh --bin <anc>` and read its error    |
 
 ### Required secrets
 

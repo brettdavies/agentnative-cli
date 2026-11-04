@@ -24,6 +24,8 @@
 #                                          exit 1 on drift, listing each path.
 #   scripts/sync-web-audit.sh --list       Print every vendored path, the pin file
 #                                          last, and touch nothing.
+#   scripts/sync-web-audit.sh --site-paths Print every path read from the site, and
+#                                          touch nothing.
 #
 # Env vars:
 #   WEB_AUDIT_SITE_SHA         Commit to use for this run instead of SITE_SHA
@@ -67,7 +69,7 @@ fail() {
 }
 
 usage() {
-  echo "usage: $0 [--check | --pin <sha> | --list]" >&2
+  echo "usage: $0 [--check | --pin <sha> | --list | --site-paths]" >&2
   exit 2
 }
 
@@ -86,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --list)
       mode="list"
+      shift
+      ;;
+    --site-paths)
+      mode="site-paths"
       shift
       ;;
     --pin)
@@ -107,6 +113,12 @@ if [[ $mode == "list" ]]; then
     echo "${entry#*=}"
   done
   echo "$PIN_FILE"
+  exit 0
+fi
+if [[ $mode == "site-paths" ]]; then
+  for entry in "${SYNC_FILES[@]}" "${SYNC_DIRS[@]}"; do
+    echo "${entry%%=*}"
+  done
   exit 0
 fi
 
@@ -175,6 +187,11 @@ for entry in "${SYNC_DIRS[@]}"; do
   mv "$extract/$src" "$stage/$dest"
 done
 printf '%s\n' "$sha" >"$stage/$PIN_FILE"
+
+# cp and upload-artifact follow a link, so a symlink in a site commit would carry
+# whatever it points at on the runner into a public bump commit.
+links="$(find "$stage" -type l)"
+[[ -z $links ]] || fail "commit $sha vendors a symlink, which a sync refuses: ${links//$stage\//}"
 
 # === Mode-specific behavior ============================================
 case "$mode" in

@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Refuse a release whose `anc web` differs from anc.dev. A divergence ledger entry is
 # an element the engine does not reproduce at the vendored site pin, an unported check
-# skips on every site, and a pin off site dev names a commit that can vanish. A
-# web-audit bump lands the first two on dev on purpose, so the refusal belongs at the
-# release and not in every PR's CI.
+# skips wherever it applies, a pin off site dev names a commit that can vanish, and a
+# pin behind a vendored change on site dev is a bump that has not landed. A web-audit
+# bump lands the first two on dev on purpose, so the refusal belongs at the release and
+# not in every PR's CI.
 #
 # Each refusal leads with a stable code and ends with its fix:
 #   web-audit-ledger    the divergence ledger has entries
 #   web-audit-unported  a vendored check binds Unsupported
 #   web-audit-pin       the vendored pin is not reachable from site dev
+#   web-audit-stale     site dev moved a vendored input past the pin
 # RELEASES.md's "Handling a bump PR" section explains each one.
 #
 # Callers: scripts/release/smoke.sh in the manual preflight, and
@@ -71,6 +73,16 @@ if [[ ! -d "$REPO_ROOT/src/web_audit" ]]; then
   exit 0
 fi
 
+# A release builds default features, so a tree that keeps the source and leaves the
+# feature out ships no `anc web`, and its binary has no checks to answer for.
+if [[ -f "$REPO_ROOT/Cargo.toml" ]] && ! python3 -c '
+import re, sys
+default = re.search(r"^default\s*=\s*\[(.*?)\]", open(sys.argv[1]).read(), re.M | re.S)
+sys.exit(0 if default and "\"web\"" in default.group(1) else 1)' "$REPO_ROOT/Cargo.toml"; then
+  report skip "web audit parity" "Cargo.toml's default features leave web out, so nothing this tree releases can differ"
+  exit 0
+fi
+
 # shellcheck source=scripts/hardened-git.sh disable=SC1091
 . "$REPO_ROOT/scripts/hardened-git.sh"
 work="$(mktemp -d -t anc-web-parity-XXXXXX)"
@@ -116,7 +128,7 @@ else
 fi
 
 pin_file="$(bash "$REPO_ROOT/scripts/sync-web-audit.sh" --list | tail -n 1)"
-read -r pin <"$REPO_ROOT/$pin_file"
+read -r pin <"$REPO_ROOT/$pin_file" || [[ -n $pin ]]
 site="${WEB_AUDIT_SITE_REPO:-}"
 if [[ -z $site ]] && hardened_git clone --quiet --single-branch --branch dev --no-tags --no-checkout \
   "$SITE_REMOTE_URL" "$work/site" 2>/dev/null; then
@@ -127,6 +139,14 @@ if [[ -z $site ]]; then
     "could not clone $SITE_REMOTE_URL to check pin $pin. Fix: rerun with network access, or set WEB_AUDIT_SITE_REPO. Docs: $DOCS"
 elif hardened_git -C "$site" merge-base --is-ancestor "$pin" refs/heads/dev 2>/dev/null; then
   report pass "the site pin is on site dev"
+  mapfile -t site_paths < <(bash "$REPO_ROOT/scripts/sync-web-audit.sh" --site-paths)
+  moved="$(hardened_git -C "$site" diff --name-only "$pin" refs/heads/dev -- "${site_paths[@]}")"
+  if [[ -z $moved ]]; then
+    report pass "the pin carries site dev's vendored inputs"
+  else
+    report fail "web-audit-stale: site dev has moved vendored inputs past the pin" \
+      "$(wc -l <<<"$moved" | tr -d ' ') files since $pin, first $(head -n 1 <<<"$moved"). Fix: merge the open bump PR, or gh workflow run web-audit-bump.yml --ref dev and merge what it opens. Docs: $DOCS"
+  fi
 else
   report fail "web-audit-pin: the site pin is not on site dev" \
     "$pin is not reachable from site dev. Fix: gh workflow run web-audit-bump.yml --ref dev, then merge the PR it opens. Docs: $DOCS"

@@ -115,6 +115,9 @@ fn a_local_target_trusts_a_ca_in_the_os_trust_store() {
         ended_in_a_verdict(output.status.code()),
         "expected a verdict: {output:?}"
     );
+    // A refused handshake also exits 3, so only a scorecard proves the store was read.
+    let scorecard: Value = serde_json::from_str(&stdout_of(&output)).unwrap();
+    assert!(scorecard["summary"]["pass"].as_u64().unwrap() > 0);
 }
 
 #[test]

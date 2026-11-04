@@ -14,7 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const LEDGER: &str = "tests/fixtures/web-audit-divergences.toml";
 const PIN_FILE: &str = "src/web_audit/vendored/SITE_SHA";
@@ -61,13 +61,24 @@ printf 'gh %s\n' "$*" >>"$SHIM_DIR/calls"
 args="$*"
 case "$args" in
   *"api graphql --input "*)
-    cp "${@: -1}" "$SHIM_DIR/payload.json"
-    cat "$SHIM_DIR/graphql-response"
+    if grep -q updateRefs "${@: -1}"; then
+      cp "${@: -1}" "$SHIM_DIR/update-refs.json"
+      cat "$SHIM_DIR/update-refs-response"
+    else
+      cp "${@: -1}" "$SHIM_DIR/payload.json"
+      cat "$SHIM_DIR/graphql-response"
+    fi
+    ;;
+  *"--jq .node_id"*) echo "repo-node-id" ;;
+  *"contents/"*"ref=dev"*)
+    [[ -f $SHIM_DIR/dev-pin ]] || exit 1
+    cat "$SHIM_DIR/dev-pin"
     ;;
   *"contents/"*)
     [[ -f $SHIM_DIR/branch-pin ]] || exit 1
     cat "$SHIM_DIR/branch-pin"
     ;;
+  *"state=closed"*) jq -r "${@: -1}" "$SHIM_DIR/closed-prs.json" ;;
   *"pulls?head="*) cat "$SHIM_DIR/open-pr" ;;
   *"git/ref/heads/"*)
     [[ -f $SHIM_DIR/branch-head ]] || exit 1
@@ -76,7 +87,7 @@ case "$args" in
   *"--jq .parents[0].sha"*) cat "$SHIM_DIR/branch-base" ;;
   *"git/commits/"*) cat "$SHIM_DIR/branch-tree" ;;
   *"--jq .files[].filename"*) cat "$SHIM_DIR/compare-files" ;;
-  *"compare/"*) cat "$SHIM_DIR/ahead-by" ;;
+  *"compare/"*) jq -r "${@: -1}" "$SHIM_DIR/compare.json" ;;
   *"--jq .commit.verification.verified"*) cat "$SHIM_DIR/verified" ;;
   *"--jq .html_url"*) echo "https://example.invalid/pr" ;;
 esac
@@ -208,7 +219,12 @@ impl Fixture {
             ("suite-output", "test result: ok. 1 passed; 0 failed\n"),
             ("suite-status", "0"),
             ("open-pr", ""),
-            ("ahead-by", "1"),
+            ("compare.json", "{\"commits\": [{\"parents\": [\"a\"]}]}"),
+            ("closed-prs.json", "[]"),
+            (
+                "update-refs-response",
+                "{\"data\":{\"updateRefs\":{\"clientMutationId\":null}}}",
+            ),
             ("verified", "true"),
             (
                 "graphql-response",
@@ -222,6 +238,14 @@ impl Fixture {
 
     fn answer(&self, file: &str, content: &str) {
         fs::write(self.shims.join(file), content).unwrap();
+    }
+
+    /// What `compare dev...<branch>` answers: `own` commits of one parent, and `merges`
+    /// of two.
+    fn commits_past_dev(&self, own: usize, merges: usize) {
+        let mut commits = vec![json!({"parents": ["a"]}); own];
+        commits.extend(vec![json!({"parents": ["a", "b"]}); merges]);
+        self.answer("compare.json", &json!({"commits": commits}).to_string());
     }
 
     fn calls(&self) -> String {
@@ -414,7 +438,11 @@ fn decide_answers_without_a_toolchain() {
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     fs::remove_file(&output_file).unwrap();
     assert!(stdout(&decide(&output_file)).contains("bump=yes"));
-    assert_eq!(fs::read_to_string(&output_file).unwrap(), "bump=yes\n");
+    let base = run_git(&f.repo, &["rev-parse", "HEAD"]);
+    assert_eq!(
+        fs::read_to_string(&output_file).unwrap(),
+        format!("bump=yes\nbase={base}\n")
+    );
 
     assert_eq!(f.calls(), "", "no toolchain and no GitHub call");
     f.assert_tree_clean();
@@ -432,6 +460,7 @@ fn a_dev_push_leaves_an_open_pr_alone_unless_it_touched_what_the_suites_read() {
         stdout(&no_branch)
     );
 
+    f.answer("open-pr", "42");
     f.answer("branch-pin", &f.first_pin);
     let older = f.bump(&["--decide", "--on-dev-push"]);
     assert!(stdout(&older).contains("bump=yes"), "{}", stdout(&older));
@@ -439,7 +468,10 @@ fn a_dev_push_leaves_an_open_pr_alone_unless_it_touched_what_the_suites_read() {
     f.answer("branch-pin", &format!("{head}\n"));
     f.answer("branch-head", "bothead");
     f.answer("branch-base", "botbase");
-    f.answer("compare-files", "docs/plans/a-plan.md\nREADME.md\n");
+    f.answer(
+        "compare-files",
+        "docs/plans/a-plan.md\n.github/workflows/ci.yml\n",
+    );
     let carried = f.bump(&["--decide", "--on-dev-push"]);
     assert!(stdout(&carried).contains("bump=no"), "{}", stdout(&carried));
     assert!(
@@ -449,14 +481,27 @@ fn a_dev_push_leaves_an_open_pr_alone_unless_it_touched_what_the_suites_read() {
     );
     assert!(!f.calls().contains("cargo"), "{}", f.calls());
 
+    // A branch at the site's head with no PR open has nothing reviewing it.
+    f.answer("open-pr", "");
+    let no_pr = f.bump(&["--decide", "--on-dev-push"]);
+    assert!(stdout(&no_pr).contains("bump=yes"), "{}", stdout(&no_pr));
+    f.answer("open-pr", "42");
+
     for touched in [
         "src/web_audit/mod.rs",
         "tests/web_audit_cli.rs",
         "scripts/sync-web-audit.sh",
+        "build_support/web_registry/mod.rs",
+        "schema/scorecard.schema.json",
         "build.rs",
         "Cargo.lock",
+        "rust-toolchain.toml",
+        "README.md",
     ] {
-        f.answer("compare-files", &format!("README.md\n{touched}\n"));
+        f.answer(
+            "compare-files",
+            &format!("docs/plans/a-plan.md\n{touched}\n"),
+        );
         let moved = f.bump(&["--decide", "--on-dev-push"]);
         assert!(
             stdout(&moved).contains("bump=yes"),
@@ -570,7 +615,46 @@ fn deleted_vendored_files_are_called_out_because_no_test_can_see_a_shrink() {
         list.contains(&format!("- `{CORPUS}/run-a/scorecard.json`")),
         "{out}"
     );
+    for section in ["**Created:**", "**Deleted:**"] {
+        assert!(
+            out.contains(&format!(
+                "{section} 1 vendored file, listed under Vendored files above."
+            )),
+            "{out}"
+        );
+    }
     f.assert_tree_clean();
+}
+
+#[test]
+fn a_bump_that_only_changes_files_says_it_created_and_deleted_none() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    let output = f.bump(&["--dry-run"]);
+    assert_ok(&output);
+    let out = stdout(&output);
+    for section in ["**Created:**", "**Deleted:**"] {
+        assert!(out.contains(&format!("{section} None.")), "{out}");
+    }
+}
+
+#[test]
+fn a_failing_suite_still_lists_the_tests_that_stood_down() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("suite-status", "101");
+    f.answer(
+        "suite-output",
+        "standing down: a_test: a full run may exit 3, not 1, because of checks bound Unsupported: robots\ntest a_test ... FAILED\ntest result: FAILED. 0 passed; 1 failed\n",
+    );
+    let output = f.bump(&["--dry-run"]);
+    assert_ok(&output);
+    let out = stdout(&output);
+    assert!(out.contains("Tests that gave up a verdict:"), "{out}");
+    assert!(
+        out.contains("a full run may exit 3, not 1, because of checks bound Unsupported: robots"),
+        "{out}"
+    );
 }
 
 #[test]
@@ -718,6 +802,40 @@ fn a_divergence_with_no_attributable_site_change_fails_visibly() {
     assert!(out.contains("no site PR owns run-a/score"), "{out}");
 }
 
+#[test]
+fn a_divergence_a_commit_with_no_pr_set_names_that_commit_rather_than_another_pr() {
+    let f = Fixture::new();
+    let golden = format!("{CORPUS}/run-a/scorecard.json");
+    f.site_commit(
+        &golden,
+        "{\"score\": 1, \"other\": 2}\n",
+        "feat: the scenario, not its score (#9001)",
+    );
+    let direct = f.site_commit(
+        &golden,
+        "{\"score\": 2, \"other\": 2}\n",
+        "fix: a direct push",
+    );
+    f.answer("divergences.json", "[[\"run-a\", \"score\"]]");
+    let output = f.bump(&["--dry-run"]);
+    assert_ok(&output);
+    let out = stdout(&output);
+    assert!(
+        out.lines()
+            .next()
+            .unwrap()
+            .ends_with("(web suites fail, port needed)"),
+        "{out}"
+    );
+    assert!(
+        out.contains(&format!(
+            "site commit {} changed run-a/score and names no PR",
+            &direct[..7]
+        )),
+        "{out}"
+    );
+}
+
 // Publishing.
 
 #[test]
@@ -817,10 +935,23 @@ fn an_open_pr_is_force_updated_and_edited() {
     f.answer("branch-head", "oldhead");
     f.answer("branch-tree", "oldtree");
     assert_ok(&f.bump(&[]));
+    let moved: Value =
+        serde_json::from_str(&fs::read_to_string(f.shims.join("update-refs.json")).unwrap())
+            .unwrap();
+    assert_eq!(moved["variables"]["input"]["repositoryId"], "repo-node-id");
+    assert_eq!(
+        moved["variables"]["input"]["refUpdates"],
+        json!([{
+            "name": "refs/heads/bot/web-audit-bump",
+            "beforeOid": "oldhead",
+            "afterOid": "newoid",
+            "force": true
+        }])
+    );
     let calls = f.calls();
     assert!(
-        calls.contains("api -X PATCH repos/owner/repo/git/refs/heads/bot/web-audit-bump -f sha=newoid -F force=true"),
-        "{calls}"
+        !calls.contains("git/refs/heads/bot/web-audit-bump -f sha"),
+        "a REST update cannot say what it expects to replace: {calls}"
     );
     assert!(
         calls.contains("api -X PATCH repos/owner/repo/pulls/42 -f title="),
@@ -862,7 +993,7 @@ fn port_commits_on_the_branch_make_the_bot_stand_down() {
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     f.answer("open-pr", "42");
     f.answer("branch-head", "porthead");
-    f.answer("ahead-by", "2");
+    f.commits_past_dev(2, 0);
     let output = f.bump(&[]);
     assert_ok(&output);
     assert!(
@@ -877,6 +1008,115 @@ fn port_commits_on_the_branch_make_the_bot_stand_down() {
         "the branch and the PR keep their state: {calls}"
     );
     assert!(!calls.contains("-X POST"), "{calls}");
+}
+
+#[test]
+fn port_commits_on_a_branch_with_no_open_pr_also_stand_down() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("branch-head", "porthead");
+    f.commits_past_dev(2, 0);
+    f.answer(
+        "closed-prs.json",
+        &json!([{"merged_at": null, "head": {"sha": "porthead"}}]).to_string(),
+    );
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        stdout(&output).contains("standing down"),
+        "{}",
+        stdout(&output)
+    );
+    let calls = f.calls();
+    assert!(!calls.contains("graphql"), "{calls}");
+    assert!(!calls.contains("-X POST"), "{calls}");
+}
+
+#[test]
+fn a_branch_a_merged_pr_left_behind_is_not_port_work() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("branch-head", "porthead");
+    f.answer("branch-tree", "oldtree");
+    f.commits_past_dev(3, 0);
+    f.answer(
+        "closed-prs.json",
+        &json!([{"merged_at": "2026-11-04T00:00:00Z", "head": {"sha": "porthead"}}]).to_string(),
+    );
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        !stdout(&output).contains("standing down"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(
+        f.calls().contains("api -X POST repos/owner/repo/pulls"),
+        "{}",
+        f.calls()
+    );
+}
+
+#[test]
+fn a_merge_from_dev_is_not_port_work() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("open-pr", "42");
+    f.answer("branch-head", "oldhead");
+    f.answer("branch-tree", "oldtree");
+    f.commits_past_dev(1, 1);
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        !stdout(&output).contains("standing down"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(f.shims.join("update-refs.json").exists(), "{}", f.calls());
+}
+
+#[test]
+fn a_port_commit_pushed_during_the_run_stops_the_forced_update() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("open-pr", "42");
+    f.answer("branch-head", "oldhead");
+    f.answer("branch-tree", "oldtree");
+    f.answer(
+        "update-refs-response",
+        "{\"errors\": [{\"message\": \"the ref moved\"}]}",
+    );
+    let output = f.bump(&[]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("the ref moved"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = f.calls();
+    assert!(!calls.contains("repos/owner/repo/pulls/42"), "{calls}");
+    assert!(
+        calls.ends_with("api -X DELETE repos/owner/repo/git/refs/heads/bot/web-audit-bump-next\n"),
+        "{calls}"
+    );
+}
+
+#[test]
+fn a_merge_during_the_run_publishes_nothing() {
+    let f = Fixture::new();
+    let new = f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("dev-pin", &format!("{new}\n"));
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        stdout(&output).contains("already holds pin"),
+        "{}",
+        stdout(&output)
+    );
+    let calls = f.calls();
+    assert!(!calls.contains("graphql"), "{calls}");
+    assert!(!calls.contains("-X POST"), "{calls}");
+    assert!(!calls.contains("-X PATCH"), "{calls}");
 }
 
 #[test]
@@ -1038,10 +1278,7 @@ fn prepare_runs_the_suites_with_no_github_call_and_a_second_job_lands_what_it_le
     prepare.env("GITHUB_OUTPUT", &output_file);
     let output = prepare.output().unwrap();
     assert_ok(&output);
-    assert_eq!(
-        fs::read_to_string(&output_file).unwrap(),
-        format!("ready=yes\nbase={base}\n")
-    );
+    assert_eq!(fs::read_to_string(&output_file).unwrap(), "ready=yes\n");
     let calls = f.calls();
     assert!(calls.contains("cargo test"), "{calls}");
     assert!(!calls.contains("gh "), "no token is needed yet: {calls}");
@@ -1104,22 +1341,96 @@ fn publish_ignores_a_branch_the_first_job_named() {
 }
 
 #[test]
-fn publish_refuses_a_symlink_in_the_tree() {
+fn publish_refuses_a_symlink_anywhere_in_the_prepared_directory() {
+    for link in [
+        "title".to_string(),
+        "body.md".to_string(),
+        format!("tree/{REGISTRY}"),
+    ] {
+        let f = Fixture::new();
+        f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+        let prepared = f.prepare();
+        let path = prepared.join(&link);
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink("/proc/self/environ", &path).unwrap();
+        let checkout = f.second_job_checkout();
+        let output = f.publish_in(&checkout, &prepared);
+        assert_eq!(output.status.code(), Some(1), "{link}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("symlink"),
+            "{link}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!f.calls().contains("gh "), "{link}: {}", f.calls());
+    }
+}
+
+#[test]
+fn publish_refuses_a_prepared_directory_missing_a_part_and_deletes_nothing() {
+    for missing in [
+        "tree".to_string(),
+        format!("tree/{PIN_FILE}"),
+        "title".to_string(),
+        "body.md".to_string(),
+    ] {
+        let f = Fixture::new();
+        f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+        let prepared = f.prepare();
+        let path = prepared.join(&missing);
+        if path.is_dir() {
+            fs::remove_dir_all(&path).unwrap();
+        } else {
+            fs::remove_file(&path).unwrap();
+        }
+        let checkout = f.second_job_checkout();
+        let output = f.publish_in(&checkout, &prepared);
+        assert_eq!(output.status.code(), Some(1), "{missing}");
+        assert!(!f.calls().contains("gh "), "{missing}: {}", f.calls());
+        assert!(checkout.join(REGISTRY).exists(), "{missing}");
+    }
+}
+
+#[test]
+fn a_symlink_in_a_site_commit_stops_the_bump_before_anything_is_prepared() {
     let f = Fixture::new();
-    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
-    let prepared = f.prepare();
-    let registry = prepared.join("tree").join(REGISTRY);
-    fs::remove_file(&registry).unwrap();
-    std::os::unix::fs::symlink("/etc/hostname", &registry).unwrap();
-    let checkout = f.second_job_checkout();
-    let output = f.publish_in(&checkout, &prepared);
+    std::os::unix::fs::symlink(
+        "/proc/self/environ",
+        f.site.join(CORPUS).join("run-a/leak.json"),
+    )
+    .unwrap();
+    commit(&f.site, "feat: a scenario that links out (#2)");
+    let prepared = f.shims.join("prepared");
+    let output = f.bump(&["--prepare", prepared.to_str().unwrap()]);
     assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("symlink"),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("symlink") && stderr.contains("leak.json"),
+        "{stderr}"
     );
-    assert!(!f.calls().contains("graphql"), "{}", f.calls());
+    assert!(!prepared.exists(), "nothing reached upload-artifact");
+    assert!(!f.calls().contains("cargo"), "{}", f.calls());
+}
+
+#[test]
+fn the_token_job_checks_out_a_commit_named_before_any_test_code_ran() {
+    let workflow = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/web-audit-bump.yml"),
+    )
+    .unwrap();
+    let (first_job, second_job) = workflow.split_once("\n  publish:\n").unwrap();
+    assert!(
+        first_job.contains("base: ${{ steps.decide.outputs.base }}"),
+        "{first_job}"
+    );
+    assert!(!first_job.contains("secrets."), "{first_job}");
+    assert!(
+        second_job.contains("ref: ${{ needs.prepare.outputs.base }}"),
+        "{second_job}"
+    );
+    assert!(
+        second_job.contains("secrets.CI_RELEASE_TOKEN"),
+        "{second_job}"
+    );
 }
 
 #[test]
@@ -1219,6 +1530,11 @@ impl GateTree {
         );
     }
 
+    fn advance_site_dev(&self, file: &str) {
+        write(&self.site.join(file), "moved\n");
+        commit(&self.site, "feat: site dev moves");
+    }
+
     fn command(&self, script: &str) -> Command {
         let mut cmd = Command::new("bash");
         cmd.arg(self.tmp.path().join("scripts/release").join(script))
@@ -1267,6 +1583,70 @@ fn the_gate_passes_an_empty_ledger_and_a_build_that_runs_every_check() {
         "{out}"
     );
     assert!(out.contains("pass\tthe site pin is on site dev"), "{out}");
+    assert!(
+        out.contains("pass\tthe pin carries site dev's vendored inputs"),
+        "{out}"
+    );
+}
+
+#[test]
+fn the_gate_refuses_a_pin_behind_a_dev_commit_that_moves_a_vendored_input() {
+    let tree = GateTree::new(Some("# header only\n"), true, Some(ALL_PORTED));
+    tree.advance_site_dev(SITE_FILES[0]);
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(1), "{out}");
+    assert!(
+        out.contains("fail\tweb-audit-stale: site dev has moved vendored inputs past the pin"),
+        "{out}"
+    );
+    assert!(out.contains(SITE_FILES[0]), "{out}");
+    assert!(
+        out.contains("Fix: ") && out.contains(HANDLING_DOCS),
+        "{out}"
+    );
+}
+
+#[test]
+fn the_gate_passes_a_pin_behind_a_dev_commit_that_moves_nothing_vendored() {
+    let tree = GateTree::new(Some("# header only\n"), true, Some(ALL_PORTED));
+    tree.advance_site_dev("NEWS.md");
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.contains("pass\tthe pin carries site dev's vendored inputs"),
+        "{out}"
+    );
+}
+
+#[test]
+fn the_gate_reads_a_pin_with_no_trailing_newline() {
+    let tree = GateTree::new(Some("# header only\n"), true, Some(ALL_PORTED));
+    let pin_file = tree.tmp.path().join(PIN_FILE);
+    let pin = fs::read_to_string(&pin_file).unwrap();
+    fs::write(&pin_file, pin.trim_end()).unwrap();
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(0), "{out}");
+    assert!(out.contains("pass\tthe site pin is on site dev"), "{out}");
+}
+
+#[test]
+fn the_gate_skips_a_tree_whose_default_features_leave_web_out() {
+    let tree = GateTree::new(Some(TWO_ENTRIES), true, None);
+    let manifest = tree.tmp.path().join("Cargo.toml");
+    fs::write(
+        &manifest,
+        "[features]\ndefault = []\nweb = [\"dep:ureq\"]\n",
+    )
+    .unwrap();
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(0), "{out}");
+    assert!(out.contains("skip\tweb audit parity"), "{out}");
+    assert!(out.contains("default features leave web out"), "{out}");
+
+    fs::write(&manifest, "[features]\ndefault = [\n  \"web\",\n]\n").unwrap();
+    let (out, code) = tree.gate();
+    assert_eq!(code, Some(1), "{out}");
+    assert!(out.contains("fail\tweb-audit-ledger"), "{out}");
 }
 
 #[test]
@@ -1391,4 +1771,104 @@ fn smoke_reports_the_gates_conditions_with_its_own_marks() {
     );
     let stripped = GateTree::new(None, false, Some(ALL_PORTED)).smoke();
     assert!(stripped.contains("⊝ web audit parity"), "{stripped}");
+}
+
+#[test]
+fn smoke_fails_when_the_gate_dies_or_says_nothing() {
+    for gate in [
+        "#!/usr/bin/env bash\nexit 7\n",
+        "#!/usr/bin/env bash\nprintf 'pass\\tthe divergence ledger has no entries\\t\\n'\nexit 7\n",
+        "#!/usr/bin/env bash\nexit 0\n",
+    ] {
+        let tree = GateTree::new(Some("# header only\n"), true, Some(ALL_PORTED));
+        fs::write(
+            tree.tmp.path().join("scripts/release/web-parity-gate.sh"),
+            gate,
+        )
+        .unwrap();
+        let out = tree.smoke();
+        assert!(
+            out.contains("✗ web-audit-gate: the parity gate did not finish"),
+            "{gate}: {out}"
+        );
+    }
+}
+
+// The first-run smoke over a stand-in binary. openssl and timeout are the script's own
+// requirements, and only the Linux job runs it.
+
+#[cfg(target_os = "linux")]
+fn first_run_smoke(checks: &Value, scorecard: &Value, code: i32) -> Output {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    fs::write(dir.join("checks.json"), checks.to_string()).unwrap();
+    fs::write(dir.join("scorecard.json"), scorecard.to_string()).unwrap();
+    let anc = dir.join("anc");
+    fs::write(
+        &anc,
+        format!(
+            "#!/usr/bin/env bash\nif [[ $1 == emit ]]; then cat '{0}/checks.json'; exit 0; fi\ncat '{0}/scorecard.json'\nexit {code}\n",
+            dir.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&anc, fs::Permissions::from_mode(0o755)).unwrap();
+    // jq reads every filter the script uses, and CI installs jaq only for that job.
+    let jaq = dir.join("jaq");
+    fs::write(&jaq, "#!/usr/bin/env bash\nexec jq \"$@\"\n").unwrap();
+    fs::set_permissions(&jaq, fs::Permissions::from_mode(0o755)).unwrap();
+    Command::new("bash")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .arg("scripts/smoke-web-audit.sh")
+        .arg(&anc)
+        .env(
+            "PATH",
+            format!(
+                "{}:{}",
+                dir.display(),
+                std::env::var("PATH").unwrap_or_default()
+            ),
+        )
+        .output()
+        .unwrap()
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_first_run_smoke_takes_exit_3_only_from_a_check_this_build_cannot_run() {
+    let ported = json!({"checks": [{"id": "a", "ported": true}, {"id": "b", "ported": true}]});
+    let unported = json!({"checks": [{"id": "a", "ported": false}, {"id": "b", "ported": true}]});
+    let rows = |status: &str| {
+        json!({
+            "summary": {"pass": 1},
+            "results": [{"id": "a", "status": "skip"}, {"id": "b", "status": status}]
+        })
+    };
+
+    let stood_down = first_run_smoke(&unported, &rows("pass"), 3);
+    let stderr = String::from_utf8_lossy(&stood_down.stderr);
+    assert_eq!(stood_down.status.code(), Some(0), "{stderr}");
+    assert!(
+        stderr.contains("standing down") && stderr.contains(": a"),
+        "{stderr}"
+    );
+
+    for (what, checks, scorecard, code) in [
+        ("nothing is unported", &ported, rows("pass"), 3),
+        ("a row errored", &unported, rows("error"), 3),
+        ("a later exit code", &unported, rows("pass"), 4),
+    ] {
+        let output = first_run_smoke(checks, &scorecard, code);
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{what}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    assert_eq!(
+        first_run_smoke(&ported, &rows("pass"), 1).status.code(),
+        Some(0)
+    );
 }

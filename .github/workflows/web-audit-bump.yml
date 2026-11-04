@@ -21,9 +21,11 @@ on:
 # because events GITHUB_TOKEN causes start no workflows and the PR's required checks
 # would never run. It lives only in the second job: a step boundary does not isolate
 # it, since $GITHUB_ENV, $GITHUB_PATH and running processes carry over, and the first
-# job runs this repository's and the site's test code.
+# job runs this repository's and the site's test code. The first job's read token
+# reaches only its Decide step, before any of that code.
 permissions:
   contents: read
+  pull-requests: read
 
 # One bump branch: a run that started later must see what the earlier one pushed.
 concurrency:
@@ -36,7 +38,9 @@ jobs:
     timeout-minutes: 45
     outputs:
       ready: ${{ steps.bump.outputs.ready }}
-      base: ${{ steps.bump.outputs.base }}
+      # The second job runs this commit's scripts with the token, so it comes from the
+      # step before any test code, which could otherwise rewrite HEAD or the output file.
+      base: ${{ steps.decide.outputs.base }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

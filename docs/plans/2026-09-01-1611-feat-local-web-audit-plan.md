@@ -29,11 +29,13 @@ execution: code
   endpoint: U1–U8, U10, U11, U13–U21, U12's bump workflow and release gate, every handler kind and eval rule the
   vendored registry carries, the vendoring contract, the conformance corpus and suite, the fix catalog and its readers,
   the docs, and the skill coverage diff. Phase 2 ships what depends on U9's served signal: U9 and U12's staleness note
-  (R6, KTD9). Both phases sit in the go-live stack (Delivery).
+  (R6, KTD9). Both phases sit in the go-live stack (Delivery), and U9 lands beneath U15, whose `contract_fingerprint` it
+  serves, though its consumer is phase 2.
 - **Stop conditions:** Stop and surface to the user if the release binary passes the 20 MiB ceiling on any release
   target (the size bet behind KD2 fails), or if corpus generation in U8 reveals the TS engine is nondeterministic for
   fixed inputs (the parity mechanism fails), or if U15's generator finds a scenario whose requests differ between
-  concurrency 1 and the default (request parity fails).
+  concurrency 1 and the default (request parity fails), or if the port misses KD18's gate after U19 and U21 land (the
+  release needs a decision).
 
 ---
 
@@ -72,8 +74,8 @@ audience that most needs local auditing is exactly the audience that can't assem
   engine replaces the port only by clearing all five bars: zero hand-ports, byte parity on the full corpus, real-target
   wall time no slower than the port, a release binary under 20 MiB on every release target, and nothing for the user to
   install. QuickJS fails the wall-time bar at 1.35x the port, and embedding Bun or V8 fails the size bar. The site
-  engine on Bun does beat the port on a clean runner, by 1.20x, so U19 and U20 are required to close that gap in the
-  port (Speed and size findings). Governs R5, R9, R23.
+  engine on Bun does beat the port on a clean runner, by 1.20x, so U19 is required to close that gap in the port, and
+  U20 follows at the owner's direction for absolute speed (KD18, Speed and size findings). Governs R5, R9, R23.
 - KD3. **`anc web` is canonical; bare URL-ish targets are sugar.** (session-settled: user-approved — chosen over a
   sugar-free subcommand and over overloading `anc audit`: explicit form for agents and CI, one-token invocation for
   humans.) Governs R1, R2.
@@ -113,8 +115,8 @@ audience that most needs local auditing is exactly the audience that can't assem
   - A bump workflow, on a daily schedule and on `dev` pushes, that opens re-pin PRs through `CI_RELEASE_TOKEN` (U12).
   - A divergence regenerates the ledger and stays green, so a site change never turns a CLI PR red for parity (U12,
     KTD17).
-  - A release gate refuses to tag while the ledger has entries or a vendored check binds an unported kind, so no release
-    diverges from the corpus (U12).
+  - A release gate refuses to tag while the ledger has entries, a vendored check binds an unported kind, or the pin
+    names a commit off site `dev`, so no release diverges from the corpus (U12).
   - An informational site report names the CLI scenario divergence on a contract-changing site PR, and no site PR waits
     on it (U18).
 
@@ -128,14 +130,16 @@ audience that most needs local auditing is exactly the audience that can't assem
 - KD18. **The speed bar is the user-visible wall clock.** (session-settled: user-directed.) A run is measured start to
   finish, startup included, on a clean GitHub Actions runner, because a loaded host inflates startup and reversed an
   earlier comparison. A comparison is like for like: a transport fix applies to every engine compared, at the same pin.
-  The target is at least the site engine's wall clock, and the release gate is one run's noise of it: within one
-  interleaved run, the port's sum of per-target medians is at or below the site engine's plus the larger of 5% and that
-  run's own round-to-round spread. That gate needs U19 and U21 landed. U20 ships in the same release if it is ready and
-  follows if it is not. The evidence: on the second clean run the pool alone left a 2.8% gap (23.36 s against 22.72 s),
-  brotli off at least halves handshakes on top of that, U20 speeds both engines and so barely moves the ratio, and Bun's
-  own total swung from 20.10 s to 22.72 s between runs, so an exact "at or below" gate would flake. Progress feedback is
-  part of the bar, so a user can tell a run is still working and when it is done. Peak memory is reported and is not a
-  bar. Governs R23.
+  The target is at least the site engine's wall clock, and the release gate is a fixed margin of it: within one
+  interleaved run, the port's sum of per-target medians is at most 1.05 times the site engine's, each target's median
+  score matches, and a miss gets one re-run before it counts. A margin that grew with the run's own spread would pass
+  the unfixed port, which on the second clean run sat 12% over Bun while its round totals ranged 35.7% of their median.
+  That gate needs U19 and U21 landed. U20 serves absolute speed at the owner's direction, not this gate, so it ships in
+  the same release if it is ready and follows if it is not. The evidence: on the second clean run the pool alone left a
+  2.8% gap (23.36 s against 22.72 s), brotli off at least halves handshakes on top of that, U20 speeds both engines and
+  so barely moves the ratio, and Bun's own total swung from 20.10 s to 22.72 s between runs, so an exact "at or below"
+  gate would flake. Progress feedback is part of the bar, so a user can tell a run is still working and when it is done.
+  Peak memory is reported and is not a bar. Governs R23.
 - KD19. **Bump PRs track site `dev`.** (session-settled: orchestrator decision under the owner's delegation — chosen
   over site `main`: the sync script's rule is that a pin names a commit on site `dev`.) anc.dev deploys from site
   `main`, so `dev` can sit ahead of it, and staleness wording compares fingerprints ("differs from anc.dev") and never
@@ -176,10 +180,10 @@ flowchart TB
 - R5. For the same target and registry version, local verdicts and scores match the site engine's, enforced in CI by the
   vendored conformance fixtures.
 - R6 (phase 2). When the vendored contract fingerprint differs from the one anc.dev serves, the report carries a note
-  saying so and naming the upgrade — inline in text mode, on stderr in JSON mode so the verbatim shape holds; when that
-  version signal is skipped, unreachable or answers anything but 200, the note is omitted and the run is otherwise
-  unaffected. Every report names the vendored registry fingerprint and the pinned site SHA, and a run against a local or
-  private target makes no anc.dev connection.
+  saying so, that a verdict can differ as a result, and the pinned site SHA — inline in text mode, on stderr in JSON
+  mode so the verbatim shape holds; when that version signal is skipped, unreachable or answers anything but 200, the
+  note is omitted and the run is otherwise unaffected. Every report names the vendored registry fingerprint and the
+  pinned site SHA, and a run against a local or private target makes no anc.dev connection.
 - R12. Checks that query external DNS resolvers do not fire for local or private targets (IPv4 and IPv6 alike); gated
   checks report n_a with a stated reason, and `--external-dns` forces them on.
 - R13. A run against an unresponsive or tarpitting target completes within the engine's per-audit deadline, reporting
@@ -191,8 +195,8 @@ flowchart TB
 - R22. `--ca-cert <file>` adds the PEM roots in that file to the trust set for any target, and may be repeated;
   certificate chain and hostname verification always run, and no option skips them.
 - R23. A run's user-visible wall clock, process start to exit, is the speed measure, and on the same clean runner and
-  pin it stays within one run's noise of the site engine's (KD18). While a run works it says so on stderr on a terminal,
-  and it says when it is done.
+  pin it stays within KD18's margin of the site engine's. While a run works it says so on stderr on a terminal, and it
+  says when it is done.
 
 **Output**
 
@@ -286,8 +290,7 @@ flowchart TB
   route, then `ANC_WEB_TOKEN` is not read.
 
 - AE9 (phase 2). **Covers R6.** Given a vendored contract whose fingerprint differs from anc.dev's and `--output json`,
-  when a public target is audited, then stdout carries only the verbatim scorecard JSON and the upgrade note appears on
-  stderr.
+  when a public target is audited, then stdout carries only the verbatim scorecard JSON and the note appears on stderr.
 - AE10. **Covers R20.** Given the vendored `run-healthy` scenario and an empty unported list, when the local engine
   audits it through the mock transport, then the requests it sends equal the scenario's recorded request set, and none
   goes out twice.
@@ -346,32 +349,33 @@ committed in `agentnative-site`, planned here, with no separate site plan).
 
 ### Delivery
 
-**On `dev`.** The engine and its verb, gated behind the cargo feature `web`: U1–U7, U10, U11, U14, U17 and the CLI half
-of U13 (#97–#106, #202, #204, #207–#230), with U8 on site `dev`. `src/web_audit/vendored/SITE_SHA` pins raw vendored
+**On `dev`.** The engine and its verb, gated behind the cargo feature `web`: U1–U7, U10, U11, U14, U17 and U13's docs
+standard (#97–#106, #202, #204, #207–#230), with U8 on site `dev`. `src/web_audit/vendored/SITE_SHA` pins raw vendored
 files at site `dev` `d5772289`, and the divergence ledger holds no entry, so the engine reproduces every scenario of the
 vendored corpus. No release carries `anc web`: v0.7.0's release branch strips the web code (#241), and the go-live stack
 ends that.
 
-**The go-live stack.** Every PR below stays open and unmerged until the owner merges it. The site's PRs form one linear
-stack; the CLI's stack where they touch the same files, and #291 sits on `dev` and merges last.
+**The go-live stack.** Every PR below stays open and unmerged until the owner merges it. On the site, #504 stacks
+on #503, and U18 and U20 each sit on #504. The CLI's PRs stack where they touch the same files. #291 sits on `dev` and
+merges after C7, and U20's port never holds it.
 
 | Order | Repo | Unit | PR             | What it lands                                                                                                    |
 | ----- | ---- | ---- | -------------- | ---------------------------------------------------------------------------------------------------------------- |
 | S1    | site | U9   | #503           | `GET /api/web-audit/version`, the served signal                                                                  |
-| S2    | site | U15  | #504           | `src/data/web-audit/contract/`, `contract/FINGERPRINT`, and `contract_fingerprint` on the signal                 |
+| S2    | site | U15  | #504           | `src/data/web-audit/contract/`, `build/FINGERPRINT`, and `contract_fingerprint` on the signal                    |
+| S4    | site | U18  | on top of #504 | The informational CLI-parity report on contract-changing PRs                                                     |
 | S3    | site | U20  | on top of #504 | Ranks 1–4 of the fan-out design, regenerating `requests.json` wherever a set moves                               |
-| S4    | site | U18  | on top of S3   | The informational CLI-parity report on contract-changing PRs                                                     |
 | —     | site | U13  | independent    | The local-target pointer and `ANC_WEB_RELEASED = true`; merges only after the anc release that carries `anc web` |
 | C1    | cli  | U12  | #289           | Re-pin to site `dev` `031ec6e`: an empty ledger holds at any pin, and site-owned counts read the vendored data   |
 | C2    | cli  | U12  | on top of #289 | `scripts/web-audit-bump.sh` and `.github/workflows/web-audit-bump.yml`                                           |
 | C3    | cli  | U16  | on top of C2   | Re-pin to the contract at #504's head SHA; `ts_consts.rs` and the normalizer mirror deleted                      |
-| C4    | cli  | U19  | on top of C3   | ureq's `brotli` off first, then the DNS cache, idle pool, one worker pool per audit, the aws-lc opt-level call   |
-| C5    | cli  | U21  | with C4        | Web-only crates at `opt-level = "s"`, with the `brotli` saving from C4                                           |
+| C7    | cli  | U12  | on top of C3   | The staleness note consuming U9, and the release gate                                                            |
+| C4    | cli  | U19  | own PRs        | ureq's `brotli` off first, then the DNS cache, idle pool, one worker pool per audit, the aws-lc opt-level call   |
+| C5    | cli  | U21  | with C4        | Release builds unwind (KTD20), web-only crates at `opt-level = "s"`, with the `brotli` saving from C4            |
+| C8    | cli  | KD16 | #291           | `feat(web): ship anc web in the default build`, with U13's README changes                                        |
 | C6    | cli  | U20  | after S3       | The port's mirror of ranks 1–4                                                                                   |
-| C7    | cli  | U12  | on top of C6   | The staleness note consuming U9, and the release gate in `scripts/release/smoke.sh`                              |
-| C8    | cli  | KD16 | #291           | `feat(web): ship anc web in the default build`                                                                   |
 
-The landing order, once the owner merges:
+The landing order, as the owner merges:
 
 1. C1, C2 and C3 merge to CLI `dev`, so its sync script reads the contract layout before site `dev` carries it. An
    old-layout script fails hard on every `dev` push once the corpus moves. C3 still pins #504's head SHA, which stays
@@ -380,10 +384,10 @@ The landing order, once the owner merges:
 2. S1 and S2 merge to site `dev`. The squash gives the contract a new SHA with the same bytes.
 3. The next CLI `dev` push runs the bump, which opens the re-pin to that site `dev` SHA even though no vendored file
    changed (U12). Until the workflow file reaches `main`, `scripts/web-audit-bump.sh` run by hand covers a quiet `dev`.
-4. S3 and C6 follow in that order, site first (KTD19), and the bump between them carries any `requests` entries in the
-   ledger until C6 deletes them. C6 does not hold the release: if it is not ready, the release pins the site commit
-   before S3, and U20 follows (KD18).
-5. The rest of the CLI stack merges with `gh stack merge`, default-on last.
+4. C7, C4 and C5 merge, then #291. S4 merges once CLI `dev` reads the contract, and it holds nothing else.
+5. If U20 is ready, S3 merges once C6 is green against S3's head SHA (KTD3 lets a stack pin it), the bump brings its
+   request sets, and C6 merges and deletes any `requests` entries (KTD19). If it is not, S3 stays open and the release
+   pins site `dev` as it stands (KD18).
 6. The next anc release carries `anc web`. Preflight refuses to tag while the ledger has entries, a vendored check binds
    an unported kind, or the pin is off site `dev`, and the release PR shows the same verdict (U12).
 7. The site merges U13 after that release ships.
@@ -410,9 +414,10 @@ The landing order, once the owner merges:
   (R24). The contract lives under `src/data/web-audit/contract/`.
 - anc.dev deploys from site `main` and the pin tracks site `dev`, so a CLI release can carry a contract anc.dev has not
   deployed yet. R5's parity promise holds for one contract; the staleness note names the case (KD19).
-- `CI_RELEASE_TOKEN` is a repository secret, and `dev` requires signed commits. GraphQL `createCommitOnBranch` through
-  that token yields a verified commit where the REST `git/commits` endpoint yields an unsigned one, so the bump workflow
-  commits through GraphQL.
+- `CI_RELEASE_TOKEN` is a repository secret, which `RELEASES.md` documents as a fine-grained PAT with Contents and Pull
+  requests write, and C2's first real run proves it covers this repository. `dev` requires signed commits. GraphQL
+  `createCommitOnBranch` through that token yields a verified commit where the REST `git/commits` endpoint yields an
+  unsigned one, so the bump workflow commits through GraphQL.
 - GitHub runs a `schedule` trigger only from the default branch (`main`), and a workflow reaches `main` only with a
   release, which is why U12 also triggers on `dev` pushes.
 - The next anc release also carries the spec-alignment audit changes on `dev`, so it re-vendors the spec tag they grade
@@ -477,8 +482,8 @@ The landing order, once the owner merges:
 - External: ureq 3.x (no HTTP/2 — acceptable; body exposes `std::io::Read` for SSE; proxy support requires explicit
   `Proxy::try_from_env()` wiring; redirects disabled at the agent per KTD1; `rustls-native-certs` supplies the OS trust
   store for KD12, beside the bundled anchors and `--ca-cert` roots), rustls `aws-lc-rs` backend (rustls's default; its
-  `aws_lc_rs` feature enables `aws-lc-rs/prebuilt-nasm`, and aws-lc-sys 0.46 builds with `cc` where prebuilt bindings
-  ship, so a C compiler is the whole toolchain), webpki-roots (bundled Mozilla CA set, CDLA-Permissive-2.0), regex
+  `aws_lc_rs` feature enables `aws-lc-rs/prebuilt-nasm`, and aws-lc-sys 0.46 builds with `cc`, so a C compiler is the
+  whole toolchain on every release target), webpki-roots (bundled Mozilla CA set, CDLA-Permissive-2.0), regex
   (linear-time engine; the registry carries no lookaround once U8 rewrites the Vary-header pattern).
 
 ---
@@ -492,16 +497,18 @@ The landing order, once the owner merges:
   removed reqwest over a 303-crate transitive tree, and probes are one-shot calls that don't need an event loop;
   attohttpc rejected for having no rustls option; the `ring` backend rejected under KD17.) A C compiler is the whole
   toolchain, and the tree-sitter grammars already need one: rustls's `aws_lc_rs` feature enables
-  `aws-lc-rs/prebuilt-nasm`, and aws-lc-sys 0.46 compiles with `cc`, not cmake, on every release target because prebuilt
-  bindings ship for them. Musl and windows-gnu both build with `nasm` and `cmake` stubbed to exit 127, so no workflow
-  passes `windows_nasm`, no `Cross.toml` exists, and task T1 is dropped. The `[profile.release.package.aws-lc-sys]`
-  `opt-level = "s"` override stays unless the clean-runner real-target benchmark shows a difference beyond noise (U19):
-  removing it costs 1,461,704 bytes for a fixture handshake of 298 ms against 337 ms on a loaded host. U21 builds the
-  web-only crates at `opt-level = "s"` and drops ureq's `brotli` feature. Trust follows KD12, separable from the
-  provider choice: a public target trusts only webpki-roots, the parity requirement (R3); a local or private target also
-  trusts the OS trust store, loaded through `rustls-native-certs`; and `--ca-cert` roots join the trust set for any
-  target (R22). The fetch layer holds one agent per trust class and picks it from the locality class of each hop.
-  Contract details:
+  `aws-lc-rs/prebuilt-nasm`, and aws-lc-sys 0.46 compiles with `cc`, not cmake, because aws-lc-rs 1.18 depends on it
+  with `default-features = false`, so its non-FIPS universal bindings apply on every target and `is_bindgen_required` is
+  false. `Building with: CC` is observed on `x86_64-unknown-linux-gnu` and four zig targets; `clang-cl` on
+  `aarch64-pc-windows-msvc` and NASM on 32-bit x86 Windows are read from source, not built. Musl and windows-gnu both
+  build with `nasm` and `cmake` stubbed to exit 127, so no workflow passes `windows_nasm`, no `Cross.toml` exists, and
+  task T1 is dropped. The `[profile.release.package.aws-lc-sys]` `opt-level = "s"` override stays unless the
+  clean-runner real-target benchmark shows a difference beyond noise (U19): removing it costs 1,461,704 bytes for a
+  fixture handshake of 298 ms against 337 ms on a loaded host. U21 builds the web-only crates at `opt-level = "s"` and
+  drops ureq's `brotli` feature. Trust follows KD12, separable from the provider choice: a public target trusts only
+  webpki-roots, the parity requirement (R3); a local or private target also trusts the OS trust store, loaded through
+  `rustls-native-certs`; and `--ca-cert` roots join the trust set for any target (R22). The fetch layer holds one agent
+  per trust class and picks it from the locality class of each hop. Contract details:
   - The Transport is **single-hop**: the ureq agent has redirects disabled, and a call returns the response head with
     the body still unread, so the body caps apply above the seam, where the site's request memo reads too (KTD15). A
     `src/web_audit/fetch.rs` layer above it ports `guardedFetch` — the manual redirect loop, the 4-hop cap, per-call
@@ -613,15 +620,16 @@ The landing order, once the owner merges:
   never restated as Rust constants. Residual risk: egress class differs (workstation vs Cloudflare), an accepted
   best-effort parity gap under KD2.
 - KTD9 (phase 2). **Staleness compares the vendored contract fingerprint with the one anc.dev serves, for public targets
-  only.** The CLI reads `GET https://anc.dev/api/web-audit/version` (U9) and compares `contract_fingerprint` with its
-  vendored `contract/FINGERPRINT`. The hash covers every file the CLI mirrors, goldens included, so it moves on a
-  handler or scoring change that `registry_fingerprint` misses, and the CLI compares site-generated bytes. The note says
-  "differs" and never "behind" (KD19). The CLI fetches the signal only during `anc web` runs against targets the
-  locality classifier labels public — a local or private target's run makes no anc.dev connection at all. The fetch runs
-  beside the audit on its own thread with a bounded timeout, so it adds nothing to the wall clock (KD18). Any failure,
-  any non-200, an unparseable body, or a body with no `contract_fingerprint` skips the note silently (per KD5 and R6).
-  The remaining public-target fetch is disclosed in `anc web --help`. The version literals have rows in the ecosystem
-  version-model table (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
+  only.** The CLI reads `GET https://anc.dev/api/web-audit/version` (U9) and compares the trimmed `contract_fingerprint`
+  with its vendored `build/FINGERPRINT`, whose file ends in a newline. The hash covers `build/**` minus itself and
+  `test/**`, minus every `README.md`, goldens included, so it moves on a handler or scoring change that
+  `registry_fingerprint` misses, and the CLI compares site-generated bytes. The note says "differs" and never "behind"
+  (KD19). The CLI fetches the signal only during `anc web` runs against targets the locality classifier labels public —
+  a local or private target's run makes no anc.dev connection at all. The fetch runs beside the audit on its own thread
+  with a bounded timeout, so it adds nothing to the wall clock (KD18). Any failure, any non-200, an unparseable body, or
+  a body with no `contract_fingerprint` skips the note silently (per KD5 and R6). The remaining public-target fetch is
+  disclosed in `anc web --help`. The version literals have rows in the ecosystem version-model table
+  (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
 - KTD10. **Locality classification mirrors the site's `ssrf.ts` and gates the whole request chain.** `locality.rs` ports
   the site's classifier verbatim: IPv4 literals in every inet_aton form (dotted, short-dotted, decimal, octal, hex),
   IPv6 literals bracketed or bare with zone ids stripped, IPv4-mapped (`::ffff:a.b.c.d`) and IPv4-compatible forms
@@ -659,14 +667,14 @@ The landing order, once the owner merges:
   - `test/score-parity.json` (hand-authored, moved from `tests/fixtures/web-audit-score-parity.json`) and
     `test/conformance/` (the U8 corpus, moved from `tests/fixtures/web-audit-conformance/`). Every scenario adds a
     `requests.json`: the requests the site engine sent, sorted by the request memo's identity key, each recorded once.
-  - `FINGERPRINT` is a sha256 prefix over the path, length and bytes of every file the CLI mirrors, goldens and
-    hand-authored fixtures included, so it moves when the engine's behavior does. The version signal serves it as
-    `contract_fingerprint`, the identity R6 compares.
+  - `build/FINGERPRINT` is a sha256 prefix over the path, length and bytes of `build/**` minus itself and `test/**`,
+    minus every `README.md`, goldens and hand-authored fixtures included, so it moves when the engine's behavior does.
+    The version signal serves it trimmed as `contract_fingerprint`, the identity R6 compares.
   - One command, `bun scripts/web-audit/gen-fixtures.ts`, regenerates every generated file, and its `--check` runs in
     the site's `bun test` gate through `tests/web-audit-contract.test.ts`, so a stale file fails the site PR that caused
     it. `src/build/web-audit-contract-paths.mjs` owns every contract path and the `CONTRACT_LISTING` pin.
 
-  The CLI's sync maps by consumer: `build/` and `FINGERPRINT` to `src/web_audit/vendored/contract/`, inside the crate,
+  The CLI's sync maps by consumer: `build/` to `src/web_audit/vendored/contract/`, inside the crate,
   and `test/` to `tests/fixtures/web-audit-contract/`, outside it. Neither repo keeps a per-file list beyond the site's
   listing pin. Chosen over vendoring `registry.yaml` with its normalizer inputs: the projection is the engine's actual
   input, and vendoring it deletes the Rust copy of the site normalizer instead of extending it to the server-card schema
@@ -713,13 +721,17 @@ The landing order, once the owner merges:
   contract file, an unknown enumerated value, a field the strict scorecard mirror rejects, a compile failure. The bump
   PR still opens, with a title saying so and the failure listed. Governs R5, R24.
 - KTD18. **One per-audit resolver feeds locality classification and the connect.** `locality::Resolver` and ureq's
-  `unversioned::resolver::Resolver` read one cache that lives for one audit, keyed on the lowercased host and holding
-  the resolved addresses or the failure. Concurrent lookups of one host coalesce into one query, which runs off the
-  callers' threads, so a stalled resolver holds no caller past its own deadline, as ureq's `DefaultResolver` does when
-  it is given a timeout. The connect goes to the address the classifier saw, which closes the resolve-classify-connect
-  gap the site engine documents in `ssrf.ts` and cannot close on Workers. ureq's exact pin covers the `unversioned` API,
-  as it does for `src/web_audit/tls.rs`. A proxied hop still connects to the proxy, and the proxy resolves the target.
-  Governs R12, R23.
+  `unversioned::resolver::Resolver` read one cache that lives for one audit, keyed through one normalizer both traits
+  call, lowercased with trailing dots stripped as `classify_host` strips them, and holding the resolved addresses or the
+  failure. Concurrent lookups of one host coalesce into one query, which runs off the callers' threads, so a stalled
+  resolver holds no caller past its own deadline, as ureq's `DefaultResolver` does when it is given a timeout. The
+  connect goes to the address the classifier saw, which closes the resolve-classify-connect gap the site engine
+  documents in `ssrf.ts` and cannot close on Workers. ureq's exact pin covers the `unversioned` API, as it does for
+  `src/web_audit/tls.rs`. A proxied hop still connects to the proxy, and the proxy resolves the target. A target whose
+  class is unknown counts as not public: `local_target` in `engine/waves.rs` reads
+  `target_locality != Some(Locality::Public)`, and the run re-reads the class from the cache once the root settles, so a
+  lookup that answers late still withholds DoH rows and keeps the class-crossing refusal on declared URLs. Governs R12,
+  R23.
 - KTD19. **A change to which requests go out starts on the site.** R20 holds the port to each scenario's
   `requests.json`, so a change that moves a request set lands on the site engine first, regenerates the contract in that
   PR, reaches the CLI through a bump with `requests` entries in the ledger, and the port PR deletes those entries. A
@@ -739,7 +751,7 @@ is the summary the decisions above rest on.
 
 | Question                                   | Measured                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Decision                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Port against the site engine               | Clean ubuntu-24.04 runner, 5 interleaved rounds, sum of per-target medians: Bun 20.10 s, port 24.06 s (1.20x); a second run, Bun 22.72 s, port 25.45 s, port with a 16/64 idle pool 23.36 s (pool alone -8%). Port faster only on developers.cloudflare.com (1.89 s against 2.56 s). Scores identical but for one target Bun scored 93 or 94 across rounds. Bun startup is about 20 ms.                                                                                                                                                         | U19 and U20 are required; the target is the site's wall clock (KD18)         |
+| Port against the site engine               | Clean ubuntu-24.04 runner, 5 interleaved rounds, sum of per-target medians: Bun 20.10 s, port 24.06 s (1.20x); a second run, Bun 22.72 s, port 25.45 s, port with a 16/64 idle pool 23.36 s (pool alone -8%). Port faster only on developers.cloudflare.com (1.89 s against 2.56 s). Scores identical but for one target Bun scored 93 or 94 across rounds. Bun startup is about 20 ms.                                                                                                                                                         | U19 is required; the gate is a fixed margin of the site's wall clock (KD18)  |
 | Brotli and connection reuse                | Load-independent handshake counts with `brotli` on and off: anc.dev 44 and 12 for 63 requests, vercel.com 30 and 15, supabase.com 47 and 21. Raising idle per host barely moves the count while brotli is on. My read of the mechanism, inferred and not traced at runtime: the brotli decoder stops at stream end, so ureq never sees the end-of-body read, where gzip's `MultiGzDecoder` reads on. Upstream [algesten/ureq#549](https://github.com/algesten/ureq/issues/549) describes the same class, compressed responses inhibiting reuse. | Drop `brotli`: a speed fix and -188,096 bytes (U19, U21)                     |
 | Loaded host against clean runner           | On a host at load 40–58, the same comparison read port 29.35 s, Bun 32.61 s, because load inflated Bun's startup.                                                                                                                                                                                                                                                                                                                                                                                                                               | Benchmarks run on a clean runner (KD18)                                      |
 | Embedded QuickJS against the port          | 4 targets, sum of medians: host 20.69 s, port 15.27 s (1.35x), even with a native URL binding. Cloudflare 2.28x, 290 MB RSS against 70 MB. CPU per audit 0.23–0.63 s against 0.12–0.20 s. One audit ran to 51 s past the 25 s deadline on late timers.                                                                                                                                                                                                                                                                                          | Keep the port (KD2)                                                          |
@@ -822,12 +834,12 @@ Contract layout (KTD14):
 ```text
 src/data/web-audit/contract/        agentnative-site
   README.md                         site-only: consumers, the regenerate command
-  FINGERPRINT                       -> anc: src/web_audit/vendored/contract/; hash of every mirrored file
-  build/                            -> anc: src/web_audit/vendored/contract/
+    build/                              -> anc: src/web_audit/vendored/contract/
     registry.json                   generated: normalized registry projection, readable
     remediation.json                generated: normalized fix catalog, readable
     server-card.schema.json         generated: the vendored schema, byte for byte
     constants.json                  generated: user agent, engine settings, registry fingerprint
+    FINGERPRINT                     generated: hash of build/ and test/ minus READMEs, served trimmed
   test/                             -> anc: tests/fixtures/web-audit-contract/
     score-parity.json               hand-authored scoring cases
     conformance/                    generated corpus
@@ -886,10 +898,10 @@ stateDiagram-v2
 - **A green bump hides drift.** A ledgered bump passes CI, so entries can pile up with nobody porting them. Mitigation:
   the bump PR's body lists every entry by its site owner, U18 shows the same list on the site PR that caused it, and the
   release gate stops the tag (KTD17).
-- **A target without prebuilt aws-lc bindings.** aws-lc-sys falls back to cmake and bindgen on a target with no prebuilt
-  bindings, so a new release row or an aws-lc-sys bump could need a toolchain no row provisions. Mitigation:
-  `release-matrix-check.yml` builds every release row on any PR that touches `Cargo.toml`, `Cargo.lock` or the toolchain
-  pin, so the gap surfaces as a red check before a tag.
+- **An aws-lc-sys build that needs more than a C compiler.** `clang-cl` on `aarch64-pc-windows-msvc` and NASM on 32-bit
+  x86 Windows are extra requirements today, so a new release row or an aws-lc-sys bump could need a toolchain no row
+  provisions. Mitigation: `release-matrix-check.yml` builds every release row on any PR that touches `Cargo.toml`,
+  `Cargo.lock` or the toolchain pin, so the gap surfaces as a red check before a tag.
 - **A red bump run during landing.** Site `dev` and the CLI's sync script change layout in two steps, so one side is
   briefly ahead. Mitigation: the Delivery order keeps the window short, and a failed bump run opens no PR and is not a
   required check, so the next run recovers.
@@ -941,7 +953,7 @@ stateDiagram-v2
 | U12  | 1, 2  | Bump workflow, release gate, staleness note | cli  | `scripts/web-audit-bump.sh`, `.github/workflows/web-audit-bump.yml`, `scripts/release/smoke.sh`, `src/web_audit/render/` | U7, U16; note: U9 |
 | U13  | 1     | Docs and discovery                          | both | `README.md`, `Cargo.toml`, `src/main.rs`, site `src/worker/audit-web/core.ts`, `provenance-copy.ts`                      | U7                |
 | U14  | 1     | Credentialed MCP probes + vantage           | cli  | `src/web_audit/handlers/mcp/session.rs`, `src/web_audit/handlers/protected_resource.rs`, `src/runner/mod.rs`             | U6, U7, U16       |
-| U15  | 1     | Vendoring contract                          | site | `src/data/web-audit/contract/`, `scripts/web-audit/gen-fixtures.ts`, `tests/web-audit-contract.test.ts`                  | U8                |
+| U15  | 1     | Vendoring contract                          | site | `src/data/web-audit/contract/`, `scripts/web-audit/gen-fixtures.ts`, `tests/web-audit-contract.test.ts`                  | U8, U9            |
 | U16  | 1     | Re-pin to the contract                      | cli  | `scripts/sync-web-audit.sh`, `build.rs`, `build_support/web_registry/`, `src/web_audit/scorecard.rs`                     | U2, U3, U15       |
 | U17  | 1     | Request memo                                | cli  | `src/web_audit/fetch/memo/`, `src/web_audit/fetch/redirect.rs`, `tests/web_audit_memo.rs`                                | U1, U16           |
 | U18  | 1     | Site CLI-parity report                      | site | `.github/workflows/web-audit-cli-parity.yml`, `scripts/web-audit/cli-parity-summary.ts`                                  | U15, U16          |
@@ -1030,10 +1042,10 @@ stateDiagram-v2
      `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0` plus `-c credential.helper= -c
      core.askPass= -c protocol.allow=never -c protocol.https.allow=always -c http.followRedirects=false` — with a test
      pinning the hardening surface.
-  3. Sync set, split by consumer: the contract's `build/` directory and `FINGERPRINT` vendor under
-     `src/web_audit/vendored/contract/` because `build.rs` needs them in the crates.io package, and its `test/`
-     directory vendors under `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14).
-     Both map whole, and the drift check compares both listings and bytes.
+  3. Sync set, split by consumer: the contract's `build/` directory vendors under `src/web_audit/vendored/contract/`
+     because `build.rs` needs it in the crates.io package, and its `test/` directory vendors under
+     `tests/fixtures/web-audit-contract/`, which `Cargo.toml` excludes from the package (KTD14). Both map whole, and the
+     drift check compares both listings and bytes.
   4. `build.rs` gains `emit_web_registry` per KTD3: strict reads of the three contract files against a pinned list of
      the files it reads, strict enum parsing, registry regex compilation with the `regex` crate under JS-matching flags
      (fail on lookaround, backreferences, or any rejected pattern, naming the check id), top-level block emission,
@@ -1249,10 +1261,13 @@ stateDiagram-v2
   6. The verb, its `--help` entry, the bare URL-ish routing and the "did you mean anc web" hint are present in every
      build that compiles `web`, which is the default build (KD16, KTD16).
   7. Stderr warnings in JSON mode carry a stable code, `warning: <code>: <message>`, from a closed set:
-     `non-comparable`, `contract-differs`, `routed-to-web`. A sniffed target emits `routed-to-web`, naming
-     `anc audit ./<token>`, and on a failure with no scorecard its envelope's `next_step` is
-     `{action: "fix-target", command: "anc audit ./<token>"}`, because the reader may have meant a path. An
-     `insecure-scheme` failure's `next_step.command` is the `https` form of the target, not `anc web --help`.
+     `non-comparable`, `contract-differs`, `routed-to-web`. A sniffed target that answers emits `routed-to-web`, naming
+     the path form where one applies, and so does a sniffed run with `ANC_WEB_TOKEN` set, saying the token was not read.
+     A sniffed bare name with no scorecard gets the `next_step`
+     `{action: "fix-target", command: "anc audit ./<token>"}`, because the reader may have meant a path; a token with an
+     explicit scheme or port keeps `anc web <token> --verbose`, because `anc localhost:8787` failing means a dev server
+     is down. `RELEASES.md`'s contract list carries the warning format. An `insecure-scheme` failure's
+     `next_step.command` is the `https` form of the target, not `anc web --help`.
 - **Patterns to follow:** `src/cli.rs` `Audit` variant; the seven gotchas in
   `docs/solutions/best-practices/clap-default-subcommand-via-argv-pre-parse-20260415.md`;
   `docs/solutions/architecture-patterns/anc-cli-output-envelope-pattern-2026-04-29.md`.
@@ -1273,8 +1288,9 @@ stateDiagram-v2
   - Edge: a run with an unported-handler skip carries the non-comparable-score flag naming the kind.
   - Edge: `anc web http://localhost:8787` exits 3 naming the no-plaintext reason, with no connection attempted. Covers
     AE2.
-  - Error: a sniffed target that does not resolve names the top-level-domain reading and `anc audit ./<token>`, in text
-    and in the envelope. Covers AE13.
+  - Error: a sniffed bare name that does not resolve names the top-level-domain reading and `anc audit ./<token>`, in
+    text and in the envelope, and `anc localhost:8787` with nothing listening keeps `anc web localhost:8787 --verbose`.
+    Covers AE13.
   - Edge: a sniffed target that answers prints `warning: routed-to-web: ...` on stderr, and an explicit
     `anc web <target>` does not. Covers AE13.
   - Error: `anc web http://localhost:8787` has `next_step.command` `anc web https://localhost:8787/`.
@@ -1332,8 +1348,8 @@ stateDiagram-v2
      one object: `{"spec_version":"0.7.0","registry_fingerprint":"c06f1efd281b","web_schema_version":"0.5"}`.
      `registry_fingerprint` is the 12-hex prefix every stored web scorecard records, computed at request time from the
      deployed registry. There is no new state, build step, or KV or R2 read.
-  2. U15 adds `contract_fingerprint` additively, the contract's `FINGERPRINT` file (KTD9). A client reads the field it
-     needs and ignores the others.
+  2. U15 adds `contract_fingerprint` additively, the trimmed contents of the contract's `build/FINGERPRINT` (KTD9). A
+     client reads the field it needs and ignores the others.
   3. It serves as HIT-1d: it has no `s-maxage` and a new Worker version starts cold, so a deploy that moves a value
      shows at the edge right away.
   4. Any non-200 means skip for the CLI. Other methods answer 405 with `Allow: GET, HEAD`, and an unreadable registry
@@ -1409,10 +1425,9 @@ stateDiagram-v2
      verb emits which, and the fix-guidance surfaces. The exit-code table is rewritten for KTD12's single table,
      including the new could-not-check code. The section states the routing rule (the IANA list minus the extension
      denylist, a path always wins, `anc audit` forces a path) and carries no literal check count, because the count
-     moves with every bump: `README.md:8` and `:357` say 65 where the registry holds 68. The install section says that a
-     target with no prebuilt aws-lc bindings (anything outside x86-64 and aarch64 Linux gnu and musl, x86-64 and aarch64
-     macOS, and x86-64 Windows) needs cmake and bindgen for `cargo install`, or `--no-default-features` to build without
-     the verb.
+     moves with every bump: `README.md:8` and `:357` say 65 where the registry holds 68. The install section says
+     `cargo install` needs a C compiler, plus `clang-cl` on `aarch64-pc-windows-msvc` and NASM on 32-bit x86 Windows,
+     names Windows on Arm as the example, and gives `--no-default-features` as the escape hatch.
   2. The anc.dev refusal for a local, private or internal target points at the local command. This is the highest-intent
      moment in the funnel: the visitor has just proved they want exactly this. `ANC_WEB_RELEASED` in
      `src/worker/audit-web/provenance-copy.ts` gates the two not-run strings (`notRunRemedy`, `notRunScoreNote`), and
@@ -1423,8 +1438,7 @@ stateDiagram-v2
   3. Bring this crate onto the `xurl-rs` docs standard: `#![deny(missing_docs)]`, the README wired in as the rustdoc
      landing page through `#![doc = include_str!("../README.md")]`, `#![warn(missing_debug_implementations)]`, a
      `[package.metadata.docs.rs]` block, and the pre-push gate running `cargo doc --no-deps` under
-     `RUSTDOCFLAGS="-D warnings"`. The `documentation` field currently advertises a docs.rs page the crate cannot
-     populate, because it has no library target; resolve that as part of adopting the standard.
+     `RUSTDOCFLAGS="-D warnings"`. This step has landed (#106), and `src/lib.rs` is the library target docs.rs builds.
 - **Patterns to follow:** `xurl-rs` `crates/xdk/src/lib.rs` (the `include_str!` landing page and the lint set),
   `crates/xdk/Cargo.toml` (`[package.metadata.docs.rs]`), and `xurl-rs` `scripts/hooks/pre-push` (the rustdoc gate).
 - **Test scenarios:**
@@ -1447,25 +1461,30 @@ stateDiagram-v2
 - **Files:** `scripts/web-audit-bump.sh`, `.github/workflows/web-audit-bump.yml`,
   `scripts/web-audit-divergence-ledger.py`, `tests/common/ledger.rs`, `tests/fixtures/web-audit-divergences.toml`,
   `scripts/web-audit-release-gate.sh`, `scripts/release/smoke.sh`, `.github/workflows/ci.yml`, `RELEASES.md`,
-  `RELEASES-PREFLIGHT.md`, `scripts/SYNCS.md`, `src/web_audit/registry.rs`, `src/web_audit/emit.rs`,
+  `RELEASES-PREFLIGHT.md`, `scripts/SYNCS.md`, `README.md`, `src/web_audit/registry.rs`, `src/web_audit/emit.rs`,
   `src/web_audit/render/`, `src/cli.rs`, `src/main.rs`, `tests/web_audit_render.rs`, `tests/integration.rs`.
 - **Approach:**
   1. **Triggers: `push` to `dev`, `schedule` (daily), `workflow_dispatch`.** GitHub runs `schedule` and
      `workflow_dispatch` only from a workflow file on the default branch, and this file reaches `main` only with a
      release, so the `dev` push trigger is the one that works before then and the other two take over after. A run with
-     nothing to bump exits at once, so a `dev` push costs one `git ls-remote`, and merging a bump PR ends in a no-op
-     run. Every trigger checks out `dev` explicitly (`ref: dev`), since a `schedule` run starts from `main`, whose pin
-     is the last release's.
+     nothing to bump exits at once, and merging a bump PR ends in a no-op run. Every trigger checks out `dev` explicitly
+     (`ref: dev`), since a `schedule` run starts from `main`, whose pin is the last release's.
   2. **Script.** `scripts/web-audit-bump.sh` (with `--dry-run`) resolves site `dev` HEAD, runs
      `sync-web-audit.sh --pin`, and exits 0 with "nothing to bump" when no vendored file changed. A site commit that
      leaves the contract alone therefore moves nothing. The one exception: a pin that is not a commit on site `dev`
      always bumps, even with identical bytes, because squash-merging a site PR the stack pinned by head SHA gives the
-     same contract a new commit, and otherwise the pin stays off `dev` with no PR to move it.
+     same contract a new commit, and otherwise the pin stays off `dev` with no PR to move it. When `bot/web-audit-bump`
+     already carries the resolved site SHA and the pushed range changes nothing under `src/`, `tests/`, `scripts/`,
+     `build.rs` or `Cargo.*`, the run exits without touching the branch, so `dev` traffic does not restart the open PR's
+     CI; a push that touches code regenerates it, since it can change what the ledger holds.
   3. **Ledger regeneration.** A bump that changed a vendored file runs
      `scripts/web-audit-divergence-ledger.py --since <old pin>` against a site clone with history, so each entry is
-     owned by the site PR that set its golden (KTD17). The generator reads goldens at each revision from the path that
-     revision kept them at, because a range can straddle the contract's move. The ledger gains the `requests` element
-     once U16 vendors `requests.json`.
+     owned by the site PR that set its golden (KTD17). The generator reads the committed ledger first: an element that
+     still diverges and that no commit in the range changed keeps its recorded owner, and only an element with neither
+     is an error, because `sys.exit("no site commit in range touched ...")` would otherwise stop the second bump over a
+     carried entry and open no PR. It reads goldens at each revision from the path that revision kept them at, because a
+     range can straddle the contract's move, and a `requests` element's owner reads `requests.json`. The ledger gains
+     the `requests` element once U16 vendors `requests.json`.
   4. **What stays red.** Only the structural failures KTD17 names. The PR still opens, with a title that says so, and
      the body lists the failure.
   5. **PR mechanics.** One fixed branch, `bot/web-audit-bump`, force-updated, and one PR to `dev`, created or edited,
@@ -1474,9 +1493,12 @@ stateDiagram-v2
      The body fills the repo's PR template and lists the old and new pin, the changed vendored files, any unported
      kinds, and the ledger entries by owner. A bump that adds, retires or re-tiers a check carries a `### Changed`
      bullet naming them, since the PR body is the changelog's source, and one that moves only goldens leaves
-     `## Changelog` empty. Actions are SHA-pinned, `permissions:` is least-privilege, `rust-cache` covers the build, and
-     the token reaches only the commit and PR step, never the step that compiles and runs tests. A bot PR never merges
-     itself.
+     `## Changelog` empty. Actions are SHA-pinned, `permissions:` is least-privilege, and `rust-cache` covers the build.
+     The workflow has two jobs. The first holds no token, compiles, runs the sync and the ledger, and uploads the
+     changed paths. The second holds `CI_RELEASE_TOKEN` on a fresh runner, runs no build and no script from the first,
+     refuses any path outside the sync script's destinations and the ledger, commits through GraphQL, and opens the PR.
+     A step boundary would not isolate the token, because a compile step's `$GITHUB_ENV` and `$GITHUB_PATH` writes and
+     still-running processes carry into later steps of one job. A bot PR never merges itself.
   6. **Release gate.** `scripts/web-audit-release-gate.sh` fails when `tests/fixtures/web-audit-divergences.toml` has
      entries, naming them; when `anc emit web-checks` reports a check with `ported: false`, naming it; and when
      `src/web_audit/vendored/SITE_SHA` is not a commit on site `dev`, read through the sync script's hardened fetch. It
@@ -1494,8 +1516,12 @@ stateDiagram-v2
      bounded timeout, and silently skipped on any failure, any non-200, or a body with no `contract_fingerprint`; inline
      in text mode, on stderr in JSON mode as `warning: contract-differs: ...` (AE9); `--help` discloses the
      public-target fetch. It says "differs from anc.dev", never "behind", because a CLI pinned to site `dev` can be
-     ahead of what anc.dev deploys (KD19). `--verbose` states the check's result every time (`anc.dev contract: same`,
-     `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
+     ahead of what anc.dev deploys (KD19). It states that a verdict can differ as a result and names the pinned site
+     SHA. It may say a newer anc release can carry anc.dev's contract, and does not present upgrading as the action,
+     because the hash moves on any site release touching scoring, so the latest anc can differ with nothing newer to
+     take. README's "What `anc web` Sends" names this fetch and the DoH resolvers, where it says the audit contacts
+     "nothing else". `--verbose` states the check's result every time (`anc.dev contract: same`, `differs`, or
+     `not checked (<reason>)`), so no note is not ambiguous.
   8. The new version literals join the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
   9. A short "Handling a bump PR" section in `RELEASES.md` says what each state means and what to do: green with no
@@ -1510,6 +1536,10 @@ stateDiagram-v2
     empty.
   - Integration: a throwaway site check plus its regenerated corpus passes every web suite with no hand edit, through
     the ledger.
+  - Edge: two consecutive bumps, the second not touching the first's scenario, keep the first entry with its owner and
+    open the PR.
+  - Edge: an open bump PR already at the resolved site SHA is left untouched by a docs-only `dev` push, and regenerated
+    by a push under `src/`.
   - Edge: a corpus divergence regenerates the ledger, each entry names a site PR, and the conformance suite is green;
     deleting an entry turns it red, and a ledgered element that starts matching turns it red. Covers AE11.
   - Edge: a registry entry with an unported handler kind binds to the placeholder, CI stays green, and full-run verdict
@@ -1524,6 +1554,7 @@ stateDiagram-v2
   - Edge: a signal that stalls adds nothing to the run's wall clock.
   - Integration: the signal fetch honors the configured proxy, sends the identifying user agent, and carries no token.
   - Edge: `--verbose` prints `same`, `differs` or `not checked` with its reason on every public-target run.
+  - Edge: a vendored `FINGERPRINT` with its trailing newline equals the same value served trimmed.
   - Error: each gate refusal prints its code, cause and fix.
   - Integration: `--help` and `--version` still make zero network calls.
 - **Verification:** A bump PR opened by the workflow from a stale pin carries a verified commit and runs CI, on a
@@ -1572,15 +1603,14 @@ stateDiagram-v2
   conformance scenario's request set recorded.
 - **Requirements:** R9, R10, R20. Implements KTD14 (session-settled via KD10, KD13, KD14; cites R9, R10, R20).
 - **Dependencies:** U8 (the corpus generator it extends), and U9 for the signal field. PR #504, stacked on #503.
-- **Files (agentnative-site):** `src/data/web-audit/contract/` (`README.md`, `.editorconfig`, `FINGERPRINT`, `build/`,
-  `test/`), `src/build/web-audit-contract-paths.mjs`, `scripts/web-audit/contract.ts`,
-  `scripts/web-audit/gen-fixtures.ts`, `scripts/web-audit/conformance-corpus.ts`,
-  `scripts/web-audit/conformance-requests.ts`, `scripts/web-audit/conformance-scenarios.ts`,
-  `src/build/12-minify-dist.mjs`, `src/build/13-web-audit-registry.mjs`, `src/worker/audit-web/request-hop.ts` and the
-  engine modules whose settings and vocabularies the contract reads (exports only),
-  `src/worker/audit-web/version-signal.ts`, `scripts/scoring/score_model.py` (fixture path), `biome.json`,
-  `.gitattributes`, `.markdownlint-cli2.yaml`, `.vale.ini`, `scripts/prose-check.sh`, `scripts/SYNCS.md`, the tests that
-  read the moved paths, `tests/regression.test.ts`, `tests/web-audit-contract.test.ts`.
+- **Files (agentnative-site):** `src/data/web-audit/contract/` (`README.md`, `.editorconfig`, `build/`, `test/`),
+  `src/build/web-audit-contract-paths.mjs`, `scripts/web-audit/contract.ts`, `scripts/web-audit/gen-fixtures.ts`,
+  `scripts/web-audit/conformance-corpus.ts`, `scripts/web-audit/conformance-requests.ts`,
+  `scripts/web-audit/conformance-scenarios.ts`, `src/build/12-minify-dist.mjs`, `src/build/13-web-audit-registry.mjs`,
+  `src/worker/audit-web/request-hop.ts` and the engine modules whose settings and vocabularies the contract reads
+  (exports only), `src/worker/audit-web/version-signal.ts`, `scripts/scoring/score_model.py` (fixture path),
+  `biome.json`, `.gitattributes`, `.markdownlint-cli2.yaml`, `.vale.ini`, `scripts/prose-check.sh`, `scripts/SYNCS.md`,
+  the tests that read the moved paths, `tests/regression.test.ts`, `tests/web-audit-contract.test.ts`.
 - **Approach:**
   1. Export the request memo's identity key from `request-hop.ts` and use it in the memo, the generator and
      `tests/web-audit-request-memo.test.ts`, so one function decides what counts as the same request.
@@ -1590,11 +1620,11 @@ stateDiagram-v2
   3. Move the corpus and the score-parity fixture under `contract/test/` as renames, and repoint every reader and
      writer: `CORPUS_DIR`, the corpus README template's path prose, the scoring script's fixture argument, and the docs
      that name the old paths.
-  4. Extend `gen-fixtures.ts` to write `contract/build/`, `FINGERPRINT` and each scenario's `requests.json`. It records
-     requests at `stubFetchFor` before matching, sorts them by the identity key, and throws when a scenario sends one
-     twice. It also runs each scenario at concurrency 1 and fails when the scorecard or the request set differs from the
-     default run.
-  5. Serve `FINGERPRINT` as `contract_fingerprint` on the version signal (U9, KTD9).
+  4. Extend `gen-fixtures.ts` to write `contract/build/`, including `FINGERPRINT`, and each scenario's `requests.json`.
+     It records requests at `stubFetchFor` before matching, sorts them by the identity key, and throws when a scenario
+     sends one twice. It also runs each scenario at concurrency 1 and fails when the scorecard or the request set
+     differs from the default run.
+  5. Serve `build/FINGERPRINT`, trimmed, as `contract_fingerprint` on the version signal (U9, KTD9).
   6. Keep every tool off the generated bytes: Biome, `.gitattributes -text`, markdownlint, Vale, both `prose-check.sh`
      modes and a nested `.editorconfig`. The contract's own `README.md` stays linted.
   7. Add the contract test. The committed files equal a fresh generation, `tests/regression.test.ts` holds `minifyJson`
@@ -1615,8 +1645,8 @@ stateDiagram-v2
   - Happy path: a fresh generation equals the committed contract byte for byte, and two generations produce identical
     bytes.
   - Happy path: `run-healthy`'s `requests.json` lists every request its audit sent, sorted, each once.
-  - Happy path: the signal's `contract_fingerprint` equals the committed `FINGERPRINT`, and editing any mirrored file
-    without regenerating fails the contract test.
+  - Happy path: the signal's `contract_fingerprint` equals the committed `build/FINGERPRINT`, trimmed, and editing any
+    mirrored file without regenerating fails the contract test.
   - Edge: a constant edited at its owning module without regenerating fails the contract test, naming the stale file.
   - Edge: a file added to `build/` or `test/` without updating the pinned listing fails the listing test.
   - Error: a scenario whose audit sends a request twice fails generation, naming the scenario and the request.
@@ -1642,8 +1672,8 @@ stateDiagram-v2
   `scripts/web-audit-divergence-ledger.py`, `.markdownlint-cli2.yaml`, `scripts/prose-check.sh`, `scripts/SYNCS.md`.
 - **Approach:**
   1. Pin `SITE_SHA` to a site commit carrying the contract (KTD3), and map it by consumer in `sync-web-audit.sh`:
-     `build/` and `FINGERPRINT` inside the crate, `test/` outside it. `--check` compares every listing as well as the
-     bytes.
+     `build/`, which carries `FINGERPRINT`, inside the crate, `test/` outside it. `--check` compares every listing as
+     well as the bytes.
   2. Delete the legacy vendored copies (`registry.yaml`, `remediation.yaml`, the three TypeScript modules, the old
      corpus and parity-fixture paths) and `build_support/ts_consts.rs`, and drop the normalizer mirror from
      `build_support/web_registry/`, keeping the regex translation and the table emission (KTD3).
@@ -1764,8 +1794,10 @@ stateDiagram-v2
      count while it stays on. Every step below measures on top of this one.
   2. **Per-audit DNS cache**, per KTD18: one resolver for locality classification and ureq's connect.
   3. **Idle pool sized to the concurrency.** ureq keeps 3 idle connections per host and 10 in total by default, and an
-     audit runs 6 workers at one host. Set `max_idle_connections_per_host` to the concurrency and `max_idle_connections`
-     to cover the declared hosts. A 16/64 pool alone took 8% off the clean-runner total.
+     audit runs 6 workers at one host. Set `max_idle_connections_per_host` to 16 and `max_idle_connections` to 64, the
+     measured values, which took 8% off the clean-runner total. A worker can hold more than one connection, because
+     `cors_preflight.rs` and `api_hygiene.rs` fan out and detached readers keep a connection after their caller returns,
+     so a cap at the concurrency would close the extras. A smaller pool needs its own benchmark arm first.
   4. **Connection reuse after capped and status-only reads.** ureq returns a connection to its pool only when the body
      reaches its end, so a read that stops early loses the socket. Drain the remainder on a detached reader, like the
      memo's capture (KTD15), up to a measured byte bound and the caller's deadline, and close past either, so a slow
@@ -1792,6 +1824,9 @@ stateDiagram-v2
     classes classifies as `classify_host` does: a metadata address wins, then any local address.
   - Error: a resolver that never answers holds no caller past its own deadline, and waiters on that lookup time out with
     it.
+  - Error: a lookup that outlasts the first caller's deadline and then answers a 10.x address sends no DoH request.
+  - Edge: a redirect to `host.` with a resolver answering public and then private connects to the first address and asks
+    once.
   - Edge: with a proxy configured, a public hop connects to the proxy, and a local hop connects directly to the cached
     address.
   - Error: a failed lookup answers the rest of that audit from the cache, and the next audit asks again.
@@ -1803,16 +1838,16 @@ stateDiagram-v2
     stalling remainder returns the caller at its cap.
   - Edge: the first progress line appears before the root fetch, and a run that hits the deadline still prints the
     closing line. Covers AE12.
-- **Verification:** The committed benchmark shows the port within one run's noise of the site engine's sum of medians at
-  the same pin (KD18), with every score matching; the corpus and the transport suite are green; the aws-lc call and its
-  numbers sit in KTD1.
+- **Verification:** The committed benchmark shows the port within KD18's margin of the site engine at the same pin; the
+  corpus and the transport suite are green; the aws-lc call and its numbers sit in KTD1.
 
 ### U20. Request sharing and fan-out
 
 - **Goal:** Close the time a run spends waiting. Brett's direction: "optimize for parallel fan-out as well as
   intelligently sharing results when possible (eg grab the whole response the first time and pass it or parts of it to
   later tests that need it, to prevent them from making their own request; unless time sensitive)".
-- **Requirements:** R20, R23, R5. Implements KTD19.
+- **Requirements:** R20, R5, and the owner's direction for absolute speed, which KD18's gate does not depend on.
+  Implements KTD19.
 - **Dependencies:** U15 (the site half stacks on #504), U16, and U19 for the port's single worker pool.
 - **Files:** in `agentnative-site`, `src/worker/audit-web/engine.ts`, the `llms-txt-links` handler, the expectation
   reader, and the regenerated `contract/`; in this repo, `src/web_audit/engine/{mod,waves,pool,discovery}.rs`,
@@ -1833,9 +1868,12 @@ stateDiagram-v2
   1. Dependency-driven scheduling replaces the wave barrier: a check starts when what it reads has settled. Edges follow
      what resolvers and handlers read: `content-without-js` waits on `llms-txt`, auth rows on OpenAPI and the MCP
      settle, API rows on `llms-txt` and the sitemap, markdown-twin rows on `llms-txt`, and `llms-txt-scoped` does not
-     wait on `llms-full-txt`.
-  2. `llms-txt-links` probes fan out under a deterministic budget rule, so the set a scenario sends does not depend on
-     completion order.
+     wait on `llms-full-txt`. The initialized notification, which the wave barrier orders today, is its own node: it
+     waits on `mcp-initialize`, and every MCP row that carries the session waits on it.
+  2. `llms-txt-links` probes fan out under one rule: the capped links start together under the check's one deadline, and
+     a probe unsettled at that deadline reports the existing `nested-probe budget exhausted` evidence with `incomplete`
+     set. A new corpus scenario with a link that stalls past the budget pins the rule for both engines through its
+     golden and `requests.json`.
   3. Root fetch and discovery run concurrently, keeping the degraded-budget cut on a dead root. This is the one accepted
      request-set change: `run-root-redirects-to-http` gains the same-origin https first-pass document GETs, since no
      overlap can avoid them. Its unreachable output is unchanged, and nothing goes over http.
@@ -1849,15 +1887,20 @@ stateDiagram-v2
     a superset, sending targets more requests than they get today.
   - Memo largest-cap-first: about zero saving, given the one re-send.
   - A per-host cap: negligible effect.
-- **Constraints:** When the port's half lands, KTD2's pool and the run-pipeline diagram move with it. A time-sensitive
-  or negotiation probe keeps its own request. Verdicts and scores on every corpus scenario stay put unless a site PR
-  moves a golden on purpose. Each caller keeps its own deadline (KTD2, KTD15). U15's concurrency check keeps passing, so
-  the request set stays independent of schedule. RSS stays reported (KD18).
+- **Constraints:** The data is from Bun, and anc.dev runs this engine on Workers, which allows six simultaneous
+  connections waiting for headers, so the site half measures a staging run before it merges: a seventh request queued
+  there spends its timeout waiting, which could change official rows in ways the mock corpus cannot show. When the
+  port's half lands, KTD2's pool and the run-pipeline diagram move with it. A time-sensitive or negotiation probe keeps
+  its own request. Verdicts and scores on every corpus scenario stay put unless a site PR moves a golden on purpose.
+  Each caller keeps its own deadline (KTD2, KTD15). U15's concurrency check keeps passing, so the request set stays
+  independent of schedule. RSS stays reported (KD18).
 - **Test scenarios:**
   - Happy path: a check with settled antecedents starts while an unrelated slow check is still reading, where the wave
     barrier would have held it.
-  - Edge: `llms-txt-links` sends the same set at concurrency 1 and at the default, and the budget rule stops at the same
-    probes.
+  - Edge: `llms-txt-links` sends the same set at concurrency 1 and at the default, and a link stalling past the budget
+    reports `nested-probe budget exhausted` with `incomplete` set in both engines.
+  - Edge: a stub that answers MCP requests with an error until the initialized notification arrives yields the verdicts
+    the wave barrier yields, in both engines.
   - Edge: on a dead root, the degraded per-check timeout still applies, and the run ends inside the deadline with the
     same outcome the corpus records.
   - Edge: `run-root-redirects-to-http` sends its recorded same-origin https GETs and nothing over http, and its
@@ -1868,8 +1911,9 @@ stateDiagram-v2
   - Integration: every scenario's scorecard and request set match the goldens at the pin carrying the site half, with
     the ledger empty once the port lands.
 - **Verification:** The site PR regenerates the contract wherever a set moves, and U15's concurrency check passes. The
-  port PR empties the `requests` entries that bump opened. The committed benchmark (U19) shows both engines faster at
-  the same pin, with the port still within one run's noise of the site engine.
+  port PR empties the `requests` entries that bump opened. One benchmark run interleaves four arms, each engine at the
+  pin before S3 and at the S3 pin, and U19's harness takes the extra pin as an input: each engine's after arm reads
+  lower than its before arm in that run, and the port's after arm meets KD18's gate against the site's.
 
 ### U21. Release size
 
@@ -1906,7 +1950,7 @@ stateDiagram-v2
 | Release gate     | `scripts/release/preflight.sh smoke`; the same script on PRs to `main` in `ci.yml`                                        | R24: no tag with ledger entries, an unported kind, or a pin off `dev`   |
 | Conformance      | `cargo test --test web_audit_conformance`                                                                                 | R5 and R20 parity against the vendored corpus and ledger (KTD16, KTD17) |
 | Size             | `scripts/check-binary-size.sh` in `ci.yml`'s release binary size job                                                      | The 20 MiB ceiling, on the default release build (KD2)                  |
-| Speed            | `.github/workflows/web-audit-bench.yml`, not in any ruleset                                                               | R23: within one run's noise of the site engine at one pin (KD18)        |
+| Speed            | `.github/workflows/web-audit-bench.yml`, not in any ruleset                                                               | R23: within KD18's margin of the site engine at one pin                 |
 | Dogfood          | `anc audit .` green + bare-invocation regression corpus                                                                   | New verb regresses neither anc's audit nor existing routing             |
 | Exit codes       | `cargo test --test integration exit_code`                                                                                 | KTD12's single table across both verbs, including could-not-check       |
 | First fix        | `cargo test --test web_audit_render`                                                                                      | Every failing row carries goal, fix and links (R15)                     |
@@ -1919,24 +1963,23 @@ stateDiagram-v2
 
 ## Definition of Done
 
-- Phase 1: U1–U8, U10, U11, U13–U21 and U12's bump workflow and release gate landed; every phase-1 gate in the
-  Verification Contract green in CI, both repos. Phase 2: U9 and U12's staleness note landed, reading
-  `contract_fingerprint`.
+- Phase 1: U1–U8, U10, U11, U14–U19, U21, the CLI half of U13, and U12's bump workflow and release gate landed, with U20
+  when it is ready (KD18); every phase-1 gate in the Verification Contract green in CI, both repos. Phase 2: U9 and
+  U12's staleness note landed, reading `contract_fingerprint`.
 - `web` is in `default`, and no release branch strips web code (KD16).
 - AE1–AE14 each enforced by a named test (the `Covers` links in unit test scenarios).
-- **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, the site's
-  refusal points a local target at the local command, and this crate meets the `xurl-rs` docs standard: every public
-  item documented under `#![deny(missing_docs)]`, the README wired in as the rustdoc landing page, the docs.rs metadata
-  block present, and `cargo doc --no-deps` clean under `RUSTDOCFLAGS="-D warnings"`. The feature does not land without
-  them (U13).
+- **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, and this crate
+  meets the `xurl-rs` docs standard: every public item documented under `#![deny(missing_docs)]`, the README wired in as
+  the rustdoc landing page, the docs.rs metadata block present, and `cargo doc --no-deps` clean under
+  `RUSTDOCFLAGS="-D warnings"`. The feature does not land without them (U13). The site's refusal pointer is reviewed and
+  ready, and merges after the release.
 - Every failing row carries its goal, fix and doc links in text mode, and `anc emit web-remediation` serves the same
   catalog offline (R15).
 - Every path that ends without a scorecard emits the structured envelope in JSON mode and a problem-cause-next-action
   message in text mode (R16).
 - One exit-code table across both verbs, named in each run's output and pinned by a test (R17).
-- The committed benchmark shows the port within one run's noise of the site engine on a clean runner at one pin, with
-  every score matching (R23, KD18, U19), and a run says it started and that it finished (AE12). U20 is not a condition
-  of the first release (KD18).
+- The committed benchmark shows the port within KD18's margin of the site engine on a clean runner at one pin (R23,
+  U19), and a run says it started and that it finished (AE12). U20 is not a condition of the first release (KD18).
 - The bump workflow has opened a real re-pin PR with a verified commit and green CI, and `preflight.sh smoke` refuses a
   seeded ledger (R24, U12).
 - The first release that carries `anc web` tags with an empty ledger, no unported binding, and a pin on site `dev`, and
@@ -2139,12 +2182,13 @@ user sees. No critical gaps remain (a critical gap is no test, no handling, and 
 | `build.rs` codegen  | site adds a handler kind before the port               | yes  | skip     | "handler not yet ported" + non-comparable score flag               |
 | `argv.rs` sniff     | filename shaped like a host (`anc main.go`, `a.rs:42`) | yes  | offline  | today's audit error plus a did-you-mean hint (AE8)                 |
 | Sync script         | pinned SHA unreachable                                 | yes  | fail     | script exits naming the SHA; nothing vendored                      |
-| Release matrix      | a release row has no prebuilt aws-lc bindings          | yes  | CI       | red `release-matrix-check` on the PR, before any tag               |
+| Release matrix      | a release row's aws-lc-sys build needs more than `cc`  | yes  | CI       | red `release-matrix-check` on the PR, before any tag               |
 | `fetch/memo.rs`     | a skipped body stalls after the headers                | yes  | capture  | probe answers at headers; readers keep own deadlines               |
 | `fetch/redirect.rs` | target or redirect hop leads to `http`                 | yes  | refuse   | unreachable, no-plaintext reason, exit 3                           |
 | site contract gen   | engine setting changed, contract not regenerated       | yes  | fail     | the site PR fails `bun test`, naming the stale file                |
 | bump workflow       | a re-pin brings a corpus divergence                    | yes  | ledger   | green bump PR listing entries by site owner                        |
 | bump workflow       | a contract file the build cannot read                  | yes  | red      | PR opens, title and body name the failure                          |
+| ledger generator    | a carried entry no commit in the range touched         | yes  | keep     | the entry keeps its owner, and the PR opens                        |
 | release gate        | ledger entries, an unported kind, or a pin off `dev`   | yes  | refuse   | `preflight.sh smoke` fails, naming them                            |
 | bump workflow       | site `dev` and the sync script disagree on layout      | yes  | red run  | the run fails naming the path; no PR, nothing blocked              |
 | bump workflow       | a pin off site `dev` with identical contract bytes     | yes  | bump     | a re-pin PR with no vendored file changed                          |
@@ -2184,14 +2228,15 @@ user sees. No critical gaps remain (a critical gap is no test, no handling, and 
 
 Lanes for the open work:
 
-- Lane A: U9 → U15 → U20 site half → U18 (site repo, one linear stack).
-- Lane B: #289 → U12's bump workflow → U16 (sequential, shared vendored inputs, `tests/common/ledger.rs` and the ledger
-  generator).
+- Lane A: U9 → U15, then U18 and U20's site half, each on U15 (site repo).
+- Lane B: #289 → U12's bump workflow → U16 → U12's note and release gate (sequential, shared vendored inputs,
+  `tests/common/ledger.rs` and the ledger generator).
 - Lane C: U19 + U21 (parallel to lane B, touching `src/web_audit/transport.rs`, the engine and `Cargo.toml`).
-- Lane D: U20's port (after lanes B and C and the site half), then U12's staleness note and release gate.
-- Lane E: #291, default-on, on `dev`, merging last.
+- Lane D: U20's port (after lanes B and C and the site half).
+- Lane E: #291, default-on, on `dev`, merging after U12's gate. It never waits on lane D.
 
-Execution order: lanes A, B and C run in parallel in their own slots. Lane D follows. Lane E waits for the rest.
+Execution order: lanes A, B and C run in parallel in their own slots. Lane E follows lane B's gate. Lane D follows when
+it is ready.
 
 Conflict flags: lane C and U20's port both touch `src/web_audit/engine/`, and U20's port waits for lane C by
 dependency. #291 and U21 both touch `Cargo.toml`, in separate sections, and #291, U16 and
@@ -2300,11 +2345,11 @@ checkbox as you ship.
     `src/web_audit/emit.rs`, `src/web_audit/registry.rs`.
   - Verify: `preflight.sh smoke` refuses a seeded ledger and an unported kind, and a PR to `main` with one shows the red
     step.
-- [ ] **T23 (P2, human: ~2 h / CC: ~10 min)** — U12 workflow — Check out `dev` on every trigger, keep the token out of
-  the test step, and carry a changelog bullet for check changes.
+- [ ] **T23 (P2, human: ~2 h / CC: ~10 min)** — U12 workflow — Check out `dev` on every trigger, keep the token in a
+  second job, and carry a changelog bullet for check changes.
   - Surfaced by: Scope Challenge S3; Architecture A3, A4.
   - Files: `.github/workflows/web-audit-bump.yml`, `scripts/web-audit-bump.sh`.
-  - Verify: reading the workflow shows `ref: dev` and the token on one step; a bump adding a check names it under
+  - Verify: reading the workflow shows `ref: dev` and the token in one job; a bump adding a check names it under
     `### Changed`.
 - [ ] **T24 (P2, human: ~2 h / CC: ~10 min)** — U18 — Pass `--features web`, and read a missing dump as unavailable.
   - Surfaced by: Code Quality Q2 — `tests/web_audit_divergences.rs:8` compiles to nothing without the feature, which
@@ -2327,14 +2372,15 @@ checkbox as you ship.
 - [ ] **T27 (P1, human: ~4 h / CC: ~20 min)** — U7 — Sniffed targets name the path form; warnings carry codes;
   `insecure-scheme` names the `https` command.
   - Surfaced by: DX Pass 2 and 3, X1, X4, X8 — a script author whose path is missing sees only
-    `next: anc web <token> --verbose`.
+    `next: anc web <token> --verbose`. #291 emits `non-comparable` and `routed-to-web`, and `contract-differs` belongs
+    to U12's note.
   - Files: `src/main.rs`, `src/web_audit/render/failure.rs`, `src/web_audit/render/text.rs`,
     `tests/web_audit_failures.rs`.
   - Verify: AE13's two scenarios, and `next_step.command` on an `http` target.
 - [ ] **T28 (P2, human: ~2 h / CC: ~10 min)** — U13 — Drop the README's literal check count, state the routing rule, and
-  name the targets outside the prebuilt bindings.
-  - Surfaced by: DX Pass 1 and 4, X5, X6 — `README.md:8` says 65 where the registry holds 68, and #291's "needs nothing"
-    holds only on the prebuilt targets.
+  name the targets that need more than a C compiler.
+  - Surfaced by: DX Pass 1 and 4, X5, X6 — `README.md:8` says 65 where the registry holds 68, and `cargo install` needs
+    more than a C compiler on two Windows targets.
   - Files: `README.md`.
   - Verify: `rg -n '\b(65|68)\b' README.md` finds no check count; the install section names the escape.
 - [ ] **T29 (P2, human: ~1 h / CC: ~10 min)** — U12 — Gate refusals name their fix, `--verbose` states the signal
@@ -2458,7 +2504,7 @@ REALITY: obligation-tiers pass the release needs U19 and U21 and takes U20 if re
 | S4 | INFORMATIONAL, 9/10 | U12's dependency line against Delivery C2 | U12 named U16 as a dependency while C2 lands before it | Dependencies split by piece (U12) |
 | A1 | CRITICAL, 8/10 | `RELEASES.md:196`; `release.yml` runs no preflight | R24's refusal rests on a step someone runs by hand | One script, two callers, with the CI step on PRs to `main`; no ruleset change (U12) |
 | A2 | INFORMATIONAL, 9/10 | `src/web_audit/registry.rs` `the_unported_bindings_are_exactly_the_known_ones`; `emit.rs` | That test turns a bump with an unported kind red, and a shell cannot read the binding | The assertion moves to the gate, and `emit web-checks` gains `ported` (U12) |
-| A3 | INFORMATIONAL, 8/10 | U12 PR mechanics | `CI_RELEASE_TOKEN` in a step that compiles and runs tests is more reach than it needs | The token reaches only the commit and PR step (U12) |
+| A3 | INFORMATIONAL, 8/10 | U12 PR mechanics | `CI_RELEASE_TOKEN` on a runner that compiles and runs tests is more reach than it needs | The token sits in a second job on a fresh runner (U12) |
 | A4 | INFORMATIONAL, 8/10 | The PR body is the changelog source | A bump that adds a check would ship with no changelog line | A `### Changed` bullet on a check change (U12) |
 | A5 | INFORMATIONAL, 5/10 | #289's proof moved 136 goldens locally, not through GraphQL | Medium confidence: a corpus-wide `createCommitOnBranch` may hit a request limit | Verify on a corpus-wide bump (U12) |
 | Q1 | CRITICAL, 9/10 | `src/web_audit/engine/waves.rs:48` `pub const DEFAULT_CONCURRENCY: usize = 6;` | KTD2 says settings come from the contract, but they are literals, so a changed site setting is silently ignored | Bind every key, and delete the literals (U16) |
@@ -2468,7 +2514,7 @@ REALITY: obligation-tiers pass the release needs U19 and U21 and takes U20 if re
 | P1 | INFORMATIONAL, 7/10 | `src/web_audit/locality.rs:113` `.to_socket_addrs()` | A coalesced lookup that stalls holds every waiter | Lookups run off the callers' threads, bounded by each deadline (KTD18, U19) |
 | P2 | INFORMATIONAL, 7/10 | U19 step 4 | An inline drain lengthens the caller's run on a slow body | Drain on a detached reader, with byte and deadline bounds (U19) |
 | P3 | INFORMATIONAL, 8/10 | Bun 20.10 s and 22.72 s across two runs | Totals move between runs, so a cross-run comparison misleads | Compare only within one run (U19) |
-| E1 | Decision | KD18's evidence | Does the first release wait on the wall-clock target and on U20? | The orchestrator chose: U19 and U21 landed, within one run's noise; U20 follows if not ready (KD18) |
+| E1 | Decision | KD18's evidence | Does the first release wait on the wall-clock target and on U20? | The orchestrator chose: U19 and U21 landed, within a margin of the site engine; U20 follows if not ready. Its example margin, the larger of 5% and the run's spread, would pass the unfixed port, so the doc review fixed it at 5% (KD18) |
 
 Test review: the coverage map above is current, and six gaps closed through the scenarios these decisions added: the pin
 off site `dev`, the constants binding, the signal's proxy and token handling, the resolver stall, the drain stall, and
@@ -2573,7 +2619,7 @@ checks as a count. The agent gets the same catalog through `anc emit web-remedia
 | Stage       | Developer does                                | Friction found                                                        | Status            |
 | ----------- | --------------------------------------------- | --------------------------------------------------------------------- | ----------------- |
 | Discover    | Hits the anc.dev refusal, or reads the README | The flag behind the refusal's pointer misses the direct refusal       | Fixed (U13)       |
-| Install     | One command, no runtime                       | `cargo install` off the prebuilt targets needs cmake                  | Fixed (U13, X5)   |
+| Install     | One command, no runtime                       | `cargo install` on two Windows targets needs more than a C compiler   | Fixed (U13, X5)   |
 | Hello world | `anc web <target>`                            | Up to 25 s of silence reads as a hang                                 | Fixed (D6)        |
 | Real usage  | Reads 65 rows                                 | 12 failures buried among 53 passes, no fix text                       | Fixed (D6, KTD13) |
 | Debug       | Hits a wrong port or an unreachable host      | A sniffed target's failure names no path form; a handler panic aborts | Fixed (U7, KTD20) |
@@ -2610,11 +2656,11 @@ handler panic, release    | unexpected | fail | fail | fail     | fail | fail   
 
 | ID | Pass, severity | Evidence | Finding | Decision |
 | -- | -------------- | -------- | ------- | -------- |
-| X1 | 2 and 3, CAP6 `sniffed-target:fix` | Observed: `next: anc web nosuch.invalid --verbose`; `anc nosuch.dev` ran a public audit and exited 1 | A reader who meant a path gets no path form, and on success has no sign the token was read as a site | `routed-to-web` warning, and a `fix-target` next step of `anc audit ./<token>` (U7, AE13) |
+| X1 | 2 and 3, CAP6 `sniffed-target:fix` | Observed: `next: anc web nosuch.invalid --verbose`; `anc nosuch.dev` ran a public audit and exited 1 | A reader who meant a path gets no path form, and on success has no sign the token was read as a site | `routed-to-web` warning, and for a bare name a `fix-target` next step of `anc audit ./<token>`; an explicit scheme or port keeps the web retry (U7, AE13) |
 | X2 | 3, CAP6 `handler-panic:trace` | `Cargo.toml` `panic = "abort"`; `src/web_audit/engine/waves.rs:358` `catch_unwind` | In the release build a handler panic aborts with exit 134, no scorecard and no envelope, while every test passes | KTD20: release builds unwind, pinned by a test (U21, AE14) |
 | X3 | 3, CAP6 `release-gate:fix` | U12 said only "naming them" | A refused tag gave no next action and no stable code | Three codes, each with a fix (U12) |
 | X4 | 2, agents | `src/main.rs:1257` `eprintln!("warning: {note}")` | Stderr notes are bare prose, and an agent would have to match wording | `warning: <code>: <message>` from a closed set (U7) |
-| X5 | 1 and 6 | The spike's prebuilt list; #291's "needs nothing beyond what it needed before" | True on the listed targets only; elsewhere `cargo install` now needs cmake and bindgen | README names the escape, `--no-default-features` (U13) |
+| X5 | 1 and 6 | #291's reading of aws-lc-rs 1.18.2, with the two Windows cases read from source | `cargo install` needs a C compiler everywhere, plus `clang-cl` on Windows on Arm and NASM on 32-bit x86 Windows | README says so and names the escape, `--no-default-features` (U13) |
 | X6 | 4 | `README.md:8`, `:357` say 65; `registry.yaml` has 68 at `031ec6e` | A literal count goes stale on every bump, and no bump can edit prose | No literal count, plus the routing rule stated (U13) |
 | X7 | 4, maintainer | RELEASES has only a manual registry-pin step | Nothing says what a bump PR's states mean | "Handling a bump PR" in `RELEASES.md`, linked from the PR body (U12) |
 | X8 | 3, usage | Observed: `"next_step":{"action":"fix-target","command":"anc web --help"...` | An `http` target's fix is a help page when the exact command is known | `next_step.command` is the `https` form (U7) |
@@ -2638,6 +2684,17 @@ handler panic, release    | unexpected | fail | fail | fail     | fail | fail   
 [ ] Changelog exists and is generated                                (T30 open, on the owner's approval)
 [ ] Editor integration / language server                             (n/a for this product)
 ```
+
+## Deferred / Open Questions
+
+### From 2026-11-04 review
+
+- **An internal host on a routable address cannot withhold DoH** — Product Contract, R12 (P2, security-lens, confidence
+  75). A dev auditing an internal host on a public address, such as an IP-allowlisted VM behind split-horizon DNS, sends
+  its hostname to `cloudflare-dns.com` and `dns.google` with no flag to stop it, because the classifier labels that
+  address public and `--external-dns` only forces queries on. Proposed: `--no-external-dns`, withholding DoH checks for
+  any target with the same `n_a` reason, plus an acceptance example beside AE6. It adds a flag name to the surface
+  before the verb ships by default, so the orchestrator decides.
 
 ## DX Review Scorecard
 
@@ -2691,4 +2748,6 @@ The scores describe the plan with its open tasks built. Error Messages reads 6/1
 - **VERDICT:** DX CLEARED. Eng findings are folded into the plan, with E1 answered, and its status stays ISSUES OPEN
   because T20–T25 are mapped work, not done. CEO review not run (optional for a feature this size).
 
-NO UNRESOLVED DECISIONS
+**UNRESOLVED DECISIONS:**
+
+- Whether `--no-external-dns` lands before the first release (Deferred / Open Questions); sent to the orchestrator.

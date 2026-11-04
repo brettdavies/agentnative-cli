@@ -20,7 +20,7 @@ use std::fs;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
-use agentnative::web_audit::registry::CHECKS;
+use agentnative::web_audit::registry::{CHECKS, EvalBinding, HandlerBinding};
 use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
 use common::ledger::{
@@ -256,6 +256,24 @@ fn the_loader_reads_every_scenario_the_corpus_indexes() {
     let indexed: BTreeSet<String> = index.into_keys().collect();
     let loaded: BTreeSet<String> = load_cases().into_iter().map(|case| case.name).collect();
     assert_eq!(loaded, indexed);
+}
+
+/// A check this build cannot run skips where the site scores it, so the bump
+/// that brought it lands ledgered, and the release gate's empty ledger means every
+/// check runs.
+#[test]
+fn every_unported_binding_is_ledgered() {
+    let ledger = load_ledger();
+    for check in CHECKS {
+        let unported = matches!(check.handler, HandlerBinding::Unsupported(_))
+            || matches!(check.eval, Some(EvalBinding::Unsupported(_)));
+        let element = format!("{}{}", common::ledger::ROW, check.id);
+        assert!(
+            !unported || ledger.keys().any(|(_, e)| *e == element),
+            "{}: bound Unsupported with no {element} ledger entry",
+            check.id
+        );
+    }
 }
 
 const PIN: &str = "0123456789abcdef0123456789abcdef01234567";

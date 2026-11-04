@@ -7,7 +7,7 @@
 
 mod common;
 
-use common::web_cli::{anc, fixture_site, stderr_of, stdout_of};
+use common::web_cli::{anc, ended_in_a_verdict, fixture_site, stderr_of, stdout_of};
 use common::{empty_home_config, test_ca_path};
 use serde_json::Value;
 
@@ -84,9 +84,8 @@ fn a_ca_cert_root_lets_the_handshake_through_and_every_check_runs() {
         ])
         .output()
         .unwrap();
-    let code = output.status.code();
     assert!(
-        matches!(code, Some(0..=2)),
+        ended_in_a_verdict(output.status.code()),
         "expected a verdict: {output:?}"
     );
     let scorecard: Value = serde_json::from_str(&stdout_of(&output)).unwrap();
@@ -113,7 +112,7 @@ fn a_local_target_trusts_a_ca_in_the_os_trust_store() {
         .output()
         .unwrap();
     assert!(
-        matches!(output.status.code(), Some(0..=2)),
+        ended_in_a_verdict(output.status.code()),
         "expected a verdict: {output:?}"
     );
 }

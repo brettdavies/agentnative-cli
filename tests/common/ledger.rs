@@ -11,9 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
+use agentnative::web_audit::mock::MockTransport;
 use agentnative::web_audit::registry::SITE_SHA;
 use agentnative::web_audit::scorecard::to_wire_json;
 use serde::Deserialize;
@@ -133,6 +136,23 @@ pub fn golden_text(name: &str) -> String {
 /// because the shared request memo should have answered the second send; a second send
 /// the memo's own rules require, such as a body cut at a smaller cap than a later
 /// reader's, is a ledger entry the port closes or the owner accepts.
+/// What `transport` received. A run ending on its root's answer can return
+/// before a thread it already committed to a request has reached the transport,
+/// so a shortfall is read again for as long as such a thread could need.
+pub fn sent_once_settled(
+    transport: &MockTransport,
+    recorded: &BTreeSet<SentRequest>,
+) -> Vec<SentRequest> {
+    let until = Instant::now() + Duration::from_secs(2);
+    loop {
+        let sent: Vec<SentRequest> = transport.requests().iter().map(SentRequest::from).collect();
+        if sent.len() >= recorded.len() || Instant::now() >= until {
+            return sent;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 pub fn requests_differ(sent: &[SentRequest], recorded: &BTreeSet<SentRequest>) -> bool {
     let distinct: BTreeSet<&SentRequest> = sent.iter().collect();
     distinct.len() != sent.len() || !distinct.iter().copied().eq(recorded.iter())
@@ -153,8 +173,9 @@ pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
         Arc::new(default_handlers()),
         transport.clone(),
     );
-    let sent: Vec<SentRequest> = transport.requests().iter().map(SentRequest::from).collect();
-    if requests_differ(&sent, &recorded_requests(&case.name)) {
+    let recorded = recorded_requests(&case.name);
+    let sent = sent_once_settled(&transport, &recorded);
+    if requests_differ(&sent, &recorded) {
         out.insert(REQUESTS.to_string());
     }
     match (&case.golden, outcome) {

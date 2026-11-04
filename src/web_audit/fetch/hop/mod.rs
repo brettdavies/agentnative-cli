@@ -30,6 +30,8 @@ pub struct HopContext {
     pub started: Instant,
     /// When the caller's deadline passes.
     pub deadline: Instant,
+    /// When it passes instead once the audit's memo is cut.
+    pub cut_at: Option<Instant>,
     /// The caller's cap for a body it keeps: `Some(0)` reads none, `None`
     /// reads up to the root ceiling.
     pub body_cap: Option<usize>,
@@ -39,6 +41,14 @@ pub struct HopContext {
 }
 
 impl HopContext {
+    /// The caller's deadline, with or without the audit's memo cut.
+    pub(crate) fn deadline_given(&self, cut: bool) -> Instant {
+        match self.cut_at {
+            Some(cut_at) if cut => self.deadline.min(cut_at),
+            _ => self.deadline,
+        }
+    }
+
     /// The caller's whole budget for this hop.
     fn budget(&self) -> Duration {
         self.deadline.saturating_duration_since(self.started)

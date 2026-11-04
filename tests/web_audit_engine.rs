@@ -1,11 +1,11 @@
-//! The wave scheduler end to end: discovery, the reachability gate, the two
-//! waves and their antecedent gating, the wave-2 context, the optional
-//! re-tag, the locality DNS gate, unported handlers, and the deadline
-//! against a target that tarpits or trickles.
+//! The run end to end: discovery, the reachability gate, the schedule and its
+//! antecedent gating, the context a later row reads, the optional re-tag, the
+//! locality DNS gate, unported handlers, and the deadline against a target
+//! that tarpits or trickles.
 //!
 //! The handlers here are stand-ins: each fetches `__probe/<check id>` on
 //! the target and turns the answer into an outcome, with a 200 JSON body
-//! taken verbatim as the evidence row, so a scenario shapes wave-1
+//! taken verbatim as the evidence row, so a scenario shapes a source's
 //! evidence through mock rules alone.
 
 #![cfg(feature = "web")]
@@ -160,7 +160,7 @@ fn stand_in_handlers() -> Arc<HandlerSet> {
 
 // Scenarios.
 
-/// Root HTML, an MCP card, and JSON-shaped wave-1 sources.
+/// Root HTML, an MCP card, and JSON-shaped source checks.
 fn healthy_rules() -> Vec<MockRule> {
     vec![
         MockRule::new("GET", BASE).response(html(200)),
@@ -249,7 +249,7 @@ fn discovery_trail_len() -> usize {
 }
 
 #[test]
-fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
+fn a_healthy_target_runs_every_check_into_a_full_scorecard() {
     let transport = healthy_transport();
     let mut progress = Collected::default();
     let mut input = input(transport.clone(), stand_in_handlers());
@@ -312,7 +312,7 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     assert_eq!(auth.na_reason, Some(NaReason::AntecedentUnmet));
     assert_eq!(auth.evidence, "MCP endpoint does not challenge for auth");
 
-    // Wave 2 saw the wave-1 derivations.
+    // Later rows saw what the sources returned.
     assert_eq!(
         raw(&report, "llms-txt-scoped", "scoped_dirs"),
         Some(&json!(["/docs", "/api", "/blog"]))
@@ -343,13 +343,13 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         raw(&report, "mcp-tools-list", "legacy_advertised"),
         Some(&json!(["tools", "resources"]))
     );
-    // Wave 1 ran before any derivation existed.
+    // A source probes before any of that exists.
     assert_eq!(
         raw(&report, "mcp-initialize", "session"),
         Some(&Value::Null)
     );
 
-    // The session handshake went out once, between the waves.
+    // The session notification went out once.
     let notify: Vec<Request> = transport
         .requests()
         .into_iter()
@@ -416,7 +416,7 @@ fn unmet_antecedents_cascade_and_absent_mays_become_optional() {
     expect_unmet("llms-txt-format", "root llms.txt not present");
     expect_unmet("llms-txt-scoped", "root llms.txt not present");
     expect_unmet("llms-full-txt", "not a docs/content site");
-    // A wave-1 source gated by its own antecedent takes the gate's verdict.
+    // A source gated by its own antecedent takes the gate's verdict.
     expect_unmet("openapi", "no API surface detected");
     expect_unmet("json-errors", "no API surface detected");
     expect_unmet("json-schemas", "no JSON Schema references detected");
@@ -545,15 +545,38 @@ fn a_dead_root_degrades_the_per_check_timeout_and_errors_root_dependents() {
         Some("https://example.com/mcp")
     );
 
-    let requests = transport.requests();
-    assert_eq!(requests[0].url, BASE);
-    assert_eq!(requests[0].timeout, Duration::from_secs(5));
+    // The root and discovery's first reads go out together; every request after
+    // them takes the degraded budget.
+    let beside_the_root: Vec<String> = std::iter::once(BASE.to_string())
+        .chain(
+            MCP_DISCOVERY
+                .well_known
+                .iter()
+                .chain([&MCP_DISCOVERY.ai_catalog, &"/.well-known/api-catalog"])
+                .map(|path| format!("{}{}", BASE, path.trim_start_matches('/'))),
+        )
+        .collect();
+    let (first, later): (Vec<Request>, Vec<Request>) = transport
+        .requests()
+        .into_iter()
+        .partition(|r| r.method == "GET" && beside_the_root.contains(&r.url));
+    assert_eq!(first.len(), beside_the_root.len(), "{first:?}");
+    let root_request = first.iter().find(|r| r.url == BASE).expect("the root");
+    assert_eq!(root_request.timeout, Duration::from_secs(5));
+    // A read starting after the root failed takes the degraded budget from the
+    // outset; none takes more than the configured one.
     assert!(
-        requests[1..]
+        first.iter().all(|r| r.timeout <= Duration::from_secs(5)),
+        "{:?}",
+        first.iter().map(|r| r.timeout).collect::<Vec<_>>()
+    );
+    assert!(!later.is_empty());
+    assert!(
+        later
             .iter()
             .all(|r| r.timeout <= DEGRADED_PER_CHECK_TIMEOUT),
         "{:?}",
-        requests[1..].iter().map(|r| r.timeout).collect::<Vec<_>>()
+        later.iter().map(|r| r.timeout).collect::<Vec<_>>()
     );
     for id in ["agent-friendly-404", "webmcp", "markdown-vary"] {
         let r = row(&report, id);
@@ -802,9 +825,9 @@ fn a_tarpit_that_never_returns_is_abandoned_at_the_deadline() {
     assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     // No stalled request ever returned: each caller reported its timeout at
-    // its own deadline, and the checks still queued at the audit's deadline
+    // its own deadline, and the checks with no answer by the audit's deadline
     // were skipped.
-    assert!(deadline_skips(&report) >= 9, "{}", deadline_skips(&report));
+    assert!(deadline_skips(&report) > 0, "{}", deadline_skips(&report));
     let robots = row(&report, "robots");
     assert_eq!(robots.status, ScorecardStatus::Error);
     assert!(

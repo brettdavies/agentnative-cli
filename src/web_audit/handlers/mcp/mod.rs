@@ -4,7 +4,7 @@
 //! the modern header-routed rows; the per-era error-code conformance
 //! family; the Accept-negotiation family), POSTs it through the guard,
 //! parses JSON or SSE, and evaluates the answer. Returns n_a when no
-//! endpoint was discovered, and an unprobed `absent` when wave 1
+//! endpoint was discovered, and an unprobed `absent` when the wire probes
 //! evidenced no modern lane.
 //!
 //! Responses are read as the site reads them: through the capped body

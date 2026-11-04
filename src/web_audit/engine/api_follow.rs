@@ -2,7 +2,7 @@
 //! `follow-api.ts` over the request gate (`follow_requests`).
 //!
 //! An anchor host off the audited origin is admitted (one of the slice's
-//! host slots), which is what lets wave 2 send it the hygiene probes; it
+//! host slots), which is what lets the API rows send it the hygiene probes; it
 //! gets no request here. A `service-desc` target is read once, under the
 //! slice's clock, request cap and host slots, and kept for the OpenAPI row.
 //! A description host that gives no response, or whose answer is a
@@ -12,7 +12,7 @@
 
 use super::follow_requests::{Fetched, Gate, ReadOptions};
 use super::follow_trail::{Declaration, Kind, Outcome, Settled, TrailEntry, declaration_key};
-use super::waves::is_edge_error_status;
+use super::run::is_edge_error_status;
 use crate::web_audit::fetch::body::OPENAPI_MAX_BODY_BYTES;
 use crate::web_audit::fetch::redirect::is_redirect;
 

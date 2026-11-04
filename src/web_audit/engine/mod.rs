@@ -1,8 +1,8 @@
-//! The wave scheduler: discovery, antecedent gating, concurrency, deadlines
-//! and scorecard assembly, everything except the handlers themselves. A
-//! mirror of the site's `engine.ts`, with the site's async concurrency
-//! mapped to a bounded thread pool whose deadline is enforced at request
-//! issue time.
+//! The run: discovery, a schedule that starts each check as soon as what it
+//! reads has settled, antecedent gating, concurrency, deadlines and scorecard
+//! assembly, everything except the handlers themselves. A mirror of the site's
+//! `engine.ts`, with the site's async concurrency mapped to one worker pool per
+//! audit whose deadline is enforced at request issue time.
 
 pub mod antecedents;
 pub mod antecedents_mcp;
@@ -24,22 +24,27 @@ pub mod follow_trail;
 pub mod handlers;
 pub mod mcp_wire;
 pub mod pool;
+pub mod prerequisites;
+pub mod probe;
 pub mod provenance;
 pub mod reciprocity;
 pub mod reciprocity_metadata;
 pub mod retained;
+pub mod run;
+mod schedule;
 pub mod sign_in;
+pub mod slots;
 pub mod summary;
 pub mod types;
-pub mod waves;
 
 pub use handlers::{Dispatch, HandlerFn, HandlerSet};
+pub use probe::EXTERNAL_DNS_WITHHELD;
+pub use run::{
+    DEFAULT_CONCURRENCY, DEFAULT_PER_AUDIT_DEADLINE, DEFAULT_PER_CHECK_TIMEOUT,
+    DEGRADED_PER_CHECK_TIMEOUT, ProgressSink, RunInput, RunOutcome, RunReport, Unported,
+    run_web_audit,
+};
 pub use types::{
     FetchHandle, HandlerContext, McpAuthRequired, McpLaneEvidence, McpModernLane, ProbeOutcome,
     ProbeStatus, why_item,
-};
-pub use waves::{
-    DEFAULT_CONCURRENCY, DEFAULT_PER_AUDIT_DEADLINE, DEFAULT_PER_CHECK_TIMEOUT,
-    DEGRADED_PER_CHECK_TIMEOUT, EXTERNAL_DNS_WITHHELD, ProgressSink, RunInput, RunOutcome,
-    RunReport, Unported, run_web_audit,
 };

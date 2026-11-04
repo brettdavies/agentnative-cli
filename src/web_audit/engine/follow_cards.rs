@@ -10,7 +10,7 @@ use super::discovery_documents::{
 };
 use super::follow_requests::{Fetched, ReadOptions};
 use super::follow_trail::{Declaration, Kind, Outcome, Settled, TrailEntry, declares_host};
-use super::waves::is_edge_error_status;
+use super::run::is_edge_error_status;
 use crate::web_audit::fetch::body::DOCUMENT_MAX_BODY_BYTES;
 
 pub(super) const CARD_DOCUMENT_READ: ReadOptions = ReadOptions {

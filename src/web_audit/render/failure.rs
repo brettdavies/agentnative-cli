@@ -51,13 +51,19 @@ fn web_command(args: &[&str]) -> String {
     format_invocation(&argv)
 }
 
-/// The same target and roots with `--verbose`, runnable once the server is fixed.
-fn rerun_verbosely(token: &str, ca_cert: &[PathBuf]) -> String {
+/// `anc web` with the same target and roots.
+fn web_argv(token: &str, ca_cert: &[PathBuf]) -> Vec<OsString> {
     let mut argv: Vec<OsString> = vec!["anc".into(), "web".into(), token.into()];
     for path in ca_cert {
         argv.push("--ca-cert".into());
         argv.push(path.into());
     }
+    argv
+}
+
+/// The same target and roots with `--verbose`, runnable once the server is fixed.
+fn rerun_verbosely(token: &str, ca_cert: &[PathBuf]) -> String {
+    let mut argv = web_argv(token, ca_cert);
     argv.push("--verbose".into());
     format_invocation(&argv)
 }
@@ -65,12 +71,14 @@ fn rerun_verbosely(token: &str, ca_cert: &[PathBuf]) -> String {
 /// The target answered nothing. The engine's reason is the hosted
 /// auditor's wording, which speaks for its own vantage point, so the
 /// local run says what is true here instead: nothing on this machine's
-/// network path answered.
+/// network path answered. A server that spoke but failed the TLS handshake,
+/// `tls_error`, did answer, and the message says what it did.
 pub fn unreachable_failure(
     token: &str,
     normalized: &str,
     defaulted_https: bool,
     ca_cert: &[PathBuf],
+    tls_error: Option<&str>,
 ) -> Failure {
     let mut hints = vec![format!(
         "no HTTP response from {normalized}, on the root fetch or on any MCP discovery probe"
@@ -85,7 +93,10 @@ pub fn unreachable_failure(
     hints.push("check that the server is running and that this machine can reach it".to_string());
     Failure {
         slug: "target-unreachable",
-        message: format!("{normalized} did not answer any probe"),
+        message: match tls_error {
+            Some(error) => format!("{normalized} did not complete a TLS handshake: {error}"),
+            None => format!("{normalized} did not answer any probe"),
+        },
         hints,
         next_step: NextStep::retry(rerun_verbosely(token, ca_cert)),
         exit_code: EXIT_COULD_NOT_CHECK,
@@ -97,7 +108,12 @@ pub fn unreachable_failure(
 /// The target answered with a certificate chain no root in the trust set
 /// vouches for. Nothing was sent past the handshake, and retrying changes
 /// nothing; trusting the server's CA does.
-pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &str) -> Failure {
+pub fn untrusted_certificate_failure(
+    token: &str,
+    normalized: &str,
+    evidence: &str,
+    ca_cert: &[PathBuf],
+) -> Failure {
     Failure {
         slug: "untrusted-certificate",
         message: format!("{normalized} presented a certificate chain this run does not trust"),
@@ -108,16 +124,20 @@ pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &s
              which a local or private target also trusts"
                 .to_string(),
         ],
-        next_step: NextStep::add_ca_cert(format!("{} --ca-cert <FILE>", web_command(&[token]))),
+        next_step: NextStep::add_ca_cert(format!(
+            "{} --ca-cert <FILE>",
+            format_invocation(&web_argv(token, ca_cert))
+        )),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
     }
 }
 
-/// The target presented a certificate that fails a check no root waives. Nothing
-/// was sent past the handshake, and trusting another CA changes nothing; the
-/// server has to present a different certificate.
+/// A certificate on the way to the target fails a check no root waives. Nothing
+/// was sent past the handshake, and trusting another CA changes nothing. The
+/// certificate can be the redirect's, since a redirect's failure reads as the root
+/// fetch's, and the message carries the evidence because JSON mode prints no hints.
 pub fn invalid_certificate_failure(
     token: &str,
     normalized: &str,
@@ -126,12 +146,13 @@ pub fn invalid_certificate_failure(
 ) -> Failure {
     Failure {
         slug: "invalid-certificate",
-        message: format!("{normalized} presented a certificate anc web rejects"),
+        message: format!(
+            "{normalized} or a redirect from it presented a certificate anc web rejects: {evidence}"
+        ),
         hints: vec![
-            evidence.to_string(),
-            "the server has to present a different certificate: `--ca-cert` adds a root and \
-             waives no other check, so the certificate must name this host, be within its \
-             dates, and be a leaf (`CA:FALSE`), which `openssl req -x509` makes only when asked"
+            "`--ca-cert` adds a root and waives no other check: the certificate has to name the \
+             host you audit, be within its dates by this machine's clock, and be a leaf \
+             (`CA:FALSE`), which `openssl req -x509` makes only when asked"
                 .to_string(),
         ],
         next_step: NextStep::retry(rerun_verbosely(token, ca_cert)),
@@ -316,12 +337,13 @@ mod tests {
             "http://127.0.0.1:9/?a=1&b=2",
             false,
             &[],
+            None,
         );
         assert_eq!(
             failure.next_step.command.as_deref(),
             Some("anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose")
         );
-        let plain = unreachable_failure("127.0.0.1:9", "http://127.0.0.1:9/", false, &[]);
+        let plain = unreachable_failure("127.0.0.1:9", "http://127.0.0.1:9/", false, &[], None);
         assert_eq!(
             plain.next_step.command.as_deref(),
             Some("anc web 127.0.0.1:9 --verbose")
@@ -337,6 +359,7 @@ mod tests {
             "http://127.0.0.1:9/",
             false,
             &[],
+            None,
         ));
         assert!(
             unreachable.ends_with("\nexit 3: could not check\n"),

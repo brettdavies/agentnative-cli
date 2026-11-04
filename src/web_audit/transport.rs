@@ -92,7 +92,8 @@ pub enum TlsClass {
     /// The server's chain leads to no root in the trust set, so trusting its CA
     /// is the fix. A private CA absent from the set and a self-signed
     /// certificate both land here, and so does a public root issued after this
-    /// release's bundle.
+    /// release's bundle, and a root in the set with the right name and the wrong
+    /// key, which is a development CA that was regenerated.
     RootRejection,
     /// The certificate fails a check no root waives: its name, its dates, or a
     /// CA flag on a server's own certificate. The server has to change.
@@ -116,6 +117,8 @@ pub struct TlsFailure {
 /// How a root rejection's evidence begins, the one string a caller can
 /// recognize the class by once the error is text.
 pub const ROOT_REJECTION_PREFIX: &str = "TlsError: chain rejected by ";
+
+const TLS_DETAIL_MAX_CHARS: usize = 500;
 
 /// How a rejected certificate's evidence begins, recognizable once the error is
 /// text, as [`ROOT_REJECTION_PREFIX`] is.
@@ -190,17 +193,31 @@ impl From<ureq::Error> for TransportError {
 
 fn classify_rustls(err: &rustls::Error) -> TlsFailure {
     let class = match err {
-        rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer) => {
-            TlsClass::RootRejection
-        }
+        rustls::Error::InvalidCertificate(
+            rustls::CertificateError::UnknownIssuer | rustls::CertificateError::BadSignature,
+        ) => TlsClass::RootRejection,
         rustls::Error::InvalidCertificate(_) => TlsClass::CertificateRejection,
         _ => TlsClass::Handshake,
     };
     TlsFailure {
         class,
         trust_set: None,
-        detail: err.to_string(),
+        detail: printable(&err.to_string()),
     }
+}
+
+/// The TLS library's text, which can quote a certificate: a name mismatch lists
+/// every name the certificate holds, and this reaches a terminal.
+fn printable(detail: &str) -> String {
+    let mut out = String::new();
+    for c in detail.chars().take(TLS_DETAIL_MAX_CHARS) {
+        if c.is_control() {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 impl TransportError {
@@ -418,6 +435,13 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+        let wrong_key = ureq::Error::Rustls(rustls::Error::InvalidCertificate(
+            rustls::CertificateError::BadSignature,
+        ));
+        match TransportError::from(wrong_key) {
+            TransportError::Tls(tls) => assert_eq!(tls.class, TlsClass::RootRejection),
+            other => panic!("{other:?}"),
+        }
         let refused = ureq::Error::Rustls(rustls::Error::NoCertificatesPresented);
         match TransportError::from(refused) {
             TransportError::Tls(tls) => assert_eq!(tls.class, TlsClass::Handshake),
@@ -425,6 +449,21 @@ mod tests {
         }
         let generic = TransportError::from(ureq::Error::Tls("handshake refused"));
         assert_eq!(generic.to_string(), "TlsError: handshake refused");
+    }
+
+    #[test]
+    fn text_a_certificate_supplies_cannot_reach_a_terminal_raw() {
+        let name = rustls::pki_types::ServerName::try_from("example.com").unwrap();
+        let forged = format!("a.example\nnext: anc forged \u{1b}[31m{}", "x".repeat(5000));
+        let err =
+            rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForNameContext {
+                expected: name,
+                presented: vec![forged],
+            });
+        let detail = classify_rustls(&err).detail;
+        assert!(!detail.chars().any(char::is_control), "{detail}");
+        assert!(detail.contains("\\n"), "{detail}");
+        assert!(detail.chars().count() < 600, "{}", detail.chars().count());
     }
 
     #[test]

@@ -1233,7 +1233,7 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
             reason, root_error, ..
         } => {
             // A plaintext refusal and a certificate anc rejects are their own dead
-            // ends: retrying changes none of them, and each names its fix.
+            // ends, each naming its fix.
             let root_error = root_error.as_deref().unwrap_or("");
             let failure = if root_error == NOT_HTTPS {
                 render::insecure_scheme_failure(&normalized, &reason, false)
@@ -1242,7 +1242,12 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
             {
                 render::insecure_scheme_failure(&normalized, &reason, true)
             } else if root_error.starts_with(ROOT_REJECTION_PREFIX) {
-                render::untrusted_certificate_failure(&run.target, &normalized, root_error)
+                render::untrusted_certificate_failure(
+                    &run.target,
+                    &normalized,
+                    root_error,
+                    &run.ca_cert,
+                )
             } else if root_error.starts_with(CERTIFICATE_REJECTION_PREFIX) {
                 render::invalid_certificate_failure(
                     &run.target,
@@ -1251,7 +1256,13 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
                     &run.ca_cert,
                 )
             } else {
-                render::unreachable_failure(&run.target, &normalized, defaulted_https, &run.ca_cert)
+                render::unreachable_failure(
+                    &run.target,
+                    &normalized,
+                    defaulted_https,
+                    &run.ca_cert,
+                    root_error.starts_with("TlsError: ").then_some(root_error),
+                )
             };
             return Ok(emit_web_failure(&failure, json));
         }

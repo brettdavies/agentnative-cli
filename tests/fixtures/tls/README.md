@@ -41,6 +41,17 @@ openssl x509 -req -in leaf.csr -CA ca.cert.pem -CAkey ca.key.pem -CAcreateserial
 rm ca.key.pem ca.cert.srl leaf.csr leaf.ext
 ```
 
+## A stale root
+
+`stale-root.cert.pem` has the same subject as `ca.cert.pem` and a different key, the shape of a development CA that was
+regenerated, so the chain names it and its signature does not verify. Its key is discarded. Regenerate with:
+
+```bash
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout /dev/null \
+  -out stale-root.cert.pem -days 36500 -subj "/CN=anc-web-audit test CA" \
+  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
+```
+
 ## Rejected-certificate fixtures
 
 Three self-signed certificates for `localhost` that fail a check no root waives, sharing `rejected.key.pem`: a `CA:TRUE`

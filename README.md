@@ -531,8 +531,9 @@ certificate fails before any request goes out (`invalid-ca-cert`, exit 2). A cha
 the run as `untrusted-certificate`, exit 3, naming the roots it was checked against: `bundled roots`, plus
 `the OS trust store` for a local target and `--ca-cert roots` when any were passed. A certificate that fails any other
 check, such as a name it does not cover, dates it is outside, or a CA flag on the server's own certificate, ends the run
-as `invalid-certificate`, exit 3, with the TLS library's account of it. `--ca-cert` adds a root and waives no other
-check, so the server has to present a different certificate.
+as `invalid-certificate`, exit 3, with the TLS library's account of it in the message. `--ca-cert` adds a root and
+waives no other check. A handshake that fails with no certificate at issue, such as a plain HTTP server on an `https`
+target, ends as `target-unreachable` and quotes the TLS error.
 
 ### Two Scorecard Families
 

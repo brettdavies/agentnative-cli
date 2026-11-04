@@ -20,8 +20,8 @@ use crate::web_audit::signal::ContractCheck;
 pub struct RenderOptions {
     /// Apply ANSI styling to status prefixes.
     pub color: bool,
-    /// Drop the score note and the advisory, passing and inapplicable
-    /// sections entirely.
+    /// Drop the score note, the contract note, and the advisory, passing and
+    /// inapplicable sections entirely.
     pub quiet: bool,
     /// List passing and inapplicable rows instead of counting them, and
     /// state the contract check's result.
@@ -131,7 +131,9 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
     if let Some(note) = non_comparable_note(&report.unported) {
         let _ = writeln!(out, "Note: {note}");
     }
-    if let Some(note) = opts.contract.and_then(ContractCheck::note) {
+    if !opts.quiet
+        && let Some(note) = opts.contract.and_then(ContractCheck::note)
+    {
         let _ = writeln!(out, "Note: {note}");
     }
     if !report.complete {

@@ -1229,7 +1229,11 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         input.progress = Some(&mut progress);
     }
 
-    let report = match run_web_audit(input) {
+    let outcome = run_web_audit(input);
+    if show_progress {
+        progress.finish();
+    }
+    let report = match outcome {
         RunOutcome::Unreachable {
             reason, root_error, ..
         } => {
@@ -1263,11 +1267,8 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     // report to carry it, so both of those forms put it on stderr.
     let contract = contract_check.result();
     if json || run.check.is_some() {
-        if let Some(note) = contract.note() {
-            eprintln!("warning: contract-differs: {note}");
-        }
-        if run.verbose {
-            eprintln!("verbose: anc.dev contract: {contract}");
+        for line in contract.stderr_lines(run.quiet, run.verbose) {
+            eprintln!("{line}");
         }
     }
 

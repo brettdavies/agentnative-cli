@@ -272,7 +272,8 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// `https://anc.dev/api/web-audit/version`, to say when this build's
     /// web-audit contract differs from the one anc.dev serves. A local or
     /// private target's run never contacts anc.dev, a failed read says
-    /// nothing, and `--verbose` states the result.
+    /// nothing, and `--verbose` states the result, on stderr with
+    /// `--output json` or `--check`.
     ///
     /// An MCP endpoint that requires sign-in reports its session and
     /// handshake rows `n_a` (`auth-required`) unless the run presents a

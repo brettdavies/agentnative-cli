@@ -177,3 +177,12 @@ jobs:
 
       - name: First-run smoke check
         run: scripts/smoke-web-audit.sh
+
+      # The test profile always unwinds, so only a release-profile build can
+      # show that a handler panic costs that one row and not the run. The
+      # dependencies are the ones the release build above just compiled.
+      - name: Build release with a handler that panics on request
+        run: cargo build --release --features web,handler-panic-probe
+
+      - name: A handler panic in a release build still ends in a scorecard
+        run: scripts/smoke-web-audit.sh target/release/anc --panic-probe

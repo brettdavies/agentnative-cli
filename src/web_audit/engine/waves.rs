@@ -355,7 +355,11 @@ fn probe_one(
             false,
         );
     }
-    let dispatched = catch_unwind(AssertUnwindSafe(|| handlers.dispatch(check, ctx)));
+    let dispatched = catch_unwind(AssertUnwindSafe(|| {
+        #[cfg(feature = "handler-panic-probe")]
+        panic_probe(check);
+        handlers.dispatch(check, ctx)
+    }));
     match dispatched {
         Ok(Dispatch::Outcome(outcome)) => {
             let incomplete = outcome.incomplete || Instant::now() >= deadline;
@@ -385,6 +389,13 @@ fn probe_one(
                 false,
             )
         }
+    }
+}
+
+#[cfg(feature = "handler-panic-probe")]
+fn panic_probe(check: &WebCheck) {
+    if std::env::var("ANC_HANDLER_PANIC_PROBE").is_ok_and(|id| id == check.id) {
+        panic!("panic probe in {}", check.id);
     }
 }
 

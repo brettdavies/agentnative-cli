@@ -128,6 +128,10 @@ web = [
     "dep:url",
     "dep:regex",
 ]
+# Test only: a named handler panics on request, so a release-profile build can
+# show what a handler panic does (scripts/smoke-web-audit.sh --panic-probe). No
+# shipped build enables it.
+handler-panic-probe = ["web"]
 
 [build-dependencies]
 # YAML for the vendored spec frontmatter (build.rs → $OUT_DIR/generated_requirements.rs)
@@ -173,7 +177,11 @@ pkg-fmt = "zip"
 strip = true
 lto = true
 codegen-units = 1
-panic = "abort"
+# A web-audit handler that panics becomes that check's error row through
+# `catch_unwind`, which catches nothing under `panic = "abort"`; the run would
+# end at exit 134 with no scorecard. tests/release_profile.rs holds this line
+# to the crate's `catch_unwind` sites.
+panic = "unwind"
 
 # aws-lc-sys compiles its C library with OPENSSL_SMALL when its own package
 # is built for size (aws-lc-sys builder `is_small`). The crypto library is

@@ -10,6 +10,11 @@
 # per-audit deadline, a probe that blocks on a socket, or a DNS lookup that
 # sneaks into a local run all show up here as wall clock.
 #
+# With `--panic-probe`, on a release binary built with the
+# `handler-panic-probe` feature, it then audits the site again with one
+# handler panicking. A test build always unwinds, so only a release-profile
+# build can show that the panic costs that one row and not the run.
+#
 # The fixture is served from a temp directory by Python's own http.server
 # over TLS, so the check needs no fixture host and makes no external
 # request. `anc web` sends HTTPS only, so the script mints a throwaway CA
@@ -18,6 +23,7 @@
 set -euo pipefail
 
 readonly BINARY="${1:-target/release/anc}"
+readonly MODE="${2:-}"
 # Ten times the measured local run, and well inside the promise, so this
 # fails on a hang rather than on a slow runner.
 readonly BUDGET_SECONDS=30
@@ -176,3 +182,34 @@ fi
 
 printf 'first run: %ss (budget %ss), exit %s, %s rows, %s passed\n' \
   "$elapsed" "$BUDGET_SECONDS" "$code" "$rows" "$passed"
+
+if [[ "$MODE" != "--panic-probe" ]]; then
+  exit 0
+fi
+
+# A row that passed reached its handler, so it is one the probe can panic in.
+probe_id=$(jaq -r '[.results[] | select(.status == "pass")][0].id' <"$scorecard")
+probed="$fixture/probed.json"
+set +e
+ANC_HANDLER_PANIC_PROBE="$probe_id" timeout "$BUDGET_SECONDS" "$BINARY" web "$target" \
+  --ca-cert "$tls/ca.pem" --output json >"$probed" 2>"$stderr_log"
+code=$?
+set -e
+if ((code > 128)) || [[ ! -s "$probed" ]]; then
+  printf 'error: a panic in %s ended the run: exit %s, %s scorecard bytes. anc wrote:\n' \
+    "$probe_id" "$code" "$(wc -c <"$probed")" >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+# shellcheck disable=SC2016 # $id is jaq's variable, not the shell's.
+row=$(jaq -r --arg id "$probe_id" '.results[] | select(.id == $id) | "\(.status): \(.evidence)"' <"$probed")
+if [[ "$row" != "error: handler error: panic probe in $probe_id"* ]]; then
+  printf 'error: the %s row reads %q; expected the handler error\n' "$probe_id" "$row" >&2
+  exit 1
+fi
+rows=$(jaq '.results | length' <"$probed")
+if [[ "$rows" != "$expected_rows" ]]; then
+  printf 'error: the probed scorecard carries %s rows; expected %s\n' "$rows" "$expected_rows" >&2
+  exit 1
+fi
+printf 'panic in %s: exit %s, %s rows, its row: %s\n' "$probe_id" "$code" "$rows" "$row"

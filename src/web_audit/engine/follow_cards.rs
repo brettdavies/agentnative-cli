@@ -3,8 +3,6 @@
 //! names by URL is read to learn the endpoint it names, which the slice
 //! then confirms like any declared endpoint.
 
-use std::time::Duration;
-
 use super::discovery::resolve_url;
 use super::discovery_documents::{
     MCP_SERVER_CARD_TYPE, RetainedDocument, card_endpoint, is_templated_url, other_remotes,
@@ -18,7 +16,7 @@ use crate::web_audit::fetch::body::DOCUMENT_MAX_BODY_BYTES;
 pub(super) const CARD_DOCUMENT_READ: ReadOptions = ReadOptions {
     max_body_bytes: DOCUMENT_MAX_BODY_BYTES,
     accept: Some(MCP_SERVER_CARD_TYPE),
-    timeout_cap: Some(Duration::from_millis(3_000)),
+    timeout_cap: Some(crate::web_audit::registry::CARD_DOCUMENT_TIMEOUT),
 };
 
 pub(super) struct CardDocumentRead {

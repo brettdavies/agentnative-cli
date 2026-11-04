@@ -21,7 +21,7 @@ use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 
 /// Candidates probed when the check names no cap.
-pub const DEFAULT_MAX_CANDIDATES: usize = 8;
+pub use crate::web_audit::registry::DEFAULT_MAX_CANDIDATES;
 
 /// The `with` block of a `scoped-llms` check.
 #[derive(Clone, Debug, Default, Deserialize)]

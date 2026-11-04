@@ -1,14 +1,20 @@
 //! Regex translation: each regex-bearing `with` value, translated and compiled at build time.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use super::PatternSpec;
-use super::common::{Mapping, check_err};
 use super::vocab::PATTERN_FIELDS;
 use crate::js_regex;
 
+fn check_err(id: &str, message: String) -> String {
+    format!("registry.json: check \"{id}\": {message}")
+}
+
 /// Translate and compile every regex-bearing `with` value.
-pub(super) fn collect_patterns(id: &str, with: &Mapping) -> Result<Vec<PatternSpec>, String> {
+pub(super) fn collect_patterns(
+    id: &str,
+    with: &Map<String, Value>,
+) -> Result<Vec<PatternSpec>, String> {
     let mut out = Vec::new();
     for (path, field, flags) in PATTERN_FIELDS {
         let mut cursor: Option<&Value> = None;

@@ -25,12 +25,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "tests/fixtures/web-audit-divergences.toml"
-CORPUS = "tests/fixtures/web-audit-conformance/scenarios"
+CORPUS = "src/data/web-audit/contract/test/conformance/scenarios"
 HEADER = """\
 # Web-audit divergence ledger: every element of the vendored conformance
 # corpus the engine does not yet reproduce, one entry per (scenario, element).
 # An element is a top-level scorecard field, `row:<check id>`, `unreachable`,
-# or `document` (bytes differ, fields match). `owner` is the site PR that set
+# `document` (bytes differ, fields match), or `requests` (the distinct requests
+# differ from the scenario's requests.json). `owner` is the site PR that set
 # the golden value the engine misses.
 #
 # The conformance and handlers suites assert the observed divergences EQUAL
@@ -59,15 +60,25 @@ def git(repo, *args):
     ).stdout
 
 
-def golden_at(repo, rev, scenario, cache):
-    key = (rev, scenario)
+def recorded_at(repo, rev, scenario, cache, name):
+    key = (rev, scenario, name)
     if key not in cache:
         try:
-            text = git(repo, "show", f"{rev}:{CORPUS}/{scenario}/scorecard.json")
+            text = git(repo, "show", f"{rev}:{CORPUS}/{scenario}/{name}")
             cache[key] = json.loads(text)
         except subprocess.CalledProcessError:
             cache[key] = None
     return cache[key]
+
+
+def golden_at(repo, rev, scenario, cache):
+    return recorded_at(repo, rev, scenario, cache, "scorecard.json")
+
+
+def element_at(repo, rev, scenario, cache, element):
+    if element == "requests":
+        return recorded_at(repo, rev, scenario, cache, "requests.json")
+    return element_of(golden_at(repo, rev, scenario, cache), element)
 
 
 def element_of(doc, element):
@@ -120,7 +131,7 @@ def main():
             after = golden_at(repo, sha, scenario, cache)
             if before != after:
                 latest_touch = subject
-            if element_of(before, element) != element_of(after, element):
+            if element_at(repo, f"{sha}^", scenario, cache, element) != element_at(repo, sha, scenario, cache, element):
                 owner = (sha, subject)
         # A commit in range that changed this element owns it. Otherwise a standing
         # entry keeps its owner, so a divergence that outlives a bump never stops the

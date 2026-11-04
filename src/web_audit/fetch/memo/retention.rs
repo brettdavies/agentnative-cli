@@ -8,9 +8,9 @@ use crate::web_audit::fetch::hop::{self, HopRecord};
 
 /// The largest body the memo keeps for later callers, and the cap on a body
 /// it reads on its own. The site engine's value.
-pub const MEMO_BODY_MAX_BYTES: usize = 1024 * 1024;
+pub use crate::web_audit::registry::MEMO_BODY_MAX_BYTES;
 /// The most body bytes one audit's memo keeps. The site engine's value.
-pub const MEMO_TOTAL_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub use crate::web_audit::registry::MEMO_TOTAL_MAX_BYTES;
 
 /// The record the memo keeps for later callers: the body only while it fits
 /// under both caps.

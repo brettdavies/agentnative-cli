@@ -1,8 +1,7 @@
 //! Rust source emission for `$OUT_DIR/generated_web_registry.rs`.
 
 use super::vocab::{ANTECEDENTS, LANE_CATEGORY, SITE_TYPES, TIERS};
-use super::{EVAL_RULES, HANDLER_KINDS, NormalizedRegistry, RemediationEntry};
-use crate::ts_consts::SiteConstants;
+use super::{Constants, EVAL_RULES, HANDLER_KINDS, NormalizedRegistry, RemediationEntry};
 
 fn pascal(kebab: &str) -> String {
     let mut out = String::with_capacity(kebab.len());
@@ -62,8 +61,9 @@ fn str_slice(items: &[String]) -> String {
 pub fn emit_rust(
     reg: &NormalizedRegistry,
     remediation: &[RemediationEntry],
-    consts: &SiteConstants,
+    consts: &Constants,
     site_sha: &str,
+    fingerprint: &str,
 ) -> String {
     let tiers: Vec<&str> = TIERS.iter().map(|(t, _)| *t).collect();
     let keywords: Vec<&str> = TIERS.iter().map(|(_, k)| *k).collect();
@@ -78,6 +78,13 @@ pub fn emit_rust(
     src.push_str("/// The agentnative-site commit the vendored inputs were taken from.\n");
     src.push_str(&format!("pub const SITE_SHA: &str = {site_sha:?};\n"));
     src.push_str(
+        "/// The contract's `FINGERPRINT`, trimmed the way the site's version signal serves it.\n",
+    );
+    src.push_str(&format!(
+        "pub const CONTRACT_FINGERPRINT: &str = {:?};\n",
+        fingerprint.trim()
+    ));
+    src.push_str(
         "/// The identifying User-Agent sent on every probe that sets no User-Agent of its own.\n",
     );
     src.push_str(&format!(
@@ -86,12 +93,11 @@ pub fn emit_rust(
     ));
     src.push_str("/// Registry `{ua:...}` token to the literal User-Agent it expands to.\n");
     src.push_str("pub const PROBE_UA_TOKENS: &[(&str, &str)] = &[\n");
-    let mut tokens = consts.probe_ua_tokens.clone();
-    tokens.sort();
-    for (k, v) in &tokens {
+    for (k, v) in &consts.probe_ua_tokens {
         src.push_str(&format!("    ({k:?}, {v:?}),\n"));
     }
     src.push_str("];\n");
+    consts.emit(&mut src);
     src.push_str("/// MCP endpoint discovery configuration.\n");
     src.push_str(&format!(
         "pub const MCP_DISCOVERY: McpDiscovery = McpDiscovery {{ ai_catalog: {:?}, card_suffix: {:?}, well_known: {}, common_paths: {}, protocol_version: {:?} }};\n",

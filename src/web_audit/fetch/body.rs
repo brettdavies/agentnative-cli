@@ -9,17 +9,17 @@
 
 use std::io::{self, Read};
 
-/// Cap for probes that read no body at all.
-pub const STATUS_ONLY_BODY_BYTES: usize = 0;
 /// Cap for probes that inspect a short body: JSON errors, twin text, cards.
-pub const AUDIT_PROBE_MAX_BODY_BYTES: usize = 64 * 1024;
+pub use crate::web_audit::registry::AUDIT_PROBE_MAX_BODY_BYTES;
 /// Cap for a discovery document the audit keeps: a server card, the AI
 /// catalog, the API catalog.
-pub const DOCUMENT_MAX_BODY_BYTES: usize = 256 * 1024;
+pub use crate::web_audit::registry::DOCUMENT_MAX_BODY_BYTES;
 /// Cap for an RFC 9728 protected-resource metadata document.
-pub const METADATA_MAX_BODY_BYTES: usize = 64 * 1024;
+pub use crate::web_audit::registry::METADATA_MAX_BODY_BYTES;
 /// Cap for an OpenAPI description the API category reads.
-pub const OPENAPI_MAX_BODY_BYTES: usize = 512 * 1024;
+pub use crate::web_audit::registry::OPENAPI_MAX_BODY_BYTES;
+/// Cap for probes that read no body at all.
+pub use crate::web_audit::registry::STATUS_ONLY_BODY_BYTES;
 /// Ceiling on an uncapped read. The site reads the root document in full
 /// within Workers memory; the local engine draws a line here so a huge page
 /// cannot exhaust the host.

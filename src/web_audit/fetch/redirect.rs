@@ -45,7 +45,7 @@ use crate::web_audit::transport::{Request, Transport};
 const MIN_HOP_TIMEOUT: Duration = Duration::from_millis(1);
 
 /// Hops followed before the chain is abandoned.
-pub const DEFAULT_MAX_REDIRECTS: usize = 4;
+pub use crate::web_audit::registry::DEFAULT_MAX_REDIRECTS;
 
 const REDIRECT_STATUSES: [u16; 5] = [301, 302, 303, 307, 308];
 

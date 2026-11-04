@@ -258,14 +258,26 @@ pub fn format_invocation(args: &[OsString]) -> String {
         .join(" ")
 }
 
-/// The invocation as typed, asking for `--verbose` when it does not already.
+/// Whether the invocation asks for `--verbose`.
+pub fn asks_verbose(args: &[OsString]) -> bool {
+    args.iter().any(|arg| arg == "--verbose" || arg == "-v")
+}
+
+/// The invocation a bug report reruns: `anc` for the program name, so a public
+/// report carries no home directory, no quiet flag, which clap refuses beside
+/// `--verbose`, and `--verbose` once, ahead of any `--` that would swallow it.
 pub fn verbose_rerun(args: &[OsString]) -> String {
-    let invocation = format_invocation(args);
-    if args.iter().any(|arg| arg == "--verbose" || arg == "-v") {
-        invocation
-    } else {
-        format!("{invocation} --verbose")
+    let mut out = vec![OsString::from("anc")];
+    if !asks_verbose(args) {
+        out.push(OsString::from("--verbose"));
     }
+    out.extend(
+        args.iter()
+            .skip(1)
+            .filter(|arg| *arg != "--quiet" && *arg != "-q")
+            .cloned(),
+    );
+    format_invocation(&out)
 }
 
 fn quote_arg(arg: &OsStr) -> String {
@@ -534,13 +546,33 @@ mod tests {
     fn verbose_rerun_asks_for_verbose_once() {
         assert_eq!(
             verbose_rerun(&args(&["anc", "web", "my site.dev"])),
-            "anc web 'my site.dev' --verbose"
+            "anc --verbose web 'my site.dev'"
         );
         assert_eq!(
             verbose_rerun(&args(&["anc", "web", "x", "--verbose"])),
             "anc web x --verbose"
         );
         assert_eq!(verbose_rerun(&args(&["anc", "-v", "."])), "anc -v .");
+    }
+
+    #[test]
+    fn verbose_rerun_drops_what_would_stop_it_running_or_leak_the_path() {
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "web", "x", "-q"])),
+            "anc --verbose web x"
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "--quiet", "audit", "."])),
+            "anc --verbose audit ."
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["/home/someone/.cargo/bin/anc", "audit", "."])),
+            "anc --verbose audit ."
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "--", "."])),
+            "anc --verbose audit -- ."
+        );
     }
 
     #[test]

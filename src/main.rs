@@ -84,7 +84,9 @@ fn main() {
 
     // In JSON mode a panic's message reaches its row or the envelope below, and
     // raw panic text would break the stderr stream the envelope is written to.
-    if json_mode {
+    // `--verbose` keeps it: the location is what the `report-bug` step's rerun is
+    // there to collect.
+    if json_mode && !argv::asks_verbose(&raw_argv) {
         std::panic::set_hook(Box::new(|_| {}));
     }
 
@@ -425,7 +427,14 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             });
             continue;
         }
-        let result = match audit.run(&project) {
+        let ran = catch_unwind(AssertUnwindSafe(|| {
+            #[cfg(feature = "panic-probe")]
+            agentnative::panics::probe(audit.id());
+            audit.run(&project)
+        }));
+        let ran =
+            ran.unwrap_or_else(|panic| Err(anyhow::anyhow!("panic: {}", panic_message(&*panic))));
+        let result = match ran {
             Ok(r) => r,
             Err(e) => AuditResult {
                 id: audit.id().to_string(),

@@ -458,10 +458,6 @@ impl BinaryRunner {
     }
 }
 
-/// Read from an optional handle, capping at MAX_OUTPUT_BYTES.
-///
-/// Returns `(content, truncated)`. Uses `Read::take(N+1)` so we can detect
-/// whether the stream exceeded exactly N bytes without a separate probe.
 // A reader that panicked is not a child that wrote nothing: the panic goes on up
 // rather than reading as empty output.
 fn joined(reader: std::thread::JoinHandle<(String, bool)>) -> (String, bool) {
@@ -470,6 +466,10 @@ fn joined(reader: std::thread::JoinHandle<(String, bool)>) -> (String, bool) {
         .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }
 
+/// Read from an optional handle, capping at MAX_OUTPUT_BYTES.
+///
+/// Returns `(content, truncated)`. Uses `Read::take(N+1)` so we can detect
+/// whether the stream exceeded exactly N bytes without a separate probe.
 fn read_capped(handle: Option<impl std::io::Read>) -> (String, bool) {
     let Some(h) = handle else {
         return (String::new(), false);

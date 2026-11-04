@@ -152,7 +152,8 @@ Suppressed audits appear in `results[]` as `status: "skip"` with evidence starti
 Exit 2 is overloaded. To distinguish "ran but found problems" from "called incorrectly", parse stderr; usage errors
 include `Usage:` text, and audit failures don't. Under `--output json`, every error is one envelope on stderr with a
 `next_step` whose `action` is `show-help`, `choose-bin`, or `rerun`, or, for `anc web`, `retry`, `fix-target`,
-`list-checks`, or `add-ca-cert`; README § "Errors under `--output json`" has the contract.
+`list-checks`, or `add-ca-cert`, or, for a panic on any verb, `report-bug`; README § "Errors under `--output json`" has
+the contract.
 
 ## Project Structure
 

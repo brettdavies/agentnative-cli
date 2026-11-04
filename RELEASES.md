@@ -98,9 +98,10 @@ The rules cover only the surfaces § What the contract is names.
 
 anc's public API is its machine contract:
 
-- **Invocation:** the subcommands (`audit`, `emit`, `skill`, `completions`, and `web` in a build with the `web`
-  feature), their flags and positional forms, the bare `anc <path>` form that runs `audit`, and every environment
-  variable `anc --help` lists.
+- **Invocation:** the subcommands (`audit`, `emit`, `skill`, `completions`, and `web`), their flags and positional
+  forms, the bare `anc <path>` form that runs `audit`, the bare `anc <network target>` form that runs `web` under the
+  rule in [README § Auditing a Website](./README.md#auditing-a-website), and every environment variable `anc --help`
+  lists. A `--no-default-features` build leaves out `web`, its `anc emit web-*` readers, and that second bare form.
 - **Exit codes:** the table in [`AGENTS.md`](./AGENTS.md#exit-codes).
 - **Structured output:** the scorecard `--output json` prints, as `schema/scorecard.schema.json` describes it and
   `anc emit schema` prints it; the error envelope `--output json` writes to stderr, with its closed `reason` and
@@ -392,12 +393,6 @@ The script opens a PR against `dev`; merge it once CI is green. The postflight b
 `chore(release): sync dev after <tag>` subject on `dev`. Never merge `main` into `dev` or push to `dev` directly: the
 squash-merged histories share no recent ancestry, so the merge conflicts on every file both sides touched, and a direct
 push bypasses `dev`'s required checks.
-
-**A release that withholds `anc web` takes a hand backport instead.** Until the web audit ships, the release branch
-strips the web code and the release changelog leaves out the `(web)`-scoped PRs. The script would read every stripped
-web file as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three
-bookkeeping files from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
-`chore(release): sync dev after v<version>`, the subject the postflight backport gate looks for.
 
 The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.
 

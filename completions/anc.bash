@@ -31,6 +31,9 @@ _anc() {
             anc,skill)
                 cmd="anc__subcmd__skill"
                 ;;
+            anc,web)
+                cmd="anc__subcmd__web"
+                ;;
             anc__subcmd__emit,coverage-matrix)
                 cmd="anc__subcmd__emit__subcmd__coverage__subcmd__matrix"
                 ;;
@@ -40,6 +43,15 @@ _anc() {
             anc__subcmd__emit,schema)
                 cmd="anc__subcmd__emit__subcmd__schema"
                 ;;
+            anc__subcmd__emit,web-checks)
+                cmd="anc__subcmd__emit__subcmd__web__subcmd__checks"
+                ;;
+            anc__subcmd__emit,web-remediation)
+                cmd="anc__subcmd__emit__subcmd__web__subcmd__remediation"
+                ;;
+            anc__subcmd__emit,web-schema)
+                cmd="anc__subcmd__emit__subcmd__web__subcmd__schema"
+                ;;
             anc__subcmd__emit__subcmd__help,coverage-matrix)
                 cmd="anc__subcmd__emit__subcmd__help__subcmd__coverage__subcmd__matrix"
                 ;;
@@ -48,6 +60,15 @@ _anc() {
                 ;;
             anc__subcmd__emit__subcmd__help,schema)
                 cmd="anc__subcmd__emit__subcmd__help__subcmd__schema"
+                ;;
+            anc__subcmd__emit__subcmd__help,web-checks)
+                cmd="anc__subcmd__emit__subcmd__help__subcmd__web__subcmd__checks"
+                ;;
+            anc__subcmd__emit__subcmd__help,web-remediation)
+                cmd="anc__subcmd__emit__subcmd__help__subcmd__web__subcmd__remediation"
+                ;;
+            anc__subcmd__emit__subcmd__help,web-schema)
+                cmd="anc__subcmd__emit__subcmd__help__subcmd__web__subcmd__schema"
                 ;;
             anc__subcmd__help,audit)
                 cmd="anc__subcmd__help__subcmd__audit"
@@ -64,11 +85,23 @@ _anc() {
             anc__subcmd__help,skill)
                 cmd="anc__subcmd__help__subcmd__skill"
                 ;;
+            anc__subcmd__help,web)
+                cmd="anc__subcmd__help__subcmd__web"
+                ;;
             anc__subcmd__help__subcmd__emit,coverage-matrix)
                 cmd="anc__subcmd__help__subcmd__emit__subcmd__coverage__subcmd__matrix"
                 ;;
             anc__subcmd__help__subcmd__emit,schema)
                 cmd="anc__subcmd__help__subcmd__emit__subcmd__schema"
+                ;;
+            anc__subcmd__help__subcmd__emit,web-checks)
+                cmd="anc__subcmd__help__subcmd__emit__subcmd__web__subcmd__checks"
+                ;;
+            anc__subcmd__help__subcmd__emit,web-remediation)
+                cmd="anc__subcmd__help__subcmd__emit__subcmd__web__subcmd__remediation"
+                ;;
+            anc__subcmd__help__subcmd__emit,web-schema)
+                cmd="anc__subcmd__help__subcmd__emit__subcmd__web__subcmd__schema"
                 ;;
             anc__subcmd__help__subcmd__skill,install)
                 cmd="anc__subcmd__help__subcmd__skill__subcmd__install"
@@ -101,7 +134,7 @@ _anc() {
 
     case "${cmd}" in
         anc)
-            opts="-q -v -h -V --quiet --verbose --examples --json --color --raw --help --version audit completions emit skill help"
+            opts="-q -v -h -V --quiet --verbose --examples --json --color --raw --help --version audit web completions emit skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -186,7 +219,7 @@ _anc() {
             return 0
             ;;
         anc__subcmd__emit)
-            opts="-q -v -h --quiet --verbose --examples --json --color --raw --help coverage-matrix schema help"
+            opts="-q -v -h --quiet --verbose --examples --json --color --raw --help coverage-matrix schema web-checks web-schema web-remediation help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -230,7 +263,7 @@ _anc() {
             return 0
             ;;
         anc__subcmd__emit__subcmd__help)
-            opts="coverage-matrix schema help"
+            opts="coverage-matrix schema web-checks web-schema web-remediation help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -285,6 +318,48 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        anc__subcmd__emit__subcmd__help__subcmd__web__subcmd__checks)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__emit__subcmd__help__subcmd__web__subcmd__remediation)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__emit__subcmd__help__subcmd__web__subcmd__schema)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         anc__subcmd__emit__subcmd__schema)
             opts="-q -v -h --quiet --verbose --examples --json --color --raw --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
@@ -303,8 +378,62 @@ _anc() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        anc__subcmd__emit__subcmd__web__subcmd__checks)
+            opts="-q -v -h --quiet --verbose --examples --json --color --raw --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --color)
+                    COMPREPLY=($(compgen -W "auto always never" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__emit__subcmd__web__subcmd__remediation)
+            opts="-q -v -h --quiet --verbose --examples --json --color --raw --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --color)
+                    COMPREPLY=($(compgen -W "auto always never" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__emit__subcmd__web__subcmd__schema)
+            opts="-q -v -h --quiet --verbose --examples --json --color --raw --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --color)
+                    COMPREPLY=($(compgen -W "auto always never" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         anc__subcmd__help)
-            opts="audit completions emit skill help"
+            opts="audit web completions emit skill help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -346,7 +475,7 @@ _anc() {
             return 0
             ;;
         anc__subcmd__help__subcmd__emit)
-            opts="coverage-matrix schema"
+            opts="coverage-matrix schema web-checks web-schema web-remediation"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -374,6 +503,48 @@ _anc() {
             return 0
             ;;
         anc__subcmd__help__subcmd__emit__subcmd__schema)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__help__subcmd__emit__subcmd__web__subcmd__checks)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__help__subcmd__emit__subcmd__web__subcmd__remediation)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__help__subcmd__emit__subcmd__web__subcmd__schema)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -432,6 +603,20 @@ _anc() {
         anc__subcmd__help__subcmd__skill__subcmd__update)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__help__subcmd__web)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -546,6 +731,51 @@ _anc() {
                 return 0
             fi
             case "${prev}" in
+                --output)
+                    COMPREPLY=($(compgen -W "text json" -- "${cur}"))
+                    return 0
+                    ;;
+                --color)
+                    COMPREPLY=($(compgen -W "auto always never" -- "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        anc__subcmd__web)
+            opts="-q -v -h --site-type --check --external-dns --no-external-dns --no-follow --ca-cert --token-stdin --output --quiet --verbose --examples --json --color --raw --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --site-type)
+                    COMPREPLY=($(compgen -W "content api" -- "${cur}"))
+                    return 0
+                    ;;
+                --check)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --ca-cert)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
                 --output)
                     COMPREPLY=($(compgen -W "text json" -- "${cur}"))
                     return 0

@@ -90,7 +90,7 @@ def main():
         out = Path(tmp) / "divergences.json"
         env = dict(os.environ, WEB_AUDIT_DIVERGENCE_OUT=str(out))
         subprocess.run(
-            ["cargo", "test", "--quiet", "--features", "web", "--test", "web_audit_divergences"],
+            ["cargo", "test", "--quiet", "--test", "web_audit_divergences"],
             cwd=ROOT, env=env, check=True,
         )
         pairs = json.loads(out.read_text())

@@ -64,6 +64,30 @@ diagnostic-only\:"Diagnostic tools (nvidia-smi, vmstat). No write operations, so
 '::path -- Path to project directory or binary:_files' \
 && ret=0
 ;;
+(web)
+_arguments "${_arguments_options[@]}" : \
+'--site-type=[Score only the checks that apply to this kind of site. Omitted, every check applies, matching the hosted auditor'\''s default]:KIND:((content\:"A documentation or content site"
+api\:"An API"))' \
+'--check=[Report one check by id and exit with that row'\''s code. Run \`anc emit web-checks\` for the full list of ids]:ID:_default' \
+'*--ca-cert=[Also trust the root certificates in this PEM file, for any target. Repeat for several files. A local or private target already trusts the OS trust store; a public target trusts the bundled Mozilla roots. Chain and hostname checks always run]:FILE:_files' \
+'--output=[Output format]:OUTPUT:(text json)' \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
+'--external-dns[Let the DNS-over-HTTPS checks query public resolvers even when the target is local or private. Without it those rows report \`n_a\` rather than sending the target'\''s hostname to a third party. It and \`--no-external-dns\` override each other, and the last one wins]' \
+'--no-external-dns[Withhold the DNS-over-HTTPS checks for any target, so the target'\''s hostname never reaches a public resolver. Those rows report \`n_a\`. Use it for an internal host on a routable address, which reads as public. It and \`--external-dns\` override each other, and the last one wins]' \
+'--no-follow[Audit only the target\: leave unrequested every host its discovery documents declare. Rows that depend on a declared host report \`n_a\` (\`follow-disabled\`), and the scorecard records \`follow_declarations\: false\`]' \
+'--token-stdin[Read a bearer token for the audited MCP endpoint from the first line of stdin, in place of \`ANC_WEB_TOKEN\`. The token goes only to that endpoint'\''s handshake and session requests]' \
+'-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)--verbose[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--examples[Print a curated examples block and exit. Pairs with \`--output json\` (or \`--json\`) so structured-output consumers can fetch the examples without parsing the full \`--help\` body]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'--raw[Strip section headers, evidence lines, summary line, and badge hint — emit only \`id<TAB>status\` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in \`--output json\` mode]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+':target -- Target URL or host. A scheme-less target defaults to https, localhost included\: every run sends HTTPS only, and an http\:// target ends unreachable before any request goes out:_urls' \
+&& ret=0
+;;
 (completions)
 _arguments "${_arguments_options[@]}" : \
 '--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
@@ -132,6 +156,48 @@ _arguments "${_arguments_options[@]}" : \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0
 ;;
+(web-checks)
+_arguments "${_arguments_options[@]}" : \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
+'-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)--verbose[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--examples[Print a curated examples block and exit. Pairs with \`--output json\` (or \`--json\`) so structured-output consumers can fetch the examples without parsing the full \`--help\` body]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'--raw[Strip section headers, evidence lines, summary line, and badge hint — emit only \`id<TAB>status\` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in \`--output json\` mode]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(web-schema)
+_arguments "${_arguments_options[@]}" : \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
+'-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)--verbose[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--examples[Print a curated examples block and exit. Pairs with \`--output json\` (or \`--json\`) so structured-output consumers can fetch the examples without parsing the full \`--help\` body]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'--raw[Strip section headers, evidence lines, summary line, and badge hint — emit only \`id<TAB>status\` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in \`--output json\` mode]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
+(web-remediation)
+_arguments "${_arguments_options[@]}" : \
+'--color=[Color control for text output. \`auto\` (default) emits ANSI styling when stdout is a terminal and \`NO_COLOR\` is unset. \`always\` forces styling on; \`never\` strips it. Honors the \`NO_COLOR\` environment variable in \`auto\` mode (<https\://no-color.org/>)]:WHEN:(auto always never)' \
+'-q[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--quiet[Suppress non-essential output. Default\: false (warnings and progress notes are written to stderr). \`AGENTNATIVE_QUIET\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)-v[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'(-q --quiet)--verbose[Escalate diagnostic detail. \`-v\` is shorthand for \`--verbose\`. Mutually exclusive with \`--quiet\`; the last flag on the command line wins when both appear. \`AGENTNATIVE_VERBOSE\` turns it on for any value but \`0\`, \`false\`, \`no\`, \`off\`, or empty]' \
+'--examples[Print a curated examples block and exit. Pairs with \`--output json\` (or \`--json\`) so structured-output consumers can fetch the examples without parsing the full \`--help\` body]' \
+'--json[Emit JSON output. Short alias for \`--output json\` on subcommands that support it. Per the agent-native convention (\`p2-should-json-aliases\`), the short form works alongside the canonical \`--output\` enum]' \
+'--raw[Strip section headers, evidence lines, summary line, and badge hint — emit only \`id<TAB>status\` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in \`--output json\` mode]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
 (help)
 _arguments "${_arguments_options[@]}" : \
 ":: :_anc__subcmd__emit__subcmd__help_commands" \
@@ -149,6 +215,18 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (schema)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(web-checks)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(web-schema)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(web-remediation)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -270,6 +348,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(web)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (completions)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -291,6 +373,18 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (schema)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(web-checks)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(web-schema)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(web-remediation)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -339,6 +433,7 @@ esac
 _anc_commands() {
     local commands; commands=(
 'audit:Audit a CLI project or binary for agent-readiness' \
+'web:Audit a website for agent-readiness' \
 'completions:Generate shell completions' \
 'emit:Render build artifacts (coverage matrix, scorecard schema)' \
 'skill:Install or manage the agentnative skill bundle' \
@@ -361,6 +456,9 @@ _anc__subcmd__emit_commands() {
     local commands; commands=(
 'coverage-matrix:Render the spec coverage matrix (registry → audits → artifact)' \
 'schema:Print the scorecard JSON Schema (draft 2020-12) to stdout' \
+'web-checks:Print the compiled web-audit check registry as JSON' \
+'web-schema:Print the web-scorecard JSON Schema (draft 2020-12) to stdout' \
+'web-remediation:Print the web-audit fix catalog as JSON' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'anc emit commands' commands "$@"
@@ -375,6 +473,9 @@ _anc__subcmd__emit__subcmd__help_commands() {
     local commands; commands=(
 'coverage-matrix:Render the spec coverage matrix (registry → audits → artifact)' \
 'schema:Print the scorecard JSON Schema (draft 2020-12) to stdout' \
+'web-checks:Print the compiled web-audit check registry as JSON' \
+'web-schema:Print the web-scorecard JSON Schema (draft 2020-12) to stdout' \
+'web-remediation:Print the web-audit fix catalog as JSON' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
     _describe -t commands 'anc emit help commands' commands "$@"
@@ -394,15 +495,46 @@ _anc__subcmd__emit__subcmd__help__subcmd__schema_commands() {
     local commands; commands=()
     _describe -t commands 'anc emit help schema commands' commands "$@"
 }
+(( $+functions[_anc__subcmd__emit__subcmd__help__subcmd__web-checks_commands] )) ||
+_anc__subcmd__emit__subcmd__help__subcmd__web-checks_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc emit help web-checks commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__emit__subcmd__help__subcmd__web-remediation_commands] )) ||
+_anc__subcmd__emit__subcmd__help__subcmd__web-remediation_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc emit help web-remediation commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__emit__subcmd__help__subcmd__web-schema_commands] )) ||
+_anc__subcmd__emit__subcmd__help__subcmd__web-schema_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc emit help web-schema commands' commands "$@"
+}
 (( $+functions[_anc__subcmd__emit__subcmd__schema_commands] )) ||
 _anc__subcmd__emit__subcmd__schema_commands() {
     local commands; commands=()
     _describe -t commands 'anc emit schema commands' commands "$@"
 }
+(( $+functions[_anc__subcmd__emit__subcmd__web-checks_commands] )) ||
+_anc__subcmd__emit__subcmd__web-checks_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc emit web-checks commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__emit__subcmd__web-remediation_commands] )) ||
+_anc__subcmd__emit__subcmd__web-remediation_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc emit web-remediation commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__emit__subcmd__web-schema_commands] )) ||
+_anc__subcmd__emit__subcmd__web-schema_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc emit web-schema commands' commands "$@"
+}
 (( $+functions[_anc__subcmd__help_commands] )) ||
 _anc__subcmd__help_commands() {
     local commands; commands=(
 'audit:Audit a CLI project or binary for agent-readiness' \
+'web:Audit a website for agent-readiness' \
 'completions:Generate shell completions' \
 'emit:Render build artifacts (coverage matrix, scorecard schema)' \
 'skill:Install or manage the agentnative skill bundle' \
@@ -425,6 +557,9 @@ _anc__subcmd__help__subcmd__emit_commands() {
     local commands; commands=(
 'coverage-matrix:Render the spec coverage matrix (registry → audits → artifact)' \
 'schema:Print the scorecard JSON Schema (draft 2020-12) to stdout' \
+'web-checks:Print the compiled web-audit check registry as JSON' \
+'web-schema:Print the web-scorecard JSON Schema (draft 2020-12) to stdout' \
+'web-remediation:Print the web-audit fix catalog as JSON' \
     )
     _describe -t commands 'anc help emit commands' commands "$@"
 }
@@ -437,6 +572,21 @@ _anc__subcmd__help__subcmd__emit__subcmd__coverage-matrix_commands() {
 _anc__subcmd__help__subcmd__emit__subcmd__schema_commands() {
     local commands; commands=()
     _describe -t commands 'anc help emit schema commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__help__subcmd__emit__subcmd__web-checks_commands] )) ||
+_anc__subcmd__help__subcmd__emit__subcmd__web-checks_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc help emit web-checks commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__help__subcmd__emit__subcmd__web-remediation_commands] )) ||
+_anc__subcmd__help__subcmd__emit__subcmd__web-remediation_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc help emit web-remediation commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__help__subcmd__emit__subcmd__web-schema_commands] )) ||
+_anc__subcmd__help__subcmd__emit__subcmd__web-schema_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc help emit web-schema commands' commands "$@"
 }
 (( $+functions[_anc__subcmd__help__subcmd__help_commands] )) ||
 _anc__subcmd__help__subcmd__help_commands() {
@@ -460,6 +610,11 @@ _anc__subcmd__help__subcmd__skill__subcmd__install_commands() {
 _anc__subcmd__help__subcmd__skill__subcmd__update_commands() {
     local commands; commands=()
     _describe -t commands 'anc help skill update commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__help__subcmd__web_commands] )) ||
+_anc__subcmd__help__subcmd__web_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc help web commands' commands "$@"
 }
 (( $+functions[_anc__subcmd__skill_commands] )) ||
 _anc__subcmd__skill_commands() {
@@ -503,6 +658,11 @@ _anc__subcmd__skill__subcmd__install_commands() {
 _anc__subcmd__skill__subcmd__update_commands() {
     local commands; commands=()
     _describe -t commands 'anc skill update commands' commands "$@"
+}
+(( $+functions[_anc__subcmd__web_commands] )) ||
+_anc__subcmd__web_commands() {
+    local commands; commands=()
+    _describe -t commands 'anc web commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_anc" ]; then

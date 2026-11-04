@@ -5,10 +5,9 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue.svg)](#license)
 
 Audits whether your CLI follows the 8 agent-readiness principles, and whether your website is readable by the agents
-that come looking. `anc audit` scores a command-line tool; `anc web` scores an HTTP(S) target against the same 65-check
+that come looking. `anc audit` scores a command-line tool; `anc web` scores an HTTP(S) target against the same check
 registry [anc.dev](https://anc.dev) runs, from your own machine, so a localhost, private or internal site the hosted
-auditor cannot reach is auditable where it runs. `anc web` is built with the `web` cargo feature and is not in the
-released binaries; [Auditing a Website](#auditing-a-website) says how to build it.
+auditor cannot reach is auditable where it runs.
 
 `anc` dogfoods the spec it enforces. The badge above is its own live score.
 
@@ -23,9 +22,6 @@ brew install brettdavies/tap/agentnative
 # From crates.io
 cargo install agentnative
 
-# From crates.io, with `anc web` (the `web` feature; not in the released binaries)
-cargo install agentnative --features web
-
 # Pre-built binary via cargo-binstall
 cargo binstall agentnative
 
@@ -38,6 +34,11 @@ checksum the formula pins, and compiles nothing. The tap pins a checksum only af
 the release's build-provenance attestation;
 [Verifying an archive](https://github.com/brettdavies/homebrew-tap#verifying-an-archive) in the tap's README has the
 command that repeats the check.
+
+`cargo install agentnative --no-default-features` leaves out `anc web` and its networking stack: `anc --help` lists no
+`web` subcommand, the `anc emit web-*` readers are absent, and a network-shaped argument routes to `anc audit` like any
+other. The stack needs a C compiler, as the rest of the build does, plus `clang-cl` on Windows on Arm and NASM on 32-bit
+x86 Windows, so `--no-default-features` is also the way past a build failure there.
 
 Each release archive carries a build-provenance attestation and an attested SBOM, signed by the release workflow. To
 check that an archive you downloaded was built by it, from this repository:
@@ -118,7 +119,7 @@ anc . --principle 3
 # Quiet mode (warnings and failures only)
 anc . -q
 
-# Audit a website from this machine (a `--features web` build; `web` is inserted for a network target)
+# Audit a website from this machine (`web` is inserted for a network target)
 anc localhost:8787
 anc web https://anc.dev
 ```
@@ -367,14 +368,8 @@ one package that declares a binary; when several do, those audits skip and name 
 
 `anc web <target>` runs the [anc.dev](https://anc.dev) web-audit registry against a site from this machine. The hosted
 auditor refuses a target it cannot reach, which is every localhost port, every private address and every internal
-hostname; this is the same engine, the same 65 checks and the same verdicts, run from where the site is reachable. No
+hostname; this is the same engine, the same checks and the same verdicts, run from where the site is reachable. No
 runtime to install, and no browser. [What `anc web` Sends](#what-anc-web-sends) lists everything a run contacts.
-
-`anc web` is built with the `web` cargo feature, which is off by default. The Homebrew formula, the cargo-binstall and
-GitHub Release binaries, and a plain `cargo install agentnative` do not include it. Build it with
-`cargo install agentnative --features web`, or with `cargo build --features web` from a checkout. Without the feature,
-`anc --help` lists no `web` subcommand, the `anc emit web-*` readers are absent, and a network-shaped argument routes to
-`anc audit` like any other.
 
 ```bash
 # A local dev server (a scheme-less target defaults to https, local ones included)
@@ -832,9 +827,11 @@ nor hurt the score.
 
 ## CLI Reference
 
-When the first non-flag argument is not a recognized subcommand, `audit` is inserted automatically. `anc .`, `anc -q .`,
-and `anc --command rg` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
-deliberate fork-bomb guard for when agentnative dogfoods itself.
+When the first non-flag argument is not a recognized subcommand, one is inserted automatically: `web` when the argument
+reads as a network target ([Auditing a Website](#auditing-a-website) states the rule), `audit` otherwise. `anc .`,
+`anc -q .`, and `anc --command rg` all resolve to `anc audit …`, and `anc anc.dev` to `anc web anc.dev`. A directory
+named `web` needs a path form, `anc ./web`. Bare `anc` (no arguments) still prints help and exits 2: a deliberate
+fork-bomb guard for when agentnative dogfoods itself.
 
 ```text
 Usage: anc audit [OPTIONS] [PATH]

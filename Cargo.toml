@@ -118,8 +118,9 @@ url = { version = "2", optional = true }
 regex = { version = "1", optional = true }
 
 [features]
-default = []
-# The local web audit and the networking stack it runs on.
+default = ["web"]
+# The local web audit and the networking stack it runs on. A
+# `--no-default-features` build leaves out both and the `anc web` verb.
 web = [
     "dep:ureq",
     "dep:rustls",

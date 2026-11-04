@@ -198,6 +198,14 @@ fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
         "{stderr}"
     );
 
+    // `-q` asks for quiet, so the notice stays back.
+    let assert = anc()
+        .args(["-q", &host, "--check", "llms-txt"])
+        .assert()
+        .code(0);
+    let stderr = stderr_of(assert.get_output());
+    assert!(!stderr.contains("routed-to-web"), "{stderr}");
+
     // A run that names `web` has nothing to say about routing.
     let assert = anc()
         .args(["web", &host, "--check", "llms-txt"])
@@ -219,7 +227,11 @@ fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
 
     // So does a name whose last label is no top-level domain, and a
     // `file:line` reference, which the port grammar would otherwise take.
-    for token in ["anc-web-audit-missing.go", "anc-web-audit-missing.rs:42"] {
+    for token in [
+        "anc-web-audit-missing.go",
+        "anc-web-audit-missing.rs:42",
+        "Makefile:12",
+    ] {
         let assert = anc().arg(token).assert().code(2);
         assert!(
             stderr_of(assert.get_output()).contains("path does not exist"),
@@ -227,6 +239,15 @@ fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
             stderr_of(assert.get_output())
         );
     }
+
+    // A name on a denied top-level domain stays offline too, and the error
+    // says what reaches it as a website.
+    let assert = anc().arg("anc-web-audit-missing.pl").assert().code(2);
+    let stderr = stderr_of(assert.get_output());
+    assert!(
+        stderr.contains("if it names a website, `anc web anc-web-audit-missing.pl` audits it"),
+        "{stderr}"
+    );
 
     // An explicit path form routes to audit even when the name is
     // URL-shaped.
@@ -334,18 +355,21 @@ fn the_web_verb_appears_in_shell_completions() {
 fn the_verb_runs_under_a_bare_exec() {
     let server = fixture_site();
     let exe = assert_cmd::cargo::cargo_bin("anc");
-    let out = StdCommand::new(exe)
-        .args([
-            "web",
-            &host_of(&server),
-            "--check",
-            "llms-txt",
-            "--ca-cert",
-            common::test_ca_path(),
-        ])
-        .env_clear()
-        .output()
-        .expect("spawn anc");
+    let mut bare = StdCommand::new(exe);
+    bare.args([
+        "web",
+        &host_of(&server),
+        "--check",
+        "llms-txt",
+        "--ca-cert",
+        common::test_ca_path(),
+    ])
+    .env_clear();
+    // Windows sockets do not initialize without `SystemRoot`, whatever the program.
+    if let Some(root) = std::env::var_os("SystemRoot") {
+        bare.env("SystemRoot", root);
+    }
+    let out = bare.output().expect("spawn anc");
     assert_eq!(out.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&out.stdout).starts_with("llms-txt\tpass\t"));
 }

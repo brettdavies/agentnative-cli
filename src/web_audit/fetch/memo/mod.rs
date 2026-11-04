@@ -30,8 +30,8 @@
 //! own timeout still bounds the request, so in production a memo-owned read
 //! a later waiter pushed back still ends at the sender's budget, and that
 //! waiter then sends its own request. A hop thread that panics settles whatever
-//! stage is open with the panic's message, so nobody waits out a deadline for it
-//! and the row does not read as the target's timeout.
+//! stage is open with the panic, and each caller raises it as its own, so nobody
+//! waits out a deadline for it and it never reads as the target's failure.
 //!
 //! The memo keeps the better of two answers, retains a body only within
 //! [`MEMO_BODY_MAX_BYTES`] and the audit's [`MEMO_TOTAL_MAX_BYTES`], and
@@ -199,6 +199,23 @@ impl RequestMemo {
         request: Request,
         ctx: HopContext,
     ) -> HopRecord {
+        let record = self.answer(transport, request, ctx);
+        let error = match &record {
+            HopRecord::Failure(error) => Some(error),
+            HopRecord::Answer(answer) => answer.body_error.as_ref(),
+        };
+        if let Some(error) = error.filter(|error| error.panicked) {
+            std::panic::panic_any(error.message.clone());
+        }
+        record
+    }
+
+    fn answer(
+        &self,
+        transport: &Arc<dyn Transport + Send + Sync>,
+        request: Request,
+        ctx: HopContext,
+    ) -> HopRecord {
         let key = Key::of(&request, &self.shared.digest);
         let mut prior: Option<HopRecord> = None;
         let mut wanting: Option<Arc<Entry>> = None;
@@ -229,7 +246,7 @@ impl RequestMemo {
                 thread::spawn(move || {
                     let hop = AssertUnwindSafe(|| run_hop(&shared, &sent, &*transport, &request));
                     if let Err(panic) = catch_unwind(hop) {
-                        sent.settle_panic(&shared, &panic_message(&*panic));
+                        sent.settle_panic(&shared, panic_message(&*panic));
                     }
                 });
                 return entry.wait_sender(&self.shared, &ctx);

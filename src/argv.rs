@@ -258,25 +258,23 @@ pub fn format_invocation(args: &[OsString]) -> String {
         .join(" ")
 }
 
-/// Whether the invocation asks for `--verbose`.
-pub fn asks_verbose(args: &[OsString]) -> bool {
-    args.iter().any(|arg| arg == "--verbose" || arg == "-v")
-}
-
-/// The invocation a bug report reruns: `anc` for the program name, so a public
-/// report carries no home directory, no quiet flag, which clap refuses beside
-/// `--verbose`, and `--verbose` once, ahead of any `--` that would swallow it.
+/// The invocation a bug report reruns: `anc` for the program name, no quiet flag,
+/// which clap refuses beside `--verbose`, and `--verbose` once, ahead of any `--`
+/// that would swallow it. What follows a `--` is the caller's positional, whatever
+/// it looks like.
 pub fn verbose_rerun(args: &[OsString]) -> String {
+    let flags = args
+        .iter()
+        .skip(1)
+        .take_while(|arg| *arg != "--")
+        .filter(|arg| *arg != "--quiet" && *arg != "-q");
+    let positionals = args.iter().skip(1).skip_while(|arg| *arg != "--");
+    let verbose = flags.clone().any(|arg| arg == "--verbose" || arg == "-v");
     let mut out = vec![OsString::from("anc")];
-    if !asks_verbose(args) {
+    if !verbose {
         out.push(OsString::from("--verbose"));
     }
-    out.extend(
-        args.iter()
-            .skip(1)
-            .filter(|arg| *arg != "--quiet" && *arg != "-q")
-            .cloned(),
-    );
+    out.extend(flags.chain(positionals).cloned());
     format_invocation(&out)
 }
 
@@ -572,6 +570,14 @@ mod tests {
         assert_eq!(
             verbose_rerun(&args(&["anc", "audit", "--", "."])),
             "anc --verbose audit -- ."
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "--", "-q"])),
+            "anc --verbose audit -- -q"
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "--", "-v"])),
+            "anc --verbose audit -- -v"
         );
     }
 

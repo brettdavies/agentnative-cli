@@ -170,9 +170,13 @@ impl Entry {
         stages.headers = stages.full.clone();
     }
 
-    /// The hop thread panicked: the open stage ends with what went wrong.
-    pub(super) fn settle_panic(&self, shared: &Shared, message: &str) {
-        let error = HopError::new(format!("panic: {message}"), false, &self.sender);
+    /// The hop thread panicked: the open stage ends with the panic, which every
+    /// caller reading this entry then raises as its own.
+    pub(super) fn settle_panic(&self, shared: &Shared, message: String) {
+        let error = HopError {
+            panicked: true,
+            ..HopError::new(message, false, &self.sender)
+        };
         let mut stages = self.stages();
         if stages.headers.is_none() {
             self.settle_failure_locked(&mut stages, shared, error);

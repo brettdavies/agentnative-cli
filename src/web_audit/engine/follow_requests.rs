@@ -16,7 +16,6 @@ use url::Url;
 
 use super::follow_trail::Settled;
 use super::types::FetchHandle;
-use crate::panics::panic_message;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::locality::Locality;
 
@@ -233,9 +232,8 @@ fn get_all(fetch: &FetchHandle, jobs: &[&Admitted]) -> Vec<ProbeResponse> {
         handles
             .into_iter()
             .map(|h| {
-                h.join().unwrap_or_else(|panic| {
-                    ProbeResponse::failed(format!("panic: {}", panic_message(&*panic)), 0)
-                })
+                h.join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
             })
             .collect()
     })

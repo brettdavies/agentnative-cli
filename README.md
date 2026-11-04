@@ -891,8 +891,8 @@ is one of a closed set, and a newer release can add to it:
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error, or the issue tracker for `report-bug`. The offending input is echoed beside the
 reason: `bin` for `unknown-bin` and `bin-needs-directory`, and `argument` and `value` for parse errors when the parser
-reports them and for every `anc web` error, where `value` is the target (the URL probed, for `target-unreachable` and
-`untrusted-certificate`), the `--check` id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or
+reports them and for every other `anc web` error, where `value` is the target (the URL probed, for `target-unreachable`
+and `untrusted-certificate`), the `--check` id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or
 `--token-stdin` as its `argument`, and its `value` is never the token: empty, or `[redacted]` for a token that was read.
 
 ### Shell Completions

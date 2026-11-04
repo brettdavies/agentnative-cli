@@ -19,7 +19,7 @@ use agentnative::cli::{ColorChoice, SiteType};
 use agentnative::completions;
 use agentnative::error::AppError;
 use agentnative::exit_codes::EXIT_COULD_NOT_CHECK;
-use agentnative::panics::panic_message;
+use agentnative::panics::{hold_location_quietly, last_location, panic_message};
 use agentnative::principles::matrix;
 #[cfg(feature = "web")]
 use agentnative::principles::registry::SPEC_VERSION;
@@ -84,10 +84,8 @@ fn main() {
 
     // In JSON mode a panic's message reaches its row or the envelope below, and
     // raw panic text would break the stderr stream the envelope is written to.
-    // `--verbose` keeps it: the location is what the `report-bug` step's rerun is
-    // there to collect.
-    if json_mode && !argv::asks_verbose(&raw_argv) {
-        std::panic::set_hook(Box::new(|_| {}));
+    if json_mode {
+        hold_location_quietly();
     }
 
     let code = match catch_unwind(AssertUnwindSafe(|| run(raw_argv))) {
@@ -110,6 +108,10 @@ fn main() {
         Err(panic) => {
             let message = panic_message(&*panic);
             if json_mode {
+                let message = match last_location() {
+                    Some(location) => format!("{message} ({location})"),
+                    None => message,
+                };
                 let envelope = json_error::render_error(
                     "runtime",
                     "panic",

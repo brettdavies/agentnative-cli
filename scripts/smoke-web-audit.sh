@@ -11,12 +11,12 @@
 # sneaks into a local run all show up here as wall clock.
 #
 # With `scripts/smoke-web-audit.sh <binary> --panic-probe`, on a release binary
-# built with the `panic-probe` feature, it then audits the site twice more: with
-# one handler panicking, which costs that row and not the run, and with the run
-# itself panicking, which ends in the could-not-check exit and an error
-# envelope. It then audits a command with one audit panicking, which costs that
-# audit its row. A test build always unwinds, so only a release-profile build
-# can show any of them.
+# built with the `panic-probe` feature, it then audits the site with one handler
+# panicking, which costs that row and not the run, and with the run itself
+# panicking, in both output modes, which ends in the could-not-check exit and an
+# error envelope. It then audits a command with one audit panicking, which costs
+# that audit its row. A test build always unwinds, so only a release-profile
+# build can show any of them.
 #
 # The fixture is served from a temp directory by Python's own http.server
 # over TLS, so the check needs no fixture host and makes no external
@@ -238,7 +238,7 @@ fi
 printf 'panic in %s: exit %s, %s rows, its row: %s\n' "$probe_id" "$code" "$rows" "$row"
 
 probe_run run --output json
-if ! jaq -e '.error == "panic" and .exit_code == 3 and .message == "panic probe in run"
+if ! jaq -e '.error == "panic" and .exit_code == 3 and (.message | startswith("panic probe in run (panics.rs:"))
   and .next_step.action == "report-bug" and (.next_step.command | startswith("anc --verbose "))' \
   <"$stderr_log" >/dev/null; then
   printf 'error: a panic in the run left no error envelope on stderr:\n' >&2
@@ -260,7 +260,6 @@ ANC_PANIC_PROBE=p3-help timeout "$BUDGET_SECONDS" "$BINARY" audit --command ls -
   >"$probed" 2>"$stderr_log"
 code=$?
 set -e
-# shellcheck disable=SC2016 # $id is jaq's variable, not the shell's.
 row=$(jaq -r '[.results[] | select(.audit_id == "p3-help")][0] | "\(.status): \(.evidence)"' <"$probed")
 if ((code != 3)) || [[ "$row" != "error: panic: panic probe in p3-help"* ]]; then
   printf 'error: a panic in one audit returned %s, its row: %q. anc wrote:\n' "$code" "$row" >&2

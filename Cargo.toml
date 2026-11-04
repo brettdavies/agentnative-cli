@@ -128,9 +128,9 @@ web = [
     "dep:url",
     "dep:regex",
 ]
-# Test only: a run or a named handler panics on request, so a release-profile
-# build can show what a panic does (scripts/smoke-web-audit.sh <binary>
-# --panic-probe). No shipped build enables it.
+# Test only: a run, a named handler, or a named audit panics on request, so a
+# release-profile build can show what a panic does (scripts/smoke-web-audit.sh
+# <binary> --panic-probe). No shipped build enables it.
 panic-probe = []
 
 [build-dependencies]

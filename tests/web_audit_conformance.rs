@@ -24,8 +24,8 @@ use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, corpus_dir, load_cases, replay};
 use common::ledger::{
-    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, load_ledger,
-    parse_ledger,
+    compare_with_ledger, corpus_divergences, divergences_against, divergences_of, golden_text,
+    load_ledger, parse_ledger,
 };
 use std::sync::Arc;
 
@@ -57,14 +57,6 @@ fn scorecard_json(case: &Case) -> Result<String, String> {
             Err(format!("the run reported unreachable: {reason}"))
         }
     }
-}
-
-fn golden_text(name: &str) -> String {
-    let path = common::corpus::corpus_dir()
-        .join("scenarios")
-        .join(name)
-        .join("scorecard.json");
-    fs::read_to_string(path).expect("a golden scorecard")
 }
 
 #[test]
@@ -182,9 +174,6 @@ fn the_fetch_parity_scenarios_are_present_and_green() {
     }
 }
 
-/// A golden is only evidence if breaking it fails the suite. Mutating one
-/// digit of a score in a copy of a golden must be caught by the same
-/// comparison the suite runs.
 /// A golden is only evidence if breaking it fails the suite: mutating an
 /// element must surface as a divergence in exactly that element, through the
 /// comparison the suite runs.
@@ -199,17 +188,29 @@ fn a_mutated_golden_fails_the_comparison() {
     let spec = format!("\"spec_version\": \"{}\"", case.scenario.spec_version);
     let mutated = golden.replacen(&spec, "\"spec_version\": \"0.0.0\"", 1);
     assert_ne!(mutated, golden, "the mutation must change the document");
-    if divergences_of(case).is_empty() {
-        assert_eq!(
-            divergences_against(case, &mutated),
-            BTreeSet::from(["spec_version".to_string()])
-        );
-    } else {
-        assert!(
-            divergences_against(case, &mutated).contains("spec_version"),
-            "the comparison must name the field that moved"
-        );
-    }
+    let mut expected = divergences_of(case);
+    assert!(
+        expected.insert("spec_version".to_string()),
+        "the anchor element must be one the engine reproduces"
+    );
+    assert_eq!(divergences_against(case, &mutated), expected);
+}
+
+#[test]
+fn a_field_only_the_engine_writes_is_a_divergence() {
+    let cases = load_cases();
+    let case = cases
+        .iter()
+        .find(|c| c.name == "run-healthy")
+        .expect("the healthy whole-run scenario");
+    let mut golden: serde_json::Value =
+        serde_json::from_str(&golden_text(&case.name)).expect("golden JSON");
+    golden
+        .as_object_mut()
+        .expect("a scorecard object")
+        .remove("spec_version");
+    let without = serde_json::to_string_pretty(&golden).unwrap();
+    assert!(divergences_against(case, &without).contains("spec_version"));
 }
 
 fn element(scenario: &str, element: &str) -> (String, String) {

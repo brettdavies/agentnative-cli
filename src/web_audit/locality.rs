@@ -181,16 +181,21 @@ fn classify_ipv6(ip: Ipv6Addr) -> Locality {
     Locality::Public
 }
 
-/// The IPv4 address inside an IPv4-mapped (`::ffff:a.b.c.d`) or
-/// IPv4-compatible (`::a.b.c.d`) IPv6 address.
+/// The IPv4 address an IPv6 spelling delivers to, which is the class it takes:
+/// IPv4-mapped and IPv4-compatible (RFC 4291), IPv4-translated (RFC 2765), NAT64's
+/// well-known prefix (RFC 6052), NAT64's local-use prefix (RFC 8215) read at the /96
+/// layout, and 6to4 (RFC 3056).
 fn embedded_ipv4(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     let seg = ip.segments();
-    let prefix_zero = seg[..5].iter().all(|s| *s == 0);
-    if prefix_zero && (seg[5] == 0xffff || seg[5] == 0) {
-        let v4 = ((seg[6] as u32) << 16) | seg[7] as u32;
-        return Some(Ipv4Addr::from(v4));
+    let v4 = |high: u16, low: u16| Ipv4Addr::from(((high as u32) << 16) | low as u32);
+    match seg {
+        [0, 0, 0, 0, 0, 0 | 0xffff, ..]
+        | [0, 0, 0, 0, 0xffff, 0, ..]
+        | [0x64, 0xff9b, 0, 0, 0, 0, ..]
+        | [0x64, 0xff9b, 1, ..] => Some(v4(seg[6], seg[7])),
+        [0x2002, high, low, ..] => Some(v4(high, low)),
+        _ => None,
     }
-    None
 }
 
 /// Parse an IPv4 literal in any `inet_aton` form: one to four dotted parts,
@@ -563,6 +568,28 @@ mod tests {
                 "[::ffff:100.100.100.200]",
             ),
             ("azure wireserver", "168.63.129.16"),
+            ("nat64 of link-local metadata", "[64:ff9b::a9fe:a9fe]"),
+            ("nat64 of alibaba cloud metadata", "[64:ff9b::6464:64c8]"),
+            (
+                "local-use nat64 of link-local metadata",
+                "[64:ff9b:1::a9fe:a9fe]",
+            ),
+            (
+                "local-use nat64 of alibaba cloud metadata",
+                "[64:ff9b:1::6464:64c8]",
+            ),
+            ("siit of link-local metadata", "[::ffff:0:a9fe:a9fe]"),
+            ("siit of alibaba cloud metadata", "[::ffff:0:6464:64c8]"),
+            ("6to4 of link-local metadata", "[2002:a9fe:a9fe::]"),
+            ("6to4 of alibaba cloud metadata", "[2002:6464:64c8::]"),
+            (
+                "local-use nat64 with bits inside the /48",
+                "[64:ff9b:1:abcd::a9fe:a9fe]",
+            ),
+            (
+                "6to4 with subnet and interface bits",
+                "[2002:a9fe:a9fe:1::5]",
+            ),
             ("ipv4-mapped azure wireserver", "[::ffff:168.63.129.16]"),
         ];
         for (label, host) in rows {
@@ -574,6 +601,23 @@ mod tests {
     fn public_literals_classify_without_resolution() {
         assert_eq!(shape("93.184.216.34"), Locality::Public);
         assert_eq!(shape("168.63.129.17"), Locality::Public);
+        for translated in [
+            "[64:ff9b::808:808]",
+            "[64:ff9b:1::808:808]",
+            "[::ffff:0:808:808]",
+            "[2002:808:808::]",
+            "[64:ff9a::a9fe:a9fe]",
+            "[64:ff9b:0:1::a9fe:a9fe]",
+            "[64:ff9b:2::a9fe:a9fe]",
+            "[::fffe:0:a9fe:a9fe]",
+            "[::ffff:1:a9fe:a9fe]",
+            "[2003:a9fe:a9fe::]",
+        ] {
+            assert_eq!(shape(translated), Locality::Public, "{translated}");
+        }
+        for private in ["[64:ff9b::a00:1]", "[2002:a00:1::]"] {
+            assert_eq!(shape(private), Locality::Local, "{private}");
+        }
         assert_eq!(
             shape("[2606:2800:220:1:248:1893:25c8:1946]"),
             Locality::Public

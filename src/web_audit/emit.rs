@@ -206,7 +206,6 @@ mod tests {
             .collect();
         let registry: Vec<&str> = CHECKS.iter().map(|c| c.id).collect();
         assert_eq!(ids, registry);
-        assert_eq!(ids.len(), 68);
         assert_eq!(parsed["registry_version"], Value::from(REGISTRY_VERSION));
         assert_eq!(parsed["site_sha"], Value::from(SITE_SHA));
         assert_eq!(

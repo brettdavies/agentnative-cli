@@ -243,7 +243,7 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     let ids: Vec<&str> = report.results.iter().map(|r| r.check.id).collect();
     let registry: Vec<&str> = CHECKS.iter().map(|c| c.id).collect();
     assert_eq!(ids, registry, "results follow registry order");
-    assert_eq!(report.scorecard.results.len(), 68);
+    assert_eq!(report.scorecard.results.len(), CHECKS.len());
     assert!(report.complete);
     // The stand-in set registers handler kinds and the api-description rule,
     // so retained-document is unported here; the protected-resource rows
@@ -258,8 +258,9 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         Some("https://example.com/mcp")
     );
     assert_eq!(
-        report.scorecard.summary.pass, 62,
-        "{:?}",
+        report.scorecard.summary.pass as usize + 5 + 1,
+        CHECKS.len(),
+        "every row but the n_a and skip ones below passes: {:?}",
         report.scorecard.summary
     );
     assert_eq!(report.scorecard.summary.n_a, 5);
@@ -335,7 +336,7 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         progress.discovery,
         vec![Some("https://example.com/mcp".to_string())]
     );
-    assert_eq!(progress.ids.len(), 68);
+    assert_eq!(progress.ids.len(), CHECKS.len());
 }
 
 #[test]
@@ -476,7 +477,7 @@ fn silence_and_edge_errors_are_unreachable_but_any_real_status_audits() {
 
     let not_found = Arc::new(MockTransport::new(vec![], MockResponse::ok(404, &[], b"")));
     let report = complete(run_web_audit(input(not_found, stand_in_handlers())));
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert_eq!(
         row(&report, "agent-friendly-404").status,
         ScorecardStatus::Absent
@@ -740,7 +741,7 @@ fn deadline_skips(report: &RunReport) -> usize {
 fn a_tarpit_that_honors_timeouts_ends_inside_the_deadline_with_shortened_late_requests() {
     let (report, elapsed, seen) = run_stalled(Stall::HonorTimeout);
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     assert!(deadline_skips(&report) > 0);
     let probes: Vec<&(String, Duration)> = seen
@@ -760,7 +761,7 @@ fn a_tarpit_that_honors_timeouts_ends_inside_the_deadline_with_shortened_late_re
 fn a_tarpit_that_never_returns_is_abandoned_at_the_deadline() {
     let (report, elapsed, _) = run_stalled(Stall::Forever);
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     // No stalled request ever returned: each caller reported its timeout at
     // its own deadline, and the checks still queued at the audit's deadline
@@ -779,7 +780,7 @@ fn a_tarpit_that_never_returns_is_abandoned_at_the_deadline() {
 fn a_slow_loris_body_ends_inside_the_deadline() {
     let (report, elapsed, seen) = run_stalled(Stall::Trickle);
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     assert!(deadline_skips(&report) > 0);
     let probes: Vec<&(String, Duration)> = seen

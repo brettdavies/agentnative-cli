@@ -21,6 +21,8 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+#[cfg(feature = "web")]
+use std::time::Duration;
 
 /// An empty user-level config the tests own, so no audit reads the
 /// developer's own `~/.anc.toml`. The file exists, so `anc` has no missing
@@ -34,6 +36,13 @@ pub fn empty_home_config() -> &'static Path {
         std::fs::write(&file, "").expect("write the empty home config");
         file
     })
+}
+
+/// `bytes` as one gzip member.
+pub fn gzip_of(bytes: &[u8]) -> Vec<u8> {
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(bytes).expect("write to a vec");
+    encoder.finish().expect("finish a vec")
 }
 
 /// One request as the server read it off the wire.
@@ -63,6 +72,8 @@ pub struct RawResponse {
     pub status: u16,
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Send the body as one chunk rather than with a `content-length`.
+    pub chunked: bool,
 }
 
 impl RawResponse {
@@ -74,6 +85,15 @@ impl RawResponse {
                 .map(|(n, v)| (n.to_string(), v.to_string()))
                 .collect(),
             body: body.to_vec(),
+            chunked: false,
+        }
+    }
+
+    /// This response with its body sent as one chunk.
+    pub fn chunked(self) -> Self {
+        RawResponse {
+            chunked: true,
+            ..self
         }
     }
 }
@@ -165,7 +185,11 @@ fn read_request_from<R: Read>(stream: R) -> Option<RawRequest> {
     })
 }
 
-fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
+fn write_response<W: Write>(stream: W, resp: &RawResponse) {
+    write_response_ending(stream, resp, "close");
+}
+
+fn write_response_ending<W: Write>(mut stream: W, resp: &RawResponse, connection: &str) {
     let reason = match resp.status {
         200 => "OK",
         301 => "Moved Permanently",
@@ -177,10 +201,23 @@ fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
     for (n, v) in &resp.headers {
         out.push_str(&format!("{n}: {v}\r\n"));
     }
-    out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
-    out.push_str("connection: close\r\n\r\n");
+    if resp.chunked {
+        out.push_str("transfer-encoding: chunked\r\n");
+    } else {
+        out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
+    }
+    out.push_str(&format!("connection: {connection}\r\n\r\n"));
     let _ = stream.write_all(out.as_bytes());
-    let _ = stream.write_all(&resp.body);
+    if resp.chunked {
+        if !resp.body.is_empty() {
+            let _ = write!(stream, "{:x}\r\n", resp.body.len());
+            let _ = stream.write_all(&resp.body);
+            let _ = stream.write_all(b"\r\n");
+        }
+        let _ = stream.write_all(b"0\r\n\r\n");
+    } else {
+        let _ = stream.write_all(&resp.body);
+    }
     let _ = stream.flush();
 }
 
@@ -302,6 +339,35 @@ fn tls_server_config(cert_pem: &[u8], key_pem: &[u8]) -> Arc<rustls::ServerConfi
 /// completes the handshake when the client accepts the chain and otherwise
 /// returns after the client's alert; it never serves HTTP.
 #[cfg(feature = "web")]
+/// A TLS server that answers one request per connection with `head` and then
+/// holds the connection open for `hold`, with no body bytes.
+pub fn spawn_https_holding_body(head: &'static str, hold: Duration) -> SocketAddr {
+    let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let config = Arc::clone(&config);
+            thread::spawn(move || {
+                let Ok(mut conn) = rustls::ServerConnection::new(config) else {
+                    return;
+                };
+                let mut tls = rustls::Stream::new(&mut conn, &mut stream);
+                let mut request = [0u8; 4096];
+                if tls.read(&mut request).is_err() {
+                    return;
+                }
+                let _ = tls.write_all(head.as_bytes());
+                let _ = tls.flush();
+                thread::sleep(hold);
+            });
+        }
+    });
+    addr
+}
+
+#[cfg(feature = "web")]
 pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
     let config = tls_server_config(cert_pem, key_pem);
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
@@ -351,34 +417,78 @@ pub fn spawn_https<F>(handler: F) -> Server
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
+    https_server(handler, false).server
+}
+
+/// An HTTPS server that holds its connections open between requests, and how
+/// many connections it has accepted.
+#[cfg(feature = "web")]
+pub struct KeepAliveServer {
+    pub server: Server,
+    accepted: Arc<Mutex<usize>>,
+}
+
+#[cfg(feature = "web")]
+impl KeepAliveServer {
+    /// Connections accepted so far.
+    pub fn accepted(&self) -> usize {
+        *self.accepted.lock().unwrap()
+    }
+}
+
+/// Spawn an HTTPS server on a loopback port that answers every request on a
+/// connection, presenting the leaf the test CA signed. It is the server a
+/// connection pool can save a handshake against.
+#[cfg(feature = "web")]
+pub fn spawn_https_keep_alive<F>(handler: F) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
+    https_server(handler, true)
+}
+
+#[cfg(feature = "web")]
+fn https_server<F>(handler: F, keep_alive: bool) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
     let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().unwrap();
     let hits: Arc<Mutex<Vec<RawRequest>>> = Arc::new(Mutex::new(Vec::new()));
-    let recorder = Arc::clone(&hits);
+    let accepted: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let (recorder, counter) = (Arc::clone(&hits), Arc::clone(&accepted));
     let handler = Arc::new(handler);
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(stream) = stream else { break };
+            *counter.lock().unwrap() += 1;
             let recorder = Arc::clone(&recorder);
             let handler = Arc::clone(&handler);
             let config = Arc::clone(&config);
             thread::spawn(move || {
                 let conn = rustls::ServerConnection::new(config).expect("server connection");
                 let mut tls = rustls::StreamOwned::new(conn, stream);
-                if let Some(req) = read_request_from(&mut tls) {
+                while let Some(req) = read_request_from(&mut tls) {
                     recorder.lock().unwrap().push(req.clone());
                     let resp = handler(&req);
-                    write_response(&mut tls, &resp);
-                    tls.conn.send_close_notify();
-                    let _ = tls.flush();
+                    let connection = if keep_alive { "keep-alive" } else { "close" };
+                    write_response_ending(&mut tls, &resp, connection);
+                    if !keep_alive {
+                        tls.conn.send_close_notify();
+                        let _ = tls.flush();
+                        break;
+                    }
                 }
             });
         }
     });
-    Server {
-        addr,
-        hits,
-        scheme: "https",
+    KeepAliveServer {
+        server: Server {
+            addr,
+            hits,
+            scheme: "https",
+        },
+        accepted,
     }
 }

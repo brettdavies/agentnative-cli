@@ -24,16 +24,18 @@ override with `SPEC_ROOT`) and reads files with `git show`, so the checkout's wo
 
 ## Layout
 
-| Path                    | Source in `agentnative-spec` | Purpose                                                              |
-| ----------------------- | ---------------------------- | -------------------------------------------------------------------- |
-| `VERSION`               | `VERSION`                    | Spec version string; surfaced as `SPEC_VERSION`                      |
-| `CHANGELOG.md`          | `CHANGELOG.md`               | Spec change history; informational                                   |
-| `principles/p*.md`      | `principles/p*.md`           | Frontmatter parsed by `build.rs` → `REQUIREMENTS`                    |
-| `principles/scoring.md` | `principles/scoring.md`      | Scoring-formula authority; reference only (not parsed by `build.rs`) |
+| Path                       | Source in `agentnative-spec` | Purpose                                                              |
+| -------------------------- | ---------------------------- | -------------------------------------------------------------------- |
+| `VERSION`                  | `VERSION`                    | Spec version string; surfaced as `SPEC_VERSION`                      |
+| `CHANGELOG.md`             | `CHANGELOG.md`               | Spec change history; informational                                   |
+| `principles/p*.md`         | `principles/p*.md`           | Frontmatter parsed by `build.rs` → `REQUIREMENTS`                    |
+| `principles/scoring.md`    | `principles/scoring.md`      | Scoring-formula authority; reference only (not parsed by `build.rs`) |
+| `principles/flag-names.md` | `principles/flag-names.md`   | Flag-name reading rule; reference only (not parsed by `build.rs`)    |
 
-The spec's own `README.md` is not vendored. Its [Reading the spec](https://github.com/brettdavies/agentnative#reading-the-spec)
-section holds the conventions for reading requirement text, including how a requirement that names a double-dash flag
-applies to a help that declares only single-dash names; the behavioral audits read `--help` by the same rule.
+The spec's own `README.md` is not vendored. `principles/flag-names.md` holds the rule for reading a flag name in
+requirement text, including how a requirement that names a double-dash flag applies to a help that declares only
+single-dash names and when a single letter meets a requirement; the behavioral audits read `--help` by the same rule. A
+ref that predates the file has none, and `scripts/sync-spec.sh` vendors the rest without it.
 
 ## Licensing
 

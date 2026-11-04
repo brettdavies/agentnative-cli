@@ -216,9 +216,12 @@ flowchart TB
   when `web` is typed explicitly or from stdin with `--token-stdin`, never from an argv value. The token goes only to
   the endpoint of record's handshake and session probes, on a declared host too when the endpoint lives there and that
   host confirms it: never to the follow slice's own requests, metadata documents, sign-in servers, any other check, or
-  the enforcement probe that tests token-less refusal. A token is sent only when `--token-host` or `ANC_WEB_TOKEN_HOST`
-  names its host, and only to an endpoint of record on exactly that host, compared as a URL host with its port; a
-  declared host still confirms the endpoint first. With no bound host, or no endpoint of record on it, nothing is sent,
+  the enforcement probe that tests token-less refusal. A token and its host binding come from the same channel, because
+  an audited site chooses the `--token-host` value anc.dev prints: `ANC_WEB_TOKEN` is sent only when
+  `ANC_WEB_TOKEN_HOST` binds it, a `--token-stdin` token only when `--token-host` does, and a `--token-host` beside an
+  environment binding must name the same host. The token goes only to an endpoint of record on exactly that host,
+  compared as a URL host with its port; a declared host still confirms the endpoint first. With no binding from the
+  token's own channel, a mismatch, or no endpoint of record on the bound host, nothing is sent,
   `warning: token-not-sent: ...` says so, and the run continues anonymous. The token never appears in the scorecard,
   text output, logs, or errors.
 - R19. Every local scorecard records its vantage as the site defines it (`vantage: { network: "local", credentialed }`,
@@ -314,8 +317,9 @@ flowchart TB
 - AE14. **Covers R4, R16.** Given a handler that panics in the release build, when a run reaches it, then that check
   reports an error row with the panic's message, every other check still reports, and the process exits through KTD12's
   table.
-- AE15. **Covers R18, R19.** Given `ANC_WEB_TOKEN` set with no `--token-host`, or with a `--token-host` naming another
-  host, when the audited site serves an MCP endpoint, then no request carries the token, stderr carries
+- AE15. **Covers R18, R19.** Given `ANC_WEB_TOKEN` with no `ANC_WEB_TOKEN_HOST`,
+  `anc web evil.example --token-host mcp.evil.example` included, or with a `--token-host` naming another host than it,
+  when the audited site serves an MCP endpoint, then no request carries the token, stderr carries
   `warning: token-not-sent: ...`, and `vantage.credentialed` is false.
 
 ### Success Criteria
@@ -400,8 +404,9 @@ The landing order, as the owner merges them:
 3. The next CLI `dev` push runs the bump, which opens the re-pin to that site `dev` SHA even though no vendored file
    changed (U12). Until the workflow file reaches `main`, `scripts/web-audit-bump.sh` run by hand covers a quiet `dev`.
 4. C7, C4 and C5 merge, with #291 after C2 and C9 on #291. Whichever of C7 and #291 lands second makes
-   `--no-external-dns` withhold the version read (KTD10). S4 merges once CLI `dev` reads the contract, and it holds
-   nothing else.
+   `--no-external-dns` withhold the version read (KTD10), and whichever of C7 and #298 lands second hands the check the
+   transport's shared resolver, so its classification is the audit's. S4 merges once CLI `dev` reads the contract, and
+   it holds nothing else.
 5. If U20 is ready, S3 merges once C6 is green against S3's head SHA (KTD3 lets a stack pin it), the bump brings its
    request sets, and C6 merges and deletes any `requests` entries (KTD19). If it is not, S3 stays open and the release
    pins site `dev` as it stands (KD18).
@@ -1550,14 +1555,15 @@ stateDiagram-v2
   7. **Staleness note.** Per KTD9: fetched on its own thread for targets the locality classifier labels public, with a
      bounded timeout, and silently skipped on any failure, any non-200, or a body with no `contract_fingerprint`; inline
      in text mode, and as `warning: contract-differs: ...` on stderr in JSON mode (AE9) and in a `--check` run, which
-     has no report to carry it; `--quiet` drops it; `--help` discloses the public-target fetch. It says "differs from
-     anc.dev", never "behind", because a CLI pinned to site `dev` can be ahead of what anc.dev deploys (KD19). It states
-     that a verdict can differ as a result and names the pinned site SHA. It may say a newer anc release can carry
-     anc.dev's contract or that anc.dev may not serve this one yet, and does not present upgrading as the action,
-     because the hash moves on any site release touching scoring, so the latest anc can differ with nothing newer to
-     take. #291 rewrites README's "What `anc web` Sends" to name the DoH resolvers and `--no-external-dns`, and the
-     note's own PR adds this fetch there. `--verbose` states the check's result every time (`anc.dev contract: same`,
-     `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
+     has no report to carry it; a `--quiet` run sends no read, since nothing would show the answer; `--help` discloses
+     the public-target fetch. It says "differs from anc.dev", never "behind", because a CLI pinned to site `dev` can be
+     ahead of what anc.dev deploys (KD19). It states that a verdict can differ as a result and names the pinned site
+     SHA. It may say a newer anc release can carry anc.dev's contract or that anc.dev may not serve this one yet, and
+     does not present upgrading as the action, because the hash moves on any site release touching scoring, so the
+     latest anc can differ with nothing newer to take. #291 rewrites README's "What `anc web` Sends" to name the DoH
+     resolvers and `--no-external-dns`, and the note's own PR adds this fetch there. `--verbose` states the check's
+     result on every run that reports (`anc.dev contract: same`, `differs`, or `not checked (<reason>)`), so no note is
+     not ambiguous.
   8. The new version literals join the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
   9. A short "Handling a bump PR" section in `RELEASES.md` says what each state means and what to do: green with no
@@ -1587,7 +1593,8 @@ stateDiagram-v2
   - Edge: the staleness note renders when the vendored fingerprint differs from the signal's — stderr in JSON mode
     (Covers AE9), inline in text; absent when equal, when the target is local (no fetch attempted), when the signal
     fetch fails, on a non-200, and on a body with no `contract_fingerprint`.
-  - Edge: a signal that stalls adds nothing to the run's wall clock.
+  - Edge: a signal that stalls holds a run no longer than 2 seconds from the check's start, and adds nothing to a run
+    past that.
   - Integration: the signal fetch honors the configured proxy, sends the identifying user agent, and carries no token.
   - Edge: `--verbose` prints `same`, `differs` or `not checked` with its reason on every public-target run.
   - Edge: a vendored `FINGERPRINT` with its trailing newline equals the same value served trimmed.
@@ -1612,12 +1619,13 @@ stateDiagram-v2
   1. Read the token from `ANC_WEB_TOKEN` or `--token-stdin` (R18); reject an empty value with the structured error
      contract; never echo it, and redact it from every error and debug path.
   2. Attach `Authorization: Bearer` only to the endpoint of record's handshake and session requests
-     (`engine::mcp_wire::post_as_client`), on the host `--token-host` or `ANC_WEB_TOKEN_HOST` names, which can be a
-     declared host that confirmed the endpoint. An endpoint on the audited site's own origin outranks a declared one, so
-     naming the declared host there sends the token to neither. A token with no bound host, or no endpoint of record on
-     it, goes nowhere, and the run says so with `warning: token-not-sent: ...`. The follow slice's own requests,
-     metadata reads, sign-in servers, the enforcement probe, and every non-MCP check stay token-less, so a credentialed
-     run still scores token-less refusal.
+     (`engine::mcp_wire::post_as_client`), on the host the token's own channel binds, `ANC_WEB_TOKEN_HOST` for the
+     environment token and `--token-host` for a `--token-stdin` token, which can be a declared host that confirmed the
+     endpoint. An endpoint on the audited site's own origin outranks a declared one, so naming the declared host there
+     sends the token to neither. A token with no binding from its own channel, a mismatched flag, or no endpoint of
+     record on the bound host goes nowhere, and the run says so with `warning: token-not-sent: ...`. The follow slice's
+     own requests, metadata reads, sign-in servers, the enforcement probe, and every non-MCP check stay token-less, so a
+     credentialed run still scores token-less refusal.
   3. Write `vantage` from the run: `network` from the locality classifier (KTD10), `credentialed` from whether a request
      actually carried the token (R18, R19), not from holding one. A credentialed run's session and handshake rows are
      evaluated rather than read auth-required, so a correctly protected server can reach 100 global locally while its
@@ -1635,8 +1643,11 @@ stateDiagram-v2
   - Security: a credentialed handshake answered by a 307 or a 308 to another public origin sends no request carrying the
     token to that origin (KTD1).
   - Security: an audited fixture binary that prints its environment shows no `ANC_WEB_TOKEN`.
-  - Security: a token with no bound host, or bound to another host, is never sent, the audited site's own endpoint
-    included, and `vantage.credentialed` reads false. Covers AE15.
+  - Security: a token with no binding from its own channel, an environment token with only `--token-host` among them, or
+    a flag naming another host than the environment binding, is never sent, the audited site's own endpoint included,
+    and `vantage.credentialed` reads false. Covers AE15.
+  - Happy path: an exported token with an exported host and a matching flag sends, and so does a `--token-stdin` token
+    with `--token-host`.
   - Happy path: a bound declared host, its endpoint at `/` included, gets the token after reciprocity and not before,
     and `vantage.credentialed` reads true.
   - Edge: without a token the same server reads auth-required rows matching the site corpus; an intranet endpoint naming
@@ -2012,7 +2023,8 @@ stateDiagram-v2
 
 - Phase 1: U1–U8, U10, U11, U14–U19, U21, the CLI half of U13, and U12's bump workflow and release gate landed, with U20
   when it is ready (KD18); every phase-1 gate in the Verification Contract green in CI, both repos. Phase 2: U9 and
-  U12's staleness note landed, reading `contract_fingerprint`.
+  U12's staleness note landed, reading `contract_fingerprint`, and one real `anc web anc.dev --verbose` after S1 and S2
+  deploy reads `same` or `differs`.
 - `web` is in `default`, and no release branch strips web code (KD16).
 - AE1–AE15 each enforced by a named test (the `Covers` links in unit test scenarios).
 - **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, and this crate
@@ -2461,7 +2473,8 @@ checkbox as you ship.
     review of site #509, in which `credentialed` read true with no `Authorization` request.
   - Files: `src/cli.rs`, `src/main.rs`, `src/web_audit/engine/`, `README.md`, `completions/`,
     `tests/web_audit_token.rs`.
-  - Verify: AE15 in the unset and the mismatched-host cases, red first; a bound declared host after reciprocity.
+  - Verify: AE15 in the unset, flag-only and mismatched-host cases, red first; a bound declared host after reciprocity;
+    each channel's sending case.
 
 ### From the DX review
 

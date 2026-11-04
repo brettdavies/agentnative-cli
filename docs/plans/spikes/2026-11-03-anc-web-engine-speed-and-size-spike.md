@@ -25,14 +25,17 @@ for the user to install. Comparisons are like for like: a transport fix applies 
   than the port on every target measured: 1.35x on the sum of medians after its two largest costs were removed, 2.28x on
   `developers.cloudflare.com`, with 2-4x the CPU per audit. It fails the speed bar, so the remaining criteria were not
   carried to completion.
-- **The port is fast but not as fast as its engine logic allows.** Process to process it beats the site engine on Bun by
-  about 10% (Bun pays 0.5-2 s of startup). With Bun's startup excluded, the site engine's own audit time is about 25%
-  lower than the port's on the same targets. The gap is per-request cost inside the port, not scheduling: both run six
-  checks at a time.
-- **Transport costs are measured:** no per-audit DNS cache (108 resolver queries for one `vercel.com` audit against
-  4 for Bun, about 0.18 s of summed lookup time) and an idle pool of 3 connections per host (ureq's default) under six
-  concurrent requests. A third is suspected: the aws-lc provider built at `opt-level = "s"` handshakes in 405-420 ms on
-  a local fixture where ring takes 236-249 ms.
+- **The port trails the site engine on Bun by 12-20% of wall clock** on a clean GitHub runner, with identical request
+  sets and scores (three runs, "Clean-runner benchmark" below). The development host's load had inflated Bun's startup
+  and hidden this. The gap is per-request time to response headers, not scheduling: both run six checks at a time.
+- **Brotli breaks connection reuse.** With ureq's `brotli` feature on, a brotli-encoded body never returns its
+  connection to the pool, so an anc.dev audit takes 44 TLS handshakes for 63 requests against 12 without `brotli`. The
+  smaller costs: an idle pool of 3 connections per host (ureq's default) under six concurrent requests, which alone
+  closes about a third of the gap, and no per-audit DNS cache (108 resolver queries for one `vercel.com` audit against
+  4 for Bun, about 0.18 s of summed lookup time).
+- **Sharing is not where the time is.** The site engine's request memo already answers repeats (one re-send in 20
+  audits). The wall clock goes to phases run in series, one-at-a-time request chains inside checks, the wave barrier,
+  and full-body reads behind status-only expectations ("Where an audit's wall clock goes" below).
 - **Release toolchain:** NASM and cmake are not needed on any release target with today's aws-lc build, so plan task T1
   is unnecessary.
 - **Size:** the network crates at `opt-level = "s"` save 217,536 bytes with no measured slowdown. ring would save
@@ -160,13 +163,16 @@ locally; the CI Windows check and the release-matrix check cover them on the PR 
 
 - KD2 stands: the Rust port stays, and painless vendoring comes from the contract directory, the bump workflow and the
   release gate rather than from sharing engine code.
-- The provider stays aws-lc. Its `opt-level = "s"` override goes if measurement shows it costs handshake time, because
-  wall clock outranks about 0.2 MB.
-- The network crates build at `opt-level = "s"`.
+- The provider stays aws-lc. Its `opt-level = "s"` override stays unless a clean-runner benchmark of real targets
+  shows it costs wall clock: removing it adds 1,461,704 bytes for a handshake measured 12% faster on a loaded host.
+- The network crates build at `opt-level = "s"`, and ureq's `brotli` feature goes (a speed fix as well as 188,096
+  bytes). The C unwind tables stay: dropping them saves 91,456 bytes through build-environment flags that have broken
+  aws-lc-sys builds before.
 - T1 is dropped; no release job installs NASM or cmake.
-- Transport and request-sharing work targets per-request cost and fan-out: a per-audit DNS cache that connects to the
-  classified address, an idle pool sized to the concurrency, and a response shared with every later check that needs it
-  unless the check is time-sensitive.
+- Port-only transport work: drop `brotli`, size the idle pool to the concurrency, add a per-audit DNS cache that
+  connects to the classified address, and run one worker pool per audit.
+- Engine scheduling work lands in the site engine first and the port mirrors it: ranks 1-4 of the wall-clock table,
+  which send no extra request to a healthy target. Ranks 5-7 send extra requests to the target and are not taken.
 
 ## Clean-runner benchmark
 

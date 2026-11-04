@@ -55,7 +55,7 @@ use agentnative::web_audit::target as web_target;
 #[cfg(feature = "web")]
 use agentnative::web_audit::{
     render,
-    transport::{ROOT_REJECTION_PREFIX, UreqTransport},
+    transport::{CERTIFICATE_REJECTION_PREFIX, ROOT_REJECTION_PREFIX, UreqTransport},
 };
 use agentnative::{anc_toml, argv, audits, color, json_error, output, skill_install};
 
@@ -1232,8 +1232,8 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         RunOutcome::Unreachable {
             reason, root_error, ..
         } => {
-            // A plaintext refusal and a chain no root vouches for are their
-            // own dead ends: retrying changes neither, and each names its fix.
+            // A plaintext refusal and a certificate anc rejects are their own dead
+            // ends: retrying changes none of them, and each names its fix.
             let root_error = root_error.as_deref().unwrap_or("");
             let failure = if root_error == NOT_HTTPS {
                 render::insecure_scheme_failure(&normalized, &reason, false)
@@ -1243,8 +1243,15 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
                 render::insecure_scheme_failure(&normalized, &reason, true)
             } else if root_error.starts_with(ROOT_REJECTION_PREFIX) {
                 render::untrusted_certificate_failure(&run.target, &normalized, root_error)
+            } else if root_error.starts_with(CERTIFICATE_REJECTION_PREFIX) {
+                render::invalid_certificate_failure(
+                    &run.target,
+                    &normalized,
+                    root_error,
+                    &run.ca_cert,
+                )
             } else {
-                render::unreachable_failure(&run.target, &normalized, defaulted_https)
+                render::unreachable_failure(&run.target, &normalized, defaulted_https, &run.ca_cert)
             };
             return Ok(emit_web_failure(&failure, json));
         }

@@ -86,14 +86,26 @@ pub trait Transport {
     fn send(&self, request: &Request) -> Result<Response, TransportError>;
 }
 
-/// Why a TLS handshake failed, with the one class a user can act on singled
-/// out from every other failure.
+/// What a failed handshake asks of the person running the audit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TlsClass {
+    /// The server's chain leads to no root in the trust set, so trusting its CA
+    /// is the fix. A private CA absent from the set and a self-signed
+    /// certificate both land here, and so does a public root issued after this
+    /// release's bundle.
+    RootRejection,
+    /// The certificate fails a check no root waives: its name, its dates, or a
+    /// CA flag on a server's own certificate. The server has to change.
+    CertificateRejection,
+    /// The handshake failed before any certificate was at issue.
+    Handshake,
+}
+
+/// Why a TLS handshake failed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TlsFailure {
-    /// The server's chain leads to no root in the trust set. A private CA
-    /// absent from the set and a self-signed certificate both land here,
-    /// and so does a public root issued after this release's bundle.
-    pub root_rejection: bool,
+    /// What the failure asks of the person running the audit.
+    pub class: TlsClass,
     /// The trust set the chain was checked against, when the transport
     /// knows it.
     pub trust_set: Option<&'static str>,
@@ -104,6 +116,10 @@ pub struct TlsFailure {
 /// How a root rejection's evidence begins, the one string a caller can
 /// recognize the class by once the error is text.
 pub const ROOT_REJECTION_PREFIX: &str = "TlsError: chain rejected by ";
+
+/// How a rejected certificate's evidence begins, recognizable once the error is
+/// text, as [`ROOT_REJECTION_PREFIX`] is.
+pub const CERTIFICATE_REJECTION_PREFIX: &str = "TlsError: certificate rejected (";
 
 /// A request that produced no response.
 #[derive(Debug)]
@@ -125,13 +141,18 @@ impl fmt::Display for TransportError {
         match self {
             TransportError::Timeout => f.write_str("TimeoutError: deadline exceeded"),
             TransportError::ConnectTimeout => f.write_str("TimeoutError: connect timed out"),
-            TransportError::Tls(tls) if tls.root_rejection => write!(
-                f,
-                "{ROOT_REJECTION_PREFIX}{} ({})",
-                tls.trust_set.unwrap_or("the trust set"),
-                tls.detail
-            ),
-            TransportError::Tls(tls) => write!(f, "TlsError: {}", tls.detail),
+            TransportError::Tls(tls) => match tls.class {
+                TlsClass::RootRejection => write!(
+                    f,
+                    "{ROOT_REJECTION_PREFIX}{} ({})",
+                    tls.trust_set.unwrap_or("the trust set"),
+                    tls.detail
+                ),
+                TlsClass::CertificateRejection => {
+                    write!(f, "{CERTIFICATE_REJECTION_PREFIX}{})", tls.detail)
+                }
+                TlsClass::Handshake => write!(f, "TlsError: {}", tls.detail),
+            },
             TransportError::Network(detail) => write!(f, "NetworkError: {detail}"),
             TransportError::Verbatim(message) => f.write_str(message),
         }
@@ -149,7 +170,7 @@ impl From<ureq::Error> for TransportError {
             ureq::Error::Timeout(_) => TransportError::Timeout,
             ureq::Error::Rustls(tls) => TransportError::Tls(classify_rustls(&tls)),
             ureq::Error::Tls(detail) => TransportError::Tls(TlsFailure {
-                root_rejection: false,
+                class: TlsClass::Handshake,
                 trust_set: None,
                 detail: detail.to_string(),
             }),
@@ -168,12 +189,15 @@ impl From<ureq::Error> for TransportError {
 }
 
 fn classify_rustls(err: &rustls::Error) -> TlsFailure {
-    let root_rejection = matches!(
-        err,
-        rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer)
-    );
+    let class = match err {
+        rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer) => {
+            TlsClass::RootRejection
+        }
+        rustls::Error::InvalidCertificate(_) => TlsClass::CertificateRejection,
+        _ => TlsClass::Handshake,
+    };
     TlsFailure {
-        root_rejection,
+        class,
         trust_set: None,
         detail: err.to_string(),
     }
@@ -376,12 +400,12 @@ mod tests {
     }
 
     #[test]
-    fn unknown_issuer_is_the_root_rejection_class_and_other_tls_errors_are_not() {
+    fn tls_errors_sort_into_a_root_a_certificate_or_the_handshake() {
         let unknown = ureq::Error::Rustls(rustls::Error::InvalidCertificate(
             rustls::CertificateError::UnknownIssuer,
         ));
         match TransportError::from(unknown) {
-            TransportError::Tls(tls) => assert!(tls.root_rejection),
+            TransportError::Tls(tls) => assert_eq!(tls.class, TlsClass::RootRejection),
             other => panic!("{other:?}"),
         }
         let expired = ureq::Error::Rustls(rustls::Error::InvalidCertificate(
@@ -389,9 +413,14 @@ mod tests {
         ));
         match TransportError::from(expired) {
             TransportError::Tls(tls) => {
-                assert!(!tls.root_rejection);
+                assert_eq!(tls.class, TlsClass::CertificateRejection);
                 assert!(tls.detail.contains("xpired"), "{}", tls.detail);
             }
+            other => panic!("{other:?}"),
+        }
+        let refused = ureq::Error::Rustls(rustls::Error::NoCertificatesPresented);
+        match TransportError::from(refused) {
+            TransportError::Tls(tls) => assert_eq!(tls.class, TlsClass::Handshake),
             other => panic!("{other:?}"),
         }
         let generic = TransportError::from(ureq::Error::Tls("handshake refused"));

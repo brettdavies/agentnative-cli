@@ -18,7 +18,9 @@ use agentnative::web_audit::fetch::trust::{OsRoots, TrustClass, TrustConfig, loa
 use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse, Refusal};
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::transport::{Request, Transport, TransportError, UreqTransport};
+use agentnative::web_audit::transport::{
+    Request, TlsClass, Transport, TransportError, UreqTransport,
+};
 use common::RawResponse;
 
 const UA: &str = "anc-web-audit-test/0 (+https://anc.dev/audit)";
@@ -733,7 +735,7 @@ fn trusted_request(url: &str, trust: TrustClass) -> Request {
 fn rejection(err: &TransportError) -> String {
     match err {
         TransportError::Tls(tls) => {
-            assert!(tls.root_rejection, "{tls:?}");
+            assert_eq!(tls.class, TlsClass::RootRejection, "{tls:?}");
             err.to_string()
         }
         other => panic!("expected a TLS root rejection, got {other:?}"),

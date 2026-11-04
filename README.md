@@ -529,7 +529,10 @@ anc web https://localhost:8443 --ca-cert "$(mkcert -CAROOT)/rootCA.pem"
 Chain and hostname verification always run; no flag turns them off. A file that cannot be read or holds no PEM
 certificate fails before any request goes out (`invalid-ca-cert`, exit 2). A chain that leads to no trusted root ends
 the run as `untrusted-certificate`, exit 3, naming the roots it was checked against: `bundled roots`, plus
-`the OS trust store` for a local target and `--ca-cert roots` when any were passed.
+`the OS trust store` for a local target and `--ca-cert roots` when any were passed. A certificate that fails any other
+check, such as a name it does not cover, dates it is outside, or a CA flag on the server's own certificate, ends the run
+as `invalid-certificate`, exit 3, with the TLS library's account of it. `--ca-cert` adds a root and waives no other
+check, so the server has to present a different certificate.
 
 ### Two Scorecard Families
 
@@ -883,7 +886,7 @@ is one of a closed set, and a newer release can add to it:
 | `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert`, `empty-token`, `invalid-token`, `token-stdin-terminal`, `token-stdin-unreadable` |
 | `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                                                                                                                    |
 | `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                                                                                                                |
-| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                                                                                                                                 |
+| `retry`       | `command`: the same `anc web` target and roots with `--verbose`, once the site is fixed      | `target-unreachable`, `invalid-certificate`                                                                                                          |
 | `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                                                                                                  |
 | `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                                                                                                      |
 | `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                                                                                                              |
@@ -891,9 +894,9 @@ is one of a closed set, and a newer release can add to it:
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
 README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
 `bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
-error, where `value` is the target (the URL probed, for `target-unreachable` and `untrusted-certificate`), the `--check`
-id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or `--token-stdin` as its `argument`, and its `value`
-is never the token: empty, or `[redacted]` for a token that was read.
+error, where `value` is the target (the URL probed, for `target-unreachable`, `untrusted-certificate`, and
+`invalid-certificate`), the `--check` id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or
+`--token-stdin` as its `argument`, and its `value` is never the token: empty, or `[redacted]` for a token that was read.
 
 ### Shell Completions
 

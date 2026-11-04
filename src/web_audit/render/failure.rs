@@ -3,7 +3,7 @@
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::exit::{EXIT_COULD_NOT_CHECK, EXIT_FAILURES};
 use crate::argv::format_invocation;
@@ -51,11 +51,27 @@ fn web_command(args: &[&str]) -> String {
     format_invocation(&argv)
 }
 
+/// The same target and roots with `--verbose`, runnable once the server is fixed.
+fn rerun_verbosely(token: &str, ca_cert: &[PathBuf]) -> String {
+    let mut argv: Vec<OsString> = vec!["anc".into(), "web".into(), token.into()];
+    for path in ca_cert {
+        argv.push("--ca-cert".into());
+        argv.push(path.into());
+    }
+    argv.push("--verbose".into());
+    format_invocation(&argv)
+}
+
 /// The target answered nothing. The engine's reason is the hosted
 /// auditor's wording, which speaks for its own vantage point, so the
 /// local run says what is true here instead: nothing on this machine's
 /// network path answered.
-pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool) -> Failure {
+pub fn unreachable_failure(
+    token: &str,
+    normalized: &str,
+    defaulted_https: bool,
+    ca_cert: &[PathBuf],
+) -> Failure {
     let mut hints = vec![format!(
         "no HTTP response from {normalized}, on the root fetch or on any MCP discovery probe"
     )];
@@ -71,7 +87,7 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
         slug: "target-unreachable",
         message: format!("{normalized} did not answer any probe"),
         hints,
-        next_step: NextStep::retry(web_command(&[token, "--verbose"])),
+        next_step: NextStep::retry(rerun_verbosely(token, ca_cert)),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
@@ -93,6 +109,32 @@ pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &s
                 .to_string(),
         ],
         next_step: NextStep::add_ca_cert(format!("{} --ca-cert <FILE>", web_command(&[token]))),
+        exit_code: EXIT_COULD_NOT_CHECK,
+        argument: TARGET_ARGUMENT,
+        value: normalized.to_string(),
+    }
+}
+
+/// The target presented a certificate that fails a check no root waives. Nothing
+/// was sent past the handshake, and trusting another CA changes nothing; the
+/// server has to present a different certificate.
+pub fn invalid_certificate_failure(
+    token: &str,
+    normalized: &str,
+    evidence: &str,
+    ca_cert: &[PathBuf],
+) -> Failure {
+    Failure {
+        slug: "invalid-certificate",
+        message: format!("{normalized} presented a certificate anc web rejects"),
+        hints: vec![
+            evidence.to_string(),
+            "the server has to present a different certificate: `--ca-cert` adds a root and \
+             waives no other check, so the certificate must name this host, be within its \
+             dates, and be a leaf (`CA:FALSE`), which `openssl req -x509` makes only when asked"
+                .to_string(),
+        ],
+        next_step: NextStep::retry(rerun_verbosely(token, ca_cert)),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
@@ -273,12 +315,13 @@ mod tests {
             "http://127.0.0.1:9/?a=1&b=2",
             "http://127.0.0.1:9/?a=1&b=2",
             false,
+            &[],
         );
         assert_eq!(
             failure.next_step.command.as_deref(),
             Some("anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose")
         );
-        let plain = unreachable_failure("127.0.0.1:9", "http://127.0.0.1:9/", false);
+        let plain = unreachable_failure("127.0.0.1:9", "http://127.0.0.1:9/", false, &[]);
         assert_eq!(
             plain.next_step.command.as_deref(),
             Some("anc web 127.0.0.1:9 --verbose")
@@ -293,6 +336,7 @@ mod tests {
             "127.0.0.1:9",
             "http://127.0.0.1:9/",
             false,
+            &[],
         ));
         assert!(
             unreachable.ends_with("\nexit 3: could not check\n"),

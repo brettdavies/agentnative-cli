@@ -69,6 +69,89 @@ fn a_private_ca_ends_the_run_naming_the_rejection_and_the_ca_cert_fix() {
     assert!(envelope["next_step"].get("command").is_none());
 }
 
+/// A certificate that fails a check no root waives, served by a server that
+/// `--ca-cert` trusts: the file is the certificate itself, so the chain is never
+/// the question.
+fn rejected_certificate_run(cert: &[u8], fixture: &str, output: &[&str]) -> std::process::Output {
+    let key = include_bytes!("fixtures/tls/rejected.key.pem");
+    let addr = common::spawn_tls(cert, key);
+    let root = format!(
+        "{}/tests/fixtures/tls/{fixture}",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let target = format!("https://localhost:{}/", addr.port());
+    anc()
+        .args(["web", &target, "--ca-cert", &root])
+        .args(output)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn a_certificate_no_root_can_save_ends_the_run_naming_the_certificate() {
+    let cases: [(&str, &[u8], &str); 3] = [
+        (
+            "ca-flagged.cert.pem",
+            include_bytes!("fixtures/tls/ca-flagged.cert.pem"),
+            "CaUsedAsEndEntity",
+        ),
+        (
+            "wrong-name.cert.pem",
+            include_bytes!("fixtures/tls/wrong-name.cert.pem"),
+            "not valid for name",
+        ),
+        (
+            "expired.cert.pem",
+            include_bytes!("fixtures/tls/expired.cert.pem"),
+            "expired",
+        ),
+    ];
+    for (fixture, cert, names_it) in cases {
+        let output = rejected_certificate_run(cert, fixture, &["--output", "json"]);
+        assert_eq!(output.status.code(), Some(3), "{fixture}: {output:?}");
+        assert!(
+            stdout_of(&output).is_empty(),
+            "{fixture}: stdout must stay empty"
+        );
+        let envelope = envelope(&output);
+        assert_eq!(envelope["kind"], "runtime", "{fixture}");
+        assert_eq!(envelope["error"], "invalid-certificate", "{fixture}");
+        assert_eq!(envelope["exit_code"], 3, "{fixture}");
+        assert_eq!(envelope["argument"], "<TARGET>", "{fixture}");
+        assert_eq!(envelope["next_step"]["action"], "retry", "{fixture}");
+        let command = envelope["next_step"]["command"].as_str().unwrap();
+        assert!(command.contains(" --ca-cert "), "{fixture}: {command}");
+        assert!(command.ends_with(" --verbose"), "{fixture}: {command}");
+
+        let text = rejected_certificate_run(cert, fixture, &[]);
+        assert_eq!(text.status.code(), Some(3), "{fixture}: {text:?}");
+        let err = stderr_of(&text);
+        assert!(
+            err.contains("presented a certificate anc web rejects"),
+            "{fixture}: {err}"
+        );
+        assert!(
+            err.contains("TlsError: certificate rejected ("),
+            "{fixture}: {err}"
+        );
+        assert!(err.contains(names_it), "{fixture}: {err}");
+        assert!(err.contains("`--ca-cert` adds a root"), "{fixture}: {err}");
+    }
+}
+
+#[test]
+fn the_command_to_try_again_keeps_the_runs_roots() {
+    let ca = test_ca_path();
+    let output = anc()
+        .args(["web", "127.0.0.1:9", "--ca-cert", ca, "--output", "json"])
+        .output()
+        .unwrap();
+    let envelope = envelope(&output);
+    assert_eq!(envelope["error"], "target-unreachable");
+    let command = envelope["next_step"]["command"].as_str().unwrap();
+    assert!(command.contains(&format!(" --ca-cert {ca}")), "{command}");
+}
+
 #[test]
 fn a_ca_cert_root_lets_the_handshake_through_and_every_check_runs() {
     let server = fixture_site();

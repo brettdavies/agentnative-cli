@@ -29,7 +29,6 @@ const GATE_FLAGS: &[&str] = &[
     "--print",
     "--no-input",
     "--batch",
-    "--headless",
     "-y",
     "--yes",
     "--assume-yes",
@@ -124,6 +123,14 @@ mod tests {
     }
 
     #[test]
+    fn headless_is_not_a_non_interactive_gate() {
+        let status = audit(
+            "Options:\n      --headless    Sign in on another device.\n  -h, --help     Show help.\n",
+        );
+        assert!(matches!(status, AuditStatus::Warn(_)), "{status:?}");
+    }
+
+    #[test]
     fn a_declared_gate_flag_passes() {
         for help in [
             "Options:\n      --batch    Run in batch mode.\n  -h, --help     Show help.\n",
@@ -150,7 +157,7 @@ mod tests {
             AuditStatus::Warn(
                 "no option definition in --help declares a non-interactive flag (one of: \
                  --no-interactive, --non-interactive, -p, --print, --no-input, --batch, \
-                 --headless, -y, --yes, --assume-yes); a flag named only in a usage line does not count."
+                 -y, --yes, --assume-yes); a flag named only in a usage line does not count."
                     .into()
             )
         );

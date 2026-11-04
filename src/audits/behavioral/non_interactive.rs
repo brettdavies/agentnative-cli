@@ -4,18 +4,17 @@ use crate::project::Project;
 use crate::runner::{HelpOutput, RunStatus};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-/// Flags that signal the tool exposes a headless path. A `--help` that
-/// declares any one satisfies P1's "no blocking-interactive surface"
+/// Flags that signal the tool exposes a non-interactive path. `--headless`,
+/// `--no-browser`, and `--device-code` pick an authentication path, and a tool
+/// that has them can still prompt, so they count under `p1-must-no-browser`
+/// alone. A `--help` that declares any one satisfies P1's "no blocking-interactive surface"
 /// requirement even if bare invocation doesn't itself exit cleanly.
 const AGENTIC_FLAGS: &[&str] = &[
     "--no-interactive",
     "--non-interactive",
     "--batch",
-    "--headless",
     "--yes",
     "--no-input",
-    "--no-browser",
-    "--device-code",
     "-y",
     "-p",
     "--print",
@@ -28,7 +27,7 @@ const AGENTIC_FLAGS: &[&str] = &[
 pub(super) const NON_INTERACTIVE: Meaning = Meaning {
     what: "non-interactive",
     long_names: &[],
-    words: &["yes", "confirmation", "non-interactive", "headless"],
+    words: &["yes", "confirmation", "non-interactive"],
 };
 
 /// Help-output markers on the bare invocation. `arg_required_else_help`
@@ -205,7 +204,7 @@ kill -11 $$
         audit_non_interactive(&RunStatus::Timeout, "", Some(&HelpOutput::from_raw(help)))
     }
 
-    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --headless, --yes, --no-input, --no-browser, --device-code, -y, -p, --print); a flag named only in a usage line does not count.";
+    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --yes, --no-input, -y, -p, --print); a flag named only in a usage line does not count.";
 
     #[test]
     fn a_declared_agentic_flag_passes_a_bare_call_that_blocks() {
@@ -216,6 +215,16 @@ kill -11 $$
             "Options:\n  -y                Assume yes.\n  -h, --help        Show help.\n",
         ] {
             assert_eq!(blocked(help), AuditStatus::Pass, "{help}");
+        }
+    }
+
+    #[test]
+    fn an_auth_path_flag_is_not_a_non_interactive_flag() {
+        for flag in ["--headless", "--no-browser", "--device-code"] {
+            let status = blocked(&format!(
+                "Options:\n      {flag}    Sign in on another device.\n  -h, --help        Show help.\n"
+            ));
+            assert!(matches!(status, AuditStatus::Warn(_)), "{flag}: {status:?}");
         }
     }
 

@@ -150,9 +150,9 @@ domain_verbs = ["post", "like", "repost", "timeline"]
 
 ### The settings
 
-`json_probe`: `p2-must-output-flag` accepts an output flag that takes a format, `--output`, `--format`, or
-`--output-format` where its definition names `json`, and the `--json` and `--jsonl` aliases the spec names, when an
-option definition in the help declares one. It checks the flag by passing `json` to it (an alias goes alone), spelled as
+`json_probe`: `p2-must-output-flag` accepts `--output`, a `--format` or `--output-format` whose definition names `json`,
+and the `--json` and `--jsonl` aliases the spec names, when an option definition in the help declares one. It checks
+the flag by passing `json` to it (an alias goes alone), spelled as
 the help prints it, beside `--help` and `--version`, the only calls `anc` makes unprompted. A `--json` that takes a
 value, such as a field list, is not the alias. Most tools answer those calls in text, and then the row is `skip`: `anc`
 could not check, so the row is not scored. A declared probe is the call `anc` runs instead, exactly as written: no

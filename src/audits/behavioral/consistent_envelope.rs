@@ -8,9 +8,9 @@
 //!    JSON-mode invocation).
 //! 2. **Error envelope**: bad-flag invocation in JSON mode.
 //!
-//! Both probes run only when the top-level `--help` declares a JSON mode
-//! (`output_flags::json_mode`), and select it with the flag the help
-//! declares. We compare the top-level key sets. The success
+//! Both probes run only when the top-level `--help` or a top-level
+//! subcommand's declares a JSON mode (`output_flags::json_mode`), and select
+//! it with the flag the help declares. We compare the top-level key sets. The success
 //! envelope is allowed to carry payload-shaped keys (`data`, `results`,
 //! `items`, `count`, `total`) that the error envelope won't have; any other
 //! top-level key present in success but absent in error counts as drift.
@@ -23,7 +23,7 @@ use std::collections::HashSet;
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    NO_JSON_MODE, probe_bad_invocation_json, probe_help_json, shown,
+    NO_JSON_MODE, probe_bad_invocation_json, probe_help_json,
 };
 use crate::audits::behavioral::output_flags;
 use crate::project::Project;
@@ -65,7 +65,7 @@ impl Audit for ConsistentEnvelopeAudit {
     fn run(&self, project: &Project) -> anyhow::Result<AuditResult> {
         let status = match project.help_output() {
             None => AuditStatus::Skip("could not probe --help".into()),
-            Some(help) => match output_flags::json_mode(help) {
+            Some(help) => match output_flags::json_mode(project.runner_ref(), help) {
                 None => AuditStatus::Skip(format!(
                     "{NO_JSON_MODE}; envelope-consistency only applies to CLIs that opt into the \
                      JSON contract."
@@ -73,8 +73,10 @@ impl Audit for ConsistentEnvelopeAudit {
                 Some(mode) => {
                     let runner = project.runner_ref();
                     let success = probe_help_json(runner, &mode);
-                    let error = probe_bad_invocation_json(runner, &mode);
-                    audit_envelope(&success, &error, &shown(&mode))
+                    mode.noted(match probe_bad_invocation_json(runner, &mode) {
+                        Ok(error) => audit_envelope(&success, &error, &mode.shown()),
+                        Err(skip) => skip,
+                    })
                 }
             },
         };
@@ -97,8 +99,8 @@ pub(crate) fn audit_envelope(success: &RunResult, error: &RunResult, mode: &str)
         Some(keys) => keys,
         None => {
             return AuditStatus::Skip(format!(
-                "success-mode probe (`--help {mode}`) produced no parseable JSON; cannot compare \
-                 envelope shapes."
+                "success-mode probe (`--help` under `{mode}`) produced no parseable JSON; cannot \
+                 compare envelope shapes."
             ));
         }
     };

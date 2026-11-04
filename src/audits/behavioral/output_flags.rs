@@ -3,15 +3,18 @@
 //! audits share these lookups, so a scorecard answers "does this tool have a
 //! JSON mode" one way.
 
-use crate::runner::HelpOutput;
+use crate::audits::behavioral::subcommand_help::{probe_help, should_skip};
 use crate::runner::help_probe::Flag;
+use crate::runner::{BinaryRunner, HelpOutput};
+use crate::types::AuditStatus;
 
-/// Flags that take a format value: `--output json`.
-pub(crate) const VALUE_FLAGS: &[&str] = &["--output", "--format"];
+/// The flag that takes a format value by name: `--output json`.
+pub(crate) const VALUE_FLAGS: &[&str] = &["--output"];
 
-/// Longer format flags, which count when their own definition names `json`:
+/// Format flags under other names, which count when their own definition
+/// names `json`: shellcheck's `--format` lists it, fd's takes a template;
 /// claude-code's `--output-format` selects JSON, dust's picks size units.
-pub(crate) const NAMED_VALUE_FLAGS: &[&str] = &["--output-format"];
+pub(crate) const NAMED_VALUE_FLAGS: &[&str] = &["--format", "--output-format"];
 
 /// The boolean aliases for `--output json` and `--output jsonl` that the
 /// spec accepts for `p2-must-output-flag`. A `--json` that takes a value
@@ -28,12 +31,40 @@ pub(crate) fn accepted() -> Vec<&'static str> {
         .collect()
 }
 
-/// The accepted names as evidence prose: `--output, --format, ... or --jsonl`.
+/// The accepted names and the test the named ones meet, as evidence prose.
 pub(crate) fn accepted_prose() -> String {
-    match accepted().split_last() {
-        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
-        None => String::new(),
-    }
+    format!(
+        "{}, a {} whose definition names json, {}",
+        VALUE_FLAGS.join(", "),
+        NAMED_VALUE_FLAGS.join(" or "),
+        JSON_ALIASES.join(" or "),
+    )
+}
+
+/// When `help` declares a flag from [`NAMED_VALUE_FLAGS`] whose definition
+/// does not name `json`: that flag, and why it does not count.
+fn unnamed_json_note(help: &HelpOutput) -> Option<String> {
+    NAMED_VALUE_FLAGS
+        .iter()
+        .filter_map(|flag| help.find_flag(&[flag]))
+        .find(|found| !names_json(found.flag))
+        .map(|found| {
+            format!(
+                "`{}` is declared, but its definition does not name json, and P2 counts it as an \
+                 output flag only when it does.",
+                found.spelling
+            )
+        })
+}
+
+/// Why a flag `help` declares under an accepted name did not count, each
+/// reason that applies, joined by a space.
+pub(crate) fn near_miss_note(help: &HelpOutput) -> Option<String> {
+    let notes: Vec<String> = [help.dash_rule_note(&accepted()), unnamed_json_note(help)]
+        .into_iter()
+        .flatten()
+        .collect();
+    (!notes.is_empty()).then(|| notes.join(" "))
 }
 
 /// The output flags a help declares, spelled as the help prints them.
@@ -98,10 +129,73 @@ pub(crate) fn declared(help: &HelpOutput) -> Declared {
     }
 }
 
-/// The arguments that select JSON for a probe of the whole tool, when its
-/// top-level help declares a JSON mode: a value flag whose own definition
-/// names `json` (`--output <FMT>  text or json`), else a JSON alias.
-pub(crate) fn json_mode(help: &HelpOutput) -> Option<Vec<String>> {
+/// A JSON mode a tool's help declares, and where a probe selects it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct JsonMode {
+    /// The subcommand whose help declares the mode, when the top-level help
+    /// declares none.
+    pub(crate) subcommand: Option<String>,
+    /// The arguments that select JSON: `--output json`, or the alias alone.
+    pub(crate) selector: Vec<String>,
+}
+
+impl JsonMode {
+    /// `args` under this mode, the subcommand first and the selector last:
+    /// `list --help --output json`.
+    pub(crate) fn args_with<'a>(&'a self, args: &[&'a str]) -> Vec<&'a str> {
+        self.subcommand
+            .iter()
+            .map(String::as_str)
+            .chain(args.iter().copied())
+            .chain(self.selector.iter().map(String::as_str))
+            .collect()
+    }
+
+    /// The mode as evidence quotes it: `list --output json`.
+    pub(crate) fn shown(&self) -> String {
+        self.args_with(&[]).join(" ")
+    }
+
+    /// `status`, saying where the mode came from when a subcommand declares
+    /// it.
+    pub(crate) fn noted(&self, status: AuditStatus) -> AuditStatus {
+        match &self.subcommand {
+            Some(name) => status.with_note(&format!(
+                "`{name} --help` declares this JSON mode, and the top-level --help declares \
+                 none. P2 counts any flag that selects JSON as a JSON output mode, and this \
+                 requirement applies under it."
+            )),
+            None => status,
+        }
+    }
+}
+
+/// The JSON mode a probe selects: the one the top-level help declares, else
+/// the first top-level subcommand's. Reads each subcommand's help through the
+/// runner cache, so it shares those spawns with `p2-json-output`.
+pub(crate) fn json_mode(runner: &BinaryRunner, help: &HelpOutput) -> Option<JsonMode> {
+    if let Some(selector) = json_selector(help) {
+        return Some(JsonMode {
+            subcommand: None,
+            selector,
+        });
+    }
+    help.subcommands()
+        .iter()
+        .filter(|name| !should_skip(name))
+        .find_map(|name| {
+            let selector = json_selector(&probe_help(runner, &[name])?)?;
+            Some(JsonMode {
+                subcommand: Some(name.clone()),
+                selector,
+            })
+        })
+}
+
+/// The arguments that select JSON under `help`: a value flag whose own
+/// definition names `json` (`--output <FMT>  text or json`), else a JSON
+/// alias.
+fn json_selector(help: &HelpOutput) -> Option<Vec<String>> {
     VALUE_FLAGS
         .iter()
         .chain(NAMED_VALUE_FLAGS)
@@ -140,15 +234,33 @@ mod tests {
             &[],
         ),
         (
-            "cobra's `--format string`",
-            "Flags:\n      --format string   Output format (default \"text\")\n  -h, --help            help for tool\n",
+            "cobra's `--format string` that names json",
+            "Flags:\n      --format string   Output format: text or json (default \"text\")\n  -h, --help            help for tool\n",
             &["--format"],
             &[],
         ),
         (
+            "a --format that names no json, the flag's name alone",
+            "Flags:\n      --format string   Output format (default \"text\")\n  -h, --help            help for tool\n",
+            &[],
+            &[],
+        ),
+        (
+            "a --format that takes a Go template",
+            "Options:\n      --format <TEMPLATE>    Go template for output\n  -h, --help             Show help\n",
+            &[],
+            &[],
+        ),
+        (
             "both value flags",
-            "Options:\n      --output <FILE>      Write to FILE\n      --format <FORMAT>    Output format\n",
+            "Options:\n      --output <FILE>      Write to FILE\n      --format <FORMAT>    Output format (text, json)\n",
             &["--output", "--format"],
+            &[],
+        ),
+        (
+            "clap's long help, with the values in a block below the definition",
+            "Options:\n      --format <FORMAT>\n          Output format\n\n          Possible values:\n          - text: For people\n          - json: For programs\n\n  -h, --help\n          Show help\n",
+            &["--format"],
             &[],
         ),
         (
@@ -238,7 +350,7 @@ mod tests {
     fn accepted_prose_lists_every_name() {
         assert_eq!(
             accepted_prose(),
-            "--output, --format, --output-format, --json or --jsonl"
+            "--output, a --format or --output-format whose definition names json, --json or --jsonl"
         );
     }
 
@@ -248,6 +360,11 @@ mod tests {
             "an output flag whose values name json",
             "Options:\n  -o, --output <FORMAT>    Output format [possible values: text, json]\n",
             Some(&["--output", "json"]),
+        ),
+        (
+            "a --format whose values name json",
+            "Options:\n      --format <F>  Output format (text, json)\n",
+            Some(&["--format", "json"]),
         ),
         (
             "yq's --output-format",
@@ -286,7 +403,7 @@ mod tests {
         let misread: Vec<String> = JSON_MODES
             .iter()
             .filter_map(|(what, help, expected)| {
-                let found = json_mode(&HelpOutput::from_raw(*help));
+                let found = json_selector(&HelpOutput::from_raw(*help));
                 let expected: Option<Vec<String>> =
                     expected.map(|args| args.iter().map(|arg| (*arg).to_string()).collect());
                 (found != expected)

@@ -16,8 +16,9 @@ use std::thread;
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 
-/// Who a free slot goes to, lowest first. This decides which rows go unprobed
-/// when the per-audit deadline passes.
+/// Who a free slot goes to, lowest first. A rank orders only what is waiting: a
+/// row that took a slot first keeps it, and a row that cannot queue yet has no
+/// rank to use, so this promises nothing about which rows the deadline skips.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Rank {
     /// A step every MCP row waits on.

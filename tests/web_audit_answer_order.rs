@@ -24,7 +24,7 @@ use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::to_wire_json;
 use agentnative::web_audit::transport::{Request, Response, Transport, TransportError};
 use common::corpus::{
-    Case, Golden, SentRequest, corpus_dir, load_cases, recorded_requests, replay_through,
+    Case, Golden, Replay, SentRequest, corpus_dir, load_cases, recorded_requests, replay_through,
     transport_for,
 };
 
@@ -82,6 +82,25 @@ fn source_documents_last() -> Arc<Delay> {
             SOURCE_ANSWER_DELAY
         } else {
             Duration::ZERO
+        }
+    })
+}
+
+const SLOW_ROOT_TIMEOUT: Duration = Duration::from_millis(1200);
+const SLOW_ROOT_ANSWER: Duration = Duration::from_millis(1100);
+const AFTER_SLOW_ROOT_ANSWER: Duration = Duration::from_millis(120);
+
+fn root_just_inside_its_timeout() -> Arc<Delay> {
+    Arc::new(|request, _| {
+        // The canonical root fetch, which carries nothing but the audit's identity;
+        // other rows ask for the root with headers of their own.
+        let is_root = request.method == "GET"
+            && request.headers.len() == 1
+            && url::Url::parse(&request.url).is_ok_and(|url| url.path() == "/");
+        if is_root {
+            SLOW_ROOT_ANSWER
+        } else {
+            AFTER_SLOW_ROOT_ANSWER
         }
     })
 }
@@ -150,9 +169,17 @@ fn request_set_differs(case: &Case, transport: &MockTransport) -> Option<String>
     ))
 }
 
-fn run_case(case: &Case, delay: Option<&Arc<Delay>>, concurrency: Option<usize>) -> Vec<String> {
+/// What one run of the corpus varies.
+#[derive(Clone, Default)]
+struct Schedule {
+    delay: Option<Arc<Delay>>,
+    concurrency: Option<usize>,
+    per_check_timeout: Option<Duration>,
+}
+
+fn run_case(case: &Case, schedule: &Schedule) -> Vec<String> {
     let mock = transport_for(&case.scenario);
-    let transport: Arc<dyn Transport + Send + Sync> = match delay {
+    let transport: Arc<dyn Transport + Send + Sync> = match &schedule.delay {
         Some(delay) => Arc::new(Reordering {
             inner: Arc::clone(&mock),
             delay: Arc::clone(delay),
@@ -161,7 +188,16 @@ fn run_case(case: &Case, delay: Option<&Arc<Delay>>, concurrency: Option<usize>)
         None => mock.clone(),
     };
     let handlers = Arc::new(default_handlers());
-    let outcome = replay_through(&case.scenario, handlers, transport, None, concurrency);
+    let outcome = replay_through(
+        &case.scenario,
+        handlers,
+        transport,
+        Replay {
+            concurrency: schedule.concurrency,
+            per_check_timeout: schedule.per_check_timeout,
+            ..Replay::default()
+        },
+    );
     [
         output_differs(case, &outcome),
         request_set_differs(case, &mock),
@@ -173,15 +209,15 @@ fn run_case(case: &Case, delay: Option<&Arc<Delay>>, concurrency: Option<usize>)
 }
 
 /// Every scenario, several at a time: these runs mostly wait on timers.
-fn assert_every_scenario_holds(delay: Option<Arc<Delay>>, concurrency: Option<usize>) {
+fn assert_every_scenario_holds(schedule: Schedule) {
     let cases = load_cases();
     let next = AtomicUsize::new(0);
     let problems = Mutex::new(Vec::new());
     thread::scope(|scope| {
-        for _ in 0..8 {
+        for _ in 0..16 {
             scope.spawn(|| {
                 while let Some(case) = cases.get(next.fetch_add(1, Ordering::SeqCst)) {
-                    let found = run_case(case, delay.as_ref(), concurrency);
+                    let found = run_case(case, &schedule);
                     problems.lock().unwrap().extend(found);
                 }
             });
@@ -198,22 +234,44 @@ fn assert_every_scenario_holds(delay: Option<Arc<Delay>>, concurrency: Option<us
 
 #[test]
 fn every_scenario_sends_the_site_request_set() {
-    assert_every_scenario_holds(None, None);
+    assert_every_scenario_holds(Schedule::default());
 }
 
 #[test]
 fn every_scenario_holds_at_a_concurrency_of_one() {
-    assert_every_scenario_holds(None, Some(1));
+    assert_every_scenario_holds(Schedule {
+        concurrency: Some(1),
+        ..Schedule::default()
+    });
 }
 
 #[test]
 fn every_scenario_holds_with_later_requests_answering_first() {
-    assert_every_scenario_holds(Some(later_requests_first()), None);
+    assert_every_scenario_holds(Schedule {
+        delay: Some(later_requests_first()),
+        ..Schedule::default()
+    });
 }
 
 #[test]
 fn every_scenario_holds_with_the_source_documents_answering_last() {
-    assert_every_scenario_holds(Some(source_documents_last()), None);
+    assert_every_scenario_holds(Schedule {
+        delay: Some(source_documents_last()),
+        ..Schedule::default()
+    });
+}
+
+/// Reordering alone cannot run anything out of budget. Here the root takes nearly
+/// its whole timeout and an answer takes longer than the root left, so a request
+/// that spent its own budget waiting for the root loses its answer. The site runs
+/// this at a 50 ms margin; threads wake later than timers fire, so this one is 100.
+#[test]
+fn every_scenario_holds_with_the_root_answering_just_inside_its_timeout() {
+    assert_every_scenario_holds(Schedule {
+        delay: Some(root_just_inside_its_timeout()),
+        per_check_timeout: Some(SLOW_ROOT_TIMEOUT),
+        ..Schedule::default()
+    });
 }
 
 /// The set `requests.json` holds cannot show this, so it has a test of its
@@ -264,8 +322,7 @@ fn no_request_carrying_the_session_goes_out_until_the_notification_has_settled()
         &case.scenario,
         Arc::new(default_handlers()),
         watching.clone(),
-        None,
-        None,
+        Replay::default(),
     );
     assert!(matches!(outcome, RunOutcome::Complete(_)));
     assert!(watching.notified.load(Ordering::SeqCst));

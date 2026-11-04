@@ -274,9 +274,26 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         report.scorecard.summary
     );
     assert_eq!(
-        report.scorecard.summary.skip, 1,
-        "the unported retained-document row"
+        report.scorecard.summary.skip as usize,
+        report.unported.len(),
+        "one skip per unported row"
     );
+    for result in &report.results {
+        let scored = report
+            .scorecard
+            .results
+            .iter()
+            .find(|row| row.id == result.check.id)
+            .expect("a row for every result");
+        if scored.status == ScorecardStatus::NA {
+            assert_ne!(
+                result.check.antecedent,
+                AntecedentToken::None,
+                "{}: only an antecedent makes a row n_a on a healthy target",
+                result.check.id
+            );
+        }
+    }
     assert_eq!(report.scorecard.score.relative, 100);
     let auth = row(&report, "oauth-protected-resource");
     assert_eq!(auth.status, ScorecardStatus::NA);

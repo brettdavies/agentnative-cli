@@ -92,6 +92,40 @@ mod tests {
     }
 
     #[test]
+    fn every_mcp_token_waits_for_the_notification_whatever_it_reads() {
+        use crate::web_audit::registry::AntecedentToken as T;
+        for token in [
+            T::McpPresent,
+            T::McpAuth,
+            T::McpSession,
+            T::McpAuthRequired,
+            T::McpResources,
+        ] {
+            assert!(
+                antecedents::prerequisites(token).contains(&McpNotified),
+                "{token:?}"
+            );
+        }
+    }
+
+    // Each row today also has these through its token, so only this names them
+    // as the handler's own.
+    #[test]
+    fn a_handler_declares_what_it_reads_whatever_its_token_says() {
+        for handler in [HandlerBinding::Mcp, HandlerBinding::CorsPreflight] {
+            assert_eq!(
+                handler_prerequisites(handler),
+                &[McpNotified],
+                "{handler:?}"
+            );
+        }
+        assert_eq!(
+            handler_prerequisites(HandlerBinding::ApiHygiene),
+            &[Source("openapi")]
+        );
+    }
+
+    #[test]
     fn a_row_reading_nothing_starts_with_the_sources() {
         assert_eq!(edges("security-txt"), Vec::new());
     }

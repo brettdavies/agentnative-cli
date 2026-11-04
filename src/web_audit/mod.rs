@@ -41,6 +41,8 @@ pub mod scorecard;
 #[cfg(feature = "web")]
 pub mod signal;
 #[cfg(feature = "web")]
+mod stoppable;
+#[cfg(feature = "web")]
 pub mod target;
 #[cfg(feature = "web")]
 mod tls;

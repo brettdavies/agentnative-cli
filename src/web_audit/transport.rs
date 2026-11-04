@@ -24,6 +24,7 @@ use super::credential::RedactedHeaders;
 use super::fetch::proxy;
 use super::fetch::trust::{TrustClass, TrustConfig};
 use super::headers::Headers;
+use super::stoppable::StopFlag;
 use super::tls;
 
 /// One HTTP request for exactly one hop.
@@ -84,6 +85,11 @@ impl fmt::Debug for Response {
 pub trait Transport {
     /// Perform the request. A 3xx comes back as a response like any other.
     fn send(&self, request: &Request) -> Result<Response, TransportError>;
+
+    /// End every request in flight, a body still being read included, and
+    /// refuse any more, for good. A transport with nothing to end keeps this
+    /// default.
+    fn stop(&self) {}
 }
 
 /// Why a TLS handshake failed, with the one class a user can act on singled
@@ -200,6 +206,7 @@ pub struct UreqTransport {
     direct: ureq::Agent,
     proxied: Option<ureq::Agent>,
     local: OnceLock<ureq::Agent>,
+    stop: StopFlag,
 }
 
 impl fmt::Debug for UreqTransport {
@@ -231,19 +238,21 @@ impl UreqTransport {
     /// A transport with an explicit proxy and trust configuration.
     pub fn with_trust(user_agent: &str, proxy: Option<ureq::Proxy>, trust: TrustConfig) -> Self {
         let public = tls::client_config(&trust, TrustClass::Public);
+        let stop = StopFlag::default();
         UreqTransport {
             user_agent: user_agent.to_string(),
-            direct: agent(user_agent, None, public.clone()),
-            proxied: proxy.map(|p| agent(user_agent, Some(p), public)),
+            direct: agent(user_agent, None, public.clone(), stop.clone()),
+            proxied: proxy.map(|p| agent(user_agent, Some(p), public, stop.clone())),
             local: OnceLock::new(),
             trust,
+            stop,
         }
     }
 
     fn local_agent(&self) -> &ureq::Agent {
         self.local.get_or_init(|| {
             let local = tls::client_config(&self.trust, TrustClass::Local);
-            agent(&self.user_agent, None, local)
+            agent(&self.user_agent, None, local, self.stop.clone())
         })
     }
 }
@@ -256,6 +265,7 @@ fn agent(
     user_agent: &str,
     proxy: Option<ureq::Proxy>,
     tls_config: std::sync::Arc<rustls::ClientConfig>,
+    stop: StopFlag,
 ) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .user_agent(user_agent)
@@ -264,7 +274,7 @@ fn agent(
         .max_redirects_will_error(false)
         .proxy(proxy)
         .build();
-    tls::agent(config, tls_config)
+    tls::agent(config, tls_config, stop)
 }
 
 /// Attempts a single probe may cost, counting the first.
@@ -284,6 +294,9 @@ impl Transport for UreqTransport {
         let started = Instant::now();
         let mut attempt = 1;
         loop {
+            if self.stop.is_stopped() {
+                return Err(TransportError::Network("audit ended".to_string()));
+            }
             let outcome = self.send_once(request);
             // Only a connection-level failure is retried, and only while a
             // further attempt still fits inside this request's own budget,
@@ -297,6 +310,10 @@ impl Transport for UreqTransport {
             }
             attempt += 1;
         }
+    }
+
+    fn stop(&self) {
+        self.stop.stop();
     }
 }
 

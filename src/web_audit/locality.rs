@@ -387,8 +387,11 @@ pub fn site_block_reason(raw_host: &str) -> Option<String> {
     if host == "localhost" || host.ends_with(".localhost") {
         return Some("localhost is not a public host".to_string());
     }
-    if host == "metadata.google.internal" || host.ends_with(".internal") {
-        return Some("internal metadata hostnames are blocked".to_string());
+    if host == "metadata.google.internal" {
+        return Some("cloud metadata hostnames are blocked".to_string());
+    }
+    if host.ends_with(".internal") {
+        return Some("internal hostnames are not public hosts".to_string());
     }
     if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
         return match parse_ipv6_literal(inner) {
@@ -633,7 +636,11 @@ mod tests {
         );
         assert_eq!(
             reason("db.internal").as_deref(),
-            Some("internal metadata hostnames are blocked")
+            Some("internal hostnames are not public hosts")
+        );
+        assert_eq!(
+            reason("metadata.google.internal").as_deref(),
+            Some("cloud metadata hostnames are blocked")
         );
         assert_eq!(reason("[bad").as_deref(), None);
         assert_eq!(reason("[bad]").as_deref(), Some("unparseable ipv6 literal"));

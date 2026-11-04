@@ -346,7 +346,7 @@ mod tests {
         let err = validate_target("https://168.63.129.16/", &PanicResolver).unwrap_err();
         assert_eq!(err, "blocked: 168.63.129.16 is a cloud metadata endpoint");
         let err = validate_target("http://metadata.google.internal/", &PanicResolver).unwrap_err();
-        assert_eq!(err, "blocked: internal metadata hostnames are blocked");
+        assert_eq!(err, "blocked: cloud metadata hostnames are blocked");
         let ok = validate_target("http://localhost:8787/x", &PanicResolver).unwrap();
         assert_eq!(ok.class, Locality::Local);
         let ok = validate_target("https://example.com/", &PublicResolver).unwrap();

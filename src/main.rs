@@ -1241,6 +1241,8 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
                 && root_error.ends_with(": not https")
             {
                 render::insecure_scheme_failure(&normalized, &reason, true)
+            } else if let Some(reason) = render::metadata_target_refusal(&normalized, root_error) {
+                render::invalid_target_failure(&run.target, reason)
             } else if root_error.starts_with(ROOT_REJECTION_PREFIX) {
                 render::untrusted_certificate_failure(&run.target, &normalized, root_error)
             } else {

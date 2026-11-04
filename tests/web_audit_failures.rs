@@ -197,6 +197,40 @@ fn anc_web_and_anc_audit_errors_carry_the_same_next_step_keys() {
 }
 
 #[test]
+fn a_metadata_target_is_refused_rather_than_called_silent() {
+    for (target, names_it) in [
+        ("169.254.169.254", "169.254.0.0/16"),
+        (
+            "168.63.129.16",
+            "168.63.129.16 is a cloud metadata endpoint",
+        ),
+        (
+            "[fd20:ce::254]",
+            "[fd20:ce::254] is a cloud metadata endpoint",
+        ),
+        (
+            "metadata.google.internal",
+            "cloud metadata hostnames are blocked",
+        ),
+    ] {
+        let output = anc()
+            .args(["web", target, "--output", "json"])
+            .output()
+            .expect("spawn anc");
+        assert_eq!(output.status.code(), Some(3), "{target}: {output:?}");
+        let envelope: Value = serde_json::from_str(stderr_of(&output).trim()).unwrap();
+        assert_eq!(envelope["error"], Value::from("invalid-target"), "{target}");
+        assert_eq!(
+            envelope["next_step"]["action"],
+            Value::from("fix-target"),
+            "{target}"
+        );
+        let message = envelope["message"].as_str().unwrap();
+        assert!(message.contains(names_it), "{target}: {message}");
+    }
+}
+
+#[test]
 fn the_web_failure_envelopes_pin_their_bytes() {
     let stderr = |args: &[&str]| stderr_of(&anc().args(args).output().expect("spawn anc"));
     let docs = "https://github.com/brettdavies/agentnative-cli#auditing-a-website";

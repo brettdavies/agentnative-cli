@@ -27,7 +27,12 @@
 //!
 //! Address classes:
 //!
-//! - `Metadata`: `169.254.0.0/16` (the IMDS range) and `fd00:ec2::254`.
+//! - `Metadata`: `169.254.0.0/16` (the range AWS, Azure, GCP and Oracle serve
+//!   instance metadata from), `fd00:ec2::254` (AWS over IPv6), `fd20:ce::254` (GCP
+//!   over IPv6), `fe80::a9fe:a9fe` (OpenStack and Akamai over IPv6),
+//!   `fd00:a9fe:a9fe::1` (Akamai over IPv6), `fd00:42::42` (Scaleway over IPv6),
+//!   `100.100.100.200` (Alibaba Cloud), and `168.63.129.16` (Azure's WireServer, the
+//!   platform endpoint a VM's agent reads its configuration from).
 //! - `Local`: unspecified, loopback, RFC 1918, CGNAT `100.64.0.0/10`, IPv6
 //!   unique-local `fc00::/7` and link-local `fe80::/10`; IPv4-mapped and
 //!   IPv4-compatible IPv6 forms take the class of the embedded address.
@@ -116,8 +121,22 @@ impl Resolver for SystemResolver {
     }
 }
 
-/// The IMDS IPv6 address AWS serves instance metadata on.
-const IMDS_IPV6: Ipv6Addr = Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x254);
+/// The IPv6 addresses AWS, GCP, OpenStack, Akamai and Scaleway serve instance
+/// metadata on.
+const METADATA_IPV6: [Ipv6Addr; 5] = [
+    Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x254),
+    Ipv6Addr::new(0xfd20, 0x00ce, 0, 0, 0, 0, 0, 0x254),
+    Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0xa9fe, 0xa9fe),
+    Ipv6Addr::new(0xfd00, 0xa9fe, 0xa9fe, 0, 0, 0, 0, 1),
+    Ipv6Addr::new(0xfd00, 0x0042, 0, 0, 0, 0, 0, 0x42),
+];
+
+/// Alibaba Cloud's instance metadata address and Azure's WireServer, outside
+/// `169.254.0.0/16`.
+const METADATA_IPV4: [Ipv4Addr; 2] = [
+    Ipv4Addr::new(100, 100, 100, 200),
+    Ipv4Addr::new(168, 63, 129, 16),
+];
 
 /// Classify one resolved or literal address.
 pub fn classify_ip(ip: IpAddr) -> Locality {
@@ -129,7 +148,7 @@ pub fn classify_ip(ip: IpAddr) -> Locality {
 
 fn classify_ipv4(ip: Ipv4Addr) -> Locality {
     let [a, b, _, _] = ip.octets();
-    if a == 169 && b == 254 {
+    if (a == 169 && b == 254) || METADATA_IPV4.contains(&ip) {
         return Locality::Metadata;
     }
     let local = a == 0
@@ -146,7 +165,7 @@ fn classify_ipv4(ip: Ipv4Addr) -> Locality {
 }
 
 fn classify_ipv6(ip: Ipv6Addr) -> Locality {
-    if ip == IMDS_IPV6 {
+    if METADATA_IPV6.contains(&ip) {
         return Locality::Metadata;
     }
     if ip.is_unspecified() || ip.is_loopback() {
@@ -162,16 +181,21 @@ fn classify_ipv6(ip: Ipv6Addr) -> Locality {
     Locality::Public
 }
 
-/// The IPv4 address inside an IPv4-mapped (`::ffff:a.b.c.d`) or
-/// IPv4-compatible (`::a.b.c.d`) IPv6 address.
+/// The IPv4 address an IPv6 spelling delivers to, which is the class it takes:
+/// IPv4-mapped and IPv4-compatible (RFC 4291), IPv4-translated (RFC 2765), NAT64's
+/// well-known prefix (RFC 6052), NAT64's local-use prefix (RFC 8215) read at the /96
+/// layout, and 6to4 (RFC 3056).
 fn embedded_ipv4(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     let seg = ip.segments();
-    let prefix_zero = seg[..5].iter().all(|s| *s == 0);
-    if prefix_zero && (seg[5] == 0xffff || seg[5] == 0) {
-        let v4 = ((seg[6] as u32) << 16) | seg[7] as u32;
-        return Some(Ipv4Addr::from(v4));
+    let v4 = |high: u16, low: u16| Ipv4Addr::from(((high as u32) << 16) | low as u32);
+    match seg {
+        [0, 0, 0, 0, 0, 0 | 0xffff, ..]
+        | [0, 0, 0, 0, 0xffff, 0, ..]
+        | [0x64, 0xff9b, 0, 0, 0, 0, ..]
+        | [0x64, 0xff9b, 1, ..] => Some(v4(seg[6], seg[7])),
+        [0x2002, high, low, ..] => Some(v4(high, low)),
+        _ => None,
     }
-    None
 }
 
 /// Parse an IPv4 literal in any `inet_aton` form: one to four dotted parts,
@@ -285,7 +309,7 @@ fn parse_ipv6_groups(segment: &str) -> Option<Vec<u16>> {
 /// only the resolver can place.
 pub fn classify_literal(raw_host: &str) -> Result<Option<Locality>, ClassifyError> {
     let host = raw_host.trim().to_ascii_lowercase();
-    let host = host.strip_suffix('.').unwrap_or(&host);
+    let host = host.trim_end_matches('.');
     if host.is_empty() {
         return Err(ClassifyError::EmptyHost);
     }
@@ -362,20 +386,42 @@ fn site_blocked_ipv6_reason(ip: Ipv6Addr) -> Option<String> {
         .map(|reason| format!("ipv4-in-ipv6: {reason}"))
 }
 
+/// How the refusal of a named metadata address, or a name that resolves to a
+/// metadata address, ends: the words a caller can tell it by once it is text.
+pub const METADATA_ENDPOINT: &str = "is a cloud metadata endpoint";
+
+/// Why a metadata host is refused. An address refused by name says so rather than
+/// giving the site's reason, which names a range: the site refuses all of
+/// `100.64.0.0/10`, and `100.100.100.201` audits as local here.
+pub fn metadata_refusal(host: &str) -> String {
+    let named = match host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        Some(inner) => parse_ipv6_literal(inner).is_some_and(|ip| {
+            METADATA_IPV6.contains(&ip)
+                || embedded_ipv4(ip).is_some_and(|v4| METADATA_IPV4.contains(&v4))
+        }),
+        None => parse_ipv4_literal(host).is_some_and(|ip| METADATA_IPV4.contains(&ip)),
+    };
+    let site = if named { None } else { site_block_reason(host) };
+    site.unwrap_or_else(|| format!("{host} {METADATA_ENDPOINT}"))
+}
+
 /// The reason anc.dev gives for refusing a host by its shape alone, when
 /// it has one, so a refusal the site would also make carries the site's
 /// wording. Names are never resolved here.
 pub fn site_block_reason(raw_host: &str) -> Option<String> {
     let host = raw_host.trim().to_ascii_lowercase();
-    let host = host.strip_suffix('.').unwrap_or(&host);
+    let host = host.trim_end_matches('.');
     if host.is_empty() {
         return Some("empty hostname".to_string());
     }
     if host == "localhost" || host.ends_with(".localhost") {
         return Some("localhost is not a public host".to_string());
     }
-    if host == "metadata.google.internal" || host.ends_with(".internal") {
-        return Some("internal metadata hostnames are blocked".to_string());
+    if host == "metadata.google.internal" {
+        return Some("cloud metadata hostnames are blocked".to_string());
+    }
+    if host.ends_with(".internal") {
+        return Some("internal hostnames are not public hosts".to_string());
     }
     if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
         return match parse_ipv6_literal(inner) {
@@ -479,6 +525,12 @@ mod tests {
             ("ipv4-mapped ipv6 loopback", "[::ffff:127.0.0.1]"),
             ("ipv4-compatible ipv6 rfc1918", "[::10.0.0.1]"),
             ("cgnat 100.64/10", "100.64.0.1"),
+            ("cgnat beside alibaba cloud metadata", "100.100.100.201"),
+            ("unique-local beside gcp metadata", "[fd20:ce::253]"),
+            ("link-local beside openstack metadata", "[fe80::a9fe:a9fd]"),
+            ("unique-local beside scaleway metadata", "[fd00:42::41]"),
+            ("dot-internal hostname with trailing dots", "db.internal.."),
+            ("localhost with trailing dots", "localhost.."),
             ("ipv6 unique-local fc00::/7", "[fd00::1]"),
             ("ipv6 link-local fe80::/10", "[fe80::1]"),
             ("ipv6 link-local with zone id", "fe80::1%eth0"),
@@ -501,6 +553,44 @@ mod tests {
             ("gcp metadata hostname", "metadata.google.internal"),
             ("ipv4-mapped metadata", "[::ffff:169.254.169.254]"),
             ("aws imds ipv6", "[fd00:ec2::254]"),
+            ("gcp metadata ipv6", "[fd20:ce::254]"),
+            ("openstack and akamai metadata ipv6", "[fe80::a9fe:a9fe]"),
+            ("akamai metadata ipv6", "[fd00:a9fe:a9fe::1]"),
+            ("scaleway metadata ipv6", "[fd00:42::42]"),
+            (
+                "metadata hostname with trailing dots",
+                "metadata.google.internal..",
+            ),
+            ("alibaba cloud metadata", "100.100.100.200"),
+            ("alibaba cloud metadata as decimal", "1684301000"),
+            (
+                "ipv4-mapped alibaba cloud metadata",
+                "[::ffff:100.100.100.200]",
+            ),
+            ("azure wireserver", "168.63.129.16"),
+            ("nat64 of link-local metadata", "[64:ff9b::a9fe:a9fe]"),
+            ("nat64 of alibaba cloud metadata", "[64:ff9b::6464:64c8]"),
+            (
+                "local-use nat64 of link-local metadata",
+                "[64:ff9b:1::a9fe:a9fe]",
+            ),
+            (
+                "local-use nat64 of alibaba cloud metadata",
+                "[64:ff9b:1::6464:64c8]",
+            ),
+            ("siit of link-local metadata", "[::ffff:0:a9fe:a9fe]"),
+            ("siit of alibaba cloud metadata", "[::ffff:0:6464:64c8]"),
+            ("6to4 of link-local metadata", "[2002:a9fe:a9fe::]"),
+            ("6to4 of alibaba cloud metadata", "[2002:6464:64c8::]"),
+            (
+                "local-use nat64 with bits inside the /48",
+                "[64:ff9b:1:abcd::a9fe:a9fe]",
+            ),
+            (
+                "6to4 with subnet and interface bits",
+                "[2002:a9fe:a9fe:1::5]",
+            ),
+            ("ipv4-mapped azure wireserver", "[::ffff:168.63.129.16]"),
         ];
         for (label, host) in rows {
             assert_eq!(shape(host), Locality::Metadata, "{label}: {host}");
@@ -510,6 +600,24 @@ mod tests {
     #[test]
     fn public_literals_classify_without_resolution() {
         assert_eq!(shape("93.184.216.34"), Locality::Public);
+        assert_eq!(shape("168.63.129.17"), Locality::Public);
+        for translated in [
+            "[64:ff9b::808:808]",
+            "[64:ff9b:1::808:808]",
+            "[::ffff:0:808:808]",
+            "[2002:808:808::]",
+            "[64:ff9a::a9fe:a9fe]",
+            "[64:ff9b:0:1::a9fe:a9fe]",
+            "[64:ff9b:2::a9fe:a9fe]",
+            "[::fffe:0:a9fe:a9fe]",
+            "[::ffff:1:a9fe:a9fe]",
+            "[2003:a9fe:a9fe::]",
+        ] {
+            assert_eq!(shape(translated), Locality::Public, "{translated}");
+        }
+        for private in ["[64:ff9b::a00:1]", "[2002:a00:1::]"] {
+            assert_eq!(shape(private), Locality::Local, "{private}");
+        }
         assert_eq!(
             shape("[2606:2800:220:1:248:1893:25c8:1946]"),
             Locality::Public
@@ -608,7 +716,11 @@ mod tests {
         );
         assert_eq!(
             reason("db.internal").as_deref(),
-            Some("internal metadata hostnames are blocked")
+            Some("internal hostnames are not public hosts")
+        );
+        assert_eq!(
+            reason("metadata.google.internal").as_deref(),
+            Some("cloud metadata hostnames are blocked")
         );
         assert_eq!(reason("[bad").as_deref(), None);
         assert_eq!(reason("[bad]").as_deref(), Some("unparseable ipv6 literal"));

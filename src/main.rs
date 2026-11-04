@@ -35,6 +35,8 @@ use agentnative::spawn_env::WEB_TOKEN_ENV;
 use agentnative::spawn_env::withhold_anc_secrets;
 use agentnative::types::{AuditGroup, AuditResult, AuditStatus, Confidence};
 #[cfg(feature = "web")]
+use agentnative::web_audit::audit_resolver::AuditResolver;
+#[cfg(feature = "web")]
 use agentnative::web_audit::credential::read_token;
 #[cfg(feature = "web")]
 use agentnative::web_audit::emit as web_emit;
@@ -44,8 +46,6 @@ use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, run_web_
 use agentnative::web_audit::fetch::{NOT_HTTPS, proxy, trust};
 #[cfg(feature = "web")]
 use agentnative::web_audit::handlers::default_handlers;
-#[cfg(feature = "web")]
-use agentnative::web_audit::locality::SystemResolver;
 #[cfg(feature = "web")]
 use agentnative::web_audit::registry::{AUDIT_USER_AGENT, check_by_id};
 #[cfg(feature = "web")]
@@ -1199,13 +1199,15 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     };
     let defaulted_https = scheme_less && normalized.starts_with("https://");
 
+    let resolver = Arc::new(AuditResolver::system());
     let fetch = FetchHandle::new(
-        Arc::new(UreqTransport::with_trust(
+        Arc::new(UreqTransport::with_resolver(
             AUDIT_USER_AGENT,
             proxy::proxy_from_env(),
             trust::TrustConfig::new(ca_certs),
+            Arc::clone(&resolver),
         )),
-        Arc::new(SystemResolver),
+        resolver,
         AUDIT_USER_AGENT,
     );
     let fetch = match credential {

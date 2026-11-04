@@ -13,13 +13,16 @@
 //! agents: a public one that never touches a proxy, a public one carrying
 //! the configured proxy, chosen by [`Request::via_proxy`], and a local one,
 //! chosen by [`Request::trust`] and built the first time a local request
-//! needs it, so a public run never reads the OS store.
+//! needs it, so a public run never reads the OS store. All three resolve names
+//! through one [`AuditResolver`], the one the fetch layer classifies hosts
+//! with, so a connection goes to the addresses its hop was classified by.
 
 use std::fmt;
 use std::io::Read;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
+use super::audit_resolver::{AuditResolver, ConnectResolver};
 use super::credential::RedactedHeaders;
 use super::fetch::proxy;
 use super::fetch::trust::{TrustClass, TrustConfig};
@@ -198,6 +201,7 @@ impl TransportError {
 pub struct UreqTransport {
     user_agent: String,
     trust: TrustConfig,
+    resolver: Arc<AuditResolver>,
     direct: ureq::Agent,
     proxied: Option<ureq::Agent>,
     local: OnceLock<ureq::Agent>,
@@ -229,22 +233,37 @@ impl UreqTransport {
         Self::with_trust(user_agent, proxy, TrustConfig::default())
     }
 
-    /// A transport with an explicit proxy and trust configuration.
+    /// A transport with an explicit proxy and trust configuration, and name
+    /// lookups of its own.
     pub fn with_trust(user_agent: &str, proxy: Option<ureq::Proxy>, trust: TrustConfig) -> Self {
+        let resolver = Arc::new(AuditResolver::system());
+        Self::with_resolver(user_agent, proxy, trust, resolver)
+    }
+
+    /// A transport whose connections use the addresses `resolver` answered.
+    /// The fetch layer classifying its hops through the same resolver is what
+    /// holds a connection to the address that was classified.
+    pub fn with_resolver(
+        user_agent: &str,
+        proxy: Option<ureq::Proxy>,
+        trust: TrustConfig,
+        resolver: Arc<AuditResolver>,
+    ) -> Self {
         let public = tls::client_config(&trust, TrustClass::Public);
         UreqTransport {
             user_agent: user_agent.to_string(),
-            direct: agent(user_agent, None, public.clone()),
-            proxied: proxy.map(|p| agent(user_agent, Some(p), public)),
+            direct: agent(user_agent, None, public.clone(), &resolver),
+            proxied: proxy.map(|p| agent(user_agent, Some(p), public, &resolver)),
             local: OnceLock::new(),
             trust,
+            resolver,
         }
     }
 
     fn local_agent(&self) -> &ureq::Agent {
         self.local.get_or_init(|| {
             let local = tls::client_config(&self.trust, TrustClass::Local);
-            agent(&self.user_agent, None, local)
+            agent(&self.user_agent, None, local, &self.resolver)
         })
     }
 }
@@ -266,7 +285,8 @@ pub const IDLE_CONNECTIONS: usize = 4 * IDLE_CONNECTIONS_PER_HOST;
 fn agent(
     user_agent: &str,
     proxy: Option<ureq::Proxy>,
-    tls_config: std::sync::Arc<rustls::ClientConfig>,
+    tls_config: Arc<rustls::ClientConfig>,
+    resolver: &Arc<AuditResolver>,
 ) -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .user_agent(user_agent)
@@ -277,7 +297,7 @@ fn agent(
         .max_idle_connections_per_host(IDLE_CONNECTIONS_PER_HOST)
         .proxy(proxy)
         .build();
-    tls::agent(config, tls_config)
+    tls::agent(config, tls_config, ConnectResolver(Arc::clone(resolver)))
 }
 
 /// Attempts a single probe may cost, counting the first.

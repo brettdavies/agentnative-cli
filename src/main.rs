@@ -1,12 +1,12 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "web")]
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use clap::Parser as _;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use agentnative::argv::{format_invocation, inject_default_subcommand};
+use agentnative::argv::{format_invocation, inject_default_subcommand, verbose_rerun};
 use agentnative::audit::Audit;
 use agentnative::audits::behavioral::{all_behavioral_audits, declared_short_aliases};
 use agentnative::audits::project::all_project_audits;
@@ -17,6 +17,8 @@ use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
 use agentnative::cli::{ColorChoice, SiteType};
 use agentnative::completions;
 use agentnative::error::AppError;
+use agentnative::exit_codes::EXIT_COULD_NOT_CHECK;
+use agentnative::panics::describe;
 use agentnative::principles::matrix;
 #[cfg(feature = "web")]
 use agentnative::principles::registry::SPEC_VERSION;
@@ -72,15 +74,23 @@ fn main() {
 
     // Capture raw argv once for the JSON-mode sniff. `run()` re-reads it
     // for `format_invocation`, but the sniff has to happen before
-    // `try_parse_from` so clap-internal failures route through the JSON
+    // `parse_argv` so clap-internal failures route through the JSON
     // envelope when the user asked for JSON.
     let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
     let help = argv::help_command(&inject_default_subcommand(raw_argv.iter().cloned()));
+    let rerun = verbose_rerun(&raw_argv);
 
-    let code = match run(raw_argv) {
-        Ok(code) => code,
-        Err(e) => {
+    let token_on_stdin = raw_argv.iter().any(|arg| arg == "--token-stdin");
+
+    // In JSON mode a panic's message and location reach its row or the envelope
+    // below, and raw panic text would break the stderr stream the envelope is
+    // written to, unless `--verbose` asked for more than the envelope.
+    agentnative::panics::keep_locations(!json_mode || argv::asks_verbose(&raw_argv));
+
+    let code = match catch_unwind(AssertUnwindSafe(|| run(raw_argv))) {
+        Ok(Ok(code)) => code,
+        Ok(Err(e)) => {
             if json_mode {
                 let envelope = json_error::render_error(
                     "runtime",
@@ -95,11 +105,33 @@ fn main() {
             }
             2
         }
+        Err(panic) => {
+            let message = describe(&*panic);
+            if json_mode {
+                let envelope = json_error::render_error(
+                    "runtime",
+                    "panic",
+                    &message,
+                    EXIT_COULD_NOT_CHECK,
+                    &json_error::NextStep::report_bug(rerun, token_on_stdin),
+                );
+                eprintln!("{envelope}");
+            } else {
+                eprintln!(
+                    "error: anc panicked: {message}\nThis is a bug in anc. Run `{rerun}` and report what it prints at {}",
+                    json_error::ISSUE_TRACKER
+                );
+            }
+            EXIT_COULD_NOT_CHECK
+        }
     };
     std::process::exit(code);
 }
 
 fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
+    #[cfg(feature = "panic-probe")]
+    agentnative::panics::probe("run");
+
     // Raw argv is captured by `main()` *before* `inject_default_subcommand`
     // rewrites bare paths into `audit <path>`, so the scorecard's
     // `run.invocation` reflects what the user actually typed (R4). The
@@ -112,7 +144,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
 
     let argv = inject_default_subcommand(raw_argv.iter().cloned());
-    let cli = match Cli::try_parse_from(argv.iter().cloned()) {
+    let cli = match Cli::parse_argv(&argv) {
         Ok(cli) => cli,
         Err(e) => return Ok(handle_clap_error(e, json_mode, &argv)),
     };
@@ -393,7 +425,21 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             });
             continue;
         }
-        let result = match audit.run(&project) {
+        let ran = catch_unwind(AssertUnwindSafe(|| {
+            #[cfg(feature = "panic-probe")]
+            agentnative::panics::probe(audit.id());
+            audit.run(&project)
+        }));
+        // A debug build ends the run: a `debug_assert!` that fires under a test's
+        // fixture audit has to fail that test, which one `error` row among dozens
+        // may not.
+        let ran = ran.unwrap_or_else(|panic| {
+            if cfg!(debug_assertions) {
+                std::panic::resume_unwind(panic);
+            }
+            Err(anyhow::anyhow!("panic: {}", describe(&*panic)))
+        });
+        let result = match ran {
             Ok(r) => r,
             Err(e) => AuditResult {
                 id: audit.id().to_string(),
@@ -519,7 +565,7 @@ fn emit_examples(json_mode: bool) {
 ///
 /// Clap exits the process internally when `--help` / `--version` are passed
 /// to `parse_from`, so the JSON-mode contract can only be honored by routing
-/// through `try_parse_from` and rebuilding the envelope here. Help and
+/// through `Cli::parse_argv` and rebuilding the envelope here. Help and
 /// version map to `{"kind":"help"|"version", ...}` envelopes; every other
 /// error variant maps to `{"kind":"usage", "error":<slug>, "message":...}`.
 ///

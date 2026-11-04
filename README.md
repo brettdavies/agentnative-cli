@@ -868,7 +868,8 @@ mode and a typed envelope in `--output json` mode, or call `anc --help` first to
 
 Exit 3 is what separates "nobody reached the site" from "the site has failures", which is the distinction a CI gate
 needs. `anc web <target> --check <id>` returns the same table for one row, so `3` there means the check does not apply
-to that site.
+to that site. A bug in anc lands here too: a check whose handler panics reports an `error` row and the run finishes, and
+a panic anywhere else ends the run at exit 3 with a `panic` error.
 
 ### Errors under `--output json`
 
@@ -885,13 +886,14 @@ is one of a closed set, and a newer release can add to it:
 | `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                                                                                                  |
 | `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                                                                                                      |
 | `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                                                                                                              |
+| `report-bug`  | `command` or, after `--token-stdin`, `template`: the same with `--verbose`; `docs`: tracker  | `panic`                                                                                                                                              |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
-README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
-`bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
-error, where `value` is the target (the URL probed, for `target-unreachable` and `untrusted-certificate`), the `--check`
-id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or `--token-stdin` as its `argument`, and its `value`
-is never the token: empty, or `[redacted]` for a token that was read.
+README section that explains the error, or the issue tracker for `report-bug`. The offending input is echoed beside the
+reason: `bin` for `unknown-bin` and `bin-needs-directory`, and `argument` and `value` for parse errors when the parser
+reports them and for every other `anc web` error, where `value` is the target (the URL probed, for `target-unreachable`
+and `untrusted-certificate`), the `--check` id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or
+`--token-stdin` as its `argument`, and its `value` is never the token: empty, or `[redacted]` for a token that was read.
 
 ### Shell Completions
 

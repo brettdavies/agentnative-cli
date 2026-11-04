@@ -119,9 +119,7 @@ pub fn run_cors_preflight(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcom
     let (pre, post) = thread::scope(|s| {
         let pre = s.spawn(|| ctx.fetch.fetch(&url, &preflight_init, &opts));
         let post = ctx.fetch.fetch(&url, &post_init, &opts);
-        let pre = pre.join().unwrap_or_else(|_| {
-            ProbeResponse::failed("Error: preflight probe panicked".to_string(), 0)
-        });
+        let pre = crate::panics::raise(pre.join());
         (pre, post)
     });
 

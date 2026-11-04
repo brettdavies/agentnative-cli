@@ -79,8 +79,8 @@ gate_schema_parity() {
 # Gate 2: real CLIs grade without abnormal termination -----------------------
 #
 # anc's exit code is a verdict, not an error: 0 clean, 1 warn, 2 fail. Anything
-# above 2 is the binary dying rather than grading -- a Rust panic exits 101 and
-# a signal exits 128+N -- which is the condition this gate exists to catch.
+# above 2 is the binary not grading -- an errored audit or a panic exits 3 and a
+# signal exits 128+N -- which is the condition this gate exists to catch.
 
 grade_one_target() {
   local name="$1" profile="$2" json="$3" err="$4"
@@ -93,7 +93,7 @@ grade_one_target() {
   local label="$name${profile:+ (--audit-profile $profile)}"
 
   if [[ "$code" -gt 2 ]]; then
-    gate_fail "$label" "anc exited $code (panic or signal, not a verdict): $(head -c 200 "$err")"
+    gate_fail "$label" "anc exited $code (an errored audit, a panic, or a signal, not a verdict): $(head -c 200 "$err")"
     return
   fi
 

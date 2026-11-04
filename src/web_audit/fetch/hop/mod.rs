@@ -52,6 +52,8 @@ pub struct HopError {
     pub message: String,
     /// The request or read ran out of time rather than failing.
     pub timed_out: bool,
+    /// A panic on the hop's thread, which the caller raises rather than reads.
+    pub(crate) panicked: bool,
     pub(crate) started: Instant,
     pub(crate) ended: Instant,
     pub(crate) deadline: Instant,
@@ -152,6 +154,7 @@ impl HopError {
         HopError {
             message,
             timed_out,
+            panicked: false,
             started: ctx.started,
             ended: Instant::now(),
             deadline: ctx.deadline,
@@ -163,6 +166,7 @@ impl HopError {
         HopError {
             message: DEADLINE_EXCEEDED.to_string(),
             timed_out: true,
+            panicked: false,
             started,
             ended: at,
             deadline: at,

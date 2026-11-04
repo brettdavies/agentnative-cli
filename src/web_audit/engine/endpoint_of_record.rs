@@ -191,7 +191,7 @@ pub fn settle_endpoint_of_record(
     let discovery = std::thread::scope(|scope| {
         let posts = scope.spawn(move || documents.probe_endpoint());
         session.settle(&declared);
-        posts.join().unwrap_or_default()
+        crate::panics::raise(posts.join())
     });
     session.settle(&discovery.redirected);
     if opts.site_answered && opts.api_rows_apply {

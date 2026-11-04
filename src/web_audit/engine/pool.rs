@@ -5,7 +5,9 @@
 //! the remaining budget, and the collector stops waiting when the budget is
 //! gone. Workers are never joined; one stalled on a request that has its own
 //! timeout finishes on its own and exits, and a worker that has not yet
-//! started a job sees the cancellation flag and stops.
+//! started a job sees the cancellation flag and stops. A job that panics sets the
+//! flag and panics the caller, so it does not read as a job the deadline cut short;
+//! a panic past the deadline is as late as any other late job.
 //!
 //! ```text
 //! caller                                     workers (N threads, detached)
@@ -25,7 +27,9 @@
 //!                                              own timeout and exit
 //! ```
 
+use std::any::Any;
 use std::collections::VecDeque;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
@@ -55,7 +59,7 @@ where
         Arc::new(Mutex::new(items.into_iter().enumerate().collect()));
     let cancelled = Arc::new(AtomicBool::new(false));
     let job = Arc::new(job);
-    let (tx, rx) = mpsc::channel::<(usize, R)>();
+    let (tx, rx) = mpsc::channel::<(usize, Result<R, Box<dyn Any + Send>>)>();
 
     for _ in 0..concurrency.clamp(1, total) {
         let queue = Arc::clone(&queue);
@@ -69,7 +73,10 @@ where
                 }
                 let next = queue.lock().ok().and_then(|mut q| q.pop_front());
                 let Some((index, item)) = next else { return };
-                let result = job(item);
+                let result = catch_unwind(AssertUnwindSafe(|| job(item)));
+                if result.is_err() {
+                    cancelled.store(true, Ordering::Relaxed);
+                }
                 if tx.send((index, result)).is_err() {
                     return;
                 }
@@ -85,7 +92,8 @@ where
             break;
         }
         match rx.recv_timeout(remaining) {
-            Ok((index, result)) => {
+            Ok((_, Err(panic))) => resume_unwind(panic),
+            Ok((index, Ok(result))) => {
                 results[index] = Some(result);
                 received += 1;
             }
@@ -128,6 +136,33 @@ mod tests {
         assert_eq!(out[0], Some(10));
         assert_eq!(out[1], None);
         assert_eq!(out[3], None);
+    }
+
+    #[test]
+    fn a_job_that_panics_panics_the_caller_with_its_own_message() {
+        let panic = std::panic::catch_unwind(|| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            run_bounded(vec![0u8], 1, deadline, |_| panic!("job bug"))
+        })
+        .expect_err("the panic reaches the caller");
+        assert_eq!(crate::panics::panic_message(&*panic), "job bug");
+    }
+
+    #[test]
+    fn a_job_that_panics_stops_the_jobs_not_yet_started() {
+        use std::sync::atomic::AtomicUsize;
+        let started = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&started);
+        let panic = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            run_bounded((0..20).collect(), 1, deadline, move |_: u32| {
+                counted.fetch_add(1, Ordering::SeqCst);
+                panic!("job bug");
+            })
+        }));
+        assert!(panic.is_err());
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(started.load(Ordering::SeqCst), 1);
     }
 
     #[test]

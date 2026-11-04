@@ -10,6 +10,14 @@
 # per-audit deadline, a probe that blocks on a socket, or a DNS lookup that
 # sneaks into a local run all show up here as wall clock.
 #
+# With `scripts/smoke-web-audit.sh <binary> --panic-probe`, on a release binary
+# built with the `panic-probe` feature, it then audits the site with one handler
+# panicking, which costs that row and not the run, and with the run itself
+# panicking, in both output modes, which ends in the could-not-check exit and an
+# error envelope. It then audits a command with one audit panicking, which costs
+# that audit its row. A test build always unwinds, so only a release-profile
+# build can show any of them.
+#
 # The fixture is served from a temp directory by Python's own http.server
 # over TLS, so the check needs no fixture host and makes no external
 # request. `anc web` sends HTTPS only, so the script mints a throwaway CA
@@ -18,6 +26,14 @@
 set -euo pipefail
 
 readonly BINARY="${1:-target/release/anc}"
+readonly MODE="${2:-}"
+case "$MODE" in
+  "" | --panic-probe) ;;
+  *)
+    printf 'error: unknown mode %s; expected --panic-probe\n' "$MODE" >&2
+    exit 2
+    ;;
+esac
 # Ten times the measured local run, and well inside the promise, so this
 # fails on a hang rather than on a slow runner.
 readonly BUDGET_SECONDS=30
@@ -176,3 +192,107 @@ fi
 
 printf 'first run: %ss (budget %ss), exit %s, %s rows, %s passed\n' \
   "$elapsed" "$BUDGET_SECONDS" "$code" "$rows" "$passed"
+
+if [[ "$MODE" != "--panic-probe" ]]; then
+  exit 0
+fi
+
+# Runs the audit with ANC_PANIC_PROBE naming $1, leaving the code in $code and
+# the streams in $probed and $stderr_log. Every panic ends at the could-not-check
+# exit; anything else is the panic ending the run another way.
+probed="$fixture/probed.json"
+probe_run() {
+  local site=$1
+  shift
+  set +e
+  ANC_PANIC_PROBE="$site" timeout "$BUDGET_SECONDS" "$BINARY" web "$target" \
+    --ca-cert "$tls/ca.pem" "$@" >"$probed" 2>"$stderr_log"
+  code=$?
+  set -e
+  if ((code != 3)); then
+    printf 'error: a panic in %s returned %s; expected 3. anc wrote:\n' "$site" "$code" >&2
+    sed 's/^/  /' "$stderr_log" >&2
+    exit 1
+  fi
+}
+
+# A row that passed reached its handler, so it is one the probe can panic in.
+probe_id=$(jaq -r '[.results[] | select(.status == "pass")][0].id' <"$scorecard")
+probe_run "$probe_id" --output json
+if grep -q panicked "$stderr_log"; then
+  printf 'error: raw panic text reached stderr in JSON mode:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+# shellcheck disable=SC2016 # $id is jaq's variable, not the shell's.
+row=$(jaq -r --arg id "$probe_id" '.results[] | select(.id == $id) | "\(.status): \(.evidence)"' <"$probed")
+if [[ "$row" != "error: handler error: panic probe in $probe_id (src/panics.rs:"* ]]; then
+  printf 'error: the %s row reads %q; expected the handler error\n' "$probe_id" "$row" >&2
+  exit 1
+fi
+rows=$(jaq '.results | length' <"$probed")
+if [[ "$rows" != "$expected_rows" ]]; then
+  printf 'error: the probed scorecard carries %s rows; expected %s\n' "$rows" "$expected_rows" >&2
+  exit 1
+fi
+printf 'panic in %s: exit %s, %s rows, its row: %s\n' "$probe_id" "$code" "$rows" "$row"
+
+probe_run run --output json
+if ! jaq -e '.error == "panic" and .exit_code == 3 and (.message | startswith("panic probe in run (src/panics.rs:"))
+  and .next_step.action == "report-bug" and (.next_step.command | startswith("anc --verbose "))' \
+  <"$stderr_log" >/dev/null; then
+  printf 'error: a panic in the run left no error envelope on stderr:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in the run, JSON: exit %s, envelope on stderr\n' "$code"
+
+probe_run run
+if ! grep -q 'error: anc panicked: panic probe in run' "$stderr_log"; then
+  printf 'error: a panic in the run named no error in text mode:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in the run, text: exit %s, named on stderr\n' "$code"
+
+# The command the envelope hands out has to run as printed, under the quiet
+# environment `--verbose` overrides, and `--verbose` has to print the panic.
+probe_run run --output json --verbose
+if ! grep -q 'panicked at' "$stderr_log"; then
+  printf 'error: --verbose printed no panic in JSON mode:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in the run, JSON --verbose: exit %s, printed on stderr\n' "$code"
+AGENTNATIVE_QUIET=1 probe_run run --output json
+rerun=$(jaq -r '.next_step.command' "$stderr_log")
+case "$rerun" in
+  "anc --verbose "*) ;;
+  *)
+    printf 'error: the command under AGENTNATIVE_QUIET was %q\n' "$rerun" >&2
+    exit 1
+    ;;
+esac
+printf -v quoted_binary %q "$BINARY"
+rerun_status=0
+AGENTNATIVE_QUIET=1 timeout "$BUDGET_SECONDS" bash -c "${rerun/#anc /$quoted_binary }" \
+  >"$probed" 2>"$stderr_log" || rerun_status=$?
+if grep -q 'cannot be used with' "$stderr_log" || ((rerun_status > 2)); then
+  printf 'error: the command under AGENTNATIVE_QUIET returned %s. anc wrote:\n' "$rerun_status" >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'the command under AGENTNATIVE_QUIET: exit %s\n' "$rerun_status"
+
+set +e
+ANC_PANIC_PROBE=p3-help timeout "$BUDGET_SECONDS" "$BINARY" audit --command ls --output json \
+  >"$probed" 2>"$stderr_log"
+code=$?
+set -e
+row=$(jaq -r '[.results[] | select(.audit_id == "p3-help")][0] | "\(.status): \(.evidence)"' <"$probed")
+if ((code != 3)) || [[ "$row" != "error: panic: panic probe in p3-help"* ]]; then
+  printf 'error: a panic in one audit returned %s, its row: %q. anc wrote:\n' "$code" "$row" >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in p3-help: exit %s, its row: %s\n' "$code" "$row"

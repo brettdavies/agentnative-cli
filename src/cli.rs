@@ -1,7 +1,10 @@
-use clap::builder::FalseyValueParser;
-use clap::{Parser, Subcommand, ValueEnum, ValueHint};
+use std::ffi::OsString;
+
+use clap::builder::{FalseyValueParser, Resettable};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::Shell;
 
+use crate::argv::{asks_quiet, asks_verbose};
 use crate::principles::registry::ExceptionCategory;
 use crate::skill_install::SkillHost;
 
@@ -81,9 +84,9 @@ pub struct Cli {
     pub quiet: bool,
 
     /// Escalate diagnostic detail. `-v` is shorthand for `--verbose`.
-    /// Mutually exclusive with `--quiet`; the last flag on the command line
-    /// wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value
-    /// but `0`, `false`, `no`, `off`, or empty.
+    /// Cannot be combined with `--quiet`, and overrides `AGENTNATIVE_QUIET`.
+    /// `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`,
+    /// `off`, or empty.
     #[arg(
         long,
         short = 'v',
@@ -149,6 +152,20 @@ fn existing_dir(value: &str) -> Result<std::path::PathBuf, String> {
         Err("not a directory; pass the directory that holds the repo's `.anc.toml`".into())
     } else {
         Err("no such directory; pass the directory that holds the repo's `.anc.toml`".into())
+    }
+}
+
+impl Cli {
+    /// Parse `argv`, where an explicit `--verbose` overrides a quiet that only
+    /// `AGENTNATIVE_QUIET` set. clap counts an environment value as given and
+    /// refuses the pair, so for this one case `--quiet` loses its variable.
+    pub fn parse_argv(argv: &[OsString]) -> Result<Self, clap::Error> {
+        let mut command = Self::command();
+        if asks_verbose(argv) && !asks_quiet(argv) {
+            command = command.mut_arg("quiet", |quiet| quiet.env(Resettable::Reset));
+        }
+        let mut matches = command.clone().try_get_matches_from(argv)?;
+        Self::from_arg_matches_mut(&mut matches).map_err(|e| e.format(&mut command))
     }
 }
 

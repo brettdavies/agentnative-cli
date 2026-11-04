@@ -558,6 +558,21 @@ fn an_unported_handler_skips_its_rows_by_name_without_failing_the_run() {
 }
 
 #[test]
+fn a_handler_that_panics_costs_its_row_and_the_run_finishes() {
+    let mut set = HandlerSet::new();
+    for kind in HANDLER_KINDS {
+        set.register(kind, probe);
+    }
+    set.register("dns-doh", |_, _| panic!("handler bug"));
+    let report = complete(run_web_audit(input(healthy_transport(), Arc::new(set))));
+    let dns = row(&report, "dns-aid");
+    assert_eq!(dns.status, ScorecardStatus::Error);
+    assert_eq!(dns.evidence, "handler error: handler bug");
+    assert_eq!(row(&report, "robots").status, ScorecardStatus::Pass);
+    assert_eq!(report.results.len(), CHECKS.len());
+}
+
+#[test]
 fn the_dns_gate_withholds_external_resolvers_for_a_local_target_unless_overridden() {
     let local = "https://127.0.0.1:8080/";
     let run = |external_dns: bool| {

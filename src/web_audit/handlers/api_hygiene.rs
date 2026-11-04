@@ -278,7 +278,7 @@ pub fn run_api_hygiene(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutcome {
             .collect();
         handles
             .into_iter()
-            .map(|h| h.join().expect("a host probe does not panic"))
+            .map(|h| crate::panics::raise(h.join()))
             .collect()
     });
     aggregate_targets(outcomes)

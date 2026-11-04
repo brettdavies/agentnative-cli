@@ -258,6 +258,42 @@ pub fn format_invocation(args: &[OsString]) -> String {
         .join(" ")
 }
 
+/// The invocation a bug report reruns: `anc` for the program name, no quiet flag,
+/// which clap refuses beside `--verbose`, and `--verbose` once, ahead of any `--`
+/// that would swallow it. What follows a `--` is the caller's positional, whatever
+/// it looks like.
+pub fn verbose_rerun(args: &[OsString]) -> String {
+    let flags = args
+        .iter()
+        .skip(1)
+        .take_while(|arg| *arg != "--")
+        .filter(|arg| *arg != "--quiet" && *arg != "-q");
+    let positionals = args.iter().skip(1).skip_while(|arg| *arg != "--");
+    let mut out = vec![OsString::from("anc")];
+    if !asks_verbose(args) {
+        out.push(OsString::from("--verbose"));
+    }
+    out.extend(flags.chain(positionals).cloned());
+    format_invocation(&out)
+}
+
+/// Whether the flags, ahead of any `--`, ask for `--verbose`.
+pub fn asks_verbose(args: &[OsString]) -> bool {
+    flag_given(args, "--verbose", "-v")
+}
+
+/// Whether the flags, ahead of any `--`, ask for `--quiet`.
+pub fn asks_quiet(args: &[OsString]) -> bool {
+    flag_given(args, "--quiet", "-q")
+}
+
+fn flag_given(args: &[OsString], long: &str, short: &str) -> bool {
+    args.iter()
+        .skip(1)
+        .take_while(|arg| *arg != "--")
+        .any(|arg| arg == long || arg == short)
+}
+
 fn quote_arg(arg: &OsStr) -> String {
     let s = arg.to_string_lossy();
     if s.is_empty() {
@@ -354,7 +390,7 @@ mod rerun_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_invocation, inject_default_subcommand};
+    use super::{format_invocation, inject_default_subcommand, verbose_rerun};
     use std::ffi::OsString;
 
     fn args(a: &[&str]) -> Vec<OsString> {
@@ -519,6 +555,47 @@ mod tests {
     }
 
     // ---- format_invocation ----
+
+    #[test]
+    fn verbose_rerun_asks_for_verbose_once() {
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "web", "my site.dev"])),
+            "anc --verbose web 'my site.dev'"
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "web", "x", "--verbose"])),
+            "anc web x --verbose"
+        );
+        assert_eq!(verbose_rerun(&args(&["anc", "-v", "."])), "anc -v .");
+    }
+
+    #[test]
+    fn verbose_rerun_drops_what_would_stop_it_running_or_leak_the_path() {
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "web", "x", "-q"])),
+            "anc --verbose web x"
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "--quiet", "audit", "."])),
+            "anc --verbose audit ."
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["/home/someone/.cargo/bin/anc", "audit", "."])),
+            "anc --verbose audit ."
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "--", "."])),
+            "anc --verbose audit -- ."
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "--", "-q"])),
+            "anc --verbose audit -- -q"
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "--", "-v"])),
+            "anc --verbose audit -- -v"
+        );
+    }
 
     #[test]
     fn format_invocation_simple_args_unquoted() {

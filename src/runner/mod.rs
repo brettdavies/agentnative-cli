@@ -197,7 +197,7 @@ impl BinaryRunner {
         let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
         let exit = self.wait_or_kill(&mut child);
         group.kill();
-        let (stderr_output, stderr_truncated) = stderr_thread.join().unwrap_or_default();
+        let (stderr_output, stderr_truncated) = crate::panics::raise(stderr_thread.join());
 
         let stdout_str = String::from_utf8_lossy(&buf[..bytes_read]).into_owned();
 
@@ -330,8 +330,8 @@ impl BinaryRunner {
         }
         timeout_thread.join().ok();
 
-        let (stdout, stdout_truncated) = stdout_thread.join().unwrap_or_default();
-        let (stderr, stderr_truncated) = stderr_thread.join().unwrap_or_default();
+        let (stdout, stdout_truncated) = crate::panics::raise(stdout_thread.join());
+        let (stderr, stderr_truncated) = crate::panics::raise(stderr_thread.join());
 
         let was_timeout = *timed_out.lock().expect("mutex poisoned");
 

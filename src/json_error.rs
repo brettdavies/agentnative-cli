@@ -66,6 +66,9 @@ pub fn json_mode_in_argv(argv: &[OsString]) -> bool {
 /// The README section listing every flag, linked from a `show-help` step.
 pub const CLI_REFERENCE_DOCS: &str = "https://github.com/brettdavies/agentnative-cli#cli-reference";
 
+/// Where a `report-bug` step sends what the rerun printed.
+pub const ISSUE_TRACKER: &str = "https://github.com/brettdavies/agentnative-cli/issues";
+
 /// The README section on how a directory audit picks its binary, linked from
 /// the binary-selection errors.
 pub const BIN_SELECTION_DOCS: &str =
@@ -114,6 +117,10 @@ pub enum NextAction {
     /// target with `--ca-cert <FILE>`, the file being the CA's PEM
     /// certificate.
     AddCaCert,
+    /// A bug in anc: run `command`, the same invocation with `--verbose`, or
+    /// `template` when it read a token from stdin, and report what it prints at
+    /// `docs`, the issue tracker.
+    ReportBug,
 }
 
 impl NextStep {
@@ -162,6 +169,22 @@ impl NextStep {
             command: None,
             template: Some(template),
             docs: Some(WEB_AUDIT_DOCS),
+        }
+    }
+
+    /// `rerun` runs as printed unless it reads a token from stdin, which whatever
+    /// supplied it has to supply again.
+    pub fn report_bug(rerun: String, token_on_stdin: bool) -> Self {
+        let (command, template) = if token_on_stdin {
+            (None, Some(format!("{rerun} < <TOKEN_FILE>")))
+        } else {
+            (Some(rerun), None)
+        };
+        Self {
+            action: NextAction::ReportBug,
+            command,
+            template,
+            docs: Some(ISSUE_TRACKER),
         }
     }
 
@@ -433,6 +456,16 @@ mod tests {
         assert_eq!(action(NextStep::fix_target("x".into())), "fix-target");
         assert_eq!(action(NextStep::list_checks("x".into())), "list-checks");
         assert_eq!(action(NextStep::add_ca_cert("x".into())), "add-ca-cert");
+        assert_eq!(
+            action(NextStep::report_bug("x".into(), false)),
+            "report-bug"
+        );
+        let stdin = NextStep::report_bug("anc --verbose web x --token-stdin".into(), true);
+        assert_eq!(stdin.command, None);
+        assert_eq!(
+            stdin.template.as_deref(),
+            Some("anc --verbose web x --token-stdin < <TOKEN_FILE>")
+        );
     }
 
     #[test]

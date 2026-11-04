@@ -38,6 +38,8 @@ pub mod json_error;
 #[doc(hidden)]
 pub mod output;
 #[doc(hidden)]
+pub mod panics;
+#[doc(hidden)]
 pub mod principles;
 #[doc(hidden)]
 pub mod project;

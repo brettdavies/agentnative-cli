@@ -241,11 +241,7 @@ fn scan_files<L: LanguageExt + Copy + Send>(
             .collect();
         handles
             .into_iter()
-            .map(|handle| {
-                handle
-                    .join()
-                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-            })
+            .map(|handle| crate::panics::raise(handle.join()))
             .collect()
     });
     let mut found: Vec<Vec<Finding>> = scans

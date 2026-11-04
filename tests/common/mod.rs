@@ -448,22 +448,22 @@ where
 }
 
 /// [`spawn_https_keep_alive`], where a connection answers one request and dies
-/// when it is reused: it reads the next request and closes without answering,
-/// which a client holding it idle cannot see coming.
+/// when a later request on it matches `dies`: it reads that request and closes
+/// without answering, which a client holding it idle cannot see coming.
 #[cfg(feature = "web")]
-pub fn spawn_https_dying_on_reuse<F>(handler: F) -> KeepAliveServer
+pub fn spawn_https_dying_on_reuse<F>(handler: F, dies: fn(&RawRequest) -> bool) -> KeepAliveServer
 where
     F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
 {
-    https_server(handler, Connections::DieOnReuse)
+    https_server(handler, Connections::DieOnReuse(dies))
 }
 
 #[cfg(feature = "web")]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy)]
 enum Connections {
     CloseAfterOne,
     KeepAlive,
-    DieOnReuse,
+    DieOnReuse(fn(&RawRequest) -> bool),
 }
 
 #[cfg(feature = "web")]
@@ -490,12 +490,15 @@ where
                 let mut tls = rustls::StreamOwned::new(conn, stream);
                 let mut answered = false;
                 while let Some(req) = read_request_from(&mut tls) {
-                    if answered && connections == Connections::DieOnReuse {
+                    if let Connections::DieOnReuse(dies) = connections
+                        && answered
+                        && dies(&req)
+                    {
                         break;
                     }
                     recorder.lock().unwrap().push(req.clone());
                     let resp = handler(&req);
-                    let closes = connections == Connections::CloseAfterOne;
+                    let closes = matches!(connections, Connections::CloseAfterOne);
                     let header = if closes { "close" } else { "keep-alive" };
                     write_response_ending(&mut tls, &resp, header);
                     answered = true;

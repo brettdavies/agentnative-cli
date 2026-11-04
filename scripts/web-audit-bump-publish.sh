@@ -19,6 +19,11 @@
 # update: resetting the branch to dev first would empty an open PR, and GitHub
 # closes a PR whose head reaches its base.
 #
+# GitHub answers createCommitOnBranch with a 504 past about ten seconds, and that commit
+# does not land. Measured: 279 files in a 9.6 MiB request took 6.7 s on one try and timed
+# out on another, while 80 files in 2.8 MiB took 3.4 s. A new check moves every golden, so
+# a bump lands as several commits under those sizes. The PR squash-merges into one.
+#
 # GH_TOKEN must be a PAT. Events GITHUB_TOKEN causes start no workflows, so a PR
 # opened with it would never run its required checks.
 
@@ -28,6 +33,10 @@ invoked_from="$PWD"
 cd "$(dirname "$0")/.."
 
 BRANCH="bot/web-audit-bump"
+MAX_FILES_PER_COMMIT=100
+MAX_BYTES_PER_COMMIT=$((3 * 1024 * 1024))
+# In the body of every commit this script makes, which is how it tells them from port work.
+COMMIT_MARK="Web-Audit-Bump: part"
 LEDGER="tests/fixtures/web-audit-divergences.toml"
 
 mapfile -t paths < <(bash scripts/sync-web-audit.sh --list)
@@ -104,7 +113,7 @@ export GIT_INDEX_FILE="$work/index"
 git read-tree "$base_sha"
 git add -A -- "${paths[@]}"
 tree="$(git write-tree)"
-git diff --cached --name-status --no-renames "$base_sha" >"$work/changes"
+git diff --cached --name-status --no-renames -z "$base_sha" >"$work/changes"
 unset GIT_INDEX_FILE
 
 pr="$(gh api "repos/$repo/pulls?head=${repo%%/*}:$branch&base=$BASE&state=open" --jq '.[0].number // empty')"
@@ -115,12 +124,13 @@ head="$(gh api "repos/$repo/git/ref/heads/$branch" --jq .object.sha 2>/dev/null)
 # from dev, as "Update branch" makes, is not port work, and a branch a merged PR left
 # behind holds nothing a forced update could lose.
 if [[ -n $head ]]; then
-  own="$(gh api "repos/$repo/compare/$BASE...$head" --jq '[.commits[] | select(.parents | length == 1)] | length')"
-  if [[ $own -gt 1 ]]; then
+  port="$(gh api "repos/$repo/compare/$BASE...$head" \
+    --jq "[.commits[] | select(.parents | length == 1) | select(.commit.message | contains(\"$COMMIT_MARK\") | not)] | length")"
+  if [[ $port -gt 0 ]]; then
     merged="$(gh api "repos/$repo/pulls?head=${repo%%/*}:$branch&base=$BASE&state=closed" \
       --jq "[.[] | select(.merged_at != null and .head.sha == \"$head\")] | length")"
     if [[ $merged -eq 0 ]]; then
-      echo "::warning::standing down: $branch has $own commits past $BASE, so a forced update would drop port work; delete the branch to start over"
+      echo "::warning::standing down: $branch has $port commits past $BASE that are not the bump's own, so a forced update would drop port work; delete the branch to start over"
       exit 0
     fi
   fi
@@ -136,55 +146,79 @@ graphql() {
   fi
 }
 
-commit_changes() {
-  local status path
-  : >"$work/additions.jsonl"
-  : >"$work/deletions.jsonl"
-  while IFS=$'\t' read -r status path; do
-    if [[ $status == "D" ]]; then
-      jq -n --arg p "$path" '{path: $p}' >>"$work/deletions.jsonl"
-    else
-      # Contents go through files: one argument caps at 128 KB on Linux.
-      base64 <"$path" | tr -d '\n' >"$work/contents.b64"
-      jq -n --arg p "$path" --rawfile c "$work/contents.b64" '{path: $p, contents: $c}' >>"$work/additions.jsonl"
-    fi
-  done <"$work/changes"
+# Lands what the batch files hold as one verified commit on the scratch ref, on top of
+# $tip, and leaves them empty for the next batch.
+commit_batch() {
+  part=$((part + 1))
   jq -s . "$work/additions.jsonl" >"$work/additions.json"
   jq -s . "$work/deletions.jsonl" >"$work/deletions.json"
   jq -n \
-    --arg repo "$repo" --arg branch "$scratch" --arg head "$base_sha" --arg msg "$title" \
+    --arg repo "$repo" --arg branch "$scratch" --arg head "$tip" --arg msg "$title" --arg body "$COMMIT_MARK $part" \
     --slurpfile additions "$work/additions.json" --slurpfile deletions "$work/deletions.json" \
     '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
       variables: {input: {
         branch: {repositoryNameWithOwner: $repo, branchName: $branch},
         expectedHeadOid: $head,
-        message: {headline: $msg},
+        message: {headline: $msg, body: $body},
         fileChanges: {additions: $additions[0], deletions: $deletions[0]}}}}' >"$work/payload.json"
+  graphql "$work/payload.json"
+  tip="$(jq -r '.data.createCommitOnBranch.commit.oid' "$work/response.json")"
+  local verified
+  verified="$(gh api "repos/$repo/commits/$tip" --jq .commit.verification.verified)"
+  if [[ $verified != "true" ]]; then
+    echo "error: $tip is not verified, so dev's signature rule would refuse the PR" >&2
+    exit 1
+  fi
+  : >"$work/additions.jsonl"
+  : >"$work/deletions.jsonl"
+  batch_files=0
+  batch_bytes=0
+}
 
+commit_changes() {
+  local status path size
+  : >"$work/additions.jsonl"
+  : >"$work/deletions.jsonl"
+  batch_files=0
+  batch_bytes=0
+  part=0
+  tip="$base_sha"
   gh api -X DELETE "repos/$repo/git/refs/heads/$scratch" >/dev/null 2>&1 || true
   gh api -X POST "repos/$repo/git/refs" -f ref="refs/heads/$scratch" -f sha="$base_sha" >/dev/null
   scratch_made="yes"
-  graphql "$work/payload.json"
-  local oid verified
-  oid="$(jq -r '.data.createCommitOnBranch.commit.oid' "$work/response.json")"
-  verified="$(gh api "repos/$repo/commits/$oid" --jq .commit.verification.verified)"
-  if [[ $verified != "true" ]]; then
-    echo "error: $oid is not verified, so dev's signature rule would refuse the PR" >&2
-    exit 1
-  fi
+  # -z, because git quotes a path holding a non-ASCII byte, and base64 would not find it.
+  while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+    size=0
+    if [[ $status != "D" ]]; then
+      # Contents go through files: one argument caps at 128 KB on Linux.
+      base64 <"$path" | tr -d '\n' >"$work/contents.b64"
+      size="$(wc -c <"$work/contents.b64")"
+    fi
+    if ((batch_files > 0 && (batch_files >= MAX_FILES_PER_COMMIT || batch_bytes + size > MAX_BYTES_PER_COMMIT))); then
+      commit_batch
+    fi
+    if [[ $status == "D" ]]; then
+      jq -n --arg p "$path" '{path: $p}' >>"$work/deletions.jsonl"
+    else
+      jq -n --arg p "$path" --rawfile c "$work/contents.b64" '{path: $p, contents: $c}' >>"$work/additions.jsonl"
+    fi
+    batch_files=$((batch_files + 1))
+    batch_bytes=$((batch_bytes + size))
+  done <"$work/changes"
+  commit_batch
   if [[ -n $head ]]; then
     # beforeOid makes the forced move conditional: a port commit pushed since the read
     # above refuses it, where a REST forced update would drop that commit.
     jq -n --arg id "$(gh api "repos/$repo" --jq .node_id)" --arg name "refs/heads/$branch" \
-      --arg before "$head" --arg after "$oid" \
+      --arg before "$head" --arg after "$tip" \
       '{query: "mutation($input: UpdateRefsInput!) { updateRefs(input: $input) { clientMutationId } }",
         variables: {input: {repositoryId: $id, refUpdates: [{name: $name, beforeOid: $before, afterOid: $after, force: true}]}}}' \
       >"$work/move.json"
     graphql "$work/move.json"
   else
-    gh api -X POST "repos/$repo/git/refs" -f ref="refs/heads/$branch" -f sha="$oid" >/dev/null
+    gh api -X POST "repos/$repo/git/refs" -f ref="refs/heads/$branch" -f sha="$tip" >/dev/null
   fi
-  echo "moved $branch to $oid"
+  echo "moved $branch to $tip in $part commits"
 }
 
 # The same tree on the same branch means nothing moved: pushing it again would

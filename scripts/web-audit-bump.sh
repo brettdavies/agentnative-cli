@@ -162,7 +162,8 @@ elif [[ $WEB_AUDIT_SITE_REPO == "$work/site" ]]; then
 fi
 
 bash scripts/sync-web-audit.sh --pin "$new" >/dev/null
-mapfile -t changed < <(git status --porcelain --no-renames --untracked-files=all -- "${vendored[@]}" | cut -c4-)
+mapfile -d '' -t changed < <(git status --porcelain -z --no-renames --untracked-files=all -- "${vendored[@]}")
+changed=("${changed[@]#???}")
 if [[ ${#changed[@]} -eq 0 && -n $on_dev ]]; then
   nothing_to_bump "site dev ${new:0:7} changes no vendored file since ${old:0:7}"
 fi
@@ -198,8 +199,8 @@ fi
 if [[ ${#changed[@]} -gt 0 ]]; then
   printf '%s\n' "${changed[@]}" >"$work/changed.txt"
 fi
-git ls-files --deleted -- "${vendored[@]}" >"$work/deleted.txt"
-git ls-files --others --exclude-standard -- "${vendored[@]}" >"$work/created.txt"
+git -c core.quotePath=false ls-files --deleted -- "${vendored[@]}" >"$work/deleted.txt"
+git -c core.quotePath=false ls-files --others --exclude-standard -- "${vendored[@]}" >"$work/created.txt"
 python3 -B scripts/web-audit-bump-body.py \
   --old "$old" --new "$new" --changed "$work/changed.txt" --created "$work/created.txt" \
   --deleted "$work/deleted.txt" --ledger "${tracked[-1]}" \

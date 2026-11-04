@@ -37,6 +37,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WEB_LEDGER="tests/fixtures/web-audit-divergences.toml"
 SITE_REMOTE_URL="${WEB_AUDIT_SITE_REMOTE_URL:-https://github.com/brettdavies/agentnative-site.git}"
 DOCS="RELEASES.md#handling-a-bump-pr"
+BUMP_PRS="https://github.com/brettdavies/agentnative-cli/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fweb-audit-bump"
 
 report() {
   printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}"
@@ -74,11 +75,19 @@ if [[ ! -d "$REPO_ROOT/src/web_audit" ]]; then
 fi
 
 # A release builds default features, so a tree that keeps the source and leaves the
-# feature out ships no `anc web`, and its binary has no checks to answer for.
-if [[ -f "$REPO_ROOT/Cargo.toml" ]] && ! python3 -c '
-import re, sys
-default = re.search(r"^default\s*=\s*\[(.*?)\]", open(sys.argv[1]).read(), re.M | re.S)
-sys.exit(0 if default and "\"web\"" in default.group(1) else 1)' "$REPO_ROOT/Cargo.toml"; then
+# feature out ships no `anc web`. Only a clear no skips: a gate that cannot tell has
+# not cleared the release, so anything else runs the conditions below.
+web_by_default="$(cargo metadata --no-deps --offline --format-version 1 --manifest-path "$REPO_ROOT/Cargo.toml" 2>/dev/null | python3 -c '
+import json, sys
+features = json.load(sys.stdin)["packages"][0]["features"]
+seen, todo = set(), ["default"]
+while todo:
+    name = todo.pop()
+    if name in features and name not in seen:
+        seen.add(name)
+        todo.extend(features[name])
+print("yes" if "web" in seen else "no")' 2>/dev/null || true)"
+if [[ $web_by_default == "no" ]]; then
   report skip "web audit parity" "Cargo.toml's default features leave web out, so nothing this tree releases can differ"
   exit 0
 fi
@@ -145,7 +154,7 @@ elif hardened_git -C "$site" merge-base --is-ancestor "$pin" refs/heads/dev 2>/d
     report pass "the pin carries site dev's vendored inputs"
   else
     report fail "web-audit-stale: site dev has moved vendored inputs past the pin" \
-      "$(wc -l <<<"$moved" | tr -d ' ') files since $pin, first $(head -n 1 <<<"$moved"). Fix: merge the open bump PR, or gh workflow run web-audit-bump.yml --ref dev and merge what it opens. Docs: $DOCS"
+      "$(wc -l <<<"$moved" | tr -d ' ') files since $pin, first $(head -n 1 <<<"$moved"). Fix: merge the open bump PR ($BUMP_PRS), or run the bump workflow: gh workflow run web-audit-bump.yml --ref dev. Docs: $DOCS"
   fi
 else
   report fail "web-audit-pin: the site pin is not on site dev" \

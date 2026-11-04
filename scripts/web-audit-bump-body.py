@@ -14,8 +14,10 @@ from pathlib import Path
 SITE = "brettdavies/agentnative-site"
 HANDLING = "[Handling a bump PR](../blob/dev/RELEASES.md#handling-a-bump-pr)"
 # GitHub refuses a body past 65,536 characters, and a re-pin can touch every
-# scenario. These caps keep the worst case near 58,000, and each capped list
-# points at the file or log that holds the rest.
+# scenario. Each capped list points at the file or log that holds the rest, and
+# MAX_BODY bounds what they add up to.
+MAX_BODY = 65_000
+CUT_NOTE = "\n\n(Cut at GitHub's body limit; this run's log holds the rest.)"
 ENTRY_LINES = 200
 FILE_LINES = 60
 LOG_LINES = 40
@@ -80,7 +82,7 @@ def unported_section(path):
         "",
         f"Port work owed. These checks skip wherever they apply, so a full `anc web` run there reads could not check, and the release gate refuses a release until they run (`web-audit-unported`, see {HANDLING}):",
         "",
-    ] + rows
+    ] + capped(rows, PROBLEM_LINES, "`anc emit web-checks`")
 
 
 def suite_section(args):
@@ -112,6 +114,16 @@ def suite_section(args):
         out += ["The suites did not build:", "", "```text"]
         out += [line[:LINE_CHARS] for line in log.splitlines()[-LOG_LINES:]] + ["```", ""]
     return out
+
+
+def fit_the_limit(report, template):
+    """The report and the template below it, cutting the report when both won't fit."""
+    text = "\n".join(report)
+    rest = "\n".join(template)
+    room = MAX_BODY - len(rest) - len(CUT_NOTE) - 2
+    if len(text) > room:
+        text = text[:room] + CUT_NOTE
+    return f"{text}\n\n{rest}"
 
 
 def count_of_vendored(paths):
@@ -166,8 +178,7 @@ def main():
         ]
         body += capped([f"- `{f}`" for f in deleted], FILE_LINES, "this PR's Files tab")
     body += [""] + divergences + [""] + unported_section(args.unported) + [""] + suite_section(args)
-    body += [
-        "",
+    template = [
         "## Changelog",
         "",
         "### Changed",
@@ -207,7 +218,7 @@ def main():
         "",
         "- [x] No special deployment steps required",
     ]
-    print("\n".join(body))
+    print(fit_the_limit(body, template))
 
 
 if __name__ == "__main__":

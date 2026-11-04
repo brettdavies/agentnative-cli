@@ -252,6 +252,11 @@ gate_examples_resolve() {
 gate_web_parity() {
   header "Web audit parity with anc.dev"
   local out verdict name detail refused="" status=0
+  # A release that strips the web audit can strip the gate with it.
+  if [[ ! -d "$REPO_ROOT/src/web_audit" ]]; then
+    gate_skip "web audit parity" "this release tree strips anc web, so nothing it ships can differ"
+    return 0
+  fi
   out="$("$REPO_ROOT/scripts/release/web-parity-gate.sh" --bin "$BIN")" || status=$?
   while IFS=$'\t' read -r verdict name detail; do
     case "$verdict" in

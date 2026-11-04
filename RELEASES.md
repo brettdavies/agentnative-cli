@@ -550,7 +550,10 @@ release tree that strips `anc web` skips it. [Handling a bump PR](#handling-a-bu
 `web-audit-bump.yml` opens one PR, from `bot/web-audit-bump`, whenever agentnative-site's `dev` head changes a vendored
 input or the pin is not on site `dev`. It updates that PR on later runs, and stands down once the branch carries port
 commits, with or without an open PR, so push port work as new commits. A merge from `dev` does not count as port work.
-Delete the branch to start over. A `dev` merge leaves an open PR alone when it already carries the site's head and the
+Delete the branch to start over. A large bump arrives as several commits, each marked `Web-Audit-Bump: part <n>`,
+because GitHub times out a single large signed commit, and a commit without that mark is what counts as port work. Once
+the bot stands down it no longer edits the PR, so before merging a bump that carries port commits, retitle it and
+refresh its body: the squash commit records both. A `dev` merge leaves an open PR alone when it already carries the site's head and the
 merge touched nothing under `src/`, `tests/`, `scripts/`, `build_support/` or `schema/`, nor `build.rs`, `Cargo.*`,
 `rust-toolchain.toml` or `README.md`, so its CI is not restarted for nothing.
 
@@ -592,6 +595,9 @@ The gate refuses a release with a stable code, what is wrong, and its fix:
 | `web-audit-pin`      | The vendored pin is not reachable from site `dev` | `gh workflow run web-audit-bump.yml --ref dev`, then merge the PR it opens |
 | `web-audit-stale`    | Site `dev` moved a vendored input past the pin    | Merge the open bump PR, or run `web-audit-bump.yml` and merge its new PR   |
 | `web-audit-gate`     | The gate died or printed nothing                  | Run `scripts/release/web-parity-gate.sh --bin <anc>` and read its error    |
+
+A release waits on an open bump PR by design: the CLI does not ship behind site `dev`. The gate skips, and says so, a
+tree that strips the web audit or whose default features leave `web` out, because neither ships an `anc web` to differ.
 
 ### Required secrets
 

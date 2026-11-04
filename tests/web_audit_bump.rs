@@ -66,6 +66,7 @@ case "$args" in
       cat "$SHIM_DIR/update-refs-response"
     else
       cp "${@: -1}" "$SHIM_DIR/payload.json"
+      cp "${@: -1}" "$SHIM_DIR/commit-$(find "$SHIM_DIR" -maxdepth 1 -name 'commit-*.json' | wc -l | tr -d ' ').json"
       cat "$SHIM_DIR/graphql-response"
     fi
     ;;
@@ -219,7 +220,10 @@ impl Fixture {
             ("suite-output", "test result: ok. 1 passed; 0 failed\n"),
             ("suite-status", "0"),
             ("open-pr", ""),
-            ("compare.json", "{\"commits\": [{\"parents\": [\"a\"]}]}"),
+            (
+                "compare.json",
+                "{\"commits\": [{\"parents\": [\"a\"], \"commit\": {\"message\": \"feat(web): a bump\\n\\nWeb-Audit-Bump: part 1\"}}]}",
+            ),
             ("closed-prs.json", "[]"),
             (
                 "update-refs-response",
@@ -240,12 +244,24 @@ impl Fixture {
         fs::write(self.shims.join(file), content).unwrap();
     }
 
-    /// What `compare dev...<branch>` answers: `own` commits of one parent, and `merges`
-    /// of two.
-    fn commits_past_dev(&self, own: usize, merges: usize) {
-        let mut commits = vec![json!({"parents": ["a"]}); own];
-        commits.extend(vec![json!({"parents": ["a", "b"]}); merges]);
+    /// What `compare dev...<branch>` answers: `bump` commits this script made, `port` of
+    /// someone else's, and `merges` from dev.
+    fn commits_past_dev(&self, bump: usize, port: usize, merges: usize) {
+        let commit = |parents: Value, message: &str| json!({"parents": parents, "commit": {"message": message}});
+        let mut commits =
+            vec![commit(json!(["a"]), "feat(web): a bump\n\nWeb-Audit-Bump: part 1"); bump];
+        commits.extend(vec![commit(json!(["a"]), "feat(web): a port"); port]);
+        commits.extend(vec![commit(json!(["a", "b"]), "Merge dev"); merges]);
         self.answer("compare.json", &json!({"commits": commits}).to_string());
+    }
+
+    /// Every commit the script asked GitHub for, in order.
+    fn commit_payloads(&self) -> Vec<Value> {
+        (0..)
+            .map(|n| self.shims.join(format!("commit-{n}.json")))
+            .take_while(|path| path.exists())
+            .map(|path| serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap())
+            .collect()
     }
 
     fn calls(&self) -> String {
@@ -803,6 +819,121 @@ fn a_divergence_with_no_attributable_site_change_fails_visibly() {
 }
 
 #[test]
+fn a_commit_with_no_pr_changing_a_standing_entry_names_that_commit_too() {
+    let f = Fixture::new();
+    let golden = format!("{CORPUS}/run-a/scorecard.json");
+    write(
+        &f.repo.join(LEDGER),
+        &format!(
+            "{}site_sha = \"{}\"\n\n[[divergence]]\nscenario = \"run-a\"\nelement = \"score\"\nowner = \"#120\"\n",
+            empty_ledger(Path::new(env!("CARGO_MANIFEST_DIR"))),
+            f.first_pin
+        ),
+    );
+    commit(&f.repo, "feat(web): the standing entry");
+    let direct = f.site_commit(&golden, "{\"score\": 2}\n", "fix: a direct push");
+    f.answer("divergences.json", "[[\"run-a\", \"score\"]]");
+    let output = f.bump(&["--dry-run"]);
+    assert_ok(&output);
+    let out = stdout(&output);
+    assert!(
+        out.contains(&format!(
+            "site commit {} changed run-a/score and names no PR",
+            &direct[..7]
+        )),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_path_git_would_quote_reaches_the_commit_and_the_body_as_it_is() {
+    let f = Fixture::new();
+    let path = format!("{CORPUS}/café/scorecard.json");
+    f.site_commit(
+        &path,
+        "{\"score\": 3}\n",
+        "feat: a scenario with an accent (#2)",
+    );
+    let dry = f.bump(&["--dry-run"]);
+    assert_ok(&dry);
+    assert!(
+        stdout(&dry).contains(&format!("- `{path}`")),
+        "{}",
+        stdout(&dry)
+    );
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert_eq!(f.added(&path).as_deref(), Some("{\"score\": 3}\n"));
+}
+
+#[test]
+fn a_body_past_githubs_limit_is_cut_and_keeps_its_template() {
+    let f = Fixture::new();
+    let long = "x".repeat(300);
+    let dir = f.shims.join("body");
+    fs::create_dir_all(&dir).unwrap();
+    let list: String = (0..400).map(|i| format!("{long}{i}\n")).collect();
+    let entries: String = (0..400)
+        .map(|i| format!("[[divergence]]\nscenario = \"{long}{i}\"\nelement = \"score\"\nowner = \"#{i}\"\n\n"))
+        .collect();
+    write(&dir.join("changed.txt"), &list);
+    write(&dir.join("created.txt"), "");
+    write(&dir.join("deleted.txt"), &list);
+    write(&dir.join("ledger.toml"), &entries);
+    write(
+        &dir.join("unported.json"),
+        &json!({"handlers": (0..400).map(|i| (format!("{long}{i}"), vec!["a"])).collect::<std::collections::BTreeMap<_, _>>(), "evals": {}}).to_string(),
+    );
+    write(&dir.join("ledger.log"), &list);
+    write(
+        &dir.join("suite.log"),
+        &format!("{list}test a ... FAILED\n"),
+    );
+    let arg = |name: &str| dir.join(name).to_str().unwrap().to_string();
+    let output = Command::new("python3")
+        .args(["-B", "scripts/web-audit-bump-body.py"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args(["--old", "0000000", "--new", "1111111"])
+        .args([
+            "--changed",
+            &arg("changed.txt"),
+            "--created",
+            &arg("created.txt"),
+        ])
+        .args([
+            "--deleted",
+            &arg("deleted.txt"),
+            "--ledger",
+            &arg("ledger.toml"),
+        ])
+        .args(["--unported", &arg("unported.json")])
+        .args(["--ledger-status", "1", "--ledger-log", &arg("ledger.log")])
+        .args(["--suite-status", "1", "--suite-log", &arg("suite.log")])
+        .output()
+        .unwrap();
+    assert_ok(&output);
+    let out = stdout(&output);
+    assert!(
+        out.chars().count() <= 65_536,
+        "{} characters",
+        out.chars().count()
+    );
+    assert!(
+        out.contains("Cut at GitHub's body limit"),
+        "{}",
+        &out[..200]
+    );
+    for section in [
+        "## Changelog",
+        "## Testing",
+        "## Files Modified",
+        "## Deployment Notes",
+    ] {
+        assert!(out.contains(section), "{section}");
+    }
+}
+
+#[test]
 fn a_divergence_a_commit_with_no_pr_set_names_that_commit_rather_than_another_pr() {
     let f = Fixture::new();
     let golden = format!("{CORPUS}/run-a/scorecard.json");
@@ -993,7 +1124,7 @@ fn port_commits_on_the_branch_make_the_bot_stand_down() {
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     f.answer("open-pr", "42");
     f.answer("branch-head", "porthead");
-    f.commits_past_dev(2, 0);
+    f.commits_past_dev(1, 1, 0);
     let output = f.bump(&[]);
     assert_ok(&output);
     assert!(
@@ -1015,7 +1146,7 @@ fn port_commits_on_a_branch_with_no_open_pr_also_stand_down() {
     let f = Fixture::new();
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     f.answer("branch-head", "porthead");
-    f.commits_past_dev(2, 0);
+    f.commits_past_dev(1, 1, 0);
     f.answer(
         "closed-prs.json",
         &json!([{"merged_at": null, "head": {"sha": "porthead"}}]).to_string(),
@@ -1038,7 +1169,7 @@ fn a_branch_a_merged_pr_left_behind_is_not_port_work() {
     f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
     f.answer("branch-head", "porthead");
     f.answer("branch-tree", "oldtree");
-    f.commits_past_dev(3, 0);
+    f.commits_past_dev(1, 2, 0);
     f.answer(
         "closed-prs.json",
         &json!([{"merged_at": "2026-11-04T00:00:00Z", "head": {"sha": "porthead"}}]).to_string(),
@@ -1064,7 +1195,7 @@ fn a_merge_from_dev_is_not_port_work() {
     f.answer("open-pr", "42");
     f.answer("branch-head", "oldhead");
     f.answer("branch-tree", "oldtree");
-    f.commits_past_dev(1, 1);
+    f.commits_past_dev(1, 0, 1);
     let output = f.bump(&[]);
     assert_ok(&output);
     assert!(
@@ -1073,6 +1204,104 @@ fn a_merge_from_dev_is_not_port_work() {
         stdout(&output)
     );
     assert!(f.shims.join("update-refs.json").exists(), "{}", f.calls());
+}
+
+#[test]
+fn a_bump_of_several_commits_is_not_port_work() {
+    let f = Fixture::new();
+    f.site_commit(SITE_FILES[0], "moved\n", "feat: a registry move (#2)");
+    f.answer("open-pr", "42");
+    f.answer("branch-head", "oldhead");
+    f.answer("branch-tree", "oldtree");
+    f.commits_past_dev(5, 0, 0);
+    let output = f.bump(&[]);
+    assert_ok(&output);
+    assert!(
+        !stdout(&output).contains("standing down"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(f.shims.join("update-refs.json").exists(), "{}", f.calls());
+}
+
+/// A commit GitHub cannot finish in about ten seconds answers 504 and does not land.
+#[test]
+fn a_bump_too_large_for_one_commit_lands_as_a_chain_of_verified_commits() {
+    const FILES: usize = 230;
+    let f = Fixture::new();
+    let base = run_git(&f.repo, &["rev-parse", "HEAD"]);
+    for n in 0..FILES {
+        write(
+            &f.site.join(format!("{CORPUS}/many-{n:03}/scorecard.json")),
+            "{\"score\": 1}\n",
+        );
+    }
+    commit(&f.site, "feat: every golden moves (#2)");
+    assert_ok(&f.bump(&[]));
+
+    let commits = f.commit_payloads();
+    assert_eq!(commits.len(), 3, "{} commits", commits.len());
+    let mut landed = 0;
+    for (n, payload) in commits.iter().enumerate() {
+        let input = &payload["variables"]["input"];
+        let expected = if n == 0 { base.as_str() } else { "newoid" };
+        assert_eq!(input["expectedHeadOid"], expected, "commit {n}");
+        assert_eq!(
+            input["message"]["body"],
+            format!("Web-Audit-Bump: part {}", n + 1)
+        );
+        let additions = input["fileChanges"]["additions"].as_array().unwrap();
+        assert!(additions.len() <= 100, "commit {n}: {}", additions.len());
+        landed += additions.len();
+    }
+    assert_eq!(landed, FILES + 1, "every golden and the pin");
+    let calls = f.calls();
+    assert_eq!(
+        calls.matches("--jq .commit.verification.verified").count(),
+        3,
+        "{calls}"
+    );
+    assert_eq!(
+        calls
+            .matches("-f ref=refs/heads/bot/web-audit-bump-next")
+            .count(),
+        1,
+        "{calls}"
+    );
+    assert_eq!(
+        calls.matches("api -X POST repos/owner/repo/pulls").count(),
+        1,
+        "{calls}"
+    );
+    assert!(
+        calls.contains("-f ref=refs/heads/bot/web-audit-bump -f sha=newoid"),
+        "{calls}"
+    );
+}
+
+#[test]
+fn a_bump_of_large_files_splits_by_size_too() {
+    let f = Fixture::new();
+    let body = format!("{{\"pad\": \"{}\"}}\n", "x".repeat(1_600_000));
+    for n in 0..3 {
+        write(
+            &f.site.join(format!("{CORPUS}/big-{n}/scorecard.json")),
+            &body,
+        );
+    }
+    commit(&f.site, "feat: large goldens (#2)");
+    assert_ok(&f.bump(&[]));
+    let commits = f.commit_payloads();
+    assert!(commits.len() >= 3, "{} commits", commits.len());
+    for payload in &commits {
+        let size: usize = payload["variables"]["input"]["fileChanges"]["additions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["contents"].as_str().unwrap().len())
+            .sum();
+        assert!(size <= 3 * 1024 * 1024, "{size} bytes in one commit");
+    }
 }
 
 #[test]
@@ -1423,6 +1652,21 @@ fn the_token_job_checks_out_a_commit_named_before_any_test_code_ran() {
         "{first_job}"
     );
     assert!(!first_job.contains("secrets."), "{first_job}");
+    let (_, decide_onward) = first_job.split_once("- name: Decide\n").unwrap();
+    let (decide, test_code) = decide_onward.split_once("- name: Install Rust\n").unwrap();
+    assert!(decide.contains("GH_TOKEN: ${{ github.token }}"), "{decide}");
+    assert!(
+        !test_code.contains("GH_TOKEN")
+            && !first_job
+                .split("- name: Decide\n")
+                .next()
+                .unwrap()
+                .contains("GH_TOKEN"),
+        "only the Decide step holds the read token: {first_job}"
+    );
+    for job in [first_job, second_job] {
+        assert!(job.contains("persist-credentials: false"), "{job}");
+    }
     assert!(
         second_job.contains("ref: ${{ needs.prepare.outputs.base }}"),
         "{second_job}"
@@ -1530,6 +1774,17 @@ impl GateTree {
         );
     }
 
+    /// A real manifest and a target for `cargo metadata` to read.
+    fn manifest(&self, features: &str) {
+        write(
+            &self.tmp.path().join("Cargo.toml"),
+            &format!(
+                "[package]\nname = \"gate-tree\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[features]\n{features}\n"
+            ),
+        );
+        write(&self.tmp.path().join("src/main.rs"), "fn main() {}\n");
+    }
+
     fn advance_site_dev(&self, file: &str) {
         write(&self.site.join(file), "moved\n");
         commit(&self.site, "feat: site dev moves");
@@ -1600,6 +1855,11 @@ fn the_gate_refuses_a_pin_behind_a_dev_commit_that_moves_a_vendored_input() {
         "{out}"
     );
     assert!(out.contains(SITE_FILES[0]), "{out}");
+    assert!(out.contains("head%3Abot%2Fweb-audit-bump"), "{out}");
+    assert!(
+        out.contains("gh workflow run web-audit-bump.yml --ref dev"),
+        "{out}"
+    );
     assert!(
         out.contains("Fix: ") && out.contains(HANDLING_DOCS),
         "{out}"
@@ -1630,22 +1890,30 @@ fn the_gate_reads_a_pin_with_no_trailing_newline() {
 }
 
 #[test]
-fn the_gate_skips_a_tree_whose_default_features_leave_web_out() {
+fn the_gate_skips_only_a_tree_whose_default_features_clearly_leave_web_out() {
     let tree = GateTree::new(Some(TWO_ENTRIES), true, None);
-    let manifest = tree.tmp.path().join("Cargo.toml");
-    fs::write(
-        &manifest,
-        "[features]\ndefault = []\nweb = [\"dep:ureq\"]\n",
-    )
-    .unwrap();
+    tree.manifest("default = []\nweb = []");
     let (out, code) = tree.gate();
     assert_eq!(code, Some(0), "{out}");
     assert!(out.contains("skip\tweb audit parity"), "{out}");
     assert!(out.contains("default features leave web out"), "{out}");
 
-    fs::write(&manifest, "[features]\ndefault = [\n  \"web\",\n]\n").unwrap();
+    for (what, features) in [
+        ("listed", "default = [\"web\"]\nweb = []"),
+        (
+            "through another feature",
+            "default = [\"full\"]\nfull = [\"web\"]\nweb = []",
+        ),
+    ] {
+        tree.manifest(features);
+        let (out, code) = tree.gate();
+        assert_eq!(code, Some(1), "{what}: {out}");
+        assert!(out.contains("fail\tweb-audit-ledger"), "{what}: {out}");
+    }
+
+    fs::write(tree.tmp.path().join("Cargo.toml"), "not a manifest").unwrap();
     let (out, code) = tree.gate();
-    assert_eq!(code, Some(1), "{out}");
+    assert_eq!(code, Some(1), "a gate that cannot tell runs: {out}");
     assert!(out.contains("fail\tweb-audit-ledger"), "{out}");
 }
 
@@ -1794,6 +2062,28 @@ fn smoke_fails_when_the_gate_dies_or_says_nothing() {
     }
 }
 
+#[test]
+fn smoke_skips_a_stripped_tree_that_no_longer_carries_the_gate() {
+    let tree = GateTree::new(None, false, None);
+    fs::remove_file(tree.tmp.path().join("scripts/release/web-parity-gate.sh")).unwrap();
+    let out = tree.smoke();
+    assert!(out.contains("⊝ web audit parity"), "{out}");
+    assert!(!out.contains("web-audit-gate"), "{out}");
+}
+
+#[test]
+fn the_gate_workflow_runs_the_gate_only_on_a_tree_that_ships_the_audit() {
+    let workflow = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(".github/workflows/web-audit-release-gate.yml"),
+    )
+    .unwrap();
+    assert!(
+        workflow.contains("- name: Gate\n        if: steps.tree.outputs.ships == 'yes'\n"),
+        "{workflow}"
+    );
+}
+
 // The first-run smoke over a stand-in binary. openssl and timeout are the script's own
 // requirements, and only the Linux job runs it.
 
@@ -1845,6 +2135,11 @@ fn the_first_run_smoke_takes_exit_3_only_from_a_check_this_build_cannot_run() {
         })
     };
 
+    let no_skips = json!({
+        "summary": {"pass": 1},
+        "results": [{"id": "a", "status": "n_a"}, {"id": "b", "status": "pass"}]
+    });
+
     let stood_down = first_run_smoke(&unported, &rows("pass"), 3);
     let stderr = String::from_utf8_lossy(&stood_down.stderr);
     assert_eq!(stood_down.status.code(), Some(0), "{stderr}");
@@ -1856,6 +2151,8 @@ fn the_first_run_smoke_takes_exit_3_only_from_a_check_this_build_cannot_run() {
     for (what, checks, scorecard, code) in [
         ("nothing is unported", &ported, rows("pass"), 3),
         ("a row errored", &unported, rows("error"), 3),
+        ("a row the deadline cut short", &unported, rows("skip"), 3),
+        ("no row explains the 3", &unported, no_skips.clone(), 3),
         ("a later exit code", &unported, rows("pass"), 4),
     ] {
         let output = first_run_smoke(checks, &scorecard, code);

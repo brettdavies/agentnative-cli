@@ -42,7 +42,7 @@ pub struct CheckEntry {
     pub breadcrumb: &'static str,
     /// What to do about a miss, in one line.
     pub hint: &'static str,
-    /// Whether this build runs the check. An unported one skips on every site.
+    /// Whether this build runs the check. An unported one skips wherever it applies.
     pub ported: bool,
 }
 

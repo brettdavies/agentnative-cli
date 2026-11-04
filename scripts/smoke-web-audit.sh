@@ -150,15 +150,19 @@ fi
 # this script just started is a failure of the run, not of the fixture. A check
 # this build cannot run also ends a run in 3, and a web-audit bump lands one on
 # purpose: the release gate holds it, so only the verdict stands down here. A row
-# that errored is still a failure, and the rows below are still read.
-unported=""
-errored=""
+# the deadline cut short skips too, so every row that kept the run from a verdict
+# must belong to an unported check, and the rows below are still read.
+explained=""
 if ((code == 3)) && [[ -s "$scorecard" ]]; then
-  unported=$("$BINARY" emit web-checks | jaq -r '[.checks[] | select(.ported != true) | .id] | join(", ")') || unported=""
-  errored=$(jaq '[.results[]? | select(.status == "error")] | length' <"$scorecard" 2>/dev/null) || errored=""
+  unported=$("$BINARY" emit web-checks | jaq -c '[.checks[] | select(.ported != true) | .id]') || unported="[]"
+  # shellcheck disable=SC2016  # $rows and $unported are jaq's variables, not the shell's.
+  explained=$(jaq -r --argjson unported "$unported" '
+    [.results[]? | select(.status == "skip" or .status == "error") | .id] as $rows
+    | if ($rows | length) > 0 and ($rows - $unported | length) == 0 then $rows | join(", ") else "" end
+  ' <"$scorecard" 2>/dev/null) || explained=""
 fi
-if [[ -n "$unported" && "$errored" == "0" ]]; then
-  printf 'standing down: the run exited 3, not a verdict, because of checks bound Unsupported: %s\n' "$unported" >&2
+if [[ -n "$explained" ]]; then
+  printf 'standing down: the run exited 3, not a verdict, because of checks bound Unsupported: %s\n' "$explained" >&2
 elif ((code > 2)); then
   printf 'error: the run returned %s; expected a verdict (0, 1 or 2). anc wrote:\n' "$code" >&2
   sed 's/^/  /' "$stderr_log" >&2

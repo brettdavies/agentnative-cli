@@ -73,12 +73,18 @@ pub fn parse_ledger(raw: &str, pin: &str) -> Result<BTreeMap<Element, String>, S
                 "an empty divergence ledger names no site pin; remove site_sha = {named:?}"
             ));
         }
-        (false, Some(named)) if named == pin => {}
-        (false, named) => {
+        (false, None) => {
+            return Err(
+                "the divergence ledger has entries and names no site pin; regenerate it"
+                    .to_string(),
+            );
+        }
+        (false, Some(named)) if named != pin => {
             return Err(format!(
-                "the divergence ledger was generated at site pin {named:?}, not {pin:?}; regenerate it"
+                "the divergence ledger was generated at site pin {named}, not {pin}; regenerate it"
             ));
         }
+        (false, Some(_)) => {}
     }
     let keys: Vec<Element> = file
         .divergence

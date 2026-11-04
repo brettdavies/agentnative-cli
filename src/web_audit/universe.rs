@@ -101,7 +101,7 @@ pub fn universe_max<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::web_audit::registry::{ALTERNATIVES, CHECKS};
+    use crate::web_audit::registry::{ALTERNATIVES, AntecedentToken, CHECKS};
 
     fn universe(rows: &[(&'static str, ScorecardStatus, Option<NaReason>)]) -> f64 {
         universe_max(
@@ -136,9 +136,15 @@ mod tests {
             ("mcp-tools-list", Pass, None),
             ("mcp-auth-challenge", Pass, None),
         ]);
+        let sign_in_group: f64 = CHECKS
+            .iter()
+            .filter(|c| c.antecedent == AntecedentToken::McpAuthRequired)
+            .map(|c| ScoreConfig::default().weights.for_keyword(c.keyword))
+            .sum();
+        assert!(sign_in_group > 0.0);
         assert_eq!(
             (no_mcp - open, protected, hybrid),
-            (3.0, no_mcp, no_mcp),
+            (sign_in_group, no_mcp, no_mcp),
             "an open server drops the sign-in group; every other design counts it"
         );
     }

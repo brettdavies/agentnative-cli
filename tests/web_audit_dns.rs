@@ -224,6 +224,28 @@ fn a_redirect_to_a_name_of_another_class_is_still_refused() {
     }
 }
 
+// `metadata` and `instance-data` are single labels, so the rules class them local
+// by shape with no lookup. A cloud VM's search domain resolves them to the metadata
+// endpoint, which only the connection gets to see.
+#[test]
+fn a_name_classed_by_shape_never_connects_to_a_metadata_address() {
+    let (_, resolver) = audit(Script::default().answering("metadata", &[&[METADATA]]));
+    assert_eq!(
+        classify_host("metadata", &*resolver).unwrap(),
+        Locality::Local
+    );
+    let error = transport(&resolver)
+        .send(&plain_get(
+            "http://metadata/".to_string(),
+            Duration::from_secs(2),
+        ))
+        .expect_err("refused before any connection");
+    assert_eq!(
+        error.to_string(),
+        "NetworkError: metadata resolved to a cloud metadata address"
+    );
+}
+
 #[test]
 fn a_handler_refuses_a_nested_host_while_the_targets_class_is_unknown() {
     let transport: Arc<dyn Transport + Send + Sync> = Arc::new(MockTransport::new(

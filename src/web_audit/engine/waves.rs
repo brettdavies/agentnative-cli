@@ -453,11 +453,6 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             ..FetchOptions::default()
         },
     );
-    // The class is read once the root settles, so a lookup that answers late
-    // still decides it. A class still unknown counts as not public: the DNS gate
-    // keeps the target's name from public resolvers rather than guess.
-    let target_locality = input.fetch.classify(&host).ok();
-    let withhold_dns = target_locality != Some(Locality::Public);
     // A root that is not https, or that redirects to http, ends the run
     // before discovery: nothing it serves is readable without a plaintext
     // request, and the site engine ends the same way.
@@ -487,6 +482,12 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         per_check_timeout,
         deadline,
     );
+    // The class is read once the root and the document reads have settled, so a
+    // lookup that answers late still decides it. A class still unknown counts as
+    // not public: the DNS gate keeps the target's name from public resolvers rather
+    // than guess.
+    let target_locality = input.fetch.classify(&host).ok();
+    let withhold_dns = target_locality != Some(Locality::Public);
     let root_from_target = root
         .as_ref()
         .is_some_and(|r| !is_edge_error_status(r.status));

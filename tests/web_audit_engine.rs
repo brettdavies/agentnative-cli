@@ -597,23 +597,52 @@ fn a_lookup_that_answers_late_still_decides_the_dns_gate() {
     assert_eq!(row(&report, "dns-aid").evidence, EXTERNAL_DNS_WITHHELD);
 }
 
+/// Answers everywhere but the second lookup on the thread that made it: the
+/// run's own thread looks the target up for the root and again for its class.
+struct FailsSecondLookupOnItsThread {
+    run: thread::ThreadId,
+    on_the_run: Mutex<usize>,
+}
+
+impl Resolver for FailsSecondLookupOnItsThread {
+    fn resolve(&self, _host: &str) -> Result<Vec<IpAddr>, String> {
+        if thread::current().id() == self.run {
+            let mut seen = self.on_the_run.lock().unwrap();
+            *seen += 1;
+            if *seen == 2 {
+                return Err("temporary failure".to_string());
+            }
+        }
+        Ok(vec!["93.184.216.34".parse().unwrap()])
+    }
+}
+
 #[test]
 fn a_target_whose_class_is_still_unknown_counts_as_not_public() {
-    // The root fetch's own lookup answers, and the read of the class after it
-    // does not.
-    let lookups = Arc::new(Lookups {
-        seen: Mutex::new(0),
-        answer: |seen| match seen {
-            1 => Err("temporary failure".to_string()),
-            _ => Ok(vec!["93.184.216.34".parse().unwrap()]),
-        },
-    });
-    let (report, _) = run_with_lookups(lookups);
+    let (report, _) = run_with_lookups(Arc::new(FailsSecondLookupOnItsThread {
+        run: thread::current().id(),
+        on_the_run: Mutex::new(0),
+    }));
     assert_eq!(report.target_locality, None);
     assert_eq!(row(&report, "dns-aid").evidence, EXTERNAL_DNS_WITHHELD);
     // The label stays what the locality classifier says: only a class known to
     // be local reads local, as a run the classifier never placed always has.
     assert_eq!(report.scorecard.vantage.network, "public");
+}
+
+/// Fails until the run's discovery reads have asked several times.
+#[test]
+fn a_lookup_that_recovers_during_discovery_decides_the_class() {
+    let lookups = Arc::new(Lookups {
+        seen: Mutex::new(0),
+        answer: |seen| match seen {
+            0..=2 => Err("temporary failure".to_string()),
+            _ => Ok(vec!["10.0.0.5".parse().unwrap()]),
+        },
+    });
+    let (report, _) = run_with_lookups(Arc::new(AuditResolver::new(lookups)));
+    assert_eq!(report.target_locality, Some(Locality::Local));
+    assert_eq!(row(&report, "dns-aid").evidence, EXTERNAL_DNS_WITHHELD);
 }
 
 #[test]

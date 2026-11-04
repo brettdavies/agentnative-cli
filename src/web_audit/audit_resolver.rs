@@ -33,7 +33,7 @@ use ureq::unversioned::resolver::{self, DefaultResolver, ResolvedSocketAddrs};
 use ureq::unversioned::transport::NextTimeout;
 
 use super::fetch::DEFAULT_TIMEOUT;
-use super::locality::{Resolver, SystemResolver, name_of};
+use super::locality::{Locality, Resolver, SystemResolver, classify_ip, name_of};
 
 type Answer = Result<Arc<[SocketAddr]>, String>;
 type Names = Mutex<HashMap<String, Arc<Pending>>>;
@@ -64,9 +64,8 @@ impl AuditResolver {
     }
 
     /// This resolver, with classification waiting no longer than `wait` for a
-    /// lookup. A stalled lookup holds every caller of its name, and classification
-    /// runs on the audit's own threads, so without a limit a hung resolver would
-    /// outlast the audit's deadline.
+    /// lookup, in place of a request's default timeout. A stalled lookup holds every
+    /// caller of its name, and classification runs on the audit's own threads.
     pub fn waiting_at_most(self, wait: Duration) -> Self {
         AuditResolver {
             classify_wait: wait,
@@ -157,6 +156,17 @@ impl resolver::Resolver for ConnectResolver {
             None => Err(ureq::Error::Timeout(timeout.reason)),
             Some(Err(detail)) => Err(ureq::Error::Io(io::Error::other(detail))),
             Some(Ok(answer)) if answer.is_empty() => Err(ureq::Error::HostNotFound),
+            // A name the rules classed by its shape was never looked up for them,
+            // so this is the first anything has seen of its addresses.
+            Some(Ok(answer))
+                if answer
+                    .iter()
+                    .any(|addr| classify_ip(addr.ip()) == Locality::Metadata) =>
+            {
+                Err(ureq::Error::Io(io::Error::other(format!(
+                    "{host} resolved to a cloud metadata address"
+                ))))
+            }
             Some(Ok(answer)) => {
                 for addr in answer.iter() {
                     let mut addr = *addr;

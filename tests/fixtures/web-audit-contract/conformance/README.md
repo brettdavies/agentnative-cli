@@ -66,18 +66,7 @@ reads (the `well_known` cards, the AI catalog, the API catalog) go out together,
 they are in the set of every https target, a run that ends on the root's answer included. Every other request, a redirect hop of one of
 those reads included, waits for the root's answer.
 
-The set is unordered, so some rules it cannot show, and an engine under comparison keeps them anyway:
-
-- Every request carrying the session goes out after the `notifications/initialized` request has settled.
-- A root that fails at the network level cuts the first document reads still in flight to the degraded 2 s budget,
-  measured from their start. The discovery budget counts from when the root settled.
-- Six requests are in flight at most, not counting a check's own second request. A free slot goes to the MCP steps,
-  then the source checks, then the rows in registry order, then a fan-out's extra probes, and one row's fan-out always
-  leaves a slot free. This decides which rows go unprobed when the per-audit deadline passes.
-- A link in `llms-txt-links` not answered by the check's deadline reads as budget-exhausted and marks the run
-  incomplete, whether or not it was the last link.
-- A source check that measured nothing, because its handler threw or the deadline came first, keeps its own row. The
-  checks gated on it read as they do on any failed antecedent.
+Each entry:
 
 - `method`: uppercase.
 - `url`: as the URL parser writes it.
@@ -87,8 +76,24 @@ The set is unordered, so some rules it cannot show, and an engine under comparis
 Entries are sorted by the request memo's identity key, `requestIdentityKey` in
 `src/worker/audit-web/request-hop.ts`: the JSON array `[method, url, [[name, value], ...], body]`, compared by UTF-16
 code unit. Generation fails when a scenario sends one request twice, and when its scorecard or request set differs
-from the default run at concurrency 1 or with its answers arriving in another order (later requests answering first,
-or the source documents answering last).
+from the default run at concurrency 1 or with its answers arriving in another order: later requests answering first,
+the source documents answering last, or the root answering just inside a 1200 ms per-check timeout with every other
+answer at 60 ms.
+
+The set is unordered, so some rules it cannot show, and an engine under comparison keeps them anyway:
+
+- Every request carrying the session goes out after the `notifications/initialized` request has settled.
+- A root that fails at the network level cuts the first document reads still in flight to the degraded 2 s budget,
+  measured from their start. A redirect hop held for the root spends none of its read's budget while it waits. The
+  discovery budget counts from when the root settled.
+- Six checks are in flight at most. A free slot goes to the MCP steps,
+  then the source checks, then the rows in registry order, then a fan-out's extra probes, and one row's fan-out always
+  leaves a slot free. Rank orders only what is waiting, so it favours the earlier ranks under deadline pressure
+  without promising which rows go unprobed.
+- A link in `llms-txt-links` not answered by the check's deadline reads as budget-exhausted and marks the run
+  incomplete, whether or not it was the last link.
+- A source check that measured nothing, because its handler threw or the deadline came first, keeps its own row, unless
+  it is outside the declared site type. The checks gated on it read as they do on any failed antecedent.
 
 ## scorecard.json
 

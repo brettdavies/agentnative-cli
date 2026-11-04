@@ -31,6 +31,9 @@ src/data/web-audit/contract/test/conformance/
   budget that admits every domain, so no budget state reaches a golden.
 - `unmatched`: the response for a request no exchange matches, either a transport failure
   (`{"error": "Name: message"}`) or a full response.
+- `failing_handlers` (optional): check ids whose handler throws instead of probing, since no target's answer can
+  make one do that. Each sends no request, and its row reads `error` with the evidence
+  `handler error: no handler registered for "corpus-failing-handler"`.
 - `allow_unmatched`: when false, generation fails if any request reaches the unmatched policy.
 - `exchanges`: ordered rules; the first match wins and a rule may match repeatedly.
 
@@ -58,7 +61,23 @@ keep the scheme, host, and port, and a redirect to another origin is its answer.
 ## requests.json
 
 Every request the engine sent for the scenario, recorded where the stub fetch receives it, before matching. An engine
-under comparison sends the same set, whatever order its requests complete in.
+under comparison sends the same set, whatever order its requests complete in. The root request and the first document
+reads (the `well_known` cards, the AI catalog, the API catalog) go out together, before any of them is answered, so
+they are in the set of every https target, a run that ends on the root's answer included. Every other request, a redirect hop of one of
+those reads included, waits for the root's answer.
+
+The set is unordered, so some rules it cannot show, and an engine under comparison keeps them anyway:
+
+- Every request carrying the session goes out after the `notifications/initialized` request has settled.
+- A root that fails at the network level cuts the first document reads still in flight to the degraded 2 s budget,
+  measured from their start. The discovery budget counts from when the root settled.
+- Six requests are in flight at most, not counting a check's own second request. A free slot goes to the MCP steps,
+  then the source checks, then the rows in registry order, then a fan-out's extra probes, and one row's fan-out always
+  leaves a slot free. This decides which rows go unprobed when the per-audit deadline passes.
+- A link in `llms-txt-links` not answered by the check's deadline reads as budget-exhausted and marks the run
+  incomplete, whether or not it was the last link.
+- A source check that measured nothing, because its handler threw or the deadline came first, keeps its own row. The
+  checks gated on it read as they do on any failed antecedent.
 
 - `method`: uppercase.
 - `url`: as the URL parser writes it.
@@ -67,15 +86,15 @@ under comparison sends the same set, whatever order its requests complete in.
 
 Entries are sorted by the request memo's identity key, `requestIdentityKey` in
 `src/worker/audit-web/request-hop.ts`: the JSON array `[method, url, [[name, value], ...], body]`, compared by UTF-16
-code unit. Generation fails when a scenario sends one request twice, and when its scorecard or request set at
-concurrency 1 differs from the default run.
+code unit. Generation fails when a scenario sends one request twice, and when its scorecard or request set differs
+from the default run at concurrency 1 or with its answers arriving in another order (later requests answering first,
+or the source documents answering last).
 
 ## scorecard.json
 
-The engine's terminal scorecard as `JSON.stringify(scorecard, null, 2)` plus a trailing newline, with one
-normalization applied before writing and expected of any engine under comparison: `results` is sorted into
-registry order, because wave-2 rows arrive in the order the concurrent probes resolve, which carries no
-meaning and which a second engine cannot reproduce. Rows carry the summarized `evidence` line, never the raw
+The engine's terminal scorecard as `JSON.stringify(scorecard, null, 2)` plus a trailing newline. `results` is
+in registry order whatever order the concurrent probes finished in, which carries no meaning and which a second
+engine cannot reproduce. Rows carry the summarized `evidence` line, never the raw
 evidence, so no wall-clock value reaches the file. Key order is otherwise the engine's emission order and
 every number is an integer. A scenario that ends in
 the engine's `unreachable` event writes `{"unreachable": "<reason>"}` instead of a scorecard. The engine runs
@@ -220,6 +239,7 @@ the first two, `im` for the body patterns) and `results[i] = new RegExp(pattern,
 | `llms-quality-dead-link` | a link that answers 404 makes the links row absent | `llms-txt-links` |
 | `llms-quality-h1-only` | an llms.txt with only an H1 misses format, has no links to follow, and has no when-to-use heading | `llms-txt-format`, `llms-txt-links`, `llms-txt-when-to-use` |
 | `llms-quality-http-link` | an llms.txt that lists an http link beside resolving https links: the http link is never requested, though it would answer, and the links row reads noncompliant naming it | `llms-txt-links` |
+| `llms-quality-link-budget-exhausted` | a link still unanswered at the check's deadline reads as the budget running out on that link's own row, which decides the links row as an operational error, and every other link is still asked | `llms-txt-links` |
 | `llms-quality-pass` | an llms.txt with an H1, a summary, resolving links and a when-to-use heading passes the trio | `llms-txt-format`, `llms-txt-links`, `llms-txt-when-to-use` |
 | `mcp-capabilities-empty` | an initialize result with empty capabilities passes initialize but is broken on the capabilities row | `mcp-initialize`, `mcp-capabilities` |
 | `mcp-card-no-endpoint-field` | a card without an endpoint field that names its server in serverInfo is SEP-1649-shaped and passes the card check with the superseded advisory, while discovery falls through to initialize | `mcp-server-card`, `mcp-initialize` |
@@ -250,12 +270,16 @@ the first two, `im` for the body patterns) and `results[i] = new RegExp(pattern,
 | `run-document-redirects-to-http` | the audited site answers /llms.txt and its API catalog with a redirect to the same path over http, where each would answer: neither hop is taken, and each document reads as missing (llms.txt absent, the optional API catalog n_a), its evidence naming the redirect to http | `llms-txt`, `api-catalog` |
 | `run-edge-530` | every probe comes back as a Cloudflare edge error, which is not the target answering | `robots`, `llms-txt` |
 | `run-healthy` | a healthy site with a handful of misses across tiers | `content-signals`, `security-txt`, `web-bot-auth`, `noscript-fallback`, `mcp-cors-preflight`, `mcp-cors-actual`, `rate-limit-headers` |
+| `run-mcp-wire-probe-handler-fails` | the initialize wire probe throws in its handler on a server that answers everything else: its row stays an error, the session never starts, and the modern lane still scores | `mcp-initialize`, `mcp-server-discover`, `mcp-modern-tools-list` |
 | `run-redirects` | redirect chains: a two-hop public chain is followed, a hop into the metadata range is refused, a cross-origin hop lands on a 404, and a five-hop chain exceeds the cap | `llms-txt`, `robots`, `sitemap`, `security-txt` |
 | `run-root-401` | a root that challenges for auth still audits, and the challenge satisfies the auth antecedent | `auth-md`, `oauth-discovery`, `agent-ua-reachable` |
 | `run-root-not-html` | the root is JSON, so every HTML-root check and the markdown twin family are `n_a` | `webmcp`, `accept-markdown`, `markdown-vary`, `markdown-frontmatter`, `root-meta-description`, `schema-org-jsonld`, `content-without-js`, `semantic-html`, `noscript-fallback`, `root-link-rel` |
-| `run-root-redirects-to-http` | every https request, the root included, redirects to the http root, which would answer: the run ends unreachable after the root request alone, and nothing is requested over http | `agent-ua-reachable`, `content-without-js` |
+| `run-root-redirects-to-http` | every https request, the root included, redirects to the http root, which would answer: the run ends unreachable on the root answer, the first document reads having gone out beside it, and nothing is requested over http | `agent-ua-reachable`, `content-without-js` |
+| `run-root-redirects-to-http-catalog-card` | the root redirects to http while the AI catalog names a same-origin card: the run ends unreachable on the root answer, and the card is never requested, whichever of the two answers first | `agent-ua-reachable`, `mcp-server-card` |
+| `run-root-redirects-to-http-document-redirect` | the root redirects to http while a first-pass document redirects to another https path: the run ends unreachable on the root answer, and the document hop is never requested, whichever of the two answers first | `agent-ua-reachable`, `mcp-server-card` |
 | `run-site-type-api` | the full site declared as an API: content-only checks are `n_a` at the type filter | `llms-full-txt`, `llms-txt-scoped`, `llms-full-txt-scoped`, `openapi`, `json-errors` |
 | `run-site-type-content` | the full site declared as content: API-only checks are `n_a` at the type filter, MCP still applies on discovery | `openapi`, `json-schemas`, `api-catalog`, `json-errors`, `rate-limit-headers`, `llms-full-txt`, `mcp-initialize` |
+| `run-source-handlers-fail` | three source checks whose antecedents would not hold throw in their handlers: each keeps its own error row rather than reading not applicable, sends no request, and the checks gated on it read as on any failed antecedent | `openapi`, `llms-full-txt`, `oauth-discovery`, `llms-full-txt-scoped`, `json-schemas`, `auth-md` |
 | `run-unreachable` | nothing answers at the network level | `robots`, `llms-txt` |
 | `scoped-llms-absent` | every scoped candidate 404s: absent, which a MAY finalizes as optional-absent | `llms-txt-scoped`, `llms-full-txt-scoped` |
 | `scoped-llms-broken` | a present but malformed scoped file is broken | `llms-txt-scoped` |

@@ -27,7 +27,10 @@
 //!
 //! Address classes:
 //!
-//! - `Metadata`: `169.254.0.0/16` (the IMDS range) and `fd00:ec2::254`.
+//! - `Metadata`: `169.254.0.0/16` (the range AWS, Azure, GCP and Oracle serve
+//!   instance metadata from), `fd00:ec2::254` (AWS over IPv6), `fd20:ce::254` (GCP
+//!   over IPv6), `100.100.100.200` (Alibaba Cloud), and `168.63.129.16` (Azure's
+//!   WireServer, the platform endpoint a VM's agent reads its configuration from).
 //! - `Local`: unspecified, loopback, RFC 1918, CGNAT `100.64.0.0/10`, IPv6
 //!   unique-local `fc00::/7` and link-local `fe80::/10`; IPv4-mapped and
 //!   IPv4-compatible IPv6 forms take the class of the embedded address.
@@ -116,8 +119,18 @@ impl Resolver for SystemResolver {
     }
 }
 
-/// The IMDS IPv6 address AWS serves instance metadata on.
-const IMDS_IPV6: Ipv6Addr = Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x254);
+/// The IPv6 addresses AWS and GCP serve instance metadata on.
+const METADATA_IPV6: [Ipv6Addr; 2] = [
+    Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x254),
+    Ipv6Addr::new(0xfd20, 0x00ce, 0, 0, 0, 0, 0, 0x254),
+];
+
+/// Alibaba Cloud's instance metadata address and Azure's WireServer, outside
+/// the range every other provider uses.
+const METADATA_IPV4: [Ipv4Addr; 2] = [
+    Ipv4Addr::new(100, 100, 100, 200),
+    Ipv4Addr::new(168, 63, 129, 16),
+];
 
 /// Classify one resolved or literal address.
 pub fn classify_ip(ip: IpAddr) -> Locality {
@@ -129,7 +142,7 @@ pub fn classify_ip(ip: IpAddr) -> Locality {
 
 fn classify_ipv4(ip: Ipv4Addr) -> Locality {
     let [a, b, _, _] = ip.octets();
-    if a == 169 && b == 254 {
+    if (a == 169 && b == 254) || METADATA_IPV4.contains(&ip) {
         return Locality::Metadata;
     }
     let local = a == 0
@@ -146,7 +159,7 @@ fn classify_ipv4(ip: Ipv4Addr) -> Locality {
 }
 
 fn classify_ipv6(ip: Ipv6Addr) -> Locality {
-    if ip == IMDS_IPV6 {
+    if METADATA_IPV6.contains(&ip) {
         return Locality::Metadata;
     }
     if ip.is_unspecified() || ip.is_loopback() {
@@ -479,6 +492,8 @@ mod tests {
             ("ipv4-mapped ipv6 loopback", "[::ffff:127.0.0.1]"),
             ("ipv4-compatible ipv6 rfc1918", "[::10.0.0.1]"),
             ("cgnat 100.64/10", "100.64.0.1"),
+            ("cgnat beside alibaba cloud metadata", "100.100.100.201"),
+            ("unique-local beside gcp metadata", "[fd20:ce::253]"),
             ("ipv6 unique-local fc00::/7", "[fd00::1]"),
             ("ipv6 link-local fe80::/10", "[fe80::1]"),
             ("ipv6 link-local with zone id", "fe80::1%eth0"),
@@ -501,6 +516,15 @@ mod tests {
             ("gcp metadata hostname", "metadata.google.internal"),
             ("ipv4-mapped metadata", "[::ffff:169.254.169.254]"),
             ("aws imds ipv6", "[fd00:ec2::254]"),
+            ("gcp metadata ipv6", "[fd20:ce::254]"),
+            ("alibaba cloud metadata", "100.100.100.200"),
+            ("alibaba cloud metadata as decimal", "1684301000"),
+            (
+                "ipv4-mapped alibaba cloud metadata",
+                "[::ffff:100.100.100.200]",
+            ),
+            ("azure wireserver", "168.63.129.16"),
+            ("ipv4-mapped azure wireserver", "[::ffff:168.63.129.16]"),
         ];
         for (label, host) in rows {
             assert_eq!(shape(host), Locality::Metadata, "{label}: {host}");
@@ -510,6 +534,7 @@ mod tests {
     #[test]
     fn public_literals_classify_without_resolution() {
         assert_eq!(shape("93.184.216.34"), Locality::Public);
+        assert_eq!(shape("168.63.129.17"), Locality::Public);
         assert_eq!(
             shape("[2606:2800:220:1:248:1893:25c8:1946]"),
             Locality::Public

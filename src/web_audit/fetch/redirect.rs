@@ -336,6 +336,15 @@ mod tests {
             err,
             "blocked: ipv4 169.254.169.254 is in blocked range 169.254.0.0/16"
         );
+        let err = validate_target("https://[fd20:ce::254]/", &PanicResolver).unwrap_err();
+        assert_eq!(err, "blocked: ipv6 unique-local (fc00::/7)");
+        let err = validate_target("https://100.100.100.200/", &PanicResolver).unwrap_err();
+        assert_eq!(
+            err,
+            "blocked: ipv4 100.100.100.200 is in blocked range 100.64.0.0/10"
+        );
+        let err = validate_target("https://168.63.129.16/", &PanicResolver).unwrap_err();
+        assert_eq!(err, "blocked: 168.63.129.16 is a cloud metadata endpoint");
         let err = validate_target("http://metadata.google.internal/", &PanicResolver).unwrap_err();
         assert_eq!(err, "blocked: internal metadata hostnames are blocked");
         let ok = validate_target("http://localhost:8787/x", &PanicResolver).unwrap();

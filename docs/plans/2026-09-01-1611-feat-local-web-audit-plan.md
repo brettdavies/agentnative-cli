@@ -2,7 +2,7 @@
 title: Local Web Audit - Plan
 type: feat
 status: active
-prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230", "#289", "#291", "#293", "#295", "#296", "#297", "#298", "#300", "#301", "brettdavies/agentnative-site#503", "brettdavies/agentnative-site#504", "brettdavies/agentnative-site#506", "brettdavies/agentnative-site#507"]
+prs: ["#97", "#98", "#99", "#100", "#101", "#102", "#103", "#104", "#105", "#106", "#202", "#204", "#207", "#208", "#209", "#210", "#211", "#212", "#213", "#214", "#215", "#216", "#217", "#218", "#219", "#221", "#222", "#223", "#224", "#226", "#227", "#229", "#230", "#289", "#291", "#293", "#295", "#296", "#297", "#298", "#300", "#301", "#302", "#306", "brettdavies/agentnative-site#503", "brettdavies/agentnative-site#504", "brettdavies/agentnative-site#506", "brettdavies/agentnative-site#507"]
 date: 2026-09-01
 deepened: 2026-09-01
 topic: local-web-audit
@@ -255,8 +255,8 @@ flowchart TB
 
 - F1. **Local pre-flight loop.**
   - **Trigger:** Dev runs `anc web staging.internal:8443` (or a bare URL-ish target) against an HTTPS server.
-  - **Steps:** Target resolves; vendored registry loads; probe waves run with antecedent gating; report renders
-    verdicts, n_a reasons, scores, and any staleness note; exit code gates the shell or CI step.
+  - **Steps:** Target resolves; vendored registry loads; probes run on the dependency schedule with antecedent gating;
+    report renders verdicts, n_a reasons, scores, and any staleness note; exit code gates the shell or CI step.
   - **Outcome:** An actionable fix list with zero public exposure.
   - **Covers R1–R8, R12, R13, R21.**
 - F2. **Pre-flight to official.**
@@ -391,8 +391,8 @@ merges after C2, whose gate it needs, and U20's port never holds it.
 | C5    | cli  | KTD20 | #295, on `dev`       | Release builds keep a handler panic to one error row                                                             |
 | C5    | cli  | U21   | not opened, with C4  | Web-only crates at `opt-level = "s"`                                                                             |
 | C8    | cli  | KD16  | #291, on `dev`       | `feat(web): ship anc web in the default build`, with `--no-external-dns` and U13's README changes                |
-| C9    | cli  | U14   | not opened, on #291  | `ANC_WEB_TOKEN` goes only to the host `--token-host` names (R18); blocks the release and site #509               |
-| C6    | cli  | U20   | not opened, after S3 | The port's mirror of ranks 1–4                                                                                   |
+| C9    | cli  | U14   | #306, on #291        | `ANC_WEB_TOKEN` goes only to the host `--token-host` names (R18); blocks the release and site #509               |
+| C6    | cli  | U20   | #302, on #301        | The port's mirror of ranks 1–4                                                                                   |
 
 The landing order, as the owner merges them:
 
@@ -464,8 +464,8 @@ The landing order, as the owner merges them:
   KTD14): keyword derivation, `{ua:...}` token expansion (throws on literal UA strings), and structural validation.
 - `agentnative-site:src/shared/user-agents.ts` (+ `src/shared/site-url.ts`) — probe UA token map and `AUDIT_USER_AGENT`;
   behavioral test inputs that reach the CLI through the contract (KTD14), never restated in Rust (KTD8).
-- `agentnative-site:src/worker/audit-web/` — `engine.ts` (wave orchestration, antecedent gating, 25s deadline, degraded
-  2s timeout, concurrency 6, eval-rule dispatch, optional-absent re-tag), `scorecard.ts` (`WebScorecard` shape,
+- `agentnative-site:src/worker/audit-web/` — `engine.ts` (schedule orchestration, antecedent gating, 25s deadline,
+  degraded 2s timeout, concurrency 6, eval-rule dispatch, optional-absent re-tag), `scorecard.ts` (`WebScorecard` shape,
   `WEB_SCHEMA_VERSION = '0.5'`, 7-state `ScorecardStatus`), `score.ts` (two-score formula mirroring
   `scripts/scoring/score_model.py`; parity test `tests/web-audit-two-score.test.ts`), `handlers/` (shared
   `runX(check, ctx) -> ProbeOutcome` contract; `mcp.ts` is 815 lines and stateful; `http.ts` also hosts the
@@ -576,9 +576,16 @@ The landing order, as the owner merges them:
     timeouts, at min(per-check timeout, remaining budget).
   - Every body read runs under its reader's deadline: the caller's own or, for a body the request memo reads on its own,
     a deadline a later caller can push back (KTD15). A read past its deadline stops and reports the timeout.
-  - The collector waits on a channel with `recv_timeout` until the audit deadline and then assembles the scorecard,
-    resolving unreturned checks as skip; stalled workers and readers are abandoned, never joined, and exit with the
-    process.
+  - A check starts when what it reads has settled, on a ranked schedule: MCP steps, then sources, then rows in registry
+    order, then fan-out helpers.
+  - The collector waits on a channel with `recv_timeout` until the audit deadline and resolves unreturned checks as
+    skip.
+  - The run then ends in a fixed order before it builds the scorecard: close the memo, stop the transport, join. A
+    connection's input wait runs in 20 ms slices that read the stop flag. The join waits for threads heading to the
+    transport and gives those already there a 250 ms grace, so a run ends up to about 500 ms past its deadline, and
+    longer only if a thread has not reached the transport within the join's 5 s start limit. A thread in DNS or connect
+    cannot be interrupted: it is abandoned after the grace, and the connector refuses to pass its connection on. No
+    request goes out after the scorecard exists.
 
   A trickling-body tarpit and a never-responds tarpit are both tested against the wall clock. Governs R13.
 - KTD3. **Vendor the site's contract (KTD14) pinned to a committed site SHA; `build.rs` compiles the registry
@@ -630,18 +637,22 @@ The landing order, as the owner merges them:
 - KTD7. **Bare-target URL sniffing is a new pre-dispatch step with a strict hostname grammar.** Today's injector only
   decides whether to inject `audit`; the URL-vs-path decision runs alongside it. Routing to web requires an explicit
   scheme, an explicit `:port`, or a dot-bearing token with no path separator whose last label is an IANA TLD and not in
-  a file-extension denylist (`.rs`, `.md`, `.sh`, `.py`, `.pl`, `.pm`, `.so`, `.cc`, `.ps`, `.mk`, ...). The port form
-  applies the same extension check, so `anc main.rs:42` stays a path. The TLD list is vendored with a refresh script and
-  fails safe: a label it does not hold stays a path. A dotless host routes with a port only as `localhost`, so
-  `Makefile:12`, `README:12`, `TODO:3`, `node:20` and `myserver:8080` stay offline, `anc web myserver:8080` is the
-  explicit form, and IP literals and dotted hosts with a port still route. One residual is accepted, and README states
-  it: a `file:line` on a dotted name whose extension is unlisted, such as `Foo.xyz:12`, still routes. Path/binary
-  existence wins ties; anything failing the grammar falls through to today's fast offline audit error, so a filename
-  typo never triggers a network attempt (AE8). `ANC_WEB_TOKEN` is read only when `web` is typed explicitly, so a sniffed
-  bare target never presents a credential (R18). A missing TLD-shaped dotted path routes to the web audit where it used
-  to exit 2, which is a `### Breaking changes` bullet in 0.8.0. Chosen over a denylist alone, whose growth never closes
-  the class, and over dropping the sugar, which reverses KD3. Every rule is checked against the seven documented argv
-  pre-parse gotchas. Governs R2, R18.
+  a file-extension denylist. The denylist is generated: the 114 IANA TLDs among GitHub Linguist's 1,449 single-label
+  extensions, minus 16 exemptions where real sites plainly outnumber typed files (`com`, `org`, `io`, `me`, `fr`, `nl`,
+  `es`, `ch`, `be`, `no`, `pt`, `ru`, `ua`, `il`, `ph`, `cl`), plus hand additions such as `.in`, `.ac`, `.am`, `.cr`,
+  `.nu` and `.properties`. So `.rs`, `.md`, `.sh`, `.py` and `.app` stay offline, the last with an error naming
+  `anc web`. The TLD list and the Linguist list are vendored with refresh scripts and fail safe: a label the TLD list
+  does not hold stays a path. With a port, a token routes only as `localhost`, an IP literal, a private-use suffix
+  (`internal`, `home.arpa`, `local`, `lan`), or an IANA-TLD name outside the denylist, so `anc main.rs:42`,
+  `Makefile:12`, `README:12`, `TODO:3`, `node:20` and `myserver:8080` stay offline and `anc web myserver:8080` is the
+  explicit form. Without a port a private-use name stays a path, so `.env.local` stays offline. One residual is
+  accepted, and README states it: a `file:line` on a dotted name whose extension is unlisted, such as `Foo.xyz:12`,
+  still routes. Path/binary existence wins ties; anything failing the grammar falls through to today's fast offline
+  audit error, so a filename typo never triggers a network attempt (AE8). `ANC_WEB_TOKEN` is read only when `web` is
+  typed explicitly, so a sniffed bare target never presents a credential (R18). A missing TLD-shaped dotted path routes
+  to the web audit where it used to exit 2, which is a `### Breaking changes` bullet in 0.8.0. Chosen over a denylist
+  alone, whose growth never closes the class, and over dropping the sugar, which reverses KD3. Every rule is checked
+  against the seven documented argv pre-parse gotchas. Governs R2, R18.
 - KTD8. **Identifying User-Agent, identical to the site engine's.** The site sends an identifying UA after the
   CDN-tarpit incident; the CLI sends the same UA family so servers classify both probes alike. `AUDIT_USER_AGENT` comes
   from the contract's `constants.json`, and the probe UA tokens arrive expanded in the registry projection (KTD14),
@@ -723,8 +734,8 @@ The landing order, as the owner merges them:
     (KTD14).
   - A caller that skips the body (a status-only probe, a redirect it follows) returns at the headers, and a detached
     reader thread reads the body. The header phase is bounded by that caller's deadline, the body read checks a deadline
-    a later waiter can push back between chunks, a capture whose deadline passes is recorded as timed out, and a blocked
-    thread is abandoned, never joined, like a stalled worker (KTD2).
+    a later waiter can push back between chunks, a capture whose deadline passes is recorded as timed out, and a thread
+    still blocked at the end of the run stops or is abandoned as KTD2 states.
   - The pool shares the memo behind a lock, and an identical request already in flight is joined, not re-sent.
   - A credentialed request's `Authorization` value enters the key as a digest, never verbatim, and the memo and request
     types redact header values wherever they print. A key still tells the credentialed handshake from the token-less
@@ -820,9 +831,9 @@ flowchart TB
   A["argv pre-dispatch: URL-ish sniff (KTD7)"] --> B["target resolution + locality classification (KTD10)"]
   B --> C["root fetch = reachability probe; MCP endpoint discovery"]
   C -->|nothing answered| U["unreachable report, exit per R8"]
-  C --> D["wave 1: antecedent-source checks (pool of 6, shared deadline)"]
-  D --> E["antecedent context built from wave-1 results"]
-  E --> F["wave 2: gated checks (site-type filter, antecedent resolution)"]
+  C --> D["dependency schedule (pool of 6, shared deadline): MCP steps, sources, rows in registry order, fan-out helpers"]
+  D --> E["site-type filter and antecedent resolution as each check's sources settle"]
+  E --> F["end of run: close the memo, stop the transport, join"]
   F --> G["scorecard assembly (KTD4 types) + two-score computation"]
   G --> H["render: text | verbatim JSON; exit code (KTD12); staleness note in phase 2 (KTD9)"]
 ```
@@ -833,15 +844,16 @@ Deadline and pool (KTD2), one run:
 main thread                                   worker pool (6 threads)
 -----------                                   -----------------------
 deadline = now + 25s
-root fetch ------------------------------->   timeout_global = min(per-check, deadline - now)
+root fetch and discovery, concurrently --->   timeout_global = min(per-check, deadline - now)
   | dead root: per-check = 2s
-  |- wave 1: send checks ----------------->   each request issued with timeout_global = min(per-check, deadline - now)
+  |- schedule: a check starts when what it reads has settled
+  |    rank: MCP steps, sources, rows in registry order, fan-out helpers
   |    recv_timeout(deadline - now)  <-----   (status, evidence) per check
   |    past deadline: unreturned = skip("deadline")
-  |- antecedent context
-  |- wave 2: same loop
+  |- end of run: close the memo, stop the transport, join (250 ms grace)
   \- assemble scorecard, render, exit code
-       stalled workers are never joined; they exit with the process
+       a run ends up to about 500 ms past its deadline, longer only if a thread
+       has not reached the transport within the join's 5 s start limit
 ```
 
 Vendoring and parity pipeline (build and CI time):
@@ -1146,9 +1158,9 @@ stateDiagram-v2
   `tests/web_audit_engine.rs`.
 - **Approach:**
   1. Port `engine.ts`'s sequence: canonical root fetch (doubles as reachability probe), MCP endpoint discovery,
-     unreachable short-circuit, wave 1 over the antecedent-source check set, antecedent context, wave 2 with site-type
-     filter and antecedent resolution, the optional-absent re-tag (an absent MAY check finalizes as n_a with the
-     `optional-absent` reason, matching the site), and scorecard assembly.
+     unreachable short-circuit, the dependency schedule of KTD2 with site-type filter and antecedent resolution, the
+     optional-absent re-tag (an absent MAY check finalizes as n_a with the `optional-absent` reason, matching the site),
+     and scorecard assembly.
   2. Thread pool of 6 with a shared deadline instant (25s default) in `pool.rs`: each request's header phase is bounded
      at issue by min(per-check timeout, remaining budget) and each body read by its reader's deadline, the collector
      uses `recv_timeout` to the deadline and abandons stalled workers, past-deadline checks resolve as skip; dead root
@@ -1164,7 +1176,7 @@ stateDiagram-v2
   5. An `http` target ends unreachable before any request (R21), and the locality resolver and the audit clock are
      injectable, so conformance runs at the public vantage with no DNS resolution and the corpus's fixed clock (KTD16).
 - **Test scenarios:**
-  - Happy path: mock transport with a healthy target runs both waves and produces a scorecard with every registry row.
+  - Happy path: mock transport with a healthy target runs the schedule and produces a scorecard with every registry row.
   - Edge: an unmet antecedent yields n_a with `antecedent-unmet` reason on every downstream check; an absent MAY check
     re-tags to n_a with `optional-absent`.
   - Error: an `http` target ends unreachable with the no-plaintext reason and the transport sees no request. Covers AE2.
@@ -1175,11 +1187,11 @@ stateDiagram-v2
     single-label hostname, `localhost`/`.localhost`, `metadata.google.internal`, and `.internal` each classify local —
     the literal and shape-classifiable ones without any resolution call; a public FQDN and a public IPv6 address
     classify public. Covers AE6.
-  - Error: a transport that stalls forever on wave 1 still completes within the deadline with skip-labeled remaining
-    checks. Covers AE7.
-  - Error: a transport that trickles one byte per second on wave 1 (slow-loris body) still completes within the deadline
-    with skip-labeled remaining checks; requests issued near the deadline carry the shortened header timeout, and their
-    body reads stop at the reader's deadline. Covers AE7.
+  - Error: a transport that stalls forever still completes within the deadline with skip-labeled remaining checks.
+    Covers AE7.
+  - Error: a transport that trickles one byte per second (slow-loris body) still completes within the deadline with
+    skip-labeled remaining checks; requests issued near the deadline carry the shortened header timeout, and their body
+    reads stop at the reader's deadline. Covers AE7.
   - Integration: unreachable target (connection refused on root fetch) produces the unreachable report, not a panic.
 - **Verification:** Engine tests green; a wall-clock assertion proves the tarpit case exits inside the deadline plus
   grace.
@@ -1226,7 +1238,7 @@ stateDiagram-v2
 ### U6. MCP handler
 
 - **Goal:** Port the one stateful handler — JSON-RPC initialize / tools-list / error-code checks, session-ID tracking,
-  legacy/modern lane detection, and the post-wave initialized notification.
+  legacy/modern lane detection, and the initialized notification after `mcp-initialize`.
 - **Requirements:** R4, R5.
 - **Dependencies:** U4.
 - **Files:** `src/web_audit/handlers/mcp/{mod,jsonrpc,sse,session,checks}.rs`, `tests/web_audit_mcp.rs`.
@@ -1555,15 +1567,15 @@ stateDiagram-v2
   7. **Staleness note.** Per KTD9: fetched on its own thread for targets the locality classifier labels public, with a
      bounded timeout, and silently skipped on any failure, any non-200, or a body with no `contract_fingerprint`; inline
      in text mode, and as `warning: contract-differs: ...` on stderr in JSON mode (AE9) and in a `--check` run, which
-     has no report to carry it; a `--quiet` run sends no read, since nothing would show the answer; `--help` discloses
-     the public-target fetch. It says "differs from anc.dev", never "behind", because a CLI pinned to site `dev` can be
-     ahead of what anc.dev deploys (KD19). It states that a verdict can differ as a result and names the pinned site
-     SHA. It may say a newer anc release can carry anc.dev's contract or that anc.dev may not serve this one yet, and
-     does not present upgrading as the action, because the hash moves on any site release touching scoring, so the
-     latest anc can differ with nothing newer to take. #291 rewrites README's "What `anc web` Sends" to name the DoH
-     resolvers and `--no-external-dns`, and the note's own PR adds this fetch there. `--verbose` states the check's
-     result on every run that reports (`anc.dev contract: same`, `differs`, or `not checked (<reason>)`), so no note is
-     not ambiguous.
+     has no report to carry it; a `--quiet` run sends no read, since nothing would show the answer; `--no-follow` does
+     not withhold it, since that flag covers hosts the target declares; `--help` discloses the public-target fetch. It
+     says "differs from anc.dev", never "behind", because a CLI pinned to site `dev` can be ahead of what anc.dev
+     deploys (KD19). It states that a verdict can differ as a result and names the pinned site SHA. It may say a newer
+     anc release can carry anc.dev's contract or that anc.dev may not serve this one yet, and does not present upgrading
+     as the action, because the hash moves on any site release touching scoring, so the latest anc can differ with
+     nothing newer to take. #291 rewrites README's "What `anc web` Sends" to name the DoH resolvers and
+     `--no-external-dns`, and the note's own PR adds this fetch there. `--verbose` states the check's result on every
+     run that reports (`anc.dev contract: same`, `differs`, or `not checked (<reason>)`), so no note is not ambiguous.
   8. The new version literals join the ecosystem version-model table
      (`docs/solutions/best-practices/agentnative-version-model-2026-05-01.md`).
   9. A short "Handling a bump PR" section in `RELEASES.md` says what each state means and what to do: green with no
@@ -1596,7 +1608,7 @@ stateDiagram-v2
   - Edge: a signal that stalls holds a run no longer than 2 seconds from the check's start, and adds nothing to a run
     past that.
   - Integration: the signal fetch honors the configured proxy, sends the identifying user agent, and carries no token.
-  - Edge: `--verbose` prints `same`, `differs` or `not checked` with its reason on every public-target run.
+  - Edge: `--verbose` prints `same`, `differs` or `not checked` with its reason on every run that reports.
   - Edge: a vendored `FINGERPRINT` with its trailing newline equals the same value served trimmed.
   - Error: each gate refusal prints its code, cause and fix.
   - Integration: `--help` and `--version` still make zero network calls.
@@ -1937,8 +1949,11 @@ stateDiagram-v2
   4. Status-only expectations read headers only, on rows without `with.timeout`. `mcp-get-fast-fail` keeps its full
      read, because its failure mode is a held-open body.
 
-  Port-only, since the site has no counterpart: the token-less re-ask (`ask_without_token`, U14) folds into the
-  dependency graph.
+  A source that measured nothing keeps its own row, and an unported source keeps its own skip row.
+
+  Port-only, since the site has no counterpart: the token-less re-ask (`ask_without_token`, U14) ranks as an MCP step in
+  the dependency graph, and the structured end of run (KTD2) closes the memo, stops the transport and joins before the
+  scorecard exists.
 - **Not built, and why:**
   - Parallel `scoped-llms` candidates, endpoint-free wave 1 at t=0, and parallel `path_any`: each makes the request set
     a superset, sending targets more requests than they get today.
@@ -1946,11 +1961,10 @@ stateDiagram-v2
   - A per-host cap: negligible effect.
 - **Constraints:** The data is from Bun, and anc.dev runs this engine on Workers, which allows six simultaneous
   connections waiting for headers, so the site half measures a staging run before it merges: a seventh request queued
-  there spends its timeout waiting, which could change official rows in ways the mock corpus cannot show. When the
-  port's half lands, KTD2's pool and the run-pipeline diagram move with it. A time-sensitive or negotiation probe keeps
-  its own request. Verdicts and scores on every corpus scenario stay put unless a site PR moves a golden on purpose.
-  Each caller keeps its own deadline (KTD2, KTD15). U15's concurrency check keeps passing, so the request set stays
-  independent of schedule. RSS stays reported (KD18).
+  there spends its timeout waiting, which could change official rows in ways the mock corpus cannot show. A
+  time-sensitive or negotiation probe keeps its own request. Verdicts and scores on every corpus scenario stay put
+  unless a site PR moves a golden on purpose. Each caller keeps its own deadline (KTD2, KTD15). U15's concurrency check
+  keeps passing, so the request set stays independent of schedule. RSS stays reported (KD18).
 - **Test scenarios:**
   - Happy path: a check with settled antecedents starts while an unrelated slow check is still reading, where the wave
     barrier would have held it.
@@ -1963,6 +1977,8 @@ stateDiagram-v2
   - Edge: `run-root-redirects-to-http` sends its recorded same-origin https GETs and nothing over http, and its
     unreachable output is unchanged.
   - Edge: `mcp-get-fast-fail` still reads its full body and resolves a held-open stream as the corpus records.
+  - Edge: a source that measured nothing keeps its own row.
+  - Edge: no request goes out after the scorecard exists, and a run ends up to about 500 ms past its deadline.
   - Edge: a status-only expectation returns at the headers, and a later reader of that body still gets it through the
     memo.
   - Integration: every scenario's scorecard and request set match the goldens at the pin carrying the site half, with
@@ -1970,7 +1986,8 @@ stateDiagram-v2
 - **Verification:** The site PR regenerates the contract wherever a set moves, and U15's concurrency check passes. The
   port PR empties the `requests` entries that bump opened. One benchmark run interleaves four arms, each engine at the
   pin before S3 and at the S3 pin, and U19's harness takes the extra pin as an input: each engine's after arm reads
-  lower than its before arm in that run, and the port's after arm meets KD18's gate against the site's.
+  lower than its before arm in that run, and the port's after arm meets KD18's gate against the site's: 1.013 against
+  the 1.05 limit in run 41855896816, with the gate re-run at #302's final head after the #507 re-pin.
 
 ### U21. Release size
 
@@ -2026,6 +2043,8 @@ stateDiagram-v2
   U12's staleness note landed, reading `contract_fingerprint`, and one real `anc web anc.dev --verbose` after S1 and S2
   deploy reads `same` or `differs`.
 - `web` is in `default`, and no release branch strips web code (KD16).
+- A token goes only to the host its own channel names (R18, AE15), and `vantage.credentialed` reads a token actually
+  presented (R19). C9 blocks v0.8.0.
 - AE1–AE15 each enforced by a named test (the `Covers` links in unit test scenarios).
 - **Docs ship with the feature.** The README carries the web section and the corrected exit-code table, and this crate
   meets the `xurl-rs` docs standard: every public item documented under `#![deny(missing_docs)]`, the README wired in as

@@ -4,24 +4,29 @@
 //! nothing regenerates it when the scorecard shape or the vendored spec
 //! moves. This fails when the section's `schema_version` or `spec_version`
 //! trails the build, or when an object in the sample names a property the
-//! schema does not declare or leaves out one the schema requires.
+//! schema does not declare or leaves out one the schema requires. The text
+//! sample under `## Example Output` is held to the registry the same way.
 
-use agentnative::principles::registry::SPEC_VERSION;
+use agentnative::audits::all_audits_catalog;
+use agentnative::principles::registry::{SPEC_VERSION, find};
 use agentnative::scorecard::SCHEMA_VERSION;
 use serde_json::Value;
 
-const SECTION_HEADING: &str = "\n## JSON Output\n";
-
-fn json_output_section() -> String {
+fn readme_section(heading: &str) -> String {
     let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))
         .expect("README.md is readable");
+    let heading = format!("\n## {heading}\n");
     let start = readme
-        .find(SECTION_HEADING)
-        .expect("README.md has a `## JSON Output` section")
-        + SECTION_HEADING.len();
+        .find(&heading)
+        .unwrap_or_else(|| panic!("README.md has a `{}` section", heading.trim()))
+        + heading.len();
     let rest = &readme[start..];
     let end = rest.find("\n## ").unwrap_or(rest.len());
     rest[..end].to_string()
+}
+
+fn json_output_section() -> String {
+    readme_section("JSON Output")
 }
 
 fn sample(section: &str) -> Value {
@@ -118,4 +123,44 @@ fn readme_sample_scorecard_matches_the_schema() {
         "README sample disagrees with schema/scorecard.schema.json:\n{}",
         errors.join("\n")
     );
+}
+
+/// `anc audit` prints a row as `[STATUS] label (requirement id) (tier)`, or
+/// `[STATUS] label (audit id)` for an audit that covers no requirement.
+#[test]
+fn readme_text_sample_names_rows_the_way_the_build_prints_them() {
+    let catalog = all_audits_catalog();
+    let section = readme_section("Example Output");
+    let rows: Vec<&str> = section
+        .lines()
+        .filter(|line| {
+            line.trim_start()
+                .strip_prefix('[')
+                .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_uppercase()))
+        })
+        .collect();
+    assert!(!rows.is_empty(), "the Example Output sample has no rows");
+
+    for row in rows {
+        let (head, last) = row
+            .rsplit_once(" (")
+            .unwrap_or_else(|| panic!("no parenthesized id on `{row}`"));
+        let last = last.trim_end_matches(')');
+        if matches!(last, "must" | "should" | "may") {
+            let id = head
+                .rsplit_once(" (")
+                .map(|(_, id)| id.trim_end_matches(')'))
+                .unwrap_or_else(|| panic!("no requirement id on `{row}`"));
+            let requirement =
+                find(id).unwrap_or_else(|| panic!("`{id}` is no requirement: `{row}`"));
+            assert_eq!(requirement.level.as_str(), last, "wrong tier on `{row}`");
+        } else {
+            assert!(
+                catalog
+                    .iter()
+                    .any(|audit| audit.id() == last && audit.covers().is_empty()),
+                "`{last}` is no audit that prints its own id: `{row}`"
+            );
+        }
+    }
 }

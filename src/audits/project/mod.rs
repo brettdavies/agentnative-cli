@@ -1,4 +1,3 @@
-pub mod agents_md;
 pub mod bundle_exists;
 pub mod completions;
 pub mod dependencies;
@@ -11,7 +10,6 @@ use crate::audit::Audit;
 
 pub fn all_project_audits() -> Vec<Box<dyn Audit>> {
     vec![
-        Box::new(agents_md::AgentsMdAudit),
         Box::new(non_interactive::NonInteractiveSourceAudit),
         Box::new(completions::CompletionsAudit),
         Box::new(dependencies::DependenciesAudit),

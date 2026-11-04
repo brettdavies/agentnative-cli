@@ -632,7 +632,7 @@ audits into the orchestration loop, and add `all_project_audits()` collection.
 
 **Approach:**
 
-- **AgentsMdAudit** (`p6-agents-md`): Audit if `AGENTS.md` exists in project root. Pass if present, Warn if absent.
+- **AgentsMdAudit**: Audit if `AGENTS.md` exists in project root. Pass if present, Warn if absent.
 - **NonInteractiveAudit** (`p1-non-interactive-source`): Audit Cargo.toml for prompt library dependencies (dialoguer,
   inquire, rustyline, crossterm). Pass if none found. Warn with library names if present. This is the source half of the
   dual-layer `audit-p1-non-interactive` from the design doc. Placed in project layer because it inspects Cargo.toml

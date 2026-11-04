@@ -249,6 +249,16 @@ impl UreqTransport {
     }
 }
 
+/// Idle connections an agent keeps per host. The engine runs six checks at once,
+/// but a check can fan out and a detached body read keeps its connection after
+/// its worker moves on, so one host can have more than six in flight. ureq's
+/// default of 3 costs up to 6 extra handshakes per audit.
+const IDLE_CONNECTIONS_PER_HOST: usize = 16;
+
+/// Idle connections an agent keeps in all, room for the four hosts the measured
+/// audits reached at most.
+const IDLE_CONNECTIONS: usize = 4 * IDLE_CONNECTIONS_PER_HOST;
+
 // Redirects stay off so a 3xx returns as a response and the fetch layer
 // decides whether the next hop may be contacted. Status codes are never
 // errors: a 404 is evidence. The direct agents pass `None` explicitly,
@@ -263,6 +273,8 @@ fn agent(
         .http_status_as_error(false)
         .max_redirects(0)
         .max_redirects_will_error(false)
+        .max_idle_connections(IDLE_CONNECTIONS)
+        .max_idle_connections_per_host(IDLE_CONNECTIONS_PER_HOST)
         .proxy(proxy)
         .build();
     tls::agent(config, tls_config)

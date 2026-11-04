@@ -1,8 +1,7 @@
 //! Audit: `p2-must-json-errors`.
 //!
 //! When a JSON output mode is active, errors MUST be emitted as JSON to stderr
-//! (or stdout, for tools that diverge from the spec's stderr placement) with
-//! enough structure for an agent to dispatch on. A plain-text error inside a
+//! with enough structure for an agent to dispatch on. A plain-text error inside a
 //! JSON run breaks the consumer's parser on the only shape it was told to
 //! expect.
 //!
@@ -37,7 +36,7 @@
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    NO_JSON_MODE, parse_error_envelope, probe_bad_invocation_json,
+    ErrorStream, NO_JSON_MODE, error_stream, on_stdout_evidence, probe_bad_invocation_json,
 };
 use crate::audits::behavioral::output_flags;
 use crate::project::Project;
@@ -224,7 +223,7 @@ impl Audit for JsonErrorsAudit {
     }
 
     fn label(&self) -> &'static str {
-        "Errors emit JSON envelope with discriminant + type id + message roles under a JSON output mode"
+        "Errors emit JSON envelope on stderr with discriminant + type id + message roles under a JSON output mode"
     }
 
     fn group(&self) -> AuditGroup {
@@ -273,18 +272,25 @@ impl Audit for JsonErrorsAudit {
 }
 
 pub(crate) fn classify_json_error(result: &crate::runner::RunResult, mode: &str) -> AuditStatus {
-    let Some((value, channel)) = parse_error_envelope(result) else {
-        return AuditStatus::Fail(format!(
-            "bad invocation under `{mode}` produced no parseable JSON on stderr or stdout. \
-             JSON mode must emit a JSON error envelope, not plain text."
-        ));
+    let value = match error_stream(result) {
+        ErrorStream::Stderr(value) => value,
+        ErrorStream::Stdout => {
+            return AuditStatus::Fail(on_stdout_evidence(mode, "P2", "p2-must-json-errors"));
+        }
+        ErrorStream::Neither => {
+            return AuditStatus::Fail(format!(
+                "bad invocation under `{mode}` produced no parseable JSON on stderr or stdout. \
+                 JSON mode must emit a JSON error envelope, not plain text."
+            ));
+        }
     };
 
     let Some(obj) = value.as_object() else {
-        return AuditStatus::Fail(format!(
-            "{channel} parsed as JSON but the top-level value is not an object. \
-             Error envelopes must be `{{...}}` with named fields."
-        ));
+        return AuditStatus::Fail(
+            "stderr parsed as JSON but the top-level value is not an object. Error envelopes \
+             must be `{...}` with named fields."
+                .into(),
+        );
     };
 
     let roles = classify_envelope(obj);
@@ -293,7 +299,7 @@ pub(crate) fn classify_json_error(result: &crate::runner::RunResult, mode: &str)
     } else {
         let missing = roles.missing_names();
         AuditStatus::Fail(format!(
-            "JSON error envelope on {channel} is missing role(s): {}. \
+            "JSON error envelope on stderr is missing role(s): {}. \
              The spec requires three semantic roles (discriminant, type \
              identifier, human-readable message) — the field names don't \
              matter as long as the value shapes do.",
@@ -357,13 +363,45 @@ mod tests {
         );
     }
 
+    /// An envelope that fills all three roles.
+    const COMPLETE_ENVELOPE: &str =
+        r#"{"error":"X","kind":"usage","message":"unknown flag found."}"#;
+
     #[test]
-    fn pass_when_envelope_on_stdout() {
-        let stdout = r#"{"error":"X","kind":"usage","message":"unknown flag found."}"#;
+    fn fail_when_a_complete_envelope_is_on_stdout_with_plain_text_on_stderr() {
+        match classify_json_error(
+            &fake_result("error: bad flag", COMPLETE_ENVELOPE),
+            "--output json",
+        ) {
+            AuditStatus::Fail(msg) => assert_eq!(
+                msg,
+                "errors under `--output json` are JSON on stdout, not stderr. P2 sends JSON errors \
+                 to stderr (`p2-must-json-errors`), so an agent reads them from one known stream; \
+                 write them to stderr."
+            ),
+            other => panic!("expected Fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fail_when_a_complete_envelope_is_on_stdout_with_nothing_on_stderr() {
+        assert!(matches!(
+            classify_json_error(&fake_result("", COMPLETE_ENVELOPE), "--output json"),
+            AuditStatus::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn the_roles_are_read_from_stderr_when_both_streams_carry_json() {
+        let incomplete = r#"{"message":"Something went wrong."}"#;
         assert_eq!(
-            classify_json_error(&fake_result("", stdout), "--output json"),
+            classify_json_error(&fake_result(COMPLETE_ENVELOPE, incomplete), "--output json"),
             AuditStatus::Pass
         );
+        assert!(matches!(
+            classify_json_error(&fake_result(incomplete, COMPLETE_ENVELOPE), "--output json"),
+            AuditStatus::Fail(_)
+        ));
     }
 
     #[test]

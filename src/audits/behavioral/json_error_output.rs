@@ -1,19 +1,18 @@
 //! Audit: `p4-should-json-error-output`.
 //!
 //! Errors must respect the JSON output mode: when JSON output is selected, error
-//! messages go to stderr (or stdout, since some CLIs diverge there) as JSON.
-//! Weaker than `p2-must-json-errors` — this SHOULD only requires the output
-//! parse as JSON; it does not require the spec's `error`/`kind`/`message`
-//! triple, since the stricter MUST already covers that.
+//! messages go to stderr as JSON, so an agent reads them from one known stream.
+//! This SHOULD checks the stream and that the output parses as JSON; the field
+//! roles belong to `p2-must-json-errors`.
 //!
 //! Applicability gate: vacuous Skip when neither the top-level `--help` nor a
 //! top-level subcommand's declares a JSON mode (`output_flags::json_mode`). Pass
-//! when stderr (or stdout) parses as JSON under the declared mode; Warn when JSON
-//! mode is opted into but the error comes out as plain text.
+//! when stderr parses as JSON under the declared mode; Warn when JSON mode is
+//! opted into but the error comes out on stdout or as plain text.
 
 use crate::audit::Audit;
 use crate::audits::behavioral::error_probe::{
-    NO_JSON_MODE, parse_error_envelope, probe_bad_invocation_json,
+    ErrorStream, NO_JSON_MODE, error_stream, on_stdout_evidence, probe_bad_invocation_json,
 };
 use crate::audits::behavioral::output_flags;
 use crate::project::Project;
@@ -28,7 +27,7 @@ impl Audit for JsonErrorOutputAudit {
     }
 
     fn label(&self) -> &'static str {
-        "A JSON output mode produces JSON-formatted errors"
+        "A JSON output mode produces JSON-formatted errors on stderr"
     }
 
     fn group(&self) -> AuditGroup {
@@ -77,14 +76,18 @@ impl Audit for JsonErrorOutputAudit {
 }
 
 pub(crate) fn classify_json_error_output(result: &RunResult, mode: &str) -> AuditStatus {
-    if parse_error_envelope(result).is_some() {
-        AuditStatus::Pass
-    } else {
-        AuditStatus::Warn(format!(
+    match error_stream(result) {
+        ErrorStream::Stderr(_) => AuditStatus::Pass,
+        ErrorStream::Stdout => AuditStatus::Warn(on_stdout_evidence(
+            mode,
+            "P4",
+            "p4-should-json-error-output",
+        )),
+        ErrorStream::Neither => AuditStatus::Warn(format!(
             "errors under `{mode}` are not JSON-formatted. Consumers parsing stdout-as-JSON \
              cannot recover the failure without a separate text-parsing path; switch the error \
              writer to honor the active output mode."
-        ))
+        )),
     }
 }
 
@@ -114,10 +117,33 @@ mod tests {
     }
 
     #[test]
-    fn pass_on_json_stdout() {
+    fn warn_on_json_stdout_with_plain_text_on_stderr() {
         let stdout = r#"{"error":"BadFlag"}"#;
-        assert_eq!(
+        match classify_json_error_output(&fake_result("error: bad flag", stdout), "--output json") {
+            AuditStatus::Warn(msg) => assert_eq!(
+                msg,
+                "errors under `--output json` are JSON on stdout, not stderr. P4 sends JSON errors \
+                 to stderr (`p4-should-json-error-output`), so an agent reads them from one known \
+                 stream; write them to stderr."
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn warn_on_json_stdout_with_nothing_on_stderr() {
+        let stdout = r#"{"error":"BadFlag"}"#;
+        assert!(matches!(
             classify_json_error_output(&fake_result("", stdout), "--output json"),
+            AuditStatus::Warn(_)
+        ));
+    }
+
+    #[test]
+    fn json_on_both_streams_passes_on_stderr() {
+        let json = r#"{"error":"BadFlag"}"#;
+        assert_eq!(
+            classify_json_error_output(&fake_result(json, json), "--output json"),
             AuditStatus::Pass
         );
     }

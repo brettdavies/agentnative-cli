@@ -42,6 +42,11 @@ pub use crate::web_audit::registry::DEFAULT_PER_CHECK_TIMEOUT;
 /// Per-request timeout once the root fetch has failed at the network level.
 pub use crate::web_audit::registry::DEGRADED_PER_CHECK_TIMEOUT;
 
+/// How long a run waits, once it has stopped its transport, for a request that
+/// has not ended. A stopped read ends within a moment; a transport still blocked
+/// past this, on a name lookup or a connection, can send nothing on it.
+const STOP_GRACE: Duration = Duration::from_millis(250);
+
 /// Receives results as the run finalizes them.
 pub trait ProgressSink {
     /// Discovery finished.
@@ -240,11 +245,25 @@ impl Drop for RootSettled {
     }
 }
 
-struct CloseOnDrop(RequestMemo);
+/// A run's requests end with it, on every way out: the request set is complete
+/// when the report exists, and nothing is sent after it.
+struct RunEnd {
+    memo: RequestMemo,
+    fetch: FetchHandle,
+}
 
-impl Drop for CloseOnDrop {
+impl RunEnd {
+    /// Idempotent.
+    fn finish(&self) {
+        self.memo.close();
+        self.fetch.stop_requests();
+        self.memo.join(STOP_GRACE);
+    }
+}
+
+impl Drop for RunEnd {
     fn drop(&mut self) {
-        self.0.close();
+        self.finish();
     }
 }
 
@@ -258,11 +277,13 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         };
     };
     let deadline = Instant::now() + input.per_audit_deadline;
-    // One memo per audit, closed on every way out of the run, so each
-    // distinct request goes out once and nothing it holds outlives the run.
+    // One memo per audit, so each distinct request goes out once.
     let memo = RequestMemo::new();
-    let _close_memo = CloseOnDrop(memo.clone());
     input.fetch = input.fetch.with_memo(memo.clone());
+    let run_end = RunEnd {
+        memo: memo.clone(),
+        fetch: input.fetch.clone(),
+    };
     let target_locality = input.fetch.classify(&host).ok();
     let local_target = target_locality == Some(Locality::Local);
 
@@ -434,6 +455,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         input.progress.as_deref_mut(),
     );
     let results = scheduled.results;
+    run_end.finish();
     let meta = ScorecardMeta {
         target_url: base.clone(),
         domain,

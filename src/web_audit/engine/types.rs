@@ -244,6 +244,11 @@ impl FetchHandle {
         fetcher.fetch(url, init, opts)
     }
 
+    /// End the requests in flight on this run's transport and refuse any more.
+    pub fn stop_requests(&self) {
+        self.transport.stop();
+    }
+
     /// Classify a host with the run's resolver.
     pub fn classify(&self, host: &str) -> Result<Locality, ClassifyError> {
         classify_host(host, &*self.resolver)

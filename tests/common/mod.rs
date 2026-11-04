@@ -21,6 +21,8 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
+#[cfg(feature = "web")]
+use std::time::Duration;
 
 /// An empty user-level config the tests own, so no audit reads the
 /// developer's own `~/.anc.toml`. The file exists, so `anc` has no missing
@@ -336,6 +338,35 @@ fn tls_server_config(cert_pem: &[u8], key_pem: &[u8]) -> Arc<rustls::ServerConfi
 /// Spawn a TLS server presenting the given PEM certificate and key. It
 /// completes the handshake when the client accepts the chain and otherwise
 /// returns after the client's alert; it never serves HTTP.
+#[cfg(feature = "web")]
+/// A TLS server that answers one request per connection with `head` and then
+/// holds the connection open for `hold`, with no body bytes.
+pub fn spawn_https_holding_body(head: &'static str, hold: Duration) -> SocketAddr {
+    let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { break };
+            let config = Arc::clone(&config);
+            thread::spawn(move || {
+                let Ok(mut conn) = rustls::ServerConnection::new(config) else {
+                    return;
+                };
+                let mut tls = rustls::Stream::new(&mut conn, &mut stream);
+                let mut request = [0u8; 4096];
+                if tls.read(&mut request).is_err() {
+                    return;
+                }
+                let _ = tls.write_all(head.as_bytes());
+                let _ = tls.flush();
+                thread::sleep(hold);
+            });
+        }
+    });
+    addr
+}
+
 #[cfg(feature = "web")]
 pub fn spawn_tls(cert_pem: &[u8], key_pem: &[u8]) -> SocketAddr {
     let config = tls_server_config(cert_pem, key_pem);

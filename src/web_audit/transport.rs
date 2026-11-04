@@ -350,12 +350,12 @@ impl Response {
         );
         // The reader is unbounded here on purpose: the fetch layer applies
         // the body-cap regime and the truncation flag.
-        let body = response.into_body().into_reader();
         Response {
             status,
             headers,
             body: Box::new(EndsWithGzipBody {
-                inner: body,
+                unread: Some(response.into_body()),
+                reader: None,
                 decoded: false,
             }),
         }
@@ -364,21 +364,36 @@ impl Response {
 
 /// A body reader that ends where a gzip body ended.
 ///
+/// The reader starts on the first read, because flate2 reads the gzip header as it
+/// is built, and a response has to return at its headers however long its body
+/// holds back: a status-only probe never reads it.
+///
 /// ureq's decoder reads on after a member to look for another, and reports what
 /// it finds as an error even though the body already decoded: out of input on
 /// an empty body or after the member, or no second member after one. The site
-/// engine's runtime reads these as a body. flate2 words a stream cut short inside
-/// its data differently, so that stays an error. Two cases read as a body here and
-/// as a failure there, because the decoder's error is identical: a stream cut off
-/// inside the 8-byte trailer, and a body under 10 bytes that never was gzip.
-struct EndsWithGzipBody<R> {
-    inner: R,
+/// engine's runtime reads these as a body. flate2 1.1.10 words a stream cut short
+/// inside its data differently, so that stays an error.
+///
+/// Three cases differ from that runtime, because the decoder's error is the same as
+/// one of those above. A stream cut off inside the 8-byte trailer or a second
+/// member's header reads as a body here, and so does a body under 10 bytes that
+/// never was gzip; those are failures there. An empty member followed by text is a
+/// failed read here and an empty body there.
+struct EndsWithGzipBody {
+    unread: Option<ureq::Body>,
+    reader: Option<ureq::BodyReader<'static>>,
     decoded: bool,
 }
 
-impl<R: Read> Read for EndsWithGzipBody<R> {
+impl Read for EndsWithGzipBody {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        match self.inner.read(buf) {
+        if let Some(body) = self.unread.take() {
+            self.reader = Some(body.into_reader());
+        }
+        let Some(reader) = &mut self.reader else {
+            return Ok(0);
+        };
+        match reader.read(buf) {
             Ok(n) => {
                 self.decoded |= n > 0;
                 Ok(n)

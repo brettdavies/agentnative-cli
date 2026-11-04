@@ -9,7 +9,7 @@ mod common;
 
 use std::io::Write;
 use std::net::IpAddr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use agentnative::web_audit::fetch::body::{
     AUDIT_PROBE_MAX_BODY_BYTES, AUDIT_ROOT_MAX_BODY_BYTES, STATUS_ONLY_BODY_BYTES,
@@ -553,16 +553,30 @@ fn gzip_of_zeros(len: usize) -> Vec<u8> {
 
 #[test]
 fn ureq_transport_decodes_gzip_bodies() {
-    let body = {
-        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
-        enc.write_all(b"compressed hello").unwrap();
-        enc.finish().unwrap()
-    };
-    let server =
-        common::spawn_https(move |_| RawResponse::new(200, &[("content-encoding", "gzip")], &body));
-    let transport = UreqTransport::with_trust(UA, None, TrustConfig::new(test_ca()));
-    let resp = fetch(&transport, &server.url("/"), &FetchOptions::default());
+    let resp = fetch_gzip(common::gzip_of(b"compressed hello"));
     assert_eq!(resp.body, "compressed hello");
+}
+
+// A probe that only wants the status must not wait on the body, and a compressed
+// stream can hold its first bytes for as long as it likes.
+#[test]
+fn a_gzip_response_returns_at_its_headers_without_waiting_for_the_body() {
+    let addr = common::spawn_https_holding_body(
+        "HTTP/1.1 200 OK\r\ncontent-encoding: gzip\r\ntransfer-encoding: chunked\r\n\r\n",
+        Duration::from_secs(3),
+    );
+    let transport = UreqTransport::with_trust(UA, None, TrustConfig::new(test_ca()));
+    let started = Instant::now();
+    let response = transport
+        .send(&request(
+            &format!("https://localhost:{}/", addr.port()),
+            2500,
+            false,
+        ))
+        .expect("the headers arrived");
+    assert_eq!(response.status, 200);
+    let took = started.elapsed();
+    assert!(took < Duration::from_secs(1), "{took:?}");
 }
 
 fn fetch_gzip(body: Vec<u8>) -> ProbeResponse {
@@ -587,6 +601,19 @@ fn a_gzip_body_with_trailing_bytes_or_none_at_all_is_a_body() {
             "decoded",
         ),
         ("no bytes at all", Vec::new(), ""),
+        // Each reads as a failure on the site engine: the decoder's error here is
+        // the same one it reports for the cases above.
+        (
+            "a stream cut inside its trailer",
+            whole[..whole.len() - 3].to_vec(),
+            "decoded",
+        ),
+        (
+            "a second member cut inside its header",
+            followed_by(&whole[..4]),
+            "decoded",
+        ),
+        ("a short body that never was gzip", b"{}".to_vec(), ""),
     ];
     for (label, body, decoded) in cases {
         let resp = fetch_gzip(body);
@@ -607,6 +634,16 @@ fn a_gzip_body_that_does_not_decode_is_a_failed_read() {
         (
             "not gzip at all",
             b"plain text that never was gzip".to_vec(),
+        ),
+        // An empty body on the site engine: nothing decoded, so the tail reads as a
+        // body that never was gzip.
+        (
+            "an empty member followed by text",
+            [
+                common::gzip_of(b"").as_slice(),
+                b"this is not a gzip member".as_slice(),
+            ]
+            .concat(),
         ),
     ];
     for (label, body) in cases {

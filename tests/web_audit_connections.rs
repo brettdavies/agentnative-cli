@@ -99,6 +99,21 @@ fn a_chunked_gzip_body_decodes_and_leaves_its_connection_for_the_next_request() 
 }
 
 #[test]
+fn a_gzip_body_with_trailing_bytes_decodes_and_leaves_its_connection() {
+    let mut body = common::gzip_of(DECODED);
+    body.push(b'\n');
+    let server = common::spawn_https_keep_alive(move |_| {
+        RawResponse::new(200, &[("content-encoding", "gzip")], &body)
+    });
+    let transport = transport();
+    let url = server.server.url("/");
+    for _ in 0..2 {
+        assert_eq!(read_body(&transport, &url), DECODED);
+    }
+    assert_eq!(server.accepted(), 1);
+}
+
+#[test]
 fn a_brotli_body_sent_unasked_reaches_the_reader_as_it_was_sent() {
     let server = common::spawn_https_keep_alive(|_| {
         RawResponse::new(200, &[("content-encoding", "br")], BROTLI_BODY)

@@ -261,8 +261,9 @@ pub fn format_invocation(args: &[OsString]) -> String {
 /// The invocation a bug report reruns: `anc` for the program name, no quiet flag,
 /// which clap refuses beside `--verbose`, and `--verbose` once, ahead of any `--`
 /// that would swallow it. What follows a `--` is the caller's positional, whatever
-/// it looks like.
-pub fn verbose_rerun(args: &[OsString]) -> String {
+/// it looks like. `quiet_in_env` says `AGENTNATIVE_QUIET` is set, which clap refuses
+/// beside `--verbose` just the same, so the command turns it off.
+pub fn verbose_rerun(args: &[OsString], quiet_in_env: bool) -> String {
     let flags = args
         .iter()
         .skip(1)
@@ -275,7 +276,12 @@ pub fn verbose_rerun(args: &[OsString]) -> String {
         out.push(OsString::from("--verbose"));
     }
     out.extend(flags.chain(positionals).cloned());
-    format_invocation(&out)
+    let command = format_invocation(&out);
+    if quiet_in_env {
+        format!("AGENTNATIVE_QUIET=0 {command}")
+    } else {
+        command
+    }
 }
 
 fn quote_arg(arg: &OsStr) -> String {
@@ -540,43 +546,55 @@ mod tests {
 
     // ---- format_invocation ----
 
+    fn verbose_rerun_of(argv: &[OsString]) -> String {
+        verbose_rerun(argv, false)
+    }
+
+    #[test]
+    fn verbose_rerun_turns_off_a_quiet_environment() {
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "audit", "."]), true),
+            "AGENTNATIVE_QUIET=0 anc --verbose audit ."
+        );
+    }
+
     #[test]
     fn verbose_rerun_asks_for_verbose_once() {
         assert_eq!(
-            verbose_rerun(&args(&["anc", "web", "my site.dev"])),
+            verbose_rerun_of(&args(&["anc", "web", "my site.dev"])),
             "anc --verbose web 'my site.dev'"
         );
         assert_eq!(
-            verbose_rerun(&args(&["anc", "web", "x", "--verbose"])),
+            verbose_rerun_of(&args(&["anc", "web", "x", "--verbose"])),
             "anc web x --verbose"
         );
-        assert_eq!(verbose_rerun(&args(&["anc", "-v", "."])), "anc -v .");
+        assert_eq!(verbose_rerun_of(&args(&["anc", "-v", "."])), "anc -v .");
     }
 
     #[test]
     fn verbose_rerun_drops_what_would_stop_it_running_or_leak_the_path() {
         assert_eq!(
-            verbose_rerun(&args(&["anc", "web", "x", "-q"])),
+            verbose_rerun_of(&args(&["anc", "web", "x", "-q"])),
             "anc --verbose web x"
         );
         assert_eq!(
-            verbose_rerun(&args(&["anc", "--quiet", "audit", "."])),
+            verbose_rerun_of(&args(&["anc", "--quiet", "audit", "."])),
             "anc --verbose audit ."
         );
         assert_eq!(
-            verbose_rerun(&args(&["/home/someone/.cargo/bin/anc", "audit", "."])),
+            verbose_rerun_of(&args(&["/home/someone/.cargo/bin/anc", "audit", "."])),
             "anc --verbose audit ."
         );
         assert_eq!(
-            verbose_rerun(&args(&["anc", "audit", "--", "."])),
+            verbose_rerun_of(&args(&["anc", "audit", "--", "."])),
             "anc --verbose audit -- ."
         );
         assert_eq!(
-            verbose_rerun(&args(&["anc", "audit", "--", "-q"])),
+            verbose_rerun_of(&args(&["anc", "audit", "--", "-q"])),
             "anc --verbose audit -- -q"
         );
         assert_eq!(
-            verbose_rerun(&args(&["anc", "audit", "--", "-v"])),
+            verbose_rerun_of(&args(&["anc", "audit", "--", "-v"])),
             "anc --verbose audit -- -v"
         );
     }

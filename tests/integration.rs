@@ -19,8 +19,28 @@ fn fixture_path(name: &str) -> String {
     format!("{manifest_dir}/tests/fixtures/{name}")
 }
 
-/// Exit code of a Rust process that died from an uncaught panic.
-const RUST_PANIC_EXIT_CODE: i32 = 101;
+/// A panic ends a run with a `panic` envelope on stderr, or costs one audit its row
+/// with the message as evidence, and neither leaves an exit code of its own.
+fn assert_no_panic(output: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("\"error\":\"panic\""),
+        "anc panicked: {stderr}"
+    );
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let results = parsed["results"].as_array();
+    let panicked: Vec<_> = results
+        .into_iter()
+        .flatten()
+        .filter(|row| {
+            row["evidence"]
+                .as_str()
+                .is_some_and(|e| e.starts_with("panic: "))
+        })
+        .collect();
+    assert!(panicked.is_empty(), "an audit panicked: {panicked:?}");
+}
 
 // ── Basic CLI tests ────────────────────────────────────────────────
 
@@ -473,13 +493,13 @@ fn test_source_only_fixture() {
 fn test_hostile_utf8_evidence_fixture_audits_to_a_scorecard() {
     let path = fixture_path("hostile-utf8-evidence");
 
-    let assert = cmd()
+    let output = cmd()
         .args(["audit", &path, "--source", "--output", "json"])
-        .assert()
-        .code(predicate::ne(RUST_PANIC_EXIT_CODE));
+        .output()
+        .expect("anc should run");
+    assert_no_panic(&output);
 
-    let output = assert.get_output().stdout.clone();
-    let json_str = String::from_utf8(output).expect("stdout should be valid UTF-8");
+    let json_str = String::from_utf8(output.stdout).expect("stdout should be valid UTF-8");
     let parsed: serde_json::Value =
         serde_json::from_str(&json_str).expect("output should be valid JSON");
 
@@ -1299,13 +1319,7 @@ fn test_mixed_language_source_pass_folds_shared_audits() {
         .output()
         .expect("anc should run");
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_ne!(
-        output.status.code(),
-        Some(RUST_PANIC_EXIT_CODE),
-        "anc panicked: {stderr}"
-    );
-    assert!(!stderr.contains("panicked"), "anc panicked: {stderr}");
+    assert_no_panic(&output);
 
     let parsed: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");

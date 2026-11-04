@@ -231,10 +231,7 @@ fn get_all(fetch: &FetchHandle, jobs: &[&Admitted]) -> Vec<ProbeResponse> {
             .collect();
         handles
             .into_iter()
-            .map(|h| {
-                h.join()
-                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-            })
+            .map(|h| crate::panics::raise(h.join()))
             .collect()
     })
 }

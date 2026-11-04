@@ -205,7 +205,7 @@ impl RequestMemo {
             HopRecord::Answer(answer) => answer.body_error.as_ref(),
         };
         if let Some(error) = error.filter(|error| error.panicked) {
-            std::panic::panic_any(error.message.clone());
+            std::panic::resume_unwind(Box::new(error.message.clone()));
         }
         record
     }

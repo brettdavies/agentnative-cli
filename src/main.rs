@@ -80,7 +80,8 @@ fn main() {
     let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
     let help = argv::help_command(&inject_default_subcommand(raw_argv.iter().cloned()));
-    let rerun = verbose_rerun(&raw_argv);
+    let quiet_in_env = std::env::var_os("AGENTNATIVE_QUIET").is_some();
+    let rerun = verbose_rerun(&raw_argv, quiet_in_env);
 
     // In JSON mode a panic's message reaches its row or the envelope below, and
     // raw panic text would break the stderr stream the envelope is written to.

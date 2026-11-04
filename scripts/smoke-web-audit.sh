@@ -238,7 +238,7 @@ fi
 printf 'panic in %s: exit %s, %s rows, its row: %s\n' "$probe_id" "$code" "$rows" "$row"
 
 probe_run run --output json
-if ! jaq -e '.error == "panic" and .exit_code == 3 and (.message | startswith("panic probe in run (panics.rs:"))
+if ! jaq -e '.error == "panic" and .exit_code == 3 and (.message | startswith("panic probe in run (src/panics.rs:"))
   and .next_step.action == "report-bug" and (.next_step.command | startswith("anc --verbose "))' \
   <"$stderr_log" >/dev/null; then
   printf 'error: a panic in the run left no error envelope on stderr:\n' >&2

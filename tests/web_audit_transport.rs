@@ -968,7 +968,7 @@ fn a_connection_closed_before_any_response_is_retried_once_and_bounded() {
     // rule, so the plain-HTTP closing server is driven through it directly.
     let mut resp = transport
         .send(&request(&format!("http://{addr}/llms.txt"), 8000, false))
-        .expect("the probe walks past the dead connections");
+        .expect("the probe gets past the connections that close");
     assert_eq!(resp.status, 200);
     let mut body = String::new();
     std::io::Read::read_to_string(&mut resp.body, &mut body).unwrap();
@@ -976,7 +976,7 @@ fn a_connection_closed_before_any_response_is_retried_once_and_bounded() {
     assert_eq!(
         *accepted.lock().unwrap(),
         3,
-        "the probe walked past both dead connections and stopped"
+        "the probe got past both connections that closed, and stopped"
     );
 
     // A server that never answers: the error surfaces, and the attempts

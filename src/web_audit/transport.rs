@@ -297,14 +297,14 @@ const MAX_ATTEMPTS_UNSAFE: u32 = 2;
 impl Transport for UreqTransport {
     fn send(&self, request: &Request) -> Result<Response, TransportError> {
         let started = Instant::now();
+        let attempts = match request.method.as_str() {
+            "GET" | "HEAD" | "OPTIONS" => MAX_ATTEMPTS,
+            _ => MAX_ATTEMPTS_UNSAFE,
+        };
         let mut attempt = 1;
         loop {
             let remaining = request.timeout.saturating_sub(started.elapsed());
             let outcome = self.send_once(request, remaining, attempt > 1);
-            let attempts = match request.method.as_str() {
-                "GET" | "HEAD" | "OPTIONS" => MAX_ATTEMPTS,
-                _ => MAX_ATTEMPTS_UNSAFE,
-            };
             // Only a connection-level failure is retried, and only while a
             // further attempt still fits inside this request's own budget,
             // so the per-audit deadline keeps its meaning. A timeout or a

@@ -10,7 +10,7 @@ use std::io::Read;
 use std::net::TcpListener;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -252,20 +252,24 @@ fn a_post_goes_again_only_once() {
 fn a_retry_spends_what_is_left_of_the_requests_deadline() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().unwrap();
+    let (retried, heard) = mpsc::channel();
     thread::spawn(move || {
         let (first, _) = listener.accept().expect("the first attempt");
-        thread::sleep(Duration::from_millis(800));
+        thread::sleep(Duration::from_millis(1500));
         drop(first);
         // The second attempt connects and hears nothing.
-        let _held = listener.accept();
+        let held = listener.accept();
+        let _ = retried.send(());
+        drop(held);
         thread::sleep(Duration::from_secs(10));
     });
     let request = Request {
-        timeout: Duration::from_secs(2),
+        timeout: Duration::from_secs(4),
         ..get(&format!("http://{addr}/"))
     };
     let started = Instant::now();
     assert!(transport().send(&request).is_err());
     let took = started.elapsed();
-    assert!(took < Duration::from_millis(2400), "{took:?}");
+    assert!(heard.try_recv().is_ok(), "the request went again");
+    assert!(took < Duration::from_millis(4800), "{took:?}");
 }

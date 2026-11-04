@@ -6,10 +6,10 @@
 //!
 //! Detection (project layer): scan repo root for `AGENTS.md` / `SKILL.md`
 //! (case-insensitive). When present, sniff for YAML frontmatter (`---` opener,
-//! `name:` field). Pass when both bundle and frontmatter are present; Warn
-//! when bundle exists but frontmatter is missing; Warn when neither is found.
+//! `name:` field). Pass when any bundle file carries both; Warn when a bundle
+//! exists but none does; OptOut when no bundle is found.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::audit::Audit;
 use crate::project::Project;
@@ -64,21 +64,33 @@ impl Audit for BundleExistsAudit {
     }
 }
 
-/// Locate the bundle file (AGENTS.md / SKILL.md) at the repo root, case-
-/// insensitive. Returns the discovered path so other P8 audits can gate on
-/// the same heuristic without repeating the directory walk.
-pub(crate) fn find_bundle(root: &Path) -> Option<std::path::PathBuf> {
-    let entries = std::fs::read_dir(root).ok()?;
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        for canonical in BUNDLE_BASENAMES {
-            if name_str.eq_ignore_ascii_case(canonical) {
-                return Some(entry.path());
-            }
-        }
-    }
-    None
+/// Every bundle file (AGENTS.md / SKILL.md) at the repo root, case-insensitive.
+/// Sorted because `read_dir` order differs by filesystem, and a repo holding
+/// two files has to grade the same on all of them.
+fn bundle_files(root: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            BUNDLE_BASENAMES
+                .iter()
+                .any(|canonical| name.eq_ignore_ascii_case(canonical))
+        })
+        .map(|entry| entry.path())
+        .collect();
+    files.sort();
+    files
+}
+
+/// Locate a bundle file at the repo root. Returns the discovered path so other
+/// P8 audits can gate on the same heuristic without repeating the directory
+/// walk.
+pub(crate) fn find_bundle(root: &Path) -> Option<PathBuf> {
+    bundle_files(root).into_iter().next()
 }
 
 /// Core unit. SHOULD-tier: every miss is Warn, never Fail. The "no bundle
@@ -88,9 +100,12 @@ pub(crate) fn find_bundle(root: &Path) -> Option<std::path::PathBuf> {
 /// to `n_a` rather than dragging them through their own probe and emitting
 /// double-penalty Skips. A bundle that exists but is malformed (missing
 /// frontmatter or `name:` field) is a real SHOULD violation and stays
-/// `Warn` — the feature is present, just incomplete.
+/// `Warn` — the feature is present, just incomplete. Either canonical file
+/// meets the requirement on its own, so an `AGENTS.md` of plain project notes
+/// does not outweigh a `SKILL.md` that carries the frontmatter.
 pub(crate) fn audit_bundle_exists(root: &Path) -> AuditStatus {
-    let Some(path) = find_bundle(root) else {
+    let mut bundles = bundle_files(root).into_iter();
+    let Some(first) = bundles.next() else {
         return AuditStatus::OptOut(
             "no top-level AGENTS.md or SKILL.md found. Agents discover \
              skill bundles via filesystem convention; ship one with YAML \
@@ -99,26 +114,37 @@ pub(crate) fn audit_bundle_exists(root: &Path) -> AuditStatus {
         );
     };
 
-    let Ok(content) = std::fs::read_to_string(&path) else {
+    let first_status = audit_bundle_file(&first);
+    if first_status == AuditStatus::Pass
+        || bundles.any(|path| audit_bundle_file(&path) == AuditStatus::Pass)
+    {
+        return AuditStatus::Pass;
+    }
+    first_status
+}
+
+/// Grade one bundle file. Evidence names the file, never its absolute path,
+/// which would put the operator's directory layout in a shared scorecard.
+fn audit_bundle_file(path: &Path) -> AuditStatus {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+
+    let Ok(content) = std::fs::read_to_string(path) else {
         return AuditStatus::Warn(format!(
-            "{} exists but could not be read (permission or encoding).",
-            path.display()
+            "{name} exists but could not be read (permission or encoding)."
         ));
     };
 
     if !has_yaml_frontmatter(&content) {
         return AuditStatus::Warn(format!(
-            "{} exists but lacks YAML frontmatter. Add `---\\nname: <tool>\\n…\\n---` \
-             at the top so agent runtimes can index the bundle's metadata.",
-            path.display()
+            "{name} exists but lacks YAML frontmatter. Add `---\\nname: <tool>\\n…\\n---` \
+             at the top so agent runtimes can index the bundle's metadata."
         ));
     }
 
     if !has_name_field(&content) {
         return AuditStatus::Warn(format!(
-            "{} has frontmatter but no `name:` field. Agents pin against the \
-             tool name; declare it in the bundle's frontmatter.",
-            path.display()
+            "{name} has frontmatter but no `name:` field. Agents pin against the \
+             tool name; declare it in the bundle's frontmatter."
         ));
     }
 
@@ -228,6 +254,46 @@ mod tests {
         let dir = temp_dir("caseinsensitive");
         fs::write(dir.join("agents.md"), "---\nname: x\n---\n").expect("write");
         assert_eq!(audit_bundle_exists(&dir), AuditStatus::Pass);
+    }
+
+    // Whichever file `read_dir` lists first, one of these two repos has its
+    // qualifying bundle second.
+    #[test]
+    fn either_file_with_frontmatter_meets_the_requirement_beside_a_plain_one() {
+        for (with_frontmatter, plain) in [("SKILL.md", "AGENTS.md"), ("AGENTS.md", "SKILL.md")] {
+            let dir = temp_dir("both");
+            fs::write(dir.join(with_frontmatter), "---\nname: x\n---\n").expect("write");
+            fs::write(dir.join(plain), "# Project notes\n").expect("write");
+            assert_eq!(
+                audit_bundle_exists(&dir),
+                AuditStatus::Pass,
+                "{with_frontmatter} has frontmatter, {plain} does not"
+            );
+        }
+    }
+
+    #[test]
+    fn two_files_without_frontmatter_warn_on_the_first_by_name() {
+        let dir = temp_dir("bothplain");
+        fs::write(dir.join("SKILL.md"), "# Skill\n").expect("write");
+        fs::write(dir.join("AGENTS.md"), "# Agents\n").expect("write");
+        match audit_bundle_exists(&dir) {
+            AuditStatus::Warn(msg) => assert!(msg.starts_with("AGENTS.md "), "{msg}"),
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn evidence_names_the_file_not_its_absolute_path() {
+        let dir = temp_dir("evidence");
+        fs::write(dir.join("AGENTS.md"), "# Tool docs\n").expect("write");
+        match audit_bundle_exists(&dir) {
+            AuditStatus::Warn(msg) => assert!(
+                !msg.contains(dir.to_string_lossy().as_ref()),
+                "evidence carries the absolute path: {msg}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 
     #[test]

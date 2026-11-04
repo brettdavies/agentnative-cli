@@ -165,7 +165,11 @@ fn read_request_from<R: Read>(stream: R) -> Option<RawRequest> {
     })
 }
 
-fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
+fn write_response<W: Write>(stream: W, resp: &RawResponse) {
+    write_response_ending(stream, resp, "close");
+}
+
+fn write_response_ending<W: Write>(mut stream: W, resp: &RawResponse, connection: &str) {
     let reason = match resp.status {
         200 => "OK",
         301 => "Moved Permanently",
@@ -178,7 +182,7 @@ fn write_response<W: Write>(mut stream: W, resp: &RawResponse) {
         out.push_str(&format!("{n}: {v}\r\n"));
     }
     out.push_str(&format!("content-length: {}\r\n", resp.body.len()));
-    out.push_str("connection: close\r\n\r\n");
+    out.push_str(&format!("connection: {connection}\r\n\r\n"));
     let _ = stream.write_all(out.as_bytes());
     let _ = stream.write_all(&resp.body);
     let _ = stream.flush();
@@ -380,5 +384,65 @@ where
         addr,
         hits,
         scheme: "https",
+    }
+}
+
+/// An HTTPS server that holds its connections open between requests, and how
+/// many connections it has accepted.
+#[cfg(feature = "web")]
+pub struct KeepAliveServer {
+    pub server: Server,
+    accepted: Arc<Mutex<usize>>,
+}
+
+#[cfg(feature = "web")]
+impl KeepAliveServer {
+    /// Connections accepted so far.
+    pub fn accepted(&self) -> usize {
+        *self.accepted.lock().unwrap()
+    }
+}
+
+/// Spawn an HTTPS server on a loopback port that answers every request on a
+/// connection, presenting the leaf the test CA signed. It is the server a
+/// connection pool can save a handshake against.
+#[cfg(feature = "web")]
+pub fn spawn_https_keep_alive<F>(handler: F) -> KeepAliveServer
+where
+    F: Fn(&RawRequest) -> RawResponse + Send + Sync + 'static,
+{
+    let config = tls_server_config(CA_SIGNED_CERT_PEM, CA_SIGNED_KEY_PEM);
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let addr = listener.local_addr().unwrap();
+    let hits: Arc<Mutex<Vec<RawRequest>>> = Arc::new(Mutex::new(Vec::new()));
+    let accepted: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let (recorder, counter) = (Arc::clone(&hits), Arc::clone(&accepted));
+    let handler = Arc::new(handler);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { break };
+            *counter.lock().unwrap() += 1;
+            let recorder = Arc::clone(&recorder);
+            let handler = Arc::clone(&handler);
+            let config = Arc::clone(&config);
+            thread::spawn(move || {
+                let conn = rustls::ServerConnection::new(config).expect("server connection");
+                let mut tls = rustls::StreamOwned::new(conn, stream);
+                while let Some(req) = read_request_from(&mut tls) {
+                    recorder.lock().unwrap().push(req.clone());
+                    let resp = handler(&req);
+                    write_response_ending(&mut tls, &resp, "keep-alive");
+                    let _ = tls.flush();
+                }
+            });
+        }
+    });
+    KeepAliveServer {
+        server: Server {
+            addr,
+            hits,
+            scheme: "https",
+        },
+        accepted,
     }
 }

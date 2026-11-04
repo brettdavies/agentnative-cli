@@ -87,11 +87,13 @@ time = { version = "=0.3.55", default-features = false, features = ["std", "form
 # ureq's own TLS connector builds its root store from one `RootCerts` value,
 # which cannot hold the bundled trust anchors beside extra roots, so the
 # transport wraps TLS itself (src/web_audit/tls.rs) through ureq's transport
-# API, and the exact pin covers that API too.
+# API, and the exact pin covers that API too. The `brotli` feature stays off:
+# ureq's brotli decoder ends at the end of the compressed stream without the
+# read that tells ureq the body is finished, so every brotli response costs its
+# connection and the next request to that host another TLS handshake.
 ureq = { version = "=3.5.0", optional = true, default-features = false, features = [
     "rustls-no-provider",
     "gzip",
-    "brotli",
 ] }
 # The bundled Mozilla trust anchors, at the version ureq resolves.
 webpki-roots = { version = "1.0.11", optional = true }

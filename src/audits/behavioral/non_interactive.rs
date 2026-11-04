@@ -14,6 +14,7 @@ const AGENTIC_FLAGS: &[&str] = &[
     "--non-interactive",
     "--batch",
     "--yes",
+    "--assume-yes",
     "--no-input",
     "-y",
     "-p",
@@ -204,7 +205,7 @@ kill -11 $$
         audit_non_interactive(&RunStatus::Timeout, "", Some(&HelpOutput::from_raw(help)))
     }
 
-    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --yes, --no-input, -y, -p, --print); a flag named only in a usage line does not count.";
+    const SEARCHED: &str = "no option definition in --help declares a non-interactive flag (one of: --no-interactive, --non-interactive, --batch, --yes, --assume-yes, --no-input, -y, -p, --print); a flag named only in a usage line does not count.";
 
     #[test]
     fn a_declared_agentic_flag_passes_a_bare_call_that_blocks() {
@@ -213,6 +214,7 @@ kill -11 $$
             "Options:\n  -y, --yes         Assume yes.\n  -h, --help        Show help.\n",
             "Options:\n      --no-input    Never prompt.\n  -h, --help        Show help.\n",
             "Options:\n  -y                Assume yes.\n  -h, --help        Show help.\n",
+            "Options:\n      --assume-yes  Assume yes to all prompts.\n  -h, --help        Show help.\n",
         ] {
             assert_eq!(blocked(help), AuditStatus::Pass, "{help}");
         }

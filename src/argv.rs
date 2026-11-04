@@ -258,6 +258,16 @@ pub fn format_invocation(args: &[OsString]) -> String {
         .join(" ")
 }
 
+/// The invocation as typed, asking for `--verbose` when it does not already.
+pub fn verbose_rerun(args: &[OsString]) -> String {
+    let invocation = format_invocation(args);
+    if args.iter().any(|arg| arg == "--verbose" || arg == "-v") {
+        invocation
+    } else {
+        format!("{invocation} --verbose")
+    }
+}
+
 fn quote_arg(arg: &OsStr) -> String {
     let s = arg.to_string_lossy();
     if s.is_empty() {
@@ -354,7 +364,7 @@ mod rerun_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_invocation, inject_default_subcommand};
+    use super::{format_invocation, inject_default_subcommand, verbose_rerun};
     use std::ffi::OsString;
 
     fn args(a: &[&str]) -> Vec<OsString> {
@@ -519,6 +529,19 @@ mod tests {
     }
 
     // ---- format_invocation ----
+
+    #[test]
+    fn verbose_rerun_asks_for_verbose_once() {
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "web", "my site.dev"])),
+            "anc web 'my site.dev' --verbose"
+        );
+        assert_eq!(
+            verbose_rerun(&args(&["anc", "web", "x", "--verbose"])),
+            "anc web x --verbose"
+        );
+        assert_eq!(verbose_rerun(&args(&["anc", "-v", "."])), "anc -v .");
+    }
 
     #[test]
     fn format_invocation_simple_args_unquoted() {

@@ -1,3 +1,4 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "web")]
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -6,7 +7,7 @@ use clap::Parser as _;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use agentnative::argv::{format_invocation, inject_default_subcommand};
+use agentnative::argv::{format_invocation, inject_default_subcommand, verbose_rerun};
 use agentnative::audit::Audit;
 use agentnative::audits::behavioral::{all_behavioral_audits, declared_short_aliases};
 use agentnative::audits::project::all_project_audits;
@@ -17,6 +18,8 @@ use agentnative::cli::{Cli, Commands, EmitKind, OutputFormat, SkillCmd};
 use agentnative::cli::{ColorChoice, SiteType};
 use agentnative::completions;
 use agentnative::error::AppError;
+use agentnative::exit_codes::EXIT_COULD_NOT_CHECK;
+use agentnative::panics::panic_message;
 use agentnative::principles::matrix;
 #[cfg(feature = "web")]
 use agentnative::principles::registry::SPEC_VERSION;
@@ -77,10 +80,17 @@ fn main() {
     let raw_argv: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let json_mode = json_error::json_mode_in_argv(&raw_argv);
     let help = argv::help_command(&inject_default_subcommand(raw_argv.iter().cloned()));
+    let rerun = verbose_rerun(&raw_argv);
 
-    let code = match run(raw_argv) {
-        Ok(code) => code,
-        Err(e) => {
+    // In JSON mode a panic's message reaches its row or the envelope below, and
+    // raw panic text would break the stderr stream the envelope is written to.
+    if json_mode {
+        std::panic::set_hook(Box::new(|_| {}));
+    }
+
+    let code = match catch_unwind(AssertUnwindSafe(|| run(raw_argv))) {
+        Ok(Ok(code)) => code,
+        Ok(Err(e)) => {
             if json_mode {
                 let envelope = json_error::render_error(
                     "runtime",
@@ -95,11 +105,33 @@ fn main() {
             }
             2
         }
+        Err(panic) => {
+            let message = panic_message(&*panic);
+            if json_mode {
+                let envelope = json_error::render_error(
+                    "runtime",
+                    "panic",
+                    &message,
+                    EXIT_COULD_NOT_CHECK,
+                    &json_error::NextStep::report_bug(rerun),
+                );
+                eprintln!("{envelope}");
+            } else {
+                eprintln!(
+                    "error: anc panicked: {message}\nThis is a bug in anc. Run `{rerun}` and report what it prints at {}",
+                    json_error::ISSUE_TRACKER
+                );
+            }
+            EXIT_COULD_NOT_CHECK
+        }
     };
     std::process::exit(code);
 }
 
 fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
+    #[cfg(feature = "panic-probe")]
+    agentnative::panics::probe("run");
+
     // Raw argv is captured by `main()` *before* `inject_default_subcommand`
     // rewrites bare paths into `audit <path>`, so the scorecard's
     // `run.invocation` reflects what the user actually typed (R4). The

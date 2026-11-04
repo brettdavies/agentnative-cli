@@ -66,6 +66,9 @@ pub fn json_mode_in_argv(argv: &[OsString]) -> bool {
 /// The README section listing every flag, linked from a `show-help` step.
 pub const CLI_REFERENCE_DOCS: &str = "https://github.com/brettdavies/agentnative-cli#cli-reference";
 
+/// Where a `report-bug` step sends what the rerun printed.
+pub const ISSUE_TRACKER: &str = "https://github.com/brettdavies/agentnative-cli/issues";
+
 /// The README section on how a directory audit picks its binary, linked from
 /// the binary-selection errors.
 pub const BIN_SELECTION_DOCS: &str =
@@ -114,6 +117,9 @@ pub enum NextAction {
     /// target with `--ca-cert <FILE>`, the file being the CA's PEM
     /// certificate.
     AddCaCert,
+    /// A bug in anc: run `command`, the same invocation with `--verbose`, and
+    /// report what it prints at `docs`, the issue tracker.
+    ReportBug,
 }
 
 impl NextStep {
@@ -162,6 +168,15 @@ impl NextStep {
             command: None,
             template: Some(template),
             docs: Some(WEB_AUDIT_DOCS),
+        }
+    }
+
+    pub fn report_bug(command: String) -> Self {
+        Self {
+            action: NextAction::ReportBug,
+            command: Some(command),
+            template: None,
+            docs: Some(ISSUE_TRACKER),
         }
     }
 
@@ -433,6 +448,7 @@ mod tests {
         assert_eq!(action(NextStep::fix_target("x".into())), "fix-target");
         assert_eq!(action(NextStep::list_checks("x".into())), "list-checks");
         assert_eq!(action(NextStep::add_ca_cert("x".into())), "add-ca-cert");
+        assert_eq!(action(NextStep::report_bug("x".into())), "report-bug");
     }
 
     #[test]

@@ -4,6 +4,8 @@
 
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+
+use crate::panics::panic_message;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -356,47 +358,32 @@ fn probe_one(
         );
     }
     let dispatched = catch_unwind(AssertUnwindSafe(|| {
-        #[cfg(feature = "handler-panic-probe")]
-        panic_probe(check);
-        handlers.dispatch(check, ctx)
-    }));
-    match dispatched {
-        Ok(Dispatch::Outcome(outcome)) => {
-            let incomplete = outcome.incomplete || Instant::now() >= deadline;
-            Probed {
+        #[cfg(feature = "panic-probe")]
+        crate::panics::probe(check.id);
+        match handlers.dispatch(check, ctx) {
+            Dispatch::Outcome(outcome) => Probed {
                 check,
+                incomplete: outcome.incomplete || Instant::now() >= deadline,
                 result: to_result(check, outcome.clone()),
                 outcome: Some(outcome),
-                incomplete,
                 unported: None,
-            }
+            },
+            Dispatch::Unported(kind) => Probed {
+                check,
+                outcome: None,
+                result: unported_skip(check, kind),
+                incomplete: false,
+                unported: Some(kind),
+            },
         }
-        Ok(Dispatch::Unported(kind)) => Probed {
-            check,
-            outcome: None,
-            result: unported_skip(check, kind),
-            incomplete: false,
-            unported: Some(kind),
-        },
-        Err(panic) => {
-            let message = panic
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "handler panicked".to_string());
-            done(
-                error_result(check, &format!("handler error: {message}")),
-                false,
-            )
-        }
-    }
-}
-
-#[cfg(feature = "handler-panic-probe")]
-fn panic_probe(check: &WebCheck) {
-    if std::env::var("ANC_HANDLER_PANIC_PROBE").is_ok_and(|id| id == check.id) {
-        panic!("panic probe in {}", check.id);
-    }
+    }));
+    dispatched.unwrap_or_else(|panic| {
+        let message = panic_message(&*panic);
+        done(
+            error_result(check, &format!("handler error: {message}")),
+            false,
+        )
+    })
 }
 
 fn run_wave(

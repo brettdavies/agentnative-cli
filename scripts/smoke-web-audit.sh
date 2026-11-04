@@ -10,10 +10,12 @@
 # per-audit deadline, a probe that blocks on a socket, or a DNS lookup that
 # sneaks into a local run all show up here as wall clock.
 #
-# With `--panic-probe`, on a release binary built with the
-# `handler-panic-probe` feature, it then audits the site again with one
-# handler panicking. A test build always unwinds, so only a release-profile
-# build can show that the panic costs that one row and not the run.
+# With `scripts/smoke-web-audit.sh <binary> --panic-probe`, on a release binary
+# built with the `panic-probe` feature, it then audits the site twice more: with
+# one handler panicking, which costs that row and not the run, and with the run
+# itself panicking, which ends in the could-not-check exit and an error
+# envelope. A test build always unwinds, so only a release-profile build can
+# show either.
 #
 # The fixture is served from a temp directory by Python's own http.server
 # over TLS, so the check needs no fixture host and makes no external
@@ -24,6 +26,13 @@ set -euo pipefail
 
 readonly BINARY="${1:-target/release/anc}"
 readonly MODE="${2:-}"
+case "$MODE" in
+  "" | --panic-probe) ;;
+  *)
+    printf 'error: unknown mode %s; expected --panic-probe\n' "$MODE" >&2
+    exit 2
+    ;;
+esac
 # Ten times the measured local run, and well inside the promise, so this
 # fails on a hang rather than on a slow runner.
 readonly BUDGET_SECONDS=30
@@ -187,17 +196,30 @@ if [[ "$MODE" != "--panic-probe" ]]; then
   exit 0
 fi
 
+# Runs the audit with ANC_PANIC_PROBE naming $1, leaving the code in $code and
+# the streams in $probed and $stderr_log. Every panic ends at the could-not-check
+# exit; anything else is the panic ending the run another way.
+probed="$fixture/probed.json"
+probe_run() {
+  local site=$1
+  shift
+  set +e
+  ANC_PANIC_PROBE="$site" timeout "$BUDGET_SECONDS" "$BINARY" web "$target" \
+    --ca-cert "$tls/ca.pem" "$@" >"$probed" 2>"$stderr_log"
+  code=$?
+  set -e
+  if ((code != 3)); then
+    printf 'error: a panic in %s returned %s; expected 3. anc wrote:\n' "$site" "$code" >&2
+    sed 's/^/  /' "$stderr_log" >&2
+    exit 1
+  fi
+}
+
 # A row that passed reached its handler, so it is one the probe can panic in.
 probe_id=$(jaq -r '[.results[] | select(.status == "pass")][0].id' <"$scorecard")
-probed="$fixture/probed.json"
-set +e
-ANC_HANDLER_PANIC_PROBE="$probe_id" timeout "$BUDGET_SECONDS" "$BINARY" web "$target" \
-  --ca-cert "$tls/ca.pem" --output json >"$probed" 2>"$stderr_log"
-code=$?
-set -e
-if ((code > 128)) || [[ ! -s "$probed" ]]; then
-  printf 'error: a panic in %s ended the run: exit %s, %s scorecard bytes. anc wrote:\n' \
-    "$probe_id" "$code" "$(wc -c <"$probed")" >&2
+probe_run "$probe_id" --output json
+if grep -q panicked "$stderr_log"; then
+  printf 'error: raw panic text reached stderr in JSON mode:\n' >&2
   sed 's/^/  /' "$stderr_log" >&2
   exit 1
 fi
@@ -213,3 +235,21 @@ if [[ "$rows" != "$expected_rows" ]]; then
   exit 1
 fi
 printf 'panic in %s: exit %s, %s rows, its row: %s\n' "$probe_id" "$code" "$rows" "$row"
+
+probe_run run --output json
+if ! jaq -e '.error == "panic" and .exit_code == 3 and .message == "panic probe in run"
+  and .next_step.action == "report-bug" and (.next_step.command | endswith("--verbose"))' \
+  <"$stderr_log" >/dev/null; then
+  printf 'error: a panic in the run left no error envelope on stderr:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in the run, JSON: exit %s, envelope on stderr\n' "$code"
+
+probe_run run
+if ! grep -q 'error: anc panicked: panic probe in run' "$stderr_log"; then
+  printf 'error: a panic in the run named no error in text mode:\n' >&2
+  sed 's/^/  /' "$stderr_log" >&2
+  exit 1
+fi
+printf 'panic in the run, text: exit %s, named on stderr\n' "$code"

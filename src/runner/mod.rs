@@ -197,7 +197,7 @@ impl BinaryRunner {
         let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
         let exit = self.wait_or_kill(&mut child);
         group.kill();
-        let (stderr_output, stderr_truncated) = stderr_thread.join().unwrap_or_default();
+        let (stderr_output, stderr_truncated) = joined(stderr_thread);
 
         let stdout_str = String::from_utf8_lossy(&buf[..bytes_read]).into_owned();
 
@@ -330,8 +330,8 @@ impl BinaryRunner {
         }
         timeout_thread.join().ok();
 
-        let (stdout, stdout_truncated) = stdout_thread.join().unwrap_or_default();
-        let (stderr, stderr_truncated) = stderr_thread.join().unwrap_or_default();
+        let (stdout, stdout_truncated) = joined(stdout_thread);
+        let (stderr, stderr_truncated) = joined(stderr_thread);
 
         let was_timeout = *timed_out.lock().expect("mutex poisoned");
 
@@ -462,6 +462,14 @@ impl BinaryRunner {
 ///
 /// Returns `(content, truncated)`. Uses `Read::take(N+1)` so we can detect
 /// whether the stream exceeded exactly N bytes without a separate probe.
+// A reader that panicked is not a child that wrote nothing: the panic goes on up
+// rather than reading as empty output.
+fn joined(reader: std::thread::JoinHandle<(String, bool)>) -> (String, bool) {
+    reader
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
 fn read_capped(handle: Option<impl std::io::Read>) -> (String, bool) {
     let Some(h) = handle else {
         return (String::new(), false);

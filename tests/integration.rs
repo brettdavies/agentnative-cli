@@ -1168,8 +1168,7 @@ fn test_help_subcommand_with_target() {
 
 #[test]
 fn test_quiet_flag_alone_exits_2_not_panic() {
-    // PRE-EXISTING bug fix: `anc -q` previously hit `unreachable!()` and
-    // panicked (SIGABRT, exit 134). Now the None arm prints help and exits 2.
+    // `anc -q` names no subcommand, so the None arm prints help and exits 2.
     cmd()
         .arg("-q")
         .assert()

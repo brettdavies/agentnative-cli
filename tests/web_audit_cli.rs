@@ -77,6 +77,26 @@ fn the_single_check_form_returns_that_rows_code() {
     assert_eq!(scorecard.results.len(), 68);
 }
 
+#[test]
+fn no_external_dns_reaches_the_engine() {
+    let server = fixture_site();
+    let host = host_of(&server);
+    for flags in [
+        &["--no-external-dns"][..],
+        &["--external-dns", "--no-external-dns"][..],
+    ] {
+        let assert = anc()
+            .args(["web", &host, "--check", "dns-aid"])
+            .args(flags)
+            .assert()
+            .code(3);
+        let out = stdout_of(assert.get_output());
+        let fields: Vec<&str> = out.trim_end().split('\t').collect();
+        assert_eq!(fields[1], "n_a", "{out}");
+        assert!(fields[2].contains("--no-external-dns"), "{out}");
+    }
+}
+
 /// Declaring a type both narrows and widens: rows typed for the other
 /// family gate out, and rows whose antecedent is "this site has an API"
 /// gate in, because the declaration is what satisfies it. So this pins

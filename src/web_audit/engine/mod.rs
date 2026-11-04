@@ -40,6 +40,6 @@ pub use types::{
 };
 pub use waves::{
     DEFAULT_CONCURRENCY, DEFAULT_PER_AUDIT_DEADLINE, DEFAULT_PER_CHECK_TIMEOUT,
-    DEGRADED_PER_CHECK_TIMEOUT, EXTERNAL_DNS_WITHHELD, ProgressSink, RunInput, RunOutcome,
-    RunReport, Unported, run_web_audit,
+    DEGRADED_PER_CHECK_TIMEOUT, EXTERNAL_DNS_OPTED_OUT, EXTERNAL_DNS_WITHHELD, ProgressSink,
+    RunInput, RunOutcome, RunReport, Unported, run_web_audit,
 };

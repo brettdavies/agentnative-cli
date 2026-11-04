@@ -368,7 +368,7 @@ one package that declares a binary; when several do, those audits skip and name 
 `anc web <target>` runs the [anc.dev](https://anc.dev) web-audit registry against a site from this machine. The hosted
 auditor refuses a target it cannot reach, which is every localhost port, every private address and every internal
 hostname; this is the same engine, the same 65 checks and the same verdicts, run from where the site is reachable. No
-runtime to install, no browser, and nothing contacted beyond the target and the hosts it declares.
+runtime to install, and no browser. [What `anc web` Sends](#what-anc-web-sends) lists everything a run contacts.
 
 `anc web` is built with the `web` cargo feature, which is off by default. The Homebrew formula, the cargo-binstall and
 GitHub Release binaries, and a plain `cargo install agentnative` do not include it. Build it with
@@ -470,7 +470,9 @@ Every probe identifies itself with the same `anc-web-audit/…` User-Agent the h
 checks whose question *is* how a site treats a named client (a bare `curl`, an AI fetcher), which send that client's
 User-Agent because that is what they measure.
 
-The audit contacts the target, the hosts the target declares, and nothing else. A declared host is one the target's
+The audit contacts the target, the hosts the target declares, and, for a public target, two public DNS-over-HTTPS
+resolvers (`cloudflare-dns.com` and `dns.google`), which receive the target's hostname. A declared host is one the
+target's
 discovery documents name off its own origin: an MCP endpoint a server card or the AI catalog names, a card document the
 catalog lists by URL, an API host or description the api-catalog anchors, or where the target's MCP path redirects its
 POSTs. An MCP endpoint on a declared host gets GETs for the documents that could confirm it (a card at
@@ -493,8 +495,11 @@ whether it presented a token (`credentialed`).
 
 The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
 for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
-in. Redirects are followed but never off the target's own class: a hop from a local target to a public host, or to a
-cloud metadata address, is refused and recorded rather than taken.
+in. `--no-external-dns` withholds the query for any target. Pass it for an internal host on a routable address, such as
+an IP-allowlisted machine behind split-horizon DNS: it classifies as public, so its hostname would otherwise reach those
+resolvers. The two flags override each other, and the last one wins. Redirects are followed but never off the target's
+own class: a hop from a local target to a public host, or to a cloud metadata address, is refused and recorded rather
+than taken.
 
 Every request is HTTPS, at every vantage, local targets included; anc sends no plaintext request. A scheme-less target
 defaults to `https`. An explicit `http://` target, or a root that redirects to `http`, ends the run as `insecure-scheme`

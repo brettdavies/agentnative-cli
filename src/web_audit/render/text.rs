@@ -13,6 +13,7 @@ use crate::web_audit::engine::discovery_documents::card_suffix_url;
 use crate::web_audit::engine::{RunReport, Unported};
 use crate::web_audit::registry::{MCP_DISCOVERY, REGISTRY_VERSION, SITE_SHA, WebCheckKeyword};
 use crate::web_audit::scorecard::{ResultRow, RowAdvisory, ScorecardStatus, WebScorecard};
+use crate::web_audit::signal::ContractCheck;
 
 /// How the text report renders.
 #[derive(Clone, Copy, Debug, Default)]
@@ -22,8 +23,11 @@ pub struct RenderOptions {
     /// Drop the score note and the advisory, passing and inapplicable
     /// sections entirely.
     pub quiet: bool,
-    /// List passing and inapplicable rows instead of counting them.
+    /// List passing and inapplicable rows instead of counting them, and
+    /// state the contract check's result.
     pub verbose: bool,
+    /// What the run learned about its contract against anc.dev's.
+    pub contract: Option<ContractCheck>,
 }
 
 /// What the two scores measure, in anc.dev's words: the result page's
@@ -96,6 +100,11 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
     let code = exit_code(rows);
     let mut out = String::new();
     write_header(&mut out, scorecard);
+    if opts.verbose
+        && let Some(contract) = opts.contract
+    {
+        let _ = writeln!(out, "  anc.dev contract: {contract}");
+    }
     out.push('\n');
 
     let verdict = match code {
@@ -120,6 +129,9 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
         let _ = writeln!(out, "{SCORE_NOTE_INDENT}{SCORE_NOTE}");
     }
     if let Some(note) = non_comparable_note(&report.unported) {
+        let _ = writeln!(out, "Note: {note}");
+    }
+    if let Some(note) = opts.contract.and_then(ContractCheck::note) {
         let _ = writeln!(out, "Note: {note}");
     }
     if !report.complete {

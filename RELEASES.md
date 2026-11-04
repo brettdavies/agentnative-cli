@@ -397,6 +397,10 @@ web file as release-prep and delete it from `dev`, so it does not run after such
 bookkeeping files from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
 `chore(release): sync dev after v<version>`, the subject the postflight backport gate looks for.
 
+Such a release still keeps `.github/workflows/web-audit-bump.yml`. GitHub runs a `schedule` only from the default
+branch, and the workflow checks out `dev` to do its work, so it needs nothing else from `main`. A pin that names a site
+PR's head always moves onto site `dev` on the next run, even when the vendored bytes match.
+
 The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.
 
 After it merges, confirm the branches actually converged. This is what catches a contested path nobody resolved:
@@ -526,24 +530,67 @@ bash scripts/sync-skill-fixture.sh && git diff src/skill_install/skill.json
 #    a newer release, so the bundle moves every time.
 cargo update -p webpki-roots && git diff Cargo.lock | rg webpki-roots
 
-# 5. Move the vendored web-audit registry pin and review what changed. The pin is a
-#    committed site SHA, so it only moves when someone moves it; a release is the
-#    deliberate moment. The script refuses a registry whose handler or eval kinds this
-#    build cannot run, and `anc web` flags a score as non-comparable when a run hits
-#    one, so read the diff for new kinds before taking the bump.
-bash scripts/sync-web-audit.sh && git diff src/web_audit/vendored/
+# 5. Merge the open web-audit bump PR to dev before cutting the branch, if there is
+#    one. web-audit-bump.yml opens it whenever agentnative-site's dev head changes a
+#    vendored input. This prints what a bump would take right now, without opening
+#    anything:
+bash scripts/web-audit-bump.sh --dry-run
 ```
 
-A difference from steps 2 through 5 is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
+A difference from steps 2 through 4 is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
 brings it to `dev` after the release. `scripts/release/preflight.sh mechanics` checks the `Cargo.toml` version against
 `anc --version` and the top section of `CHANGELOG.md`.
 
+`scripts/release/preflight.sh smoke` runs `scripts/release/web-parity-gate.sh`, which refuses a release whose `anc web`
+differs from anc.dev. `web-audit-release-gate.yml` runs the same script on PRs to `main`, not as a required check. A
+release tree that strips `anc web` skips it. [Handling a bump PR](#handling-a-bump-pr) explains each refusal.
+
+### Handling a bump PR
+
+`web-audit-bump.yml` opens one PR, from `bot/web-audit-bump`, whenever agentnative-site's `dev` head changes a vendored
+input or the pin is not on site `dev`. It updates that PR on later runs, and stands down once the branch carries port
+commits, so push port work as new commits. A `dev` merge leaves an open PR alone when it already carries the site's head
+and the merge touched nothing under `src/`, `tests/`, `scripts/`, `build.rs` or `Cargo.*`, so its CI is not restarted
+for nothing.
+
+**A green bump** moved the pin and reproduces the site, or records where it does not. Read its body's Divergences and
+Unported sections: when both say None, `anc web` matches anc.dev at the new pin, and merging it is all the work there is.
+A body that lists deleted vendored files needs a closer read, because a site change that removes scenarios shrinks the
+parity evidence and no test can see that. A title ending in `(web suites fail, port needed)` means a failure neither the
+ledger nor the unported list absorbs; the body names the tests, and the PR needs a port before it can merge.
+
+When a bump changes a check, also re-run the comparison `docs/web-audit-skill-coverage.md` records.
+
+**A ledger entry** is a corpus element the engine does not reproduce at the pin, in
+`tests/fixtures/web-audit-divergences.toml`. It names the site PR that set the golden value the engine misses. Merging the
+bump is safe, since the gate below holds the release. To close entries, port that site PR's behavior in its own PR: the
+suites fail with `now matches the site; remove this entry` for each element the port fixes, and deleting those entries
+is what makes them pass. Regenerate instead of editing by hand when many move:
+
+```bash
+WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
+```
+
+**An unported entry** is a handler kind or eval rule this build cannot run. Its checks skip on every site, so every full
+`anc web` run exits 3, reads `could not check`, and flags its score as not comparable with anc.dev. Tests that pin a full
+run's verdict give up only that verdict and name the checks in the bump PR. To close one, add the handler to
+`src/web_audit/handlers/` and the kind or rule to `build_support/web_registry/vocab.rs`, then port what the ledger holds
+for those checks. The binding, the skip, and the stand-downs all clear together.
+
+The gate refuses a release with a stable code, what is wrong, and its fix:
+
+| Code                 | Refuses when                                      | Fix                                                                        |
+| -------------------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
+| `web-audit-ledger`   | The divergence ledger has entries                 | Port the site PRs the entries name and delete the entries they close       |
+| `web-audit-unported` | A vendored check binds Unsupported                | Port the handler kind or eval rule the check names                         |
+| `web-audit-pin`      | The vendored pin is not reachable from site `dev` | `gh workflow run web-audit-bump.yml --ref dev`, then merge the PR it opens |
+
 ### Required secrets
 
-| Secret                 | Purpose                                                                                                           | Lifecycle                                      |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `CI_RELEASE_TOKEN`     | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update. | Rotated annually.                              |
-| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Removed after Trusted Publishing was enforced. |
+| Secret                 | Purpose                                                                                                                                                                                  | Lifecycle                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `CI_RELEASE_TOKEN`     | Fine-grained PAT, Contents R+W, Pull requests R+W. Used by `release.yml` to dispatch the Homebrew formula update, and by `web-audit-bump.yml` to land its signed commit and open its PR. | Rotated annually.                              |
+| `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                                                                                                | Removed after Trusted Publishing was enforced. |
 
 `GITHUB_TOKEN` is automatic; CI (`ci.yml`) needs `contents: read` and `pull-requests: read`, the latter for the
 changelog check that reads a PR's files, and uses no extra secrets.

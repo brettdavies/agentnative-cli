@@ -27,6 +27,8 @@
 #   4. Negative control: the no-version fixture still fails `p3-must-version`.
 #   5. Every `--command` target the help text advertises resolves on PATH, so a
 #      reader copying an example gets a verdict instead of a usage error.
+#   6. `anc web` matches anc.dev: scripts/release/web-parity-gate.sh, which the CI
+#      step on PRs to main runs too.
 #
 # Exit codes:
 #   0 = all gates passed (or skipped with reason)
@@ -247,6 +249,18 @@ gate_examples_resolve() {
 
 # Main -----------------------------------------------------------------------
 
+gate_web_parity() {
+  header "Web audit parity with anc.dev"
+  local verdict name detail
+  while IFS=$'\t' read -r verdict name detail; do
+    case "$verdict" in
+      pass) gate_pass "$name" ;;
+      fail) gate_fail "$name" "$detail" ;;
+      skip) gate_skip "$name" "$detail" ;;
+    esac
+  done < <("$REPO_ROOT/scripts/release/web-parity-gate.sh" --bin "$BIN" || true)
+}
+
 usage() {
   sed -n '2,31p' "$0" | sed 's/^# \?//'
   exit 2
@@ -281,6 +295,7 @@ main() {
   else
     SCORECARD_DIR="$(mktemp -d -t anc-smoke-XXXXXX)"
     cd "$REPO_ROOT"
+    gate_web_parity
     gate_schema_parity
     gate_real_targets
     gate_schema_validation

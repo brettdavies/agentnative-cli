@@ -6,8 +6,9 @@ Replays the vendored conformance corpus through the engine
 its golden. Each element is owned by the newest site commit between
 --since and the vendored pin (src/web_audit/vendored/SITE_SHA) that changed
 that element of the golden; the owner is the PR number in that commit's
-subject. An element no commit in the range changed is owned by the newest
-commit that touched its scenario.
+subject. An element no commit in the range changed keeps the owner its current
+ledger entry names, else is owned by the newest commit that touched its
+scenario.
 
 usage: WEB_AUDIT_SITE_REPO=<agentnative-site checkout> \\
          scripts/web-audit-divergence-ledger.py --since <old site sha>
@@ -43,6 +44,15 @@ HEADER = """\
 """
 
 
+def standing_owners():
+    entries = re.findall(
+        r'^scenario = "(.*)"\nelement = "(.*)"\nowner = "(#\d+)"$',
+        LEDGER.read_text() if LEDGER.exists() else "",
+        re.M,
+    )
+    return {(scenario, element): owner for scenario, element, owner in entries}
+
+
 def git(repo, *args):
     return subprocess.run(
         ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
@@ -74,9 +84,7 @@ def element_of(doc, element):
 
 def pr_of(subject):
     found = re.findall(r"\(#(\d+)\)", subject)
-    if not found:
-        sys.exit(f"error: site commit subject names no PR: {subject!r}")
-    return f"#{found[-1]}"
+    return f"#{found[-1]}" if found else None
 
 
 def main():
@@ -97,9 +105,12 @@ def main():
         )
         pairs = json.loads(out.read_text())
 
-    log = git(repo, "log", "--reverse", "--format=%H %s", f"{args.since}..{pin}", "--", CORPUS)
+    # With nothing to attribute, the range may not even resolve: a pin off site dev can
+    # name a commit a single-branch clone lacks.
+    log = git(repo, "log", "--reverse", "--format=%H %s", f"{args.since}..{pin}", "--", CORPUS) if pairs else ""
     commits = [line.split(" ", 1) for line in log.splitlines() if line]
     cache = {}
+    standing = standing_owners()
     entries = []
     for scenario, element in sorted(map(tuple, pairs)):
         owner = None
@@ -111,10 +122,15 @@ def main():
                 latest_touch = subject
             if element_of(before, element) != element_of(after, element):
                 owner = subject
-        subject = owner or latest_touch
-        if subject is None:
-            sys.exit(f"error: no site commit in range touched {scenario}; widen --since")
-        entries.append((scenario, element, pr_of(subject)))
+        # A commit in range that changed this element owns it. Otherwise a standing
+        # entry keeps its owner, so a divergence that outlives a bump never stops the
+        # next one, and only a new element falls back to the scenario's newest commit.
+        pr = (owner and pr_of(owner)) or standing.get((scenario, element))
+        if pr is None and latest_touch is not None:
+            pr = pr_of(latest_touch)
+        if pr is None:
+            sys.exit(f"error: no site PR owns {scenario}/{element}; widen --since")
+        entries.append((scenario, element, pr))
 
     lines = [HEADER]
     if entries:

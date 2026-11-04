@@ -23,9 +23,9 @@ use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
-const MAX_AUTHORIZATION_SERVERS: usize = 8;
-const MAX_URL_LENGTH: usize = 2048;
-const MAX_SHOWN_LENGTH: usize = 200;
+use crate::web_audit::registry::MAX_AUTHORIZATION_SERVERS;
+use crate::web_audit::registry::MAX_SHOWN_LENGTH;
+use crate::web_audit::registry::MAX_URL_LENGTH;
 
 static BEARER_CHALLENGE: LazyLock<Regex> = LazyLock::new(|| fixed(r"(?i)(?:^|,)\s*bearer(?:\s|$)"));
 

@@ -21,9 +21,9 @@ use crate::web_audit::pattern::fixed;
 use crate::web_audit::registry::WebCheck;
 use crate::web_audit::scorecard::EvidenceItem;
 
-const MIN_VISIBLE_CHARS: usize = 200;
-const MAX_TWIN_PROBES: usize = 3;
-const MIN_TWIN_CHARS: usize = 40;
+use crate::web_audit::registry::MAX_TWIN_PROBES;
+use crate::web_audit::registry::MIN_TWIN_CHARS;
+use crate::web_audit::registry::MIN_VISIBLE_CHARS;
 const INDEX_PATHS: [&str; 5] = [
     "/llms.txt",
     "/llms-full.txt",

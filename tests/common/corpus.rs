@@ -2,8 +2,9 @@
 //! scenario's exchanges become mock-transport rules, the engine runs over
 //! them, and the rows it finalizes are compared with the site's golden
 //! scorecard. The format is documented in
-//! `tests/fixtures/web-audit-conformance/README.md`.
+//! `tests/fixtures/web-audit-contract/conformance/README.md`.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::AUDIT_USER_AGENT;
 use agentnative::web_audit::scorecard::{DeclaredSiteType, ResultRow, WebScorecard};
+use agentnative::web_audit::transport::Request;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -127,9 +129,49 @@ pub struct Case {
     pub golden: Golden,
 }
 
+/// One entry of a scenario's `requests.json`, the form a sent request is compared in.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct SentRequest {
+    pub method: String,
+    pub url: String,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<String>,
+}
+
+impl From<&Request> for SentRequest {
+    fn from(request: &Request) -> Self {
+        SentRequest {
+            method: request.method.clone(),
+            url: request.url.clone(),
+            headers: request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.to_ascii_lowercase(), value.clone()))
+                .collect(),
+            body: request
+                .body
+                .as_ref()
+                .map(|body| String::from_utf8_lossy(body).into_owned()),
+        }
+    }
+}
+
+/// The request set the site's engine sent for a scenario.
+pub fn recorded_requests(name: &str) -> BTreeSet<SentRequest> {
+    let path = corpus_dir()
+        .join("scenarios")
+        .join(name)
+        .join("requests.json");
+    let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let entries: Vec<SentRequest> =
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    entries.into_iter().collect()
+}
+
 /// The corpus root.
 pub fn corpus_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/web-audit-conformance")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/web-audit-contract/conformance")
 }
 
 /// Every scenario, in directory order.

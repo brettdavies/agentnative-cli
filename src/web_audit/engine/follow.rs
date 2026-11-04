@@ -51,7 +51,7 @@ use crate::web_audit::registry::McpDiscovery;
 const ENDPOINT_GET: ReadOptions = ReadOptions {
     max_body_bytes: STATUS_ONLY_BODY_BYTES,
     accept: None,
-    timeout_cap: Some(Duration::from_millis(3_000)),
+    timeout_cap: Some(crate::web_audit::registry::ENDPOINT_GET_TIMEOUT),
 };
 
 /// The slice's inputs.

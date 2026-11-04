@@ -1,0 +1,62 @@
+# Throwaway wall-clock benchmark of the web transport changes; lives only on bench/** branches.
+name: bench-transport
+
+on:
+  push:
+    branches: ['bench/transport-**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-transport-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      SITE_SHA: 031ec6ea6d1928208808c7afed64bf62fc9049be
+      ROUNDS: "5"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install tracing tools
+        run: sudo apt-get install -y --no-install-recommends strace time
+      - name: Build variants
+        run: bash bench/build.sh
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Site engine at the pinned commit
+        run: |
+          git init -q site && cd site
+          git fetch -q --depth 1 https://github.com/brettdavies/agentnative-site.git "$SITE_SHA"
+          git checkout -q FETCH_HEAD
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 bun install --frozen-lockfile
+          bun run build > /dev/null
+      - name: Benchmark
+        run: bash bench/run.sh
+      - name: Count connections, lookups and thread spawns
+        if: always()
+        run: bash bench/trace.sh
+      - name: Thread spawn cost
+        if: always()
+        run: rustc -O -o bench/out/spawn bench/spawn.rs && bench/out/spawn | tee bench/out/spawn.txt
+      - name: Handshake cost by aws-lc build
+        if: always() && hashFiles('bench/handshake-enabled') != ''
+        run: bash bench/handshake.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bench-transport
+          path: |
+            bench/out/results.tsv
+            bench/out/summary.md
+            bench/out/trace.tsv
+            bench/out/spawn.txt
+            bench/out/handshake.tsv
+            bench/out/sizes.tsv
+            bench/out/trace-summary.md
+            bench/out/req-*.tsv

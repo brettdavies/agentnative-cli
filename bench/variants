@@ -1,0 +1,4 @@
+base dev
+gzip fix/web-gzip-only-connection-reuse
+pool fix/web-idle-pool-concurrency
+dns fix/web-one-lookup-per-name

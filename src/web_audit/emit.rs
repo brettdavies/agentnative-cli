@@ -7,8 +7,8 @@ use serde::Serialize;
 
 use crate::principles::registry::SPEC_VERSION;
 use crate::web_audit::registry::{
-    CATEGORIES, CHECKS, MCP_DISCOVERY, REGISTRY_VERSION, REMEDIATION, SITE_SHA, WebCheck,
-    WebRemediation,
+    CATEGORIES, CHECKS, EvalBinding, HandlerBinding, MCP_DISCOVERY, REGISTRY_VERSION, REMEDIATION,
+    SITE_SHA, WebCheck, WebRemediation,
 };
 
 /// One check, as `anc emit web-checks` prints it.
@@ -42,6 +42,8 @@ pub struct CheckEntry {
     pub breadcrumb: &'static str,
     /// What to do about a miss, in one line.
     pub hint: &'static str,
+    /// Whether this build runs the check. An unported one skips on every site.
+    pub ported: bool,
 }
 
 impl From<&'static WebCheck> for CheckEntry {
@@ -64,6 +66,8 @@ impl From<&'static WebCheck> for CheckEntry {
             weight: check.weight,
             breadcrumb: check.breadcrumb,
             hint: check.hint,
+            ported: !matches!(check.handler, HandlerBinding::Unsupported(_))
+                && !matches!(check.eval, Some(EvalBinding::Unsupported(_))),
         }
     }
 }
@@ -192,6 +196,19 @@ mod tests {
 
     use super::*;
     use crate::web_audit::registry::RETIRED_CHECK_IDS;
+
+    #[test]
+    fn each_entry_says_whether_this_build_runs_the_check() {
+        let rendered = render_checks();
+        let parsed: Value = serde_json::from_str(&rendered).unwrap();
+        let entries = parsed["checks"].as_array().unwrap();
+        assert_eq!(entries.len(), CHECKS.len());
+        for (entry, check) in entries.iter().zip(CHECKS) {
+            let unported = matches!(check.handler, HandlerBinding::Unsupported(_))
+                || matches!(check.eval, Some(EvalBinding::Unsupported(_)));
+            assert_eq!(entry["ported"], Value::from(!unported), "{}", check.id);
+        }
+    }
 
     #[test]
     fn the_checks_document_lists_every_registry_id_in_order() {

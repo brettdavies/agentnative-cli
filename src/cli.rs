@@ -268,6 +268,13 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// resolvers the `dns-aid` check queries, which are withheld for a
     /// local target unless `--external-dns` is set.
     ///
+    /// For a public target a run also reads
+    /// `https://anc.dev/api/web-audit/version`, to say when this build's
+    /// web-audit contract differs from the one anc.dev serves. A local or
+    /// private target's run never contacts anc.dev, a failed read says
+    /// nothing, and `--verbose` states the result, on stderr with
+    /// `--output json` or `--check`.
+    ///
     /// An MCP endpoint that requires sign-in reports its session and
     /// handshake rows `n_a` (`auth-required`) unless the run presents a
     /// bearer token for it: from `ANC_WEB_TOKEN`, scoped to this one

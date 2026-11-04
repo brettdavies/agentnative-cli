@@ -17,6 +17,7 @@ use agentnative::web_audit::registry::{
 use agentnative::web_audit::render::{RenderOptions, advisory_note, format_text, prefix_for};
 use agentnative::web_audit::score::is_scored;
 use agentnative::web_audit::scorecard::{ResultRow, ScorecardStatus, WebScorecard};
+use agentnative::web_audit::signal::{ContractCheck, NotChecked};
 use common::corpus::{Golden, load_cases, replay};
 use common::web_cli::{
     anc, fixture_site, full_run_code, host_of, stderr_of, stdout_of, verdict_is_pinned,
@@ -289,6 +290,7 @@ fn corpus_reports(verbose: bool) -> Vec<(String, String, WebScorecard)> {
                     color: false,
                     quiet: false,
                     verbose,
+                    contract: None,
                 },
             );
             Some((case.name, out, report.scorecard))
@@ -459,5 +461,85 @@ fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
         assert_section(&out, "Not applicable (", &card, |row| {
             row.status == ScorecardStatus::NA
         });
+    }
+}
+
+/// One scored scenario's report: the contract lines read the same on any of them.
+fn one_report(opts: RenderOptions) -> String {
+    let case = load_cases()
+        .into_iter()
+        .find(|case| matches!(case.golden, Golden::Scorecard(_)))
+        .expect("a scored corpus scenario");
+    let RunOutcome::Complete(report) = replay(&case.scenario, Arc::new(default_handlers())) else {
+        panic!("{} reported unreachable", case.name);
+    };
+    format_text(&report, opts)
+}
+
+#[test]
+fn a_contract_that_differs_is_a_note_naming_the_pin_and_no_upgrade() {
+    let out = one_report(RenderOptions {
+        contract: Some(ContractCheck::Differs),
+        ..RenderOptions::default()
+    });
+    let note = out
+        .lines()
+        .find(|l| l.starts_with("Note: this anc's web-audit contract"))
+        .unwrap_or_else(|| panic!("no contract note:\n{out}"));
+    assert!(
+        note.contains("differs from the one anc.dev serves"),
+        "{note}"
+    );
+    assert!(note.contains(&SITE_SHA[..7]), "{note}");
+    assert!(!note.contains("behind"), "{note}");
+    assert!(!note.to_lowercase().contains("upgrade"), "{note}");
+}
+
+#[test]
+fn a_quiet_report_drops_the_contract_note() {
+    let out = one_report(RenderOptions {
+        quiet: true,
+        contract: Some(ContractCheck::Differs),
+        ..RenderOptions::default()
+    });
+    assert!(!out.contains("web-audit contract"), "{out}");
+}
+
+#[test]
+fn a_contract_that_matches_or_went_unchecked_is_no_note() {
+    for contract in [
+        None,
+        Some(ContractCheck::Same),
+        Some(ContractCheck::NotChecked(NotChecked::Unreachable)),
+    ] {
+        let out = one_report(RenderOptions {
+            contract,
+            ..RenderOptions::default()
+        });
+        assert!(!out.contains("web-audit contract"), "{contract:?}:\n{out}");
+        assert!(!out.contains("anc.dev contract:"), "{contract:?}:\n{out}");
+    }
+}
+
+#[test]
+fn verbose_states_the_contract_result_every_time() {
+    for (contract, line) in [
+        (ContractCheck::Same, "  anc.dev contract: same"),
+        (ContractCheck::Differs, "  anc.dev contract: differs"),
+        (
+            ContractCheck::NotChecked(NotChecked::Status(404)),
+            "  anc.dev contract: not checked (anc.dev answered 404)",
+        ),
+        (
+            ContractCheck::NotChecked(NotChecked::NotPublic),
+            "  anc.dev contract: not checked (not a public target)",
+        ),
+    ] {
+        let out = one_report(RenderOptions {
+            verbose: true,
+            contract: Some(contract),
+            ..RenderOptions::default()
+        });
+        assert!(out.lines().any(|l| l == line), "no {line:?} in:\n{out}");
     }
 }

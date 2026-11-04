@@ -51,6 +51,8 @@ use agentnative::web_audit::registry::{AUDIT_USER_AGENT, check_by_id};
 #[cfg(feature = "web")]
 use agentnative::web_audit::scorecard::to_wire_json;
 #[cfg(feature = "web")]
+use agentnative::web_audit::signal::PendingCheck;
+#[cfg(feature = "web")]
 use agentnative::web_audit::target as web_target;
 #[cfg(feature = "web")]
 use agentnative::web_audit::{
@@ -1199,15 +1201,14 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     };
     let defaulted_https = scheme_less && normalized.starts_with("https://");
 
-    let fetch = FetchHandle::new(
-        Arc::new(UreqTransport::with_trust(
-            AUDIT_USER_AGENT,
-            proxy::proxy_from_env(),
-            trust::TrustConfig::new(ca_certs),
-        )),
-        Arc::new(SystemResolver),
+    let transport = Arc::new(UreqTransport::with_trust(
         AUDIT_USER_AGENT,
-    );
+        proxy::proxy_from_env(),
+        trust::TrustConfig::new(ca_certs),
+    ));
+    let resolver = Arc::new(SystemResolver);
+    let contract_check = PendingCheck::start(&normalized, transport.clone(), resolver.clone());
+    let fetch = FetchHandle::new(transport, resolver, AUDIT_USER_AGENT);
     let fetch = match credential {
         Some(credential) => fetch.with_credential(credential),
         None => fetch,
@@ -1228,7 +1229,11 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         input.progress = Some(&mut progress);
     }
 
-    let report = match run_web_audit(input) {
+    let outcome = run_web_audit(input);
+    if show_progress {
+        progress.finish();
+    }
+    let report = match outcome {
         RunOutcome::Unreachable {
             reason, root_error, ..
         } => {
@@ -1258,6 +1263,15 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         eprintln!("warning: {note}");
     }
 
+    // The contract check is the same kind of fact, and a `--check` row has no
+    // report to carry it, so both of those forms put it on stderr.
+    let contract = contract_check.result();
+    if json || run.check.is_some() {
+        for line in contract.stderr_lines(run.quiet, run.verbose) {
+            eprintln!("{line}");
+        }
+    }
+
     if let Some(id) = run.check.as_deref() {
         let Some(row) = report.scorecard.results.iter().find(|r| r.id == id) else {
             return Ok(emit_web_failure(&render::unknown_check_failure(id), json));
@@ -1278,6 +1292,7 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
             color: color::should_color(run.color),
             quiet: run.quiet,
             verbose: run.verbose,
+            contract: Some(contract),
         };
         output::emit(&render::format_text(&report, opts));
     }

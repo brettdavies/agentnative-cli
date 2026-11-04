@@ -32,6 +32,14 @@ impl StderrProgress {
             total: CHECKS.len(),
         }
     }
+
+    /// End the counter's line when the run stopped short of the total, so what
+    /// prints next starts on a line of its own.
+    pub fn finish(&self) {
+        if self.done != 0 && self.done != self.total {
+            eprintln!();
+        }
+    }
 }
 
 impl Default for StderrProgress {

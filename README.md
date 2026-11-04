@@ -462,6 +462,14 @@ declared URL, and never reaches a host of another class than the target's. The s
 records how each declared URL was treated. `--no-follow` audits the target alone: rows that depend on a declared host
 then report `n_a` (`follow-disabled`).
 
+A run against a public target also sends one `GET https://anc.dev/api/web-audit/version`, beside the audit, to say when
+this build's web-audit contract differs from the one anc.dev serves; a verdict here can then differ from anc.dev's. The
+request names nothing about the target and carries no token, and `--no-follow` does not withhold it. A failed read says
+nothing, and a run waits for the answer at most 2 seconds from its start. `--quiet` drops the note, and `--verbose`
+states the result (`same`, `differs`, or `not checked` with its reason), on stderr with `--output json` or `--check`. A
+local or private target's run never contacts anc.dev, and neither does an `http://` target's. An internal host on a
+routable address reads as public, so its run does.
+
 An MCP endpoint that answers a token-less request with 401 gets one more read: its RFC 9728 protected-resource metadata,
 on the endpoint's own host and over https, at most once per audit. The read goes to the URL the 401's
 `resource_metadata` names when that URL is https on the endpoint's host, otherwise to the well-known locations. For an

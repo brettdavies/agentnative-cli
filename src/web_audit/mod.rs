@@ -39,6 +39,8 @@ pub mod render;
 pub mod score;
 pub mod scorecard;
 #[cfg(feature = "web")]
+pub mod signal;
+#[cfg(feature = "web")]
 pub mod target;
 #[cfg(feature = "web")]
 mod tls;

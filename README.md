@@ -197,8 +197,13 @@ is declared, the row is `skip`, as for a tool with none. A declared subcommand s
 
 An entry that is not lowercase, or that names no subcommand the help lists, is not applied, and the row's evidence says
 so: `` `Clean` in .anc.toml [p5].not_destructive was not applied: entries are lowercase, so write `clean` `` or
-`` `purge` in .anc.toml [p5].not_destructive was not applied: the help lists no such subcommand ``. An entry for a
+`` `rmdir` in .anc.toml [p5].not_destructive was not applied: the help lists no such subcommand ``. An entry for a
 listed subcommand whose name does not read as destructive has nothing to waive and changes nothing.
+
+`anc` refuses an entry for `delete`, `destroy`, `purge`, or `wipe`, in any case and whether or not the help lists it. P5
+says a declaration cannot cover those names, so the subcommand stays in the audit and needs a confirmation flag. The
+row's evidence says `` `delete` in .anc.toml [p5].not_destructive was refused `` and gives that reason. The refusal
+compares the whole name: `delete-key` or `purge-cache` can still be declared.
 
 `domain_verbs`: `p6-may-standard-names` passes when most subcommand names are standard verbs. A declared verb counts
 beside the built-in list. Entries are lowercase; they are compared with the lowercased subcommand name. A pass that

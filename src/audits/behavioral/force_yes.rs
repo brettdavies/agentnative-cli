@@ -11,18 +11,19 @@
 //! audit detects by name and applies the author's declaration as a claim.
 //!
 //! Rubric: identify destructive subcommands via [`destructive_subcommands`],
-//! less any the `.anc.toml` chain declares in `[p5] not_destructive`, probe
-//! each one's `--help`, and audit for one of [`CONFIRM_FLAGS`], one of
-//! [`DESCRIBED_CONFIRM_FLAGS`] whose help line says it confirms without a
-//! prompt, or a flag the chain declares in `[p5] confirm_flags`. Fail when any
-//! destructive subcommand lists none. Vacuous Skip when the binary has no
+//! less any the `.anc.toml` chain declares in `[p5] not_destructive` (never
+//! `delete`, `destroy`, `purge`, or `wipe`, which P5 says a declaration cannot
+//! cover), probe each one's `--help`, and audit for one of [`CONFIRM_FLAGS`],
+//! one of [`DESCRIBED_CONFIRM_FLAGS`] whose help line says it confirms without
+//! a prompt, or a flag the chain declares in `[p5] confirm_flags`. Fail when
+//! any destructive subcommand lists none. Vacuous Skip when the binary has no
 //! destructive subcommands.
 
 use std::borrow::Cow;
 
 use crate::anc_toml::{CONFIRM_FLAGS_KEY, NOT_DESTRUCTIVE_KEY, Sourced};
 use crate::audit::Audit;
-use crate::audits::behavioral::destructive_ops::destructive_subcommands;
+use crate::audits::behavioral::destructive_ops::{destructive_subcommands, is_always_destructive};
 use crate::audits::behavioral::flag_meaning::{self, Meaning};
 use crate::audits::behavioral::subcommand_help::{dash_rule_notes, probe_subcommands};
 use crate::project::Project;
@@ -265,8 +266,9 @@ pub(crate) struct NotDestructive {
 }
 
 /// Apply `entries` to `detected`, comparing each with the lowercased
-/// subcommand name. An entry that names a listed subcommand whose name does
-/// not read as destructive has nothing to waive and is not an error.
+/// subcommand name. An entry for an always-destructive name waives nothing. An
+/// entry that names a listed subcommand whose name does not read as destructive
+/// has nothing to waive and is not an error.
 pub(crate) fn read_not_destructive(
     detected: &[&String],
     listed: &[String],
@@ -276,7 +278,10 @@ pub(crate) fn read_not_destructive(
     let mut waivers = Vec::new();
     for name in detected {
         let lower = name.to_lowercase();
-        match entries.iter().find(|entry| entry.value == lower) {
+        let entry = entries
+            .iter()
+            .find(|entry| entry.value == lower && !is_always_destructive(&lower));
+        match entry {
             Some(entry) => waivers.push(Waiver {
                 subcommand: (*name).clone(),
                 file: entry.file.clone(),
@@ -296,6 +301,14 @@ pub(crate) fn read_not_destructive(
 
 fn why_not_applied(entry: &Sourced<String>, listed: &[String]) -> Option<String> {
     let lower = entry.value.to_lowercase();
+    if is_always_destructive(&lower) {
+        return Some(format!(
+            "`{}` in {} was refused: `{lower}` always reads as destructive, so a declaration \
+             cannot cover it",
+            entry.value,
+            entry.cite(NOT_DESTRUCTIVE_KEY)
+        ));
+    }
     let reason = if !listed.iter().any(|name| name.to_lowercase() == lower) {
         "the help lists no such subcommand".to_string()
     } else if entry.value != lower {
@@ -708,13 +721,13 @@ mod tests {
 
     #[test]
     fn a_lowercase_entry_waives_a_subcommand_the_help_spells_in_another_case() {
-        let listed = ["Purge".to_string()];
+        let listed = ["Clean".to_string()];
         let detected: Vec<&String> = listed.iter().collect();
 
-        let read = read_not_destructive(&detected, &listed, &[declared("purge", ".anc.toml")]);
+        let read = read_not_destructive(&detected, &listed, &[declared("clean", ".anc.toml")]);
 
         assert!(read.destructive.is_empty(), "{:?}", read.destructive);
-        assert_eq!(read.waivers[0].subcommand, "Purge");
+        assert_eq!(read.waivers[0].subcommand, "Clean");
         assert!(read.unapplied.is_empty(), "{:?}", read.unapplied);
     }
 
@@ -735,15 +748,122 @@ mod tests {
         let listed = ["clean".to_string()];
         let clean = listed[0].clone();
 
-        let read = read_not_destructive(&[&clean], &listed, &[declared("Purge", "~/.anc.toml")]);
+        let read = read_not_destructive(&[&clean], &listed, &[declared("Rmdir", "~/.anc.toml")]);
 
         assert_eq!(
             read.unapplied,
             [
-                "`Purge` in ~/.anc.toml [p5].not_destructive was not applied: the help lists no \
+                "`Rmdir` in ~/.anc.toml [p5].not_destructive was not applied: the help lists no \
               such subcommand"
             ]
         );
+    }
+
+    #[test]
+    fn an_entry_for_an_always_destructive_name_is_refused_and_waives_nothing() {
+        for name in ["delete", "destroy", "purge", "wipe"] {
+            let listed = [name.to_string()];
+            let detected: Vec<&String> = listed.iter().collect();
+
+            let read = read_not_destructive(&detected, &listed, &[declared(name, ".anc.toml")]);
+
+            assert_eq!(read.destructive, [name]);
+            assert!(read.waivers.is_empty(), "{name}: {:?}", read.waivers);
+            assert_eq!(
+                read.unapplied,
+                [format!(
+                    "`{name}` in .anc.toml [p5].not_destructive was refused: `{name}` always \
+                     reads as destructive, so a declaration cannot cover it"
+                )]
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_entry_leaves_the_entry_beside_it_applied() {
+        let listed = ["clean".to_string(), "delete".to_string()];
+        let detected: Vec<&String> = listed.iter().collect();
+
+        let read = read_not_destructive(
+            &detected,
+            &listed,
+            &[
+                declared("clean", ".anc.toml"),
+                declared("delete", "~/.anc.toml"),
+            ],
+        );
+
+        assert_eq!(read.destructive, ["delete"]);
+        assert_eq!(
+            read.waivers,
+            [Waiver {
+                subcommand: "clean".into(),
+                file: ".anc.toml".into()
+            }]
+        );
+        assert_eq!(
+            read.unapplied,
+            [
+                "`delete` in ~/.anc.toml [p5].not_destructive was refused: `delete` always reads \
+                 as destructive, so a declaration cannot cover it"
+            ]
+        );
+    }
+
+    #[test]
+    fn an_always_destructive_name_is_refused_in_any_case_either_side_spells_it() {
+        let listed = ["delete".to_string()];
+        let detected: Vec<&String> = listed.iter().collect();
+        let read = read_not_destructive(&detected, &listed, &[declared("Delete", ".anc.toml")]);
+        assert_eq!(read.destructive, ["delete"]);
+        assert_eq!(
+            read.unapplied,
+            [
+                "`Delete` in .anc.toml [p5].not_destructive was refused: `delete` always reads as \
+                 destructive, so a declaration cannot cover it"
+            ]
+        );
+
+        let listed = ["Purge".to_string()];
+        let detected: Vec<&String> = listed.iter().collect();
+        let read = read_not_destructive(&detected, &listed, &[declared("purge", ".anc.toml")]);
+        assert_eq!(read.destructive, ["Purge"]);
+        assert!(read.waivers.is_empty(), "{:?}", read.waivers);
+    }
+
+    #[test]
+    fn an_always_destructive_entry_the_help_does_not_list_is_still_refused() {
+        let listed = ["clean".to_string()];
+        let clean = listed[0].clone();
+
+        let read = read_not_destructive(&[&clean], &listed, &[declared("wipe", ".anc.toml")]);
+
+        assert_eq!(read.destructive, ["clean"]);
+        assert_eq!(
+            read.unapplied,
+            [
+                "`wipe` in .anc.toml [p5].not_destructive was refused: `wipe` always reads as \
+                 destructive, so a declaration cannot cover it"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_longer_name_holding_an_always_destructive_word_stays_open_to_a_declaration() {
+        for name in ["delete-key", "deletefile", "purge-cache"] {
+            let listed = [name.to_string()];
+            let detected: Vec<&String> = listed.iter().collect();
+
+            let read = read_not_destructive(&detected, &listed, &[declared(name, ".anc.toml")]);
+
+            assert!(
+                read.destructive.is_empty(),
+                "{name}: {:?}",
+                read.destructive
+            );
+            assert_eq!(read.waivers[0].subcommand, name);
+            assert!(read.unapplied.is_empty(), "{name}: {:?}", read.unapplied);
+        }
     }
 
     /// A tool with `clean` (no confirmation flag) and `delete --force`.

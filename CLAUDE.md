@@ -296,6 +296,10 @@ Existing field semantics:
 - `read_not_destructive` (`src/audits/behavioral/force_yes.rs`) applies an entry that is lowercase and names a
   subcommand the top-level help lists. Any other entry is not applied, and the row's evidence says why; it never changes
   a status on its own. An entry for a listed subcommand whose name does not read as destructive has nothing to waive.
+- `ALWAYS_DESTRUCTIVE` (`src/audits/behavioral/destructive_ops.rs`) holds `delete`, `destroy`, `purge`, and `wipe`, which
+  P5 says a declaration cannot cover. An entry for one is refused, in any case and whether or not the help lists it, so
+  the subcommand stays in the destructive set and the row's evidence names the entry. It compares the whole name, so
+  `delete-key` stays open to a declaration.
 - `AuditResultView.waivers` mirrors the carrier with `skip_serializing_if = "Vec::is_empty"`: absent from every row
   without a waiver, on any status. The carrier sits on `Mitigation` rather than as a new `AuditResult` field because
   every `Audit::run()` builds that struct literally. `evidence` on the variant is the Pass row's prose, and text mode

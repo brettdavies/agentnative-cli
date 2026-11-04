@@ -301,8 +301,6 @@ pub struct HandlerContext {
     pub mcp_sign_in: Option<Arc<SignInResolver>>,
     /// The per-audit deadline.
     pub deadline: Instant,
-    /// Whether checks that query external DNS resolvers may run.
-    pub external_dns: bool,
     /// The target's locality class, when it could be classified; nested
     /// probes must stay within it.
     pub target_locality: Option<Locality>,

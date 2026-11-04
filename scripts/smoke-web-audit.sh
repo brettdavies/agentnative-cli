@@ -23,7 +23,7 @@ readonly BINARY="${1:-target/release/anc}"
 readonly BUDGET_SECONDS=30
 
 if [[ ! -x "$BINARY" ]]; then
-  printf 'error: %s not found or not executable; run "cargo build --release --features web" first\n' "$BINARY" >&2
+  printf 'error: %s not found or not executable; run "cargo build --release" first\n' "$BINARY" >&2
   exit 2
 fi
 for tool in python3 jaq openssl; do

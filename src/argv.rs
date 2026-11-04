@@ -130,10 +130,8 @@ where
     };
     let inject_audit = |args: Vec<OsString>| -> Vec<OsString> { inject(args, "audit") };
     // A positional token that reads as a network target routes to `web`
-    // instead: a strict grammar (explicit scheme, explicit port, or a
-    // TLD-shaped dot-bearing token with no path separator) that an
-    // existing path always wins, so a filename typo stays on the offline
-    // audit path and never opens a connection.
+    // instead: a strict grammar (`web_audit::target` states it) that an
+    // existing path always wins.
     // Without the `web` feature there is no `web` subcommand, so every
     // token routes to `audit`.
     let inject_for = |args: Vec<OsString>, token: &str| -> Vec<OsString> {

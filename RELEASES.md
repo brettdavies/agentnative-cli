@@ -98,14 +98,17 @@ The rules cover only the surfaces § What the contract is names.
 
 anc's public API is its machine contract:
 
-- **Invocation:** the subcommands (`audit`, `emit`, `skill`, `completions`, and `web` in a build with the `web`
-  feature), their flags and positional forms, the bare `anc <path>` form that runs `audit`, and every environment
-  variable `anc --help` lists.
+- **Invocation:** the subcommands (`audit`, `emit`, `skill`, `completions`, and `web`), their flags and positional
+  forms, the bare `anc <path>` form that runs `audit`, the bare `anc <network target>` form that runs `web` under the
+  rule in [README § Auditing a Website](./README.md#auditing-a-website), and every environment variable `anc --help`
+  lists. A `--no-default-features` build leaves out `web`, its `anc emit web-*` readers, and that second bare form.
 - **Exit codes:** the table in [`AGENTS.md`](./AGENTS.md#exit-codes).
 - **Structured output:** the scorecard `--output json` prints, as `schema/scorecard.schema.json` describes it and
   `anc emit schema` prints it; the error envelope `--output json` writes to stderr, with its closed `reason` and
-  `next_step.action` sets ([README § Errors under `--output json`](./README.md#errors-under---output-json)); and the
-  `coverage/matrix.json` that `anc emit coverage-matrix` writes.
+  `next_step.action` sets ([README § Errors under `--output json`](./README.md#errors-under---output-json)); the
+  `warning: <code>: <message>` form and closed code set of a web run's stderr warnings
+  ([README § Auditing a Website](./README.md#auditing-a-website)); and the `coverage/matrix.json` that
+  `anc emit coverage-matrix` writes.
 - **Identifiers:** the requirement IDs (`p{N}-{level}-{key}`) and audit IDs a scorecard carries, and the four
   `--audit-profile` values.
 - **Configuration:** the `.anc.toml` settings [README § Configuration](./README.md#configuration-anctoml) documents.
@@ -391,12 +394,6 @@ The script opens a PR against `dev`; merge it once CI is green. The postflight b
 squash-merged histories share no recent ancestry, so the merge conflicts on every file both sides touched, and a direct
 push bypasses `dev`'s required checks.
 
-**A release that withholds `anc web` takes a hand backport instead.** Until the web audit ships, the release branch
-strips the web code and the release changelog leaves out the `(web)`-scoped PRs. The script would read every stripped
-web file as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three
-bookkeeping files from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
-`chore(release): sync dev after v<version>`, the subject the postflight backport gate looks for.
-
 The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.
 
 After it merges, confirm the branches actually converged. This is what catches a contested path nobody resolved:
@@ -532,9 +529,17 @@ cargo update -p webpki-roots && git diff Cargo.lock | rg webpki-roots
 #    build cannot run, and `anc web` flags a score as non-comparable when a run hits
 #    one, so read the diff for new kinds before taking the bump.
 bash scripts/sync-web-audit.sh && git diff src/web_audit/vendored/
+
+# 6. Refresh the top-level domain list bare `anc <name>` routes against. A stale copy
+#    fails safe, because a new domain stays offline and `anc web <name>` reaches it,
+#    but a release is when a user would next see the new one route. Refresh Linguist's
+#    extensions with it: read the diff for a new name that is also a top-level domain,
+#    which stops routing unless `SITES_OUTNUMBER_FILES` lists it.
+bash scripts/sync-tlds.sh && git diff --stat src/web_audit/tlds-alpha-by-domain.txt
+bash scripts/sync-linguist-extensions.sh && git diff src/web_audit/linguist-extensions.txt
 ```
 
-A difference from steps 2 through 5 is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
+A difference from steps 2 through 6 is content `dev` did not carry; preflight's diff-B lists it for review, and the backport
 brings it to `dev` after the release. `scripts/release/preflight.sh mechanics` checks the `Cargo.toml` version against
 `anc --version` and the top section of `CHANGELOG.md`.
 

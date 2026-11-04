@@ -41,7 +41,7 @@ use agentnative::web_audit::emit as web_emit;
 #[cfg(feature = "web")]
 use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, run_web_audit};
 #[cfg(feature = "web")]
-use agentnative::web_audit::fetch::{NOT_HTTPS, proxy, trust};
+use agentnative::web_audit::fetch::{proxy, trust};
 #[cfg(feature = "web")]
 use agentnative::web_audit::handlers::default_handlers;
 #[cfg(feature = "web")]
@@ -53,10 +53,7 @@ use agentnative::web_audit::scorecard::to_wire_json;
 #[cfg(feature = "web")]
 use agentnative::web_audit::target as web_target;
 #[cfg(feature = "web")]
-use agentnative::web_audit::{
-    render,
-    transport::{ROOT_REJECTION_PREFIX, UreqTransport},
-};
+use agentnative::web_audit::{render, transport::UreqTransport};
 use agentnative::{anc_toml, argv, audits, color, json_error, output, skill_install};
 
 const SCORECARD_SCHEMA_JSON: &str = include_str!("../schema/scorecard.schema.json");
@@ -131,7 +128,8 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
         return Ok(0);
     }
 
-    if verbose && !quiet {
+    // JSON mode keeps stderr to one envelope, and a next step can add `--verbose` to it.
+    if verbose && !quiet && !json_mode && !json_alias {
         eprintln!(
             "verbose: anc {ANC_VERSION} starting; raw argv has {} tokens",
             raw_argv.len()
@@ -190,6 +188,7 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
             site_type,
             check,
             external_dns,
+            no_external_dns,
             no_follow,
             ca_cert,
             token_stdin,
@@ -200,9 +199,13 @@ fn run(raw_argv: Vec<std::ffi::OsString>) -> Result<i32, AppError> {
                 site_type,
                 check,
                 external_dns,
+                no_external_dns,
                 follow_declarations: !no_follow,
                 ca_cert,
                 token_stdin,
+                // Routing inserts one token, so equal lengths mean `web` was typed.
+                web_typed: argv.len() == raw_argv.len(),
+                argv: raw_argv.clone(),
                 output: if json_alias {
                     OutputFormat::Json
                 } else {
@@ -1106,13 +1109,32 @@ struct WebRun {
     site_type: Option<SiteType>,
     check: Option<String>,
     external_dns: bool,
+    no_external_dns: bool,
     follow_declarations: bool,
     ca_cert: Vec<std::path::PathBuf>,
     token_stdin: bool,
+    /// Whether the user typed `web`, rather than a bare target that argv
+    /// routing sent here. A sniffed token can be a typo, so it must not
+    /// reach for a credential.
+    web_typed: bool,
+    /// The invocation as typed, for a next step that repeats it.
+    argv: Vec<std::ffi::OsString>,
     output: OutputFormat,
     quiet: bool,
     verbose: bool,
     color: ColorChoice,
+}
+
+#[cfg(feature = "web")]
+impl WebRun {
+    fn invocation(&self) -> render::Invocation<'_> {
+        render::Invocation {
+            argv: &self.argv,
+            target: &self.target,
+            web_typed: self.web_typed,
+            quiet_env: std::env::var_os(agentnative::cli::QUIET_ENV).is_some(),
+        }
+    }
 }
 
 /// Emit a dead end: the structured envelope on stderr in JSON mode, the
@@ -1176,18 +1198,18 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         use std::io::IsTerminal as _;
         let stdin = std::io::stdin();
         let is_terminal = stdin.is_terminal();
-        match read_token(
-            run.token_stdin,
-            std::env::var_os(WEB_TOKEN_ENV),
-            &mut stdin.lock(),
-            is_terminal,
-        ) {
+        let env_token = if run.web_typed {
+            std::env::var_os(WEB_TOKEN_ENV)
+        } else {
+            None
+        };
+        match read_token(run.token_stdin, env_token, &mut stdin.lock(), is_terminal) {
             Ok(credential) => credential,
             Err(error) => return Ok(emit_web_failure(&render::token_failure(&error), json)),
         }
     };
 
-    let scheme_less = !run.target.contains("://");
+    let scheme_less = !web_target::names_a_scheme(&run.target);
     let normalized = match web_target::normalize_target(&run.target) {
         Ok(url) => url,
         Err(reason) => {
@@ -1223,6 +1245,7 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     input.site_type = run.site_type.map(Into::into);
     input.spec_version = SPEC_VERSION.to_string();
     input.external_dns = run.external_dns;
+    input.no_external_dns = run.no_external_dns;
     input.follow_declarations = run.follow_declarations;
     if show_progress {
         input.progress = Some(&mut progress);
@@ -1232,30 +1255,47 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
         RunOutcome::Unreachable {
             reason, root_error, ..
         } => {
-            // A plaintext refusal and a chain no root vouches for are their
-            // own dead ends: retrying changes neither, and each names its fix.
-            let root_error = root_error.as_deref().unwrap_or("");
-            let failure = if root_error == NOT_HTTPS {
-                render::insecure_scheme_failure(&normalized, &reason, false)
-            } else if root_error.starts_with("redirect refused: ")
-                && root_error.ends_with(": not https")
-            {
-                render::insecure_scheme_failure(&normalized, &reason, true)
-            } else if root_error.starts_with(ROOT_REJECTION_PREFIX) {
-                render::untrusted_certificate_failure(&run.target, &normalized, root_error)
-            } else {
-                render::unreachable_failure(&run.target, &normalized, defaulted_https)
-            };
+            let failure = render::no_answer_failure(
+                root_error.as_deref().unwrap_or(""),
+                &reason,
+                &run.invocation(),
+                &normalized,
+                defaulted_https,
+            );
             return Ok(emit_web_failure(&failure, json));
         }
         RunOutcome::Complete(report) => report,
     };
 
+    if !run.web_typed {
+        let mut notices = Vec::new();
+        if !run.quiet {
+            notices.push(render::routed_to_web_message(&run.invocation()));
+        }
+        // Outside the `-q` gate: a run that drops a credential with nothing said
+        // reads as a site that refused it.
+        if !run.token_stdin && std::env::var_os(WEB_TOKEN_ENV).is_some_and(|v| !v.is_empty()) {
+            notices.push(render::token_not_read_message(
+                WEB_TOKEN_ENV,
+                &run.invocation(),
+            ));
+        }
+        for notice in notices {
+            eprintln!(
+                "{}",
+                render::warning_line(render::WarningCode::RoutedToWeb, &notice)
+            );
+        }
+    }
+
     // The non-comparable note is a fact about the run, not about the
     // target, so it rides stderr in JSON mode and keeps stdout to the
     // scorecard alone.
     if json && let Some(note) = render::non_comparable_note(&report.unported) {
-        eprintln!("warning: {note}");
+        eprintln!(
+            "{}",
+            render::warning_line(render::WarningCode::NonComparable, &note)
+        );
     }
 
     if let Some(id) = run.check.as_deref() {

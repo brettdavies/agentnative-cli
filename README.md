@@ -5,10 +5,9 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT_OR_Apache--2.0-blue.svg)](#license)
 
 Audits whether your CLI follows the 8 agent-readiness principles, and whether your website is readable by the agents
-that come looking. `anc audit` scores a command-line tool; `anc web` scores an HTTP(S) target against the same 65-check
+that come looking. `anc audit` scores a command-line tool; `anc web` scores an HTTP(S) target against the same check
 registry [anc.dev](https://anc.dev) runs, from your own machine, so a localhost, private or internal site the hosted
-auditor cannot reach is auditable where it runs. `anc web` is built with the `web` cargo feature and is not in the
-released binaries; [Auditing a Website](#auditing-a-website) says how to build it.
+auditor cannot reach is auditable where it runs.
 
 `anc` dogfoods the spec it enforces. The badge above is its own live score.
 
@@ -23,9 +22,6 @@ brew install brettdavies/tap/agentnative
 # From crates.io
 cargo install agentnative
 
-# From crates.io, with `anc web` (the `web` feature; not in the released binaries)
-cargo install agentnative --features web
-
 # Pre-built binary via cargo-binstall
 cargo binstall agentnative
 
@@ -38,6 +34,11 @@ checksum the formula pins, and compiles nothing. The tap pins a checksum only af
 the release's build-provenance attestation;
 [Verifying an archive](https://github.com/brettdavies/homebrew-tap#verifying-an-archive) in the tap's README has the
 command that repeats the check.
+
+`cargo install agentnative --no-default-features` leaves out `anc web` and its networking stack: `anc --help` lists no
+`web` subcommand, the `anc emit web-*` readers are absent, and a network-shaped argument routes to `anc audit` like any
+other. The stack needs a C compiler, as the rest of the build does, plus `clang-cl` on Windows on Arm and NASM on 32-bit
+x86 Windows, so `--no-default-features` is also the way past a build failure there.
 
 Each release archive carries a build-provenance attestation and an attested SBOM, signed by the release workflow. To
 check that an archive you downloaded was built by it, from this repository:
@@ -118,7 +119,7 @@ anc . --principle 3
 # Quiet mode (warnings and failures only)
 anc . -q
 
-# Audit a website from this machine (a `--features web` build; `web` is inserted for a network target)
+# Audit a website from this machine (`web` is inserted for a network target)
 anc localhost:8787
 anc web https://anc.dev
 ```
@@ -367,14 +368,8 @@ one package that declares a binary; when several do, those audits skip and name 
 
 `anc web <target>` runs the [anc.dev](https://anc.dev) web-audit registry against a site from this machine. The hosted
 auditor refuses a target it cannot reach, which is every localhost port, every private address and every internal
-hostname; this is the same engine, the same 65 checks and the same verdicts, run from where the site is reachable. No
-runtime to install, no browser, and nothing contacted beyond the target and the hosts it declares.
-
-`anc web` is built with the `web` cargo feature, which is off by default. The Homebrew formula, the cargo-binstall and
-GitHub Release binaries, and a plain `cargo install agentnative` do not include it. Build it with
-`cargo install agentnative --features web`, or with `cargo build --features web` from a checkout. Without the feature,
-`anc --help` lists no `web` subcommand, the `anc emit web-*` readers are absent, and a network-shaped argument routes to
-`anc audit` like any other.
+hostname; this is the same engine, the same checks and the same verdicts, run from where the site is reachable. No
+runtime to install, and no browser. [What `anc web` Sends](#what-anc-web-sends) lists everything a run contacts.
 
 ```bash
 # A local dev server (a scheme-less target defaults to https, local ones included)
@@ -396,10 +391,29 @@ anc web anc.dev --output json
 anc web anc.dev --verbose
 ```
 
-A network target routes to `web` without naming it: `anc localhost:8787` and `anc anc.dev` work like `anc web …`.
-Routing requires an explicit scheme, an explicit port, or a dot-bearing token with no path separator whose last label
-reads as a top-level domain rather than a file extension. **A path that exists always wins**, so `anc ./anc.dev` audits
-the directory and `anc report.json` fails offline in milliseconds without opening a connection.
+A network target routes to `web` without naming it: `anc localhost:8787` and `anc anc.dev` work like `anc web …`. A
+bare token routes only in three forms: with an explicit scheme; with an explicit port on `localhost`, an IP address, or
+a name under `.internal`, `.home.arpa`, `.local`, or `.lan`; or, with or without a port, as a dot-bearing token with no
+path separator whose last label is a top-level domain in IANA's root zone and does not read as a file extension. The
+extensions are the ones GitHub Linguist lists plus a short list of others, less the few top-level domains where real
+sites plainly outnumber files, such as `.com` and `.org`. **A path that exists always wins**, so `anc ./anc.dev` audits
+the directory.
+
+Anything else stays offline: `anc report.json`, `anc main.go`, `anc main.rs:42`, `anc flake.nix:12`, `anc Makefile:12`,
+`anc .bashrc:12`, `anc python3.12:3`, and `anc printer.local` fail in milliseconds without opening a connection. Where
+the token could name a site, the error names `anc web <target>`, which reaches a site the grammar leaves out, such as
+`anc web example.rs`, `anc web printer.local`, or `anc web myserver:8080`.
+
+A typo can still open a connection when the last label of a missing file is a top-level domain and does not read as an
+extension, such as `notes.xyz`, with or without a line number (`Foo.xyz:12`). Pass a path that cannot read as a host
+(`anc ./notes.xyz`) or name the verb (`anc audit notes.xyz`) to keep it offline.
+
+A bare target says what it ran as. One that answers prints `warning: routed-to-web: <message>` on stderr, unless `-q` is
+set, and a bare name that ends without a scorecard says in its error that a local path by that name does not exist. Its
+next step keeps the form you typed, so a retry stays bare and sends no token. A web run's stderr warnings all take the
+form `warning: <code>: <message>`, with `non-comparable` and `routed-to-web` as the codes; `routed-to-web` also carries
+the notice that a bare target left `ANC_WEB_TOKEN` unread, which `-q` does not hide and which names the command that
+sends it.
 
 The report leads with the verdict, then the MUST misses, then the SHOULD and MAY misses. Each miss carries the fix:
 
@@ -451,7 +465,9 @@ Every probe identifies itself with the same `anc-web-audit/…` User-Agent the h
 checks whose question *is* how a site treats a named client (a bare `curl`, an AI fetcher), which send that client's
 User-Agent because that is what they measure.
 
-The audit contacts the target, the hosts the target declares, and nothing else. A declared host is one the target's
+The audit contacts the target, the hosts the target declares, and, for a public target, two public DNS-over-HTTPS
+resolvers (`cloudflare-dns.com` and `dns.google`), which receive the target's hostname. A declared host is one the
+target's
 discovery documents name off its own origin: an MCP endpoint a server card or the AI catalog names, a card document the
 catalog lists by URL, an API host or description the api-catalog anchors, or where the target's MCP path redirects its
 POSTs. An MCP endpoint on a declared host gets GETs for the documents that could confirm it (a card at
@@ -474,8 +490,11 @@ whether it presented a token (`credentialed`).
 
 The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
 for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
-in. Redirects are followed but never off the target's own class: a hop from a local target to a public host, or to a
-cloud metadata address, is refused and recorded rather than taken.
+in. `--no-external-dns` withholds the query for any target. Pass it for an internal host on a routable address, such as
+an IP-allowlisted machine behind split-horizon DNS: it classifies as public, so its hostname would otherwise reach those
+resolvers. The two flags override each other, and the last one wins. Redirects are followed but never off the target's
+own class: a hop from a local target to a public host, or to a cloud metadata address, is refused and recorded rather
+than taken.
 
 Every request is HTTPS, at every vantage, local targets included; anc sends no plaintext request. A scheme-less target
 defaults to `https`. An explicit `http://` target, or a root that redirects to `http`, ends the run as `insecure-scheme`
@@ -492,7 +511,8 @@ plaintext scores no better than a missing one: a document that redirects to `htt
 A run can present a bearer token for the audited MCP endpoint, so the rows anc.dev reports `n_a` (`auth-required`) are
 evaluated and a correctly protected server can reach a global score of 100. The token comes from the `ANC_WEB_TOKEN`
 environment variable, or from the first line of stdin with `--token-stdin`, never from an argument. Scope the variable
-to one invocation rather than exporting it:
+to one invocation rather than exporting it. Only a run that names `web` reads it: a bare `anc localhost:8787` can be a
+typo, so it sends no token and, when the target answers, says so on stderr. `--token-stdin` works in either form.
 
 ```bash
 ANC_WEB_TOKEN="$TOKEN" anc web localhost:8787
@@ -807,9 +827,11 @@ nor hurt the score.
 
 ## CLI Reference
 
-When the first non-flag argument is not a recognized subcommand, `audit` is inserted automatically. `anc .`, `anc -q .`,
-and `anc --command rg` all resolve to `anc audit …`. Bare `anc` (no arguments) still prints help and exits 2: a
-deliberate fork-bomb guard for when agentnative dogfoods itself.
+When the first non-flag argument is not a recognized subcommand, one is inserted automatically: `web` when the argument
+reads as a network target ([Auditing a Website](#auditing-a-website) states the rule), `audit` otherwise. `anc .`,
+`anc -q .`, and `anc --command rg` all resolve to `anc audit …`, and `anc anc.dev` to `anc web anc.dev`. A directory
+named `web` needs a path form, `anc ./web`. Bare `anc` (no arguments) still prints help and exits 2: a deliberate
+fork-bomb guard for when agentnative dogfoods itself.
 
 ```text
 Usage: anc audit [OPTIONS] [PATH]
@@ -876,18 +898,20 @@ Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `
 `message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
 is one of a closed set, and a newer release can add to it:
 
-| `action`      | Carries                                                                                      | Raised by                                                                                                                                            |
-| ------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`     | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert`, `empty-token`, `invalid-token`, `token-stdin-terminal`, `token-stdin-unreadable` |
-| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each | `binary-ambiguous`, `unknown-bin`                                                                                                                    |
-| `rerun`       | `command`: the same invocation without `--bin`                                               | `bin-needs-directory`                                                                                                                                |
-| `retry`       | `command`: the same `anc web` target with `--verbose`, once the site is up                   | `target-unreachable`                                                                                                                                 |
-| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts                       | `invalid-target`, `insecure-scheme`                                                                                                                  |
-| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                            | `unknown-check`                                                                                                                                      |
-| `add-ca-cert` | `template`: the same `anc web` target with `--ca-cert <FILE>`, the server CA's PEM file      | `untrusted-certificate`                                                                                                                              |
+| `action`      | Carries                                                                                                                              | Raised by                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`                                             | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert`, `empty-token`, `invalid-token`, `token-stdin-terminal`, `token-stdin-unreadable` |
+| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each                                         | `binary-ambiguous`, `unknown-bin`                                                                                                                    |
+| `rerun`       | `command`: the same invocation without `--bin`                                                                                       | `bin-needs-directory`                                                                                                                                |
+| `retry`       | `command`: the same invocation with `--verbose`, once the site is up                                                                 | `target-unreachable`                                                                                                                                 |
+| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts; for an `http` target, the same invocation on its `https` URL | `invalid-target`, `insecure-scheme`                                                                                                                  |
+| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                                                                    | `unknown-check`                                                                                                                                      |
+| `add-ca-cert` | `template`: the same invocation with `--ca-cert <FILE>`, the server CA's PEM file                                                    | `untrusted-certificate`                                                                                                                              |
 
-A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. `docs` links the
-README section that explains the error. The offending input is echoed beside the reason: `bin` for `unknown-bin` and
+A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. So a next step
+leaves out `--token-stdin`, which a printed line cannot carry and which the error's message names, and `--verbose` stays
+out while `AGENTNATIVE_QUIET` is set, because the two conflict. `docs` links the README section that explains the error.
+The offending input is echoed beside the reason: `bin` for `unknown-bin` and
 `bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
 error, where `value` is the target (the URL probed, for `target-unreachable` and `untrusted-certificate`), the `--check`
 id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or `--token-stdin` as its `argument`, and its `value`

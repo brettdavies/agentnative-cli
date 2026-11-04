@@ -413,8 +413,8 @@ runtime `rustup update` anywhere. Policy: bump only after a new stable has aged 
 
 **Hooks:** both hooks source `scripts/hooks/_lib.sh` (github-repo-setup's hook library) and report every failing step,
 not just the first. `scripts/hooks/pre-push` mirrors CI: fmt, clippy with `-Dwarnings`, test and docs for the default
-and `web` feature sets, MSRV, cargo-deny, shellcheck, shfmt, actionlint, workflow concurrency namespacing, the libc
-`#[cfg(unix)]` scan, and the Windows cross-clippy (default and `web`). It skips the cargo steps when the pushed range
+build and `--no-default-features`, MSRV, cargo-deny, shellcheck, shfmt, actionlint, workflow concurrency namespacing,
+the libc `#[cfg(unix)]` scan, and the Windows cross-clippy (both builds). It skips the cargo steps when the pushed range
 changes no cargo input, by `scripts/cargo-inputs.sh`, the classifier CI's `scope` job runs. `scripts/hooks/pre-commit`
 checks only the staged files: `cargo fmt` when a `.rs` file is staged, shellcheck, shfmt, actionlint, and markdownlint
 over the staged blobs, so the canonical config's `fix: true` never rewrites a file mid-commit. Tracked in git and

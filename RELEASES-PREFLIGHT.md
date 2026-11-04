@@ -92,8 +92,9 @@ between the sync commit before that one and this one, and leaves out every PR `C
 sync commit is the first, it reads the PRs after the newest one the previous section cites instead, and a previous
 section that cites no PR, such as hand-written notes, carries nothing over. The generated section is the complete list,
 and a breaking PR merged in that gap appears in its `### Breaking changes` rather than in the tally. No section cites a
-PR the previous release left out of its notes on purpose either, such as a `(web)` PR while `anc web` stays off `main`,
-so it comes back in this section; leave it out the same way.
+PR the previous release left out of its notes on purpose either, so it comes back in this section. Leave it out the same
+way, unless this release ships what it describes. Then its bullet stays, and any wording that says the change is held
+back comes out of that PR's own `## Changelog` block before the cut.
 
 A `!:` commit is a cross-check hint only: the PRs' changelog sections set the bump
 ([`RELEASES.md` § Versioning](./RELEASES.md#versioning)). A `!:` commit whose PR filed no `### Breaking changes` bullet

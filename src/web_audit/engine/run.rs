@@ -252,18 +252,11 @@ struct RunEnd {
     fetch: FetchHandle,
 }
 
-impl RunEnd {
-    /// Idempotent.
-    fn finish(&self) {
+impl Drop for RunEnd {
+    fn drop(&mut self) {
         self.memo.close();
         self.fetch.stop_requests();
         self.memo.join(STOP_GRACE);
-    }
-}
-
-impl Drop for RunEnd {
-    fn drop(&mut self) {
-        self.finish();
     }
 }
 
@@ -280,7 +273,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     // One memo per audit, so each distinct request goes out once.
     let memo = RequestMemo::new();
     input.fetch = input.fetch.with_memo(memo.clone());
-    let run_end = RunEnd {
+    let _run_end = RunEnd {
         memo: memo.clone(),
         fetch: input.fetch.clone(),
     };
@@ -455,7 +448,6 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         input.progress.as_deref_mut(),
     );
     let results = scheduled.results;
-    run_end.finish();
     let meta = ScorecardMeta {
         target_url: base.clone(),
         domain,

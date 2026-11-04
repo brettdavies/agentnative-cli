@@ -294,9 +294,6 @@ impl Transport for UreqTransport {
         let started = Instant::now();
         let mut attempt = 1;
         loop {
-            if self.stop.is_stopped() {
-                return Err(TransportError::Network("audit ended".to_string()));
-            }
             let outcome = self.send_once(request);
             // Only a connection-level failure is retried, and only while a
             // further attempt still fits inside this request's own budget,

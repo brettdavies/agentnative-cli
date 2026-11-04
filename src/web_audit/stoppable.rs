@@ -25,13 +25,8 @@ impl StopFlag {
         self.0.store(true, Ordering::SeqCst);
     }
 
-    /// Whether [`StopFlag::stop`] has been called.
-    pub fn is_stopped(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
-    }
-
     fn check(&self) -> Result<(), ureq::Error> {
-        if self.is_stopped() {
+        if self.0.load(Ordering::SeqCst) {
             return Err(ureq::Error::Io(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "audit ended",

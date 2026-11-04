@@ -101,7 +101,7 @@ pub fn universe_max<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::web_audit::registry::{ALTERNATIVES, AntecedentToken, CHECKS};
+    use crate::web_audit::registry::{ALTERNATIVES, CHECKS};
 
     fn universe(rows: &[(&'static str, ScorecardStatus, Option<NaReason>)]) -> f64 {
         universe_max(
@@ -136,16 +136,24 @@ mod tests {
             ("mcp-tools-list", Pass, None),
             ("mcp-auth-challenge", Pass, None),
         ]);
-        let sign_in_group: f64 = CHECKS
+        let sizes: Vec<f64> = ALTERNATIVES
             .iter()
-            .filter(|c| c.antecedent == AntecedentToken::McpAuthRequired)
-            .map(|c| ScoreConfig::default().weights.for_keyword(c.keyword))
-            .sum();
-        assert!(sign_in_group > 0.0);
+            .flat_map(|group| group.variants)
+            .map(|variant| {
+                CHECKS
+                    .iter()
+                    .filter(|c| variant.antecedents.contains(&c.antecedent))
+                    .map(|c| ScoreConfig::default().weights.for_keyword(c.keyword))
+                    .sum()
+            })
+            .collect();
+        let largest = sizes.iter().copied().fold(f64::MIN, f64::max);
+        let smallest = sizes.iter().copied().fold(f64::MAX, f64::min);
+        assert!(largest > smallest);
         assert_eq!(
             (no_mcp - open, protected, hybrid),
-            (sign_in_group, no_mcp, no_mcp),
-            "an open server drops the sign-in group; every other design counts it"
+            (largest - smallest, no_mcp, no_mcp),
+            "the open design counts less than the largest; every other design counts the largest"
         );
     }
 

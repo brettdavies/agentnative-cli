@@ -17,7 +17,7 @@ use agentnative::web_audit::registry::{
 use agentnative::web_audit::render::{RenderOptions, advisory_note, format_text, prefix_for};
 use agentnative::web_audit::score::is_scored;
 use agentnative::web_audit::scorecard::{ResultRow, ScorecardStatus, WebScorecard};
-use common::corpus::{load_cases, replay};
+use common::corpus::{Golden, load_cases, replay};
 use common::web_cli::{anc, fixture_site, host_of, stderr_of, stdout_of};
 
 #[test]
@@ -251,15 +251,17 @@ fn the_readme_exit_table_matches_the_codes_the_binary_returns() {
     }
 }
 
-/// The text report of a corpus scenario's replay, as `anc web` prints it, with
-/// the scorecard it renders.
-fn corpus_report(name: &str, verbose: bool) -> (String, WebScorecard) {
-    let case = load_cases()
+/// Each scored corpus scenario's replay: its name, its text report as `anc web`
+/// prints it, and the scorecard the report renders.
+fn corpus_reports(verbose: bool) -> Vec<(String, String, WebScorecard)> {
+    load_cases()
         .into_iter()
-        .find(|c| c.name == name)
-        .unwrap_or_else(|| panic!("no corpus scenario {name}"));
-    match replay(&case.scenario, Arc::new(default_handlers())) {
-        RunOutcome::Complete(report) => {
+        .filter(|case| matches!(case.golden, Golden::Scorecard(_)))
+        .map(|case| {
+            let RunOutcome::Complete(report) = replay(&case.scenario, Arc::new(default_handlers()))
+            else {
+                panic!("{} reported unreachable", case.name);
+            };
             let out = format_text(
                 &report,
                 RenderOptions {
@@ -268,10 +270,9 @@ fn corpus_report(name: &str, verbose: bool) -> (String, WebScorecard) {
                     verbose,
                 },
             );
-            (out, report.scorecard)
-        }
-        RunOutcome::Unreachable { reason, .. } => panic!("{name} reported unreachable: {reason}"),
-    }
+            (case.name, out, report.scorecard)
+        })
+        .collect()
 }
 
 /// A section's outline: each row as its indent and check id, each lane
@@ -367,7 +368,11 @@ fn assert_section(
         );
         let count = format!("{heading}{}", rows.len());
         assert!(
-            out.split("\n\n").any(|block| block.starts_with(&count)),
+            out.split("\n\n").any(|block| {
+                block
+                    .strip_prefix(&count)
+                    .is_some_and(|rest| rest.starts_with([' ', ')']))
+            }),
             "{count:?} heads the section:\n{out}"
         );
     }
@@ -377,60 +382,61 @@ fn is_prefixed(row: &ResultRow, prefix: &str) -> bool {
     prefix_for(row) == prefix
 }
 
-/// Whether the report shows any lane, which is why this scenario is the one read.
-fn shows_a_lane(out: &str) -> bool {
-    let category = category_name(LANE_CATEGORY).expect("the lane category has a name");
-    out.contains(&format!("  {category} · "))
-}
-
 #[test]
 fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
-    let (out, card) = corpus_report("mcp-negotiation-defects", false);
-    assert!(shows_a_lane(&out), "{out}");
-    let endpoint = card.mcp_endpoint.as_deref();
-    assert_section(&out, "Failures (", &card, |row| is_prefixed(row, "FAIL"));
-    assert_section(&out, "Warnings (", &card, |row| is_prefixed(row, "WARN"));
-    assert_section(&out, "Could not check (", &card, |row| {
-        matches!(row.status, ScorecardStatus::Error | ScorecardStatus::Skip)
-    });
-    assert_section(&out, "Advisories (", &card, |row| {
-        row.status == ScorecardStatus::Pass && advisory_note(row, endpoint).is_some()
-    });
-    // A lane's rows keep the row layout, two columns deeper.
-    for row in card.results.iter().filter(|row| lane_of(&row.id).is_some()) {
-        if is_prefixed(row, "FAIL") || is_prefixed(row, "WARN") {
-            let heading = format!(
-                "    [{}] {} ({}) ({})",
-                prefix_for(row),
-                row.label,
-                row.id,
-                row.keyword.as_str()
-            );
-            assert!(out.contains(&heading), "{heading:?}:\n{out}");
-            if let Some(evidence) = row.evidence.as_deref().and_then(|e| e.lines().next()) {
+    let (mut lane_rows, mut notes) = (0, 0);
+    for (name, out, card) in corpus_reports(false) {
+        let endpoint = card.mcp_endpoint.as_deref();
+        assert_section(&out, "Failures (", &card, |row| is_prefixed(row, "FAIL"));
+        assert_section(&out, "Warnings (", &card, |row| is_prefixed(row, "WARN"));
+        assert_section(&out, "Could not check (", &card, |row| {
+            matches!(row.status, ScorecardStatus::Error | ScorecardStatus::Skip)
+        });
+        assert_section(&out, "Advisories (", &card, |row| {
+            row.status == ScorecardStatus::Pass && advisory_note(row, endpoint).is_some()
+        });
+        // A lane's rows keep the row layout, two columns deeper.
+        for row in card.results.iter().filter(|row| lane_of(&row.id).is_some()) {
+            if is_prefixed(row, "FAIL") || is_prefixed(row, "WARN") {
+                lane_rows += 1;
+                let heading = format!(
+                    "    [{}] {} ({}) ({})",
+                    prefix_for(row),
+                    row.label,
+                    row.id,
+                    row.keyword.as_str()
+                );
+                assert!(out.contains(&heading), "{name}: {heading:?}:\n{out}");
+                if let Some(evidence) = row.evidence.as_deref().and_then(|e| e.lines().next()) {
+                    assert!(
+                        out.contains(&format!("{heading}\n           {evidence}")),
+                        "{name}: {heading:?}:\n{out}"
+                    );
+                }
+            }
+            if row.status == ScorecardStatus::Pass
+                && let Some(note) = advisory_note(row, endpoint)
+            {
+                notes += 1;
                 assert!(
-                    out.contains(&format!("{heading}\n           {evidence}")),
-                    "{heading:?}:\n{out}"
+                    out.contains(&format!("\n           Note: {note}")),
+                    "{name}: {note:?}:\n{out}"
                 );
             }
         }
-        if let Some(note) = advisory_note(row, endpoint) {
-            assert!(
-                out.contains(&format!("\n           Note: {note}")),
-                "{note:?}:\n{out}"
-            );
-        }
     }
+    assert!(lane_rows > 0, "no corpus scenario misses a lane row");
+    assert!(notes > 0, "no corpus scenario carries an advisory");
 }
 
 #[test]
 fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
-    let (out, card) = corpus_report("mcp-negotiation-defects", true);
-    assert!(shows_a_lane(&out), "{out}");
-    assert_section(&out, "Passed (", &card, |row| {
-        row.status == ScorecardStatus::Pass
-    });
-    assert_section(&out, "Not applicable (", &card, |row| {
-        row.status == ScorecardStatus::NA
-    });
+    for (_, out, card) in corpus_reports(true) {
+        assert_section(&out, "Passed (", &card, |row| {
+            row.status == ScorecardStatus::Pass
+        });
+        assert_section(&out, "Not applicable (", &card, |row| {
+            row.status == ScorecardStatus::NA
+        });
+    }
 }

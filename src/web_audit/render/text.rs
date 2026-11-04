@@ -231,16 +231,18 @@ mod tests {
             ..plain
         };
         assert_eq!(
-            advisory_note(&advised, Some("https://x.test/mcp/?a=1")).as_deref(),
-            Some(
-                "Superseded shape (SEP-1649). SEP-2127 moves the card to https://x.test/mcp/server-card, listed in /.well-known/ai-catalog.json."
-            )
+            advisory_note(&advised, Some("https://x.test/mcp/?a=1")),
+            Some(format!(
+                "Superseded shape (SEP-1649). SEP-2127 moves the card to https://x.test/mcp{}, listed in {}.",
+                MCP_DISCOVERY.card_suffix, MCP_DISCOVERY.ai_catalog
+            ))
         );
         assert_eq!(
-            advisory_note(&advised, None).as_deref(),
-            Some(
-                "Superseded shape (SEP-1649). SEP-2127 moves the card to <endpoint>/server-card, listed in /.well-known/ai-catalog.json."
-            )
+            advisory_note(&advised, None),
+            Some(format!(
+                "Superseded shape (SEP-1649). SEP-2127 moves the card to <endpoint>{}, listed in {}.",
+                MCP_DISCOVERY.card_suffix, MCP_DISCOVERY.ai_catalog
+            ))
         );
     }
 

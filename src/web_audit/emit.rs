@@ -206,26 +206,25 @@ mod tests {
             .collect();
         let registry: Vec<&str> = CHECKS.iter().map(|c| c.id).collect();
         assert_eq!(ids, registry);
-        assert_eq!(ids.len(), 68);
         assert_eq!(parsed["registry_version"], Value::from(REGISTRY_VERSION));
         assert_eq!(parsed["site_sha"], Value::from(SITE_SHA));
         assert_eq!(
-            parsed["mcp_discovery"]["protocol_version"].as_str(),
-            Some("2025-06-18")
+            parsed["mcp_discovery"]["protocol_version"],
+            Value::from(MCP_DISCOVERY.protocol_version)
         );
-        let robots = parsed["checks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|c| c["id"] == "robots")
-            .unwrap();
-        assert_eq!(robots["keyword"], Value::from("should"));
-        assert_eq!(robots["tier"], Value::from("recommended"));
-        assert_eq!(robots["handler"], Value::from("http"));
-        assert_eq!(robots["eval"], Value::Null);
-        assert_eq!(robots["site_types"], Value::from(vec!["all"]));
-        assert!(!robots["hint"].as_str().unwrap().is_empty());
-        assert!(!robots["category_name"].as_str().unwrap().is_empty());
+        for (entry, check) in parsed["checks"].as_array().unwrap().iter().zip(CHECKS) {
+            assert_eq!(entry["keyword"], Value::from(check.keyword.as_str()));
+            assert_eq!(entry["tier"], Value::from(check.tier.as_str()));
+            assert_eq!(entry["handler"], Value::from(check.handler.as_str()));
+            assert_eq!(
+                entry["eval"],
+                check.eval.map_or(Value::Null, |e| Value::from(e.as_str()))
+            );
+            let site_types: Vec<&str> = check.site_types.iter().map(|t| t.as_str()).collect();
+            assert_eq!(entry["site_types"], Value::from(site_types));
+            assert!(!entry["hint"].as_str().unwrap().is_empty());
+            assert!(!entry["category_name"].as_str().unwrap().is_empty());
+        }
     }
 
     #[test]

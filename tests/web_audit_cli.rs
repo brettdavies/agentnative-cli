@@ -161,13 +161,30 @@ fn the_declared_site_type_scopes_the_run() {
 #[test]
 fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
     let server = fixture_site();
-    // The sniff routes a host:port token to `web`.
-    anc()
-        .args([&host_of(&server), "--check", "llms-txt"])
+    // The sniff routes a host:port token to `web`, and says so on stderr.
+    let host = host_of(&server);
+    let assert = anc()
+        .args([&host, "--check", "llms-txt"])
         .assert()
         .code(0)
         .stdout(predicates_str("llms-txt\tpass\t"));
     assert!(!server.hits().is_empty());
+    let stderr = stderr_of(assert.get_output());
+    assert!(
+        stderr.contains(&format!(
+            "warning: routed-to-web: `anc {host} --check llms-txt` ran as \
+             `anc web {host} --check llms-txt`"
+        )),
+        "{stderr}"
+    );
+
+    // A run that names `web` has nothing to say about routing.
+    let assert = anc()
+        .args(["web", &host, "--check", "llms-txt"])
+        .assert()
+        .code(0);
+    let stderr = stderr_of(assert.get_output());
+    assert!(!stderr.contains("routed-to-web"), "{stderr}");
 
     // A dot-bearing filename that does not exist fails through the audit
     // path with no network activity at all.
@@ -179,6 +196,17 @@ fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
         stderr_of(assert.get_output())
     );
     assert!(probe.hits().is_empty());
+
+    // So does a name whose last label is no top-level domain, and a
+    // `file:line` reference, which the port grammar would otherwise take.
+    for token in ["anc-web-audit-missing.go", "anc-web-audit-missing.rs:42"] {
+        let assert = anc().arg(token).assert().code(2);
+        assert!(
+            stderr_of(assert.get_output()).contains("path does not exist"),
+            "{token}: {}",
+            stderr_of(assert.get_output())
+        );
+    }
 
     // An explicit path form routes to audit even when the name is
     // URL-shaped.

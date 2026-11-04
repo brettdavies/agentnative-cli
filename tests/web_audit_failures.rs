@@ -43,7 +43,7 @@ fn an_unreachable_target_names_the_problem_the_cause_and_the_next_command() {
     assert_eq!(envelope["next_step"]["action"], Value::from("retry"));
     assert_eq!(
         envelope["next_step"]["command"],
-        Value::from("anc web 127.0.0.1:9 --verbose")
+        Value::from("anc web 127.0.0.1:9 --output json --verbose")
     );
     assert!(envelope["next_step"]["docs"].as_str().is_some());
     assert!(
@@ -98,6 +98,19 @@ fn an_http_target_ends_unreachable_before_any_request() {
     assert_eq!(envelope["kind"], Value::from("runtime"));
     assert_eq!(envelope["error"], Value::from("insecure-scheme"));
     assert_eq!(envelope["value"], Value::from(target.as_str()));
+    let https = target.replacen("http://", "https://", 1);
+    assert_eq!(
+        envelope["next_step"]["command"],
+        Value::from(format!("anc web {https} --output json"))
+    );
+
+    // A bare target keeps its form, so the next step reads no token either.
+    let assert = anc().args([&target, "--output", "json"]).assert().code(3);
+    let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+    assert_eq!(
+        envelope["next_step"]["command"],
+        Value::from(format!("anc {https} --output json"))
+    );
     assert_eq!(envelope["next_step"]["action"], Value::from("fix-target"));
     assert!(server.hits().is_empty(), "no plaintext request may go out");
 }
@@ -204,7 +217,7 @@ fn the_web_failure_envelopes_pin_their_bytes() {
         stderr(&["web", "127.0.0.1:9", "--output", "json"]),
         format!(
             "{}{docs}{}\n",
-            r#"{"kind":"runtime","error":"target-unreachable","message":"https://127.0.0.1:9/ did not answer any probe","exit_code":3,"next_step":{"action":"retry","command":"anc web 127.0.0.1:9 --verbose","docs":""#,
+            r#"{"kind":"runtime","error":"target-unreachable","message":"https://127.0.0.1:9/ did not answer any probe","exit_code":3,"next_step":{"action":"retry","command":"anc web 127.0.0.1:9 --output json --verbose","docs":""#,
             r#""},"argument":"<TARGET>","value":"https://127.0.0.1:9/"}"#,
         )
     );
@@ -242,6 +255,141 @@ fn a_retry_command_quotes_a_target_a_shell_would_split() {
     let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
     assert_eq!(
         envelope["next_step"]["command"],
-        Value::from("anc web 'https://127.0.0.1:9/?a=1&b=2' --verbose")
+        Value::from("anc web 'https://127.0.0.1:9/?a=1&b=2' --output json --verbose")
+    );
+}
+
+#[test]
+fn a_bare_port_form_that_fails_keeps_its_retry_and_one_envelope() {
+    let assert = anc()
+        .args(["127.0.0.1:9", "--output", "json"])
+        .env("ANC_WEB_TOKEN", "fixture-token")
+        .assert()
+        .code(3);
+    // The whole of stderr parses: a notice ahead of the envelope would break it.
+    let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+    assert_eq!(envelope["error"], Value::from("target-unreachable"));
+    assert_eq!(envelope["next_step"]["action"], Value::from("retry"));
+    assert_eq!(
+        envelope["next_step"]["command"],
+        Value::from("anc 127.0.0.1:9 --output json --verbose")
+    );
+}
+
+#[test]
+fn a_failed_run_prints_no_password_from_its_target() {
+    for target in [
+        "https://user:secret@127.0.0.1:9/",
+        // No scheme, so the URL it runs as has to supply one.
+        "user:secret@127.0.0.1:9",
+        // Unreadable, so nothing parsed it.
+        "https://user:secret@127.0.0.1:99999/",
+        "ftp://user:secret@127.0.0.1/",
+        // The password holds a delimiter, or a `://` follows it.
+        "https://user:se/secret@127.0.0.1:9/",
+        "user:secret@127.0.0.1:9/?u=http://x",
+        // One slash, so a defaulted scheme would read the password as a path.
+        "https:/user:secret@127.0.0.1:9",
+    ] {
+        for args in [vec!["web", target], vec!["web", target, "--output", "json"]] {
+            let assert = anc().args(&args).assert().code(3);
+            let err = stderr_of(assert.get_output());
+            assert!(!err.contains("secret"), "{err}");
+        }
+    }
+}
+
+#[test]
+fn a_missing_path_prints_no_password() {
+    for target in [
+        "user:secret@127.0.0.1:9",
+        "https://user:secret@127.0.0.1:9",
+        "https:/user:secret@127.0.0.1:9",
+        "me@corp.com:secret@127.0.0.1:9",
+    ] {
+        let assert = anc().args(["audit", target]).assert().code(2);
+        let err = stderr_of(assert.get_output());
+        assert!(err.contains("path does not exist"), "{err}");
+        assert!(!err.contains("secret"), "{err}");
+    }
+}
+
+#[test]
+fn a_flag_the_other_verb_declares_says_which_verb_the_token_could_mean() {
+    let message = |args: &[&str]| {
+        let assert = anc().args(args).assert().code(2);
+        let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+        envelope["message"].as_str().unwrap().to_string()
+    };
+    let to_audit = message(&[
+        "anc-web-audit.corp",
+        "--no-external-dns",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        to_audit.contains("if it names a website, `anc web anc-web-audit.corp` audits it"),
+        "{to_audit}"
+    );
+    let to_web = message(&["anc-web-audit.dev", "--principle", "2", "--output", "json"]);
+    assert!(
+        to_web.contains("if it names a path, `anc audit ./anc-web-audit.dev` audits it"),
+        "{to_web}"
+    );
+    let unrelated = message(&["anc-web-audit.corp", "--no-such-flag", "--output", "json"]);
+    assert!(!unrelated.contains("anc web"), "{unrelated}");
+}
+
+#[test]
+fn a_url_in_a_scheme_less_targets_query_is_not_its_scheme() {
+    let assert = anc()
+        .args(["web", "127.0.0.1:9/?next=https://x", "--output", "json"])
+        .assert()
+        .code(3);
+    let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+    assert_eq!(envelope["error"], Value::from("target-unreachable"));
+}
+
+/// `next_step.command` from a failed run, run as printed: still exit 3, with the
+/// same variable and stdin in place, rather than a usage error.
+fn a_retry_runs(args: &[&str], quiet_env: Option<&str>) -> String {
+    let run = |args: Vec<&str>| {
+        let mut command = anc();
+        command.args(args).write_stdin("token\n");
+        if let Some(value) = quiet_env {
+            command.env("AGENTNATIVE_QUIET", value);
+        }
+        command.assert().code(3)
+    };
+    let assert = run(args.to_vec());
+    let envelope: Value = serde_json::from_str(stderr_of(assert.get_output()).trim()).unwrap();
+    let printed = envelope["next_step"]["command"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let again = run(printed.split_whitespace().skip(1).collect());
+    let stderr = stderr_of(again.get_output());
+    let _: Value = serde_json::from_str(stderr.trim())
+        .unwrap_or_else(|e| panic!("stderr is not one envelope ({e}): {stderr}"));
+    printed
+}
+
+#[test]
+fn a_retry_runs_as_printed() {
+    let target = "127.0.0.1:9";
+    for value in ["1", "0", ""] {
+        assert_eq!(
+            a_retry_runs(&["web", target, "--output", "json"], Some(value)),
+            "anc web 127.0.0.1:9 --output json",
+            "AGENTNATIVE_QUIET={value:?}"
+        );
+    }
+    assert_eq!(
+        a_retry_runs(&["web", "--output", "json", "--", target], None),
+        "anc web --output json --verbose -- 127.0.0.1:9"
+    );
+    assert_eq!(
+        a_retry_runs(&["web", target, "--token-stdin", "--output", "json"], None),
+        "anc web 127.0.0.1:9 --output json --verbose"
     );
 }

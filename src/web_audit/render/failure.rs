@@ -6,11 +6,16 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use super::exit::{EXIT_COULD_NOT_CHECK, EXIT_FAILURES};
+use super::invocation::Invocation;
+use super::rows::terminal_safe;
 use crate::argv::format_invocation;
 use crate::json_error::NextStep;
 use crate::spawn_env::WEB_TOKEN_ENV;
 use crate::web_audit::credential::{TokenError, TokenSource};
+use crate::web_audit::fetch::NOT_HTTPS;
 use crate::web_audit::fetch::trust::CaCertError;
+use crate::web_audit::target::{bare_name_path_form, redact_userinfo, web_command};
+use crate::web_audit::transport::ROOT_REJECTION_PREFIX;
 
 /// A run that ended without a scorecard, and what to do about it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,23 +44,65 @@ const CHECK_ARGUMENT: &str = "--check <ID>";
 /// The `--ca-cert` flag, as clap names it.
 const CA_CERT_ARGUMENT: &str = "--ca-cert <FILE>";
 /// The `--token-stdin` flag, as clap names it.
-const TOKEN_STDIN_ARGUMENT: &str = "--token-stdin";
+pub(super) const TOKEN_STDIN_ARGUMENT: &str = "--token-stdin";
 
-/// `anc web` with `args`, shell-quoted so the line runs as printed.
-fn web_command(args: &[&str]) -> String {
-    let argv: Vec<OsString> = ["anc", "web"]
+/// `anc audit` on the path a bare name would be if it is not a host, or `None`
+/// for a token that names a network target outright.
+pub(super) fn audit_path_command(token: &str) -> Option<String> {
+    let path = bare_name_path_form(token)?;
+    let argv: Vec<OsString> = ["anc", "audit", path.as_str()]
         .iter()
-        .chain(args)
         .map(OsString::from)
         .collect();
-    format_invocation(&argv)
+    Some(format_invocation(&argv))
+}
+
+/// The failure a run ends on when its target gave nothing to score, chosen by
+/// the engine's root error. A plaintext refusal and a chain no root vouches for
+/// are their own dead ends: retrying changes neither, and each names its fix.
+/// A sniffed bare name can be a mistyped path, and the message is what an agent
+/// reads in JSON mode, so it says that there.
+#[must_use]
+pub fn no_answer_failure(
+    root_error: &str,
+    reason: &str,
+    invocation: &Invocation<'_>,
+    normalized: &str,
+    defaulted_https: bool,
+) -> Failure {
+    let typed = redact_userinfo(invocation.target);
+    let redirected =
+        root_error.starts_with("redirect refused: ") && root_error.ends_with(": not https");
+    let mut failure = if root_error == NOT_HTTPS {
+        let https = normalized.replacen("http://", "https://", 1);
+        insecure_scheme_failure(normalized, reason, Some(invocation.on(&https)))
+    } else if redirected {
+        insecure_scheme_failure(normalized, reason, None)
+    } else if root_error.starts_with(ROOT_REJECTION_PREFIX) {
+        untrusted_certificate_failure(normalized, root_error, invocation.ca_cert_template(&typed))
+    } else {
+        unreachable_failure(normalized, defaulted_https, invocation.retry(&typed))
+    };
+    if !invocation.web_typed && bare_name_path_form(&typed).is_some() {
+        let _ = write!(
+            failure.message,
+            "; if you meant a local path, {typed} does not exist"
+        );
+    }
+    if invocation.gave_token_stdin() && !redirected {
+        failure.message.push_str(
+            "; the next step leaves out --token-stdin, because a printed command cannot carry \
+             stdin",
+        );
+    }
+    failure
 }
 
 /// The target answered nothing. The engine's reason is the hosted
 /// auditor's wording, which speaks for its own vantage point, so the
 /// local run says what is true here instead: nothing on this machine's
 /// network path answered.
-pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool) -> Failure {
+fn unreachable_failure(normalized: &str, defaulted_https: bool, retry: String) -> Failure {
     let mut hints = vec![format!(
         "no HTTP response from {normalized}, on the root fetch or on any MCP discovery probe"
     )];
@@ -71,7 +118,7 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
         slug: "target-unreachable",
         message: format!("{normalized} did not answer any probe"),
         hints,
-        next_step: NextStep::retry(web_command(&[token, "--verbose"])),
+        next_step: NextStep::retry(retry),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
@@ -81,7 +128,7 @@ pub fn unreachable_failure(token: &str, normalized: &str, defaulted_https: bool)
 /// The target answered with a certificate chain no root in the trust set
 /// vouches for. Nothing was sent past the handshake, and retrying changes
 /// nothing; trusting the server's CA does.
-pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &str) -> Failure {
+fn untrusted_certificate_failure(normalized: &str, evidence: &str, template: String) -> Failure {
     Failure {
         slug: "untrusted-certificate",
         message: format!("{normalized} presented a certificate chain this run does not trust"),
@@ -92,7 +139,7 @@ pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &s
              which a local or private target also trusts"
                 .to_string(),
         ],
-        next_step: NextStep::add_ca_cert(format!("{} --ca-cert <FILE>", web_command(&[token]))),
+        next_step: NextStep::add_ca_cert(template),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
@@ -101,9 +148,15 @@ pub fn untrusted_certificate_failure(token: &str, normalized: &str, evidence: &s
 
 /// The target is `http`, or its root redirects to `http`: the run ends
 /// before any plaintext request, with the engine's no-plaintext reason as
-/// the message.
-pub fn insecure_scheme_failure(normalized: &str, reason: &str, redirected: bool) -> Failure {
-    let cause = if redirected {
+/// the message. `https_command` is the same command on the `https` URL, for
+/// an `http` target; a root that redirects to `http` has no form of the
+/// command that gets past it.
+fn insecure_scheme_failure(
+    normalized: &str,
+    reason: &str,
+    https_command: Option<String>,
+) -> Failure {
+    let cause = if https_command.is_none() {
         "the root redirects https to http; serve the site over https end to end"
     } else {
         "anc web sends HTTPS only, local targets included: serve the site over TLS and audit \
@@ -118,7 +171,7 @@ pub fn insecure_scheme_failure(normalized: &str, reason: &str, redirected: bool)
              CA in the OS trust store"
                 .to_string(),
         ],
-        next_step: NextStep::fix_target(web_command(&["--help"])),
+        next_step: NextStep::fix_target(https_command.unwrap_or_else(|| web_command(&["--help"]))),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
         value: normalized.to_string(),
@@ -146,9 +199,10 @@ pub fn ca_cert_failure(path: &Path, reason: &CaCertError) -> Failure {
 
 /// The target could not be read as an http(s) URL at all.
 pub fn invalid_target_failure(token: &str, reason: &str) -> Failure {
+    let shown = redact_userinfo(token);
     Failure {
         slug: "invalid-target",
-        message: format!("cannot audit {token}: {reason}"),
+        message: format!("cannot audit {shown}: {reason}"),
         hints: vec![
             "pass a URL or a host, such as `anc web localhost:8787` or `anc web https://anc.dev`"
                 .to_string(),
@@ -156,7 +210,7 @@ pub fn invalid_target_failure(token: &str, reason: &str) -> Failure {
         next_step: NextStep::fix_target(web_command(&["--help"])),
         exit_code: EXIT_COULD_NOT_CHECK,
         argument: TARGET_ARGUMENT,
-        value: token.to_string(),
+        value: shown,
     }
 }
 
@@ -236,14 +290,15 @@ impl Failure {
 }
 
 /// The text rendering of a failure: the problem, then the cause and the
-/// next thing to try, then the code and what earned it.
+/// next thing to try, then the code and what earned it. A root error can quote what
+/// the site sent, so each field is filtered for the terminal.
 pub fn format_failure(failure: &Failure) -> String {
-    let mut out = format!("error: {}\n", failure.message);
+    let mut out = format!("error: {}\n", terminal_safe(&failure.message));
     for hint in &failure.hints {
-        let _ = writeln!(out, "  {hint}");
+        let _ = writeln!(out, "  {}", terminal_safe(hint));
     }
     if let Some(command) = &failure.next_step.command {
-        let _ = writeln!(out, "  next: {command}");
+        let _ = writeln!(out, "  next: {}", terminal_safe(command));
     }
     let _ = writeln!(
         out,
@@ -267,21 +322,268 @@ fn failure_meaning(exit_code: i32) -> &'static str {
 mod tests {
     use super::*;
 
+    fn typed(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
+    }
+
+    fn command(failure: &Failure) -> String {
+        failure.next_step.command.clone().unwrap_or_default()
+    }
+
+    /// The failure an invocation ends on: `root_error`, with `argv`'s first word
+    /// after the program deciding whether `web` was typed.
+    fn ended(root_error: &str, target: &str, normalized: &str, argv: &[&str]) -> Failure {
+        let argv = typed(argv);
+        no_answer_failure(
+            root_error,
+            "the reason",
+            &Invocation {
+                argv: &argv,
+                target,
+                web_typed: argv[1] == "web",
+                quiet_env: false,
+            },
+            normalized,
+            !target.contains("://"),
+        )
+    }
+
     #[test]
     fn a_retry_command_quotes_a_target_a_shell_would_split() {
-        let failure = unreachable_failure(
-            "http://127.0.0.1:9/?a=1&b=2",
-            "http://127.0.0.1:9/?a=1&b=2",
+        let target = "http://127.0.0.1:9/?a=1&b=2";
+        let failure = ended("refused", target, target, &["anc", "web", target]);
+        assert_eq!(
+            command(&failure),
+            "anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose"
+        );
+    }
+
+    #[test]
+    fn no_answer_picks_the_failure_from_the_root_error_and_how_the_target_arrived() {
+        let pick = |root_error: &str, target: &str, normalized: &str, web_typed: bool| {
+            if web_typed {
+                ended(root_error, target, normalized, &["anc", "web", target])
+            } else {
+                ended(root_error, target, normalized, &["anc", target])
+            }
+        };
+        const PATH_READING: &str = "if you meant a local path, missing.dev does not exist";
+
+        let sniffed = pick("refused", "missing.dev", "https://missing.dev/", false);
+        assert_eq!(sniffed.slug, "target-unreachable");
+        assert!(
+            sniffed.message.contains(PATH_READING),
+            "{}",
+            sniffed.message
+        );
+        assert_eq!(command(&sniffed), "anc missing.dev --verbose");
+
+        let named = pick("refused", "missing.dev", "https://missing.dev/", true);
+        assert!(!named.message.contains("local path"), "{}", named.message);
+        assert_eq!(command(&named), "anc web missing.dev --verbose");
+
+        let port = pick(
+            "refused",
+            "localhost:8787",
+            "https://localhost:8787/",
             false,
         );
-        assert_eq!(
-            failure.next_step.command.as_deref(),
-            Some("anc web 'http://127.0.0.1:9/?a=1&b=2' --verbose")
+        assert!(!port.message.contains("local path"), "{}", port.message);
+        assert_eq!(command(&port), "anc localhost:8787 --verbose");
+
+        let scheme = pick(
+            "refused",
+            "https://missing.dev",
+            "https://missing.dev/",
+            false,
         );
-        let plain = unreachable_failure("127.0.0.1:9", "http://127.0.0.1:9/", false);
+        assert!(!scheme.message.contains("local path"), "{}", scheme.message);
+
+        let plaintext = pick(NOT_HTTPS, "http://x.dev", "http://x.dev/", true);
+        assert_eq!(plaintext.slug, "insecure-scheme");
+        assert_eq!(command(&plaintext), "anc web https://x.dev/");
+        let bare_plaintext = pick(NOT_HTTPS, "http://x.dev", "http://x.dev/", false);
+        assert_eq!(command(&bare_plaintext), "anc https://x.dev/");
+
+        let redirected = pick(
+            "redirect refused: http://x.dev/: not https",
+            "x.dev",
+            "https://x.dev/",
+            true,
+        );
+        assert_eq!(redirected.slug, "insecure-scheme");
+        assert_eq!(command(&redirected), "anc web --help");
+        assert!(redirected.hints[0].contains("redirects https to http"));
+
+        let rejected = format!("{ROOT_REJECTION_PREFIX} the chain");
+        let untrusted = pick(&rejected, "x.dev", "https://x.dev/", true);
+        assert_eq!(untrusted.slug, "untrusted-certificate");
         assert_eq!(
-            plain.next_step.command.as_deref(),
-            Some("anc web 127.0.0.1:9 --verbose")
+            untrusted.next_step.template.as_deref(),
+            Some("anc web x.dev --ca-cert <FILE>")
+        );
+        assert!(
+            !untrusted.message.contains("local path"),
+            "{}",
+            untrusted.message
+        );
+        let bare_untrusted = pick(&rejected, "x.dev", "https://x.dev/", false);
+        assert!(
+            bare_untrusted
+                .message
+                .contains("if you meant a local path, x.dev does not exist"),
+            "{}",
+            bare_untrusted.message
+        );
+        let bare_redirect = pick(
+            "redirect refused: http://x.dev/: not https",
+            "x.dev",
+            "https://x.dev/",
+            false,
+        );
+        assert!(
+            bare_redirect
+                .message
+                .contains("if you meant a local path, x.dev does not exist"),
+            "{}",
+            bare_redirect.message
+        );
+    }
+
+    #[test]
+    fn a_next_step_keeps_the_flags_it_was_typed_with() {
+        let target = "127.0.0.1:9";
+        let argv = [
+            "anc",
+            "web",
+            target,
+            "--no-external-dns",
+            "--no-follow",
+            "-q",
+            "--output",
+            "json",
+        ];
+        let failure = ended("refused", target, "https://127.0.0.1:9/", &argv);
+        assert_eq!(
+            command(&failure),
+            "anc web 127.0.0.1:9 --no-external-dns --no-follow --output json --verbose"
+        );
+
+        let failure = ended(
+            "refused",
+            target,
+            "https://127.0.0.1:9/",
+            &["anc", "web", target, "-v"],
+        );
+        assert_eq!(command(&failure), "anc web 127.0.0.1:9 -v");
+    }
+
+    #[test]
+    fn a_next_step_runs_as_printed() {
+        let target = "127.0.0.1:9";
+        let normalized = "https://127.0.0.1:9/";
+        let rejected = format!("{ROOT_REJECTION_PREFIX} the chain");
+
+        // A flag after `--` is a positional, and clap refuses a second one.
+        let dashes = ["anc", "web", "--", target];
+        assert_eq!(
+            command(&ended("refused", target, normalized, &dashes)),
+            "anc web --verbose -- 127.0.0.1:9"
+        );
+        assert_eq!(
+            ended(&rejected, target, normalized, &dashes)
+                .next_step
+                .template
+                .as_deref(),
+            Some("anc web --ca-cert <FILE> -- 127.0.0.1:9")
+        );
+
+        // `--token-stdin` on a terminal exits 2, so a printed line leaves it out,
+        // and the message is what says so in JSON mode too.
+        let stdin = ["anc", "web", target, "--token-stdin"];
+        let failure = ended("refused", target, normalized, &stdin);
+        assert_eq!(command(&failure), "anc web 127.0.0.1:9 --verbose");
+        assert!(
+            failure.message.contains("--token-stdin"),
+            "{}",
+            failure.message
+        );
+        assert_eq!(
+            ended(&rejected, target, normalized, &stdin)
+                .next_step
+                .template
+                .as_deref(),
+            Some("anc web 127.0.0.1:9 --ca-cert <FILE>")
+        );
+        let redirect = "redirect refused: http://x/: not https";
+        let help = ended(redirect, target, normalized, &stdin);
+        assert_eq!(command(&help), "anc web --help");
+        assert!(!help.message.contains("--token-stdin"), "{}", help.message);
+        let plain = ended("refused", target, normalized, &["anc", "web", target]);
+        assert!(
+            !plain.message.contains("--token-stdin"),
+            "{}",
+            plain.message
+        );
+
+        // The variable conflicts with `--verbose` whatever its value.
+        let argv = typed(&["anc", "web", target, "-q"]);
+        let failure = no_answer_failure(
+            "refused",
+            "reason",
+            &Invocation {
+                argv: &argv,
+                target,
+                web_typed: true,
+                quiet_env: true,
+            },
+            normalized,
+            true,
+        );
+        assert_eq!(command(&failure), "anc web 127.0.0.1:9");
+    }
+
+    #[test]
+    fn a_failure_prints_no_password_from_the_target() {
+        let target = "https://user:secret@127.0.0.1:9/x";
+        let normalized = crate::web_audit::target::normalize_target(target).unwrap();
+        for root_error in ["refused", ROOT_REJECTION_PREFIX, NOT_HTTPS] {
+            let failure = ended(root_error, target, &normalized, &["anc", "web", target]);
+            assert!(!failure.message.contains("secret"), "{}", failure.message);
+            assert!(!failure.value.contains("secret"), "{}", failure.value);
+            let printed = format!("{:?}", failure.next_step);
+            assert!(!printed.contains("secret"), "{printed}");
+            assert!(printed.contains("127.0.0.1:9/x"), "{printed}");
+        }
+
+        let target = "user:secret@staging.internal:8443";
+        let failure = ended(
+            "refused",
+            target,
+            "https://staging.internal:8443/",
+            &["anc", "web", target],
+        );
+        assert_eq!(command(&failure), "anc web staging.internal:8443 --verbose");
+        assert!(!failure.value.contains("secret"), "{}", failure.value);
+
+        let failure = invalid_target_failure("ftp://user:secret@host/", "the reason");
+        assert!(!failure.message.contains("secret"), "{}", failure.message);
+        assert_eq!(failure.value, "ftp://host/");
+    }
+
+    #[test]
+    fn a_failure_cannot_write_an_escape_sequence_to_the_terminal() {
+        let rejected = format!("{ROOT_REJECTION_PREFIX} \u{1b}[31mowned\nnext: forged");
+        let text = format_failure(&ended(
+            &rejected,
+            "x.dev",
+            "https://x.dev/",
+            &["anc", "web", "x.dev"],
+        ));
+        assert!(!text.contains('\u{1b}'), "{text:?}");
+        assert!(
+            text.contains("\u{fffd}[31mowned\u{fffd}next: forged"),
+            "{text:?}"
         );
     }
 
@@ -289,10 +591,11 @@ mod tests {
     fn the_failure_trailer_names_what_its_exit_code_means() {
         let unknown = format_failure(&unknown_check_failure("no-such-check"));
         assert!(unknown.ends_with("\nexit 2: usage error\n"), "{unknown}");
-        let unreachable = format_failure(&unreachable_failure(
+        let unreachable = format_failure(&ended(
+            "refused",
             "127.0.0.1:9",
             "http://127.0.0.1:9/",
-            false,
+            &["anc", "web", "127.0.0.1:9"],
         ));
         assert!(
             unreachable.ends_with("\nexit 3: could not check\n"),

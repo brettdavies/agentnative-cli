@@ -13,6 +13,15 @@ const SECTION_INDENT: &str = "  ";
 /// The indent of the rows under a lane heading.
 const LANE_INDENT: &str = "    ";
 
+/// One line of text with its control characters shown as U+FFFD, line breaks included.
+/// It can quote what an audited site sent. A terminal acts on an escape sequence, and a
+/// line break would let the site forge a line of anc's own output, such as a warning.
+pub(super) fn terminal_safe(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { '\u{fffd}' } else { c })
+        .collect()
+}
+
 /// The status prefix a row renders with, mapped through the tier: a miss
 /// on a MUST is a failure, on a SHOULD or MAY a warning.
 pub fn prefix_for(row: &ResultRow) -> &'static str {
@@ -51,7 +60,7 @@ pub(super) fn write_row(
     );
     if let Some(evidence) = row.evidence.as_deref().filter(|e| !e.is_empty()) {
         for line in evidence.lines() {
-            let _ = writeln!(out, "{indent}       {line}");
+            let _ = writeln!(out, "{indent}       {}", terminal_safe(line));
         }
     }
     if with_fix && let Some(fix) = remediation_for(&row.id) {

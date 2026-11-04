@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use super::exit::{
     EXIT_CLEAN, EXIT_FAILURES, EXIT_WARNINGS, exit_code, exit_reason, is_miss, plural,
 };
-use super::rows::{write_row, write_section};
+use super::rows::{terminal_safe, write_row, write_section};
 use crate::color::{paint, status_style};
 use crate::web_audit::engine::discovery_documents::card_suffix_url;
 use crate::web_audit::engine::{RunReport, Unported};
@@ -82,7 +82,7 @@ fn write_header(out: &mut String, scorecard: &WebScorecard) {
             crate::web_audit::scorecard::DeclaredSiteType::Content => "content",
             crate::web_audit::scorecard::DeclaredSiteType::Api => "api",
         }),
-        scorecard.mcp_endpoint.as_deref().unwrap_or("none")
+        terminal_safe(scorecard.mcp_endpoint.as_deref().unwrap_or("none"))
     );
 }
 
@@ -180,7 +180,7 @@ pub fn format_text(report: &RunReport, opts: RenderOptions) -> String {
             write_section(&mut out, &advised, rows, |out, row, indent| {
                 plain(out, row, indent);
                 if let Some(note) = advisory_note(row, endpoint) {
-                    let _ = writeln!(out, "{indent}       Note: {note}");
+                    let _ = writeln!(out, "{indent}       Note: {}", terminal_safe(&note));
                 }
             });
         }
@@ -209,7 +209,13 @@ pub fn format_check(row: &ResultRow) -> String {
         "{}\t{}\t{}\n",
         row.id,
         row.status.as_str(),
-        row.evidence.as_deref().unwrap_or("")
+        row.evidence
+            .as_deref()
+            .unwrap_or("")
+            .lines()
+            .map(terminal_safe)
+            .collect::<Vec<_>>()
+            .join(" ")
     )
 }
 
@@ -248,6 +254,11 @@ mod tests {
     fn the_check_line_is_tab_separated() {
         let mut r = row("robots", WebCheckKeyword::Should, ScorecardStatus::Pass);
         assert_eq!(format_check(&r), "robots\tpass\tevidence for robots\n");
+        r.evidence = Some("a\u{1b}[31m\nnext: forged".to_string());
+        assert_eq!(
+            format_check(&r),
+            "robots\tpass\ta\u{fffd}[31m next: forged\n"
+        );
         r.evidence = None;
         assert_eq!(format_check(&r), "robots\tpass\t\n");
     }

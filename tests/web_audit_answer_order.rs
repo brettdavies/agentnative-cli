@@ -14,7 +14,7 @@ use std::fs;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::engine::antecedents::is_source_check;
@@ -122,43 +122,32 @@ fn output_differs(case: &Case, outcome: &RunOutcome) -> Option<String> {
     }
 }
 
-/// A run ending on its root's answer can return before a thread it already
-/// committed to a request has reached the transport, so the set is read until
-/// it holds, for as long as such a thread could need.
 fn request_set_differs(case: &Case, transport: &MockTransport) -> Option<String> {
     let expected = recorded_requests(&case.name);
-    let until = Instant::now() + Duration::from_secs(2);
-    loop {
-        let mut counts: BTreeMap<SentRequest, usize> = BTreeMap::new();
-        for request in transport.requests() {
-            *counts.entry(SentRequest::from(&request)).or_default() += 1;
-        }
-        let twice: Vec<_> = counts.iter().filter(|(_, n)| **n > 1).collect();
-        let sent: BTreeSet<SentRequest> = counts.keys().cloned().collect();
-        if sent == expected && twice.is_empty() {
-            return None;
-        }
-        if Instant::now() >= until {
-            let extra: Vec<String> = sent
-                .iter()
-                .filter(|r| !expected.contains(r))
-                .map(|r| format!("{} {}", r.method, r.url))
-                .collect();
-            let missing: Vec<String> = expected
-                .iter()
-                .filter(|r| !sent.contains(r))
-                .map(|r| format!("{} {}", r.method, r.url))
-                .collect();
-            let repeated: Vec<String> = twice
-                .iter()
-                .map(|(r, n)| format!("{} {} x{n}", r.method, r.url))
-                .collect();
-            return Some(format!(
-                "request set: extra {extra:?}, missing {missing:?}, sent twice {repeated:?}"
-            ));
-        }
-        thread::sleep(Duration::from_millis(5));
+    let mut counts: BTreeMap<SentRequest, usize> = BTreeMap::new();
+    for request in transport.requests() {
+        *counts.entry(SentRequest::from(&request)).or_default() += 1;
     }
+    let twice: Vec<String> = counts
+        .iter()
+        .filter(|(_, n)| **n > 1)
+        .map(|(r, n)| format!("{} {} x{n}", r.method, r.url))
+        .collect();
+    let sent: BTreeSet<SentRequest> = counts.into_keys().collect();
+    if sent == expected && twice.is_empty() {
+        return None;
+    }
+    let extra: Vec<String> = sent
+        .difference(&expected)
+        .map(|r| format!("{} {}", r.method, r.url))
+        .collect();
+    let missing: Vec<String> = expected
+        .difference(&sent)
+        .map(|r| format!("{} {}", r.method, r.url))
+        .collect();
+    Some(format!(
+        "request set: extra {extra:?}, missing {missing:?}, sent twice {twice:?}"
+    ))
 }
 
 fn run_case(case: &Case, delay: Option<&Arc<Delay>>, concurrency: Option<usize>) -> Vec<String> {

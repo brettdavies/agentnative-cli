@@ -123,8 +123,21 @@ pub(super) fn fetch_all(
     requests: Vec<(String, FetchInit)>,
     opts: &FetchOptions,
 ) -> Vec<ProbeResponse> {
+    fetch_until(
+        fetch,
+        requests,
+        opts,
+        Instant::now() + opts.timeout + PASS_GRACE,
+    )
+}
+
+fn fetch_until(
+    fetch: &FetchHandle,
+    requests: Vec<(String, FetchInit)>,
+    opts: &FetchOptions,
+    deadline: Instant,
+) -> Vec<ProbeResponse> {
     let concurrency = requests.len();
-    let deadline = Instant::now() + opts.timeout + PASS_GRACE;
     let jobs: Vec<(FetchHandle, String, FetchInit, FetchOptions)> = requests
         .into_iter()
         .map(|(url, init)| (fetch.clone(), url, init, opts.clone()))
@@ -261,12 +274,16 @@ fn read_documents_within<'a>(
     requests.push((catalog_url.clone(), FetchInit::default()));
     requests.push((api_catalog_url.clone(), FetchInit::default()));
     let mut first_pass = document_options(document_pass);
-    if let Some(root) = root {
+    let mut responses = if let Some(root) = root {
         root.launch.expect(requests.len());
         first_pass.cut_to = Some(root.cut_to);
         first_pass.launch = Some(root.launch.clone());
-    }
-    let mut responses = fetch_all(fetch, requests, &first_pass);
+        // A redirect hop's budget moves forward by its wait for the root, so what
+        // bounds a read here is the read itself, and past that the audit.
+        fetch_until(fetch, requests, &first_pass, deadline)
+    } else {
+        fetch_all(fetch, requests, &first_pass)
+    };
     let api_catalog_resp = responses.pop().unwrap_or_else(unanswered);
     let catalog_resp = responses.pop().unwrap_or_else(unanswered);
     walk.well_known = well_known

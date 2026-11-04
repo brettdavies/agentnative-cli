@@ -270,7 +270,7 @@ fn observe(check: &WebCheck, ctx: &HandlerContext, transport: &MockTransport) ->
         })
         .collect();
     evidence.sort_by_key(|row| row.to_string());
-    let requests: Vec<String> = transport.requests()[before..]
+    let mut requests: Vec<String> = transport.requests()[before..]
         .iter()
         .map(|r| {
             let session = r
@@ -280,6 +280,7 @@ fn observe(check: &WebCheck, ctx: &HandlerContext, transport: &MockTransport) ->
             format!("{} {} session={session}", r.method, r.url)
         })
         .collect();
+    requests.sort();
     format!("{:?} {evidence:?} {requests:?}", outcome.status)
 }
 

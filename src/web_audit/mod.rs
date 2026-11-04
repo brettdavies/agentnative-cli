@@ -38,6 +38,7 @@ pub mod registry;
 pub mod render;
 pub mod score;
 pub mod scorecard;
+pub mod stoppable;
 #[cfg(feature = "web")]
 pub mod target;
 #[cfg(feature = "web")]

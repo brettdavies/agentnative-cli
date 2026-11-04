@@ -440,6 +440,13 @@ fn a_credentialed_runs_re_ask_starts_when_the_wire_probes_finish_and_sign_in_wai
         );
         set.register("mcp", move |check, ctx| {
             if is_wire_probe(check.id) && !ctx.fetch.credentialed() {
+                // Started beside the wire probes, the held source may not have
+                // reached the transport yet; an engine that waited for it to end
+                // never sees it open.
+                let until = Instant::now() + Duration::from_millis(300);
+                while !o.load(Ordering::SeqCst) && Instant::now() < until {
+                    thread::sleep(Duration::from_millis(1));
+                }
                 w.fetch_or(o.load(Ordering::SeqCst), Ordering::SeqCst);
                 s.open();
                 thread::sleep(Duration::from_millis(10));
@@ -585,18 +592,26 @@ fn a_source_whose_handler_panics_keeps_its_error_row_and_what_is_gated_on_it_rea
 }
 
 #[test]
-fn a_source_the_deadline_got_to_first_keeps_its_skip_row() {
-    let transport = site(|_, path| {
-        (path == "/").then(|| {
-            thread::sleep(Duration::from_millis(150));
-            respond(200, "text/html", "<html></html>")
-        })
+fn a_source_still_out_at_the_deadline_keeps_its_skip_row_and_what_is_gated_on_it_reads_not_applicable()
+ {
+    let mut set = stand_ins();
+    set.register("http", |check, ctx| {
+        if check.id == "llms-full-txt" {
+            thread::sleep(Duration::from_millis(600));
+        }
+        probe(check, ctx)
     });
-    let mut run = input(transport, stand_ins(), 6);
-    run.per_audit_deadline = Duration::from_millis(50);
+    let transport =
+        site(|_, path| (path == "/__probe/llms-txt").then(|| respond(404, "text/plain", "")));
+    let mut run = input(transport, set, 6);
+    run.per_audit_deadline = Duration::from_millis(250);
     let report = complete(run_web_audit(run));
     let source = row(&report, "llms-full-txt");
     assert_eq!(source.status, ScorecardStatus::Skip, "{source:?}");
+    assert_eq!(
+        row(&report, "llms-full-txt-scoped").status,
+        ScorecardStatus::NA
+    );
     assert!(!report.complete);
 }
 

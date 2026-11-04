@@ -6,6 +6,7 @@
 
 mod common;
 
+use agentnative::web_audit::registry::MCP_DISCOVERY;
 use common::web_cli::{anc, fixture_site, host_of, plaintext_site, stderr_of, stdout_of};
 use serde_json::Value;
 
@@ -118,7 +119,27 @@ fn a_root_redirecting_to_http_ends_unreachable_without_following() {
         )),
         "{err}"
     );
-    assert_eq!(server.hits().len(), 1, "the root request alone");
+    // The first document reads go out beside the root, before its answer, and
+    // nothing else does.
+    let beside_the_root: Vec<String> = MCP_DISCOVERY
+        .well_known
+        .iter()
+        .map(|path| path.to_string())
+        .chain([
+            MCP_DISCOVERY.ai_catalog.to_string(),
+            "/.well-known/api-catalog".to_string(),
+            "/".to_string(),
+        ])
+        .collect();
+    let hits = server.hits();
+    assert!(hits.iter().any(|hit| hit.target == "/"), "the root request");
+    for hit in &hits {
+        assert!(
+            beside_the_root.contains(&hit.target),
+            "only what goes out before the root's answer: {}",
+            hit.target
+        );
+    }
     assert!(plaintext.hits().is_empty(), "the http hop is never taken");
 }
 

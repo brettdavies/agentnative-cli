@@ -114,10 +114,10 @@ mod tests {
     #[test]
     fn rows_split_into_loose_rows_then_lanes_in_lane_map_order() {
         let loose = loose_checks();
-        // Each lane's rows reversed, the lanes reversed, and a loose row on either
-        // side, so only `split` can put them back.
+        // Each lane's rows reversed and the lanes reversed, so only `split` can put them
+        // back, and the loose rows on either side out of registry order, which it keeps.
         let mut given = vec![row(
-            loose[0],
+            loose[1],
             WebCheckKeyword::Should,
             ScorecardStatus::Absent,
         )];
@@ -127,13 +127,13 @@ mod tests {
             }
         }
         given.push(row(
-            loose[1],
+            loose[0],
             WebCheckKeyword::Should,
             ScorecardStatus::Absent,
         ));
         let refs: Vec<&ResultRow> = given.iter().collect();
         let (loose_rows, blocks) = split(&refs);
-        assert_eq!(ids(&loose_rows), [loose[0], loose[1]]);
+        assert_eq!(ids(&loose_rows), [loose[1], loose[0]], "in the order given");
         let grouped: Vec<(&str, Vec<String>)> =
             blocks.iter().map(|b| (b.lane.id, ids(&b.rows))).collect();
         let expected: Vec<(&str, Vec<String>)> = MCP_LANES

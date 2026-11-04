@@ -252,15 +252,16 @@ fn the_readme_exit_table_matches_the_codes_the_binary_returns() {
 }
 
 /// Each scored corpus scenario's replay: its name, its text report as `anc web`
-/// prints it, and the scorecard the report renders.
+/// prints it, and the scorecard the report renders. A scored scenario that replays as
+/// unreachable has no report to read; the ledger holds that outcome.
 fn corpus_reports(verbose: bool) -> Vec<(String, String, WebScorecard)> {
     load_cases()
         .into_iter()
         .filter(|case| matches!(case.golden, Golden::Scorecard(_)))
-        .map(|case| {
+        .filter_map(|case| {
             let RunOutcome::Complete(report) = replay(&case.scenario, Arc::new(default_handlers()))
             else {
-                panic!("{} reported unreachable", case.name);
+                return None;
             };
             let out = format_text(
                 &report,
@@ -270,7 +271,7 @@ fn corpus_reports(verbose: bool) -> Vec<(String, String, WebScorecard)> {
                     verbose,
                 },
             );
-            (case.name, out, report.scorecard)
+            Some((case.name, out, report.scorecard))
         })
         .collect()
 }

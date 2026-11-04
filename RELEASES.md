@@ -1,4 +1,5 @@
-<!-- Canonical version: 2026.10.22 (generic) -->
+<!-- Canonical version: 2026.11.03 (generic) -->
+<!-- canonical: version-scheme semver -->
 # Releasing `agentnative`
 
 Operational runbook. Rationale lives in [`RELEASES-RATIONALE.md`](./RELEASES-RATIONALE.md). Pre-cut go/no-go checklist
@@ -66,10 +67,10 @@ optional: fill `## Breaking Changes` on a major, delete the rest when they do no
 - **Zero verification artifacts in the body.** No triple-diff stats, leak-check output ("`guard-main-docs` runs clean"),
   patch-id cherry-check counts, pre-push gate results, CI status, or prose-scrub findings. Anomalies get fixed before
   push, not audit-trailed.
-- **Changelog** subsections (`### Breaking changes` / `### Added` / `### Changed` / `### Deprecated` / `### Removed` /
-  `### Fixed` / `### Documentation`): 1-5 bullets each, delete empty subsections, each bullet starts with a verb. A
-  `## Changelog` heading left standing with no bullets under it says the PR ships nothing user-facing, and
-  `generate-changelog.py` adds nothing for it, whatever the PR title says.
+- **Changelog** subsections (`### Breaking changes` / `### Added` / `### Changed` / `### Deprecated` / `### Fixed` /
+  `### Documentation`, the six headings of [§ Versioning](#versioning)): 1-5 bullets each, delete empty subsections,
+  each bullet starts with a verb. A `## Changelog` heading left standing with no bullets under it says the PR ships
+  nothing user-facing, and `generate-changelog.py` adds nothing for it, whatever the PR title says.
 - **Type of Change**: one checkbox. Prefer `feat`/`fix` over `chore` for any user-observable change.
 - **Related Issues/Stories**: four labels (`Story:` / `Issue:` / `Architecture:` / `Related PRs:`). All four required
   even when empty (`- None.` / `n/a`).
@@ -79,6 +80,85 @@ optional: fill `## Breaking Changes` on a major, delete the rest when they do no
 - **No hard line wraps**: one logical line per paragraph or bullet.
 
 → Rationale: [`RELEASES-RATIONALE.md` § PR body conventions](./RELEASES-RATIONALE.md#pr-body-conventions).
+
+## Versioning
+
+The marked lines below are github-repo-setup's SemVer section of `references/versioning.md`, which the drift check
+compares, and line 2 declares the scheme. The text inside each repo region is anc's own.
+
+<!-- canonical:begin versioning-semver -->
+
+This repo follows [SemVer 2.0.0](https://semver.org/). Its version comes from its changelog: every PR files each
+user-facing change under one of the six headings below, and a release takes the highest bump any of its PRs calls for.
+The rules cover only the surfaces § What the contract is names.
+
+### What the contract is
+
+<!-- canonical:repo-begin contract -->
+
+anc's public API is its machine contract:
+
+- **Invocation:** the subcommands (`audit`, `emit`, `skill`, `completions`, and `web` in a build with the `web`
+  feature), their flags and positional forms, the bare `anc <path>` form that runs `audit`, and every environment
+  variable `anc --help` lists.
+- **Exit codes:** the table in [`AGENTS.md`](./AGENTS.md#exit-codes).
+- **Structured output:** the scorecard `--output json` prints, as `schema/scorecard.schema.json` describes it and
+  `anc emit schema` prints it; the error envelope `--output json` writes to stderr, with its closed `reason` and
+  `next_step.action` sets ([README § Errors under `--output json`](./README.md#errors-under---output-json)); and the
+  `coverage/matrix.json` that `anc emit coverage-matrix` writes.
+- **Identifiers:** the requirement IDs (`p{N}-{level}-{key}`) and audit IDs a scorecard carries, and the four
+  `--audit-profile` values.
+- **Configuration:** the `.anc.toml` settings [README § Configuration](./README.md#configuration-anctoml) documents.
+- **Skill install:** the host names `anc skill install` accepts.
+- **Library:** the `web_audit` module, the crate's one documented public module. Every other module is hidden from the
+  docs and carries no promise.
+
+Text-mode output, help text, colors, evidence wording, and the verdict an audit reaches for a given tool are not
+contract: an audit that grades more accurately ships under `Changed` or `Fixed`. The one text-mode exception is the
+plain `anc --version` line, `anc X.Y.Z`, which scripts parse.
+
+<!-- canonical:repo-end -->
+
+### The six headings
+
+| Heading            | Holds                                                                   | Bump  |
+| ------------------ | ----------------------------------------------------------------------- | ----- |
+| `Breaking changes` | a contract surface removed, renamed, or retyped, or its meaning changed | major |
+| `Added`            | a new contract surface                                                  | minor |
+| `Changed`          | a visible change outside the contract                                   | patch |
+| `Deprecated`       | a contract surface marked for removal                                   | minor |
+| `Fixed`            | behavior brought back to the documented contract                        | patch |
+| `Documentation`    | documentation only                                                      | patch |
+
+`generate-changelog.py` writes them in this order and any other heading after them. A contract removal is a
+`Breaking changes` bullet that starts with "Remove"; a removal outside the contract goes under `Changed`, or is left
+out. Removals ship when they are ready, with no deprecation schedule. A `type!:` commit is a prompt to check the PR's
+sections, never the bump itself.
+
+### The bump
+
+`scripts/generate-changelog.py --bump` prints the next version from the PRs merged since the last release, and
+`cut-release-branch.sh` prints it beside the version the cut is given:
+
+- The highest heading among their sections sets the bump.
+- A `rust-version` raised since the last tag is a minor-level change, so it lifts a patch to a minor. A Rust repo's
+  `rust-version` equals the toolchain `rust-toolchain.toml` pins, and CI's MSRV job builds on exactly that version.
+- Before 1.0, a major or a minor moves the middle number and a patch moves the last: `0.4.2` becomes `0.5.0` or `0.4.3`.
+  This is stricter than Cargo's convention on purpose: an addition never ships as a last-number bump, so a `^0.y`
+  dependent receives only fixes until it opts in.
+- From 1.0, when the sections call for a major, the release agent asks the maintainer: a major, or a minor under the
+  small-break exception. A minor ships `docs/migrating/v<version>.md`, whose first line names the exception, and
+  preflight fails a 1.0+ release that keeps its major and carries `### Breaking changes` without that guide.
+
+### Overrides
+
+<!-- canonical:repo-begin overrides -->
+
+None: anc follows the bump, the pre-1.0 rule, and the MSRV rule as written.
+
+<!-- canonical:repo-end -->
+
+<!-- canonical:end versioning-semver -->
 
 ## Releasing dev to main
 
@@ -306,9 +386,16 @@ committing, when the sync carried `CHANGELOG.md` and `git-cliff` is installed, t
 differ (a PR body edited after the release, or a difference in line wrapping only). The warning does not block the
 backport.
 
-The script opens a PR against `dev`; merge it once CI is green. The postflight backport gate looks for that merged PR.
-Never merge `main` into `dev` or push to `dev` directly: the squash-merged histories share no recent ancestry, so the
-merge conflicts on every file both sides touched, and a direct push bypasses `dev`'s required checks.
+The script opens a PR against `dev`; merge it once CI is green. The postflight backport gate looks for its
+`chore(release): sync dev after <tag>` subject on `dev`. Never merge `main` into `dev` or push to `dev` directly: the
+squash-merged histories share no recent ancestry, so the merge conflicts on every file both sides touched, and a direct
+push bypasses `dev`'s required checks.
+
+**A release that withholds `anc web` takes a hand backport instead.** Until the web audit ships, the release branch
+strips the web code and the release changelog leaves out the `(web)`-scoped PRs. The script would read every stripped
+web file as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three
+bookkeeping files from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
+`chore(release): sync dev after v<version>`, the subject the postflight backport gate looks for.
 
 The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.
 
@@ -380,10 +467,12 @@ Two rulesets are committed under `.github/rulesets/` and applied to the repo via
   (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
   `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`, `ci / Changelog`,
   `guard-docs / check-forbidden-docs`, `guard-provenance / check-provenance`,
-  `guard-release / check-release-branch-name`), creation/deletion blocked, non-fast-forward blocked).
+  `guard-release / check-release-branch-name`, `lint / actionlint`), creation/deletion blocked, non-fast-forward
+  blocked).
 - `protect-dev.json` (required signatures, deletion blocked, non-fast-forward blocked, required status checks
   (`ci / Fmt, clippy, test`, `ci / Windows check`, `ci / Package check`, `ci / Security audit (advisories)`,
-  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`)). PR-only norm is convention +
+  `ci / Security audit (bans licenses sources)`, `ci / Shellcheck`, `ci / Completions freshness`, `lint / actionlint`,
+  `Web feature (clippy, test)`, `changelog-bump / Surface growth needs a minor section`)). PR-only norm is convention +
   `guard-release-branch` on the main side.
 
 `dev` requires only the checks that report on every PR. `ci / Changelog`, the three guards, and `Release matrix check`

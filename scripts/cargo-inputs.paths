@@ -1,0 +1,4 @@
+# Inputs that no string literal in the Rust sources has to name. build.rs walks
+# src/principles/spec/principles/ with fs::read_dir; this entry keeps those
+# files cargo inputs however build.rs spells the path.
+src/principles/spec/principles/

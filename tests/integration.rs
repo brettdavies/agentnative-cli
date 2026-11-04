@@ -213,6 +213,32 @@ fn test_completions_bash() {
         .stdout(predicate::str::is_empty().not());
 }
 
+#[test]
+fn test_completions_bash_completes_command_from_path() {
+    let output = cmd()
+        .args(["completions", "bash"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let script = String::from_utf8(output).expect("completions are UTF-8");
+    let block: Vec<&str> = script
+        .lines()
+        .skip_while(|line| line.trim() != "--command)")
+        .take_while(|line| line.trim() != ";;")
+        .collect();
+    assert!(
+        !block.is_empty(),
+        "bash completions carry no --command case"
+    );
+    let block = block.join("\n");
+    assert!(
+        block.contains("compgen -c") && !block.contains("compgen -f"),
+        "--command must complete command names, not files:\n{block}"
+    );
+}
+
 // ── Environment variable test ──────────────────────────────────────
 
 #[test]

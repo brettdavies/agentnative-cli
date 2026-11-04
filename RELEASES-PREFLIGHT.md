@@ -1,4 +1,4 @@
-<!-- Canonical version: 2026.11.02 (generic) -->
+<!-- Canonical version: 2026.11.03 (generic) -->
 # Pre-release verification: `agentnative`
 
 Operational pre-flight checklist. Walk it before step 1 of
@@ -45,7 +45,7 @@ Sub-commands let you re-run one section in isolation:
 | `drift`              | Commits on `main` that `dev` lacks, `.github/` parity, lockfile packages `main` has newer                                   | `scripts/release/drift.sh`                                     |
 | `surface`            | Commits since the last release reached `dev`, files changed since the last tag, breaking markers                            | `git log`, `git diff`                                          |
 | `smoke`              | Schema parity, multi-target audit runs, scorecard validation, negative control                                              | `scripts/release/smoke.sh`                                     |
-| `mechanics`          | Version, lockfile, toolchain age, advisories, leak check, unguarded docs, diff-B                                            | `Cargo.toml`, `CHANGELOG.md`, `cargo deny`, `guarded-paths.sh` |
+| `mechanics`          | Version, lockfile, toolchain age, advisories, leak check, unguarded docs, diff-B, migration guide                           | `Cargo.toml`, `CHANGELOG.md`, `cargo deny`, `guarded-paths.sh` |
 | `changelog-sections` | No PR merged into `dev` since the last release leaves its changelog entry to its title for want of a `## Changelog` section | `generate-changelog.py --audit-sections`, `gh`                 |
 | `semver`             | cargo-semver-checks against the release type the version bump claims over the last `v` tag                                  | `cargo semver-checks`                                          |
 | `all`                | Every above sequentially, drift first                                                                                       |                                                                |
@@ -95,7 +95,9 @@ and a breaking PR merged in that gap appears in its `### Breaking changes` rathe
 PR the previous release left out of its notes on purpose either, such as a `(web)` PR while `anc web` stays off `main`,
 so it comes back in this section; leave it out the same way.
 
-Every `!:` commit drives the major-version decision and gets a row in the release's `### Breaking changes` section.
+A `!:` commit is a cross-check hint only: the PRs' changelog sections set the bump
+([`RELEASES.md` § Versioning](./RELEASES.md#versioning)). A `!:` commit whose PR filed no `### Breaking changes` bullet
+is a question for its author, not a major on its own.
 
 ## Checklist
 
@@ -109,18 +111,27 @@ Dependabot raises the same fix again.
 
 <!-- canonical:begin drift-gate -->
 
-- [ ] The previous release's own bookkeeping reached `dev` (gate 0: the version carriers and `CHANGELOG.md` as the
-  release left them). It fails when a backport never ran; run `scripts/sync-dev-after-release.sh v<previous>`, merge its
-  PR, and rerun.
-- [ ] Every commit on `main` since the last release has its changes on `dev` (gate 1 lists the ones that do not, as
-  `differs` or `missing`). Backport them by PR into `dev` first, merge, and rerun.
-- [ ] Nothing under `.github/` on `main` is missing from `dev` (gate 2). `.github/` reaches `main` through the release,
-  so config that has reached `dev` and not `main` is what this release delivers, and the gate counts it. The gate fails
-  on the other direction, where `main` holds workflow or ruleset config `dev` never received, and names each path as
-  `missing` or `differs`.
-- [ ] No lockfile package resolves newer on `main` than on `dev` (gate 3, which reads `package-lock.json`, `bun.lock`,
-  and `Cargo.lock`). The one benign case is a version still inside the local package manager's release-age window when
-  the advisory is already patched at `dev`'s version.
+- [ ] The previous release's own bookkeeping reached `dev` (gate 0).
+
+  Gate 0 checks the version carriers and `CHANGELOG.md` as the release left them. It fails when a backport never ran;
+  run `scripts/sync-dev-after-release.sh v<previous>`, merge its PR, and rerun.
+
+- [ ] Every commit on `main` since the last release has its changes on `dev` (gate 1).
+
+  Gate 1 lists each commit that does not, as `differs` or `missing`. Backport them by PR into `dev` first, merge, and
+  rerun.
+
+- [ ] Nothing under `.github/` on `main` is missing from `dev` (gate 2).
+
+  `.github/` reaches `main` through the release, so config that has reached `dev` and not `main` is what this release
+  delivers, and the gate counts it. The gate fails on the other direction, where `main` holds workflow or ruleset
+  config `dev` never received, and names each path as `missing` or `differs`.
+
+- [ ] No lockfile package resolves newer on `main` than on `dev` (gate 3).
+
+  Gate 3 reads `package-lock.json`, `bun.lock`, and `Cargo.lock`. The one benign case is a version still inside the
+  local package manager's release-age window when the advisory is already patched at `dev`'s version.
+
 - [ ] `dev`-newer packages are the routine updates this release ships; the gate counts them and does not list them.
 
 <!-- canonical:end drift-gate -->
@@ -142,11 +153,20 @@ declined first.
 - [ ] (Optional) Have Dependabot open PRs for whatever the preflight surfaced: Insights → Dependency graph → Dependabot
   → "Check for updates". Merge anything that passes CI on `dev`.
 
+### Command-surface contract
+
+The contract is what [`RELEASES.md` § What the contract is](./RELEASES.md#what-the-contract-is) names. Confirm it
+against the previous release before tagging; `scripts/check-surface-bump.sh` holds each PR to the same rule.
+
+- [ ] `anc --help` and each subcommand's `--help` list the same subcommands and flags as `$LAST_TAG`'s, plus the
+  additions the release's `### Added` names. Every removed or renamed command or flag has a `### Breaking changes`
+  bullet starting "Remove" in the release changelog.
+
 ### Cross-repo blast radius
 
 - [ ] Scorecard JSON diff: emit a scorecard on `$LAST_TAG` and on `dev` against the same target, `diff` the JSON. Every
-  field renamed / added / removed / shape-changed becomes a row in the release's `### Breaking changes` (consumers
-  feature-detect from this list).
+  field renamed, removed, or retyped becomes a `### Breaking changes` bullet and every added field an `### Added`
+  bullet (consumers feature-detect from these lists).
 - [ ] When `schema_version` changes, `agentnative-site` has the release's `### Breaking changes` before the tag. The
   site adds a schema version to its `SUPPORTED_SCHEMA_VERSIONS` before it moves its `anc` pin, so it catches up on its
   own schedule; the tag does not wait for it.
@@ -249,6 +269,19 @@ These items duplicate steps in `RELEASES.md` deliberately: easy to skip, expensi
   ```
 
 - [ ] `CHANGELOG.md` versioned section has no `[Unreleased]` placeholder and matches the bumped version.
+- [ ] **The version is the one the changelog sections call for.** `scripts/release/cut-release-branch.sh` prints the
+  version `scripts/generate-changelog.py --bump` computes beside the one it was given
+  ([`RELEASES.md` § Versioning](./RELEASES.md#versioning)); a difference is the maintainer's call, made before the
+  release commit.
+- [ ] **A 1.0+ release that keeps its major ships a migration guide for its breaking changes.**
+  `scripts/release/preflight.sh mechanics` fails a release whose changelog carries `### Breaking changes` when it keeps
+  the previous tag's major and has no `docs/migrating/v<version>.md` opening with a line that names the small-break
+  exception. A 0.x release needs no guide.
+- [ ] **The public API change fits the version bump.** `scripts/release/preflight.sh semver` runs cargo-semver-checks
+  against the release type the bump itself claims, with the last `v` tag as its baseline, so a break shipped without
+  the bump it needs fails here rather than downstream. Before 1.0 the positions shift as Cargo reads them: a `0.y`
+  middle-number bump is the breaking one and a last-number bump a minor. Skips cleanly when cargo-semver-checks is
+  absent.
 
 ### Post-tag verification
 

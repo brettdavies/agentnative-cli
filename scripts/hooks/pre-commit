@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Canonical version: 2026.11.01 (generic)
+# Canonical version: 2026.11.03 (generic)
 #
 # Pre-commit hook: fast, staged-file-scoped checks that catch the cheap
 # mistakes before they reach a commit. The whole-repo CI mirror lives in the
@@ -52,36 +52,32 @@ set -uo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root" || exit 1
-# shellcheck source=scripts/hooks/_lib.sh
+# A CI action that checks one file at a time without -x reports SC1091 here.
+# shellcheck source=scripts/hooks/_lib.sh disable=SC1091
 . ./scripts/hooks/_lib.sh || exit 1
 
 fail=0
 
 # Git's repository variables stay set in this hook: during `commit -a` and
 # `commit <paths>`, GIT_INDEX_FILE names the temporary index the commit is built
-# from, and `staged` has to read it. None of the checks below runs git. A check
-# whose tool does (a test suite that builds scratch repositories, cargo
-# resolving a git dependency) runs through without_git_repo_env, so the tool's
-# git calls find its own repository rather than this one:
+# from, and `staged` has to read it. So does check_markdown, whose `git show
+# :<path>` and `git ls-files` read the staged blobs and the tracked lint
+# configs from that index; no other check below runs git. A check whose tool
+# does (a test suite that builds scratch repositories, cargo resolving a git
+# dependency) runs through without_git_repo_env, so the tool's git calls find
+# its own repository rather than this one:
 #
 #   step "test" "bun test" without_git_repo_env bun test || fail=1
 
-# Every check here is a file-scoped linter over a disjoint set of paths: none
-# writes, none takes a build lock, so they all run together and the slowest one
-# sets the wall-clock. step_wait replays them in the order queued below.
-#
-# Rust: the crate's format check, whenever a .rs file is staged. `cargo fmt`
-# rather than the library's per-file check_rustfmt, which passes rustfmt
-# `--edition 2021`: this crate is edition 2024 and uses let chains, which do not
-# parse under 2021. Per-file rustfmt would also reach the fixture crates under
-# tests/fixtures/, which are deliberately unformatted and outside the crate
-# `cargo fmt` formats. `cargo fmt` only reads, so it queues with the linters.
-check_cargo_fmt_staged() {
-  [ "$#" -gt 0 ] || return "$HOOK_SKIPPED"
-  without_git_repo_env check_cargo_fmt
-}
+# Every check here reads files and none writes, so they all run together and
+# the slowest one sets the wall-clock. step_wait replays them in the order
+# queued below. `cargo fmt` compiles nothing, so it takes no build lock and
+# belongs in the queue with the rest.
+
+# Rust: format check when a .rs file is staged, each crate under its own
+# edition.
 mapfile -t rs < <(staged '*.rs')
-step_bg "fmt" "cargo fmt -- --check (run \`cargo fmt\` and re-stage)" check_cargo_fmt_staged "${rs[@]}"
+step_bg "rustfmt" "cargo fmt" without_git_repo_env check_rustfmt "${rs[@]}"
 
 # Shell: correctness and layout on the staged scripts, hooks included.
 mapfile -t sh < <(staged '*.sh' 'scripts/hooks/pre-commit' 'scripts/hooks/pre-push' 'scripts/hooks/_lib.sh')
@@ -97,39 +93,20 @@ mapfile -t wf < <(staged '.github/workflows/*.yml' '.github/workflows/*.yaml')
 step_bg "actionlint" "actionlint" check_actionlint "${wf[@]}"
 step_bg "concurrency namespacing" "scripts/check-workflow-concurrency.sh" check_workflow_concurrency "${wf[@]}"
 
-# Markdown: lint what is being committed. The canonical .markdownlint-cli2.yaml
-# sets `fix: true`, under which markdownlint-cli2 rewrites every file it reads,
-# so the library's check_markdown skips. This step lints the staged blobs in a
-# scratch tree instead: each tracked markdownlint config is copied to the same
-# relative path with `fix` turned off, so the root `ignores` list (CHANGELOG.md
-# among them) and the nested config under src/principles/spec/ apply exactly
-# as they do in CI's markdownlint job, and no file in the checkout is touched.
-check_markdown_staged() {
-  [ "$#" -gt 0 ] || return "$HOOK_SKIPPED"
-  have markdownlint-cli2 || skip "markdownlint" "install via \`brew install markdownlint-cli2\`" || return
-  local tree f rc=0
-  tree="$(mktemp -d)" || return 1
-  while IFS= read -r f; do
-    mkdir -p "$tree/$(dirname "$f")"
-    git show ":$f" | sed -E 's/^([[:space:]]*"?fix"?[[:space:]]*:[[:space:]]*)true/\1false/' >"$tree/$f"
-  done < <(git ls-files -- ':(glob)**/.markdownlint*')
-  for f in "$@"; do
-    mkdir -p "$tree/$(dirname "$f")"
-    git show ":$f" >"$tree/$f" || rc=1
-  done
-  if [ "$rc" -eq 0 ]; then
-    (cd "$tree" && markdownlint-cli2 "$@") || rc=$?
-  fi
-  rm -rf "$tree"
-  return "$rc"
-}
-mapfile -t md < <(staged '*.md')
-step_bg "markdownlint" "markdownlint-cli2" check_markdown_staged "${md[@]}"
+# Markdown: lint the staged docs. check_markdown lints their staged blobs in a
+# scratch tree, so a config's `fix: true` cannot rewrite the checkout.
+#
+# CHANGELOG.md is excluded because generate-changelog.py writes it with one
+# logical line per bullet, so MD013 reports hundreds of characters no author
+# typed. The release flow stages it on the one commit that carries a release,
+# which is the worst place to leave `--no-verify` as the only way through.
+mapfile -t md < <(staged '*.md' ':!:CHANGELOG.md')
+step_bg "markdownlint" "markdownlint-cli2" check_markdown "${md[@]}"
 
 step_wait || fail=1
 
 [ "$fail" -eq 0 ] || {
-  echo "pre-commit checks failed (see CONTRIBUTING.md, Pre-push hook battery)." >&2
+  echo "pre-commit checks failed: rerun the command each failing line names (checks: scripts/hooks/pre-commit)." >&2
   exit 1
 }
 

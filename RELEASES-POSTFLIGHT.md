@@ -1,4 +1,4 @@
-<!-- Canonical version: 2026.10.22 (generic) -->
+<!-- Canonical version: 2026.11.03 (generic) -->
 # Post-release verification: `agentnative`
 
 Operational post-flight checklist. Runs **after** the `release/v<version> → main` PR merges and you push the tag
@@ -36,7 +36,7 @@ Sub-commands let you re-run one verification in isolation:
 | `make-latest` | GitHub Release `vX.Y.Z` is non-draft, non-prerelease, and `releases/latest` resolves to it                   | `gh api /releases/latest`                 |
 | `crates`      | `crates.io` shows `agentnative vX.Y.Z` published                                                             | `crates.io` index API                     |
 | `tags`        | Each workspace library's tag sits on the binary tag's commit; SKIPs for anc, which publishes no library      | `git rev-parse`                           |
-| `backport`    | a merged PR to `dev` with the version in its title                                                           | `gh pr list --base dev --state merged`    |
+| `backport`    | the subject `chore(release): sync dev after vX.Y.Z` on `dev`'s first-parent history or a merged PR's title   | `git log`, `gh pr list --base dev`        |
 | `all`         | every above                                                                                                  | all of the above                          |
 
 Flags:
@@ -102,7 +102,7 @@ Run immediately after the tag push triggers `release.yml`.
 - [ ] **Rollback path confirmed.** If this release is bad, roll back at the surface first (`cargo yank`,
   `gh release edit --latest`, formula revert on the tap), then land a `fix` or `revert` through the normal `dev` to
   `release/*` to `main` flow so `main` reconverges with what is live.
-- [ ] **Backport `main` → `dev`** via a **merged PR to `dev` with the version in its title.**
+- [ ] **Backport `main` → `dev`** via the PR `scripts/sync-dev-after-release.sh` opens, merged to `dev`.
   `scripts/sync-dev-after-release.sh vX.Y.Z` cuts `chore/sync-dev-after-vX.Y.Z`, writes the released version into
   `Cargo.toml`, refreshes the workspace entries in `Cargo.lock` offline, copies `CHANGELOG.md` from `main`, and opens
   the PR. Other release-only edits (generator config, README polish, `RELEASES.md` meta-edits) are discovered, not added
@@ -112,9 +112,13 @@ Run immediately after the tag push triggers `release.yml`.
   set with `--dry-run`, which creates no branch and leaves the tree clean. Keeps the next release's PREFLIGHT `diff-B`
   step quiet so a real missed change stands out instead of hiding in expected divergence noise.
 
-  The gate (`scripts/release/postflight.sh backport`) is signal-agnostic about which files moved: it searches merged PRs
-  to `dev` by the tag (the search index tokenizes `v0.2.0` as one word, so a bare `0.2.0` misses it) and accepts either
-  spelling in the title. Its SKIP names the sync command to run.
+  The gate (`scripts/release/postflight.sh backport`) is signal-agnostic about which files moved: it looks for the
+  subject the script gives the backport, `chore(release): sync dev after <tag>` (its PR title and squash commit) or
+  `chore(release): backport <tag> artifacts to dev` (its commit), first on `dev`'s first-parent history, so a backport
+  committed without a PR counts, then among merged PRs to `dev`. A feature PR that only mentions the version does not
+  count. A release that withholds `anc web` takes the hand backport in
+  [`RELEASES.md` § After publish](./RELEASES.md#after-publish-sync-dev-with-the-release) under the same title, so the
+  gate finds it the same way. Its SKIP and FAIL name the sync command to run.
 
 ## Related docs
 

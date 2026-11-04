@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# Canonical version: 2026.11.03 (rust)
+#
+# Fail a pull request whose CLI surface grows while its changelog block names
+# no minor-or-higher section, or shrinks while it names neither
+# `### Breaking changes` nor `### Fixed`.
+#
+# Each PR's changelog sections decide the release's version bump
+# (github-repo-setup's references/versioning.md), and an addition to the
+# contract is a minor. An addition filed under `### Changed`
+# reads as a patch and nothing in review makes it stand out, so this compares
+# the surface two trees describe:
+#
+#   - every command, subcommand, flag, and enumerated flag value, read from
+#     completions/<BIN>.bash, which the repo's completions freshness check
+#     holds equal to the clap definition;
+#   - every leaf of every JSON schema under SCHEMA_DIR except `description`,
+#     `title`, `$id`, and `examples`, so a new scorecard field or enum value
+#     counts and reworded prose does not. anc's `$id` and examples carry the
+#     scorecard's schema_version, so an additive schema bump would otherwise
+#     read as a removal. A property named `examples` still counts. A repo
+#     without the directory compares the CLI alone;
+#   - every requirement ID and audit ID in MATRIX, the coverage matrix
+#     `anc emit coverage-matrix` writes and its drift check holds current.
+#
+# Growth passes when the block has a bullet under `### Added`, `### Deprecated`,
+# or `### Breaking changes`. A removal passes with a bullet under
+# `### Breaking changes`, a contract removal and a major, or `### Fixed`, a
+# change back to the documented contract and a patch. Env vars, exit codes,
+# the error envelope's `reason` and `next_step.action` sets (src/json_error.rs),
+# `.anc.toml` settings, and the skill install hosts have no artifact here and
+# are not compared; review holds them to RELEASES.md § What the contract is.
+#
+# Usage:
+#   check-surface-bump.sh surface <tree>
+#   check-surface-bump.sh check <base-tree> <head-tree> <pr-body-file>
+#
+# Skeleton: set the CUSTOMIZE values below for this repository. The changelog
+# block is the one generate-changelog.py reads: `## Changelog`, or the heading
+# MANIFEST's [package.metadata.changelog] table names.
+#
+# Exit codes: 0 = pass, 1 = the surface grew or shrank and the block lacks the
+# section that change needs, 2 = a usage error or a tree the parser cannot
+# read. Each failure lists the entries and ends on a `fix:` line.
+set -euo pipefail
+
+# CUSTOMIZE: the binary whose completions/<BIN>.bash describes the CLI, the
+# manifest that names the PR body's changelog heading, the schema directory,
+# and the coverage matrix.
+readonly BIN="${SURFACE_BIN:-anc}"
+readonly MANIFEST="${SURFACE_MANIFEST:-Cargo.toml}"
+readonly SCHEMA_DIR="${SURFACE_SCHEMA_DIR:-schema}"
+readonly MATRIX="${SURFACE_MATRIX:-coverage/matrix.json}"
+
+readonly MINOR_OR_HIGHER='Added|Deprecated|Breaking changes'
+readonly REMOVAL_SECTIONS='Breaking changes|Fixed'
+readonly LISTED=20
+
+die() {
+  echo "check-surface-bump: $1" >&2
+  exit 2
+}
+
+# annotate <level> <message> — an Actions annotation in CI, plain text elsewhere.
+annotate() {
+  if [ "${GITHUB_ACTIONS:-}" = true ]; then
+    echo "::$1 title=Changelog bump::$2" >&2
+  else
+    echo "$1: $2" >&2
+  fi
+}
+
+# surface <tree> — one line per contract element, unsorted.
+surface() {
+  local tree="$1" completions="$1/completions/$BIN.bash" cli file
+  [ -f "$completions" ] || die "no completions/$BIN.bash under $tree; set BIN in this script"
+
+  # clap_complete writes one `case "${cmd}"` arm per command path, labelled
+  # with the words joined by `__subcmd__`; each arm lists its words in
+  # `opts` and the values of an enumerated flag in a `compgen -W` under that
+  # flag's own arm.
+  cli=$(awk '
+        /^    case "\$\{cmd\}" in$/ { dispatch = 1; next }
+        !dispatch { next }
+        /^        [A-Za-z0-9_]+\)$/ {
+            cmd = $1; sub(/\)$/, "", cmd); gsub(/__subcmd__/, " ", cmd); flag = ""; next
+        }
+        /^            opts="/ {
+            line = $0; sub(/^ *opts="/, "", line); sub(/"$/, "", line)
+            n = split(line, words, " ")
+            for (i = 1; i <= n; i++) printf "cli\t%s\t%s\n", cmd, words[i]
+            next
+        }
+        /^                -[^ ]*\)$/ { flag = $1; sub(/\)$/, "", flag); next }
+        flag != "" && /compgen -W "/ {
+            line = $0; sub(/.*compgen -W "/, "", line); sub(/".*/, "", line)
+            n = split(line, values, " ")
+            for (i = 1; i <= n; i++) printf "cli\t%s\t%s=%s\n", cmd, flag, values[i]
+            flag = ""; next
+        }
+    ' "$completions")
+  [ -n "$cli" ] || die "found no commands in $completions; did the clap_complete output format change?"
+  printf '%s\n' "$cli"
+
+  # Array indices become `[]` so reordering a list is not growth; the value
+  # is JSON-encoded so every leaf stays on one line.
+  while IFS= read -r file; do
+    jq -r --arg file "$file" '
+            def annotation:
+                . as $q
+                | $q[-1] == "description" or $q[-1] == "title" or $q[-1] == "$id"
+                or any(range($q | length); . as $i | $q[$i] == "examples" and ($i == 0 or $q[$i - 1] != "properties"));
+            paths(scalars) as $p
+            | select($p | annotation | not)
+            | "schema\t\($file)\t\($p | map(if type == "number" then "[]" else . end) | join("."))=\(getpath($p) | tojson)"
+        ' "$tree/$file" || die "cannot read $tree/$file as JSON"
+  done < <([ -d "$tree/$SCHEMA_DIR" ] && cd "$tree" && find "$SCHEMA_DIR" -type f -name '*.json' | LC_ALL=C sort)
+
+  if [ -f "$tree/$MATRIX" ]; then
+    jq -r '.rows[] | "matrix\trequirement\t\(.id)", (.verifiers[]? | "matrix\taudit\t\(.audit_id)")' \
+      "$tree/$MATRIX" || die "cannot read $tree/$MATRIX as JSON"
+  fi
+}
+
+# filled_sections <head-tree> <body-file> — each `###` heading in the
+# changelog block that holds at least one bullet. The block is read by the
+# release's own parser, `extract_changelog_sections` in generate-changelog.py,
+# under `## Changelog` or the heading a `[package.metadata.changelog]` table in
+# Cargo.toml names, so this check and the release notes cannot disagree about
+# which sections a PR filled.
+filled_sections() {
+  python3 -B - "$1" "$2" "$MANIFEST" <<'PY'
+import importlib.util
+import re
+import sys
+import types
+from pathlib import Path
+
+# generate-changelog.py imports tomllib for its cliff.toml reader, which this
+# check never calls, and Python 3.10 (the reusable CI's ubuntu-22.04) has no
+# tomllib; the heading below is read without it for the same reason.
+try:
+    import tomllib  # noqa: F401
+except ModuleNotFoundError:
+    sys.modules["tomllib"] = types.ModuleType("tomllib")
+
+tree, body = Path(sys.argv[1]), Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location(
+    "generate_changelog", tree / "scripts/generate-changelog.py"
+)
+generator = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generator)
+
+
+def table_value(manifest: str, table: str, key: str) -> str | None:
+    """A quoted string value under `[table]` in a Cargo manifest."""
+    section = re.search(
+        rf"^\[{re.escape(table)}\][ \t]*$(.*?)(?=^\[|\Z)", manifest, re.M | re.S
+    )
+    if section is None:
+        return None
+    value = re.search(rf'^{re.escape(key)}[ \t]*=[ \t]*"([^"]*)"', section.group(1), re.M)
+    return value.group(1) if value else None
+
+
+manifest = (tree / sys.argv[3]).read_text(encoding="utf-8")
+label = table_value(manifest, "package.metadata.changelog", "heading") or "Changelog"
+sections = generator.extract_changelog_sections(
+    body.read_text(encoding="utf-8"), rf"^## {re.escape(label)}\s*$"
+)
+for name, bullets in sections.items():
+    if bullets:
+        print(name)
+PY
+}
+
+# list <lines> — the first LISTED lines, indented, and a count of the rest.
+# sed reads the whole here-string: a `| head` stage would stop reading early,
+# and under pipefail the writer's SIGPIPE would end the script.
+list() {
+  local total
+  total=$(wc -l <<<"$1")
+  sed -n "1,${LISTED}s/^/  /p" <<<"$1" >&2
+  [ "$total" -le "$LISTED" ] || echo "  ... and $((total - LISTED)) more" >&2
+}
+
+check() {
+  local base="$1" head="$2" body="$3" base_surface head_surface added removed sections rc=0
+  [ -f "$body" ] || die "no PR body at $body"
+  base_surface=$(surface "$base" | LC_ALL=C sort -u)
+  head_surface=$(surface "$head" | LC_ALL=C sort -u)
+  added=$(LC_ALL=C comm -13 <(printf '%s\n' "$base_surface") <(printf '%s\n' "$head_surface"))
+  removed=$(LC_ALL=C comm -23 <(printf '%s\n' "$base_surface") <(printf '%s\n' "$head_surface"))
+
+  if [ -z "$added$removed" ]; then
+    echo "check-surface-bump: the $BIN surface did not grow or shrink"
+    return 0
+  fi
+  sections=$(filled_sections "$head" "$body") \
+    || die "could not read the changelog block with $head/scripts/generate-changelog.py"
+
+  if [ -n "$removed" ]; then
+    if grep -qxE "$REMOVAL_SECTIONS" <<<"$sections"; then
+      echo "check-surface-bump: the $BIN surface lost entries and the changelog block names ### Breaking changes or ### Fixed"
+    else
+      annotate error "the $BIN surface lost entries, and the changelog block has no bullet under ### Breaking changes or ### Fixed"
+      list "$removed"
+      echo "fix: file the removal under ### Breaking changes, a bullet starting \"Remove\" (a major), or under ### Fixed when it restores the documented contract (a patch)" >&2
+      rc=1
+    fi
+  fi
+
+  if [ -n "$added" ]; then
+    if grep -qxE "$MINOR_OR_HIGHER" <<<"$sections"; then
+      echo "check-surface-bump: the $BIN surface grew and the changelog block names a minor-or-higher section"
+    else
+      annotate error "the $BIN surface grew, so the changelog block needs a bullet under ### Added (or ### Deprecated or ### Breaking changes); an addition is a minor"
+      list "$added"
+      echo "fix: file the addition under ### Added, ### Deprecated, or ### Breaking changes" >&2
+      rc=1
+    fi
+  fi
+  return "$rc"
+}
+
+command -v jq >/dev/null || die "jq is not installed"
+
+case "${1:-}" in
+  surface)
+    [ "$#" -eq 2 ] || die "usage: $0 surface <tree>"
+    surface "$2"
+    ;;
+  check)
+    [ "$#" -eq 4 ] || die "usage: $0 check <base-tree> <head-tree> <pr-body-file>"
+    command -v python3 >/dev/null || die "python3 is not installed"
+    check "$2" "$3" "$4"
+    ;;
+  *)
+    die "usage: $0 surface <tree> | check <base-tree> <head-tree> <pr-body-file>"
+    ;;
+esac

@@ -109,7 +109,7 @@ pub(crate) fn noting(
 
 /// `definition` up to the end of its first sentence, marked ` …` where
 /// more follows, so a deny quotes a long description by its opening.
-fn first_sentence(definition: &str) -> Cow<'_, str> {
+pub(crate) fn first_sentence(definition: &str) -> Cow<'_, str> {
     match definition.find(". ") {
         Some(end) => Cow::Owned(format!("{} …", &definition[..=end])),
         None => Cow::Borrowed(definition),
@@ -117,7 +117,7 @@ fn first_sentence(definition: &str) -> Cow<'_, str> {
 }
 
 /// Whether `text` holds any of `phrases` as whole words, without case.
-fn names_any(text: &str, phrases: &[&str]) -> bool {
+pub(crate) fn names_any(text: &str, phrases: &[&str]) -> bool {
     let said = words(text);
     phrases.iter().any(|phrase| {
         let wanted = words(phrase);

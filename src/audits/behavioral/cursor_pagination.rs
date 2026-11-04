@@ -1,10 +1,15 @@
 //! Audit: `p7-may-cursor-pagination`.
 //!
-//! Cursor-based pagination flags (`--after`, `--before`, `--cursor`, `--page`)
-//! for efficient traversal of large result sets. MAY-tier; applicability
-//! gated on the presence of a list-style subcommand.
+//! Cursor-based pagination flags for efficient traversal of large result
+//! sets: P7 names `--after`, `--before`, and `--cursor`, the names this audit
+//! accepts. MAY-tier; applicability gated on the presence of a list-style
+//! subcommand.
 //!
-//! The flags belong on the list command (`helm list --offset`), so the audit
+//! `--page` and `--offset` do not count. Positional paging drifts when results
+//! change between calls, which is the failure cursor pagination exists to
+//! prevent. A Warn names any it finds, so the row says why it did not count.
+//!
+//! The flags belong on the list command (`tool list --cursor`), so the audit
 //! reads each list-style subcommand's own `--help`, plus the top-level help
 //! for a flag every subcommand inherits. P7 says the flags MAY be offered,
 //! with no claim on every list command, so one list-style subcommand that
@@ -19,7 +24,10 @@ use crate::project::Project;
 use crate::runner::HelpOutput;
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
-const CURSOR_FLAGS: &[&str] = &["--after", "--before", "--cursor", "--page", "--offset"];
+const CURSOR_FLAGS: &[&str] = &["--after", "--before", "--cursor"];
+
+/// Positional paging flags, named in a Warn because they do not count.
+const POSITIONAL_FLAGS: &[&str] = &["--page", "--offset"];
 
 pub struct CursorPaginationAudit;
 
@@ -72,7 +80,7 @@ impl Audit for CursorPaginationAudit {
 }
 
 /// The status, plus the Pass evidence naming the list-style subcommands
-/// that carry a cursor/page flag.
+/// that carry a cursor flag.
 pub(crate) fn audit_cursor_pagination(
     help: &HelpOutput,
     subhelp: &[(String, HelpOutput)],
@@ -101,16 +109,28 @@ pub(crate) fn audit_cursor_pagination(
         return (
             AuditStatus::Pass,
             Some(format!(
-                "list-style subcommand(s) with a cursor/page flag: {}.{lacking}",
+                "list-style subcommand(s) with a cursor flag: {}.{lacking}",
                 cov.with_list()
             )),
         );
     }
+    let positional = coverage(&cov.without, help, subhelp, |h| {
+        first_flag(h, |f| f.declares_any(POSITIONAL_FLAGS).is_some())
+    });
+    let positional_note = if positional.with.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Positional paging declared: {}. P7 does not count it as cursor pagination, because \
+             positional pages drift when results change between calls.",
+            positional.with_list()
+        )
+    };
     (
         AuditStatus::Warn(format!(
-            "no list-style subcommand advertises a cursor/page flag in its --help: {} \
-             (looked for {}). MAY-tier: cursor pagination lets agents traverse large \
-             result sets without re-scanning earlier pages.{}",
+            "no list-style subcommand advertises a cursor flag in its --help: {} \
+             (looked for {}, the names P7 accepts). MAY-tier: cursor pagination lets agents \
+             traverse large result sets without re-scanning earlier pages.{}{positional_note}",
             cov.without_list(),
             CURSOR_FLAGS.join(", "),
             dash_rule_notes(&cov.without, subhelp, CURSOR_FLAGS, None),
@@ -237,13 +257,60 @@ Flags:
     }
 
     #[test]
-    fn offset_flag_on_one_list_subcommand_passes() {
+    fn offset_on_a_list_subcommand_earns_no_credit_and_the_warn_says_why() {
         let help = HelpOutput::from_raw(HELM_HELP);
         let subhelp = vec![sub("list", HELM_LIST_HELP)];
+        match audit_cursor_pagination(&help, &subhelp) {
+            (AuditStatus::Warn(msg), None) => {
+                assert!(
+                    msg.contains("(looked for --after, --before, --cursor, the names P7 accepts)"),
+                    "{msg}"
+                );
+                assert!(
+                    msg.contains("Positional paging declared: list (--offset)."),
+                    "{msg}"
+                );
+                assert!(
+                    msg.ends_with(
+                        "P7 does not count it as cursor pagination, because positional pages \
+                         drift when results change between calls."
+                    ),
+                    "{msg}"
+                );
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn page_on_a_list_subcommand_earns_no_credit() {
+        let help = HelpOutput::from_raw(HELM_HELP);
+        let subhelp = vec![sub(
+            "list",
+            "Usage: helm list [flags]\n\nFlags:\n      --page int   page to return\n",
+        )];
+        match audit_cursor_pagination(&help, &subhelp) {
+            (AuditStatus::Warn(msg), None) => {
+                assert!(
+                    msg.contains("Positional paging declared: list (--page)."),
+                    "{msg}"
+                );
+            }
+            other => panic!("expected Warn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cursor_flag_on_one_list_subcommand_passes() {
+        let help = HelpOutput::from_raw(HELM_HELP);
+        let subhelp = vec![sub(
+            "list",
+            "Usage: helm list [flags]\n\nFlags:\n      --cursor <TOKEN>   resume after this token\n      --offset int       skip this many\n",
+        )];
         let (status, evidence) = audit_cursor_pagination(&help, &subhelp);
         assert_eq!(status, AuditStatus::Pass);
         let evidence = evidence.expect("pass names the subcommand");
-        assert!(evidence.contains("list (--offset)"), "{evidence}");
+        assert!(evidence.contains("list (--cursor)"), "{evidence}");
         assert!(evidence.contains("Without one: "), "{evidence}");
     }
 

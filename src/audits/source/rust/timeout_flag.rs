@@ -1,18 +1,23 @@
-//! Audit: Detect network code without a `--timeout` flag.
+//! Audit: Detect network code without a timeout flag.
 //!
 //! Principle: P6 (Composable Structure) — Network-calling CLIs should expose
-//! a `--timeout` flag so agents can bound execution time.
+//! a `--timeout` flag, or its documented equivalent `--deadline` or
+//! `--max-time`, so agents can bound execution time.
 //!
 //! This is a conditional audit:
 //!   Trigger: the source uses network libraries (reqwest, hyper, curl, ureq)
-//!   Requirement: a `--timeout` flag must exist
+//!   Requirement: one of those flags must exist
 
 use crate::audit::Audit;
+use crate::audits::behavioral::timeout_behavioral::TIMEOUT_FLAGS;
 use crate::project::{Language, Project};
 use crate::types::{AuditGroup, AuditLayer, AuditResult, AuditStatus, Confidence};
 
 /// Network library indicators to search for in source text.
 const NETWORK_INDICATORS: &[&str] = &["reqwest", "hyper", "curl", "ureq"];
+
+const NO_TIMEOUT_FLAG: &str = "Network code detected but no --timeout, --deadline, or --max-time \
+     flag found. Agents need to bound execution time for network operations.";
 
 /// Audit trait implementation for timeout flag detection.
 #[derive(Debug)]
@@ -69,11 +74,7 @@ impl Audit for TimeoutFlagAudit {
         } else if has_timeout_flag {
             AuditStatus::Pass
         } else {
-            AuditStatus::Warn(
-                "Network code detected but no --timeout flag found. \
-                 Agents need to bound execution time for network operations."
-                    .to_string(),
-            )
+            AuditStatus::Warn(NO_TIMEOUT_FLAG.to_string())
         };
 
         Ok(AuditResult {
@@ -98,21 +99,16 @@ pub(crate) fn audit_timeout_flag(source: &str) -> AuditStatus {
         return AuditStatus::Skip("no network code detected".to_string());
     }
 
-    // Audit for --timeout flag in source
-    let has_flag = source.contains("timeout")
-        && (source.contains("--timeout")
-            || source.contains("\"timeout\"")
-            || source.contains("long = \"timeout\"")
-            || source.contains("long(\"timeout\")"));
+    // A name counts spelled as a flag, or quoted as a clap `long` value.
+    let has_flag = TIMEOUT_FLAGS.iter().any(|flag| {
+        let quoted = format!("\"{}\"", flag.trim_start_matches('-'));
+        source.contains(flag) || source.contains(&quoted)
+    });
 
     if has_flag {
         AuditStatus::Pass
     } else {
-        AuditStatus::Warn(
-            "Network code detected but no --timeout flag found. \
-             Agents need to bound execution time for network operations."
-                .to_string(),
-        )
+        AuditStatus::Warn(NO_TIMEOUT_FLAG.to_string())
     }
 }
 
@@ -208,6 +204,32 @@ struct Cli {
 "#;
         let status = audit_timeout_flag(source);
         assert_eq!(status, AuditStatus::Pass);
+    }
+
+    #[test]
+    fn the_documented_equivalents_count_like_timeout() {
+        let cases = [
+            r#"#[arg(long = "deadline")] deadline: Option<u64>,"#,
+            r#"#[arg(long = "max-time")] max_time: Option<u64>,"#,
+            r#"Arg::new("limit").long("deadline"),"#,
+            "// usage: tool fetch --max-time 30",
+        ];
+        for flag in cases {
+            let source = format!("use reqwest::Client;\n{flag}\n");
+            assert_eq!(audit_timeout_flag(&source), AuditStatus::Pass, "{flag}");
+        }
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_flag_does_not_count() {
+        let source = "use reqwest::Client;\nlet deadline = now + max_time;\n";
+        match audit_timeout_flag(source) {
+            AuditStatus::Warn(evidence) => assert!(
+                evidence.contains("no --timeout, --deadline, or --max-time flag"),
+                "{evidence}"
+            ),
+            other => panic!("expected Warn, got {other:?}"),
+        }
     }
 
     #[test]

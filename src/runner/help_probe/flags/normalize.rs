@@ -12,7 +12,7 @@ const BELL: char = '\u{7}';
 /// turned into a gap. A box-table row that leads with a `*` cell, where typer
 /// and rich-click mark a required option, has the marker blanked, so the row
 /// leads with its name. Lines keep their order and count.
-pub(super) fn normalize(raw: &str) -> String {
+pub(in crate::runner::help_probe) fn normalize(raw: &str) -> String {
     raw.lines().map(shown).collect::<Vec<_>>().join("\n")
 }
 

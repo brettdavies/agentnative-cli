@@ -17,11 +17,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use agentnative::web_audit::engine::{
-    DEGRADED_PER_CHECK_TIMEOUT, EXTERNAL_DNS_WITHHELD, FetchHandle, HandlerContext, HandlerSet,
-    ProbeOutcome, ProbeStatus, ProgressSink, RunInput, RunOutcome, RunReport, Unported,
-    run_web_audit,
+    DEGRADED_PER_CHECK_TIMEOUT, EXTERNAL_DNS_OPTED_OUT, EXTERNAL_DNS_WITHHELD, FetchHandle,
+    HandlerContext, HandlerSet, ProbeOutcome, ProbeStatus, ProgressSink, RunInput, RunOutcome,
+    RunReport, Unported, run_web_audit,
 };
 use agentnative::web_audit::fetch::FetchInit;
+use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::{Locality, Resolver};
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
@@ -147,11 +148,7 @@ fn stand_in_handlers() -> Arc<HandlerSet> {
             );
         })
     });
-    set.register("dns-doh", |check, ctx| {
-        probe_with(check, ctx, |ctx, item| {
-            item.insert("external_dns".to_string(), json!(ctx.external_dns));
-        })
-    });
+    set.register("dns-doh", probe);
     set.register_eval("legacy-alias-redirects", probe);
     Arc::new(set)
 }
@@ -603,16 +600,56 @@ fn the_dns_gate_withholds_external_resolvers_for_a_local_target_unless_overridde
             .any(|r| r.url.ends_with("__probe/dns-aid")),
         "the override must let the DNS handler run"
     );
-    assert_eq!(
-        raw(&overridden, "dns-aid", "external_dns"),
-        Some(&json!(true))
-    );
 
     let public = complete(run_web_audit(input(
         Arc::new(MockTransport::new(vec![], html(200))),
         stand_in_handlers(),
     )));
     assert_eq!(row(&public, "dns-aid").status, ScorecardStatus::Pass);
+}
+
+#[test]
+fn the_no_external_dns_flag_withholds_every_resolver_for_any_target() {
+    let run = |no_external_dns: bool, url: &str, external_dns: bool| {
+        let transport = Arc::new(MockTransport::new(vec![], html(200)));
+        let mut input = RunInput::new(
+            url,
+            handle(Arc::clone(&transport) as Arc<_>),
+            Arc::new(default_handlers()),
+        );
+        input.per_check_timeout = Duration::from_secs(2);
+        input.per_audit_deadline = Duration::from_secs(20);
+        input.external_dns = external_dns;
+        input.no_external_dns = no_external_dns;
+        (complete(run_web_audit(input)), transport)
+    };
+    let queried = |transport: &MockTransport| {
+        transport
+            .requests()
+            .iter()
+            .filter(|r| r.url.contains("cloudflare-dns.com") || r.url.contains("dns.google"))
+            .count()
+    };
+
+    // A public target's name goes to the resolvers by default, which is what
+    // makes the withheld run below a fact about the flag.
+    let (_, transport) = run(false, BASE, false);
+    assert!(
+        queried(&transport) > 0,
+        "a public target queries a resolver"
+    );
+
+    for (url, external_dns) in [
+        (BASE, false),
+        ("https://127.0.0.1:8080/", false),
+        (BASE, true),
+    ] {
+        let (withheld, transport) = run(true, url, external_dns);
+        assert_eq!(queried(&transport), 0, "{url} reached a public resolver");
+        let dns = row(&withheld, "dns-aid");
+        assert_eq!(dns.status, ScorecardStatus::NA, "{url}");
+        assert_eq!(dns.evidence, EXTERNAL_DNS_OPTED_OUT, "{url}");
+    }
 }
 
 #[test]

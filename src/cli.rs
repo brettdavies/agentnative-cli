@@ -282,7 +282,8 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// api-catalog anchors), at most 4 hosts and 12 follow requests in a
     /// 6-second window, unless `--no-follow` is set; and the public DNS
     /// resolvers the `dns-aid` check queries, which are withheld for a
-    /// local target unless `--external-dns` is set.
+    /// local target unless `--external-dns` is set, and for any target with
+    /// `--no-external-dns`.
     ///
     /// An MCP endpoint that requires sign-in reports its session and
     /// handshake rows `n_a` (`auth-required`) unless the run presents a
@@ -342,9 +343,19 @@ automatically:
         /// Let the DNS-over-HTTPS checks query public resolvers even when
         /// the target is local or private. Without it those rows report
         /// `n_a` rather than sending the target's hostname to a third
-        /// party.
-        #[arg(long)]
+        /// party. It and `--no-external-dns` override each other, and the
+        /// last one wins.
+        #[arg(long, overrides_with = "no_external_dns")]
         external_dns: bool,
+
+        /// Withhold the DNS-over-HTTPS checks for any target, so anc sends the
+        /// target's hostname to no public DNS-over-HTTPS resolver. Those rows
+        /// report `n_a`. The system resolver still looks the name up to connect.
+        /// Use it for an internal host on a routable address, which reads as
+        /// public. It and `--external-dns` override each other, and the last
+        /// one wins.
+        #[arg(long, overrides_with = "external_dns")]
+        no_external_dns: bool,
 
         /// Audit only the target: leave unrequested every host its
         /// discovery documents declare. Rows that depend on a declared
@@ -583,6 +594,38 @@ mod tests {
     use super::*;
     use crate::principles::registry::ALL_EXCEPTION_CATEGORIES;
     use clap::ValueEnum;
+
+    #[cfg(feature = "web")]
+    fn external_dns_flags(args: &[&str]) -> (bool, bool) {
+        let argv = ["anc", "web", "anc.dev"].iter().chain(args);
+        match Cli::try_parse_from(argv)
+            .expect("a valid invocation")
+            .command
+        {
+            Some(Commands::Web {
+                external_dns,
+                no_external_dns,
+                ..
+            }) => (external_dns, no_external_dns),
+            _ => panic!("expected the web subcommand"),
+        }
+    }
+
+    #[cfg(feature = "web")]
+    #[test]
+    fn the_last_external_dns_flag_wins() {
+        assert_eq!(external_dns_flags(&[]), (false, false));
+        assert_eq!(external_dns_flags(&["--external-dns"]), (true, false));
+        assert_eq!(external_dns_flags(&["--no-external-dns"]), (false, true));
+        assert_eq!(
+            external_dns_flags(&["--external-dns", "--no-external-dns"]),
+            (false, true)
+        );
+        assert_eq!(
+            external_dns_flags(&["--no-external-dns", "--external-dns"]),
+            (true, false)
+        );
+    }
 
     /// Every CLI `AuditProfile` variant must map to a distinct
     /// `ExceptionCategory`, and every `ExceptionCategory` must be

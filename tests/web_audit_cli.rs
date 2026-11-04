@@ -77,6 +77,109 @@ fn the_single_check_form_returns_that_rows_code() {
     assert_eq!(scorecard.results.len(), 68);
 }
 
+/// A site that names its MCP server with an escape sequence, as any site can.
+fn escaping_site() -> common::Server {
+    common::spawn_https(|req: &common::RawRequest| {
+        let path = req.target.split('?').next().unwrap_or("/");
+        match (req.method.as_str(), path) {
+            ("GET", "/") => {
+                common::web_cli::ok("text/html; charset=utf-8", &common::web_cli::html_body())
+            }
+            ("POST", "/mcp") => {
+                let method = serde_json::from_slice::<Value>(&req.body)
+                    .ok()
+                    .and_then(|v| v.get("method").and_then(Value::as_str).map(str::to_string));
+                let result = if method.as_deref() == Some("initialize") {
+                    serde_json::json!({
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": { "tools": {} },
+                        "serverInfo": { "name": "\u{1b}[31mowned", "version": "1.0" },
+                    })
+                } else {
+                    serde_json::json!({ "tools": [] })
+                };
+                common::web_cli::ok(
+                    "application/json",
+                    &serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": result }).to_string(),
+                )
+            }
+            _ => common::web_cli::not_found(),
+        }
+    })
+}
+
+#[test]
+fn a_site_cannot_write_an_escape_sequence_to_the_terminal() {
+    let server = escaping_site();
+    let host = host_of(&server);
+    let assert = anc().args(["web", &host, "--verbose"]).assert();
+    let text = stdout_of(assert.get_output());
+    assert!(text.contains("\u{fffd}[31mowned"), "{text}");
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+
+    let assert = anc().args(["web", &host, "--output", "json"]).assert();
+    let json = stdout_of(assert.get_output());
+    assert!(!json.contains('\u{1b}'), "{json:?}");
+    assert!(json.contains("\\u001b[31mowned"), "{json}");
+}
+
+#[test]
+fn a_cards_endpoint_cannot_forge_a_line_of_the_report() {
+    let server = common::spawn_https(|req: &common::RawRequest| {
+        let host = req.header("host").unwrap_or("127.0.0.1").to_string();
+        match req.target.split('?').next().unwrap_or("/") {
+            "/" => common::web_cli::ok("text/html; charset=utf-8", &common::web_cli::html_body()),
+            "/.well-known/mcp.json" => common::web_cli::ok(
+                "application/json",
+                &serde_json::json!({
+                    "mcp_endpoint": format!("https://{host}/mcp\u{1b}[31m\nwarning: forged"),
+                })
+                .to_string(),
+            ),
+            _ => common::web_cli::not_found(),
+        }
+    });
+    let assert = anc().args(["web", &host_of(&server)]).assert();
+    let text = stdout_of(assert.get_output());
+    let header = text.lines().find(|line| line.contains("mcp endpoint:"));
+    assert!(
+        header.is_some_and(|line| line.contains("/mcp")),
+        "the card's endpoint was not read: {text}"
+    );
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+    assert!(
+        !text.lines().any(|line| line.starts_with("warning: forged")),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_examples_flag_shows_the_web_verb() {
+    let assert = anc().arg("--examples").assert().code(0);
+    let out = stdout_of(assert.get_output());
+    assert!(out.contains("anc web localhost:8787"), "{out}");
+}
+
+#[test]
+fn no_external_dns_reaches_the_engine() {
+    let server = fixture_site();
+    let host = host_of(&server);
+    for flags in [
+        &["--no-external-dns"][..],
+        &["--external-dns", "--no-external-dns"][..],
+    ] {
+        let assert = anc()
+            .args(["web", &host, "--check", "dns-aid"])
+            .args(flags)
+            .assert()
+            .code(3);
+        let out = stdout_of(assert.get_output());
+        let fields: Vec<&str> = out.trim_end().split('\t').collect();
+        assert_eq!(fields[1], "n_a", "{out}");
+        assert!(fields[2].contains("--no-external-dns"), "{out}");
+    }
+}
+
 /// Declaring a type both narrows and widens: rows typed for the other
 /// family gate out, and rows whose antecedent is "this site has an API"
 /// gate in, because the declaration is what satisfies it. So this pins

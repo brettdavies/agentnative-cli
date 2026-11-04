@@ -1,4 +1,4 @@
-//! Derivations from the wave-1 bodies the engine keeps for wave 2: the
+//! Derivations from the source bodies the engine keeps for later rows: the
 //! section directories the scoped llms.txt probes enumerate, from the root
 //! llms.txt link index unioned with the sitemap's paths.
 

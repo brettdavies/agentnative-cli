@@ -102,8 +102,9 @@ impl Entry {
         }
         stages.head = Some(head.clone());
         stages.headers = Some(HopRecord::Answer(head.clone()));
+        let sender_deadline = self.sender.deadline_given(shared.was_cut());
         let plan = if hop::reads_body(head.status, &head.headers, &self.sender) {
-            stages.body_deadline = Some(self.sender.deadline);
+            stages.body_deadline = Some(sender_deadline);
             BodyPlan::Read(self.sender.body_cap)
         } else {
             stages.for_sender = Some(HopRecord::Answer(head.clone()));
@@ -115,7 +116,7 @@ impl Entry {
             } else {
                 state.captures.push(Arc::clone(self));
                 state.stats.reads_open += 1;
-                stages.body_deadline = Some(self.sender.deadline);
+                stages.body_deadline = Some(sender_deadline);
                 stages.memo_owned = true;
                 BodyPlan::Read(Some(MEMO_BODY_MAX_BYTES))
             }
@@ -193,8 +194,9 @@ impl Entry {
     /// Record as timed out any stage whose deadline has passed by `now`.
     pub(super) fn expire_due_locked(&self, stages: &mut Stages, shared: &Shared, now: Instant) {
         if stages.headers.is_none() {
-            if now >= self.sender.deadline {
-                let error = HopError::timeout_at(self.sender.started, self.sender.deadline);
+            let due = self.sender.deadline_given(shared.was_cut());
+            if now >= due {
+                let error = HopError::timeout_at(self.sender.started, due);
                 self.settle_failure_locked(stages, shared, error);
             }
             return;
@@ -217,6 +219,16 @@ impl Entry {
     pub(super) fn expire_due(&self, shared: &Shared, now: Instant) {
         let mut stages = self.stages();
         self.expire_due_locked(&mut stages, shared, now);
+    }
+
+    /// The memo was cut: a body read this request's sender runs ends by the cut
+    /// budget, and every caller waiting here re-reads its deadline.
+    pub(super) fn apply_cut(&self) {
+        let mut stages = self.stages();
+        if let (Some(cut_at), Some(due)) = (self.sender.cut_at, stages.body_deadline) {
+            stages.body_deadline = Some(due.min(cut_at));
+        }
+        self.changed.notify_all();
     }
 
     /// The audit ended: every stage still pending times out now.

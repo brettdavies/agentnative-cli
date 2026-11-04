@@ -1,4 +1,5 @@
-//! The bounded worker pool the waves run on.
+//! A bounded pool for one burst of requests: discovery's passes and the follow
+//! slice, which go out before the checks and outside their cap.
 //!
 //! Blocking I/O cannot be cancelled from outside, so the deadline is enforced
 //! where it can be: every request is issued with a timeout no longer than
@@ -131,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_wave_returns_immediately() {
+    fn an_empty_burst_returns_immediately() {
         let out: Vec<Option<u8>> = run_bounded(Vec::<u8>::new(), 6, Instant::now(), |n| n);
         assert!(out.is_empty());
     }

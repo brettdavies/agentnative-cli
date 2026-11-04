@@ -47,11 +47,12 @@ pub(super) enum Joined {
 impl Entry {
     /// When the stage settles on its own if nothing arrives: the header
     /// phase at the sender's deadline, a body read at its own.
-    fn due(&self, stages: &Stages) -> Instant {
+    fn due(&self, shared: &Shared, stages: &Stages) -> Instant {
+        let sender = self.sender.deadline_given(shared.was_cut());
         if stages.headers.is_none() {
-            return self.sender.deadline;
+            return sender;
         }
-        stages.body_deadline.unwrap_or(self.sender.deadline)
+        stages.body_deadline.unwrap_or(sender)
     }
 
     /// Wait for a stage no longer than the caller's deadline; whether the
@@ -65,10 +66,11 @@ impl Entry {
             if let Some(record) = pick(&stages, stage) {
                 return Some((record.clone(), waited));
             }
-            if Instant::now() >= ctx.deadline {
+            let deadline = ctx.deadline_given(shared.was_cut());
+            if Instant::now() >= deadline {
                 return None;
             }
-            let until = ctx.deadline.min(self.due(&stages));
+            let until = deadline.min(self.due(shared, &stages));
             stages = wait_until(&self.changed, stages, until);
             self.expire_due_locked(&mut stages, shared, Instant::now());
         }
@@ -83,11 +85,12 @@ impl Entry {
             if let Some(record) = &stages.for_sender {
                 return record.clone();
             }
-            if Instant::now() >= ctx.deadline {
+            let deadline = ctx.deadline_given(shared.was_cut());
+            if Instant::now() >= deadline {
                 return hop::timed_out_for(ctx);
             }
             waiting.get_or_insert_with(|| Waiting::count(shared));
-            let until = ctx.deadline.min(self.due(&stages));
+            let until = deadline.min(self.due(shared, &stages));
             stages = wait_until(&self.changed, stages, until);
         }
     }
@@ -101,7 +104,7 @@ impl Entry {
         if hop::answers(&head, waited, ctx) {
             return Joined::Answer(head);
         }
-        self.extend(shared, ctx.deadline);
+        self.extend(shared, ctx.deadline_given(shared.was_cut()));
         let Some((full, waited)) = self.settle(shared, Stage::Full, ctx) else {
             return Joined::TimedOut;
         };

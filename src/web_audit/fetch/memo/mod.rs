@@ -31,6 +31,11 @@
 //! a later waiter pushed back still ends at the sender's budget, and that
 //! waiter then sends its own request.
 //!
+//! A cut shortens the requests that asked for one to their cut budget from
+//! their start, in flight or not yet sent: every wait on one re-reads its
+//! deadline, and [`RequestMemo::cut`] wakes each so it does. The thread blocked
+//! on the request is abandoned like any other past its caller's deadline.
+//!
 //! The memo keeps the better of two answers, retains a body only within
 //! [`MEMO_BODY_MAX_BYTES`] and the audit's [`MEMO_TOTAL_MAX_BYTES`], and
 //! lives for one audit: nothing in it reaches the scorecard or the report.
@@ -53,6 +58,7 @@ use std::thread;
 use std::time::Instant;
 
 use super::hop::{self, HopContext, HopRecord};
+use super::launch::Boarding;
 use crate::web_audit::transport::{Request, Transport};
 use key::Key;
 pub use retention::{MEMO_BODY_MAX_BYTES, MEMO_TOTAL_MAX_BYTES};
@@ -94,7 +100,14 @@ pub struct RequestMemo {
 struct Shared {
     state: Mutex<State>,
     ended: AtomicBool,
+    cut: AtomicBool,
     digest: RandomState,
+}
+
+impl Shared {
+    fn was_cut(&self) -> bool {
+        self.cut.load(Ordering::SeqCst)
+    }
 }
 
 #[derive(Default)]
@@ -134,6 +147,7 @@ impl RequestMemo {
             shared: Arc::new(Shared {
                 state: Mutex::new(State::default()),
                 ended: AtomicBool::new(false),
+                cut: AtomicBool::new(false),
                 digest: RandomState::new(),
             }),
         }
@@ -152,6 +166,24 @@ impl RequestMemo {
     /// Whether the audit has ended.
     pub fn is_ended(&self) -> bool {
         self.shared.ended.load(Ordering::SeqCst)
+    }
+
+    /// Whether the audit's requests have been cut.
+    pub fn was_cut(&self) -> bool {
+        self.shared.was_cut()
+    }
+
+    /// Shorten every request that asked for a cut, in flight or still to come.
+    /// Idempotent.
+    pub fn cut(&self) {
+        let open: Vec<Arc<Entry>> = {
+            let state = lock(&self.shared.state);
+            self.shared.cut.store(true, Ordering::SeqCst);
+            state.entries.values().cloned().collect()
+        };
+        for entry in open {
+            entry.apply_cut();
+        }
     }
 
     /// What the memo has done so far. A memo-owned read whose deadline has
@@ -194,7 +226,13 @@ impl RequestMemo {
         transport: &Arc<dyn Transport + Send + Sync>,
         request: Request,
         ctx: HopContext,
+        boarding: Option<&Boarding>,
     ) -> HopRecord {
+        let out = || {
+            if let Some(boarding) = boarding {
+                boarding.out();
+            }
+        };
         let key = Key::of(&request, &self.shared.digest);
         let mut prior: Option<HopRecord> = None;
         let mut wanting: Option<Arc<Entry>> = None;
@@ -223,8 +261,10 @@ impl RequestMemo {
                     Arc::clone(transport),
                 );
                 thread::spawn(move || run_hop(&shared, &sent, &*transport, &request));
+                out();
                 return entry.wait_sender(&self.shared, &ctx);
             }
+            out();
             match entry.join(&self.shared, &ctx) {
                 Joined::Answer(record) => {
                     lock(&self.shared.state).stats.reused += 1;
@@ -232,7 +272,7 @@ impl RequestMemo {
                 }
                 Joined::TimedOut => return hop::timed_out_for(&ctx),
                 Joined::Wanting(record) => {
-                    if Instant::now() >= ctx.deadline {
+                    if Instant::now() >= ctx.deadline_given(self.was_cut()) {
                         return hop::timed_out_for(&ctx);
                     }
                     prior = Some(record);

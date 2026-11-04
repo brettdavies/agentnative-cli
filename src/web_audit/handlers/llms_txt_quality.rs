@@ -1,14 +1,15 @@
 //! The `llms-txt-quality` trio (format / links / when-to-use), a mirror
-//! of the site's `handlers/llms-txt-quality.ts`. Reads the retained
-//! wave-1 `/llms.txt` body, so format and when-to-use issue no fetch;
-//! link probes are validated and budgeted like scoped-llms. An http link,
-//! or one that redirects to http, is never requested: llmstxt.org asks for
-//! a markdown link per item and never for plaintext, so such a link is
-//! present but not usable over https.
+//! of the site's `handlers/llms-txt-quality.ts`. Reads the retained source
+//! `/llms.txt` body, so format and when-to-use issue no fetch. Link probes are
+//! validated and run side by side under the audit's cap; a link not answered
+//! by the check's deadline reads as the budget running out, whichever order
+//! the others finished in. An http link, or one that redirects to http, is
+//! never requested: llmstxt.org asks for a markdown link per item and never
+//! for plaintext, so such a link is present but not usable over https.
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use regex::Regex;
 use serde::Deserialize;
@@ -30,6 +31,7 @@ use crate::web_audit::scorecard::EvidenceItem;
 pub use crate::web_audit::registry::DEFAULT_MAX_LINKS;
 
 const BUDGET_EXHAUSTED: &str = "nested-probe budget exhausted";
+const TIMEOUT_ERROR: &str = "TimeoutError";
 
 /// The `with` block of an `llms-txt-quality` check.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -97,21 +99,53 @@ pub fn hrefs_from(body: &str, base: &str) -> Vec<String> {
     out
 }
 
-/// One link's evidence and its own miss, `None` when it resolved. The row's
-/// evidence line reads the miss to name the link that decided the row.
-fn probe_link(href: &str, timeout: Duration, ctx: &HandlerContext) -> (Option<Miss>, EvidenceItem) {
+/// One link's probe. `miss` is its own, `None` when it resolved; the row's
+/// evidence line reads it to name the link that decided the row.
+struct LinkProbe {
+    miss: Option<Miss>,
+    row: EvidenceItem,
+    exhausted: bool,
+}
+
+impl LinkProbe {
+    fn settled(miss: Option<Miss>, row: EvidenceItem) -> Self {
+        LinkProbe {
+            miss,
+            row,
+            exhausted: false,
+        }
+    }
+
+    fn budget_exhausted(href: &str) -> Self {
+        LinkProbe {
+            miss: Some(Miss::Error),
+            row: item([
+                ("url", json!(href)),
+                ("ok", json!(false)),
+                ("why", json!([BUDGET_EXHAUSTED])),
+            ]),
+            exhausted: true,
+        }
+    }
+}
+
+fn probe_link(href: &str, deadline_at: Instant, ctx: &HandlerContext) -> LinkProbe {
     if let Err(reason) = ctx.validate_nested(href) {
         let row = item([
             ("url", json!(href)),
             ("blocked", json!(reason)),
             ("ok", json!(false)),
         ]);
-        return (Some(Miss::Absent), row);
+        return LinkProbe::settled(Some(Miss::Absent), row);
     }
     if !Url::parse(href).is_ok_and(|url| url.scheme() == "https") {
         let mut row = item([("url", json!(href))]);
         row.extend(plaintext_item(PlaintextReason::NotHttps));
-        return (Some(Miss::Noncompliant), row);
+        return LinkProbe::settled(Some(Miss::Noncompliant), row);
+    }
+    let timeout = deadline_at.saturating_duration_since(Instant::now());
+    if timeout.is_zero() {
+        return LinkProbe::budget_exhausted(href);
     }
     let resp = ctx.fetch.fetch(
         href,
@@ -122,8 +156,15 @@ fn probe_link(href: &str, timeout: Duration, ctx: &HandlerContext) -> (Option<Mi
             ..FetchOptions::default()
         },
     );
+    if resp
+        .error
+        .as_deref()
+        .is_some_and(|error| error.starts_with(TIMEOUT_ERROR))
+    {
+        return LinkProbe::budget_exhausted(href);
+    }
     if redirects_to_http(&resp) {
-        return (
+        return LinkProbe::settled(
             Some(Miss::Noncompliant),
             redirects_to_http_item(href, resp.status),
         );
@@ -135,7 +176,7 @@ fn probe_link(href: &str, timeout: Duration, ctx: &HandlerContext) -> (Option<Mi
             ("error", json!(resp.error)),
             ("ok", json!(false)),
         ]);
-        return (Some(Miss::Error), row);
+        return LinkProbe::settled(Some(Miss::Error), row);
     };
     let ok = (200..400).contains(&status);
     let miss = match (ok, is_missing_status(Some(status))) {
@@ -148,7 +189,7 @@ fn probe_link(href: &str, timeout: Duration, ctx: &HandlerContext) -> (Option<Mi
         ("status", json!(status)),
         ("ok", json!(ok)),
     ]);
-    (miss, row)
+    LinkProbe::settled(miss, row)
 }
 
 /// Evaluate the op against the retained llms.txt body.
@@ -217,18 +258,14 @@ pub fn run_llms_txt_quality(check: &WebCheck, ctx: &HandlerContext) -> ProbeOutc
         );
     }
 
+    let probe_ctx = ctx.clone();
+    let probes = ctx.fan_out(hrefs, move |href: String| {
+        probe_link(&href, deadline_at, &probe_ctx)
+    });
+    let exhausted = probes.iter().any(|probe| probe.exhausted);
     let mut evidence: Vec<EvidenceItem> = Vec::new();
     let mut misses: Vec<Miss> = Vec::new();
-    let mut exhausted = false;
-    for href in &hrefs {
-        let slice = deadline_at.saturating_duration_since(Instant::now());
-        if slice.is_zero() {
-            evidence.push(why_item(BUDGET_EXHAUSTED));
-            misses.push(Miss::Error);
-            exhausted = true;
-            break;
-        }
-        let (miss, mut row) = probe_link(href, slice, ctx);
+    for LinkProbe { miss, mut row, .. } in probes {
         let verdict = miss.map_or(ProbeStatus::Pass, Miss::status);
         row.insert("link_verdict".to_string(), json!(verdict.as_str()));
         evidence.push(row);

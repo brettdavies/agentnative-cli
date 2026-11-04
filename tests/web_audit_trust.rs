@@ -64,7 +64,7 @@ fn a_private_ca_ends_the_run_naming_the_rejection_and_the_ca_cert_fix() {
     assert_eq!(envelope["next_step"]["action"], "add-ca-cert");
     assert_eq!(
         envelope["next_step"]["template"],
-        Value::from(format!("anc web {target} --ca-cert <FILE>"))
+        Value::from(format!("anc web {target} --output json --ca-cert <FILE>"))
     );
     assert!(envelope["next_step"].get("command").is_none());
 }

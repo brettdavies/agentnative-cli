@@ -31,6 +31,7 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand -V 'Print version'
             cand --version 'Print version'
             cand audit 'Audit a CLI project or binary for agent-readiness'
+            cand web 'Audit a website for agent-readiness'
             cand completions 'Generate shell completions'
             cand emit 'Render build artifacts (coverage matrix, scorecard schema)'
             cand skill 'Install or manage the agentnative skill bundle'
@@ -48,6 +49,26 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --binary 'Run only behavioral audits (skip source analysis). To choose which binary a directory grades, use --bin'
             cand --source 'Run only source audits (skip behavioral)'
             cand --include-tests 'Include test code in source analysis'
+            cand -q 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --quiet 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand -v 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'anc;web'= {
+            cand --site-type 'Score only the checks that apply to this kind of site. Omitted, every check applies, matching the hosted auditor''s default'
+            cand --check 'Report one check by id and exit with that row''s code. Run `anc emit web-checks` for the full list of ids'
+            cand --ca-cert 'Also trust the root certificates in this PEM file, for any target. Repeat for several files. A local or private target already trusts the OS trust store; a public target trusts the bundled Mozilla roots. Chain and hostname checks always run'
+            cand --output 'Output format'
+            cand --color 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)'
+            cand --external-dns 'Let the DNS-over-HTTPS checks query public resolvers even when the target is local or private. Without it those rows report `n_a` rather than sending the target''s hostname to a third party. It and `--no-external-dns` override each other, and the last one wins'
+            cand --no-external-dns 'Withhold the DNS-over-HTTPS checks for any target, so anc sends the target''s hostname to no public DNS-over-HTTPS resolver. Those rows report `n_a`. The system resolver still looks the name up to connect. Use it for an internal host on a routable address, which reads as public. It and `--external-dns` override each other, and the last one wins'
+            cand --no-follow 'Audit only the target: leave unrequested every host its discovery documents declare. Rows that depend on a declared host report `n_a` (`follow-disabled`), and the scorecard records `follow_declarations: false`'
+            cand --token-stdin 'Read a bearer token for the audited MCP endpoint from the first line of stdin, in place of `ANC_WEB_TOKEN`. The token goes only to that endpoint''s handshake and session requests'
             cand -q 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
             cand --quiet 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
             cand -v 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
@@ -83,6 +104,9 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand --help 'Print help'
             cand coverage-matrix 'Render the spec coverage matrix (registry → audits → artifact)'
             cand schema 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
+            cand web-checks 'Print the compiled web-audit check registry as JSON'
+            cand web-schema 'Print the web-scorecard JSON Schema (draft 2020-12) to stdout'
+            cand web-remediation 'Print the web-audit fix catalog as JSON'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;emit;coverage-matrix'= {
@@ -112,14 +136,59 @@ set edit:completion:arg-completer[anc] = {|@words|
             cand -h 'Print help (see more with ''--help'')'
             cand --help 'Print help (see more with ''--help'')'
         }
+        &'anc;emit;web-checks'= {
+            cand --color 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)'
+            cand -q 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --quiet 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand -v 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'anc;emit;web-schema'= {
+            cand --color 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)'
+            cand -q 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --quiet 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand -v 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
+        &'anc;emit;web-remediation'= {
+            cand --color 'Color control for text output. `auto` (default) emits ANSI styling when stdout is a terminal and `NO_COLOR` is unset. `always` forces styling on; `never` strips it. Honors the `NO_COLOR` environment variable in `auto` mode (<https://no-color.org/>)'
+            cand -q 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --quiet 'Suppress non-essential output. Default: false (warnings and progress notes are written to stderr). `AGENTNATIVE_QUIET` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand -v 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --verbose 'Escalate diagnostic detail. `-v` is shorthand for `--verbose`. Mutually exclusive with `--quiet`; the last flag on the command line wins when both appear. `AGENTNATIVE_VERBOSE` turns it on for any value but `0`, `false`, `no`, `off`, or empty'
+            cand --examples 'Print a curated examples block and exit. Pairs with `--output json` (or `--json`) so structured-output consumers can fetch the examples without parsing the full `--help` body'
+            cand --json 'Emit JSON output. Short alias for `--output json` on subcommands that support it. Per the agent-native convention (`p2-should-json-aliases`), the short form works alongside the canonical `--output` enum'
+            cand --raw 'Strip section headers, evidence lines, summary line, and badge hint — emit only `id<TAB>status` per audit. Pipe-safe for grep, awk, and downstream tooling that wants the raw verdict stream without prose. Ignored in `--output json` mode'
+            cand -h 'Print help (see more with ''--help'')'
+            cand --help 'Print help (see more with ''--help'')'
+        }
         &'anc;emit;help'= {
             cand coverage-matrix 'Render the spec coverage matrix (registry → audits → artifact)'
             cand schema 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
+            cand web-checks 'Print the compiled web-audit check registry as JSON'
+            cand web-schema 'Print the web-scorecard JSON Schema (draft 2020-12) to stdout'
+            cand web-remediation 'Print the web-audit fix catalog as JSON'
             cand help 'Print this message or the help of the given subcommand(s)'
         }
         &'anc;emit;help;coverage-matrix'= {
         }
         &'anc;emit;help;schema'= {
+        }
+        &'anc;emit;help;web-checks'= {
+        }
+        &'anc;emit;help;web-schema'= {
+        }
+        &'anc;emit;help;web-remediation'= {
         }
         &'anc;emit;help;help'= {
         }
@@ -181,6 +250,7 @@ set edit:completion:arg-completer[anc] = {|@words|
         }
         &'anc;help'= {
             cand audit 'Audit a CLI project or binary for agent-readiness'
+            cand web 'Audit a website for agent-readiness'
             cand completions 'Generate shell completions'
             cand emit 'Render build artifacts (coverage matrix, scorecard schema)'
             cand skill 'Install or manage the agentnative skill bundle'
@@ -188,15 +258,26 @@ set edit:completion:arg-completer[anc] = {|@words|
         }
         &'anc;help;audit'= {
         }
+        &'anc;help;web'= {
+        }
         &'anc;help;completions'= {
         }
         &'anc;help;emit'= {
             cand coverage-matrix 'Render the spec coverage matrix (registry → audits → artifact)'
             cand schema 'Print the scorecard JSON Schema (draft 2020-12) to stdout'
+            cand web-checks 'Print the compiled web-audit check registry as JSON'
+            cand web-schema 'Print the web-scorecard JSON Schema (draft 2020-12) to stdout'
+            cand web-remediation 'Print the web-audit fix catalog as JSON'
         }
         &'anc;help;emit;coverage-matrix'= {
         }
         &'anc;help;emit;schema'= {
+        }
+        &'anc;help;emit;web-checks'= {
+        }
+        &'anc;help;emit;web-schema'= {
+        }
+        &'anc;help;emit;web-remediation'= {
         }
         &'anc;help;skill'= {
             cand install 'Install the skill bundle into a host''s canonical skills directory'

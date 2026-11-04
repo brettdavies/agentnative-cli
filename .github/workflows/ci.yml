@@ -87,11 +87,13 @@ jobs:
       # regeneration.
       completions: true
 
-  # The reusable workflow above builds the default feature set. The local web
-  # audit is the `web` feature, off by default, so these jobs hold that build
-  # to the same clippy, test and Windows bars. They do not wait on the scope
-  # job: they run on every pull request whatever the classifier decides, so the
-  # required "Web feature (clippy, test)" check never rests on its verdict.
+  # The reusable workflow above builds the default feature set, which holds the
+  # local web audit. These jobs hold the other side of the `web` feature, the
+  # `--no-default-features` build with no networking stack, to the same clippy,
+  # test and Windows bars. They do not wait on the scope job: they run on every
+  # pull request whatever the classifier decides, so the required
+  # "Web feature (clippy, test)" check never rests on its verdict. That name is
+  # the one the Protect dev ruleset requires.
   web:
     name: Web feature (clippy, test)
     runs-on: ubuntu-22.04
@@ -111,14 +113,14 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Clippy
-        run: cargo clippy --all-targets --features web
+      - name: Clippy, without the web feature
+        run: cargo clippy --all-targets --no-default-features
 
-      - name: Tests
-        run: cargo test --features web
+      - name: Tests, without the web feature
+        run: cargo test --no-default-features
 
-  web-windows:
-    name: Web feature (Windows check)
+  no-default-features-windows:
+    name: No default features (Windows check)
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -134,22 +136,49 @@ jobs:
         with:
           cache-on-failure: true
 
-      # aws-lc-sys (behind rustls's aws-lc-rs provider) assembles with NASM on
-      # x86-64 Windows, and the hosted Windows image does not ship it.
-      - name: Install NASM
-        shell: pwsh
-        run: |
-          choco install nasm --no-progress --yes
-          Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\NASM'
+      - name: Check (Windows), without the web feature
+        run: cargo check --all-targets --no-default-features
 
-      - name: Check (Windows)
-        run: cargo check --all-targets --features web
+  # A release ships `anc web` on Windows and macOS, and each platform has its own
+  # sockets and paths, which `ci / Windows check` only compiles. Only the web
+  # tests run here: `cross_os_tests` runs every target, and the audit tests hold
+  # Unix tools and paths. A fixture site trusts the test CA through SSL_CERT_FILE,
+  # so these do not read the keychain or the Windows root store.
+  web-cross-os:
+    name: Web tests
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.rust != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-15 is the value of MACOS_RUNNER in brettdavies/.github's
+        # .github/runner-labels.env, whose guard does not reach this repo.
+        # macos-latest is macOS 26, with too little runner capacity to start reliably.
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust
+        run: rustup toolchain install
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          cache-on-failure: true
+
+      - name: Web library tests
+        run: "cargo test --lib web_audit::"
+
+      - name: Web test targets
+        shell: bash
+        run: cargo test --no-fail-fast --test 'web_audit*'
 
   # The web audit's TLS stack, HTTP client and regex engine are the one cost
   # a Rust-native port can silently lose, so the release artifact is measured
-  # rather than assumed. The ceiling lives in the script. The build enables the
-  # `web` feature: that is the binary a release ships once the feature is on
-  # by default.
+  # rather than assumed. The ceiling lives in the script. This is the default
+  # build, the binary a release ships.
   size:
     name: Release binary size
     runs-on: ubuntu-latest
@@ -163,7 +192,7 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build release
-        run: cargo build --release --features web
+        run: cargo build --release
 
       - name: Check size against the ceiling
         run: scripts/check-binary-size.sh

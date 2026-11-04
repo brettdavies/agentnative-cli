@@ -102,11 +102,12 @@ pub enum NextAction {
     ChooseBin,
     /// Run `command`, the same invocation corrected.
     Rerun,
-    /// Run `command` once the target is up: the same `anc web` target with
-    /// `--verbose`, which reports each probe.
+    /// Run `command` once the target is up: the same invocation with
+    /// `--verbose`, which lists every row.
     Retry,
     /// Pass a target `anc web` can read: `command` prints the forms it
-    /// accepts.
+    /// accepts or, for an `http` target, is the same invocation on its `https`
+    /// URL.
     FixTarget,
     /// Pick a real check id: `command` lists every id this build scores.
     ListChecks,

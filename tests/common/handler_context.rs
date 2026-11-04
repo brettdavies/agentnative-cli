@@ -41,7 +41,6 @@ pub fn context(transport: Arc<dyn Transport + Send + Sync>) -> HandlerContext {
         mcp_auth: None,
         mcp_sign_in: None,
         deadline: Instant::now() + Duration::from_secs(20),
-        external_dns: false,
         target_locality: Some(Locality::Public),
     }
 }

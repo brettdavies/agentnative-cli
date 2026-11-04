@@ -123,6 +123,21 @@ impl std::fmt::Debug for Project {
     }
 }
 
+fn missing_path_message(path: &Path) -> String {
+    #[cfg(feature = "web")]
+    {
+        use crate::web_audit::target::{missing_path_shown, website_hint};
+        let token = path.to_string_lossy();
+        let message = format!("path does not exist: {}", missing_path_shown(&token));
+        if let Some(hint) = website_hint(&token) {
+            return format!("{message}; {hint}");
+        }
+        message
+    }
+    #[cfg(not(feature = "web"))]
+    format!("path does not exist: {}", path.display())
+}
+
 impl Project {
     /// Discover `path` with Rust builds in its own `target`.
     #[cfg(test)]
@@ -141,7 +156,7 @@ impl Project {
     fn discover_in(path: &Path, include_tests: bool, cargo: &CargoTarget) -> Result<Project> {
         let path = path
             .canonicalize()
-            .with_context(|| format!("path does not exist: {}", path.display()))?;
+            .with_context(|| missing_path_message(path))?;
 
         let meta = fs::metadata(&path)
             .with_context(|| format!("cannot read metadata: {}", path.display()))?;

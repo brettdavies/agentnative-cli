@@ -54,9 +54,9 @@ see [`src/principles/registry.rs`](src/principles/registry.rs).
 ## Pre-push hook battery
 
 The repo ships a hook pair. The pre-push hook mirrors CI: `cargo fmt --check`, `cargo clippy -Dwarnings`, `cargo test`
-and `cargo doc` for the default and `web` feature sets, an MSRV check, `cargo-deny check`, shellcheck, shfmt,
-actionlint, and the Windows compatibility checks. It reports every failing step in one run, and skips the cargo steps
-when `scripts/cargo-inputs.sh`, the classifier CI uses, finds no cargo input among the pushed files.
+and `cargo doc` for the default build and for `--no-default-features`, an MSRV check, `cargo-deny check`, shellcheck,
+shfmt, actionlint, and the Windows compatibility checks. It reports every failing step in one run, and skips the cargo
+steps when `scripts/cargo-inputs.sh`, the classifier CI uses, finds no cargo input among the pushed files.
 `scripts/cargo-inputs.paths` lists the inputs no string literal in the Rust sources names. The pre-commit hook runs the
 fast checks on the staged files only. A check whose tool is not installed is skipped with a note naming the
 install command. Activate the hooks once after clone:

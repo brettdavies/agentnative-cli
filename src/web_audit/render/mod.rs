@@ -6,22 +6,26 @@
 
 mod exit;
 mod failure;
+mod invocation;
 mod lanes;
 mod progress;
 mod rows;
 mod text;
+mod warning;
 
 pub use exit::{
     EXIT_CLEAN, EXIT_COULD_NOT_CHECK, EXIT_FAILURES, EXIT_TABLE, EXIT_WARNINGS, exit_code,
     exit_reason,
 };
 pub use failure::{
-    Failure, ca_cert_failure, format_failure, insecure_scheme_failure, invalid_target_failure,
-    token_failure, unknown_check_failure, unreachable_failure, untrusted_certificate_failure,
+    Failure, ca_cert_failure, format_failure, invalid_target_failure, no_answer_failure,
+    token_failure, unknown_check_failure,
 };
+pub use invocation::Invocation;
 pub use progress::{StderrProgress, progress_enabled};
 pub use rows::prefix_for;
 pub use text::{RenderOptions, advisory_note, format_check, format_text, non_comparable_note};
+pub use warning::{WarningCode, routed_to_web_message, token_not_read_message, warning_line};
 
 #[cfg(test)]
 mod test_rows {

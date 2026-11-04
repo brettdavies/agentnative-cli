@@ -2,6 +2,7 @@
 
 use std::io::IsTerminal;
 
+use super::rows::terminal_safe;
 use crate::web_audit::engine::ProgressSink;
 use crate::web_audit::registry::CHECKS;
 use crate::web_audit::scorecard::EngineResult;
@@ -43,7 +44,7 @@ impl Default for StderrProgress {
 impl ProgressSink for StderrProgress {
     fn discovery(&mut self, endpoint: Option<&str>) {
         match endpoint {
-            Some(endpoint) => eprintln!("  mcp endpoint: {endpoint}"),
+            Some(endpoint) => eprintln!("  mcp endpoint: {}", terminal_safe(endpoint)),
             None => eprintln!("  mcp endpoint: none discovered"),
         }
     }

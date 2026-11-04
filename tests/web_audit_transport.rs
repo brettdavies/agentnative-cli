@@ -606,8 +606,10 @@ fn ureq_transport_reports_connection_refused_as_a_network_error() {
     let addr = listener.local_addr().unwrap();
     drop(listener);
     let transport = UreqTransport::new(UA);
+    // Windows retries a connect that a closed localhost port refuses for about
+    // two seconds before reporting it, so a shorter budget reads as a timeout.
     let err = transport
-        .send(&request(&format!("http://{addr}/"), 2000, false))
+        .send(&request(&format!("http://{addr}/"), 10_000, false))
         .expect_err("refused");
     assert!(matches!(err, TransportError::Network(_)), "{err:?}");
 }

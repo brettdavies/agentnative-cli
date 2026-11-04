@@ -130,10 +130,8 @@ where
     };
     let inject_audit = |args: Vec<OsString>| -> Vec<OsString> { inject(args, "audit") };
     // A positional token that reads as a network target routes to `web`
-    // instead: a strict grammar (explicit scheme, explicit port, or a
-    // TLD-shaped dot-bearing token with no path separator) that an
-    // existing path always wins, so a filename typo stays on the offline
-    // audit path and never opens a connection.
+    // instead: a strict grammar (`web_audit::target` states it) that an
+    // existing path always wins.
     // Without the `web` feature there is no `web` subcommand, so every
     // token routes to `audit`.
     let inject_for = |args: Vec<OsString>, token: &str| -> Vec<OsString> {
@@ -200,6 +198,59 @@ where
     }
 
     args
+}
+
+/// What the caller may have meant when clap rejected a flag the other verb declares,
+/// after a token went to the verb that lacks it. Routing reads the token alone, so
+/// `anc foo.corp --no-external-dns` reaches `audit`, and `anc missing.dev --principle 2`
+/// reaches `web`. It is a sentence rather than a next step, because a mistyped name
+/// must not become a command an agent runs.
+#[cfg(feature = "web")]
+pub fn misrouted_flag_hint(error: &clap::Error, argv: &[OsString]) -> Option<String> {
+    use clap::error::{ContextKind, ContextValue, ErrorKind};
+
+    use crate::web_audit::target::{bare_name_path_form, website_hint};
+
+    if error.kind() != ErrorKind::UnknownArgument {
+        return None;
+    }
+    let rejected = match error.get(ContextKind::InvalidArg)? {
+        ContextValue::String(arg) => arg.split('=').next()?.to_string(),
+        _ => return None,
+    };
+    let verb = argv.get(1)?.to_str()?;
+    let other = match verb {
+        "audit" => "web",
+        "web" => "audit",
+        _ => return None,
+    };
+    let command = <Cli as clap::CommandFactory>::command();
+    let declares = command.find_subcommand(other)?.get_arguments().any(|arg| {
+        arg.get_long()
+            .is_some_and(|long| rejected == format!("--{long}"))
+    });
+    if !declares {
+        return None;
+    }
+    let tokens = argv
+        .iter()
+        .skip(2)
+        .filter_map(|arg| arg.to_str())
+        .filter(|arg| !arg.starts_with('-'));
+    if verb == "audit" {
+        tokens.into_iter().find_map(website_hint)
+    } else {
+        tokens
+            .into_iter()
+            .find_map(bare_name_path_form)
+            .map(|path| format!("if it names a path, `anc audit {path}` audits it"))
+    }
+}
+
+/// No `web` verb to have meant, in a build without the feature.
+#[cfg(not(feature = "web"))]
+pub fn misrouted_flag_hint(_error: &clap::Error, _argv: &[OsString]) -> Option<String> {
+    None
 }
 
 /// The invocation to suggest rerunning: `argv` with `anc` for the program

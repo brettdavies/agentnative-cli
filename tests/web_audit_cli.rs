@@ -77,6 +77,109 @@ fn the_single_check_form_returns_that_rows_code() {
     assert_eq!(scorecard.results.len(), 68);
 }
 
+/// A site that names its MCP server with an escape sequence, as any site can.
+fn escaping_site() -> common::Server {
+    common::spawn_https(|req: &common::RawRequest| {
+        let path = req.target.split('?').next().unwrap_or("/");
+        match (req.method.as_str(), path) {
+            ("GET", "/") => {
+                common::web_cli::ok("text/html; charset=utf-8", &common::web_cli::html_body())
+            }
+            ("POST", "/mcp") => {
+                let method = serde_json::from_slice::<Value>(&req.body)
+                    .ok()
+                    .and_then(|v| v.get("method").and_then(Value::as_str).map(str::to_string));
+                let result = if method.as_deref() == Some("initialize") {
+                    serde_json::json!({
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": { "tools": {} },
+                        "serverInfo": { "name": "\u{1b}[31mowned", "version": "1.0" },
+                    })
+                } else {
+                    serde_json::json!({ "tools": [] })
+                };
+                common::web_cli::ok(
+                    "application/json",
+                    &serde_json::json!({ "jsonrpc": "2.0", "id": 1, "result": result }).to_string(),
+                )
+            }
+            _ => common::web_cli::not_found(),
+        }
+    })
+}
+
+#[test]
+fn a_site_cannot_write_an_escape_sequence_to_the_terminal() {
+    let server = escaping_site();
+    let host = host_of(&server);
+    let assert = anc().args(["web", &host, "--verbose"]).assert();
+    let text = stdout_of(assert.get_output());
+    assert!(text.contains("\u{fffd}[31mowned"), "{text}");
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+
+    let assert = anc().args(["web", &host, "--output", "json"]).assert();
+    let json = stdout_of(assert.get_output());
+    assert!(!json.contains('\u{1b}'), "{json:?}");
+    assert!(json.contains("\\u001b[31mowned"), "{json}");
+}
+
+#[test]
+fn a_cards_endpoint_cannot_forge_a_line_of_the_report() {
+    let server = common::spawn_https(|req: &common::RawRequest| {
+        let host = req.header("host").unwrap_or("127.0.0.1").to_string();
+        match req.target.split('?').next().unwrap_or("/") {
+            "/" => common::web_cli::ok("text/html; charset=utf-8", &common::web_cli::html_body()),
+            "/.well-known/mcp.json" => common::web_cli::ok(
+                "application/json",
+                &serde_json::json!({
+                    "mcp_endpoint": format!("https://{host}/mcp\u{1b}[31m\nwarning: forged"),
+                })
+                .to_string(),
+            ),
+            _ => common::web_cli::not_found(),
+        }
+    });
+    let assert = anc().args(["web", &host_of(&server)]).assert();
+    let text = stdout_of(assert.get_output());
+    let header = text.lines().find(|line| line.contains("mcp endpoint:"));
+    assert!(
+        header.is_some_and(|line| line.contains("/mcp")),
+        "the card's endpoint was not read: {text}"
+    );
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+    assert!(
+        !text.lines().any(|line| line.starts_with("warning: forged")),
+        "{text}"
+    );
+}
+
+#[test]
+fn the_examples_flag_shows_the_web_verb() {
+    let assert = anc().arg("--examples").assert().code(0);
+    let out = stdout_of(assert.get_output());
+    assert!(out.contains("anc web localhost:8787"), "{out}");
+}
+
+#[test]
+fn no_external_dns_reaches_the_engine() {
+    let server = fixture_site();
+    let host = host_of(&server);
+    for flags in [
+        &["--no-external-dns"][..],
+        &["--external-dns", "--no-external-dns"][..],
+    ] {
+        let assert = anc()
+            .args(["web", &host, "--check", "dns-aid"])
+            .args(flags)
+            .assert()
+            .code(3);
+        let out = stdout_of(assert.get_output());
+        let fields: Vec<&str> = out.trim_end().split('\t').collect();
+        assert_eq!(fields[1], "n_a", "{out}");
+        assert!(fields[2].contains("--no-external-dns"), "{out}");
+    }
+}
+
 /// Declaring a type both narrows and widens: rows typed for the other
 /// family gate out, and rows whose antecedent is "this site has an API"
 /// gate in, because the declaration is what satisfies it. So this pins
@@ -161,13 +264,38 @@ fn the_declared_site_type_scopes_the_run() {
 #[test]
 fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
     let server = fixture_site();
-    // The sniff routes a host:port token to `web`.
-    anc()
-        .args([&host_of(&server), "--check", "llms-txt"])
+    // The sniff routes a host:port token to `web`, and says so on stderr.
+    let host = host_of(&server);
+    let assert = anc()
+        .args([&host, "--check", "llms-txt"])
         .assert()
         .code(0)
         .stdout(predicates_str("llms-txt\tpass\t"));
     assert!(!server.hits().is_empty());
+    let stderr = stderr_of(assert.get_output());
+    assert!(
+        stderr.contains(&format!(
+            "warning: routed-to-web: `anc {host} --check llms-txt` ran as \
+             `anc web {host} --check llms-txt`"
+        )),
+        "{stderr}"
+    );
+
+    // `-q` asks for quiet, so the notice stays back.
+    let assert = anc()
+        .args(["-q", &host, "--check", "llms-txt"])
+        .assert()
+        .code(0);
+    let stderr = stderr_of(assert.get_output());
+    assert!(!stderr.contains("routed-to-web"), "{stderr}");
+
+    // A run that names `web` has nothing to say about routing.
+    let assert = anc()
+        .args(["web", &host, "--check", "llms-txt"])
+        .assert()
+        .code(0);
+    let stderr = stderr_of(assert.get_output());
+    assert!(!stderr.contains("routed-to-web"), "{stderr}");
 
     // A dot-bearing filename that does not exist fails through the audit
     // path with no network activity at all.
@@ -179,6 +307,30 @@ fn a_bare_network_target_routes_to_web_and_a_filename_stays_offline() {
         stderr_of(assert.get_output())
     );
     assert!(probe.hits().is_empty());
+
+    // So does a name whose last label is no top-level domain, and a
+    // `file:line` reference, which the port grammar would otherwise take.
+    for token in [
+        "anc-web-audit-missing.go",
+        "anc-web-audit-missing.rs:42",
+        "Makefile:12",
+    ] {
+        let assert = anc().arg(token).assert().code(2);
+        assert!(
+            stderr_of(assert.get_output()).contains("path does not exist"),
+            "{token}: {}",
+            stderr_of(assert.get_output())
+        );
+    }
+
+    // A name on a denied top-level domain stays offline too, and the error
+    // says what reaches it as a website.
+    let assert = anc().arg("anc-web-audit-missing.pl").assert().code(2);
+    let stderr = stderr_of(assert.get_output());
+    assert!(
+        stderr.contains("if it names a website, `anc web anc-web-audit-missing.pl` audits it"),
+        "{stderr}"
+    );
 
     // An explicit path form routes to audit even when the name is
     // URL-shaped.
@@ -286,18 +438,21 @@ fn the_web_verb_appears_in_shell_completions() {
 fn the_verb_runs_under_a_bare_exec() {
     let server = fixture_site();
     let exe = assert_cmd::cargo::cargo_bin("anc");
-    let out = StdCommand::new(exe)
-        .args([
-            "web",
-            &host_of(&server),
-            "--check",
-            "llms-txt",
-            "--ca-cert",
-            common::test_ca_path(),
-        ])
-        .env_clear()
-        .output()
-        .expect("spawn anc");
+    let mut bare = StdCommand::new(exe);
+    bare.args([
+        "web",
+        &host_of(&server),
+        "--check",
+        "llms-txt",
+        "--ca-cert",
+        common::test_ca_path(),
+    ])
+    .env_clear();
+    // Windows sockets do not initialize without `SystemRoot`, whatever the program.
+    if let Some(root) = std::env::var_os("SystemRoot") {
+        bare.env("SystemRoot", root);
+    }
+    let out = bare.output().expect("spawn anc");
     assert_eq!(out.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&out.stdout).starts_with("llms-txt\tpass\t"));
 }

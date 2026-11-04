@@ -56,6 +56,11 @@ pub const DEGRADED_PER_CHECK_TIMEOUT: Duration = Duration::from_millis(2_000);
 /// The evidence line on a DNS row the locality gate withheld.
 pub const EXTERNAL_DNS_WITHHELD: &str = "needs public DNS: verified on anc.dev";
 
+/// The evidence of a row `--no-external-dns` withheld. A public target can land
+/// here, so the local gate's reason would read false.
+pub const EXTERNAL_DNS_OPTED_OUT: &str =
+    "withheld by --no-external-dns: no DNS-over-HTTPS resolver was queried";
+
 /// Receives results as the run finalizes them.
 pub trait ProgressSink {
     /// Discovery finished.
@@ -80,6 +85,10 @@ pub struct RunInput<'a> {
     pub per_audit_deadline: Duration,
     /// Let checks that query external DNS resolvers run against a local target.
     pub external_dns: bool,
+    /// Withhold checks that query external DNS resolvers for any target. An
+    /// internal host on a routable address classifies as public, and its name
+    /// cannot be recalled once a resolver has it.
+    pub no_external_dns: bool,
     /// Follow the off-origin hosts the site declares.
     pub follow_declarations: bool,
     /// The run's transport, resolver and identity.
@@ -100,6 +109,7 @@ impl std::fmt::Debug for RunInput<'_> {
             .field("per_check_timeout", &self.per_check_timeout)
             .field("per_audit_deadline", &self.per_audit_deadline)
             .field("external_dns", &self.external_dns)
+            .field("no_external_dns", &self.no_external_dns)
             .field("follow_declarations", &self.follow_declarations)
             .field("handlers", &self.handlers)
             .finish_non_exhaustive()
@@ -117,6 +127,7 @@ impl<'a> RunInput<'a> {
             per_check_timeout: DEFAULT_PER_CHECK_TIMEOUT,
             per_audit_deadline: DEFAULT_PER_AUDIT_DEADLINE,
             external_dns: false,
+            no_external_dns: false,
             follow_declarations: true,
             fetch,
             handlers,
@@ -291,7 +302,7 @@ fn ask_without_token(
     ctx: &HandlerContext,
     input: &RunInput<'_>,
     deadline: Instant,
-    local_target: bool,
+    doh_withheld: Option<&'static str>,
 ) -> (HashMap<String, ProbeOutcome>, bool) {
     let wire = wave1
         .iter()
@@ -306,7 +317,7 @@ fn ask_without_token(
         &input.handlers,
         input.concurrency,
         deadline,
-        local_target,
+        doh_withheld,
     ) {
         incomplete |= probed.incomplete;
         if let Some(outcome) = probed.outcome {
@@ -329,7 +340,7 @@ fn probe_one(
     ctx: &HandlerContext,
     handlers: &HandlerSet,
     deadline: Instant,
-    local_target: bool,
+    doh_withheld: Option<&'static str>,
 ) -> Probed {
     let done = |result: EngineResult, incomplete: bool| Probed {
         check,
@@ -341,7 +352,9 @@ fn probe_one(
     if Instant::now() >= deadline {
         return done(deadline_skip(check), true);
     }
-    if check.handler == HandlerBinding::DnsDoh && local_target && !ctx.external_dns {
+    if check.handler == HandlerBinding::DnsDoh
+        && let Some(reason) = doh_withheld
+    {
         return done(
             EngineResult {
                 check,
@@ -349,8 +362,8 @@ fn probe_one(
                 na_reason: None,
                 unprobed: false,
                 advisory: None,
-                evidence: EXTERNAL_DNS_WITHHELD.to_string(),
-                raw_evidence: vec![why_item(EXTERNAL_DNS_WITHHELD)],
+                evidence: reason.to_string(),
+                raw_evidence: vec![why_item(reason)],
             },
             false,
         );
@@ -394,12 +407,12 @@ fn run_wave(
     handlers: &Arc<HandlerSet>,
     concurrency: usize,
     deadline: Instant,
-    local_target: bool,
+    doh_withheld: Option<&'static str>,
 ) -> Vec<Probed> {
     let job_ctx = ctx.clone();
     let job_handlers = Arc::clone(handlers);
     let returned = run_bounded(checks.clone(), concurrency, deadline, move |check| {
-        probe_one(check, &job_ctx, &job_handlers, deadline, local_target)
+        probe_one(check, &job_ctx, &job_handlers, deadline, doh_withheld)
     });
     checks
         .into_iter()
@@ -441,6 +454,13 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
     input.fetch = input.fetch.with_memo(memo);
     let target_locality = input.fetch.classify(&host).ok();
     let local_target = target_locality == Some(Locality::Local);
+    let doh_withheld = if input.no_external_dns {
+        Some(EXTERNAL_DNS_OPTED_OUT)
+    } else if local_target && !input.external_dns {
+        Some(EXTERNAL_DNS_WITHHELD)
+    } else {
+        None
+    };
 
     // The single canonical root fetch every root-HTML check and several
     // antecedents read. It runs before discovery because it doubles as the
@@ -584,7 +604,6 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         mcp_auth: None,
         mcp_sign_in: None,
         deadline,
-        external_dns: input.external_dns,
         target_locality,
     };
 
@@ -613,7 +632,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         &input.handlers,
         input.concurrency,
         deadline,
-        local_target,
+        doh_withheld,
     ) {
         incomplete |= probed.incomplete;
         if let Some(outcome) = probed.outcome {
@@ -641,7 +660,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
             fetch: ctx1.fetch.without_credential(),
             ..ctx1.clone()
         };
-        let asked = ask_without_token(&wave1, &ctx, &input, deadline, local_target);
+        let asked = ask_without_token(&wave1, &ctx, &input, deadline, doh_withheld);
         incomplete |= asked.1;
         Some(asked.0)
     } else {
@@ -828,7 +847,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         &input.handlers,
         input.concurrency,
         deadline,
-        local_target,
+        doh_withheld,
     ) {
         incomplete |= probed.incomplete;
         if let Some(kind) = probed.unported {

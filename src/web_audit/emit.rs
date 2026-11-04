@@ -212,18 +212,19 @@ mod tests {
             parsed["mcp_discovery"]["protocol_version"],
             Value::from(MCP_DISCOVERY.protocol_version)
         );
-        let (entry, check) = (&parsed["checks"][0], &CHECKS[0]);
-        assert_eq!(entry["keyword"], Value::from(check.keyword.as_str()));
-        assert_eq!(entry["tier"], Value::from(check.tier.as_str()));
-        assert_eq!(entry["handler"], Value::from(check.handler.as_str()));
-        assert_eq!(
-            entry["eval"],
-            check.eval.map_or(Value::Null, |e| Value::from(e.as_str()))
-        );
-        let site_types: Vec<&str> = check.site_types.iter().map(|t| t.as_str()).collect();
-        assert_eq!(entry["site_types"], Value::from(site_types));
-        assert!(!entry["hint"].as_str().unwrap().is_empty());
-        assert!(!entry["category_name"].as_str().unwrap().is_empty());
+        for (entry, check) in parsed["checks"].as_array().unwrap().iter().zip(CHECKS) {
+            assert_eq!(entry["keyword"], Value::from(check.keyword.as_str()));
+            assert_eq!(entry["tier"], Value::from(check.tier.as_str()));
+            assert_eq!(entry["handler"], Value::from(check.handler.as_str()));
+            assert_eq!(
+                entry["eval"],
+                check.eval.map_or(Value::Null, |e| Value::from(e.as_str()))
+            );
+            let site_types: Vec<&str> = check.site_types.iter().map(|t| t.as_str()).collect();
+            assert_eq!(entry["site_types"], Value::from(site_types));
+            assert!(!entry["hint"].as_str().unwrap().is_empty());
+            assert!(!entry["category_name"].as_str().unwrap().is_empty());
+        }
     }
 
     #[test]

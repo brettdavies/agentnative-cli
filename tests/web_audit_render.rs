@@ -350,6 +350,7 @@ fn expected_outline(rows: &[&ResultRow], all: &[ResultRow]) -> Vec<String> {
 
 /// A section holds exactly what the rule beside it selects. An empty one does not
 /// print, except the two `--verbose` always shows, whose bare heading reads as none.
+/// With nothing selected, the heading prints exactly when `prints_when_empty` says.
 fn assert_section(
     out: &str,
     heading: &str,
@@ -360,8 +361,9 @@ fn assert_section(
     let rows: Vec<&ResultRow> = card.results.iter().filter(|row| keep(row)).collect();
     let printed = out.split("\n\n").any(|block| block.starts_with(heading));
     if rows.is_empty() {
+        assert_eq!(printed, prints_when_empty, "{heading:?}:\n{out}");
         assert!(
-            !printed || (prints_when_empty && outline(out, heading).is_empty()),
+            !printed || outline(out, heading).is_empty(),
             "nothing belongs in {heading:?}:\n{out}"
         );
     } else {
@@ -405,15 +407,15 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
         });
         // A lane's rows keep the row layout, two columns deeper.
         for row in card.results.iter().filter(|row| lane_of(&row.id).is_some()) {
+            let heading = format!(
+                "    [{}] {} ({}) ({})",
+                prefix_for(row),
+                row.label,
+                row.id,
+                row.keyword.as_str()
+            );
             if is_prefixed(row, "FAIL") || is_prefixed(row, "WARN") {
                 lane_rows += 1;
-                let heading = format!(
-                    "    [{}] {} ({}) ({})",
-                    prefix_for(row),
-                    row.label,
-                    row.id,
-                    row.keyword.as_str()
-                );
                 assert!(out.contains(&heading), "{name}: {heading:?}:\n{out}");
                 if let Some(evidence) = row.evidence.as_deref().and_then(|e| e.lines().next()) {
                     assert!(
@@ -426,20 +428,14 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
                 && let Some(note) = advisory_note(row, endpoint)
             {
                 notes += 1;
-                let heading = format!(
-                    "    [{}] {} ({}) ({})",
-                    prefix_for(row),
-                    row.label,
-                    row.id,
-                    row.keyword.as_str()
-                );
                 // The note reads the same under every advised row, so it has to be found
-                // under this one, before the next row starts.
+                // under this one, before the next row or the end of the section.
                 let under = out
                     .split(&heading)
                     .nth(1)
                     .unwrap_or_else(|| panic!("{name}: {heading:?}:\n{out}"));
-                let block = under.split("\n    [").next().unwrap_or(under);
+                let section = under.split("\n\n").next().unwrap_or(under);
+                let block = section.split("\n    [").next().unwrap_or(section);
                 assert!(
                     block.contains(&format!("\n           Note: {note}")),
                     "{name}: {note:?} under {heading:?}:\n{out}"
@@ -474,4 +470,34 @@ fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
         lane_rows > 0,
         "no corpus scenario passes or skips a lane row"
     );
+}
+
+#[test]
+fn verbose_shows_its_two_sections_even_with_nothing_in_them() {
+    let case = load_cases()
+        .into_iter()
+        .find(|case| matches!(case.golden, Golden::Scorecard(_)))
+        .expect("a scored scenario");
+    let RunOutcome::Complete(mut report) = replay(&case.scenario, Arc::new(default_handlers()))
+    else {
+        panic!("{} reported unreachable", case.name);
+    };
+    report
+        .scorecard
+        .results
+        .retain(|row| !matches!(row.status, ScorecardStatus::Pass | ScorecardStatus::NA));
+    let out = format_text(
+        &report,
+        RenderOptions {
+            color: false,
+            quiet: false,
+            verbose: true,
+        },
+    );
+    assert_section(&out, "Passed (", &report.scorecard, true, |row| {
+        row.status == ScorecardStatus::Pass
+    });
+    assert_section(&out, "Not applicable (", &report.scorecard, true, |row| {
+        row.status == ScorecardStatus::NA
+    });
 }

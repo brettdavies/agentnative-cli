@@ -113,6 +113,12 @@ fn every_check_is_the_subject_of_some_scenario() {
             check.id
         );
     }
+    for id in &covered {
+        assert!(
+            CHECKS.iter().any(|check| check.id == id),
+            "a scenario covers {id}, which the registry does not hold"
+        );
+    }
 }
 
 /// The fetch-layer semantics the port had to reproduce rather than inherit

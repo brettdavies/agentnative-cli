@@ -165,6 +165,12 @@ fn every_registry_pattern_agrees_with_the_site_over_the_probe_table() {
             )
         });
         assert_eq!(pattern.results.len(), fixture.probes.len());
+        assert!(
+            pattern.results.contains(&true) && pattern.results.contains(&false),
+            "{}.{}: the probe table must hold a text this pattern matches and one it does not",
+            pattern.check_id,
+            pattern.field
+        );
         let allowed = residuals
             .get(&(pattern.check_id.clone(), pattern.field.clone()))
             .cloned()

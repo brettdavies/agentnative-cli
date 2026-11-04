@@ -164,8 +164,14 @@ fn stand_in_handlers() -> Arc<HandlerSet> {
 fn healthy_rules() -> Vec<MockRule> {
     vec![
         MockRule::new("GET", BASE).response(html(200)),
-        MockRule::new("GET", &format!("{BASE}.well-known/mcp.json"))
-            .response(json_body(json!({ "mcp_endpoint": "/mcp" }))),
+        MockRule::new(
+            "GET",
+            &format!(
+                "{BASE}{}",
+                MCP_DISCOVERY.well_known[0].trim_start_matches('/')
+            ),
+        )
+        .response(json_body(json!({ "mcp_endpoint": "/mcp" }))),
         MockRule::new("POST", &format!("{BASE}mcp"))
             .body_contains("notifications/initialized")
             .response(MockResponse::ok(202, &[], b"")),

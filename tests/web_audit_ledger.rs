@@ -40,45 +40,53 @@ fn a_ledgered_divergence_is_not_a_problem() {
     assert!(compare_with_ledger(&actual, &ledger, |_| true).is_empty());
 }
 
-/// `run-healthy`, and its golden with `edit` applied to the result rows.
-fn healthy_with_rows(edit: impl FnOnce(&mut Vec<Value>)) -> (Case, String) {
-    let case = load_cases()
+fn healthy_case() -> Case {
+    load_cases()
         .into_iter()
         .find(|c| c.name == "run-healthy")
-        .expect("the healthy whole-run scenario");
-    let mut golden: Value = serde_json::from_str(&golden_text(&case.name)).expect("golden JSON");
-    edit(golden["results"].as_array_mut().expect("result rows"));
-    let text = serde_json::to_string_pretty(&golden).unwrap();
-    (case, text)
+        .expect("the healthy whole-run scenario")
 }
 
-fn first_row_id() -> String {
-    let mut id = String::new();
-    healthy_with_rows(|rows| id = rows[0]["id"].as_str().unwrap().to_string());
-    id
+fn healthy_golden() -> Value {
+    serde_json::from_str(&golden_text("run-healthy")).expect("golden JSON")
+}
+
+/// The golden's first row's id, and the golden with `edit` applied to its rows.
+fn golden_with_rows(edit: impl FnOnce(&mut Vec<Value>)) -> (String, String) {
+    let mut golden = healthy_golden();
+    let rows = golden["results"].as_array_mut().expect("result rows");
+    let id = rows[0]["id"].as_str().expect("a row id").to_string();
+    edit(rows);
+    (id, serde_json::to_string_pretty(&golden).unwrap())
 }
 
 #[test]
 fn a_row_only_the_engine_writes_is_a_divergence() {
-    let id = first_row_id();
-    let (case, golden) = healthy_with_rows(|rows| {
+    let (id, golden) = golden_with_rows(|rows| {
         rows.remove(0);
     });
-    assert!(divergences_against(&case, &golden).contains(&format!("{ROW}{id}")));
+    assert!(divergences_against(&healthy_case(), &golden).contains(&format!("{ROW}{id}")));
 }
 
 #[test]
 fn a_row_only_the_golden_holds_is_a_divergence() {
-    let (case, golden) =
-        healthy_with_rows(|rows| rows.push(json!({ "id": "no-such-check", "status": "pass" })));
-    assert!(divergences_against(&case, &golden).contains(&format!("{ROW}no-such-check")));
+    let (_, golden) =
+        golden_with_rows(|rows| rows.push(json!({ "id": "no-such-check", "status": "pass" })));
+    assert!(divergences_against(&healthy_case(), &golden).contains(&format!("{ROW}no-such-check")));
 }
 
 #[test]
 fn a_row_whose_status_moved_is_a_divergence() {
-    let id = first_row_id();
-    let (case, golden) = healthy_with_rows(|rows| rows[0]["status"] = json!("moved"));
-    assert!(divergences_against(&case, &golden).contains(&format!("{ROW}{id}")));
+    let (id, golden) = golden_with_rows(|rows| rows[0]["status"] = json!("moved"));
+    assert!(divergences_against(&healthy_case(), &golden).contains(&format!("{ROW}{id}")));
+}
+
+#[test]
+fn a_field_only_the_golden_holds_is_a_divergence() {
+    let mut golden = healthy_golden();
+    golden["no_such_field"] = json!(1);
+    let text = serde_json::to_string_pretty(&golden).unwrap();
+    assert!(divergences_against(&healthy_case(), &text).contains("no_such_field"));
 }
 
 const PIN: &str = "0123456789abcdef0123456789abcdef01234567";

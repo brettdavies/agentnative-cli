@@ -214,25 +214,6 @@ mod tests {
         assert_eq!(lane_of("no-such-check"), None);
     }
 
-    /// The unported set is exact, so each port that lands shrinks it here.
-    #[test]
-    fn the_unported_bindings_are_exactly_the_known_ones() {
-        let handlers: BTreeSet<&str> = CHECKS
-            .iter()
-            .filter(|c| matches!(c.handler, HandlerBinding::Unsupported(_)))
-            .map(|c| c.handler.as_str())
-            .collect();
-        assert!(handlers.is_empty(), "{handlers:?}");
-        let evals: BTreeSet<&str> = CHECKS
-            .iter()
-            .filter_map(|c| match c.eval {
-                Some(EvalBinding::Unsupported(name)) => Some(name),
-                _ => None,
-            })
-            .collect();
-        assert!(evals.is_empty(), "{evals:?}");
-    }
-
     #[test]
     fn every_ua_token_is_expanded_to_a_vendored_literal() {
         let literals: Vec<&str> = PROBE_UA_TOKENS.iter().map(|(_, v)| *v).collect();

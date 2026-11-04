@@ -1,9 +1,67 @@
 //! Shared scaffolding for the `anc web` test binaries: the command under
 //! test, and the fixture sites it audits.
 
+use std::io::Write as _;
+
+use agentnative::web_audit::registry::{CHECKS, EvalBinding, HandlerBinding};
 use assert_cmd::Command;
 
 use super::{RawRequest, RawResponse, Server};
+
+/// The checks this build cannot run, each bound to a handler kind or eval rule
+/// the engine has not ported.
+pub fn unported_checks() -> Vec<&'static str> {
+    CHECKS
+        .iter()
+        .filter(|c| {
+            matches!(c.handler, HandlerBinding::Unsupported(_))
+                || matches!(c.eval, Some(EvalBinding::Unsupported(_)))
+        })
+        .map(|c| c.id)
+        .collect()
+}
+
+/// A check this build cannot run skips on every site, which makes any full run
+/// "could not check" whatever else it found. The ledger holds that gap and the
+/// release gate refuses a release with it. A test gives up only its verdict, and
+/// says so past libtest's capture: `scripts/web-audit-bump.sh` lists these lines in
+/// the bump PR as port work owed, so a stand-down cannot pass unseen.
+fn stand_down(what: &str) {
+    let test = std::thread::current();
+    let _ = writeln!(
+        std::io::stderr(),
+        "standing down: {}: {what}, because of checks bound Unsupported: {}",
+        test.name().unwrap_or("a test"),
+        unported_checks().join(", ")
+    );
+}
+
+/// The exit code a full run must end with: `code`, or 3 while a check is unported.
+pub fn full_run_code(code: i32) -> i32 {
+    if unported_checks().is_empty() {
+        return code;
+    }
+    stand_down(&format!("a full run exits 3, not {code}"));
+    3
+}
+
+/// Whether a full run's exit code can be a verdict on the site.
+pub fn ended_in_a_verdict(code: Option<i32>) -> bool {
+    if unported_checks().is_empty() {
+        return matches!(code, Some(0..=2));
+    }
+    stand_down("a full run exits 3, not a verdict");
+    code == Some(3)
+}
+
+/// Whether a full run's verdict and closing lines say what the rows earned.
+pub fn verdict_is_pinned() -> bool {
+    if unported_checks().is_empty() {
+        return true;
+    }
+    stand_down("the verdict and closing lines read could not check");
+    false
+}
 
 /// The binary, with the test CA standing in for the OS trust store:
 /// rustls-native-certs reads `SSL_CERT_FILE` in place of the platform

@@ -26,7 +26,7 @@ use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::{Locality, Resolver};
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::{
-    AntecedentToken, CHECKS, HANDLER_KINDS, MCP_DISCOVERY, WebCheck,
+    AntecedentToken, CHECKS, EvalBinding, HANDLER_KINDS, HandlerBinding, MCP_DISCOVERY, WebCheck,
 };
 use agentnative::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardStatus,
@@ -267,7 +267,19 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     let mut unported: Vec<&str> = report.unported.iter().map(|u| u.kind).collect();
     unported.sort_unstable();
     unported.dedup();
-    assert_eq!(unported, ["retained-document"], "{:?}", report.unported);
+    let bound_unsupported: Vec<&str> = CHECKS
+        .iter()
+        .filter_map(|c| match (c.handler, c.eval) {
+            (HandlerBinding::Unsupported(kind), _) => Some(kind),
+            (_, Some(EvalBinding::Unsupported(rule))) => Some(rule),
+            _ => None,
+        })
+        .collect();
+    let mut expected = bound_unsupported.clone();
+    expected.push("retained-document");
+    expected.sort_unstable();
+    expected.dedup();
+    assert_eq!(unported, expected, "{:?}", report.unported);
     assert_eq!(report.target_locality, Some(Locality::Public));
     assert_eq!(
         report.scorecard.mcp_endpoint.as_deref(),

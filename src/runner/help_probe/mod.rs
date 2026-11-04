@@ -521,7 +521,10 @@ fn shared_tool_prefix(entries: &[String], candidates: &[String]) -> Option<Strin
 /// Single-token top-level names: the first token of each entry after any
 /// shared prefix, validated by [`is_subcommand_name`] and deduplicated in
 /// order of first appearance. A nested entry (`server stop`) contributes
-/// `server`; an entry the prefix strip leaves empty contributes nothing.
+/// `server`; an entry the prefix strip leaves empty contributes nothing, and
+/// neither does a default-command line that leads with a placeholder
+/// (`tool FILE`), which P3 says names no command. An unprefixed all-caps entry
+/// repeats no binary name, so that allowance does not reach it.
 fn subcommand_names(blocks: &[CommandBlock]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for block in blocks {
@@ -529,12 +532,23 @@ fn subcommand_names(blocks: &[CommandBlock]) -> Vec<String> {
             let Some(name) = block.command_text(entry).split_whitespace().next() else {
                 continue;
             };
-            if is_subcommand_name(name) && !out.iter().any(|seen| seen == name) {
+            let names_no_command = block.prefix.is_some() && is_placeholder(name);
+            if is_subcommand_name(name) && !names_no_command && !out.iter().any(|seen| seen == name)
+            {
                 out.push(name.to_string());
             }
         }
     }
     out
+}
+
+/// An argument placeholder as help text writes one: bracketed (`[project]`,
+/// `<path>`, `[options]`) or an all-caps metavariable (`FILE`, `FILE...`,
+/// `KEY=VALUE`). A command word has a lowercase letter, so `run` and `Run` are
+/// neither.
+pub(crate) fn is_placeholder(token: &str) -> bool {
+    token.starts_with(['[', '<'])
+        || (token.starts_with(char::is_uppercase) && !token.chars().any(char::is_lowercase))
 }
 
 /// Subcommand names are kebab-case/snake_case identifiers. Anything else —
@@ -1036,6 +1050,59 @@ Options:
         assert_eq!(block.prefix.as_deref(), Some("tool"));
         assert_eq!(block.command_text(&block.entries[0]), "");
         assert_eq!(block.command_text(&block.entries[1]), "status");
+    }
+
+    /// The subcommands read from `Usage: tool [options]` plus `blocks`.
+    fn subcommands_of(blocks: &str) -> Vec<String> {
+        HelpOutput::from_raw(format!("Usage: tool [options]\n\n{blocks}"))
+            .subcommands()
+            .to_vec()
+    }
+
+    /// P3: a default-command line's placeholders "name no command", however
+    /// they are spelled, so each spelling yields the same subcommand list.
+    #[test]
+    fn a_placeholder_on_a_default_command_line_names_no_subcommand() {
+        let shapes = [
+            ("Commands:\n  tool X   Open a file\n", vec![]),
+            (
+                "Commands:\n  tool X       Open a file\n  tool run X   Run a file\n",
+                vec!["run"],
+            ),
+            (
+                "Commands:\n  status   Show status\n\nDefault commands:\n  tool X   Open a file\n",
+                vec!["status"],
+            ),
+        ];
+        for (shape, expected) in shapes {
+            for placeholder in ["FILE", "[file]", "<file>"] {
+                assert_eq!(
+                    subcommands_of(&shape.replace('X', placeholder)),
+                    expected,
+                    "{placeholder} in {shape}",
+                );
+            }
+        }
+    }
+
+    /// P3's allowance covers the line that repeats the binary name, so an
+    /// all-caps entry in an unprefixed block is still read as a command.
+    #[test]
+    fn an_all_caps_entry_in_an_unprefixed_block_stays_a_subcommand() {
+        assert_eq!(
+            subcommands_of("Commands:\n  FILE     Open a file\n  status   Show status\n"),
+            vec!["FILE", "status"],
+        );
+    }
+
+    #[test]
+    fn a_command_word_on_a_prefixed_line_stays_a_subcommand() {
+        assert_eq!(
+            subcommands_of(
+                "Commands:\n  tool file   Open a file\n  tool File   Open a file\n  tool 2FA    Set up 2FA\n"
+            ),
+            vec!["file", "File", "2FA"],
+        );
     }
 
     #[test]

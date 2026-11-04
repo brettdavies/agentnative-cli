@@ -5,6 +5,21 @@ use clap_complete::Shell;
 use crate::principles::registry::ExceptionCategory;
 use crate::skill_install::SkillHost;
 
+/// The environment variable that stands in for `--quiet`.
+pub const QUIET_ENV: &str = "AGENTNATIVE_QUIET";
+
+/// Which bare tokens route to `web`, for both help texts. A macro so their
+/// `concat!` can take it.
+#[cfg(feature = "web")]
+macro_rules! routing_rule {
+    () => {
+        "A bare token routes with a scheme; with a port on localhost, an IP address, or a
+name under .internal, .home.arpa, .local or .lan; or, with or without a port, as a
+dotted name on a top-level domain whose last label does not read as a file
+extension. A path that exists always wins, so `anc ./anc.dev` audits the directory."
+    };
+}
+
 #[derive(Parser)]
 #[command(name = "anc", version, about = "The agent-native CLI linter")]
 #[command(arg_required_else_help = true)]
@@ -19,7 +34,7 @@ Input model: targets are passed as positional path arguments or via `--command <
 )]
 #[cfg_attr(
     feature = "web",
-    command(after_help = "Examples:
+    command(after_help = concat!("Examples:
   anc audit .                          # human scorecard for the current project
   anc audit . --output json            # JSON envelope for agents (--json works too)
   anc audit --command rg               # audit a PATH-resolved binary by name
@@ -35,13 +50,13 @@ When the first argument is not a subcommand, one is inserted automatically —
   anc --command rg       ≡  anc audit --command rg
   anc anc.dev            ≡  anc web anc.dev
   anc localhost:8787     ≡  anc web localhost:8787
-A path that exists always wins, so `anc ./anc.dev` audits the directory.
+", routing_rule!(), "
 
 Exit codes:
   0  clean   1  warnings only   2  failures or usage error   3  could not check
 
 Bare `anc` (no arguments) prints this help and exits 2 — a deliberate guard
-that prevents recursive self-invocation when agentnative audits itself.")
+that prevents recursive self-invocation when agentnative audits itself."))
 )]
 #[cfg_attr(
     not(feature = "web"),
@@ -75,7 +90,7 @@ pub struct Cli {
         long,
         short = 'q',
         global = true,
-        env = "AGENTNATIVE_QUIET",
+        env = QUIET_ENV,
         value_parser = FalseyValueParser::new()
     )]
     pub quiet: bool,
@@ -279,7 +294,9 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// a sign-in server, or the request that checks a token-less client is
     /// refused.
     /// It is never printed, and every process anc starts runs without
-    /// `ANC_WEB_TOKEN`.
+    /// `ANC_WEB_TOKEN`. Only a run that names `web` reads the variable: a
+    /// bare `anc <target>` can be a typo, so it sends no token and, when the
+    /// target answers, says so on stderr.
     ///
     /// Each run reports two scores: relative scores the site relative to
     /// the checks that apply to this site; global measures it against a
@@ -301,7 +318,7 @@ When the first argument looks like a network target, `web` is inserted
 automatically:
   anc anc.dev        ≡  anc web anc.dev
   anc localhost:8787 ≡  anc web localhost:8787
-A path that exists wins, so `anc ./anc.dev` still audits the directory.
+", routing_rule!(), "
 
 ", crate::exit_table!()))]
     Web {

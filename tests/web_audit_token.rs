@@ -185,6 +185,91 @@ fn a_token_on_stdin_signs_the_run_in() {
 }
 
 #[test]
+fn a_bare_target_never_reads_the_token_from_the_environment() {
+    let server = protected_site();
+    let assert = anc()
+        .args([&host_of(&server), "--output", "json"])
+        .env("ANC_WEB_TOKEN", TOKEN)
+        .assert();
+    let output = assert.get_output();
+    assert_no_token(output);
+    let stderr = stderr_of(output);
+    assert!(
+        stderr.contains("ANC_WEB_TOKEN is set and not read"),
+        "{stderr}"
+    );
+    let card: Value = serde_json::from_str(&stdout_of(output)).expect("a JSON scorecard");
+    assert_eq!(card["vantage"]["credentialed"], json!(false));
+    let hits = server.hits();
+    assert!(!hits.is_empty());
+    assert!(
+        hits.iter().all(|req| req.header("authorization").is_none()),
+        "a bare target sent the token"
+    );
+}
+
+#[test]
+fn quiet_does_not_hide_that_a_bare_target_left_the_token_unread() {
+    let server = protected_site();
+    let host = host_of(&server);
+    let assert = anc()
+        .args(["-q", &host, "--no-follow", "--output", "json"])
+        .env("ANC_WEB_TOKEN", TOKEN)
+        .assert();
+    let output = assert.get_output();
+    assert_no_token(output);
+    let stderr = stderr_of(output);
+    assert!(
+        stderr.contains(&format!(
+            "ANC_WEB_TOKEN is set and not read: only \
+             `anc web -q {host} --no-follow --output json` sends it"
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("ran as"), "{stderr}");
+}
+
+#[test]
+fn a_bare_target_with_an_empty_variable_is_not_refused() {
+    let server = protected_site();
+    let assert = anc()
+        .args([&host_of(&server), "--output", "json"])
+        .env("ANC_WEB_TOKEN", "")
+        .assert();
+    let output = assert.get_output();
+    let stderr = stderr_of(output);
+    assert!(
+        !stderr.contains("ANC_WEB_TOKEN"),
+        "an empty variable has nothing to send: {stderr}"
+    );
+    let card: Value = serde_json::from_str(&stdout_of(output)).expect("a scorecard");
+    assert_eq!(card["vantage"]["credentialed"], json!(false));
+}
+
+#[test]
+fn a_bare_target_still_takes_a_token_on_stdin() {
+    let server = protected_site();
+    let assert = anc()
+        .args([&host_of(&server), "--token-stdin", "--output", "json"])
+        .write_stdin(format!("{TOKEN}\n"))
+        .assert();
+    let output = assert.get_output();
+    assert_no_token(output);
+    let card: Value = serde_json::from_str(&stdout_of(output)).expect("a JSON scorecard");
+    assert_eq!(card["vantage"]["credentialed"], json!(true));
+    assert_only_the_endpoint_was_signed(&server);
+
+    // Stdin is the token's source here, so the variable is not news.
+    let assert = anc()
+        .args([&host_of(&server), "--token-stdin", "--output", "json"])
+        .env("ANC_WEB_TOKEN", "another-token")
+        .write_stdin(format!("{TOKEN}\n"))
+        .assert();
+    let stderr = stderr_of(assert.get_output());
+    assert!(!stderr.contains("ANC_WEB_TOKEN"), "{stderr}");
+}
+
+#[test]
 fn an_unusable_token_is_refused_before_any_request() {
     let server = protected_site();
     let cases: [(&[&str], Option<&str>, &str, &str); 3] = [

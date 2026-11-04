@@ -25,6 +25,18 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Build anc (web)
         run: cargo build --release --features web && ls -la target/release/anc
+      - name: Build anc (web) with a larger idle connection pool
+        run: |
+          rsync -a --exclude target ./ "$RUNNER_TEMP/pool/" && cd "$RUNNER_TEMP/pool"
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path('src/web_audit/transport.rs'); s = p.read_text()
+          old = '        .max_redirects_will_error(false)\n'
+          assert old in s
+          p.write_text(s.replace(old, old + '        .max_idle_connections(64)\n        .max_idle_connections_per_host(16)\n', 1))
+          PY
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target-pool" cargo build --release --features web
+          ls -la "$GITHUB_WORKSPACE/target-pool/release/anc"
       - name: Build embedded-engine prototype
         if: hashFiles('bench/js-embed/Cargo.toml') != ''
         run: cargo build --release --manifest-path bench/js-embed/Cargo.toml && ls -la bench/js-embed/target/release/

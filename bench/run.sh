@@ -7,6 +7,7 @@ mkdir -p "$OUT"
 ROUNDS=${ROUNDS:-5}
 TARGETS=(https://anc.dev/ https://developers.cloudflare.com/ https://supabase.com/ https://docs.stripe.com/ https://vercel.com/ https://modelcontextprotocol.io/ https://mcp.linear.app/ https://github.com/ https://en.wikipedia.org/ https://huggingface.co/)
 ENGINES=(port bun)
+[ -x target-pool/release/anc ] && ENGINES+=(pool)
 EMBED=$(ls bench/js-embed/target/release/anc-embed 2>/dev/null || true)
 [ -n "$EMBED" ] && ENGINES+=(embed)
 now() { date +%s.%N; }
@@ -23,6 +24,7 @@ for round in $(seq "$ROUNDS"); do
       s=$(now)
       case $e in
         port) timeout 120 target/release/anc web "$t" --output json >"$f.json" 2>"$f.err" ;;
+        pool) timeout 120 target-pool/release/anc web "$t" --output json >"$f.json" 2>"$f.err" ;;
         bun) timeout 120 bun run bench/bench-engine.ts "$t" >"$f.json" 2>"$f.err" ;;
         embed) timeout 120 "$EMBED" "$t" >"$f.json" 2>"$f.err" ;;
       esac

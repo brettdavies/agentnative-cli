@@ -1,13 +1,14 @@
 # Web-audit divergence ledger: every element of the vendored conformance
-# corpus the engine does not yet reproduce at site_sha, one entry per
-# (scenario, element). An element is a top-level scorecard field,
-# `row:<check id>`, `unreachable`, or `document` (bytes differ, fields match).
-# `owner` is the site PR that set the golden value the engine misses.
+# corpus the engine does not yet reproduce, one entry per (scenario, element).
+# An element is a top-level scorecard field, `row:<check id>`, `unreachable`,
+# or `document` (bytes differ, fields match). `owner` is the site PR that set
+# the golden value the engine misses.
 #
 # The conformance and handlers suites assert the observed divergences EQUAL
 # this ledger: an unledgered divergence fails, and an entry that starts
 # matching fails until it is removed, so each port PR drops the entries it
-# closes. Regenerate after a re-pin or a port rather than editing by hand;
-# --since is the pin before the re-pin that opened these entries:
+# closes. Entries hold only at the pin they were generated at, which site_sha
+# names; an empty ledger names no pin and holds at any. Regenerate after a
+# re-pin or a port rather than editing by hand; --since is the pin before the
+# re-pin:
 #   WEB_AUDIT_SITE_REPO=<site checkout> scripts/web-audit-divergence-ledger.py --since <old pin>
-site_sha = "d5772289d71d056fd1c427ccb994e8c547ea2a43"

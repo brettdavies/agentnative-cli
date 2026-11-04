@@ -80,96 +80,115 @@ mod tests {
         rows.iter().map(|r| r.id.clone()).collect()
     }
 
+    /// The ids of a lane's checks, in registry order.
+    fn checks_in(lane: &McpLane) -> Vec<&'static str> {
+        CHECKS
+            .iter()
+            .filter(|c| lane_of(c.id) == Some(lane))
+            .map(|c| c.id)
+            .collect()
+    }
+
+    fn loose_checks() -> Vec<&'static str> {
+        CHECKS
+            .iter()
+            .filter(|c| lane_of(c.id).is_none())
+            .map(|c| c.id)
+            .collect()
+    }
+
+    /// A lane with `at_least` checks. The lane map is display data the site owns,
+    /// so these tests name no lane or check of their own.
+    fn lane_with(at_least: usize) -> &'static McpLane {
+        MCP_LANES
+            .iter()
+            .find(|lane| checks_in(lane).len() >= at_least)
+            .expect("a lane this large")
+    }
+
+    fn heading(lane: &McpLane, count: &str) -> String {
+        let category = category_name(LANE_CATEGORY).unwrap();
+        format!("  {category} · {}{count}\n    {}.\n", lane.label, lane.note)
+    }
+
     #[test]
     fn rows_split_into_loose_rows_then_lanes_in_lane_map_order() {
-        use ScorecardStatus as S;
-        let given = [
-            row("webmcp", WebCheckKeyword::May, S::Pass),
-            row("robots", WebCheckKeyword::Should, S::Absent),
-            row("mcp-server-discover", WebCheckKeyword::Should, S::Absent),
-            row("mcp-cors-actual", WebCheckKeyword::Should, S::Pass),
-            row("mcp-accept-json", WebCheckKeyword::Should, S::Broken),
-            row("llms-txt", WebCheckKeyword::Should, S::Absent),
-            row("mcp-initialize", WebCheckKeyword::Must, S::Pass),
-            row("mcp-get-fast-fail", WebCheckKeyword::Should, S::Pass),
-        ];
+        let loose = loose_checks();
+        // Each lane's rows reversed, the lanes reversed, and a loose row on either
+        // side, so only `split` can put them back.
+        let mut given = vec![row(
+            loose[0],
+            WebCheckKeyword::Should,
+            ScorecardStatus::Absent,
+        )];
+        for lane in MCP_LANES.iter().rev() {
+            for id in checks_in(lane).iter().rev() {
+                given.push(row(id, WebCheckKeyword::Should, ScorecardStatus::Pass));
+            }
+        }
+        given.push(row(
+            loose[1],
+            WebCheckKeyword::Should,
+            ScorecardStatus::Absent,
+        ));
         let refs: Vec<&ResultRow> = given.iter().collect();
-        let (loose, blocks) = split(&refs);
-        assert_eq!(ids(&loose), ["robots", "llms-txt"]);
+        let (loose_rows, blocks) = split(&refs);
+        assert_eq!(ids(&loose_rows), [loose[0], loose[1]]);
         let grouped: Vec<(&str, Vec<String>)> =
             blocks.iter().map(|b| (b.lane.id, ids(&b.rows))).collect();
-        assert_eq!(
-            grouped,
-            [
-                (
-                    "shared",
-                    vec!["mcp-get-fast-fail".into(), "mcp-cors-actual".into()]
-                ),
-                (
-                    "legacy",
-                    vec!["mcp-initialize".into(), "mcp-accept-json".into()]
-                ),
-                ("modern", vec!["mcp-server-discover".into()]),
-                ("browser", vec!["webmcp".into()]),
-            ]
-        );
+        let expected: Vec<(&str, Vec<String>)> = MCP_LANES
+            .iter()
+            .filter(|lane| !checks_in(lane).is_empty())
+            .map(|lane| {
+                let rows = checks_in(lane).iter().map(|id| id.to_string()).collect();
+                (lane.id, rows)
+            })
+            .collect();
+        assert_eq!(grouped, expected);
     }
 
     #[test]
     fn a_section_without_mcp_rows_gets_no_lane() {
-        let given = [row(
-            "robots",
-            WebCheckKeyword::Should,
-            ScorecardStatus::Pass,
-        )];
+        let id = loose_checks()[0];
+        let given = [row(id, WebCheckKeyword::Should, ScorecardStatus::Pass)];
         let refs: Vec<&ResultRow> = given.iter().collect();
         let (loose, blocks) = split(&refs);
-        assert_eq!(ids(&loose), ["robots"]);
+        assert_eq!(ids(&loose), [id]);
         assert!(blocks.is_empty());
     }
 
     #[test]
     fn the_heading_counts_the_lane_over_the_whole_report() {
         use ScorecardStatus as S;
+        let lane = lane_with(4);
+        let mine = checks_in(lane);
+        let other = MCP_LANES
+            .iter()
+            .find(|other| *other != lane && !checks_in(other).is_empty())
+            .map(|other| checks_in(other)[0])
+            .expect("a second lane");
         let all = [
-            row("mcp-initialize", WebCheckKeyword::Must, S::Pass),
-            row("mcp-tools-list", WebCheckKeyword::Must, S::Noncompliant),
-            row("mcp-capabilities", WebCheckKeyword::Should, S::NA),
-            row("mcp-resources-list", WebCheckKeyword::Should, S::Error),
-            row("mcp-get-fast-fail", WebCheckKeyword::Should, S::Pass),
+            row(mine[0], WebCheckKeyword::Must, S::Pass),
+            row(mine[1], WebCheckKeyword::Must, S::Noncompliant),
+            row(mine[2], WebCheckKeyword::Should, S::NA),
+            row(mine[3], WebCheckKeyword::Should, S::Error),
+            row(other, WebCheckKeyword::Should, S::Pass),
         ];
-        let legacy = MCP_LANES.iter().find(|l| l.id == "legacy").unwrap();
         let mut out = String::new();
-        write_heading(&mut out, legacy, &all, "  ");
-        assert_eq!(
-            out,
-            format!(
-                "  MCP · {} (1/2 pass)\n    {}.\n",
-                legacy.label, legacy.note
-            )
-        );
+        write_heading(&mut out, lane, &all, "  ");
+        assert_eq!(out, heading(lane, " (1/2 pass)"));
     }
 
     #[test]
     fn a_lane_with_nothing_counted_shows_no_count() {
+        let lane = lane_with(2);
+        let mine = checks_in(lane);
         let all = [
-            row(
-                "mcp-cors-preflight",
-                WebCheckKeyword::Should,
-                ScorecardStatus::NA,
-            ),
-            row(
-                "mcp-auth-enforced",
-                WebCheckKeyword::May,
-                ScorecardStatus::Skip,
-            ),
+            row(mine[0], WebCheckKeyword::Should, ScorecardStatus::NA),
+            row(mine[1], WebCheckKeyword::May, ScorecardStatus::Skip),
         ];
-        let shared = MCP_LANES.iter().find(|l| l.id == "shared").unwrap();
         let mut out = String::new();
-        write_heading(&mut out, shared, &all, "  ");
-        assert_eq!(
-            out,
-            format!("  MCP · {}\n    {}.\n", shared.label, shared.note)
-        );
+        write_heading(&mut out, lane, &all, "  ");
+        assert_eq!(out, heading(lane, ""));
     }
 }

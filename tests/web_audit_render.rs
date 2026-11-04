@@ -11,7 +11,9 @@ use std::sync::Arc;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
-use agentnative::web_audit::registry::{CHECKS, LANE_CATEGORY, MCP_LANES, category_name, lane_of};
+use agentnative::web_audit::registry::{
+    CHECKS, LANE_CATEGORY, MCP_LANES, REGISTRY_VERSION, SITE_SHA, category_name, lane_of,
+};
 use agentnative::web_audit::render::{RenderOptions, advisory_note, format_text, prefix_for};
 use agentnative::web_audit::score::is_scored;
 use agentnative::web_audit::scorecard::{ResultRow, ScorecardStatus, WebScorecard};
@@ -25,7 +27,8 @@ fn a_reachable_site_reports_the_verdict_then_its_misses_with_fixes() {
     let out = stdout_of(assert.get_output());
 
     assert!(out.starts_with("anc web https://"), "{out}");
-    assert!(out.contains("registry v1 (anc.dev "), "{out}");
+    let registry = format!("registry v{REGISTRY_VERSION} (anc.dev {}", &SITE_SHA[..7]);
+    assert!(out.contains(&registry), "{out}");
     assert!(out.contains("spec "), "{out}");
     assert!(out.contains("mcp endpoint: none"), "{out}");
     // The verdict leads, before any row.
@@ -284,7 +287,7 @@ fn outline(out: &str, heading: &str) -> Vec<String> {
         .filter_map(|line| {
             let indent = line.len() - line.trim_start().len();
             let text = line.trim_start();
-            if text.starts_with('[') {
+            if indent <= 4 && text.starts_with('[') {
                 let id = text
                     .rsplit(") (")
                     .nth(1)
@@ -341,7 +344,8 @@ fn expected_outline(rows: &[&ResultRow], all: &[ResultRow]) -> Vec<String> {
     lines
 }
 
-/// A section holds exactly what the rule beside it selects, or does not print.
+/// A section holds exactly what the rule beside it selects. An empty one may not
+/// print at all, and `--verbose` prints its sections regardless.
 fn assert_section(
     out: &str,
     heading: &str,
@@ -349,9 +353,10 @@ fn assert_section(
     keep: impl Fn(&ResultRow) -> bool,
 ) {
     let rows: Vec<&ResultRow> = card.results.iter().filter(|row| keep(row)).collect();
+    let printed = out.split("\n\n").any(|block| block.starts_with(heading));
     if rows.is_empty() {
         assert!(
-            !out.split("\n\n").any(|block| block.starts_with(heading)),
+            !printed || outline(out, heading).is_empty(),
             "nothing belongs in {heading:?}:\n{out}"
         );
     } else {
@@ -360,6 +365,11 @@ fn assert_section(
             expected_outline(&rows, &card.results),
             "{heading:?}:\n{out}"
         );
+        let count = format!("{heading}{}", rows.len());
+        assert!(
+            out.split("\n\n").any(|block| block.starts_with(&count)),
+            "{count:?} heads the section:\n{out}"
+        );
     }
 }
 
@@ -367,13 +377,16 @@ fn is_prefixed(row: &ResultRow, prefix: &str) -> bool {
     prefix_for(row) == prefix
 }
 
+/// Whether the report shows any lane, which is why this scenario is the one read.
+fn shows_a_lane(out: &str) -> bool {
+    let category = category_name(LANE_CATEGORY).expect("the lane category has a name");
+    out.contains(&format!("  {category} · "))
+}
+
 #[test]
 fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
     let (out, card) = corpus_report("mcp-negotiation-defects", false);
-    assert!(
-        out.contains("  MCP · "),
-        "the scenario shows a lane:\n{out}"
-    );
+    assert!(shows_a_lane(&out), "{out}");
     let endpoint = card.mcp_endpoint.as_deref();
     assert_section(&out, "Failures (", &card, |row| is_prefixed(row, "FAIL"));
     assert_section(&out, "Warnings (", &card, |row| is_prefixed(row, "WARN"));
@@ -413,10 +426,7 @@ fn mcp_rows_group_under_their_protocol_lanes_within_each_section() {
 #[test]
 fn verbose_groups_the_passing_and_inapplicable_mcp_rows_by_lane_too() {
     let (out, card) = corpus_report("mcp-negotiation-defects", true);
-    assert!(
-        out.contains("  MCP · "),
-        "the scenario shows a lane:\n{out}"
-    );
+    assert!(shows_a_lane(&out), "{out}");
     assert_section(&out, "Passed (", &card, |row| {
         row.status == ScorecardStatus::Pass
     });

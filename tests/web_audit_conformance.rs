@@ -15,11 +15,12 @@
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
+use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::scorecard::to_wire_json;
 use common::corpus::{Case, Golden, load_cases, replay};
 use common::ledger::{compare_with_ledger, corpus_divergences, load_ledger, parse_ledger};
@@ -101,6 +102,23 @@ fn every_corpus_scenario_reproduces_the_site_scorecard_or_is_ledgered() {
         .filter(|c| !actual.iter().any(|(s, _)| s == &c.name))
         .count();
     assert!(matching > 0, "no scenario reproduces byte for byte");
+}
+
+/// What a scenario count stood in for: however large the corpus is, a check no
+/// scenario is the subject of has no parity evidence behind it.
+#[test]
+fn every_check_is_the_subject_of_some_scenario() {
+    let covered: BTreeSet<String> = load_cases()
+        .into_iter()
+        .flat_map(|case| case.scenario.covers)
+        .collect();
+    for check in CHECKS {
+        assert!(
+            covered.contains(check.id),
+            "{}: no corpus scenario covers it",
+            check.id
+        );
+    }
 }
 
 /// The fetch-layer semantics the port had to reproduce rather than inherit

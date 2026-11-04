@@ -27,7 +27,7 @@ use memo::RequestMemo;
 use redirect::HopSender;
 
 /// Per-request deadline when the caller sets none.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(8_000);
+pub use crate::web_audit::registry::DEFAULT_TIMEOUT;
 
 /// The request a caller wants sent.
 #[derive(Clone, PartialEq, Eq)]

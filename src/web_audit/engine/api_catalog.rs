@@ -25,7 +25,7 @@ pub static MCP_TARGET_RE: LazyLock<Regex> =
     LazyLock::new(|| fixed(r"(?i)\.well-known/mcp|server-card|mcp-skill|/mcp(?-u:\b)"));
 
 // Bounds the declarations one catalog can add to the trail, whatever it lists.
-const MAX_CATALOG_ANCHORS: usize = 8;
+use crate::web_audit::registry::MAX_CATALOG_ANCHORS;
 
 /// A URL the catalog declares, with the JSON Pointer into the catalog where it does.
 #[derive(Clone, Debug, PartialEq, Eq)]

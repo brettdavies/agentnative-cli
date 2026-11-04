@@ -10,8 +10,6 @@
 //! again), records unreachable; any other answer records followed. The API
 //! batch settles after the MCP batches, on what is left of the slice.
 
-use std::time::Duration;
-
 use super::follow_requests::{Fetched, Gate, ReadOptions};
 use super::follow_trail::{Declaration, Kind, Outcome, Settled, TrailEntry, declaration_key};
 use super::waves::is_edge_error_status;
@@ -21,7 +19,7 @@ use crate::web_audit::fetch::redirect::is_redirect;
 const DESCRIPTION_READ: ReadOptions = ReadOptions {
     max_body_bytes: OPENAPI_MAX_BODY_BYTES,
     accept: None,
-    timeout_cap: Some(Duration::from_millis(3_000)),
+    timeout_cap: Some(crate::web_audit::registry::DESCRIPTION_TIMEOUT),
 };
 
 /// What the slice settled for the catalog.

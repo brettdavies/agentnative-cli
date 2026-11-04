@@ -50,7 +50,7 @@ use crate::web_audit::scorecard::EvidenceItem;
 
 /// Hard wall-clock cap on the whole discovery phase, so it never starves
 /// the check waves.
-pub const DISCOVERY_BUDGET: Duration = Duration::from_millis(12_000);
+pub use crate::web_audit::registry::DISCOVERY_BUDGET;
 
 /// The RFC 9727 API catalog location (the site's `API_CATALOG_PATH`).
 pub const API_CATALOG_PATH: &str = "/.well-known/api-catalog";

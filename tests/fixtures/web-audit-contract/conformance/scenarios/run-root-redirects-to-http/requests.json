@@ -1,0 +1,10 @@
+[
+  {
+    "method": "GET",
+    "url": "https://example.com/",
+    "headers": {
+      "user-agent": "anc-web-audit/1.0 (+https://anc.dev/audit)"
+    },
+    "body": null
+  }
+]

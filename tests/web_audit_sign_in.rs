@@ -1,9 +1,9 @@
 //! An MCP endpoint that requires sign-in, scored by what an agent at the
 //! audit's vantage can verify: a 401 its own RFC 9728 metadata backs makes
 //! the endpoint present, the rows that need a session read `n_a`
-//! `auth-required`, the three sign-in rows score what the 401 and the
-//! metadata say, and the global score's maximum counts one MCP access
-//! design. The corpus replay pins every row; these name the behaviors.
+//! `auth-required`, and the three sign-in rows score what the 401 and the
+//! metadata say. The corpus replay pins every row; these name the behaviors.
+//! `src/web_audit/universe.rs` holds the global maximum's design rule.
 
 #![cfg(feature = "web")]
 

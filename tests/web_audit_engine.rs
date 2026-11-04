@@ -287,14 +287,8 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         "one skip per unported row"
     );
     for result in &report.results {
-        let scored = report
-            .scorecard
-            .results
-            .iter()
-            .find(|row| row.id == result.check.id)
-            .expect("a row for every result");
         assert_eq!(
-            scored.status == ScorecardStatus::NA,
+            result.status == ScorecardStatus::NA,
             UNMET_ON_A_HEALTHY_TARGET.contains(&result.check.antecedent),
             "{}: n_a exactly when its antecedent is unmet",
             result.check.id

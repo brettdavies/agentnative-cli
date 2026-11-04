@@ -127,7 +127,8 @@ pub fn divergences_of(case: &Case) -> BTreeSet<String> {
     divergences_against(case, &golden_text(&case.name))
 }
 
-/// The same, against `want_text` in place of the scenario's golden document.
+/// The same, against `want_text` in place of a scored scenario's golden document.
+/// An unreachable scenario's golden is its reason, read from `case`.
 pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let outcome = replay(&case.scenario, Arc::new(default_handlers()));

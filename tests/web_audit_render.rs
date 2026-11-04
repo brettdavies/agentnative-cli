@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use agentnative::web_audit::engine::RunOutcome;
 use agentnative::web_audit::handlers::default_handlers;
+use agentnative::web_audit::registry::CHECKS;
 use agentnative::web_audit::render::{RenderOptions, format_text};
 use agentnative::web_audit::scorecard::WebScorecard;
 use common::corpus::{load_cases, replay};
@@ -107,7 +108,7 @@ fn json_mode_puts_nothing_but_the_scorecard_on_stdout() {
         let out = stdout_of(assert.get_output());
         let scorecard: WebScorecard = serde_json::from_str(&out)
             .unwrap_or_else(|e| panic!("stdout is a scorecard: {e}\n{out}"));
-        assert_eq!(scorecard.results.len(), 68);
+        assert_eq!(scorecard.results.len(), CHECKS.len());
         assert_eq!(scorecard.schema_version, "0.5");
         assert!(scorecard.target_url.starts_with("https://127.0.0.1:"));
         assert_eq!(scorecard.tool.url, scorecard.target_url);

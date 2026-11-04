@@ -4,9 +4,9 @@
 //! job arrives takes it whatever its rank. A check holds a slot while it probes;
 //! a check gated without a request never takes one.
 //!
-//! A worker blocked on a request is never joined. Every request carries a
-//! timeout no longer than the audit's remaining budget, so it finishes on its
-//! own and the thread exits; [`AuditSlots::close`] drops the jobs still queued.
+//! A worker blocked on a request is never joined: the run's end stops the request
+//! and joins it, and the thread exits when its job ends. [`AuditSlots::close`]
+//! drops the jobs still queued.
 
 use std::any::Any;
 use std::collections::{BTreeMap, VecDeque};
@@ -64,9 +64,13 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl AuditSlots {
-    /// `cap` worker threads, at least one, waiting for jobs.
+    /// `cap` worker threads waiting for jobs. With none, nothing could ever run.
+    ///
+    /// # Panics
+    ///
+    /// When `cap` is 0.
     pub fn new(cap: usize) -> Self {
-        let cap = cap.max(1);
+        assert!(cap >= 1, "an audit needs at least one slot");
         let inner = Arc::new(Inner {
             queue: Mutex::new(Queue::default()),
             ready: Condvar::new(),
@@ -106,11 +110,12 @@ impl AuditSlots {
     }
 
     /// For a check already holding a slot: `probe` over `items` on that slot,
-    /// joined by any other that frees while items remain, with results in
-    /// item order however the probes finish. One row's fan-out always leaves a
-    /// slot free, so it runs on at most `cap - 1` slots, and at a cap of 1 or 2 on
-    /// its own alone. It never waits on a slot it does not yet have. A probe's
-    /// panic comes back out here, once every probe under way has ended.
+    /// joined one item at a time by any other that frees with no ranked work
+    /// waiting, with results in item order however the probes finish. One row's
+    /// fan-out always leaves a slot free, so it runs on at most `cap - 1` slots, and
+    /// at a cap of 1 or 2 on its own alone. It never waits on a slot it does not
+    /// yet have. A probe's panic comes back out here, once every probe under way
+    /// has ended.
     pub fn fan_out<T, R>(
         &self,
         items: Vec<T>,
@@ -135,12 +140,28 @@ impl AuditSlots {
             .saturating_sub(1)
             .min(self.inner.cap.saturating_sub(2));
         for _ in 0..helpers {
-            let helper = Arc::clone(&fan);
-            self.submit(Rank::Helper, move || helper.drain());
+            help(self.clone(), Arc::clone(&fan));
         }
-        fan.drain();
+        while fan.probe_next() {}
         fan.finish()
     }
+}
+
+/// One item on a slot, then back in the queue, so that ranked work arriving
+/// between items goes first. A helper that gets its slot with nothing left gives
+/// it straight back.
+fn help<T, R, F>(slots: AuditSlots, fan: Arc<FanOut<T, R, F>>)
+where
+    T: Send + 'static,
+    R: Send + 'static,
+    F: Fn(T) -> R + Send + Sync + 'static,
+{
+    let queue = slots.clone();
+    queue.submit(Rank::Helper, move || {
+        if fan.probe_next() {
+            help(slots, fan);
+        }
+    });
 }
 
 fn work(inner: &Inner) {
@@ -180,30 +201,28 @@ struct FanOut<T, R, F> {
 }
 
 impl<T, R, F: Fn(T) -> R> FanOut<T, R, F> {
-    /// Take items until none remain. A helper that gets its slot after that
-    /// finds nothing to do and gives the slot straight back.
-    fn drain(&self) {
-        loop {
-            let (index, item) = {
-                let mut state = locked(&self.state);
-                let Some(next) = state.next.pop_front() else {
-                    return;
-                };
-                state.running += 1;
-                next
-            };
-            let outcome = catch_unwind(AssertUnwindSafe(|| (self.probe)(item)));
+    /// Probe the next item, if there is one.
+    fn probe_next(&self) -> bool {
+        let (index, item) = {
             let mut state = locked(&self.state);
-            state.running -= 1;
-            match outcome {
-                Ok(result) => state.results[index] = Some(result),
-                Err(panic) => {
-                    state.panic.get_or_insert(panic);
-                }
+            let Some(next) = state.next.pop_front() else {
+                return false;
+            };
+            state.running += 1;
+            next
+        };
+        let outcome = catch_unwind(AssertUnwindSafe(|| (self.probe)(item)));
+        let mut state = locked(&self.state);
+        state.running -= 1;
+        match outcome {
+            Ok(result) => state.results[index] = Some(result),
+            Err(panic) => {
+                state.panic.get_or_insert(panic);
             }
-            drop(state);
-            self.idle.notify_all();
         }
+        drop(state);
+        self.idle.notify_all();
+        true
     }
 
     /// Wait out the helpers that started; one still queued does nothing when
@@ -397,5 +416,66 @@ mod tests {
         let panicked = rx.recv_timeout(Duration::from_secs(5)).expect("finished");
         assert!(panicked);
         slots.close();
+    }
+
+    #[test]
+    #[should_panic(expected = "at least one slot")]
+    fn a_cap_of_none_is_refused() {
+        let _ = AuditSlots::new(0);
+    }
+
+    #[test]
+    fn ranked_work_that_arrives_mid_fan_out_takes_the_next_slot_to_free() {
+        // Three slots: the fan-out's own, one helper, and one held throughout, so
+        // the ranked job has only what the fan-out gives up. Later items hold until
+        // it starts, which only happens if the helper hands its slot back.
+        let slots = AuditSlots::new(3);
+        let (held_tx, held_rx) = mpsc::channel::<()>();
+        slots.submit(Rank::Source, move || {
+            let _ = held_rx.recv();
+        });
+        let first_two = Arc::new(std::sync::Barrier::new(2));
+        let (started_tx, started_rx) = mpsc::channel::<()>();
+        let started_rx = Arc::new(Mutex::new(started_rx));
+        let (arrived_tx, arrived_rx) = mpsc::channel::<()>();
+        let (go_tx, go_rx) = mpsc::channel::<()>();
+        let go_rx = Arc::new(Mutex::new(go_rx));
+        let met = Arc::new(AtomicUsize::new(0));
+        let fanning = slots.clone();
+        let m = met.clone();
+        let fan = thread::spawn(move || {
+            let slots = fanning.clone();
+            let (tx, rx) = mpsc::channel();
+            fanning.submit(Rank::Row(0), move || {
+                slots.fan_out(vec![0, 1, 2, 3], move |item| {
+                    if item < 2 {
+                        first_two.wait();
+                        arrived_tx.send(()).unwrap();
+                        let _ = go_rx.lock().unwrap().recv();
+                    } else if started_rx
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(Duration::from_secs(2))
+                        .is_ok()
+                    {
+                        m.fetch_add(1, Ordering::SeqCst);
+                    }
+                });
+                tx.send(()).unwrap();
+            });
+            rx.recv().unwrap();
+        });
+        arrived_rx.recv().unwrap();
+        arrived_rx.recv().unwrap();
+        slots.submit(Rank::Row(1), move || {
+            for _ in 0..2 {
+                started_tx.send(()).unwrap();
+            }
+        });
+        drop(go_tx);
+        fan.join().unwrap();
+        drop(held_tx);
+        slots.close();
+        assert_eq!(met.load(Ordering::SeqCst), 2, "the helper kept its slot");
     }
 }

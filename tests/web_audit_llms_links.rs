@@ -10,9 +10,9 @@ mod common;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use agentnative::web_audit::engine::slots::{AuditSlots, Rank};
 use agentnative::web_audit::engine::{HandlerContext, ProbeOutcome, ProbeStatus};
@@ -24,6 +24,36 @@ use common::handler_context::{check, context};
 use serde_json::{Value, json};
 
 const LINK_COUNT: usize = 6;
+
+/// One row's fan-out at a cap of 4: its own slot and two more, which leaves one free.
+const FAN_OUT_SLOTS: usize = 3;
+
+/// A latch whose wait gives up in time, so a fan-out that never reaches the cap
+/// fails the assertion instead of hanging, and before a link's own timeout.
+#[derive(Default)]
+struct Gate {
+    open: Mutex<bool>,
+    changed: Condvar,
+}
+
+impl Gate {
+    fn open(&self) {
+        *self.open.lock().unwrap() = true;
+        self.changed.notify_all();
+    }
+
+    fn wait(&self) {
+        let until = Instant::now() + Duration::from_secs(2);
+        let mut open = self.open.lock().unwrap();
+        while !*open {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return;
+            }
+            open = self.changed.wait_timeout(open, left).unwrap().0;
+        }
+    }
+}
 
 fn hrefs() -> Vec<String> {
     (0..LINK_COUNT)
@@ -115,10 +145,22 @@ fn the_probes_run_under_the_cap_and_evidence_keeps_link_order_however_they_finis
     let running = Arc::new(AtomicUsize::new(0));
     let peak = Arc::new(AtomicUsize::new(0));
     let answered = Arc::new(Mutex::new(Vec::new()));
-    let (r, p, a) = (running.clone(), peak.clone(), answered.clone());
+    let full = Arc::new(Gate::default());
+    let (r, p, a, f) = (
+        running.clone(),
+        peak.clone(),
+        answered.clone(),
+        full.clone(),
+    );
     let transport = target(move |url| {
         let now = r.fetch_add(1, Ordering::SeqCst) + 1;
         p.fetch_max(now, Ordering::SeqCst);
+        // Nothing answers until the cap is in flight, so the peak reaches it
+        // whatever the threads do.
+        if now >= FAN_OUT_SLOTS {
+            f.open();
+        }
+        f.wait();
         let place = order.iter().position(|href| href == url).unwrap();
         thread::sleep(Duration::from_millis(((LINK_COUNT - place) * 12) as u64));
         r.fetch_sub(1, Ordering::SeqCst);
@@ -133,8 +175,7 @@ fn the_probes_run_under_the_cap_and_evidence_keeps_link_order_however_they_finis
     );
     memo.close();
     slots.close();
-    // One row's fan-out always leaves a slot free.
-    assert_eq!(peak.load(Ordering::SeqCst), 3);
+    assert_eq!(peak.load(Ordering::SeqCst), FAN_OUT_SLOTS);
     assert_ne!(*answered.lock().unwrap(), all);
     assert_eq!(
         urls(&outcome),
@@ -220,6 +261,11 @@ fn a_link_still_waiting_for_a_slot_at_the_deadline_sends_nothing_and_reads_the_s
             json!(["nested-probe budget exhausted"]),
             "{row:?}"
         );
+        // A row names no host it never contacted.
+        let sent = asked
+            .iter()
+            .any(|url| Some(url.as_str()) == row["url"].as_str());
+        assert_eq!(row.get("blocked").is_none(), sent, "{row:?}");
     }
     assert_eq!(outcome.status, ProbeStatus::Error);
     assert!(outcome.incomplete);

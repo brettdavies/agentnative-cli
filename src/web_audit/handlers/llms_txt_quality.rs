@@ -116,14 +116,20 @@ impl LinkProbe {
         }
     }
 
-    fn budget_exhausted(href: &str) -> Self {
+    /// `blocked` marks a link no request went out for, so the row names no host
+    /// it never contacted.
+    fn budget_exhausted(href: &str, requested: bool) -> Self {
+        let mut row = item([
+            ("url", json!(href)),
+            ("ok", json!(false)),
+            ("why", json!([BUDGET_EXHAUSTED])),
+        ]);
+        if !requested {
+            row.insert("blocked".to_string(), json!(BUDGET_EXHAUSTED));
+        }
         LinkProbe {
             miss: Some(Miss::Error),
-            row: item([
-                ("url", json!(href)),
-                ("ok", json!(false)),
-                ("why", json!([BUDGET_EXHAUSTED])),
-            ]),
+            row,
             exhausted: true,
         }
     }
@@ -145,7 +151,7 @@ fn probe_link(href: &str, deadline_at: Instant, ctx: &HandlerContext) -> LinkPro
     }
     let timeout = deadline_at.saturating_duration_since(Instant::now());
     if timeout.is_zero() {
-        return LinkProbe::budget_exhausted(href);
+        return LinkProbe::budget_exhausted(href, false);
     }
     let resp = ctx.fetch.fetch(
         href,
@@ -161,7 +167,7 @@ fn probe_link(href: &str, deadline_at: Instant, ctx: &HandlerContext) -> LinkPro
         .as_deref()
         .is_some_and(|error| error.starts_with(TIMEOUT_ERROR))
     {
-        return LinkProbe::budget_exhausted(href);
+        return LinkProbe::budget_exhausted(href, true);
     }
     if redirects_to_http(&resp) {
         return LinkProbe::settled(

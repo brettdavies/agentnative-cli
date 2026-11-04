@@ -164,6 +164,15 @@ pub struct RootBeside<'r> {
     pub settled: &'r dyn Fn() -> Duration,
 }
 
+impl std::fmt::Debug for RootBeside<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RootBeside")
+            .field("cut_to", &self.cut_to)
+            .field("launch", &self.launch)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Discovery after its document reads, before any POST.
 pub struct DiscoveryDocuments<'a> {
     walk: Walk<'a>,

@@ -44,7 +44,7 @@ Sub-commands let you re-run one section in isolation:
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `drift`              | Commits on `main` that `dev` lacks, `.github/` parity, lockfile packages `main` has newer                                   | `scripts/release/drift.sh`                                     |
 | `surface`            | Commits since the last release reached `dev`, files changed since the last tag, breaking markers                            | `git log`, `git diff`                                          |
-| `smoke`              | Schema parity, multi-target audit runs, scorecard validation, negative control                                              | `scripts/release/smoke.sh`                                     |
+| `smoke`              | Schema parity, multi-target audit runs, scorecard validation, negative control, web divergence ledger                       | `scripts/release/smoke.sh`                                     |
 | `mechanics`          | Version, lockfile, toolchain age, advisories, leak check, unguarded docs, diff-B, migration guide                           | `Cargo.toml`, `CHANGELOG.md`, `cargo deny`, `guarded-paths.sh` |
 | `changelog-sections` | No PR merged into `dev` since the last release leaves its changelog entry to its title for want of a `## Changelog` section | `generate-changelog.py --audit-sections`, `gh`                 |
 | `semver`             | cargo-semver-checks against the release type the version bump claims over the last `v` tag                                  | `cargo semver-checks`                                          |
@@ -190,6 +190,9 @@ The gate asserts, over a default matrix of six real CLIs spanning every document
 - [ ] `tests/fixtures/no-version-flag/noversion` still produces a real `fail` on `p3-must-version` (#55). This is the
   negative control: every other target can come back green whether the auditor works or has stopped auditing, and this
   one cannot.
+- [ ] `scripts/release/web-parity-gate.sh`: `tests/fixtures/web-audit-divergences.toml` holds no entry and no vendored
+  check binds Unsupported. `anc web` must match anc.dev, and either one means it does not yet. A release tree that strips
+  `anc web` SKIPs.
 
 Pass `--targets "name[:profile] ..."` to swap in fresh targets for a given release; a target absent from `PATH` SKIPs
 rather than fails, so the gate reports the same way on a dev box and in CI.

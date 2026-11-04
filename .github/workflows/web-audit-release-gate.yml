@@ -1,0 +1,59 @@
+# Refuses a release PR whose `anc web` differs from anc.dev: a divergence ledger
+# entry, a vendored check this build does not run, or a pin off or behind site dev.
+# The manual preflight runs the same script, scripts/release/web-parity-gate.sh. Not a
+# required check; a release tree that strips the web audit skips it.
+name: web-audit-release-gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# The group key leads with a literal token naming the workflow that owns it, so a
+# called reusable can never produce the same key.
+concurrency:
+  group: web-audit-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ci.yml records why each of these is set.
+  CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Does this tree ship the web audit
+        id: tree
+        run: |
+          if [[ -d src/web_audit ]]; then
+            echo "ships=yes" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust
+        if: steps.tree.outputs.ships == 'yes'
+        run: rustup toolchain install
+
+      - name: Cache dependencies
+        if: steps.tree.outputs.ships == 'yes'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          cache-on-failure: true
+
+      - name: Build
+        if: steps.tree.outputs.ships == 'yes'
+        run: cargo build --features web
+
+      - name: Gate
+        if: steps.tree.outputs.ships == 'yes'
+        run: bash scripts/release/web-parity-gate.sh --bin target/debug/anc

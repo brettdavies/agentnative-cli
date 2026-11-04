@@ -11,7 +11,9 @@ use std::process::Command as StdCommand;
 
 use agentnative::web_audit::registry::{CHECKS, RETIRED_CHECK_IDS};
 use agentnative::web_audit::scorecard::WebScorecard;
-use common::web_cli::{anc, api_site, fixture_site, host_of, stderr_of, stdout_of};
+use common::web_cli::{
+    anc, api_site, fixture_site, full_run_code, host_of, stderr_of, stdout_of, verdict_is_pinned,
+};
 use serde_json::Value;
 
 #[test]
@@ -20,13 +22,15 @@ fn a_must_miss_is_a_failure_and_a_clean_run_is_zero() {
     let assert = anc()
         .args(["web", &host_of(&server), "--site-type", "api"])
         .assert()
-        .code(2);
+        .code(full_run_code(2));
     let out = stdout_of(assert.get_output());
-    assert!(out.contains("Verdict: FAIL"), "{out}");
     assert!(out.contains("Failures ("), "{out}");
-    assert!(out.contains("MUST miss"), "{out}");
     assert!(out.contains("(openapi)"), "{out}");
-    assert!(out.trim_end().ends_with("MUST miss)"), "{out}");
+    if verdict_is_pinned() {
+        assert!(out.contains("Verdict: FAIL"), "{out}");
+        assert!(out.contains("MUST miss"), "{out}");
+        assert!(out.trim_end().ends_with("MUST miss)"), "{out}");
+    }
 
     // One passing check, scoped to itself, is a clean run.
     let server = fixture_site();
@@ -224,7 +228,7 @@ fn the_offline_readers_serve_the_compiled_registry() {
     let run = anc()
         .args(["web", &host, "--output", "json"])
         .assert()
-        .code(1);
+        .code(full_run_code(1));
     let scorecard: Value = serde_json::from_str(&stdout_of(run.get_output())).unwrap();
     let required = schema_doc["required"].as_array().unwrap();
     for key in required {

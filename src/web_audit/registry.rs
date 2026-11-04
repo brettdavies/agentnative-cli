@@ -144,6 +144,13 @@ pub struct WebRemediation {
 include!(concat!(env!("OUT_DIR"), "/generated_web_registry.rs"));
 
 impl WebCheck {
+    /// Whether this build can run the check: neither its handler kind nor its eval
+    /// rule is bound Unsupported.
+    pub fn is_ported(&self) -> bool {
+        !matches!(self.handler, HandlerBinding::Unsupported(_))
+            && !matches!(self.eval, Some(EvalBinding::Unsupported(_)))
+    }
+
     /// The translated pattern for a `with` field, when the check carries one.
     pub fn pattern(&self, field: &str) -> Option<&'static RegexPattern> {
         self.patterns.iter().find(|p| p.field == field)
@@ -212,25 +219,6 @@ mod tests {
             );
         }
         assert_eq!(lane_of("no-such-check"), None);
-    }
-
-    /// The unported set is exact, so each port that lands shrinks it here.
-    #[test]
-    fn the_unported_bindings_are_exactly_the_known_ones() {
-        let handlers: BTreeSet<&str> = CHECKS
-            .iter()
-            .filter(|c| matches!(c.handler, HandlerBinding::Unsupported(_)))
-            .map(|c| c.handler.as_str())
-            .collect();
-        assert!(handlers.is_empty(), "{handlers:?}");
-        let evals: BTreeSet<&str> = CHECKS
-            .iter()
-            .filter_map(|c| match c.eval {
-                Some(EvalBinding::Unsupported(name)) => Some(name),
-                _ => None,
-            })
-            .collect();
-        assert!(evals.is_empty(), "{evals:?}");
     }
 
     #[test]

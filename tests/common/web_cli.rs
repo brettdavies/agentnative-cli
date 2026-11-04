@@ -1,9 +1,90 @@
 //! Shared scaffolding for the `anc web` test binaries: the command under
 //! test, and the fixture sites it audits.
 
+use std::io::Write as _;
+
+use agentnative::web_audit::registry::CHECKS;
 use assert_cmd::Command;
 
 use super::{RawRequest, RawResponse, Server};
+
+/// The checks this build cannot run, each bound to a handler kind or eval rule
+/// the engine has not ported.
+pub fn unported_checks() -> Vec<&'static str> {
+    CHECKS
+        .iter()
+        .filter(|c| !c.is_ported())
+        .map(|c| c.id)
+        .collect()
+}
+
+/// A test gives up only its verdict, and says so past libtest's capture:
+/// `scripts/web-audit-bump.sh` lists these lines in the bump PR, so a stand-down
+/// cannot pass unseen.
+fn stand_down(what: &str, why: &str) {
+    let test = std::thread::current();
+    let line = format!(
+        "standing down: {}: {what}, because {why}\n",
+        test.name().unwrap_or("a test"),
+    );
+    // One write: libtest shares this log, and a line split by its output would be lost.
+    let _ = std::io::stderr().write_all(line.as_bytes());
+}
+
+/// A check this build cannot run skips wherever it applies, which makes that full
+/// run "could not check" whatever else it found. Where the site's type or an
+/// antecedent rules the check out, its row is N/A and the run keeps its verdict. The
+/// ledger holds the gap and the release gate refuses a release with it.
+fn stand_down_for_unported(what: &str) {
+    stand_down(
+        what,
+        &format!(
+            "of checks bound Unsupported: {}",
+            unported_checks().join(", ")
+        ),
+    );
+}
+
+/// The exit codes a full run may end with: `code`, and 3 as well while a check is
+/// unported.
+pub fn full_run_code(code: i32) -> Vec<i32> {
+    if unported_checks().is_empty() {
+        return vec![code];
+    }
+    stand_down_for_unported(&format!("a full run may exit 3, not {code}"));
+    vec![code, 3]
+}
+
+/// Whether a full run's exit code can be a verdict on the site.
+pub fn ended_in_a_verdict(code: Option<i32>) -> bool {
+    if unported_checks().is_empty() {
+        return matches!(code, Some(0..=2));
+    }
+    stand_down_for_unported("a full run may exit 3, not a verdict");
+    matches!(code, Some(0..=3))
+}
+
+/// Whether a full run's verdict and closing lines say what the rows earned.
+pub fn verdict_is_pinned() -> bool {
+    if unported_checks().is_empty() {
+        return true;
+    }
+    stand_down_for_unported("the verdict and closing lines may read could not check");
+    false
+}
+
+/// Whether a run over a corpus scenario earns its verdict: every check runs, and the
+/// scenario itself reproduces.
+pub fn scenario_verdict_is_pinned(scenario: &str, ledgered: bool) -> bool {
+    if ledgered {
+        stand_down(
+            "the score is not pinned",
+            &format!("{scenario} has ledger entries"),
+        );
+        return false;
+    }
+    verdict_is_pinned()
+}
 
 /// The binary, with the test CA standing in for the OS trust store:
 /// rustls-native-certs reads `SSL_CERT_FILE` in place of the platform

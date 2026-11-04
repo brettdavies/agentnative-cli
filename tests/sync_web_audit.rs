@@ -148,6 +148,27 @@ fn a_short_pin_is_rejected_before_any_git_call() {
     assert!(stderr.contains("full 40-hex commit SHA"), "{stderr}");
 }
 
+#[test]
+fn list_names_every_vendored_path_with_the_pin_last() {
+    let output = Command::new("bash")
+        .arg(repo_root().join("scripts/sync-web-audit.sh"))
+        .arg("--list")
+        .output()
+        .expect("run the sync script");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let paths: Vec<&str> = stdout.lines().collect();
+    assert_eq!(paths.last(), Some(&"src/web_audit/vendored/SITE_SHA"));
+    for path in &paths {
+        assert!(
+            repo_root().join(path).exists(),
+            "{path} is not in this repository"
+        );
+    }
+    assert!(paths.contains(&"src/web_audit/vendored/registry.yaml"));
+    assert!(paths.contains(&"tests/fixtures/web-audit-conformance"));
+}
+
 /// Reaches the site repository; set `WEB_AUDIT_SYNC_ONLINE=1` to run it.
 #[test]
 #[ignore = "fetches the pinned commit from GitHub"]

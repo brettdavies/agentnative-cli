@@ -10,6 +10,7 @@
 
 #![cfg(feature = "web")]
 
+use std::collections::BTreeSet;
 use std::io::{self, Cursor, Read};
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
@@ -26,7 +27,7 @@ use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::{Locality, Resolver};
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::{
-    AntecedentToken, CHECKS, HANDLER_KINDS, MCP_DISCOVERY, WebCheck,
+    AntecedentToken, CHECKS, EvalBinding, HANDLER_KINDS, HandlerBinding, MCP_DISCOVERY, WebCheck,
 };
 use agentnative::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardStatus,
@@ -270,10 +271,41 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     // The stand-in set registers handler kinds and the api-description rule,
     // so retained-document is unported here; the protected-resource rows
     // settle n_a on their antecedent first.
-    let mut unported: Vec<&str> = report.unported.iter().map(|u| u.kind).collect();
-    unported.sort_unstable();
-    unported.dedup();
-    assert_eq!(unported, ["retained-document"], "{:?}", report.unported);
+    let bound_unsupported: Vec<&str> = CHECKS
+        .iter()
+        .filter_map(|c| match (c.handler, c.eval) {
+            (HandlerBinding::Unsupported(kind), _) => Some(kind),
+            (_, Some(EvalBinding::Unsupported(rule))) => Some(rule),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        report
+            .unported
+            .iter()
+            .any(|u| u.kind == "retained-document"),
+        "{:?}",
+        report.unported
+    );
+    assert!(
+        report
+            .unported
+            .iter()
+            .all(|u| u.kind == "retained-document" || bound_unsupported.contains(&u.kind)),
+        "{:?}",
+        report.unported
+    );
+    // A kind counts only where its skip is the row: an antecedent or a site type can
+    // settle a check bound Unsupported first.
+    let reported: BTreeSet<&str> = report.unported.iter().map(|u| u.check_id).collect();
+    let skipped: BTreeSet<&str> = report
+        .scorecard
+        .results
+        .iter()
+        .filter(|row| row.status == ScorecardStatus::Skip)
+        .map(|row| row.id.as_str())
+        .collect();
+    assert_eq!(reported, skipped);
     assert_eq!(report.target_locality, Some(Locality::Public));
     assert_eq!(
         report.scorecard.mcp_endpoint.as_deref(),

@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use agentnative::web_audit::audit_resolver::AuditResolver;
+use agentnative::web_audit::engine::FetchHandle;
 use agentnative::web_audit::fetch::redirect::{validate_hop, validate_target};
 use agentnative::web_audit::fetch::trust::{TrustClass, TrustConfig};
 use agentnative::web_audit::fetch::{FetchInit, FetchOptions, Fetcher};
@@ -221,6 +222,42 @@ fn a_redirect_to_a_name_of_another_class_is_still_refused() {
             "blocked: redirect leaves the public target for a local host private.example (redirect hop 1)"
         );
     }
+}
+
+#[test]
+fn a_handler_refuses_a_nested_host_while_the_targets_class_is_unknown() {
+    let transport: Arc<dyn Transport + Send + Sync> = Arc::new(MockTransport::new(
+        Vec::new(),
+        MockResponse::error("connection refused"),
+    ));
+    let mut ctx = common::handler_context::context(transport);
+    assert_eq!(ctx.validate_nested("https://api.example.net/"), Ok(()));
+    ctx.target_locality = None;
+    let refusal = ctx.validate_nested("https://api.example.net/").unwrap_err();
+    assert!(refusal.starts_with("blocked: "), "{refusal}");
+    assert!(refusal.contains("unknown"), "{refusal}");
+}
+
+#[test]
+fn a_handle_over_a_transport_classifies_through_that_transports_resolver() {
+    let origin = common::spawn(|_| RawResponse::new(200, &[], b"classified"));
+    let (script, resolver) =
+        audit(Script::default().answering("pinned.example", &[&[LOOPBACK], &[PUBLIC]]));
+    let handle = FetchHandle::over_ureq(transport(&resolver), UA);
+    assert_eq!(handle.classify("pinned.example").unwrap(), Locality::Local);
+    // Plain HTTP on the fixture, so the handshake fails after the connection; the
+    // connection is what asks the resolver.
+    let url = format!("https://pinned.example:{}/", origin.addr.port());
+    let response = handle.fetch(&url, &FetchInit::default(), &FetchOptions::default());
+    assert!(response.status.is_none());
+    assert!(
+        response
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("TlsError") || e.contains("NetworkError")),
+        "{response:?}"
+    );
+    assert_eq!(script.lookups("pinned.example"), 1);
 }
 
 #[test]

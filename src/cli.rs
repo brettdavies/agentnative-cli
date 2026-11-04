@@ -266,7 +266,7 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     /// api-catalog anchors), at most 4 hosts and 12 follow requests in a
     /// 6-second window, unless `--no-follow` is set; and the public DNS
     /// resolvers the `dns-aid` check queries, which are withheld for a
-    /// local target unless `--external-dns` is set.
+    /// target not known to be public unless `--external-dns` is set.
     ///
     /// An MCP endpoint that requires sign-in reports its session and
     /// handshake rows `n_a` (`auth-required`) unless the run presents a
@@ -322,7 +322,7 @@ A path that exists wins, so `anc ./anc.dev` still audits the directory.
         check: Option<String>,
 
         /// Let the DNS-over-HTTPS checks query public resolvers even when
-        /// the target is local or private. Without it those rows report
+        /// the target is not known to be public. Without it those rows report
         /// `n_a` rather than sending the target's hostname to a third
         /// party.
         #[arg(long)]

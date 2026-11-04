@@ -356,7 +356,7 @@ mod tests {
             entry_endpoint_declared: false,
             discovery: &MCP_DISCOVERY,
             fetch: &fetch,
-            target_locality: None,
+            target_locality: Some(Locality::Public),
             timeout: Duration::from_secs(2),
             deadline: now + Duration::from_secs(20),
             opened: now

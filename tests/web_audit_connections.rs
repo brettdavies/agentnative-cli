@@ -7,14 +7,17 @@
 mod common;
 
 use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use agentnative::web_audit::fetch::trust::{TrustClass, TrustConfig, load_ca_file};
-use agentnative::web_audit::transport::{Request, Transport, UreqTransport};
+use agentnative::web_audit::transport::{
+    IDLE_CONNECTIONS, IDLE_CONNECTIONS_PER_HOST, Request, Transport, UreqTransport,
+};
 use common::{RawRequest, RawResponse};
 
 const UA: &str = "anc-web-audit-test/0 (+https://anc.dev/audit)";
@@ -116,8 +119,7 @@ fn a_request_advertises_the_encodings_whose_connection_comes_back() {
     assert_eq!(hits[0].header("accept-encoding"), Some("gzip"));
 }
 
-/// The most requests the transport keeps a connection for on one host.
-const BURST: usize = 16;
+const BURST: usize = IDLE_CONNECTIONS_PER_HOST;
 
 /// A server that holds every request until `at_once` have arrived, so each of
 /// them is on a connection of its own.
@@ -154,7 +156,8 @@ fn a_burst_leaves_a_connection_for_each_request_of_the_next() {
 
 #[test]
 fn the_hosts_of_one_audit_keep_their_connections_side_by_side() {
-    let servers: Vec<_> = (0..4).map(|_| held_server(BURST)).collect();
+    let hosts = IDLE_CONNECTIONS / IDLE_CONNECTIONS_PER_HOST;
+    let servers: Vec<_> = (0..hosts).map(|_| held_server(BURST)).collect();
     let transport = transport();
     for _ in 0..2 {
         for server in &servers {
@@ -170,15 +173,81 @@ fn the_hosts_of_one_audit_keep_their_connections_side_by_side() {
 fn a_request_outlasts_more_dead_connections_than_it_has_attempts() {
     let arrived = Arc::new(Barrier::new(BURST));
     let seen = Arc::new(AtomicUsize::new(0));
-    let server = common::spawn_https_dying_on_reuse(move |_| {
-        if seen.fetch_add(1, Ordering::SeqCst) < BURST {
-            arrived.wait();
-        }
-        RawResponse::new(200, &[], b"ok")
-    });
+    let server = common::spawn_https_dying_on_reuse(
+        move |_| {
+            if seen.fetch_add(1, Ordering::SeqCst) < BURST {
+                arrived.wait();
+            }
+            RawResponse::new(200, &[], b"ok")
+        },
+        |_| true,
+    );
     let transport = transport();
     let url = server.server.url("/");
     at_once(&transport, &url, BURST);
     assert_eq!(read_body(&transport, &url), b"ok");
     assert_eq!(server.accepted(), BURST + 1);
+}
+
+#[test]
+fn a_retry_leaves_the_hosts_idle_connections_alone() {
+    let arrived = Arc::new(Barrier::new(BURST));
+    let server = common::spawn_https_dying_on_reuse(
+        move |request| {
+            if request.target == "/" {
+                arrived.wait();
+            }
+            RawResponse::new(200, &[], b"ok")
+        },
+        |request| request.target == "/dies",
+    );
+    let transport = transport();
+    let url = server.server.url("/");
+    at_once(&transport, &url, BURST);
+    assert_eq!(read_body(&transport, &server.server.url("/dies")), b"ok");
+    assert_eq!(
+        server.accepted(),
+        BURST + 1,
+        "one retry, on a new connection"
+    );
+    at_once(&transport, &url, BURST);
+    assert_eq!(
+        server.accepted(),
+        BURST + 2,
+        "the next burst has every idle connection but the one that died"
+    );
+}
+
+#[test]
+fn a_post_goes_again_only_once() {
+    let (addr, accepted) = common::spawn_closing(usize::MAX, "");
+    let post = Request {
+        method: "POST".to_string(),
+        body: Some(b"{}".to_vec()),
+        ..get(&format!("http://{addr}/mcp"))
+    };
+    assert!(transport().send(&post).is_err());
+    assert_eq!(*accepted.lock().unwrap(), 2);
+}
+
+#[test]
+fn a_retry_spends_what_is_left_of_the_requests_deadline() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (first, _) = listener.accept().expect("the first attempt");
+        thread::sleep(Duration::from_millis(800));
+        drop(first);
+        // The second attempt connects and hears nothing.
+        let _held = listener.accept();
+        thread::sleep(Duration::from_secs(10));
+    });
+    let request = Request {
+        timeout: Duration::from_secs(2),
+        ..get(&format!("http://{addr}/"))
+    };
+    let started = Instant::now();
+    assert!(transport().send(&request).is_err());
+    let took = started.elapsed();
+    assert!(took < Duration::from_millis(2400), "{took:?}");
 }

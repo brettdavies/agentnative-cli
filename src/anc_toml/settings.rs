@@ -60,8 +60,10 @@ pub struct P5Config {
     /// Flags that confirm a destructive subcommand non-interactively,
     /// accepted beside the built-in names.
     pub confirm_flags: Vec<Sourced<String>>,
-    /// Subcommand names the tool declares are not destructive, compared
-    /// with the lowercased name.
+    /// Subcommand names the tool declares lack the effect P5 defines as
+    /// destructive, compared with the lowercased name. `p5-force-yes` applies
+    /// an entry that is lowercase and names a listed subcommand, and reports
+    /// any other.
     pub not_destructive: Vec<Sourced<String>>,
 }
 

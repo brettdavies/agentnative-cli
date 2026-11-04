@@ -15,6 +15,12 @@ const DESTRUCTIVE_VERBS: &[&str] = &[
     "delete", "remove", "rm", "destroy", "purge", "wipe", "reset", "drop", "clean", "force-",
 ];
 
+/// Names that read as destructive whatever a tool means by them, so
+/// `.anc.toml [p5] not_destructive` cannot cover them. P5 leaves every other
+/// name to its author's declaration, `delete-key` included, so this compares
+/// the whole name.
+const ALWAYS_DESTRUCTIVE: &[&str] = &["delete", "destroy", "purge", "wipe"];
+
 /// Subcommand names that imply read-only operations. Used by the read/write
 /// distinction audit to confirm the CLI ships both surfaces. Case-insensitive
 /// exact match (we want `list`, not `flush-list`).
@@ -32,6 +38,13 @@ pub(crate) fn destructive_subcommands(help: &HelpOutput) -> Vec<&String> {
         .iter()
         .filter(|s| is_destructive(s))
         .collect()
+}
+
+/// Whether a declaration cannot cover `name`, in any case.
+pub(crate) fn is_always_destructive(name: &str) -> bool {
+    ALWAYS_DESTRUCTIVE
+        .iter()
+        .any(|always| name.eq_ignore_ascii_case(always))
 }
 
 pub(crate) fn is_destructive(name: &str) -> bool {
@@ -120,6 +133,13 @@ mod tests {
     fn does_not_flag_safe_verbs() {
         for verb in &["list", "get", "show", "create", "add", "init", "build"] {
             assert!(!is_destructive(verb), "{verb} should not be destructive");
+        }
+    }
+
+    #[test]
+    fn every_always_destructive_name_is_detected_as_destructive() {
+        for name in ALWAYS_DESTRUCTIVE {
+            assert!(is_destructive(name), "{name}");
         }
     }
 

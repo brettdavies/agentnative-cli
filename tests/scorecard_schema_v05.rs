@@ -29,8 +29,8 @@ fn fixture_path(name: &str) -> String {
 /// precise failure message when a field is missing.
 fn assert_v05_shape(parsed: &Value) {
     assert_eq!(
-        parsed["schema_version"], "0.9",
-        "schema_version must be 0.9 (per-row emission + 7-status taxonomy + domain_verbs transparency + config hint)",
+        parsed["schema_version"], "0.10",
+        "schema_version must be 0.10 (per-row emission + 7-status taxonomy + domain_verbs transparency + config hint + waivers)",
     );
 
     for path in [
@@ -363,9 +363,28 @@ fn rt_schema_id_pins_to_published_schema_version() {
     let schema = schema_doc();
     let id = schema["$id"].as_str().expect("$id is a string");
     assert!(
-        id.contains("scorecard-v0.9"),
-        "schema $id must pin to the current SCHEMA_VERSION (0.9), got: {id}",
+        id.contains("scorecard-v0.10"),
+        "schema $id must pin to the current SCHEMA_VERSION (0.10), got: {id}",
     );
+}
+
+#[test]
+fn rt_schema_declares_the_waivers_row_field() {
+    let schema = schema_doc();
+    let waivers = &schema["$defs"]["AuditResultView"]["properties"]["waivers"];
+    assert_eq!(waivers["type"], "array", "waivers: {waivers}");
+    assert_eq!(
+        waivers["items"]["$ref"], "#/$defs/Waiver",
+        "waivers: {waivers}"
+    );
+
+    let waiver = &schema["$defs"]["Waiver"];
+    assert_eq!(
+        waiver["required"],
+        serde_json::json!(["subcommand", "file"]),
+        "Waiver: {waiver}"
+    );
+    assert_eq!(waiver["additionalProperties"], false, "Waiver: {waiver}");
 }
 
 #[test]

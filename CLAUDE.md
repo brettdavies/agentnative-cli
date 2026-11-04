@@ -170,7 +170,7 @@ deliberate commit, not a build-time artifact; the matrix is citable from outside
 
 ## Scorecard JSON fields
 
-`src/scorecard/mod.rs` emits `schema_version: "0.9"`. The schema evolves additively during the `0.x` pre-launch window;
+`src/scorecard/mod.rs` emits `schema_version: "0.10"`. The schema evolves additively during the `0.x` pre-launch window;
 consumers feature-detect each addition rather than pinning exact shape.
 
 `schema/scorecard.schema.json` is the hand-written JSON Schema for this shape, and `anc emit schema` prints it. The file
@@ -197,6 +197,7 @@ Cumulative history:
   with the built-in vs domain ratio. Fields are absent (not `null`) from rows that did not consult `domain_verbs`.
 - `0.9`: optional `config_hint` on a result row whose warning a `.anc.toml` setting would clear. The `0.9` schema
   document declares every row field and value the runtime emits, the `0.8` row fields and `low` confidence included.
+- `0.10`: optional `waivers` on a result row whose verdict `.anc.toml [p5] not_destructive` shaped.
 
 Existing field semantics:
 
@@ -252,8 +253,8 @@ Existing field semantics:
 
 `0.8` addition (`Mitigation` carrier on `AuditResult`):
 
-- `AuditResult.mitigation: Option<Mitigation>` is set when a Pass depended on a `.anc.toml` setting. The semantic
-  contract is "this verdict depended on a self-declared opt-in; here is what assisted." `Mitigation` has two variants:
+- `AuditResult.mitigation: Option<Mitigation>` is set when a verdict depended on a `.anc.toml` setting. The semantic
+  contract is "this verdict depended on a self-declared opt-in; here is what assisted." `Mitigation` has three variants:
   - `DomainVerbs(MitigationInfo)`: `MitigationInfo { using_domain_verbs, domain_match_count, domain_match_examples,
     builtin_match_count, subcommand_total }`, filled by `src/audits/behavioral/standard_names.rs` when
     `p6-standard-names` Passes because one or more subcommands were recognized via `.anc.toml [p6] domain_verbs` (rather
@@ -262,12 +263,14 @@ Existing field semantics:
   - `Config(String)`: every other setting. The prose names the setting, what it contributed, and the file that supplied
     it, cited through `anc_toml::Sourced::cite` (`destroy accepts --noconfirm via .anc.toml [p5].confirm_flags`). An
     audit that credits a setting returns a `types::Verdict { status, mitigation }` from its core helper.
+  - `NotDestructive { waivers, evidence }`: `p5-force-yes` read `[p5] not_destructive`, on a row of any status. See the
+    `0.10` addition below.
 - `AuditResultView` surfaces two top-level fields from the `DomainVerbs` variant: `using_domain_verbs: Option<bool>` and
   `domain_match_count: Option<usize>`. Both use `skip_serializing_if = "Option::is_none"` so they are absent from every
   other row. `scorecard::pass_row_evidence` composes a Pass row's `evidence`: `AuditResult.pass_evidence` (what the
   audit observed, such as the subcommands and flags `p7-limit` matched) first, then the mitigation prose
-  (`format_pass_evidence` for `DomainVerbs`, the prose itself for `Config`), joined by a semicolon. A Pass with neither
-  keeps `evidence: null`. A setting that shapes a non-Pass verdict says so in that status's own evidence string.
+  (`format_pass_evidence` for `DomainVerbs`, the prose itself for the others), joined by a semicolon. A Pass with
+  neither keeps `evidence: null`. A setting that shapes a non-Pass verdict says so in that status's own evidence string.
 
 `0.9` addition (`ConfigHint` carrier on `AuditResult`):
 
@@ -284,6 +287,23 @@ Existing field semantics:
 - `AuditResultView.config_hint` mirrors the carrier with `skip_serializing_if = "Option::is_none"`, the
   `audience_reason` pattern: absent from every row without a hint. Text mode prints it under the row, with the evidence
   lines: one `hint:` line, then one line per file saying which audits read it.
+
+`0.10` addition (`Mitigation::NotDestructive` carrier on `AuditResult`):
+
+- `Waiver { subcommand, file }` names one subcommand a `[p5] not_destructive` entry took out of `p5-force-yes`'s
+  destructive set and the file that declared it. P5 defines destructive by effect, the audit can only read names, so the
+  entry is the author's claim and the row records it.
+- `read_not_destructive` (`src/audits/behavioral/force_yes.rs`) applies an entry that is lowercase and names a
+  subcommand the top-level help lists. Any other entry is not applied, and the row's evidence says why; it never changes
+  a status on its own. An entry for a listed subcommand whose name does not read as destructive has nothing to waive.
+- `ALWAYS_DESTRUCTIVE` (`src/audits/behavioral/destructive_ops.rs`) holds `delete`, `destroy`, `purge`, and `wipe`, which
+  P5 says a declaration cannot cover. An entry for one is refused, in any case and whether or not the help lists it, so
+  the subcommand stays in the destructive set and the row's evidence names the entry. It compares the whole name, so
+  `delete-key` stays open to a declaration.
+- `AuditResultView.waivers` mirrors the carrier with `skip_serializing_if = "Vec::is_empty"`: absent from every row
+  without a waiver, on any status. The carrier sits on `Mitigation` rather than as a new `AuditResult` field because
+  every `Audit::run()` builds that struct literally. `evidence` on the variant is the Pass row's prose, and text mode
+  prints it under a passing row, which no other mitigation does: a declaration that did nothing must not be silent.
 
 Always-present null contract: `tool.version`, `tool.binary`, `target.path`, `target.command` serialize as JSON `null`
 when not applicable, never as missing keys. Consumers can access these paths unconditionally. The exception is

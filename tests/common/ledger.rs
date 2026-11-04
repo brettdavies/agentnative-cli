@@ -112,7 +112,7 @@ pub fn parse_ledger(raw: &str, pin: &str) -> Result<BTreeMap<Element, String>, S
         .collect()
 }
 
-fn golden_text(name: &str) -> String {
+pub fn golden_text(name: &str) -> String {
     fs::read_to_string(
         corpus_dir()
             .join("scenarios")
@@ -150,6 +150,11 @@ pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
             let got: Value = serde_json::from_str(&got_text).expect("engine JSON");
             for (key, value) in want.as_object().expect("a scorecard object") {
                 if key != "results" && got.get(key) != Some(value) {
+                    out.insert(key.clone());
+                }
+            }
+            for key in got.as_object().expect("a scorecard object").keys() {
+                if want.get(key).is_none() {
                     out.insert(key.clone());
                 }
             }
@@ -208,7 +213,7 @@ pub fn compare_with_ledger(
     for (element, owner) in ledger {
         if in_scope(element) && !actual.contains(element) {
             problems.push(format!(
-                "{}/{}: now matches the site; remove this entry (owner {owner}) from tests/fixtures/web-audit-divergences.toml",
+                "{}/{}: now matches the site; remove this entry (owner {owner}) from tests/fixtures/web-audit-divergences.toml, and site_sha with the last one",
                 element.0, element.1
             ));
         }

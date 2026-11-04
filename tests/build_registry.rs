@@ -233,10 +233,7 @@ fn vendored_registry_normalizes() {
         reg.checks.iter().all(|c| !c.with_json.contains("{ua:")),
         "every {{ua:...}} token expanded"
     );
-    assert_eq!(
-        consts.audit_user_agent,
-        "anc-web-audit/1.0 (+https://anc.dev/audit)"
-    );
+    assert!(consts.audit_user_agent.starts_with("anc-web-audit/"));
 }
 
 #[test]

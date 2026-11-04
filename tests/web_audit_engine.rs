@@ -234,6 +234,14 @@ impl ProgressSink for Collected {
     }
 }
 
+/// What `healthy_transport` leaves unmet: it has no JSON Schemas link, and its MCP
+/// endpoint answers without asking for a sign-in.
+const UNMET_ON_A_HEALTHY_TARGET: [AntecedentToken; 3] = [
+    AntecedentToken::SchemasRef,
+    AntecedentToken::McpAuthRequired,
+    AntecedentToken::McpAuth,
+];
+
 /// With no endpoint found, the trail holds one row per well-known card, one each
 /// for the AI and API catalogs, and two probes of each common path.
 fn discovery_trail_len() -> usize {
@@ -285,14 +293,12 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
             .iter()
             .find(|row| row.id == result.check.id)
             .expect("a row for every result");
-        if scored.status == ScorecardStatus::NA {
-            assert_ne!(
-                result.check.antecedent,
-                AntecedentToken::None,
-                "{}: only an antecedent makes a row n_a on a healthy target",
-                result.check.id
-            );
-        }
+        assert_eq!(
+            scored.status == ScorecardStatus::NA,
+            UNMET_ON_A_HEALTHY_TARGET.contains(&result.check.antecedent),
+            "{}: n_a exactly when its antecedent is unmet",
+            result.check.id
+        );
     }
     assert_eq!(report.scorecard.score.relative, 100);
     let auth = row(&report, "oauth-protected-resource");

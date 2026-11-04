@@ -30,7 +30,7 @@ pub(super) fn evidence_shows_auth_challenge<'a>(
     })
 }
 
-/// A 401 or challenge on either wave-1 MCP handshake, legacy or modern, as
+/// A 401 or challenge on either MCP handshake, legacy or modern, as
 /// a client without a token was answered.
 pub(super) fn handshake_shows_auth_challenge(ctx: &AntecedentContext<'_>) -> bool {
     evidence_shows_auth_challenge(wire_probe_evidence(ctx.token_less))

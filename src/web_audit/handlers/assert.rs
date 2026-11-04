@@ -49,6 +49,13 @@ pub struct ExpectBlock {
 }
 
 impl ExpectBlock {
+    /// Whether evaluating the block looks at the response body.
+    pub fn reads_body(&self) -> bool {
+        self.body_regex.is_some()
+            || self.body_not_regex.is_some()
+            || self.same_origin_recovery_link.is_some()
+    }
+
     /// Whether the block names a status expectation.
     pub fn has_status_expectation(&self) -> bool {
         self.status.is_some() || self.status_below.is_some()
@@ -302,6 +309,37 @@ pub fn classify_alias_probe(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reads_body_names_the_three_keys_that_look_at_a_body() {
+        let block = |value: serde_json::Value| -> ExpectBlock {
+            serde_json::from_value(value).expect("an expect block")
+        };
+        for (value, reads) in [
+            (serde_json::json!({ "status": [200] }), false),
+            (serde_json::json!({ "status_below": 500 }), false),
+            (serde_json::json!({ "sse_when_success": true }), false),
+            (serde_json::json!({ "content_type": "x" }), false),
+            (serde_json::json!({ "header_present": "x" }), false),
+            (
+                serde_json::json!({ "header_regex": { "name": "x", "pattern": "y" } }),
+                false,
+            ),
+            (serde_json::json!({ "body_regex": "x" }), true),
+            (serde_json::json!({ "body_not_regex": "x" }), true),
+            (
+                serde_json::json!({ "same_origin_recovery_link": true }),
+                true,
+            ),
+            (serde_json::json!({}), false),
+            (
+                serde_json::json!({ "status": [200], "body_regex": "x" }),
+                true,
+            ),
+        ] {
+            assert_eq!(block(value.clone()).reads_body(), reads, "{value}");
+        }
+    }
+
     use super::*;
     use crate::web_audit::headers::Headers;
     use crate::web_audit::registry::check_by_id;

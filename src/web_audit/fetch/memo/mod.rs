@@ -25,11 +25,16 @@
 //! returns at the headers while the thread reads the body for a later
 //! caller, up to [`MEMO_BODY_MAX_BYTES`] and under a deadline a later waiter
 //! can push back. A stage whose deadline passes is recorded as timed out by
-//! whoever sees it first, and a thread still blocked in a read is abandoned,
-//! never joined: whatever it reads afterwards is dropped. The transport's
-//! own timeout still bounds the request, so in production a memo-owned read
-//! a later waiter pushed back still ends at the sender's budget, and that
-//! waiter then sends its own request.
+//! whoever sees it first, and whatever a thread still blocked in a read gets
+//! afterwards is dropped. The transport's own timeout still bounds the request,
+//! so in production a memo-owned read a later waiter pushed back still ends at
+//! the sender's budget, and that waiter then sends its own request. When the
+//! audit ends, [`RequestMemo::join`] waits for every one of these threads, so
+//! no request outlives its audit.
+//!
+//! A cut shortens the requests that asked for one to their cut budget from
+//! their start, in flight or not yet sent: every wait on one re-reads its
+//! deadline, and [`RequestMemo::cut`] wakes each so it does.
 //!
 //! The memo keeps the better of two answers, retains a body only within
 //! [`MEMO_BODY_MAX_BYTES`] and the audit's [`MEMO_TOTAL_MAX_BYTES`], and
@@ -48,14 +53,19 @@ mod waiters;
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::hop::{self, HopContext, HopRecord};
+use super::launch::Boarding;
 use crate::web_audit::transport::{Request, Transport};
 use key::Key;
 pub use retention::{MEMO_BODY_MAX_BYTES, MEMO_TOTAL_MAX_BYTES};
+
+/// How long [`RequestMemo::join`] waits for a thread that has not yet been
+/// scheduled to reach the transport. Past this the machine is not running it.
+const START_LIMIT: Duration = Duration::from_secs(5);
 use stages::{Entry, run_hop};
 use waiters::Joined;
 
@@ -94,7 +104,15 @@ pub struct RequestMemo {
 struct Shared {
     state: Mutex<State>,
     ended: AtomicBool,
+    cut: AtomicBool,
     digest: RandomState,
+    hop_changed: Condvar,
+}
+
+impl Shared {
+    fn was_cut(&self) -> bool {
+        self.cut.load(Ordering::SeqCst)
+    }
 }
 
 #[derive(Default)]
@@ -102,6 +120,28 @@ struct State {
     entries: HashMap<Key, Arc<Entry>>,
     captures: Vec<Arc<Entry>>,
     stats: MemoStats,
+    /// Threads sent a hop that have not ended.
+    hops_running: usize,
+    /// Of those, the ones that have not yet reached the transport.
+    hops_unstarted: usize,
+}
+
+/// One hop's thread, counted out however it ends.
+struct HopThread<'a>(&'a Shared);
+
+impl<'a> HopThread<'a> {
+    fn started(shared: &'a Shared) -> Self {
+        lock(&shared.state).hops_unstarted -= 1;
+        shared.hop_changed.notify_all();
+        HopThread(shared)
+    }
+}
+
+impl Drop for HopThread<'_> {
+    fn drop(&mut self) {
+        lock(&self.0.state).hops_running -= 1;
+        self.0.hop_changed.notify_all();
+    }
 }
 
 impl std::fmt::Debug for RequestMemo {
@@ -134,6 +174,8 @@ impl RequestMemo {
             shared: Arc::new(Shared {
                 state: Mutex::new(State::default()),
                 ended: AtomicBool::new(false),
+                cut: AtomicBool::new(false),
+                hop_changed: Condvar::new(),
                 digest: RandomState::new(),
             }),
         }
@@ -152,6 +194,50 @@ impl RequestMemo {
     /// Whether the audit has ended.
     pub fn is_ended(&self) -> bool {
         self.shared.ended.load(Ordering::SeqCst)
+    }
+
+    /// Whether the audit's requests have been cut.
+    pub fn was_cut(&self) -> bool {
+        self.shared.was_cut()
+    }
+
+    /// Shorten every request that asked for a cut, in flight or still to come.
+    /// Idempotent.
+    pub fn cut(&self) {
+        let open: Vec<Arc<Entry>> = {
+            let state = lock(&self.shared.state);
+            self.shared.cut.store(true, Ordering::SeqCst);
+            state.entries.values().cloned().collect()
+        };
+        for entry in open {
+            entry.apply_cut();
+        }
+    }
+
+    /// Wait for the threads behind every request this memo sent, once it is
+    /// closed and the transport told to stop. A thread on its way to the
+    /// transport is always waited for, so a request the audit committed to is in
+    /// the set when this returns; one already there gets `grace` to end, which a
+    /// transport that honors a stop needs only a moment of. No later request can
+    /// start, since a closed memo sends nothing.
+    pub fn join(&self, grace: Duration) {
+        let started = Instant::now();
+        let mut state = lock(&self.shared.state);
+        while state.hops_running > 0 {
+            let limit = if state.hops_unstarted > 0 {
+                START_LIMIT
+            } else {
+                grace
+            };
+            let left = limit.saturating_sub(started.elapsed());
+            if left.is_zero() {
+                return;
+            }
+            state = match self.shared.hop_changed.wait_timeout(state, left) {
+                Ok((guard, _)) => guard,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
     }
 
     /// What the memo has done so far. A memo-owned read whose deadline has
@@ -194,7 +280,13 @@ impl RequestMemo {
         transport: &Arc<dyn Transport + Send + Sync>,
         request: Request,
         ctx: HopContext,
+        boarding: Option<&Boarding>,
     ) -> HopRecord {
+        let out = || {
+            if let Some(boarding) = boarding {
+                boarding.out();
+            }
+        };
         let key = Key::of(&request, &self.shared.digest);
         let mut prior: Option<HopRecord> = None;
         let mut wanting: Option<Arc<Entry>> = None;
@@ -212,6 +304,8 @@ impl RequestMemo {
                         let entry = Arc::new(Entry::new(prior.take(), ctx));
                         state.entries.insert(key.clone(), Arc::clone(&entry));
                         state.stats.sent += 1;
+                        state.hops_running += 1;
+                        state.hops_unstarted += 1;
                         (entry, true)
                     }
                 }
@@ -222,9 +316,14 @@ impl RequestMemo {
                     Arc::clone(&entry),
                     Arc::clone(transport),
                 );
-                thread::spawn(move || run_hop(&shared, &sent, &*transport, &request));
+                thread::spawn(move || {
+                    let _thread = HopThread::started(&shared);
+                    run_hop(&shared, &sent, &*transport, &request);
+                });
+                out();
                 return entry.wait_sender(&self.shared, &ctx);
             }
+            out();
             match entry.join(&self.shared, &ctx) {
                 Joined::Answer(record) => {
                     lock(&self.shared.state).stats.reused += 1;
@@ -232,7 +331,7 @@ impl RequestMemo {
                 }
                 Joined::TimedOut => return hop::timed_out_for(&ctx),
                 Joined::Wanting(record) => {
-                    if Instant::now() >= ctx.deadline {
+                    if Instant::now() >= ctx.deadline_given(self.was_cut()) {
                         return hop::timed_out_for(&ctx);
                     }
                     prior = Some(record);

@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use super::api_targets::ApiTargets;
 use super::discovery_documents::RetainedDocuments;
 pub use super::sign_in::{McpAuthRequired, SignInResolver};
+use super::slots::AuditSlots;
 use crate::web_audit::credential::Credential;
 use crate::web_audit::fetch::memo::RequestMemo;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, Fetcher, ProbeResponse};
@@ -125,8 +126,8 @@ pub fn why_item(why: &str) -> EvidenceItem {
     item
 }
 
-/// Whether the target serves the modern MCP era, read from the wave-1
-/// `server/discover` probe.
+/// Whether the target serves the modern MCP era, read from the
+/// `server/discover` wire probe.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum McpModernLane {
     /// `server/discover` answered with a JSON-RPC result.
@@ -137,7 +138,7 @@ pub enum McpModernLane {
     Unknown,
 }
 
-/// Era-lane facts the wave-1 MCP probes establish for the wave-2 rows.
+/// Era-lane facts the MCP wire probes establish for the later MCP rows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct McpLaneEvidence {
     /// The modern lane's presence.
@@ -243,6 +244,11 @@ impl FetchHandle {
         fetcher.fetch(url, init, opts)
     }
 
+    /// End the requests in flight on this run's transport and refuse any more.
+    pub fn stop_requests(&self) {
+        self.transport.stop();
+    }
+
     /// Classify a host with the run's resolver.
     pub fn classify(&self, host: &str) -> Result<Locality, ClassifyError> {
         classify_host(host, &*self.resolver)
@@ -275,7 +281,7 @@ pub struct HandlerContext {
     pub root: Option<Arc<ProbeResponse>>,
     /// Section directories for the scoped llms.txt probes.
     pub scoped_dirs: Arc<Vec<String>>,
-    /// Wave-1 bodies keyed by check id.
+    /// Source checks' retained bodies keyed by check id.
     pub retained_bodies: Arc<HashMap<String, String>>,
     /// The documents discovery kept, by retained-document key.
     pub retained_documents: Arc<RetainedDocuments>,
@@ -288,14 +294,14 @@ pub struct HandlerContext {
     pub api_host_probes: Arc<HostProbes>,
     /// The run's transport, resolver and identity.
     pub fetch: FetchHandle,
-    /// Session id from wave-1 `initialize`, when the server issued one.
+    /// Session id from the `initialize` wire probe, when the server issued one.
     pub mcp_session_id: Option<String>,
-    /// Era-lane evidence from the wave-1 MCP probes.
+    /// Era-lane evidence from the MCP wire probes.
     pub mcp_lanes: McpLaneEvidence,
     /// Set once the endpoint is known to require sign-in, so a 401 from it
     /// reads as that rather than as a defect.
     pub mcp_auth: Option<Arc<McpAuthRequired>>,
-    /// Set when wave 1 did not settle that the endpoint requires sign-in:
+    /// Set when the wire probes did not settle that the endpoint requires sign-in:
     /// reads a 401 a later row drew against the endpoint's RFC 9728
     /// metadata, which then reads as sign-in the same way.
     pub mcp_sign_in: Option<Arc<SignInResolver>>,
@@ -306,9 +312,29 @@ pub struct HandlerContext {
     /// The target's locality class, when it could be classified; nested
     /// probes must stay within it.
     pub target_locality: Option<Locality>,
+    /// The audit's cap, for a row's side-by-side probes; absent, they run one
+    /// at a time.
+    pub slots: Option<AuditSlots>,
 }
 
 impl HandlerContext {
+    /// `probe` over `items` under the audit's cap, results in item order
+    /// however the probes finish. The caller holds a slot.
+    pub fn fan_out<T, R>(
+        &self,
+        items: Vec<T>,
+        probe: impl Fn(T) -> R + Send + Sync + 'static,
+    ) -> Vec<R>
+    where
+        T: Send + 'static,
+        R: Send + 'static,
+    {
+        match &self.slots {
+            Some(slots) => slots.fan_out(items, probe),
+            None => items.into_iter().map(probe).collect(),
+        }
+    }
+
     /// Budget left before the per-audit deadline, never below one millisecond.
     pub fn remaining(&self) -> Duration {
         self.deadline

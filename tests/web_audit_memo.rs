@@ -1124,3 +1124,106 @@ fn without_a_memo_a_status_only_read_lets_go_of_the_body_unread() {
     );
     assert!(started.elapsed() < Duration::from_secs(1));
 }
+
+// A request cut.
+
+/// A request to a target that never answers, cut after `cut_after`, or before
+/// it starts; how long the caller waited and what it read.
+fn time_to_failure(
+    timeout_ms: u64,
+    to_ms: u64,
+    cut_after: Option<Duration>,
+) -> (Duration, ProbeResponse) {
+    let release = Arc::new(Gate::default());
+    let held = release.clone();
+    let (_, shared) = target(move |_| {
+        held.wait();
+        Err(TransportError::Timeout)
+    });
+    let memo = RequestMemo::new();
+    match cut_after {
+        None => memo.cut(),
+        Some(after) => {
+            let memo = memo.clone();
+            thread::spawn(move || {
+                thread::sleep(after);
+                memo.cut();
+            });
+        }
+    }
+    let options = FetchOptions {
+        timeout: Duration::from_millis(timeout_ms),
+        cut_to: Some(Duration::from_millis(to_ms)),
+        ..FetchOptions::default()
+    };
+    let started = Instant::now();
+    let response = Fetcher::memoized(&shared, &PublicResolver, "test-ua", &memo).fetch(
+        URL_A,
+        &FetchInit::default(),
+        &options,
+    );
+    let elapsed = started.elapsed();
+    release.release();
+    memo.close();
+    (elapsed, response)
+}
+
+fn assert_timed_out(response: &ProbeResponse) {
+    let error = response.error.as_deref().unwrap_or_default();
+    assert!(error.starts_with("TimeoutError"), "{response:?}");
+}
+
+#[test]
+fn a_cut_shortens_a_request_in_flight_to_the_cut_budget_from_its_start() {
+    let (elapsed, response) = time_to_failure(5_000, 80, Some(Duration::from_millis(10)));
+    assert_timed_out(&response);
+    assert!(elapsed >= Duration::from_millis(70), "{elapsed:?}");
+    assert!(elapsed < Duration::from_millis(1_000), "{elapsed:?}");
+}
+
+#[test]
+fn a_cut_stops_a_request_already_past_the_cut_budget_at_once() {
+    let (elapsed, response) = time_to_failure(5_000, 20, Some(Duration::from_millis(120)));
+    assert_timed_out(&response);
+    assert!(elapsed >= Duration::from_millis(110), "{elapsed:?}");
+    assert!(elapsed < Duration::from_millis(1_000), "{elapsed:?}");
+}
+
+#[test]
+fn a_request_started_after_the_cut_takes_the_cut_budget_from_the_outset() {
+    let (elapsed, response) = time_to_failure(5_000, 50, None);
+    assert_timed_out(&response);
+    assert!(elapsed < Duration::from_millis(1_000), "{elapsed:?}");
+}
+
+#[test]
+fn a_cut_never_lengthens_a_request() {
+    let (elapsed, response) = time_to_failure(60, 5_000, Some(Duration::from_millis(10)));
+    assert_timed_out(&response);
+    assert!(elapsed < Duration::from_millis(1_000), "{elapsed:?}");
+}
+
+#[test]
+fn a_cut_leaves_a_request_that_did_not_ask_for_one_alone() {
+    let release = Arc::new(Gate::default());
+    let held = release.clone();
+    let (_, shared) = target(move |_| {
+        held.wait();
+        Err(TransportError::Timeout)
+    });
+    let memo = RequestMemo::new();
+    memo.cut();
+    let started = Instant::now();
+    Fetcher::memoized(&shared, &PublicResolver, "test-ua", &memo).fetch(
+        URL_A,
+        &FetchInit::default(),
+        &FetchOptions {
+            timeout: Duration::from_millis(150),
+            ..FetchOptions::default()
+        },
+    );
+    let elapsed = started.elapsed();
+    release.release();
+    memo.close();
+    assert!(elapsed >= Duration::from_millis(140), "{elapsed:?}");
+}

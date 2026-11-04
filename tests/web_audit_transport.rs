@@ -9,7 +9,9 @@ mod common;
 
 use std::io::Write;
 use std::net::IpAddr;
-use std::time::Duration;
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use agentnative::web_audit::fetch::body::{
     AUDIT_PROBE_MAX_BODY_BYTES, AUDIT_ROOT_MAX_BODY_BYTES, STATUS_ONLY_BODY_BYTES,
@@ -903,4 +905,95 @@ fn a_connection_closed_before_any_response_is_retried_once_and_bounded() {
         (1..=3).contains(&attempts),
         "attempts must be bounded, saw {attempts}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Stopping the real transport
+// ---------------------------------------------------------------------------
+
+#[test]
+fn stopping_ends_a_request_blocked_on_its_answer_long_before_its_timeout() {
+    let addr = common::spawn_silent();
+    let transport = Arc::new(UreqTransport::new(UA));
+    let sending = transport.clone();
+    let started = Instant::now();
+    let send = thread::spawn(move || {
+        sending
+            .send(&request(&format!("http://{addr}/"), 30_000, false))
+            .map(|_| ())
+    });
+    thread::sleep(Duration::from_millis(100));
+    transport.stop();
+    let answer = send.join().expect("the send ends");
+    assert!(answer.is_err(), "{answer:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn stopping_ends_a_body_read_blocked_on_the_target() {
+    use std::io::{Read as _, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a listener");
+    let addr = listener.local_addr().expect("an address");
+    let (close_tx, close_rx) = std::sync::mpsc::channel::<()>();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("a connection");
+        let mut head = [0u8; 1024];
+        let _ = stream.read(&mut head);
+        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\npartial");
+        let _ = close_rx.recv();
+    });
+    let transport = Arc::new(UreqTransport::new(UA));
+    let response = transport
+        .send(&request(&format!("http://{addr}/"), 30_000, false))
+        .expect("the headers arrive");
+    let stopping = transport.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        stopping.stop();
+    });
+    let started = Instant::now();
+    let mut body = Vec::new();
+    let mut reader = response.body;
+    let read = reader.read_to_end(&mut body);
+    let _ = close_tx.send(());
+    assert!(read.is_err(), "{read:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn a_stopped_transport_sends_nothing_more() {
+    let server = common::spawn(|_| RawResponse::new(200, &[], b"ok"));
+    let transport = UreqTransport::new(UA);
+    transport.stop();
+    let answer = transport.send(&request(&server.url("/"), 5000, false));
+    assert!(answer.is_err(), "{:?}", answer.map(|r| r.status));
+    assert_eq!(server.hits().len(), 0);
+}
+
+#[test]
+fn a_read_with_input_on_hand_does_not_wait_out_a_slice() {
+    let server = common::spawn(|_| RawResponse::new(200, &[], b"ok"));
+    let transport = UreqTransport::new(UA);
+    // A wait in slices would floor every request at one slice, so one quick
+    // request among these shows there is no such floor, however busy the machine.
+    let fastest = (0..20)
+        .map(|_| {
+            let started = Instant::now();
+            let response = transport
+                .send(&request(&server.url("/"), 5000, false))
+                .expect("a response");
+            assert_eq!(response.status, 200);
+            started.elapsed()
+        })
+        .min()
+        .expect("twenty requests");
+    assert!(fastest < Duration::from_millis(20), "{fastest:?}");
 }

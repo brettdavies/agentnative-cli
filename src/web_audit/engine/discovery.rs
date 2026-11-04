@@ -24,7 +24,10 @@
 //!
 //! Each pass probes its requests concurrently under one slice bounded by
 //! the per-audit deadline and the discovery budget, so a target that never
-//! answers cannot outrun the audit budget.
+//! answers cannot outrun the audit budget. The first pass runs beside the root
+//! fetch, whose fate decides how long its reads keep and when the budget
+//! starts; every later request, a redirect hop of that pass included, waits for
+//! the root, so what a run sends does not depend on which answers first.
 
 use std::time::{Duration, Instant};
 
@@ -44,12 +47,13 @@ use super::reciprocity_metadata::MetadataMatch;
 use super::sign_in::{DirectSource, SignInChallenge, sign_in_endpoint};
 use super::types::FetchHandle;
 use crate::web_audit::fetch::body::DOCUMENT_MAX_BODY_BYTES;
+use crate::web_audit::fetch::launch::Launch;
 use crate::web_audit::fetch::{FetchInit, FetchOptions, ProbeResponse};
 use crate::web_audit::registry::McpDiscovery;
 use crate::web_audit::scorecard::EvidenceItem;
 
-/// Hard wall-clock cap on the whole discovery phase, so it never starves
-/// the check waves.
+/// Hard wall-clock cap on the discovery phase from when the root settled, so
+/// it never starves the checks.
 pub use crate::web_audit::registry::DISCOVERY_BUDGET;
 
 /// The RFC 9727 API catalog location (the site's `API_CATALOG_PATH`).
@@ -119,8 +123,21 @@ pub(super) fn fetch_all(
     requests: Vec<(String, FetchInit)>,
     opts: &FetchOptions,
 ) -> Vec<ProbeResponse> {
+    fetch_until(
+        fetch,
+        requests,
+        opts,
+        Instant::now() + opts.timeout + PASS_GRACE,
+    )
+}
+
+fn fetch_until(
+    fetch: &FetchHandle,
+    requests: Vec<(String, FetchInit)>,
+    opts: &FetchOptions,
+    deadline: Instant,
+) -> Vec<ProbeResponse> {
     let concurrency = requests.len();
-    let deadline = Instant::now() + opts.timeout + PASS_GRACE;
     let jobs: Vec<(FetchHandle, String, FetchInit, FetchOptions)> = requests
         .into_iter()
         .map(|(url, init)| (fetch.clone(), url, init, opts.clone()))
@@ -149,6 +166,26 @@ fn card_request() -> FetchInit {
     }
 }
 
+/// A root fetch running beside the first pass.
+pub struct RootBeside<'r> {
+    /// What a read in flight is cut to, from its start, when the root fails at
+    /// the network level.
+    pub cut_to: Duration,
+    /// The first pass's requests going out together.
+    pub launch: Launch,
+    /// Waits for the root, and gives the per-request timeout from then on.
+    pub settled: &'r dyn Fn() -> Duration,
+}
+
+impl std::fmt::Debug for RootBeside<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RootBeside")
+            .field("cut_to", &self.cut_to)
+            .field("launch", &self.launch)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Discovery after its document reads, before any POST.
 pub struct DiscoveryDocuments<'a> {
     walk: Walk<'a>,
@@ -174,7 +211,7 @@ pub fn discover_mcp_endpoint(
     timeout: Duration,
     deadline: Instant,
 ) -> DiscoveryResult {
-    read_discovery_documents(fetch, base, cfg, timeout, deadline).probe_endpoint()
+    read_discovery_documents(fetch, base, cfg, timeout, deadline, None).probe_endpoint()
 }
 
 fn slice_left(timeout: Duration, deadline_at: Instant) -> Option<Duration> {
@@ -183,23 +220,30 @@ fn slice_left(timeout: Duration, deadline_at: Instant) -> Option<Duration> {
 }
 
 /// The document reads that open discovery: the SEP-1649 cards, the AI
-/// catalog and the API catalog, then the catalog's card entries.
+/// catalog and the API catalog, beside `root` when one is running, then the
+/// catalog's card entries once it has settled.
 pub fn read_discovery_documents<'a>(
     fetch: &'a FetchHandle,
     base: &'a str,
     cfg: &'a McpDiscovery,
     timeout: Duration,
     deadline: Instant,
+    root: Option<&RootBeside<'_>>,
 ) -> DiscoveryDocuments<'a> {
-    let deadline_at = deadline.min(Instant::now() + DISCOVERY_BUDGET);
-    let pass_budget = || slice_left(timeout, deadline_at);
-    let done = |walk: Walk<'a>, spent: bool| DiscoveryDocuments {
-        walk,
-        fetch,
-        timeout,
-        deadline_at,
-        spent,
-    };
+    read_documents_within(DISCOVERY_BUDGET, fetch, base, cfg, timeout, deadline, root)
+}
+
+fn read_documents_within<'a>(
+    budget: Duration,
+    fetch: &'a FetchHandle,
+    base: &'a str,
+    cfg: &'a McpDiscovery,
+    timeout: Duration,
+    deadline: Instant,
+    root: Option<&RootBeside<'_>>,
+) -> DiscoveryDocuments<'a> {
+    let mut timeout = timeout;
+    let mut deadline_at = deadline.min(Instant::now() + budget);
     let mut walk = Walk::new(cfg, base);
 
     // Document reads: the SEP-1649 cards, the AI catalog, the API catalog.
@@ -211,8 +255,17 @@ pub fn read_discovery_documents<'a>(
         .collect();
     let catalog_url = resolve_url(base, cfg.ai_catalog);
     let api_catalog_url = resolve_url(base, API_CATALOG_PATH);
-    let Some(document_pass) = pass_budget() else {
-        return done(walk, true);
+    let Some(document_pass) = slice_left(timeout, deadline_at) else {
+        if let Some(root) = root {
+            root.launch.expect(0);
+        }
+        return DiscoveryDocuments {
+            walk,
+            fetch,
+            timeout,
+            deadline_at,
+            spent: true,
+        };
     };
     let mut requests: Vec<(String, FetchInit)> = well_known
         .iter()
@@ -220,7 +273,17 @@ pub fn read_discovery_documents<'a>(
         .collect();
     requests.push((catalog_url.clone(), FetchInit::default()));
     requests.push((api_catalog_url.clone(), FetchInit::default()));
-    let mut responses = fetch_all(fetch, requests, &document_options(document_pass));
+    let mut first_pass = document_options(document_pass);
+    let mut responses = if let Some(root) = root {
+        root.launch.expect(requests.len());
+        first_pass.cut_to = Some(root.cut_to);
+        first_pass.launch = Some(root.launch.clone());
+        // A redirect hop's budget moves forward by its wait for the root, so what
+        // bounds a read here is the read itself, and past that the audit.
+        fetch_until(fetch, requests, &first_pass, deadline)
+    } else {
+        fetch_all(fetch, requests, &first_pass)
+    };
     let api_catalog_resp = responses.pop().unwrap_or_else(unanswered);
     let catalog_resp = responses.pop().unwrap_or_else(unanswered);
     walk.well_known = well_known
@@ -265,6 +328,13 @@ pub fn read_discovery_documents<'a>(
         },
     );
 
+    // A slow root must not leave the POSTs less time than they would have had
+    // with the reads waiting for it, or a slow site could lose its MCP endpoint.
+    if let Some(root) = root {
+        timeout = (root.settled)();
+        deadline_at = deadline.min(Instant::now() + budget);
+    }
+
     // The catalog's card entries: inline in place, same-origin URLs fetched.
     let entries: Vec<(CatalogCardEntry, Option<String>)> = catalog
         .as_ref()
@@ -286,8 +356,14 @@ pub fn read_discovery_documents<'a>(
     let mut card_responses = if fetched.is_empty() {
         Vec::new()
     } else {
-        let Some(card_pass) = pass_budget() else {
-            return done(walk, true);
+        let Some(card_pass) = slice_left(timeout, deadline_at) else {
+            return DiscoveryDocuments {
+                walk,
+                fetch,
+                timeout,
+                deadline_at,
+                spent: true,
+            };
         };
         let requests = fetched
             .iter()
@@ -332,7 +408,13 @@ pub fn read_discovery_documents<'a>(
     }
 
     walk.documents_read = Some(Instant::now());
-    done(walk, false)
+    DiscoveryDocuments {
+        walk,
+        fetch,
+        timeout,
+        deadline_at,
+        spent: false,
+    }
 }
 
 impl DiscoveryDocuments<'_> {
@@ -451,6 +533,41 @@ mod tests {
     }
 
     const BASE: &str = "https://example.com/";
+
+    #[test]
+    fn a_slow_root_leaves_the_posts_the_whole_budget_counted_from_when_it_settled() {
+        let transport = Arc::new(MockTransport::new(
+            Vec::new(),
+            MockResponse::ok(404, &[], b""),
+        ));
+        let fetch = FetchHandle::new(transport.clone(), Arc::new(PublicResolver), "test-ua");
+        let budget = Duration::from_millis(40);
+        let slow_root = || {
+            std::thread::sleep(budget * 3);
+            Duration::from_secs(2)
+        };
+        let root = RootBeside {
+            cut_to: Duration::from_secs(2),
+            launch: Launch::new(),
+            settled: &slow_root,
+        };
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let cfg = cfg();
+        let documents = read_documents_within(
+            budget,
+            &fetch,
+            BASE,
+            &cfg,
+            Duration::from_secs(2),
+            deadline,
+            Some(&root),
+        );
+        documents.probe_endpoint();
+        assert!(
+            transport.requests().iter().any(|r| r.method == "POST"),
+            "the budget ran out while the root was out"
+        );
+    }
 
     fn cfg() -> McpDiscovery {
         McpDiscovery {

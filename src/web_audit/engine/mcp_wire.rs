@@ -1,7 +1,7 @@
 //! The MCP request shapes and evidence readers the engine shares with the
 //! MCP handler: the legacy and modern probe headers and bodies, the
-//! post-wave `initialized` notification, JSON-RPC extraction from JSON or
-//! SSE bodies, and the wave-1 session and lane readers. Bodies are the
+//! `initialized` notification, JSON-RPC extraction from JSON or
+//! SSE bodies, and the wire probes' session and lane readers. Bodies are the
 //! exact bytes the site sends, key order included.
 
 use std::time::Duration;
@@ -168,7 +168,7 @@ pub fn json_rpc_error_code(rpc: Option<&Map<String, Value>>) -> Option<i64> {
     rpc?.get("error")?.get("code")?.as_i64()
 }
 
-/// Session id from the wave-1 `initialize` outcome.
+/// Session id from the `initialize` wire probe's outcome.
 pub fn session_id_from(outcome: Option<&ProbeOutcome>) -> Option<String> {
     let raw = outcome?.evidence.first()?.get("session_id")?.as_str()?;
     (!raw.is_empty()).then(|| raw.to_string())
@@ -195,7 +195,7 @@ pub fn advertises_resources(items: &[EvidenceItem]) -> bool {
         .any(|group| group == "resources")
 }
 
-/// Modern-lane presence from the wave-1 `server/discover` outcome.
+/// Modern-lane presence from the `server/discover` wire probe's outcome.
 pub fn modern_lane_from(outcome: Option<&ProbeOutcome>) -> McpModernLane {
     match outcome {
         None => McpModernLane::Unknown,
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn wave_one_readers_read_the_first_evidence_row() {
+    fn wire_probe_readers_read_the_first_evidence_row() {
         let mut item = EvidenceItem::new();
         item.insert("session_id".into(), Value::String("abc".into()));
         item.insert("capabilities".into(), json!(["tools", "resources"]));

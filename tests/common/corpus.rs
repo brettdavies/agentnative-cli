@@ -4,7 +4,7 @@
 //! scorecard. The format is documented in
 //! `tests/fixtures/web-audit-contract/conformance/README.md`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -12,12 +12,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agentnative::web_audit::credential::Credential;
-use agentnative::web_audit::engine::{FetchHandle, HandlerSet, RunInput, RunOutcome, RunReport};
+use agentnative::web_audit::engine::{
+    Dispatch, FetchHandle, HandlerContext, HandlerSet, ProbeOutcome, RunInput, RunOutcome,
+    RunReport,
+};
 use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::registry::AUDIT_USER_AGENT;
+use agentnative::web_audit::registry::{AUDIT_USER_AGENT, EVAL_RULES, HANDLER_KINDS, WebCheck};
 use agentnative::web_audit::scorecard::{DeclaredSiteType, ResultRow, WebScorecard};
-use agentnative::web_audit::transport::Request;
+use agentnative::web_audit::transport::{Request, Transport};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -108,6 +111,8 @@ pub struct Scenario {
     pub unmatched: Recorded,
     pub allow_unmatched: bool,
     pub exchanges: Vec<Exchange>,
+    #[serde(default)]
+    pub failing_handlers: Vec<String>,
 }
 
 fn following() -> bool {
@@ -257,11 +262,74 @@ pub fn replay_as(
     transport: Arc<MockTransport>,
     credential: Option<Credential>,
 ) -> RunOutcome {
+    replay_through(
+        scenario,
+        handlers,
+        transport,
+        Replay {
+            credential,
+            ..Replay::default()
+        },
+    )
+}
+
+/// `handlers` with the scenario's `failing_handlers` throwing instead of
+/// probing, which no target's answer can make one do. Every other check runs
+/// as it would.
+fn failing_where_asked(scenario: &Scenario, handlers: Arc<HandlerSet>) -> Arc<HandlerSet> {
+    if scenario.failing_handlers.is_empty() {
+        return handlers;
+    }
+    let failing: Arc<HashSet<String>> =
+        Arc::new(scenario.failing_handlers.iter().cloned().collect());
+    let mut set = HandlerSet::new();
+    let wrap = |failing: Arc<HashSet<String>>, handlers: Arc<HandlerSet>| {
+        move |check: &WebCheck, ctx: &HandlerContext| -> ProbeOutcome {
+            assert!(
+                !failing.contains(check.id),
+                "no handler registered for \"corpus-failing-handler\""
+            );
+            match handlers.dispatch(check, ctx) {
+                Dispatch::Outcome(outcome) => outcome,
+                Dispatch::Unported(kind) => panic!("no handler registered for \"{kind}\""),
+            }
+        }
+    };
+    for kind in HANDLER_KINDS {
+        set.register(kind, wrap(failing.clone(), handlers.clone()));
+    }
+    for rule in EVAL_RULES {
+        set.register_eval(rule, wrap(failing.clone(), handlers.clone()));
+    }
+    Arc::new(set)
+}
+
+/// What a replay changes from the defaults every scenario runs at.
+#[derive(Default)]
+pub struct Replay {
+    pub credential: Option<Credential>,
+    pub concurrency: Option<usize>,
+    pub per_check_timeout: Option<Duration>,
+}
+
+/// [`replay_as`] through any transport, with `replay` over the defaults.
+pub fn replay_through(
+    scenario: &Scenario,
+    handlers: Arc<HandlerSet>,
+    transport: Arc<dyn Transport + Send + Sync>,
+    replay: Replay,
+) -> RunOutcome {
+    let Replay {
+        credential,
+        concurrency,
+        per_check_timeout,
+    } = replay;
     let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), AUDIT_USER_AGENT);
     let fetch = match credential {
         Some(credential) => fetch.with_credential(credential),
         None => fetch,
     };
+    let handlers = failing_where_asked(scenario, handlers);
     let mut input = RunInput::new(&scenario.target, fetch, handlers);
     input.site_type = match scenario.site_type.as_deref() {
         Some("content") => Some(DeclaredSiteType::Content),
@@ -270,8 +338,11 @@ pub fn replay_as(
     };
     input.spec_version = scenario.spec_version.clone();
     input.follow_declarations = scenario.follow_declarations;
-    input.per_check_timeout = Duration::from_secs(2);
+    input.per_check_timeout = per_check_timeout.unwrap_or(Duration::from_secs(2));
     input.per_audit_deadline = Duration::from_secs(20);
+    if let Some(concurrency) = concurrency {
+        input.concurrency = concurrency;
+    }
     agentnative::web_audit::engine::run_web_audit(input)
 }
 

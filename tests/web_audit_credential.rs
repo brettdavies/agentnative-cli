@@ -18,6 +18,7 @@ use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::AUDIT_USER_AGENT;
 use agentnative::web_audit::scorecard::{NaReason, ScorecardStatus, WebScorecard, to_wire_json};
+use agentnative::web_audit::token_host::TokenHost;
 use agentnative::web_audit::transport::Request;
 use common::corpus::{
     Exchange, Golden, PublicResolver, Recorded, RecordedRequest, Scenario, load_cases, replay_as,
@@ -46,6 +47,10 @@ const SIGN_IN_ROWS: [&str; 3] = [
 
 fn credential() -> Credential {
     Credential::bearer(TOKEN, TokenSource::Env).expect("a valid token")
+}
+
+fn example_com() -> TokenHost {
+    TokenHost::parse("example.com").expect("a host")
 }
 
 fn bearer() -> String {
@@ -151,6 +156,7 @@ fn run(site: &Scenario, credential: Option<Credential>) -> (RunReport, Vec<Reque
         Arc::new(default_handlers()),
         transport.clone(),
         credential,
+        Some(example_com()),
     ));
     (report, transport.requests())
 }
@@ -209,9 +215,10 @@ fn without_a_token_the_same_server_reads_its_session_rows_auth_required() {
     assert!(sent.iter().all(|r| authorization(r).is_none()));
 }
 
-/// Over the whole corpus: a token reaches the endpoint of record's POSTs
-/// and nothing else (no declared host, metadata document, sign-in server
-/// or other check), and a server that ignores it scores exactly as the
+/// Over the whole corpus, with the token bound to the endpoint's host: it
+/// reaches the endpoint of record's POSTs and nothing else (no declared
+/// host, metadata document, sign-in server or other check), `credentialed`
+/// says whether any did, and a server that ignores it scores exactly as the
 /// token-less run the corpus pins.
 #[test]
 fn across_the_corpus_the_token_reaches_only_the_endpoint_of_record() {
@@ -220,7 +227,20 @@ fn across_the_corpus_the_token_reaches_only_the_endpoint_of_record() {
         let Golden::Scorecard(golden) = &case.golden else {
             continue;
         };
-        let (mut report, sent) = run(&case.scenario, Some(credential()));
+        let bound = golden
+            .mcp_endpoint
+            .as_deref()
+            .unwrap_or(&case.scenario.target);
+        let transport = transport_for(&case.scenario);
+        let mut report = report_of(replay_as(
+            &case.scenario,
+            Arc::new(default_handlers()),
+            transport.clone(),
+            Some(credential()),
+            TokenHost::of_url(bound),
+        ));
+        let sent = transport.requests();
+        let signed_before = signed;
         for request in sent.iter().filter(|r| authorization(r).is_some()) {
             assert_eq!(
                 (
@@ -238,7 +258,12 @@ fn across_the_corpus_the_token_reaches_only_the_endpoint_of_record() {
             );
             signed += 1;
         }
-        assert!(report.scorecard.vantage.credentialed, "{}", case.name);
+        assert_eq!(
+            report.scorecard.vantage.credentialed,
+            signed > signed_before,
+            "{}: `credentialed` is what went out",
+            case.name
+        );
         report.scorecard.vantage.credentialed = false;
         assert_eq!(
             to_wire_json(&report.scorecard),
@@ -289,6 +314,7 @@ fn a_cross_origin_redirect_never_carries_the_token() {
         )
         .with_credential(credential());
         let mut input = RunInput::new("https://example.com/", fetch, Arc::new(default_handlers()));
+        input.token_host = Some(example_com());
         input.per_check_timeout = Duration::from_secs(2);
         input.per_audit_deadline = Duration::from_secs(20);
         report_of(run_web_audit(input));

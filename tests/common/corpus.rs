@@ -16,6 +16,7 @@ use agentnative::web_audit::locality::Resolver;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
 use agentnative::web_audit::registry::AUDIT_USER_AGENT;
 use agentnative::web_audit::scorecard::{DeclaredSiteType, ResultRow, WebScorecard};
+use agentnative::web_audit::token_host::TokenHost;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -205,15 +206,16 @@ pub fn replay_on(
     handlers: Arc<HandlerSet>,
     transport: Arc<MockTransport>,
 ) -> RunOutcome {
-    replay_as(scenario, handlers, transport, None)
+    replay_as(scenario, handlers, transport, None, None)
 }
 
-/// [`replay_on`] presenting `credential` to the MCP endpoint.
+/// [`replay_on`] holding `credential`, bound to `token_host`.
 pub fn replay_as(
     scenario: &Scenario,
     handlers: Arc<HandlerSet>,
     transport: Arc<MockTransport>,
     credential: Option<Credential>,
+    token_host: Option<TokenHost>,
 ) -> RunOutcome {
     let fetch = FetchHandle::new(transport, Arc::new(PublicResolver), AUDIT_USER_AGENT);
     let fetch = match credential {
@@ -228,6 +230,7 @@ pub fn replay_as(
     };
     input.spec_version = scenario.spec_version.clone();
     input.follow_declarations = scenario.follow_declarations;
+    input.token_host = token_host;
     input.per_check_timeout = Duration::from_secs(2);
     input.per_audit_deadline = Duration::from_secs(20);
     agentnative::web_audit::engine::run_web_audit(input)

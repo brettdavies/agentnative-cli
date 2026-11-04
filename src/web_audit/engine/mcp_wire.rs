@@ -127,11 +127,11 @@ pub fn post_as_client(
     init: &FetchInit,
     opts: &FetchOptions,
 ) -> ProbeResponse {
-    let Some(credential) = fetch.credential() else {
+    let Some(header) = fetch.present_credential() else {
         return fetch.fetch(endpoint, init, opts);
     };
     let mut signed = init.clone();
-    signed.headers.push(credential.header());
+    signed.headers.push(header);
     fetch.fetch(endpoint, &signed, opts)
 }
 

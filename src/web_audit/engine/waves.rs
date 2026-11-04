@@ -43,6 +43,7 @@ use crate::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardMeta, ScorecardStatus,
     WebScorecard, WebVantage, build_web_scorecard,
 };
+use crate::web_audit::token_host::{TokenHost, TokenNotSent, token_not_sent};
 
 /// Worker threads per wave.
 pub const DEFAULT_CONCURRENCY: usize = 6;
@@ -91,6 +92,9 @@ pub struct RunInput<'a> {
     pub no_external_dns: bool,
     /// Follow the off-origin hosts the site declares.
     pub follow_declarations: bool,
+    /// The URL host the run's token belongs to. With none named, the token is
+    /// never sent.
+    pub token_host: Option<TokenHost>,
     /// The run's transport, resolver and identity.
     pub fetch: FetchHandle,
     /// The probe handlers.
@@ -111,6 +115,7 @@ impl std::fmt::Debug for RunInput<'_> {
             .field("external_dns", &self.external_dns)
             .field("no_external_dns", &self.no_external_dns)
             .field("follow_declarations", &self.follow_declarations)
+            .field("token_host", &self.token_host)
             .field("handlers", &self.handlers)
             .finish_non_exhaustive()
     }
@@ -129,6 +134,7 @@ impl<'a> RunInput<'a> {
             external_dns: false,
             no_external_dns: false,
             follow_declarations: true,
+            token_host: None,
             fetch,
             handlers,
             progress: None,
@@ -160,6 +166,8 @@ pub struct RunReport {
     pub target_locality: Option<Locality>,
     /// The discovery trail.
     pub discovery: DiscoveryResult,
+    /// Why the run kept the token it held, when it did.
+    pub token_not_sent: Option<TokenNotSent>,
 }
 
 /// How a run ended.
@@ -527,6 +535,20 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         };
         settle_endpoint_of_record(documents, &anchors, &settle)
     };
+    // A handle without the token cannot sign, so from here every row and
+    // request reads this run as one that never had it.
+    let not_sent = if input.fetch.credentialed() {
+        token_not_sent(
+            input.token_host.as_ref(),
+            declared.endpoint.as_deref(),
+            declared.followed,
+        )
+    } else {
+        None
+    };
+    if not_sent.is_some() {
+        input.fetch = input.fetch.without_credential();
+    }
     if let Some(sink) = input.progress.as_deref_mut() {
         sink.discovery(declared.endpoint.as_deref());
     }
@@ -879,7 +901,7 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         declared_hosts: declared.trail.iter().map(|e| e.to_item()).collect(),
         vantage: WebVantage {
             network: if local_target { "local" } else { "public" }.to_string(),
-            credentialed: input.fetch.credentialed(),
+            credentialed: input.fetch.presented(),
         },
     };
     let scorecard = build_web_scorecard(
@@ -897,5 +919,6 @@ pub fn run_web_audit(mut input: RunInput<'_>) -> RunOutcome {
         unported,
         target_locality,
         discovery,
+        token_not_sent: not_sent,
     }))
 }

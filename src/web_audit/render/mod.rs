@@ -19,13 +19,16 @@ pub use exit::{
 };
 pub use failure::{
     Failure, ca_cert_failure, format_failure, invalid_target_failure, no_answer_failure,
-    token_failure, unknown_check_failure,
+    token_failure, token_host_failure, unknown_check_failure,
 };
 pub use invocation::Invocation;
 pub use progress::{StderrProgress, progress_enabled};
 pub use rows::prefix_for;
 pub use text::{RenderOptions, advisory_note, format_check, format_text, non_comparable_note};
-pub use warning::{WarningCode, routed_to_web_message, token_not_read_message, warning_line};
+pub use warning::{
+    WarningCode, routed_to_web_message, token_not_read_message, token_not_sent_message,
+    warning_line,
+};
 
 #[cfg(test)]
 mod test_rows {

@@ -45,5 +45,7 @@ pub mod target;
 #[cfg(feature = "web")]
 mod tls;
 #[cfg(feature = "web")]
+pub mod token_host;
+#[cfg(feature = "web")]
 pub mod transport;
 pub mod universe;

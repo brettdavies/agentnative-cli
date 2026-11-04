@@ -286,18 +286,24 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
     ///
     /// An MCP endpoint that requires sign-in reports its session and
     /// handshake rows `n_a` (`auth-required`) unless the run presents a
-    /// bearer token for it: from `ANC_WEB_TOKEN`, scoped to this one
-    /// invocation (`ANC_WEB_TOKEN=<token> anc web <target>`) rather than
-    /// exported, or from one line of stdin with `--token-stdin`. The token
-    /// goes only to the audited MCP endpoint's handshake and session
-    /// requests, on a declared host too when the endpoint lives there and
-    /// that host confirms it: never to any other host, a metadata document,
-    /// a sign-in server, or the request that checks a token-less client is
-    /// refused.
+    /// bearer token for it. A token is sent only when its own channel names
+    /// the URL host it belongs to, a hostname with an optional port. For repeat
+    /// runs, export the two together:
+    /// `export ANC_WEB_TOKEN=<token> ANC_WEB_TOKEN_HOST=<host>`. For a one-off,
+    /// pipe it in: `--token-stdin --token-host <host>`. `--token-host` does not
+    /// bind `ANC_WEB_TOKEN`, because an audited site can suggest that flag;
+    /// given beside `ANC_WEB_TOKEN_HOST`, it must name the same host. The token
+    /// goes only to the audited MCP endpoint's handshake and session requests,
+    /// and only when the endpoint of record is on exactly that host: the
+    /// audited site's own endpoint, or, when the site has none, one it declares
+    /// on a host that confirms it. It never goes to any other host, a metadata
+    /// document, a sign-in server, or the request that checks a token-less
+    /// client is refused. Otherwise the token is not sent: the run prints
+    /// `warning: token-not-sent: <message>` on stderr and continues without it.
     /// It is never printed, and every process anc starts runs without
-    /// `ANC_WEB_TOKEN`. Only a run that names `web` reads the variable: a
-    /// bare `anc <target>` can be a typo, so it sends no token and, when the
-    /// target answers, says so on stderr.
+    /// `ANC_WEB_TOKEN` or `ANC_WEB_TOKEN_HOST`. Only a run that names `web`
+    /// reads `ANC_WEB_TOKEN`: a bare `anc <target>` can be a typo, so it sends
+    /// no token and, when the target answers, says so on stderr.
     ///
     /// Each run reports two scores: relative scores the site relative to
     /// the checks that apply to this site; global measures it against a
@@ -311,7 +317,8 @@ Config: anc applies every `.anc.toml` from the target's repository root down to 
   anc web anc.dev --site-type api              # score only the checks an API answers for
   anc web anc.dev --no-follow                  # the site alone, no host it declares
   anc web intranet.test --ca-cert ca.pem       # also trust a private CA's root
-  anc web localhost:8787 --token-stdin < token # sign in to the MCP endpoint
+  anc web mcp.example.com --token-host mcp.example.com --token-stdin < token
+                                               # sign in to the MCP endpoint there
   anc emit web-checks                          # every check id, offline
   anc emit web-remediation                     # the whole fix catalog, offline
 
@@ -371,9 +378,20 @@ automatically:
 
         /// Read a bearer token for the audited MCP endpoint from the first
         /// line of stdin, in place of `ANC_WEB_TOKEN`. The token goes only
-        /// to that endpoint's handshake and session requests.
+        /// to that endpoint's handshake and session requests, and only when
+        /// `--token-host` names its host.
         #[arg(long)]
         token_stdin: bool,
+
+        /// The URL host a token on stdin belongs to: a hostname with an optional
+        /// port, such as `mcp.example.com` or `localhost:8787`, with no scheme,
+        /// path, query, or userinfo. No port means 443. The token goes only to
+        /// an MCP endpoint of record on exactly this host, and a declared host
+        /// has to confirm the endpoint first. It does not bind `ANC_WEB_TOKEN`,
+        /// which `ANC_WEB_TOKEN_HOST` binds; given beside that variable, it must
+        /// name the same host.
+        #[arg(long, value_name = "HOST")]
+        token_host: Option<String>,
 
         /// Output format
         #[arg(long, default_value = "text")]

@@ -281,11 +281,20 @@ fn parse_ipv6_groups(segment: &str) -> Option<Vec<u16>> {
     Some(groups)
 }
 
+/// A host as this module compares it: trimmed, lowercase, one trailing dot dropped.
+pub(crate) fn normalized_host(raw_host: &str) -> String {
+    let host = raw_host.trim().to_ascii_lowercase();
+    match host.strip_suffix('.') {
+        Some(without_dot) => without_dot.to_string(),
+        None => host,
+    }
+}
+
 /// Classify a host by shape alone. `Ok(None)` means the host is a name that
 /// only the resolver can place.
 pub fn classify_literal(raw_host: &str) -> Result<Option<Locality>, ClassifyError> {
-    let host = raw_host.trim().to_ascii_lowercase();
-    let host = host.strip_suffix('.').unwrap_or(&host);
+    let host = normalized_host(raw_host);
+    let host = host.as_str();
     if host.is_empty() {
         return Err(ClassifyError::EmptyHost);
     }
@@ -366,8 +375,8 @@ fn site_blocked_ipv6_reason(ip: Ipv6Addr) -> Option<String> {
 /// it has one, so a refusal the site would also make carries the site's
 /// wording. Names are never resolved here.
 pub fn site_block_reason(raw_host: &str) -> Option<String> {
-    let host = raw_host.trim().to_ascii_lowercase();
-    let host = host.strip_suffix('.').unwrap_or(&host);
+    let host = normalized_host(raw_host);
+    let host = host.as_str();
     if host.is_empty() {
         return Some("empty hostname".to_string());
     }

@@ -411,9 +411,9 @@ extension, such as `notes.xyz`, with or without a line number (`Foo.xyz:12`). Pa
 A bare target says what it ran as. One that answers prints `warning: routed-to-web: <message>` on stderr, unless `-q` is
 set, and a bare name that ends without a scorecard says in its error that a local path by that name does not exist. Its
 next step keeps the form you typed, so a retry stays bare and sends no token. A web run's stderr warnings all take the
-form `warning: <code>: <message>`, with `non-comparable` and `routed-to-web` as the codes; `routed-to-web` also carries
-the notice that a bare target left `ANC_WEB_TOKEN` unread, which `-q` does not hide and which names the command that
-sends it.
+form `warning: <code>: <message>`, with `non-comparable`, `routed-to-web`, and `token-not-sent` as the codes;
+`routed-to-web` also carries the notice that a bare target left `ANC_WEB_TOKEN` unread, which `-q` does not hide and
+which names the command that sends it.
 
 The report leads with the verdict, then the MUST misses, then the SHOULD and MAY misses. Each miss carries the fix:
 
@@ -488,6 +488,11 @@ the challenge, the listed authorization servers, and whether a `tools/list` with
 `vantage` records where the audit ran (`network`: `public`, or `local` for a target on the machine's own network) and
 whether it presented a token (`credentialed`).
 
+A bearer token is sent only when its own channel names the URL host it belongs to, and only to an MCP endpoint of record
+on exactly that host: `ANC_WEB_TOKEN_HOST` binds `ANC_WEB_TOKEN`, and `--token-host` binds `--token-stdin`. Otherwise
+the token is not sent, and the run prints `warning: token-not-sent: <message>` on stderr. [Signing In to an MCP
+Endpoint](#signing-in-to-an-mcp-endpoint) has the rule.
+
 The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
 for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
 in. `--no-external-dns` withholds the query for any target. Pass it for an internal host on a routable address, such as
@@ -510,22 +515,43 @@ plaintext scores no better than a missing one: a document that redirects to `htt
 
 A run can present a bearer token for the audited MCP endpoint, so the rows anc.dev reports `n_a` (`auth-required`) are
 evaluated and a correctly protected server can reach a global score of 100. The token comes from the `ANC_WEB_TOKEN`
-environment variable, or from the first line of stdin with `--token-stdin`, never from an argument. Scope the variable
-to one invocation rather than exporting it. Only a run that names `web` reads it: a bare `anc localhost:8787` can be a
-typo, so it sends no token and, when the target answers, says so on stderr. `--token-stdin` works in either form.
+environment variable, or from the first line of stdin with `--token-stdin`, never from an argument. Only a run that
+names `web` reads the variable: a bare `anc localhost:8787` can be a typo, so it sends no token and, when the target
+answers, says so on stderr. `--token-stdin` works in either form.
+
+A token is sent only when its own channel names the URL host it belongs to. For repeat runs, export the token beside its
+host. For a one-off, pipe the token in and name its host with the flag.
 
 ```bash
-ANC_WEB_TOKEN="$TOKEN" anc web localhost:8787
-anc web localhost:8787 --token-stdin < token.txt
+export ANC_WEB_TOKEN="$TOKEN" ANC_WEB_TOKEN_HOST=mcp.example.com
+anc web mcp.example.com
+
+anc web mcp.example.com --token-host mcp.example.com --token-stdin < token.txt
 ```
 
-The token goes only to the endpoint's handshake and session requests (`Authorization: Bearer <token>`), including when
-the endpoint sits on a declared host that confirms it, and never to a declared host's documents, the RFC 9728 metadata,
-a listed authorization server, any other check, or a redirect to another origin. Whether the endpoint requires sign-in
-is still decided from what a client without a token is answered: the run asks the two handshakes again without the
-token, and the `mcp-auth-enforced` row sends its `tools/list` without one. The scorecard records `vantage.credentialed:
-true` and never the token, which no output, evidence line, or error prints. Every process anc starts, an audited binary
-or a `git clone` included, runs without `ANC_WEB_TOKEN`.
+`ANC_WEB_TOKEN_HOST` binds `ANC_WEB_TOKEN`, and `--token-host` binds `--token-stdin`. An audited site can suggest a
+`--token-host` value, so the flag alone never releases a token already in your environment. Beside `ANC_WEB_TOKEN_HOST`
+the flag must name the same host, or nothing is sent. `ANC_WEB_TOKEN_HOST` does not bind a token on stdin.
+
+The value is a URL host: a hostname with an optional port, and no scheme, path, query, or userinfo. It compares with the
+endpoint's URL host case-insensitively with a trailing dot ignored, and no port means 443, so `mcp.example.com:8443`
+matches only that port and `mcp.example.com` matches only 443. A value with anything else in it ends the run before any
+request goes out (`invalid-token-host`, exit 2). `--token-host` is checked on every run. The run reads
+`ANC_WEB_TOKEN_HOST` only to bind `ANC_WEB_TOKEN`, and an empty value counts as unset.
+
+The token goes only to an MCP endpoint of record on exactly that host. The audited site's own endpoint outranks one it
+declares, so a declared host gets the token only when the site has no endpoint of its own and that host confirms the
+endpoint; naming the declared host while the site has its own endpoint sends the token nowhere. In every other case the
+token is not sent: the run prints `warning: token-not-sent: <message>` on stderr and the rows report as they do without
+a token. The binding covers host and port, not path, so a host that routes tenants by path is one host to it.
+
+On that endpoint the token goes only to handshake and session requests (`Authorization: Bearer <token>`), and never to a
+declared host's documents, the RFC 9728 metadata, a listed authorization server, any other check, or a redirect to
+another origin. Whether the endpoint requires sign-in is still decided from what a client without a token is answered:
+the run asks the two handshakes again without the token, and the `mcp-auth-enforced` row sends its `tools/list` without
+one. The scorecard records `vantage.credentialed: true` only when a request carried the token, and never the token,
+which no output, evidence line, or error prints. Every process anc starts, an audited binary or a `git clone` included,
+runs without `ANC_WEB_TOKEN` or `ANC_WEB_TOKEN_HOST`.
 
 A token that is empty (`empty-token`), or holds whitespace, a control character, or non-ASCII (`invalid-token`), ends
 the run before any request goes out, exit 2. `--token-stdin` refuses a terminal stdin (`token-stdin-terminal`) rather
@@ -640,12 +666,12 @@ release-gate against the compiled artifact). Without either flag, all three laye
 ### How a behavioral probe runs
 
 `anc` runs the binary directly, never through a shell, with stdin closed, a timeout, and a fixed terminal: `TERM=dumb`,
-`COLUMNS=80`, `PAGER=cat`, and `NO_COLOR=1`. A probe inherits the rest of your environment except `ANC_WEB_TOKEN` and
-your display and desktop session bus. `DISPLAY`, `XAUTHORITY`, and `WAYLAND_SOCKET` are removed, and `WAYLAND_DISPLAY`
-and `DBUS_SESSION_BUS_ADDRESS` point at `/dev/null`, because a client left without them connects to the default socket
-in `$XDG_RUNTIME_DIR`. On Linux and other X11 or Wayland systems, a GUI app probed with a flag it does not handle cannot
-open a window or start a session service. On macOS a GUI app reaches the window server without any environment variable,
-so there the process groups below are the containment.
+`COLUMNS=80`, `PAGER=cat`, and `NO_COLOR=1`. A probe inherits the rest of your environment except `ANC_WEB_TOKEN`,
+`ANC_WEB_TOKEN_HOST`, and your display and desktop session bus. `DISPLAY`, `XAUTHORITY`, and `WAYLAND_SOCKET` are
+removed, and `WAYLAND_DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` point at `/dev/null`, because a client left without them
+connects to the default socket in `$XDG_RUNTIME_DIR`. On Linux and other X11 or Wayland systems, a GUI app probed with a
+flag it does not handle cannot open a window or start a session service. On macOS a GUI app reaches the window server
+without any environment variable, so there the process groups below are the containment.
 
 On Unix each probe runs in a process group of its own. When the probe exits or times out, `anc` kills the group, so a
 launcher that exits while the app it started keeps running takes the app with it. On Linux `anc` is also a child
@@ -898,15 +924,15 @@ Every error prints one JSON envelope on stderr: `kind` (`usage` or `runtime`), `
 `message`, `exit_code`, and `next_step`, the recovery an agent can act on without parsing `message`. `next_step.action`
 is one of a closed set, and a newer release can add to it:
 
-| `action`      | Carries                                                                                                                              | Raised by                                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`                                             | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert`, `empty-token`, `invalid-token`, `token-stdin-terminal`, `token-stdin-unreadable` |
-| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each                                         | `binary-ambiguous`, `unknown-bin`                                                                                                                    |
-| `rerun`       | `command`: the same invocation without `--bin`                                                                                       | `bin-needs-directory`                                                                                                                                |
-| `retry`       | `command`: the same invocation with `--verbose`, once the site is up                                                                 | `target-unreachable`                                                                                                                                 |
-| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts; for an `http` target, the same invocation on its `https` URL | `invalid-target`, `insecure-scheme`                                                                                                                  |
-| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                                                                    | `unknown-check`                                                                                                                                      |
-| `add-ca-cert` | `template`: the same invocation with `--ca-cert <FILE>`, the server CA's PEM file                                                    | `untrusted-certificate`                                                                                                                              |
+| `action`      | Carries                                                                                                                              | Raised by                                                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show-help`   | `command`: the help of the subcommand the invocation reached, such as `anc audit --help`                                             | parse errors, `missing-subcommand`, `app-error`, `invalid-ca-cert`, `empty-token`, `invalid-token`, `token-stdin-terminal`, `token-stdin-unreadable`, `invalid-token-host` |
+| `choose-bin`  | `template`: the invocation with `--bin <name>`; `candidates` holds one runnable command each                                         | `binary-ambiguous`, `unknown-bin`                                                                                                                                          |
+| `rerun`       | `command`: the same invocation without `--bin`                                                                                       | `bin-needs-directory`                                                                                                                                                      |
+| `retry`       | `command`: the same invocation with `--verbose`, once the site is up                                                                 | `target-unreachable`                                                                                                                                                       |
+| `fix-target`  | `command`: `anc web --help`, which shows the targets `anc web` accepts; for an `http` target, the same invocation on its `https` URL | `invalid-target`, `insecure-scheme`                                                                                                                                        |
+| `list-checks` | `command`: `anc emit web-checks`, every check id the build scores                                                                    | `unknown-check`                                                                                                                                                            |
+| `add-ca-cert` | `template`: the same invocation with `--ca-cert <FILE>`, the server CA's PEM file                                                    | `untrusted-certificate`                                                                                                                                                    |
 
 A step carries `command`, runnable as printed, or `template`, whose placeholder you fill; never both. So a next step
 leaves out `--token-stdin`, which a printed line cannot carry and which the error's message names, and `--verbose` stays
@@ -915,7 +941,8 @@ The offending input is echoed beside the reason: `bin` for `unknown-bin` and
 `bin-needs-directory`, and `argument` and `value` for parse errors when the parser reports them and for every `anc web`
 error, where `value` is the target (the URL probed, for `target-unreachable` and `untrusted-certificate`), the `--check`
 id, or the `--ca-cert` file. A token error names `ANC_WEB_TOKEN` or `--token-stdin` as its `argument`, and its `value`
-is never the token: empty, or `[redacted]` for a token that was read.
+is never the token: empty, or `[redacted]` for a token that was read. `invalid-token-host` names `--token-host <HOST>`
+or `ANC_WEB_TOKEN_HOST`, and its `value` is the value given, with any userinfo removed.
 
 ### Shell Completions
 

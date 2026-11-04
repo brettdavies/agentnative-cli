@@ -9,11 +9,12 @@ use super::exit::{EXIT_COULD_NOT_CHECK, EXIT_FAILURES};
 use super::invocation::Invocation;
 use crate::argv::format_invocation;
 use crate::json_error::NextStep;
-use crate::spawn_env::WEB_TOKEN_ENV;
+use crate::spawn_env::{WEB_TOKEN_ENV, WEB_TOKEN_HOST_ENV};
 use crate::web_audit::credential::{TokenError, TokenSource};
 use crate::web_audit::fetch::NOT_HTTPS;
 use crate::web_audit::fetch::trust::CaCertError;
 use crate::web_audit::target::{bare_name_path_form, redact_userinfo};
+use crate::web_audit::token_host::{InvalidTokenHost, TokenHostSource};
 use crate::web_audit::transport::ROOT_REJECTION_PREFIX;
 
 /// A run that ended without a scorecard, and what to do about it.
@@ -44,6 +45,8 @@ const CHECK_ARGUMENT: &str = "--check <ID>";
 const CA_CERT_ARGUMENT: &str = "--ca-cert <FILE>";
 /// The `--token-stdin` flag, as clap names it.
 pub(super) const TOKEN_STDIN_ARGUMENT: &str = "--token-stdin";
+/// The `--token-host` flag, as clap names it.
+const TOKEN_HOST_ARGUMENT: &str = "--token-host <HOST>";
 
 /// `anc web` with `args`, shell-quoted so the line runs as printed.
 pub(super) fn web_command(args: &[&str]) -> String {
@@ -283,6 +286,32 @@ pub fn token_failure(error: &TokenError) -> Failure {
         exit_code: EXIT_FAILURES,
         argument,
         value: value.to_string(),
+    }
+}
+
+/// A named token host is not a URL host, a usage error raised before any
+/// request goes out. Userinfo stays out of what it echoes.
+pub fn token_host_failure(error: &InvalidTokenHost) -> Failure {
+    let (argument, source) = match error.source {
+        TokenHostSource::Flag => (TOKEN_HOST_ARGUMENT, "--token-host"),
+        TokenHostSource::Env => (WEB_TOKEN_HOST_ENV, WEB_TOKEN_HOST_ENV),
+    };
+    let redacted = redact_userinfo(&error.value);
+    let shown = redacted
+        .rsplit_once('@')
+        .map_or(redacted.as_str(), |(_, host)| host);
+    Failure {
+        slug: "invalid-token-host",
+        message: format!("{source} `{shown}` is not a URL host"),
+        hints: vec![
+            "name the MCP endpoint's host, with a port when it is not 443, and no scheme, path, \
+             query, or userinfo: `mcp.example.com` or `localhost:8787`"
+                .to_string(),
+        ],
+        next_step: NextStep::show_help(web_command(&["--help"])),
+        exit_code: EXIT_FAILURES,
+        argument,
+        value: shown.to_string(),
     }
 }
 
@@ -615,5 +644,6 @@ mod tests {
         assert_eq!(spelled("check"), CHECK_ARGUMENT);
         assert_eq!(spelled("ca_cert"), CA_CERT_ARGUMENT);
         assert_eq!(spelled("token_stdin"), TOKEN_STDIN_ARGUMENT);
+        assert_eq!(spelled("token_host"), TOKEN_HOST_ARGUMENT);
     }
 }

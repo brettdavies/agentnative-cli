@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use super::api_targets::ApiTargets;
@@ -168,6 +169,7 @@ pub struct FetchHandle {
     user_agent: Arc<str>,
     memo: Option<RequestMemo>,
     credential: Option<Credential>,
+    presented: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for FetchHandle {
@@ -193,6 +195,7 @@ impl FetchHandle {
             user_agent: Arc::from(user_agent),
             memo: None,
             credential: None,
+            presented: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -214,13 +217,23 @@ impl FetchHandle {
         }
     }
 
-    /// Whether the run presents a token.
+    /// Whether this handle holds a token it can present.
     pub fn credentialed(&self) -> bool {
         self.credential.is_some()
     }
 
-    pub(crate) fn credential(&self) -> Option<&Credential> {
-        self.credential.as_ref()
+    /// Whether a request of this run carried the token. A request that drew
+    /// no answer counts, since the header may have reached the server.
+    pub fn presented(&self) -> bool {
+        self.presented.load(Ordering::Relaxed)
+    }
+
+    /// The token's header for a request about to go out, which marks the
+    /// token as presented.
+    pub(crate) fn present_credential(&self) -> Option<(String, String)> {
+        let credential = self.credential.as_ref()?;
+        self.presented.store(true, Ordering::Relaxed);
+        Some(credential.header())
     }
 
     /// This handle with every fetch going through `memo`.

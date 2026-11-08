@@ -329,11 +329,14 @@ git tag -a -m "Release v0.2.0" v0.2.0
 git push origin main --tags
 ```
 
-Always use annotated tags (`-a -m`). The tag push triggers `.github/workflows/release.yml`, which calls the reusable
+Always use annotated tags (`-a -m`), and tag `main`'s head. The tag push runs `.github/workflows/release.yml`, which
+compiles nothing: its `Dispatch v<version>` run dispatches the release onto `main`, so the build restores the caches the
+previous release saved there. The dispatched run, titled `Release v<version>`, calls the reusable
 `brettdavies/.github/.github/workflows/rust-release.yml@main` and runs:
 
 | Step                  | What                                                                                                                                                                                                                                                                                            |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validate-inputs`     | Refuse a tag that is not `v<major>.<minor>.<patch>`, one that does not exist, and one whose commit is not the commit the run checked out, `main`'s head, before anything builds (gate).                                                                                                         |
 | `check-version`       | Verify the tag matches `Cargo.toml` version (gate).                                                                                                                                                                                                                                             |
 | `audit`               | `cargo deny check` (license + advisory + ban).                                                                                                                                                                                                                                                  |
 | `build`               | Cross-compile binaries for 7 targets: `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`. Each archive includes binary, completions, README, licenses. |
@@ -352,6 +355,27 @@ Homebrew. The tap then installs and tests the formula from those archives on fou
 
 After the homebrew-tap workflow lands the formula bump, it dispatches `finalize-release` back to this repo, which
 idempotently flips `make_latest: true`.
+
+Each coded stop in the reusable is an error annotation titled with its code, which links the heading in
+[`brettdavies/.github`'s README](https://github.com/brettdavies/.github/blob/main/README.md) that gives the recovery.
+`release-tag-moved` means `main` moved past the tag before the dispatched run checked it out; the annotation gives the
+dispatch onto the tag's own ref, which releases the tagged commit and saves no cache a later release restores.
+
+### When the dispatch job fails
+
+A failed `Dispatch the release onto main` job built nothing. Its error annotation, titled `release-dispatch-failed`,
+links here, and `scripts/release/postflight.sh release` fails on it. GitHub can accept a dispatch and still fail the job,
+so look for the release run before you start one:
+
+```bash
+gh run list --workflow release.yml --branch main --event workflow_dispatch --limit 3
+```
+
+When no run titled `Release v<version>` is listed, dispatch it by hand:
+
+```bash
+gh workflow run release.yml --ref main -f tag=v<version>
+```
 
 → Rationale (`make_latest` flow, musl hard-block, annotated-tag gotcha):
 [`RELEASES-RATIONALE.md` § Release pipeline](./RELEASES-RATIONALE.md#release-pipeline).

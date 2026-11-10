@@ -10,7 +10,8 @@
 # check, and changelog verification (on PRs to main), plus each job an input
 # below turns on.
 # lint-basics.yml runs actionlint and markdownlint.
-# No secrets required: only contents: read and pull-requests: read.
+# No secrets required: only contents: read and pull-requests: read, and
+# actions: write on the prune-caches job, which deletes caches.
 #
 # Checks run on pull requests: merges to main and dev are squash merges, so the
 # merge commit's tree equals the PR head these jobs already verified. The

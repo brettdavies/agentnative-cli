@@ -572,7 +572,9 @@ brings it to `dev` after the release. `scripts/release/preflight.sh mechanics` c
 | `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Removed after Trusted Publishing was enforced. |
 
 `GITHUB_TOKEN` is automatic; CI (`ci.yml`) needs `contents: read` and `pull-requests: read`, the latter for the
-changelog check that reads a PR's files, and uses no extra secrets.
+changelog check that reads a PR's files, and uses no extra secrets. The jobs that delete caches or start a run hold
+`actions: write` on the job alone: `ci.yml`'s `prune-caches`, `pr-cache-cleanup.yml`, and `finalize-release.yml`'s
+`warm-main`.
 
 ### Distribution channels
 

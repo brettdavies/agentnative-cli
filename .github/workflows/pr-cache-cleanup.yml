@@ -2,7 +2,7 @@ name: PR cache cleanup
 
 on:
   pull_request:
-    types: [opened, closed]
+    types: [closed]
 
 permissions: {}
 

@@ -41,7 +41,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [dev, feat/ci-warm-caches]
+    branches: [dev]
   workflow_dispatch:
 
 permissions:

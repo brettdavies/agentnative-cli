@@ -12,15 +12,36 @@
 # lint-basics.yml runs actionlint and markdownlint.
 # No secrets required: only contents: read and pull-requests: read.
 #
-# pull_request only: merges to main and dev are squash merges, so the merge
-# commit's tree equals the PR head this workflow already verified, and a push
-# run would re-check an identical tree for no new signal. The compensating
-# local gate is the hook pair at scripts/hooks/, which mirrors these jobs
-# before the push leaves the machine.
+# Checks run on pull requests: merges to main and dev are squash merges, so the
+# merge commit's tree equals the PR head these jobs already verified. The
+# compensating local gate is the hook pair at scripts/hooks/, which mirrors
+# these jobs before the push leaves the machine.
+#
+# A push to dev, or a manual dispatch, is a warm run; finalize-release.yml
+# dispatches one on main once a release is marked latest, so the release merge
+# starts no run beside the release's own. A pull request restores caches from
+# its own ref, its base branch, and the default branch, and only a run outside
+# a pull request can write those two branches' scopes, so without warm runs
+# every new pull request builds its dependencies cold. A warm run builds what
+# each check compiles without running the check, then deletes the ref's
+# superseded caches. Pull requests' caches are pr-cache-cleanup.yml's.
+#
+# Swatinem/rust-cache keys each cache on the job id, the `key` input, and every
+# CARGO*, RUST*, CC*, CFLAGS*, CXX*, and CMAKE* variable in the job's
+# environment. A warm run matches a pull request's keys only while those stay
+# the same in both modes, so what differs between the modes lives in step
+# conditions and commands.
+#
+# `cache-on-failure` applies to pull request runs alone. A warm run that fails
+# partway would leave a partial entry under the exact key, and rust-cache skips
+# saving after an exact-key restore, so no later run would refill it.
 name: CI
 
 on:
   pull_request:
+  push:
+    branches: [dev]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -45,6 +66,8 @@ env:
   # and a failing test's backtrace keeps its file and line.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_TERM_COLOR: always
+  # Differs between the modes, so its name stays outside rust-cache's prefixes.
+  TEST_NO_RUN: ${{ github.event_name != 'pull_request' && '--no-run' || '' }}
 
 jobs:
   # Whether the change can reach cargo, by scripts/cargo-inputs.sh. A
@@ -52,11 +75,12 @@ jobs:
   # success, so required checks still pass. The `ci` job runs unless this
   # answered `false`, so a scope job that fails runs the full battery.
   scope:
+    if: github.event_name == 'pull_request'
     uses: brettdavies/.github/.github/workflows/rust-change-scope.yml@main
 
   ci:
     needs: scope
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
     uses: brettdavies/.github/.github/workflows/rust-ci.yml@main
     # Every rust-ci input, one line each. The reusable's
     # on.workflow_call.inputs holds each one's full description and default.
@@ -87,11 +111,27 @@ jobs:
       # regeneration.
       completions: true
 
+  # A job of its own so its checks report as `warm / <job>`, never under a
+  # required `ci / <job>` name. rust-cache keys on the reusable's job ids, not
+  # this caller's, so these are the caches the `ci` call restores. It turns on
+  # the same optional jobs as the `ci` call, so each of those has a cache to
+  # restore.
+  warm:
+    if: github.event_name != 'pull_request'
+    uses: brettdavies/.github/.github/workflows/rust-ci.yml@main
+    with:
+      warm_cache: true
+      docs: true
+      msrv: true
+      completions: true
+
   # The reusable workflow above builds the default feature set. The local web
   # audit is the `web` feature, off by default, so these jobs hold that build
   # to the same clippy, test and Windows bars. They do not wait on the scope
   # job: they run on every pull request whatever the classifier decides, so the
-  # required "Web feature (clippy, test)" check never rests on its verdict.
+  # required "Web feature (clippy, test)" check never rests on its verdict. A
+  # warm run builds what each step compiles: `cargo check` fills the
+  # dependencies clippy reuses, and the tests build with `--no-run`.
   web:
     name: Web feature (clippy, test)
     runs-on: ubuntu-22.04
@@ -109,13 +149,13 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          cache-on-failure: true
+          cache-on-failure: ${{ github.event_name == 'pull_request' }}
 
       - name: Clippy
-        run: cargo clippy --all-targets --features web
+        run: cargo ${{ github.event_name == 'pull_request' && 'clippy' || 'check' }} --all-targets --features web
 
       - name: Tests
-        run: cargo test --features web
+        run: cargo test --features web ${{ env.TEST_NO_RUN }}
 
   web-windows:
     name: Web feature (Windows check)
@@ -132,7 +172,7 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          cache-on-failure: true
+          cache-on-failure: ${{ github.event_name == 'pull_request' }}
 
       # aws-lc-sys (behind rustls's aws-lc-rs provider) assembles with NASM on
       # x86-64 Windows, and the hosted Windows image does not ship it.
@@ -149,7 +189,8 @@ jobs:
   # a Rust-native port can silently lose, so the release artifact is measured
   # rather than assumed. The ceiling lives in the script. The build enables the
   # `web` feature: that is the binary a release ships once the feature is on
-  # by default.
+  # by default. A warm run builds the binary and installs jaq, and checks
+  # neither.
   size:
     name: Release binary size
     runs-on: ubuntu-latest
@@ -166,6 +207,7 @@ jobs:
         run: cargo build --release --features web
 
       - name: Check size against the ceiling
+        if: github.event_name == 'pull_request'
         run: scripts/check-binary-size.sh
 
       # The product promise is a website audit in one or two minutes with no
@@ -176,4 +218,42 @@ jobs:
         run: cargo install jaq --locked
 
       - name: First-run smoke check
+        if: github.event_name == 'pull_request'
         run: scripts/smoke-web-audit.sh
+
+  # A warm run saves each job's cache under a key that ends in the hash of the
+  # manifests, the lockfile, and the toolchain files, so every change to one of
+  # those leaves the ref holding the caches of the one before. GitHub evicts
+  # the least recently used entries once a repository passes 10 GB, and those
+  # superseded entries outlast the ones pull requests read. After a warm run
+  # that every job finished, this keeps the most recently used cache of each
+  # key and deletes the rest: the run restored or saved each cache it uses, so
+  # those are the ones kept.
+  prune-caches:
+    name: Prune superseded caches
+    needs: [warm, web, web-windows, size]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete this ref's superseded rust-cache entries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          gh cache list --ref "$REF" --limit 1000 --json id,key,lastAccessedAt,sizeInBytes \
+            | jq -r '[.[] | select(.key | startswith("v0-rust-"))]
+                | group_by(.key | sub("-[^-]+$"; ""))
+                | .[] | sort_by(.lastAccessedAt) | .[:-1][]
+                | "\(.id)\t\(.sizeInBytes)\t\(.key)"' > stale.tsv
+          freed=0
+          while IFS=$'\t' read -r id size key; do
+            gh cache delete "$id"
+            echo "deleted ${key}"
+            freed=$((freed + size))
+          done < stale.tsv
+          echo "Deleted $(wc -l < stale.tsv) superseded caches on ${REF}, $((freed / 1048576)) MB"

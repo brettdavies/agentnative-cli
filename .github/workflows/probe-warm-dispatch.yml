@@ -1,0 +1,14 @@
+name: Probe warm dispatch
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  probe:
+    permissions:
+      actions: write
+    uses: brettdavies/.github/.github/workflows/warm-dispatch.yml@feat/cache-prune-warm-dispatch
+    with:
+      ref: feat/shared-cache-prune-dispatch

@@ -231,4 +231,4 @@ jobs:
     permissions:
       actions: write
       contents: read
-    uses: brettdavies/.github/.github/workflows/rust-cache-prune.yml@feat/rust-cache-prune
+    uses: brettdavies/.github/.github/workflows/rust-cache-prune.yml@main

@@ -418,9 +418,10 @@ squash-merged histories share no recent ancestry, so the merge conflicts on ever
 push bypasses `dev`'s required checks.
 
 **A release that withholds `anc web` takes a hand backport instead.** Until the web audit ships, the release branch
-strips the web code and the release changelog leaves out the `(web)`-scoped PRs. The script would read every stripped
-web file as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three
-bookkeeping files from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
+strips the web code and the release changelog leaves out the `(web)`-scoped PRs. Stripping `ci.yml`'s web jobs (`web`,
+`web-windows`, and `size`) takes them out of `prune-caches`' `needs` too. The script would read every stripped web file
+as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three bookkeeping files
+from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
 `chore(release): sync dev after v<version>`, the subject the postflight backport gate looks for.
 
 The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.

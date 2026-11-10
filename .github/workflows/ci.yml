@@ -222,52 +222,13 @@ jobs:
         if: github.event_name == 'pull_request'
         run: scripts/smoke-web-audit.sh
 
-  # A warm run saves each job's cache under a key that ends in the hash of the
-  # manifests, the lockfile, and the toolchain files, so every change to one of
-  # those leaves the ref holding the caches of the one before. GitHub evicts
-  # the least recently used entries once a repository passes 10 GB, and those
-  # superseded entries outlast the ones pull requests read. After a warm run
-  # that every job finished, this keeps one cache of each key and deletes the
-  # rest: the one the run saved, else the one it restored, which is the most
-  # recently used. A saved cache outranks a later read because a pull request
-  # whose merge commit predates the ref's last push can restore the previous
-  # generation after this run saved the current one. A toolchain change also
-  # moves the key's environment hash, so the previous toolchain's caches fall
-  # outside these groups and leave by eviction. A re-run builds its original
-  # commit, so once the ref has moved on, the caches it used are an older
-  # generation's, and it deletes nothing.
+  # Deletes the superseded rust-cache entries a manifest or lockfile change
+  # leaves on this ref. It needs every job that saves a cache in a warm run, so
+  # it runs after their saves.
   prune-caches:
-    name: Prune superseded caches
     needs: [warm, web, web-windows, size]
     if: ${{ !cancelled() && github.event_name != 'pull_request' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
     permissions:
       actions: write
       contents: read
-    steps:
-      - name: Delete this ref's superseded rust-cache entries
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          REF: ${{ github.ref }}
-        run: |
-          set -euo pipefail
-          head=$(gh api "repos/${GH_REPO}/git/ref/${REF#refs/}" --jq .object.sha)
-          if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "${REF} has moved on from ${GITHUB_SHA} to ${head}; nothing pruned"
-            exit 0
-          fi
-          started=$(gh api "repos/${GH_REPO}/actions/runs/${GITHUB_RUN_ID}" --jq .run_started_at)
-          gh cache list --ref "$REF" --limit 1000 --json id,key,createdAt,lastAccessedAt,sizeInBytes \
-            | jq -r --arg started "$started" '[.[] | select(.key | startswith("v0-rust-"))]
-                | group_by(.key | sub("-[^-]+$"; ""))
-                | .[] | sort_by([.createdAt >= $started, .lastAccessedAt]) | .[:-1][]
-                | "\(.id)\t\(.sizeInBytes)\t\(.key)"' > stale.tsv
-          freed=0
-          while IFS=$'\t' read -r id size key; do
-            gh cache delete "$id"
-            echo "deleted ${key}"
-            freed=$((freed + size))
-          done < stale.tsv
-          echo "Deleted $(wc -l < stale.tsv) superseded caches on ${REF}, $((freed / 1048576)) MB"
+    uses: brettdavies/.github/.github/workflows/rust-cache-prune.yml@feat/rust-cache-prune

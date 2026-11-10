@@ -229,7 +229,9 @@ jobs:
   # superseded entries outlast the ones pull requests read. After a warm run
   # that every job finished, this keeps the most recently used cache of each
   # key and deletes the rest: the run restored or saved each cache it uses, so
-  # those are the ones kept.
+  # those are the ones kept. A re-run builds its original commit, so once the
+  # ref has moved on, the caches it used are an older generation's, and it
+  # deletes nothing.
   prune-caches:
     name: Prune superseded caches
     needs: [warm, web, web-windows, size]
@@ -238,6 +240,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: write
+      contents: read
     steps:
       - name: Delete this ref's superseded rust-cache entries
         env:
@@ -246,6 +249,11 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
+          head=$(gh api "repos/${GH_REPO}/git/ref/${REF#refs/}" --jq .object.sha)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "${REF} has moved on from ${GITHUB_SHA} to ${head}; nothing pruned"
+            exit 0
+          fi
           gh cache list --ref "$REF" --limit 1000 --json id,key,lastAccessedAt,sizeInBytes \
             | jq -r '[.[] | select(.key | startswith("v0-rust-"))]
                 | group_by(.key | sub("-[^-]+$"; ""))

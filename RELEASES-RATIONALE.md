@@ -251,6 +251,28 @@ it; it builds no bottle, so nothing is uploaded back to this repo's release. It 
 to this repo, which idempotently flips `make_latest: true`. End result: crate on crates.io, GitHub Release marked
 latest, Homebrew formula updated, all atomically advertised.
 
+### Why CI warms `dev` and `main`, and deletes what no run can read
+
+A pull request restores caches from its own `refs/pull/<n>/merge` scope, its base branch, and the default branch, and
+only a run outside a pull request can write a branch's scope. CI's checks run on pull requests, so without a warm run
+every new pull request builds its dependencies cold and saves a full set of its own: 9 entries, 1.43 GiB, for a pull
+request into `dev`. GitHub keeps 10 GB of caches per repository and evicts the least recently read first, and a closed
+pull request's entries count against that until they go unread for seven days.
+
+- A push to `dev` runs `ci.yml` as a warm run: each job builds what its check compiles with execution off and saves its
+  cache, and the `warm` caller job reports as `warm / <job>`, never under a required `ci / <job>` name. The prune job
+  then deletes the `dev` caches that a manifest or lockfile change left behind.
+- The release merge starts no CI run, so the release has the account's runners to itself. `finalize-release.yml`'s
+  `warm-main` job dispatches the warm run on `main` once the release is marked latest. That set serves stacked pull
+  requests, whose base branch holds no caches, and that run's prune drops `main`'s caches for the previous lockfile.
+- `pr-cache-cleanup.yml` deletes a pull request's caches when it closes, since no later run can read them.
+
+A pull request that moves a cache key (a `Cargo.lock` change, any `Cargo.toml` field but a version, or the toolchain
+pin) still saves its own set and holds it until it closes. The prune does not group across a toolchain change, so the
+previous toolchain's set stays until it goes unread for seven days. CI's Linux jobs keep one entry each rather than
+sharing one: `ci.yml` defines only two of its own, which build the dev and release profiles, and the reusable workflow's
+jobs keep an entry each whatever the caller passes.
+
 ### Why backport `main` → `dev` after publish
 
 Once `finalize-release.yml` has flipped the GitHub Release to `published`, the release-bookkeeping files on `main`

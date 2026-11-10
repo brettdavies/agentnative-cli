@@ -1,0 +1,30 @@
+# A pull request's caches live under refs/pull/<n>/merge, which only that pull
+# request's runs can read, so closing it leaves them unreachable. They still count
+# against the repository's 10 GB limit, and GitHub evicts the least recently used
+# entries first, so a closed pull request's recent entries outlast the warm entries
+# under dev and main that every new pull request restores from.
+name: PR cache cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  cleanup:
+    name: Delete caches
+    # A fork's pull request gets a read-only token, so the delete could only fail.
+    # Its entries leave by eviction.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete this pull request's caches
+        run: gh cache delete --all --ref "$PR_REF" --succeed-on-no-caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge

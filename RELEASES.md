@@ -354,7 +354,9 @@ Homebrew. The tap then installs and tests the formula from those archives on fou
 `main`. It builds no bottle: the binaries are compiled once, by `release.yml`, and `brew install` downloads the archive.
 
 After the homebrew-tap workflow lands the formula bump, it dispatches `finalize-release` back to this repo, which
-idempotently flips `make_latest: true`.
+idempotently flips `make_latest: true`. Its `warm-main` job then runs `gh workflow run ci.yml --ref main`, which fills
+`main`'s CI caches once the release is out
+([`RELEASES-RATIONALE.md` § Why CI warms `dev` and `main`](./RELEASES-RATIONALE.md#why-ci-warms-dev-and-main-and-deletes-what-no-run-can-read)).
 
 Each coded stop in the reusable is an error annotation titled with its code, which links the heading in
 [`brettdavies/.github`'s README](https://github.com/brettdavies/.github/blob/main/README.md) that gives the recovery.
@@ -416,9 +418,10 @@ squash-merged histories share no recent ancestry, so the merge conflicts on ever
 push bypasses `dev`'s required checks.
 
 **A release that withholds `anc web` takes a hand backport instead.** Until the web audit ships, the release branch
-strips the web code and the release changelog leaves out the `(web)`-scoped PRs. The script would read every stripped
-web file as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three
-bookkeeping files from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
+strips the web code and the release changelog leaves out the `(web)`-scoped PRs. Stripping `ci.yml`'s web jobs (`web`,
+`web-windows`, and `size`) takes them out of `prune-caches`' `needs` too. The script would read every stripped web file
+as release-prep and delete it from `dev`, so it does not run after such a release. Backport the three bookkeeping files
+from `origin/main` by hand (the `Cargo.toml` version, `Cargo.lock`, and `CHANGELOG.md`) in a PR titled
 `chore(release): sync dev after v<version>`, the subject the postflight backport gate looks for.
 
 The backport is idempotent: re-running on a `dev` already in sync exits 0 and leaves no branch or PR behind.
@@ -570,7 +573,9 @@ brings it to `dev` after the release. `scripts/release/preflight.sh mechanics` c
 | `CARGO_REGISTRY_TOKEN` | crates.io API token. Required only for the first publish.                                                         | Removed after Trusted Publishing was enforced. |
 
 `GITHUB_TOKEN` is automatic; CI (`ci.yml`) needs `contents: read` and `pull-requests: read`, the latter for the
-changelog check that reads a PR's files, and uses no extra secrets.
+changelog check that reads a PR's files, and uses no extra secrets. The jobs that delete caches or start a run hold
+`actions: write` on the job alone: `ci.yml`'s `prune-caches`, `pr-cache-cleanup.yml`, and `finalize-release.yml`'s
+`warm-main`.
 
 ### Distribution channels
 

@@ -354,7 +354,9 @@ Homebrew. The tap then installs and tests the formula from those archives on fou
 `main`. It builds no bottle: the binaries are compiled once, by `release.yml`, and `brew install` downloads the archive.
 
 After the homebrew-tap workflow lands the formula bump, it dispatches `finalize-release` back to this repo, which
-idempotently flips `make_latest: true`.
+idempotently flips `make_latest: true`. Its `warm-main` job then runs `gh workflow run ci.yml --ref main`, which fills
+`main`'s CI caches once the release is out
+([`RELEASES-RATIONALE.md` § Why CI warms `dev` and `main`](./RELEASES-RATIONALE.md#why-ci-warms-dev-and-main-and-deletes-what-no-run-can-read)).
 
 Each coded stop in the reusable is an error annotation titled with its code, which links the heading in
 [`brettdavies/.github`'s README](https://github.com/brettdavies/.github/blob/main/README.md) that gives the recovery.

@@ -62,8 +62,10 @@ Run once the tag is pushed.
   `chore(agentnative): bump to v<version>` commit, with no bottle:
   the formula installs this release's archives. Run `scripts/release/postflight.sh tap` for the automated check.
 - [ ] **`finalize-release.yml` callback ran.** After the formula lands, the tap dispatches back to this repo and the
-  callback flips the GitHub Release `make_latest: true`. Check `gh run list -e repository_dispatch --limit 3`; expect a
-  `finalize-release` SUCCESS. Run `scripts/release/postflight.sh finalize` for the automated check.
+  callback flips the GitHub Release `make_latest: true`, then its `warm-main` job dispatches CI's warm run on `main`.
+  Check `gh run list -e repository_dispatch --limit 3`; expect a `finalize-release` SUCCESS, and
+  `gh run list --workflow ci.yml --branch main --event workflow_dispatch --limit 1` lists the warm run. Run
+  `scripts/release/postflight.sh finalize` for the automated check.
 - [ ] **GitHub Release marked latest.** `gh api repos/brettdavies/agentnative-cli/releases/latest --jq .tag_name`
   returns `vX.Y.Z`, not the previous tag. Confirms `finalize-release.yml` actually flipped the flag. Run
   `scripts/release/postflight.sh make-latest` for the automated check.

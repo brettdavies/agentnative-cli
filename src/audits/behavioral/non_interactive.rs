@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn non_interactive_pass_with_false() {
-        let project = test_project_with_runner("/bin/false");
+        let project = test_project_with_runner("/usr/bin/false");
         let result = NonInteractiveAudit.run(&project).expect("audit should run");
         assert!(matches!(result.status, AuditStatus::Pass));
     }

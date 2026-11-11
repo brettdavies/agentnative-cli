@@ -367,7 +367,7 @@ mod tests {
     fn temp_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("agentnative-test-{}", std::process::id()));
         fs::create_dir_all(&dir).expect("create test dir");
-        dir
+        fs::canonicalize(&dir).expect("resolve test dir")
     }
 
     #[test]

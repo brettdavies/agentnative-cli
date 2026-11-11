@@ -39,8 +39,9 @@
 //! - `GIT_HARDEN_FLAGS` — five `-c key=value` pairs (`credential.helper`,
 //!   `core.askPass`, `protocol.allow=never`, `protocol.https.allow=always`,
 //!   `http.followRedirects`).
-//! - `GIT_HARDEN_ENV_REMOVE` — five env vars stripped before spawn (SSH /
-//!   proxy / askpass / exec-path overrides).
+//! - `GIT_HARDEN_ENV_REMOVE` — eleven env vars stripped before spawn (SSH /
+//!   proxy / askpass / exec-path overrides, the template directory, config
+//!   from the environment, and work-tree / index / object-store paths).
 //! - `GIT_HARDEN_ENV_SET` — three env vars set on the spawned process:
 //!   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`
 //!   together disable every layer of user-controlled git config (the
@@ -103,7 +104,12 @@ pub const GIT_HARDEN_FLAGS: &[&str] = &[
 
 /// Environment variables removed via `Command::env_remove` before spawn.
 /// Each one is a known git-side override that could redirect or hijack the
-/// clone. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
+/// clone: a template's hooks run in it, `GIT_CONFIG_COUNT` and
+/// `GIT_CONFIG_PARAMETERS` add config (`core.hooksPath` included) that
+/// `GIT_CONFIG_GLOBAL` does not cover, and the work tree, index, and object
+/// variables write the checkout or its objects somewhere else.
+/// `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` are inert without
+/// `GIT_CONFIG_COUNT`. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
 /// list — removing them would let git fall back to default config paths
 /// (`~/.gitconfig`, `/etc/gitconfig`); we instead point them at `/dev/null`
 /// via [`GIT_HARDEN_ENV_SET`] to actively disable user-controlled config.
@@ -115,6 +121,12 @@ pub const GIT_HARDEN_ENV_REMOVE: &[&str] = &[
     "GIT_PROXY_COMMAND",
     "GIT_ASKPASS",
     "GIT_EXEC_PATH",
+    "GIT_TEMPLATE_DIR",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
 ];
 
 /// Environment variables *set* (not removed) on the spawned process. The
@@ -1014,5 +1026,75 @@ mod tests {
             s,
             "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git /home/u/.claude/skills/agent-native-cli",
         );
+    }
+
+    /// A `post-checkout` hook in the caller's `GIT_TEMPLATE_DIR` does not run
+    /// in the clone. The command is replayed over that environment: the
+    /// caller's variable first, then every change `build_clone_command`
+    /// makes. `protocol.file.allow` goes ahead of the hardening flags only
+    /// because the source is a local repository.
+    #[cfg(unix)]
+    #[test]
+    fn clone_runs_no_hook_from_the_callers_template_dir() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let git = |args: &[&str]| {
+            let status = Command::new("git")
+                .args(args)
+                .envs(GIT_HARDEN_ENV_SET.iter().copied())
+                .status()
+                .expect("git");
+            assert!(status.success(), "git {args:?}: {status}");
+        };
+        let src = tmp.path().join("src");
+        let src = src.to_str().expect("utf-8 path");
+        git(&["init", "-q", src]);
+        fs::write(Path::new(src).join("SKILL.md"), "# skill\n").expect("write");
+        git(&["-C", src, "add", "SKILL.md"]);
+        git(&[
+            "-C",
+            src,
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "skill",
+        ]);
+
+        let hooks = tmp.path().join("template/hooks");
+        fs::create_dir_all(&hooks).expect("mkdir");
+        let ran = tmp.path().join("hook-ran");
+        let hook = hooks.join("post-checkout");
+        fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", ran.display())).expect("write");
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("chmod");
+
+        let dest = tmp.path().join("dest");
+        let built = build_clone_command(&format!("file://{src}"), &dest);
+        let mut cmd = Command::new(built.get_program());
+        cmd.env("GIT_TEMPLATE_DIR", tmp.path().join("template"));
+        cmd.args(["-c", "protocol.file.allow=always"]);
+        cmd.args(built.get_args());
+        for (key, value) in built.get_envs() {
+            match value {
+                Some(value) => cmd.env(key, value),
+                None => cmd.env_remove(key),
+            };
+        }
+        let out = cmd.output().expect("git clone");
+
+        assert!(
+            out.status.success(),
+            "clone failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            dest.join("SKILL.md").is_file(),
+            "the clone checked nothing out"
+        );
+        assert!(!ran.exists(), "the template's post-checkout hook ran");
     }
 }

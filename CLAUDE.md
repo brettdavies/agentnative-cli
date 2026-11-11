@@ -343,8 +343,11 @@ surface lives in `src/skill_install.rs`:
 - `GIT_HARDEN_FLAGS: &[&str]`: five `-c key=value` pairs (`credential.helper=`, `core.askPass=`, `protocol.allow=never`,
   `protocol.https.allow=always`, `http.followRedirects=false`). Applied via `Command::args` *before* the `clone`
   subcommand, which is git's required position for top-level `-c` options.
-- `GIT_HARDEN_ENV_REMOVE: &[&str]`: five env vars stripped via `env_remove` (`GIT_SSH{,_COMMAND}`, `GIT_PROXY_COMMAND`,
-  `GIT_ASKPASS`, `GIT_EXEC_PATH`).
+- `GIT_HARDEN_ENV_REMOVE: &[&str]`: eleven env vars stripped via `env_remove` (`GIT_SSH{,_COMMAND}`,
+  `GIT_PROXY_COMMAND`, `GIT_ASKPASS`, `GIT_EXEC_PATH`, `GIT_TEMPLATE_DIR`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`,
+  `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`). A template's hooks run in the clone, config from the
+  environment can set `core.hooksPath`, and the last three write the checkout or its objects outside the destination.
+  `GIT_DIR` and `GIT_ALTERNATE_OBJECT_DIRECTORIES` leave a clone unchanged and stay.
 - `GIT_HARDEN_ENV_SET: &[(&str, &str)]`: three env vars **set** on the spawned process. The
   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null` pair disables every layer of user-controlled git
   config, the actual defense against `insteadOf` URL-rewriting attacks (an earlier draft tried

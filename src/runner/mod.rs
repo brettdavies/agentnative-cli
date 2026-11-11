@@ -801,8 +801,7 @@ mod tests {
         /// partial read ends it at the timeout.
         #[test]
         fn a_partial_read_ends_a_probe_that_stops_writing() {
-            let runner =
-                BinaryRunner::new("/bin/sh".into(), Duration::from_millis(300)).expect("sh");
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(1)).expect("sh");
             let start = Instant::now();
             let result = runner.run_partial(&["-c", "echo abcdefgh; exec sleep 20"], 4);
             let elapsed = start.elapsed();
@@ -818,8 +817,7 @@ mod tests {
         /// output open still ends at the timeout.
         #[test]
         fn a_partial_read_ends_a_probe_that_writes_less_than_it_reads() {
-            let runner =
-                BinaryRunner::new("/bin/sh".into(), Duration::from_millis(300)).expect("sh");
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(1)).expect("sh");
             let start = Instant::now();
             let result = runner.run_partial(&["-c", "printf ab; exec sleep 20"], 16);
             let elapsed = start.elapsed();

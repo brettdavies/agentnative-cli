@@ -1,7 +1,8 @@
 //! Pins the git-hardening surface of `scripts/sync-web-audit.sh`: every git
 //! call runs with user and system config disabled, credential prompts off,
 //! the environment variables `src/skill_install.rs` strips for
-//! `anc skill install` stripped, and the five `-c` flags it applies. A `git`
+//! `anc skill install` stripped along with `GIT_DIR`, and the five `-c` flags
+//! it applies. A `git`
 //! shim on `PATH` records what the first invocation received and then fails,
 //! so the test needs no network and no site checkout.
 
@@ -10,6 +11,8 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
+
+use agentnative::skill_install::GIT_HARDEN_ENV_REMOVE;
 
 const EXPECTED_FLAGS: [&str; 10] = [
     "-c",
@@ -24,21 +27,12 @@ const EXPECTED_FLAGS: [&str; 10] = [
     "http.followRedirects=false",
 ];
 
-/// Every environment variable the script must strip before calling git.
-const STRIPPED: [&str; 12] = [
-    "GIT_SSH",
-    "GIT_SSH_COMMAND",
-    "GIT_PROXY_COMMAND",
-    "GIT_ASKPASS",
-    "GIT_EXEC_PATH",
-    "GIT_TEMPLATE_DIR",
-    "GIT_CONFIG_COUNT",
-    "GIT_CONFIG_PARAMETERS",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_COMMON_DIR",
-];
+/// Every environment variable the script must strip before calling git: the
+/// clone's list, and `GIT_DIR`, which `git clone` ignores but the script's
+/// `git init`, `git remote add`, and `git fetch` honor.
+fn stripped() -> impl Iterator<Item = &'static str> {
+    GIT_HARDEN_ENV_REMOVE.iter().copied().chain(["GIT_DIR"])
+}
 
 fn repo_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -66,7 +60,7 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
              }} >> {log}\n\
              exit 1\n",
             log = log.display(),
-            stripped = STRIPPED.join(" ")
+            stripped = stripped().collect::<Vec<_>>().join(" ")
         ),
     )
     .unwrap();
@@ -89,7 +83,7 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
             "WEB_AUDIT_SITE_REMOTE_URL",
             "https://example.invalid/site.git",
         );
-    for var in STRIPPED {
+    for var in stripped() {
         cmd.env(var, "leaked");
     }
     let output = cmd.output().expect("run the sync script");
@@ -115,7 +109,7 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
     ] {
         assert!(recorded.contains(line), "{line} missing from {recorded}");
     }
-    for var in STRIPPED {
+    for var in stripped() {
         assert!(
             recorded.contains(&format!("{var}=<unset>")),
             "{var} must be stripped: {recorded}"

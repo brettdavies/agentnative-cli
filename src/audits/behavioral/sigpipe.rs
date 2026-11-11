@@ -36,9 +36,11 @@ impl Audit for SigpipeAudit {
 
         let status = match result.status {
             RunStatus::Ok => AuditStatus::Pass,
-            RunStatus::Crash { signal } => {
-                AuditStatus::Fail(format!("crashed on SIGPIPE (signal {signal})"))
-            }
+            #[cfg(unix)]
+            RunStatus::Crash { signal } if signal == libc::SIGPIPE => AuditStatus::Pass,
+            RunStatus::Crash { signal } => AuditStatus::Fail(format!(
+                "`--help` crashed (signal {signal}) during a partial read of its output"
+            )),
             _ => AuditStatus::Warn(format!("unexpected status: {:?}", result.status)),
         };
 
@@ -76,11 +78,24 @@ mod tests {
         let result = SigpipeAudit
             .run(&project)
             .expect("audit should not panic on crash");
-        // run_partial always returns Ok status (kills child after partial read),
-        // so a crash script may still yield Pass or a non-panic result
-        assert!(matches!(
-            result.status,
-            AuditStatus::Pass | AuditStatus::Fail(_) | AuditStatus::Warn(_)
-        ));
+        assert!(
+            matches!(&result.status, AuditStatus::Fail(evidence) if evidence.contains("signal 11")),
+            "{:?}",
+            result.status
+        );
+    }
+
+    /// A tool with the default SIGPIPE disposition dies of it once its reader
+    /// closes the pipe, which is the graceful end P6 asks for.
+    #[cfg(unix)]
+    #[test]
+    fn sigpipe_passes_a_tool_that_dies_of_sigpipe() {
+        let project = crate::audits::behavioral::tests::test_project_with_sh_script("exec yes");
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::Pass),
+            "{:?}",
+            result.status
+        );
     }
 }

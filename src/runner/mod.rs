@@ -7,10 +7,9 @@ pub use help_probe::{CommandBlock, HelpOutput};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::Read as _;
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
@@ -176,30 +175,15 @@ impl BinaryRunner {
         };
 
         // The read runs on its own thread so the deadline bounds a probe that
-        // writes less than `read_bytes` and keeps its output open.
-        let stdout_handle = child.stdout.take();
-        let stdout_thread = std::thread::spawn(move || {
-            let mut buf = vec![0u8; read_bytes];
-            let mut total = 0;
-            if let Some(mut h) = stdout_handle {
-                while total < read_bytes {
-                    match h.read(&mut buf[total..]) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => total += n,
-                    }
-                }
-            }
-            // stdout handle is dropped here, which may cause SIGPIPE.
-            buf.truncate(total);
-            buf
-        });
-
-        let stderr_handle = child.stderr.take();
-        let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
+        // writes less than `read_bytes` and keeps its output open. The reader
+        // drops stdout after `read_bytes`, which may SIGPIPE the probe.
+        let stdout_reader = OutputReader::spawn(child.stdout.take(), read_bytes);
+        let stderr_reader = OutputReader::spawn(child.stderr.take(), MAX_OUTPUT_BYTES + 1);
         let waited = self.wait_or_kill(&mut child);
         group.kill();
-        let stdout = stdout_thread.join().unwrap_or_default();
-        let (stderr_output, stderr_truncated) = stderr_thread.join().unwrap_or_default();
+        let read_deadline = Instant::now() + READ_GRACE;
+        let stdout = stdout_reader.take(read_deadline);
+        let (stderr_output, stderr_truncated) = capped_text(stderr_reader.take(read_deadline));
 
         let stdout_str = String::from_utf8_lossy(&stdout).into_owned();
 
@@ -273,9 +257,9 @@ impl BinaryRunner {
         let child = Arc::new(Mutex::new(child));
 
         // Reader threads — cap at MAX_OUTPUT_BYTES + 1 to detect truncation.
-        let stdout_thread = std::thread::spawn(move || read_capped(stdout_handle));
+        let stdout_reader = OutputReader::spawn(stdout_handle, MAX_OUTPUT_BYTES + 1);
 
-        let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
+        let stderr_reader = OutputReader::spawn(stderr_handle, MAX_OUTPUT_BYTES + 1);
 
         // Condvar-based timeout: the timeout thread sleeps until either the
         // child exits (signaled via condvar) or the deadline expires.
@@ -327,7 +311,7 @@ impl BinaryRunner {
             std::thread::sleep(Duration::from_millis(10));
         };
         // A leftover that inherited the output pipes holds them open, so the
-        // group dies before the reads are joined.
+        // group dies before the reads are taken.
         group.kill();
 
         // Signal the timeout thread to wake up and exit immediately.
@@ -338,8 +322,9 @@ impl BinaryRunner {
         }
         timeout_thread.join().ok();
 
-        let (stdout, stdout_truncated) = stdout_thread.join().unwrap_or_default();
-        let (stderr, stderr_truncated) = stderr_thread.join().unwrap_or_default();
+        let read_deadline = Instant::now() + READ_GRACE;
+        let (stdout, stdout_truncated) = capped_text(stdout_reader.take(read_deadline));
+        let (stderr, stderr_truncated) = capped_text(stderr_reader.take(read_deadline));
 
         let was_timeout = *timed_out.lock().expect("mutex poisoned");
 
@@ -474,17 +459,74 @@ enum Waited {
     Killed,
 }
 
-/// Read from an optional handle, capping at MAX_OUTPUT_BYTES.
-///
-/// Returns `(content, truncated)`. Uses `Read::take(N+1)` so we can detect
-/// whether the stream exceeded exactly N bytes without a separate probe.
-fn read_capped(handle: Option<impl std::io::Read>) -> (String, bool) {
-    let Some(h) = handle else {
-        return (String::new(), false);
+/// How long the output reads get, once the probe has ended, to reach the end
+/// of what the probe wrote. On Unix the group is dead by then, so only a
+/// process that left the group can hold a pipe open. On Linux anc reaps it
+/// with the group; where anc is no subreaper, as on macOS, it can hold the
+/// pipe for as long as it runs. Windows has no group kill, so any process
+/// the probe started can still hold a pipe. Either way the run takes what
+/// was read by this deadline.
+const READ_GRACE: Duration = Duration::from_millis(500);
+
+/// One of a probe's pipes, read on its own thread into a buffer the run can
+/// take before the pipe ends.
+struct OutputReader {
+    read: Arc<Mutex<Vec<u8>>>,
+    ended: mpsc::Receiver<()>,
+}
+
+impl OutputReader {
+    /// Read `handle` until it ends or `cap` bytes have been read, then drop
+    /// it.
+    fn spawn(handle: Option<impl std::io::Read + Send + 'static>, cap: usize) -> Self {
+        let read = Arc::new(Mutex::new(Vec::new()));
+        let (end, ended) = mpsc::channel();
+        let into = Arc::clone(&read);
+        std::thread::spawn(move || {
+            read_into(handle, cap, &into);
+            let _ = end.send(());
+        });
+        Self { read, ended }
+    }
+
+    /// What was read when the reader stopped, or at `deadline` if it has
+    /// not. A reader still running is left to its pipe.
+    fn take(self, deadline: Instant) -> Vec<u8> {
+        let _ = self
+            .ended
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()));
+        std::mem::take(&mut *self.read.lock().expect("mutex poisoned"))
+    }
+}
+
+/// Read from an optional handle into `out` until it ends or `out` holds
+/// `cap` bytes.
+fn read_into(handle: Option<impl std::io::Read>, cap: usize, out: &Mutex<Vec<u8>>) {
+    let Some(mut h) = handle else {
+        return;
     };
-    let mut limited = h.take((MAX_OUTPUT_BYTES + 1) as u64);
-    let mut buf = Vec::new();
-    let _ = limited.read_to_end(&mut buf);
+    let mut chunk = [0u8; 8192];
+    loop {
+        let room = cap.saturating_sub(out.lock().expect("mutex poisoned").len());
+        if room == 0 {
+            return;
+        }
+        let want = room.min(chunk.len());
+        match h.read(&mut chunk[..want]) {
+            Ok(0) => return,
+            Ok(n) => out
+                .lock()
+                .expect("mutex poisoned")
+                .extend_from_slice(&chunk[..n]),
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return,
+        }
+    }
+}
+
+/// Output read with a cap of MAX_OUTPUT_BYTES + 1, as `(content, truncated)`:
+/// the extra byte shows the stream ran past MAX_OUTPUT_BYTES.
+fn capped_text(mut buf: Vec<u8>) -> (String, bool) {
     let truncated = buf.len() > MAX_OUTPUT_BYTES;
     if truncated {
         buf.truncate(MAX_OUTPUT_BYTES);
@@ -499,6 +541,12 @@ fn read_capped(handle: Option<impl std::io::Read>) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn read_capped(handle: Option<impl std::io::Read>) -> (String, bool) {
+        let out = Mutex::new(Vec::new());
+        read_into(handle, MAX_OUTPUT_BYTES + 1, &out);
+        capped_text(out.into_inner().expect("mutex poisoned"))
+    }
 
     #[test]
     fn happy_path_echo() {
@@ -857,6 +905,54 @@ mod tests {
                 "the probe returned only after its leftover exited: {elapsed:?}"
             );
             assert_eq!(recorded.survivors(), Vec::<libc::pid_t>::new());
+        }
+
+        /// A shell command that forks a child which calls `setsid`, records
+        /// its pid, and sleeps holding the probe's output. The command ends
+        /// only once the child has left the probe's group.
+        fn detach_holding_output(recorded: &Recorded) -> String {
+            format!(
+                "perl -MPOSIX -e 'pipe(my $r, my $w) or die; my $pid = fork() // die; \
+                 if ($pid == 0) {{ close $r; POSIX::setsid() or die; close $w; sleep 20; exit 0 }} \
+                 close $w; <$r>; open(my $p, q{{>>}}, q{{{}}}) or die; print $p \"$pid\\n\"; close $p;'",
+                recorded.path()
+            )
+        }
+
+        /// Where anc is no subreaper, as on macOS, nothing ends a leftover
+        /// that left the probe's group, so the reads stop waiting on the
+        /// pipes it holds. Unit tests never make anc a subreaper, so this
+        /// runs that path on Linux too.
+        #[test]
+        fn a_detached_leftover_holding_the_output_does_not_hold_the_probe() {
+            let recorded = Recorded::new();
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh");
+            let script = format!("{}; echo done", detach_holding_output(&recorded));
+            let start = Instant::now();
+            let result = runner.run(&["-c", &script], &[]);
+            let elapsed = start.elapsed();
+            assert_eq!(recorded.pids().len(), 1, "the leftover never detached");
+            assert_eq!(result.stdout.trim(), "done");
+            assert!(
+                elapsed < Duration::from_secs(3),
+                "the probe returned only after its detached leftover exited: {elapsed:?}"
+            );
+        }
+
+        #[test]
+        fn a_detached_leftover_holding_the_output_does_not_hold_a_partial_read() {
+            let recorded = Recorded::new();
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh");
+            let script = format!("{}; echo abcdefgh", detach_holding_output(&recorded));
+            let start = Instant::now();
+            let result = runner.run_partial(&["-c", &script], 4);
+            let elapsed = start.elapsed();
+            assert_eq!(recorded.pids().len(), 1, "the leftover never detached");
+            assert_eq!(result.stdout, "abcd");
+            assert!(
+                elapsed < Duration::from_secs(3),
+                "the partial read returned only after its detached leftover exited: {elapsed:?}"
+            );
         }
     }
 }

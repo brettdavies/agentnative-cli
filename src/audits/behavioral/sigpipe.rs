@@ -35,7 +35,15 @@ impl Audit for SigpipeAudit {
         let result = runner.run_partial(&["--help"], 16);
 
         let status = match result.status {
-            RunStatus::Ok => AuditStatus::Pass,
+            RunStatus::Ok => match result.exit_code {
+                Some(code) if code != 0 && runner.run(&["--help"], &[]).exit_code == Some(0) => {
+                    AuditStatus::Fail(format!(
+                        "`--help` exited {code} once its reader closed the pipe, where the full \
+                         `--help` exits 0"
+                    ))
+                }
+                _ => AuditStatus::Pass,
+            },
             #[cfg(unix)]
             RunStatus::Crash { signal } if signal == libc::SIGPIPE => AuditStatus::Pass,
             RunStatus::Crash { signal } => AuditStatus::Fail(format!(
@@ -120,6 +128,29 @@ mod tests {
         let result = SigpipeAudit.run(&project).expect("audit should run");
         assert!(
             matches!(result.status, AuditStatus::Pass),
+            "{:?}",
+            result.status
+        );
+    }
+
+    /// The stand-in ignores SIGPIPE, as Rust does by default, and exits 101
+    /// when a write fails, as `println!` panics on a closed pipe. Its help is
+    /// longer than a pipe buffer, so the partial read's early close reaches it.
+    #[cfg(unix)]
+    #[test]
+    fn sigpipe_fails_a_help_that_exits_non_zero_once_its_reader_closes_the_pipe() {
+        let project = crate::audits::behavioral::tests::test_project_with_sh_script(
+            "trap '' PIPE\n\
+             i=0\n\
+             while [ $i -lt 20000 ]; do\n\
+             echo \"usage line $i of a long help text\" || exit 101\n\
+             i=$((i + 1))\n\
+             done",
+        );
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(&result.status, AuditStatus::Fail(evidence)
+                if evidence == "`--help` exited 101 once its reader closed the pipe, where the full `--help` exits 0"),
             "{:?}",
             result.status
         );

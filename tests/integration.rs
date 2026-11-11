@@ -2354,12 +2354,13 @@ fn survivors(pids: &[libc::pid_t]) -> Vec<libc::pid_t> {
 }
 
 /// Start `anc audit` on a fixture whose every probe hangs, with each signal
-/// in `ignored` set to be ignored, as `nohup` sets SIGHUP, and return once
-/// a probe is running.
+/// in `ignored` set to be ignored, as `nohup` sets SIGHUP, and `env` added to
+/// anc's environment, and return once a probe is running.
 #[cfg(unix)]
 fn audit_until_a_probe_runs(
     pids: &std::path::Path,
     ignored: &'static [libc::c_int],
+    env: &[(&str, &str)],
 ) -> std::process::Child {
     use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
@@ -2375,6 +2376,7 @@ fn audit_until_a_probe_runs(
         .env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config())
         .env("ANC_TEST_PID_FILE", pids)
         .env("ANC_TEST_PROBE_HANG", "1")
+        .envs(env.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     // SAFETY: the closure runs between fork and exec and calls only signal,
@@ -2403,7 +2405,7 @@ fn interrupting_an_audit_ends_the_probe_it_was_running() {
     use std::os::unix::process::ExitStatusExt;
 
     let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
     let status = anc.wait().expect("anc exits");
@@ -2431,7 +2433,7 @@ fn a_signal_anc_was_started_ignoring_stays_ignored() {
     use std::time::Duration;
 
     let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = audit_until_a_probe_runs(pids.path(), &[libc::SIGINT]);
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[libc::SIGINT], &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
     std::thread::sleep(Duration::from_millis(300));
@@ -2463,7 +2465,7 @@ fn a_signal_anc_was_started_ignoring_stays_ignored() {
 #[cfg(target_os = "linux")]
 fn killing_anc_ends_the_probe_it_was_running() {
     let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGKILL) };
     anc.wait().expect("anc exits");
@@ -2474,6 +2476,43 @@ fn killing_anc_ends_the_probe_it_was_running() {
     assert!(
         !survivors.contains(&probe),
         "the probe {probe} outlived anc"
+    );
+}
+
+/// A signal that ends anc while a probe runs also ends what the probe moved
+/// out of its process group, which anc adopted as the probe died.
+#[test]
+#[cfg(target_os = "linux")]
+fn terminating_an_audit_ends_what_a_probe_moved_out_of_its_group() {
+    use std::time::{Duration, Instant};
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[("ANC_TEST_PROBE_SETSID", "1")]);
+    let started = recorded_pids(pids.path());
+    // The fixture records the leftover's pid when it forks it, before the
+    // leftover calls `setsid`, and until then the group kill would end it.
+    let left_its_group = || {
+        // SAFETY: getpgid only reads another process's group.
+        let pgid = unsafe { libc::getpgid(started[0]) };
+        pgid > 0 && pgid != started[1]
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while started.len() == 2 && !left_its_group() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let escaped = started.len() == 2 && left_its_group();
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGTERM) };
+    anc.wait().expect("anc exits");
+
+    let survivors = survivors(&started);
+    assert!(
+        escaped,
+        "the leftover never left the probe's group: {started:?}"
+    );
+    assert!(
+        survivors.is_empty(),
+        "these processes outlived the terminated audit: {survivors:?}"
     );
 }
 

@@ -36,6 +36,10 @@ impl Audit for SigpipeAudit {
 
         let status = match result.status {
             RunStatus::Ok => match result.exit_code {
+                // A shell reports a child that died of a signal as 128 plus
+                // the signal number, so 141 is the tool's SIGPIPE death.
+                #[cfg(unix)]
+                Some(code) if code == 128 + libc::SIGPIPE => AuditStatus::Pass,
                 Some(code) if code != 0 && runner.run(&["--help"], &[]).exit_code == Some(0) => {
                     AuditStatus::Fail(format!(
                         "`--help` exited {code} once its reader closed the pipe, where the full \
@@ -151,6 +155,34 @@ mod tests {
         assert!(
             matches!(&result.status, AuditStatus::Fail(evidence)
                 if evidence == "`--help` exited 101 once its reader closed the pipe, where the full `--help` exits 0"),
+            "{:?}",
+            result.status
+        );
+    }
+
+    /// A launcher that runs the tool without `exec` reports the tool's
+    /// SIGPIPE death as exit 141. `seq`'s output is longer than a pipe
+    /// buffer and shorter than the full probe's capture limit.
+    #[cfg(unix)]
+    #[test]
+    fn sigpipe_passes_a_launcher_reporting_its_tools_sigpipe_death() {
+        let project =
+            crate::audits::behavioral::tests::test_project_with_sh_script("seq 1 100000\nexit $?");
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::Pass),
+            "{:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn sigpipe_passes_a_help_that_exits_non_zero_when_read_in_full_too() {
+        let project =
+            crate::audits::behavioral::tests::test_project_with_sh_script("echo usage; exit 2");
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::Pass),
             "{:?}",
             result.status
         );

@@ -2503,3 +2503,66 @@ fn an_audit_ends_what_a_probe_moved_out_of_its_group() {
         "these processes outlived the audit: {survivors:?}"
     );
 }
+
+/// A process a probe moves out of its process group while it still holds the
+/// probe's output cannot hold the audit: the reader waits for end of file,
+/// which comes only when every holder of the pipe has exited. The tool's
+/// leftover sleeps far past the bound, so an audit that waits for it fails.
+#[test]
+#[cfg(unix)]
+fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::time::{Duration, Instant};
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pids = dir.path().join("pids");
+    let tool = dir.path().join("tool");
+    // `setsid(1)` is Linux-only; perl's POSIX::setsid runs on macOS too.
+    let script = format!(
+        "#!/bin/sh\n\
+         perl -MPOSIX -e 'POSIX::setsid(); sleep 300' &\n\
+         echo \"$!\" >>'{}'\n\
+         echo \"usage: tool [--help] [--version]\"\n",
+        pids.display()
+    );
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o755)
+        .open(&tool)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, script.as_bytes()))
+        .expect("write the tool");
+
+    let mut anc = std::process::Command::new(env!("CARGO_BIN_EXE_anc"))
+        .args([
+            "audit",
+            tool.to_str().expect("utf-8 path"),
+            "--output",
+            "json",
+        ])
+        .env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("anc starts");
+    let started = Instant::now();
+    let bound = Duration::from_secs(30);
+    let ended = loop {
+        if anc.try_wait().expect("anc's status").is_some() {
+            break true;
+        }
+        if started.elapsed() >= bound {
+            let _ = anc.kill();
+            let _ = anc.wait();
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let leftovers = recorded_pids(&pids);
+    survivors(&leftovers);
+    assert!(!leftovers.is_empty(), "the tool never ran");
+    assert!(
+        ended,
+        "anc audit was still running after {bound:?}, held by a leftover with the probe's output"
+    );
+}

@@ -39,8 +39,10 @@
 //! - `GIT_HARDEN_FLAGS` — five `-c key=value` pairs (`credential.helper`,
 //!   `core.askPass`, `protocol.allow=never`, `protocol.https.allow=always`,
 //!   `http.followRedirects`).
-//! - `GIT_HARDEN_ENV_REMOVE` — five env vars stripped before spawn (SSH /
-//!   proxy / askpass / exec-path overrides).
+//! - `GIT_HARDEN_ENV_REMOVE` — twelve env vars stripped before spawn (SSH /
+//!   proxy / askpass / exec-path overrides, the template directory, config
+//!   from the environment, and work-tree / index / object-store /
+//!   common-dir paths).
 //! - `GIT_HARDEN_ENV_SET` — three env vars set on the spawned process:
 //!   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`
 //!   together disable every layer of user-controlled git config (the
@@ -103,7 +105,14 @@ pub const GIT_HARDEN_FLAGS: &[&str] = &[
 
 /// Environment variables removed via `Command::env_remove` before spawn.
 /// Each one is a known git-side override that could redirect or hijack the
-/// clone. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
+/// clone: a template's hooks run in it, `GIT_CONFIG_COUNT` and
+/// `GIT_CONFIG_PARAMETERS` add config (`core.hooksPath` included) that
+/// `GIT_CONFIG_GLOBAL` does not cover, the work tree, index, and object
+/// variables write the checkout or its objects somewhere else, and
+/// `GIT_COMMON_DIR` puts the clone's config, objects, and hooks in another
+/// repository.
+/// `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` are inert without
+/// `GIT_CONFIG_COUNT`. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
 /// list — removing them would let git fall back to default config paths
 /// (`~/.gitconfig`, `/etc/gitconfig`); we instead point them at `/dev/null`
 /// via [`GIT_HARDEN_ENV_SET`] to actively disable user-controlled config.
@@ -115,6 +124,13 @@ pub const GIT_HARDEN_ENV_REMOVE: &[&str] = &[
     "GIT_PROXY_COMMAND",
     "GIT_ASKPASS",
     "GIT_EXEC_PATH",
+    "GIT_TEMPLATE_DIR",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
 ];
 
 /// Environment variables *set* (not removed) on the spawned process. The
@@ -1013,6 +1029,122 @@ mod tests {
         assert_eq!(
             s,
             "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git /home/u/.claude/skills/agent-native-cli",
+        );
+    }
+
+    /// Clones a one-file local repository with the command
+    /// `build_clone_command` builds, replayed over the caller's environment:
+    /// `caller_env` first, then every change the built command makes.
+    /// `protocol.file.allow` goes ahead of the hardening flags only because
+    /// the source is a local repository.
+    #[cfg(unix)]
+    fn clone_over(tmp: &Path, caller_env: &[(&str, &Path)]) -> PathBuf {
+        let src = tmp.join("src");
+        let src = src.to_str().expect("utf-8 path");
+        git_ok(&["init", "-q", src]);
+        fs::write(Path::new(src).join("SKILL.md"), "# skill\n").expect("write");
+        git_ok(&["-C", src, "add", "SKILL.md"]);
+        git_ok(&[
+            "-C",
+            src,
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "skill",
+        ]);
+
+        let dest = tmp.join("dest");
+        let built = build_clone_command(&format!("file://{src}"), &dest);
+        let mut cmd = Command::new(built.get_program());
+        cmd.envs(caller_env.iter().copied());
+        cmd.args(["-c", "protocol.file.allow=always"]);
+        cmd.args(built.get_args());
+        for (key, value) in built.get_envs() {
+            match value {
+                Some(value) => cmd.env(key, value),
+                None => cmd.env_remove(key),
+            };
+        }
+        let out = cmd.output().expect("git clone");
+        assert!(
+            out.status.success(),
+            "clone failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            dest.join("SKILL.md").is_file(),
+            "the clone checked nothing out"
+        );
+        dest
+    }
+
+    #[cfg(unix)]
+    fn git_ok(args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .envs(GIT_HARDEN_ENV_SET.iter().copied())
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}: {status}");
+    }
+
+    /// Writes a `post-checkout` hook into `hooks` that creates `marker`.
+    #[cfg(unix)]
+    fn hook_that_touches(hooks: &Path, marker: &Path) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        fs::create_dir_all(hooks).expect("mkdir");
+        let hook = hooks.join("post-checkout");
+        fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).expect("write");
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+
+    /// A `post-checkout` hook in the caller's `GIT_TEMPLATE_DIR` does not run
+    /// in the clone.
+    #[cfg(unix)]
+    #[test]
+    fn clone_runs_no_hook_from_the_callers_template_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let template = tmp.path().join("template");
+        let ran = tmp.path().join("hook-ran");
+        hook_that_touches(&template.join("hooks"), &ran);
+
+        clone_over(tmp.path(), &[("GIT_TEMPLATE_DIR", &template)]);
+
+        assert!(!ran.exists(), "the template's post-checkout hook ran");
+    }
+
+    /// A repository the caller's `GIT_COMMON_DIR` names is left alone: its
+    /// hooks do not run and its config does not change.
+    #[cfg(unix)]
+    #[test]
+    fn clone_leaves_the_callers_common_dir_alone() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let other = tmp.path().join("other");
+        git_ok(&["init", "-q", other.to_str().expect("utf-8 path")]);
+        let common = other.join(".git");
+        let ran = tmp.path().join("hook-ran");
+        hook_that_touches(&common.join("hooks"), &ran);
+        let config = fs::read_to_string(common.join("config")).expect("read config");
+
+        let dest = clone_over(tmp.path(), &[("GIT_COMMON_DIR", &common)]);
+
+        assert!(
+            !ran.exists(),
+            "the other repository's post-checkout hook ran"
+        );
+        assert_eq!(
+            fs::read_to_string(common.join("config")).expect("read config"),
+            config,
+            "the clone wrote the other repository's config"
+        );
+        assert!(
+            dest.join(".git/config").is_file(),
+            "the clone has no config"
         );
     }
 }

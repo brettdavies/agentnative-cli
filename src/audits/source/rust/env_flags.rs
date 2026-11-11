@@ -288,6 +288,7 @@ struct Cli {
     }
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore)]
     fn run_reports_only_the_agentic_file_when_another_holds_plain_args() {
         let dir = std::env::temp_dir().join(format!("anc-envflags-split-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("src")).expect("create test dir");

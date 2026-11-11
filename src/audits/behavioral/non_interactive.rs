@@ -153,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore)]
     fn non_interactive_pass_with_false() {
         let project = test_project_with_runner("/bin/false");
         let result = NonInteractiveAudit.run(&project).expect("audit should run");

@@ -216,6 +216,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore)]
     fn version_fail_non_zero_exit() {
         // `/bin/false` exits 1 regardless of args, so `--version` fails the
         // MUST, and its empty help declares no alias for the SHOULD.

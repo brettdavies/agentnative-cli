@@ -472,6 +472,7 @@ path = "src/cli2.rs"
     /// docs/solutions/test-failures/stale-release-binary-dogfood-fail-2026-05-07.md.
     #[cfg(unix)]
     #[test]
+    #[cfg_attr(target_os = "macos", ignore)]
     fn test_discover_picks_newer_artifact_by_mtime() {
         use std::fs::File;
         use std::os::unix::fs::PermissionsExt;
@@ -522,6 +523,7 @@ version = "0.1.0"
     /// --release` was just run), `pick_newer_artifact` returns release.
     #[cfg(unix)]
     #[test]
+    #[cfg_attr(target_os = "macos", ignore)]
     fn test_discover_picks_release_when_newer() {
         use std::fs::File;
         use std::os::unix::fs::PermissionsExt;

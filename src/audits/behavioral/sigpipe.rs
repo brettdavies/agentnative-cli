@@ -43,7 +43,8 @@ impl Audit for SigpipeAudit {
                 Some(code) if code != 0 && runner.run(&["--help"], &[]).exit_code == Some(0) => {
                     AuditStatus::Fail(format!(
                         "`--help` exited {code} once its reader closed the pipe, where the full \
-                         `--help` exits 0"
+                         `--help` exits 0. Restore the default SIGPIPE action, or exit 0 when a \
+                         write finds the reader gone."
                     ))
                 }
                 _ => AuditStatus::Pass,
@@ -154,7 +155,7 @@ mod tests {
         let result = SigpipeAudit.run(&project).expect("audit should run");
         assert!(
             matches!(&result.status, AuditStatus::Fail(evidence)
-                if evidence == "`--help` exited 101 once its reader closed the pipe, where the full `--help` exits 0"),
+                if evidence == "`--help` exited 101 once its reader closed the pipe, where the full `--help` exits 0. Restore the default SIGPIPE action, or exit 0 when a write finds the reader gone."),
             "{:?}",
             result.status
         );

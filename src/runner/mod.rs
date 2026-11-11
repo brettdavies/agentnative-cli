@@ -459,11 +459,13 @@ enum Waited {
     Killed,
 }
 
-/// How long the output reads get, once the probe's group is dead, to reach
-/// the end of what the probe wrote. By then only a process that left the
-/// group can hold a pipe open. On Linux anc reaps it with the group; where
-/// anc is no subreaper, as on macOS, it can hold the pipe for as long as it
-/// runs, and the run takes what was read by this deadline.
+/// How long the output reads get, once the probe has ended, to reach the end
+/// of what the probe wrote. On Unix the group is dead by then, so only a
+/// process that left the group can hold a pipe open. On Linux anc reaps it
+/// with the group; where anc is no subreaper, as on macOS, it can hold the
+/// pipe for as long as it runs. Windows has no group kill, so any process
+/// the probe started can still hold a pipe. Either way the run takes what
+/// was read by this deadline.
 const READ_GRACE: Duration = Duration::from_millis(500);
 
 /// One of a probe's pipes, read on its own thread into a buffer the run can

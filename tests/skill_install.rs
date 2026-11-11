@@ -425,3 +425,180 @@ fn exit_codes_match_p4_convention() {
         );
     }
 }
+
+/// `HOME` with a bundle installed for `claude_code`: `SKILL.md` and a file
+/// the operator added beside it. Returns the install's path.
+fn installed_bundle(home: &std::path::Path) -> std::path::PathBuf {
+    let dest = home.join(".claude/skills/agent-native-cli");
+    std::fs::create_dir_all(&dest).expect("mkdir install");
+    std::fs::write(dest.join("SKILL.md"), "# installed\n").expect("write SKILL.md");
+    std::fs::write(dest.join("notes.md"), "local notes\n").expect("write notes");
+    dest
+}
+
+/// A directory holding a stand-in `git` that runs `script`, for `PATH`.
+#[cfg(unix)]
+fn stand_in_git(dir: &std::path::Path, script: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).expect("mkdir bin");
+    let git = bin.join("git");
+    std::fs::write(&git, format!("#!/bin/sh\n{script}\n")).expect("write git");
+    std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).expect("chmod git");
+    bin
+}
+
+/// The entries of the skills directory beside the install.
+#[cfg(unix)]
+fn skills_dir_entries(home: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(home.join(".claude/skills"))
+        .expect("read skills dir")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// An update whose clone fails keeps the install it was replacing.
+#[cfg(unix)]
+#[test]
+fn update_keeps_the_install_when_the_clone_fails() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let dest = installed_bundle(home.path());
+    let tools = tempfile::tempdir().expect("tempdir");
+    let bin = stand_in_git(tools.path(), "echo 'fatal: unable to access' >&2; exit 128");
+
+    let out = cmd_with_home(home.path())
+        .env("PATH", bin)
+        .args(["skill", "update", "claude_code", "--output", "json"])
+        .output()
+        .expect("anc spawn");
+
+    assert_eq!(out.status.code(), Some(1));
+    let v: Value = serde_json::from_slice(&out.stdout).expect("valid JSON envelope");
+    assert_eq!(v["reason"], "git-clone-failed");
+    assert_eq!(
+        std::fs::read_to_string(dest.join("SKILL.md"))
+            .ok()
+            .as_deref(),
+        Some("# installed\n"),
+        "the failed update removed the install",
+    );
+    assert_eq!(
+        std::fs::read_to_string(dest.join("notes.md"))
+            .ok()
+            .as_deref(),
+        Some("local notes\n"),
+    );
+    assert_eq!(skills_dir_entries(home.path()), ["agent-native-cli"]);
+}
+
+/// An update whose clone succeeds replaces the install and leaves nothing
+/// of the old one behind.
+#[cfg(unix)]
+#[test]
+fn update_replaces_the_install_and_leaves_no_copy_behind() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let dest = installed_bundle(home.path());
+    let tools = tempfile::tempdir().expect("tempdir");
+    let bin = stand_in_git(
+        tools.path(),
+        "for arg; do dest=$arg; done\nmkdir -p \"$dest\" && echo '# fresh' > \"$dest/SKILL.md\"",
+    );
+
+    let out = cmd_with_home(home.path())
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .args(["skill", "update", "claude_code", "--output", "json"])
+        .output()
+        .expect("anc spawn");
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: Value = serde_json::from_slice(&out.stdout).expect("valid JSON envelope");
+    assert_eq!(v["status"], "success");
+    assert_eq!(
+        std::fs::read_to_string(dest.join("SKILL.md")).expect("SKILL.md"),
+        "# fresh\n"
+    );
+    assert!(
+        !dest.join("notes.md").exists(),
+        "the old install's files remain"
+    );
+    assert_eq!(skills_dir_entries(home.path()), ["agent-native-cli"]);
+}
+
+/// A dry run of an update over an install reports what the update would
+/// do: replace it.
+#[test]
+fn update_dry_run_over_an_install_would_succeed() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let dest = installed_bundle(home.path());
+
+    let out = cmd_with_home(home.path())
+        .args([
+            "skill",
+            "update",
+            "claude_code",
+            "--dry-run",
+            "--output",
+            "json",
+        ])
+        .output()
+        .expect("anc spawn");
+
+    assert_eq!(out.status.code(), Some(0));
+    let v: Value = serde_json::from_slice(&out.stdout).expect("valid JSON envelope");
+    assert_eq!(v["action"], "skill-update");
+    assert_eq!(v["status"], "success");
+    assert_eq!(v["would_succeed"], true);
+    assert!(v["reason"].is_null(), "reason: {}", v["reason"]);
+    assert!(
+        dest.join("SKILL.md").is_file(),
+        "a dry run changed the install"
+    );
+}
+
+/// An update does not remove an install that is a link to a directory
+/// elsewhere: it stops at the populated destination, as an install does.
+#[cfg(unix)]
+#[test]
+fn update_leaves_a_symlinked_install_in_place() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let checkout = tempfile::tempdir().expect("tempdir");
+    std::fs::write(checkout.path().join("SKILL.md"), "# linked\n").expect("write SKILL.md");
+    let skills = home.path().join(".claude/skills");
+    std::fs::create_dir_all(&skills).expect("mkdir skills");
+    let link = skills.join("agent-native-cli");
+    std::os::unix::fs::symlink(checkout.path(), &link).expect("symlink");
+
+    let out = cmd_with_home(home.path())
+        .env("PATH", home.path())
+        .args(["skill", "update", "claude_code", "--output", "json"])
+        .output()
+        .expect("anc spawn");
+
+    assert_eq!(out.status.code(), Some(1));
+    let v: Value = serde_json::from_slice(&out.stdout).expect("valid JSON envelope");
+    assert_eq!(v["reason"], "destination-not-empty");
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .expect("the link exists")
+            .file_type()
+            .is_symlink(),
+        "the update replaced the link"
+    );
+    assert_eq!(
+        std::fs::read_to_string(checkout.path().join("SKILL.md")).expect("SKILL.md"),
+        "# linked\n"
+    );
+}

@@ -326,6 +326,16 @@ pub fn compute_install_envelope(
     host: SkillHost,
     dry_run: bool,
 ) -> Result<InstallEnvelope, AppError> {
+    install_envelope(host, dry_run, check_destination)
+}
+
+/// [`compute_install_envelope`] with `check` reading the destination in
+/// place of [`check_destination`].
+fn install_envelope(
+    host: SkillHost,
+    dry_run: bool,
+    check: fn(&Path) -> Result<DestinationStatus, AppError>,
+) -> Result<InstallEnvelope, AppError> {
     let (url, dest_template) = resolve_host(host);
     let host_str = host_envelope_str(host);
     let mode_str = if dry_run { MODE_DRY_RUN } else { MODE_INSTALL };
@@ -360,7 +370,7 @@ pub fn compute_install_envelope(
 
     // Step 2: destination check. Conflict variants surface as envelope
     // errors; DestReadFailed propagates (internal I/O failure).
-    let dest_status = match check_destination(&dest) {
+    let dest_status = match check(&dest) {
         Ok(s) => s,
         Err(AppError::DestIsFile { .. }) => {
             return Ok(InstallEnvelope {
@@ -593,44 +603,95 @@ fn emit_envelope(envelope: &InstallEnvelope, output: OutputFormat) {
 }
 
 /// Compute the update envelope: same shape as install, but the action
-/// label switches to `skill-update` and a pre-step removes the resolved
-/// destination if it already contains an installed bundle.
+/// label switches to `skill-update` and an installed bundle at the resolved
+/// destination is replaced.
 ///
-/// Removal scope is narrow: we only proceed if the destination is a
-/// directory (the install pipeline's normal output). Symlinks, regular
-/// files, and missing paths fall through to `compute_install_envelope`
-/// where the typed reasons (`destination-is-file` / `home-not-set`)
-/// surface in the envelope.
+/// Replacement scope is narrow: only a directory, not a link to one, that
+/// holds the bundle's `SKILL.md` is replaced. Symlinks, regular files, other
+/// directories, and missing paths fall through to `compute_install_envelope`
+/// where the typed reasons (`destination-not-empty` / `destination-is-file`
+/// / `home-not-set`) surface in the envelope. A dry run reads an installed
+/// bundle as the clone finds the destination once the update has moved it
+/// aside, so its verdict is the update's.
 pub fn compute_update_envelope(
     host: SkillHost,
     dry_run: bool,
 ) -> Result<InstallEnvelope, AppError> {
     let (_, dest_template) = resolve_host(host);
-    let dest = match expand_tilde(dest_template) {
-        Ok(p) => p,
-        Err(_) => {
-            // Tilde expansion failed; delegate to install which surfaces
-            // the `home-not-set` reason in the same shape.
-            let mut env = compute_install_envelope(host, dry_run)?;
-            env.action = ACTION_UPDATE;
-            return Ok(env);
-        }
+    let installed = expand_tilde(dest_template)
+        .ok()
+        .filter(|dest| holds_bundle(dest));
+    let mut env = match installed {
+        None => compute_install_envelope(host, dry_run)?,
+        Some(_) if dry_run => install_envelope(host, dry_run, |_| Ok(DestinationStatus::Absent))?,
+        Some(dest) => replace_bundle(host, &dest)?,
     };
-
-    if !dry_run && dest.is_dir() {
-        // Refuse if the directory does not contain a marker file from the
-        // skill bundle — protects against `update` deleting an unrelated
-        // path the user typed by mistake. The marker is the bundle's
-        // SKILL.md (committed at the bundle root by agentnative-skill).
-        let marker = dest.join("SKILL.md");
-        if marker.is_file() {
-            std::fs::remove_dir_all(&dest).map_err(AppError::Io)?;
-        }
-    }
-
-    let mut env = compute_install_envelope(host, dry_run)?;
     env.action = ACTION_UPDATE;
     Ok(env)
+}
+
+/// Whether `dest` is a directory, not a link to one, holding the bundle's
+/// `SKILL.md` at its root, so `update` never deletes a path the user typed
+/// by mistake or a checkout a link points at.
+fn holds_bundle(dest: &Path) -> bool {
+    fs::symlink_metadata(dest).is_ok_and(|meta| meta.is_dir()) && dest.join("SKILL.md").is_file()
+}
+
+/// Clone the bundle in place of the install at `dest`. The install is moved
+/// aside first and deleted only once the clone succeeds; on any other
+/// outcome what the clone left is deleted and the install is moved back, so
+/// a failed update leaves the install it found.
+fn replace_bundle(host: SkillHost, dest: &Path) -> Result<InstallEnvelope, AppError> {
+    let aside = aside_path(dest);
+    fs::rename(dest, &aside).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!(
+                "could not move the install at {} aside to {}, so it was left unchanged: {e}",
+                dest.display(),
+                aside.display()
+            ),
+        )
+    })?;
+    let outcome = compute_install_envelope(host, false);
+    if outcome
+        .as_ref()
+        .is_ok_and(|env| env.status == STATUS_SUCCESS)
+    {
+        if let Err(e) = fs::remove_dir_all(&aside) {
+            eprintln!(
+                "warning: the update succeeded, but the replaced install at {} could not be removed: {e}",
+                aside.display()
+            );
+        }
+    } else {
+        // The install was moved off `dest`, so a directory there now is what
+        // a failed clone wrote, such as git's checkout when it fails.
+        let cleared = if fs::symlink_metadata(dest).is_ok_and(|meta| meta.is_dir()) {
+            fs::remove_dir_all(dest)
+        } else {
+            Ok(())
+        };
+        cleared.and_then(|()| fs::rename(&aside, dest)).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!(
+                    "the update failed and could not move the install back to {}: {e}. The install is at {}; move it back to {} once nothing is there.",
+                    dest.display(),
+                    aside.display(),
+                    dest.display()
+                ),
+            )
+        })?;
+    }
+    outcome
+}
+
+/// Where an update keeps the install it is replacing: a hidden sibling, so
+/// the move is a rename on one filesystem and no host loads it as a skill.
+fn aside_path(dest: &Path) -> PathBuf {
+    let name = dest.file_name().unwrap_or_default().to_string_lossy();
+    dest.with_file_name(format!(".{name}.anc-update-{}", std::process::id()))
 }
 
 const ACTION_UPDATE: &str = "skill-update";

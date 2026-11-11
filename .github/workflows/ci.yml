@@ -111,8 +111,6 @@ jobs:
       # definition; the job fails when a help string changes without a
       # regeneration.
       completions: true
-      cross_os_tests: true
-      jobs: '["test-macos"]'
 
   # A job of its own so its checks report as `warm / <job>`, never under a
   # required `ci / <job>` name. rust-cache keys on the reusable's job ids, not

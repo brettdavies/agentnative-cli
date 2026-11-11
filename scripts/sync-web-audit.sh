@@ -33,10 +33,13 @@
 #   WEB_AUDIT_DEST_ROOT        Repository root to write into or check.
 #                              Default: the repository this script lives in.
 #
-# Every git call runs with the same hardening src/skill_install.rs applies to
+# Every git call runs with the hardening src/skill_install.rs applies to
 # `anc skill install`: user and system git config disabled, credential
-# prompts off, SSH/proxy/askpass/exec-path overrides stripped, and the five
-# `-c` flags below. tests/sync_web_audit.rs pins that surface.
+# prompts off, the SSH/proxy/askpass/exec-path overrides, template directory,
+# config from the environment, and work-tree/index/object-store/common-dir
+# paths stripped, and the five `-c` flags below. It also strips GIT_DIR, which
+# `git clone` ignores but this script's `git init`, `git remote add`, and
+# `git fetch` honor. tests/sync_web_audit.rs pins that surface.
 
 set -euo pipefail
 
@@ -69,6 +72,8 @@ GIT_HARDEN_FLAGS=(
 
 hardened_git() {
   env -u GIT_SSH -u GIT_SSH_COMMAND -u GIT_PROXY_COMMAND -u GIT_ASKPASS -u GIT_EXEC_PATH \
+    -u GIT_TEMPLATE_DIR -u GIT_CONFIG_COUNT -u GIT_CONFIG_PARAMETERS \
+    -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY -u GIT_COMMON_DIR \
     GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0 \
     git "${GIT_HARDEN_FLAGS[@]}" "$@"
 }

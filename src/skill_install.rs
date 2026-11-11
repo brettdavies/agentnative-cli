@@ -39,8 +39,10 @@
 //! - `GIT_HARDEN_FLAGS` — five `-c key=value` pairs (`credential.helper`,
 //!   `core.askPass`, `protocol.allow=never`, `protocol.https.allow=always`,
 //!   `http.followRedirects`).
-//! - `GIT_HARDEN_ENV_REMOVE` — five env vars stripped before spawn (SSH /
-//!   proxy / askpass / exec-path overrides).
+//! - `GIT_HARDEN_ENV_REMOVE` — twelve env vars stripped before spawn (SSH /
+//!   proxy / askpass / exec-path overrides, the template directory, config
+//!   from the environment, and work-tree / index / object-store /
+//!   common-dir paths).
 //! - `GIT_HARDEN_ENV_SET` — three env vars set on the spawned process:
 //!   `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_SYSTEM=/dev/null`
 //!   together disable every layer of user-controlled git config (the
@@ -103,7 +105,14 @@ pub const GIT_HARDEN_FLAGS: &[&str] = &[
 
 /// Environment variables removed via `Command::env_remove` before spawn.
 /// Each one is a known git-side override that could redirect or hijack the
-/// clone. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
+/// clone: a template's hooks run in it, `GIT_CONFIG_COUNT` and
+/// `GIT_CONFIG_PARAMETERS` add config (`core.hooksPath` included) that
+/// `GIT_CONFIG_GLOBAL` does not cover, the work tree, index, and object
+/// variables write the checkout or its objects somewhere else, and
+/// `GIT_COMMON_DIR` puts the clone's config, objects, and hooks in another
+/// repository.
+/// `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` are inert without
+/// `GIT_CONFIG_COUNT`. `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` are **not** in this
 /// list — removing them would let git fall back to default config paths
 /// (`~/.gitconfig`, `/etc/gitconfig`); we instead point them at `/dev/null`
 /// via [`GIT_HARDEN_ENV_SET`] to actively disable user-controlled config.
@@ -115,6 +124,13 @@ pub const GIT_HARDEN_ENV_REMOVE: &[&str] = &[
     "GIT_PROXY_COMMAND",
     "GIT_ASKPASS",
     "GIT_EXEC_PATH",
+    "GIT_TEMPLATE_DIR",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
 ];
 
 /// Environment variables *set* (not removed) on the spawned process. The
@@ -326,6 +342,16 @@ pub fn compute_install_envelope(
     host: SkillHost,
     dry_run: bool,
 ) -> Result<InstallEnvelope, AppError> {
+    install_envelope(host, dry_run, check_destination)
+}
+
+/// [`compute_install_envelope`] with `check` reading the destination in
+/// place of [`check_destination`].
+fn install_envelope(
+    host: SkillHost,
+    dry_run: bool,
+    check: fn(&Path) -> Result<DestinationStatus, AppError>,
+) -> Result<InstallEnvelope, AppError> {
     let (url, dest_template) = resolve_host(host);
     let host_str = host_envelope_str(host);
     let mode_str = if dry_run { MODE_DRY_RUN } else { MODE_INSTALL };
@@ -360,7 +386,7 @@ pub fn compute_install_envelope(
 
     // Step 2: destination check. Conflict variants surface as envelope
     // errors; DestReadFailed propagates (internal I/O failure).
-    let dest_status = match check_destination(&dest) {
+    let dest_status = match check(&dest) {
         Ok(s) => s,
         Err(AppError::DestIsFile { .. }) => {
             return Ok(InstallEnvelope {
@@ -593,44 +619,95 @@ fn emit_envelope(envelope: &InstallEnvelope, output: OutputFormat) {
 }
 
 /// Compute the update envelope: same shape as install, but the action
-/// label switches to `skill-update` and a pre-step removes the resolved
-/// destination if it already contains an installed bundle.
+/// label switches to `skill-update` and an installed bundle at the resolved
+/// destination is replaced.
 ///
-/// Removal scope is narrow: we only proceed if the destination is a
-/// directory (the install pipeline's normal output). Symlinks, regular
-/// files, and missing paths fall through to `compute_install_envelope`
-/// where the typed reasons (`destination-is-file` / `home-not-set`)
-/// surface in the envelope.
+/// Replacement scope is narrow: only a directory, not a link to one, that
+/// holds the bundle's `SKILL.md` is replaced. Symlinks, regular files, other
+/// directories, and missing paths fall through to `compute_install_envelope`
+/// where the typed reasons (`destination-not-empty` / `destination-is-file`
+/// / `home-not-set`) surface in the envelope. A dry run reads an installed
+/// bundle as the clone finds the destination once the update has moved it
+/// aside, so its verdict is the update's.
 pub fn compute_update_envelope(
     host: SkillHost,
     dry_run: bool,
 ) -> Result<InstallEnvelope, AppError> {
     let (_, dest_template) = resolve_host(host);
-    let dest = match expand_tilde(dest_template) {
-        Ok(p) => p,
-        Err(_) => {
-            // Tilde expansion failed; delegate to install which surfaces
-            // the `home-not-set` reason in the same shape.
-            let mut env = compute_install_envelope(host, dry_run)?;
-            env.action = ACTION_UPDATE;
-            return Ok(env);
-        }
+    let installed = expand_tilde(dest_template)
+        .ok()
+        .filter(|dest| holds_bundle(dest));
+    let mut env = match installed {
+        None => compute_install_envelope(host, dry_run)?,
+        Some(_) if dry_run => install_envelope(host, dry_run, |_| Ok(DestinationStatus::Absent))?,
+        Some(dest) => replace_bundle(host, &dest)?,
     };
-
-    if !dry_run && dest.is_dir() {
-        // Refuse if the directory does not contain a marker file from the
-        // skill bundle — protects against `update` deleting an unrelated
-        // path the user typed by mistake. The marker is the bundle's
-        // SKILL.md (committed at the bundle root by agentnative-skill).
-        let marker = dest.join("SKILL.md");
-        if marker.is_file() {
-            std::fs::remove_dir_all(&dest).map_err(AppError::Io)?;
-        }
-    }
-
-    let mut env = compute_install_envelope(host, dry_run)?;
     env.action = ACTION_UPDATE;
     Ok(env)
+}
+
+/// Whether `dest` is a directory, not a link to one, holding the bundle's
+/// `SKILL.md` at its root, so `update` never deletes a path the user typed
+/// by mistake or a checkout a link points at.
+fn holds_bundle(dest: &Path) -> bool {
+    fs::symlink_metadata(dest).is_ok_and(|meta| meta.is_dir()) && dest.join("SKILL.md").is_file()
+}
+
+/// Clone the bundle in place of the install at `dest`. The install is moved
+/// aside first and deleted only once the clone succeeds; on any other
+/// outcome what the clone left is deleted and the install is moved back, so
+/// a failed update leaves the install it found.
+fn replace_bundle(host: SkillHost, dest: &Path) -> Result<InstallEnvelope, AppError> {
+    let aside = aside_path(dest);
+    fs::rename(dest, &aside).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!(
+                "could not move the install at {} aside to {}, so it was left unchanged: {e}",
+                dest.display(),
+                aside.display()
+            ),
+        )
+    })?;
+    let outcome = compute_install_envelope(host, false);
+    if outcome
+        .as_ref()
+        .is_ok_and(|env| env.status == STATUS_SUCCESS)
+    {
+        if let Err(e) = fs::remove_dir_all(&aside) {
+            eprintln!(
+                "warning: the update succeeded, but the replaced install at {} could not be removed: {e}",
+                aside.display()
+            );
+        }
+    } else {
+        // The install was moved off `dest`, so a directory there now is what
+        // a failed clone wrote, such as git's checkout when it fails.
+        let cleared = if fs::symlink_metadata(dest).is_ok_and(|meta| meta.is_dir()) {
+            fs::remove_dir_all(dest)
+        } else {
+            Ok(())
+        };
+        cleared.and_then(|()| fs::rename(&aside, dest)).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!(
+                    "the update failed and could not move the install back to {}: {e}. The install is at {}; move it back to {} once nothing is there.",
+                    dest.display(),
+                    aside.display(),
+                    dest.display()
+                ),
+            )
+        })?;
+    }
+    outcome
+}
+
+/// Where an update keeps the install it is replacing: a hidden sibling, so
+/// the move is a rename on one filesystem and no host loads it as a skill.
+fn aside_path(dest: &Path) -> PathBuf {
+    let name = dest.file_name().unwrap_or_default().to_string_lossy();
+    dest.with_file_name(format!(".{name}.anc-update-{}", std::process::id()))
 }
 
 const ACTION_UPDATE: &str = "skill-update";
@@ -952,6 +1029,122 @@ mod tests {
         assert_eq!(
             s,
             "git clone --depth 1 https://github.com/brettdavies/agentnative-skill.git /home/u/.claude/skills/agent-native-cli",
+        );
+    }
+
+    /// Clones a one-file local repository with the command
+    /// `build_clone_command` builds, replayed over the caller's environment:
+    /// `caller_env` first, then every change the built command makes.
+    /// `protocol.file.allow` goes ahead of the hardening flags only because
+    /// the source is a local repository.
+    #[cfg(unix)]
+    fn clone_over(tmp: &Path, caller_env: &[(&str, &Path)]) -> PathBuf {
+        let src = tmp.join("src");
+        let src = src.to_str().expect("utf-8 path");
+        git_ok(&["init", "-q", src]);
+        fs::write(Path::new(src).join("SKILL.md"), "# skill\n").expect("write");
+        git_ok(&["-C", src, "add", "SKILL.md"]);
+        git_ok(&[
+            "-C",
+            src,
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "skill",
+        ]);
+
+        let dest = tmp.join("dest");
+        let built = build_clone_command(&format!("file://{src}"), &dest);
+        let mut cmd = Command::new(built.get_program());
+        cmd.envs(caller_env.iter().copied());
+        cmd.args(["-c", "protocol.file.allow=always"]);
+        cmd.args(built.get_args());
+        for (key, value) in built.get_envs() {
+            match value {
+                Some(value) => cmd.env(key, value),
+                None => cmd.env_remove(key),
+            };
+        }
+        let out = cmd.output().expect("git clone");
+        assert!(
+            out.status.success(),
+            "clone failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            dest.join("SKILL.md").is_file(),
+            "the clone checked nothing out"
+        );
+        dest
+    }
+
+    #[cfg(unix)]
+    fn git_ok(args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .envs(GIT_HARDEN_ENV_SET.iter().copied())
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}: {status}");
+    }
+
+    /// Writes a `post-checkout` hook into `hooks` that creates `marker`.
+    #[cfg(unix)]
+    fn hook_that_touches(hooks: &Path, marker: &Path) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        fs::create_dir_all(hooks).expect("mkdir");
+        let hook = hooks.join("post-checkout");
+        fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).expect("write");
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+
+    /// A `post-checkout` hook in the caller's `GIT_TEMPLATE_DIR` does not run
+    /// in the clone.
+    #[cfg(unix)]
+    #[test]
+    fn clone_runs_no_hook_from_the_callers_template_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let template = tmp.path().join("template");
+        let ran = tmp.path().join("hook-ran");
+        hook_that_touches(&template.join("hooks"), &ran);
+
+        clone_over(tmp.path(), &[("GIT_TEMPLATE_DIR", &template)]);
+
+        assert!(!ran.exists(), "the template's post-checkout hook ran");
+    }
+
+    /// A repository the caller's `GIT_COMMON_DIR` names is left alone: its
+    /// hooks do not run and its config does not change.
+    #[cfg(unix)]
+    #[test]
+    fn clone_leaves_the_callers_common_dir_alone() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let other = tmp.path().join("other");
+        git_ok(&["init", "-q", other.to_str().expect("utf-8 path")]);
+        let common = other.join(".git");
+        let ran = tmp.path().join("hook-ran");
+        hook_that_touches(&common.join("hooks"), &ran);
+        let config = fs::read_to_string(common.join("config")).expect("read config");
+
+        let dest = clone_over(tmp.path(), &[("GIT_COMMON_DIR", &common)]);
+
+        assert!(
+            !ran.exists(),
+            "the other repository's post-checkout hook ran"
+        );
+        assert_eq!(
+            fs::read_to_string(common.join("config")).expect("read config"),
+            config,
+            "the clone wrote the other repository's config"
+        );
+        assert!(
+            dest.join(".git/config").is_file(),
+            "the clone has no config"
         );
     }
 }

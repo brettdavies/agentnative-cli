@@ -7,8 +7,9 @@
 //!
 //! A probe in its own group is outside the terminal's foreground group, so a
 //! Ctrl-C no longer reaches it. anc forwards each signal that would have
-//! reached it, and a terminate, to every live probe group, then dies of the
-//! signal itself.
+//! reached it, and a terminate, to every live probe group, on Linux kills
+//! what those probes moved out of their groups, then dies of the signal
+//! itself.
 //!
 //! A group can only be forwarded to once it is registered, and a probe can be
 //! running before `spawn` returns. So the handler is in place before the first
@@ -234,6 +235,8 @@ fn end_probes_and_die(signal: libc::c_int) {
             unsafe { libc::kill(-pgid, libc::SIGKILL) };
         }
     }
+    #[cfg(target_os = "linux")]
+    super::orphans::reap_for_signal();
     // SA_RESETHAND restored the default action, so the signal ends anc the
     // way it would have without the handler.
     // SAFETY: raise only sends a signal.

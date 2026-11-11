@@ -1208,6 +1208,7 @@ fn test_subcommand_flag_alone_injects_audit() {
 // not route to the explicit `audit` subcommand.
 
 #[test]
+#[cfg_attr(target_os = "macos", ignore)]
 fn test_command_flag_value_matching_subcommand_name() {
     // `anc --command audit` — `audit` is the value of `--command`. Should
     // try to resolve a binary named "audit" on PATH (which doesn't exist on
@@ -2354,12 +2355,13 @@ fn survivors(pids: &[libc::pid_t]) -> Vec<libc::pid_t> {
 }
 
 /// Start `anc audit` on a fixture whose every probe hangs, with each signal
-/// in `ignored` set to be ignored, as `nohup` sets SIGHUP, and return once
-/// a probe is running.
+/// in `ignored` set to be ignored, as `nohup` sets SIGHUP, and `env` added to
+/// anc's environment, and return once a probe is running.
 #[cfg(unix)]
 fn audit_until_a_probe_runs(
     pids: &std::path::Path,
     ignored: &'static [libc::c_int],
+    env: &[(&str, &str)],
 ) -> std::process::Child {
     use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
@@ -2375,6 +2377,7 @@ fn audit_until_a_probe_runs(
         .env("AGENTNATIVE_HOME_CONFIG", common::empty_home_config())
         .env("ANC_TEST_PID_FILE", pids)
         .env("ANC_TEST_PROBE_HANG", "1")
+        .envs(env.iter().copied())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     // SAFETY: the closure runs between fork and exec and calls only signal,
@@ -2403,7 +2406,7 @@ fn interrupting_an_audit_ends_the_probe_it_was_running() {
     use std::os::unix::process::ExitStatusExt;
 
     let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
     let status = anc.wait().expect("anc exits");
@@ -2431,7 +2434,7 @@ fn a_signal_anc_was_started_ignoring_stays_ignored() {
     use std::time::Duration;
 
     let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = audit_until_a_probe_runs(pids.path(), &[libc::SIGINT]);
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[libc::SIGINT], &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGINT) };
     std::thread::sleep(Duration::from_millis(300));
@@ -2463,7 +2466,7 @@ fn a_signal_anc_was_started_ignoring_stays_ignored() {
 #[cfg(target_os = "linux")]
 fn killing_anc_ends_the_probe_it_was_running() {
     let pids = tempfile::NamedTempFile::new().expect("temp file");
-    let mut anc = audit_until_a_probe_runs(pids.path(), &[]);
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[]);
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGKILL) };
     anc.wait().expect("anc exits");
@@ -2474,6 +2477,43 @@ fn killing_anc_ends_the_probe_it_was_running() {
     assert!(
         !survivors.contains(&probe),
         "the probe {probe} outlived anc"
+    );
+}
+
+/// A signal that ends anc while a probe runs also ends what the probe moved
+/// out of its process group, which anc adopted as the probe died.
+#[test]
+#[cfg(target_os = "linux")]
+fn terminating_an_audit_ends_what_a_probe_moved_out_of_its_group() {
+    use std::time::{Duration, Instant};
+
+    let pids = tempfile::NamedTempFile::new().expect("temp file");
+    let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[("ANC_TEST_PROBE_SETSID", "1")]);
+    let started = recorded_pids(pids.path());
+    // The fixture records the leftover's pid when it forks it, before the
+    // leftover calls `setsid`, and until then the group kill would end it.
+    let left_its_group = || {
+        // SAFETY: getpgid only reads another process's group.
+        let pgid = unsafe { libc::getpgid(started[0]) };
+        pgid > 0 && pgid != started[1]
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while started.len() == 2 && !left_its_group() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let escaped = started.len() == 2 && left_its_group();
+    // SAFETY: kill only sends a signal.
+    unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGTERM) };
+    anc.wait().expect("anc exits");
+
+    let survivors = survivors(&started);
+    assert!(
+        escaped,
+        "the leftover never left the probe's group: {started:?}"
+    );
+    assert!(
+        survivors.is_empty(),
+        "these processes outlived the terminated audit: {survivors:?}"
     );
 }
 
@@ -2504,10 +2544,9 @@ fn an_audit_ends_what_a_probe_moved_out_of_its_group() {
     );
 }
 
-/// A process a probe moves out of its process group while it still holds the
-/// probe's output cannot hold the audit: the reader waits for end of file,
-/// which comes only when every holder of the pipe has exited. The tool's
-/// leftover sleeps far past the bound, so an audit that waits for it fails.
+/// Where anc is no child subreaper, as on macOS, nothing ends a process a
+/// probe moves out of its group with `setsid`, so one left holding the
+/// probe's output must not keep the audit waiting on that output.
 #[test]
 #[cfg(unix)]
 fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
@@ -2565,7 +2604,6 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
         }
         std::thread::sleep(Duration::from_millis(50));
     };
-    let elapsed = started.elapsed();
     let leftovers = recorded_pids(&pids);
     let groups: Vec<(i64, i64)> = std::fs::read_to_string(&escaped)
         .unwrap_or_default()
@@ -2575,16 +2613,7 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
             Some((it.next()??, it.next()??))
         })
         .collect();
-    let alive = survivors(&leftovers);
-    let report = format!(
-        "S11 probe: ended={ended} after {elapsed:?}; leftovers={}; escaped (pid==pgrp)={}/{}; alive at end={}\n",
-        leftovers.len(),
-        groups.iter().filter(|(pid, pgrp)| pid == pgrp).count(),
-        groups.len(),
-        alive.len()
-    );
-    // SAFETY: a write to fd 2 bypasses libtest's capture, so the CI log shows it.
-    unsafe { libc::write(2, report.as_ptr().cast(), report.len()) };
+    survivors(&leftovers);
     assert!(!leftovers.is_empty(), "the tool never ran");
     assert!(
         groups.len() == leftovers.len() && groups.iter().all(|(pid, pgrp)| pid == pgrp),

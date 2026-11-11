@@ -1,7 +1,8 @@
 //! Pins the git-hardening surface of `scripts/sync-web-audit.sh`: every git
 //! call runs with user and system config disabled, credential prompts off,
-//! the SSH, proxy, askpass and exec-path overrides stripped, and the five
-//! `-c` flags `src/skill_install.rs` applies to `anc skill install`. A `git`
+//! the environment variables `src/skill_install.rs` strips for
+//! `anc skill install` stripped along with `GIT_DIR`, and the five `-c` flags
+//! it applies. A `git`
 //! shim on `PATH` records what the first invocation received and then fails,
 //! so the test needs no network and no site checkout.
 
@@ -10,6 +11,8 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
+
+use agentnative::skill_install::GIT_HARDEN_ENV_REMOVE;
 
 const EXPECTED_FLAGS: [&str; 10] = [
     "-c",
@@ -24,14 +27,12 @@ const EXPECTED_FLAGS: [&str; 10] = [
     "http.followRedirects=false",
 ];
 
-/// Every environment variable the script must strip before calling git.
-const STRIPPED: [&str; 5] = [
-    "GIT_SSH",
-    "GIT_SSH_COMMAND",
-    "GIT_PROXY_COMMAND",
-    "GIT_ASKPASS",
-    "GIT_EXEC_PATH",
-];
+/// Every environment variable the script must strip before calling git: the
+/// clone's list, and `GIT_DIR`, which `git clone` ignores but the script's
+/// `git init`, `git remote add`, and `git fetch` honor.
+fn stripped() -> impl Iterator<Item = &'static str> {
+    GIT_HARDEN_ENV_REMOVE.iter().copied().chain(["GIT_DIR"])
+}
 
 fn repo_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -53,12 +54,13 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
                printf 'GIT_CONFIG_GLOBAL=%s\\n' \"${{GIT_CONFIG_GLOBAL-<unset>}}\"\n\
                printf 'GIT_CONFIG_SYSTEM=%s\\n' \"${{GIT_CONFIG_SYSTEM-<unset>}}\"\n\
                printf 'GIT_TERMINAL_PROMPT=%s\\n' \"${{GIT_TERMINAL_PROMPT-<unset>}}\"\n\
-               for v in GIT_SSH GIT_SSH_COMMAND GIT_PROXY_COMMAND GIT_ASKPASS GIT_EXEC_PATH; do\n\
+               for v in {stripped}; do\n\
                  printf '%s=%s\\n' \"$v\" \"${{!v-<unset>}}\"\n\
                done\n\
              }} >> {log}\n\
              exit 1\n",
-            log = log.display()
+            log = log.display(),
+            stripped = stripped().collect::<Vec<_>>().join(" ")
         ),
     )
     .unwrap();
@@ -81,7 +83,7 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
             "WEB_AUDIT_SITE_REMOTE_URL",
             "https://example.invalid/site.git",
         );
-    for var in STRIPPED {
+    for var in stripped() {
         cmd.env(var, "leaked");
     }
     let output = cmd.output().expect("run the sync script");
@@ -107,7 +109,7 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
     ] {
         assert!(recorded.contains(line), "{line} missing from {recorded}");
     }
-    for var in STRIPPED {
+    for var in stripped() {
         assert!(
             recorded.contains(&format!("{var}=<unset>")),
             "{var} must be stripped: {recorded}"

@@ -165,7 +165,8 @@ impl BinaryRunner {
     }
 
     /// Run the binary but read only `read_bytes` from stdout, then drop the
-    /// handle (triggering SIGPIPE on the child). Not cached.
+    /// handle (triggering SIGPIPE on the child). The status says how the probe
+    /// ended, `Timeout` when the runner killed it at its deadline. Not cached.
     pub fn run_partial(&self, args: &[&str], read_bytes: usize) -> RunResult {
         let mut cmd = self.probe_command(args);
 
@@ -174,59 +175,66 @@ impl BinaryRunner {
             Err(e) => return Self::classify_spawn_error(e),
         };
 
-        // Read only the requested number of bytes from stdout.
-        let mut buf = vec![0u8; read_bytes];
+        // The read runs on its own thread so the deadline bounds a probe that
+        // writes less than `read_bytes` and keeps its output open.
         let stdout_handle = child.stdout.take();
-        let bytes_read = match stdout_handle {
-            Some(mut h) => {
-                let mut total = 0;
+        let stdout_thread = std::thread::spawn(move || {
+            let mut buf = vec![0u8; read_bytes];
+            let mut total = 0;
+            if let Some(mut h) = stdout_handle {
                 while total < read_bytes {
                     match h.read(&mut buf[total..]) {
-                        Ok(0) => break,
+                        Ok(0) | Err(_) => break,
                         Ok(n) => total += n,
-                        Err(_) => break,
                     }
                 }
-                total
             }
-            None => 0,
-        };
-        // stdout handle is dropped here, which may cause SIGPIPE.
+            // stdout handle is dropped here, which may cause SIGPIPE.
+            buf.truncate(total);
+            buf
+        });
 
         let stderr_handle = child.stderr.take();
         let stderr_thread = std::thread::spawn(move || read_capped(stderr_handle));
-        let exit = self.wait_or_kill(&mut child);
+        let waited = self.wait_or_kill(&mut child);
         group.kill();
+        let stdout = stdout_thread.join().unwrap_or_default();
         let (stderr_output, stderr_truncated) = stderr_thread.join().unwrap_or_default();
 
-        let stdout_str = String::from_utf8_lossy(&buf[..bytes_read]).into_owned();
+        let stdout_str = String::from_utf8_lossy(&stdout).into_owned();
 
-        RunResult {
-            exit_code: exit.and_then(|s| s.code()),
-            stdout: stdout_str,
-            stderr: stderr_output,
-            status: RunStatus::Ok,
-            stdout_truncated: false,
-            stderr_truncated,
+        match waited {
+            Waited::Killed => RunResult {
+                exit_code: None,
+                stdout: stdout_str,
+                stderr: stderr_output,
+                status: RunStatus::Timeout,
+                stdout_truncated: false,
+                stderr_truncated,
+            },
+            Waited::Ended(status) => {
+                Self::classify_exit(status, stdout_str, stderr_output, false, stderr_truncated)
+            }
         }
     }
 
     /// Wait for `child` to exit, and kill it once the runner's timeout has
     /// passed: a probe that writes nothing more never gets the SIGPIPE a
     /// partial read relies on.
-    fn wait_or_kill(&self, child: &mut Child) -> Option<ExitStatus> {
+    fn wait_or_kill(&self, child: &mut Child) -> Waited {
         let deadline = Instant::now() + self.timeout;
         loop {
             match child.try_wait() {
-                Ok(Some(status)) => return Some(status),
+                Ok(Some(status)) => return Waited::Ended(Some(status)),
                 Ok(None) if Instant::now() < deadline => {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 Ok(None) => {
                     let _ = child.kill();
-                    return child.wait().ok();
+                    let _ = child.wait();
+                    return Waited::Killed;
                 }
-                Err(_) => return None,
+                Err(_) => return Waited::Ended(None),
             }
         }
     }
@@ -456,6 +464,14 @@ impl BinaryRunner {
             },
         }
     }
+}
+
+/// How [`BinaryRunner::wait_or_kill`] ended a probe.
+enum Waited {
+    /// The probe ended on its own; `None` when waiting on it failed.
+    Ended(Option<ExitStatus>),
+    /// The runner killed the probe at its deadline.
+    Killed,
 }
 
 /// Read from an optional handle, capping at MAX_OUTPUT_BYTES.
@@ -785,8 +801,7 @@ mod tests {
         /// partial read ends it at the timeout.
         #[test]
         fn a_partial_read_ends_a_probe_that_stops_writing() {
-            let runner =
-                BinaryRunner::new("/bin/sh".into(), Duration::from_millis(300)).expect("sh");
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(1)).expect("sh");
             let start = Instant::now();
             let result = runner.run_partial(&["-c", "echo abcdefgh; exec sleep 20"], 4);
             let elapsed = start.elapsed();
@@ -794,6 +809,35 @@ mod tests {
             assert!(
                 elapsed < Duration::from_secs(3),
                 "the partial read waited out the probe: {elapsed:?}"
+            );
+            assert_eq!(result.status, RunStatus::Timeout);
+        }
+
+        /// A probe that writes less than the read asks for and keeps its
+        /// output open still ends at the timeout.
+        #[test]
+        fn a_partial_read_ends_a_probe_that_writes_less_than_it_reads() {
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(1)).expect("sh");
+            let start = Instant::now();
+            let result = runner.run_partial(&["-c", "printf ab; exec sleep 20"], 16);
+            let elapsed = start.elapsed();
+            assert!(
+                elapsed < Duration::from_secs(3),
+                "the partial read waited out the probe: {elapsed:?}"
+            );
+            assert_eq!(result.stdout, "ab");
+            assert_eq!(result.status, RunStatus::Timeout);
+        }
+
+        #[test]
+        fn a_partial_read_reports_a_crash() {
+            let runner = BinaryRunner::new("/bin/sh".into(), Duration::from_secs(5)).expect("sh");
+            let result = runner.run_partial(&["-c", "echo abcdefgh; kill -SEGV $$"], 4);
+            assert_eq!(
+                result.status,
+                RunStatus::Crash {
+                    signal: libc::SIGSEGV
+                }
             );
         }
 

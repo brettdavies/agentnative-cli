@@ -2518,14 +2518,19 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
     let pids = dir.path().join("pids");
     let escaped = dir.path().join("escaped");
     let tool = dir.path().join("tool");
-    // `setsid(1)` is Linux-only; perl's POSIX::setsid runs on macOS too.
+    // `setsid(1)` is Linux-only; perl's POSIX::setsid runs on macOS too. The
+    // tool exits only once its child has left the group, so the probe's kill
+    // can never reach the child before it detaches.
     let script = format!(
         "#!/bin/sh\n\
-         perl -MPOSIX -e 'POSIX::setsid() or die; open(my $f, q{{>>}}, q{{{}}}) or die; print $f \"$$ \", getpgrp(), \"\\n\"; close $f; sleep 300' &\n\
-         echo \"$!\" >>'{}'\n\
+         perl -MPOSIX -e 'pipe(my $r, my $w) or die; my $pid = fork() // die; \
+         if ($pid == 0) {{ close $r; POSIX::setsid() or die; \
+         open(my $f, q{{>>}}, q{{{escaped}}}) or die; print $f \"$$ \", getpgrp(), \"\\n\"; close $f; \
+         close $w; sleep 300; exit 0 }} \
+         close $w; <$r>; open(my $p, q{{>>}}, q{{{pids}}}) or die; print $p \"$pid\\n\"; close $p;'\n\
          echo \"usage: tool [--help] [--version]\"\n",
-        escaped.display(),
-        pids.display()
+        escaped = escaped.display(),
+        pids = pids.display()
     );
     std::fs::OpenOptions::new()
         .write(true)
@@ -2562,25 +2567,14 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
     };
     let elapsed = started.elapsed();
     let leftovers = recorded_pids(&pids);
-    let read_groups = || -> Vec<(i64, i64)> {
-        std::fs::read_to_string(&escaped)
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|l| {
-                let mut it = l.split_whitespace().map(|t| t.parse::<i64>().ok());
-                Some((it.next()??, it.next()??))
-            })
-            .collect()
-    };
-    let escape_deadline = Instant::now() + Duration::from_secs(5);
-    let mut groups = read_groups();
-    for _ in 0..100 {
-        if groups.len() >= leftovers.len() || Instant::now() >= escape_deadline {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-        groups = read_groups();
-    }
+    let groups: Vec<(i64, i64)> = std::fs::read_to_string(&escaped)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.split_whitespace().map(|t| t.parse::<i64>().ok());
+            Some((it.next()??, it.next()??))
+        })
+        .collect();
     let alive = survivors(&leftovers);
     let report = format!(
         "S11 probe: ended={ended} after {elapsed:?}; leftovers={}; escaped (pid==pgrp)={}/{}; alive at end={}\n",
@@ -2593,7 +2587,7 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
     unsafe { libc::write(2, report.as_ptr().cast(), report.len()) };
     assert!(!leftovers.is_empty(), "the tool never ran");
     assert!(
-        !groups.is_empty() && groups.iter().all(|(pid, pgrp)| pid == pgrp),
+        groups.len() == leftovers.len() && groups.iter().all(|(pid, pgrp)| pid == pgrp),
         "the leftover never left the probe's group: {groups:?}"
     );
     assert!(

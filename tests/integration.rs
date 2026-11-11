@@ -2516,13 +2516,15 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
 
     let dir = tempfile::tempdir().expect("tempdir");
     let pids = dir.path().join("pids");
+    let escaped = dir.path().join("escaped");
     let tool = dir.path().join("tool");
     // `setsid(1)` is Linux-only; perl's POSIX::setsid runs on macOS too.
     let script = format!(
         "#!/bin/sh\n\
-         perl -MPOSIX -e 'POSIX::setsid(); sleep 300' &\n\
+         perl -MPOSIX -e 'POSIX::setsid() or die; open(my $f, q{{>>}}, q{{{}}}) or die; print $f \"$$ \", getpgrp(), \"\\n\"; close $f; sleep 300' &\n\
          echo \"$!\" >>'{}'\n\
          echo \"usage: tool [--help] [--version]\"\n",
+        escaped.display(),
         pids.display()
     );
     std::fs::OpenOptions::new()
@@ -2558,9 +2560,42 @@ fn a_leftover_holding_a_probes_output_does_not_hold_the_audit() {
         }
         std::thread::sleep(Duration::from_millis(50));
     };
+    let elapsed = started.elapsed();
     let leftovers = recorded_pids(&pids);
-    survivors(&leftovers);
+    let read_groups = || -> Vec<(i64, i64)> {
+        std::fs::read_to_string(&escaped)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let mut it = l.split_whitespace().map(|t| t.parse::<i64>().ok());
+                Some((it.next()??, it.next()??))
+            })
+            .collect()
+    };
+    let escape_deadline = Instant::now() + Duration::from_secs(5);
+    let mut groups = read_groups();
+    for _ in 0..100 {
+        if groups.len() >= leftovers.len() || Instant::now() >= escape_deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        groups = read_groups();
+    }
+    let alive = survivors(&leftovers);
+    let report = format!(
+        "S11 probe: ended={ended} after {elapsed:?}; leftovers={}; escaped (pid==pgrp)={}/{}; alive at end={}\n",
+        leftovers.len(),
+        groups.iter().filter(|(pid, pgrp)| pid == pgrp).count(),
+        groups.len(),
+        alive.len()
+    );
+    // SAFETY: a write to fd 2 bypasses libtest's capture, so the CI log shows it.
+    unsafe { libc::write(2, report.as_ptr().cast(), report.len()) };
     assert!(!leftovers.is_empty(), "the tool never ran");
+    assert!(
+        !groups.is_empty() && groups.iter().all(|(pid, pgrp)| pid == pgrp),
+        "the leftover never left the probe's group: {groups:?}"
+    );
     assert!(
         ended,
         "anc audit was still running after {bound:?}, held by a leftover with the probe's output"

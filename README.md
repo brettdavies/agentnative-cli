@@ -635,9 +635,10 @@ subreaper while it audits: a process a probe moves out of its group, with `setsi
 app does, is reparented to `anc` and killed when the probe ends. macOS has no equivalent.
 
 An interrupt, hangup, quit, or terminate signal sent to `anc` kills every running probe group before `anc` exits; a
-signal `anc` was started ignoring, as under `nohup`, stays ignored. The handler does not reach a process the running
-probe has already moved out of its group. A `SIGKILL` sent to `anc`, or to its process group, reaches no probe group; on
-Linux the running probe itself is set to die with `anc`, but not what it started, so send `SIGTERM` first.
+signal `anc` was started ignoring, as under `nohup`, stays ignored. On Linux the handler also kills what the running
+probe has already moved out of its group; elsewhere it does not reach such a process. A `SIGKILL` sent to `anc`, or to
+its process group, reaches no probe group; on Linux the running probe itself is set to die with `anc`, but not what it
+started, so send `SIGTERM` first.
 
 `p3-version` runs `--version`, then a short alias (`-V`, `-v`, `-version`) only where the help declares it as a version
 flag: on the `--version` definition, as in `-v, --version  Print version` or `--version (-V)  Print version`, or with a

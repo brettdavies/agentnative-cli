@@ -2484,15 +2484,32 @@ fn killing_anc_ends_the_probe_it_was_running() {
 #[test]
 #[cfg(target_os = "linux")]
 fn terminating_an_audit_ends_what_a_probe_moved_out_of_its_group() {
+    use std::time::{Duration, Instant};
+
     let pids = tempfile::NamedTempFile::new().expect("temp file");
     let mut anc = audit_until_a_probe_runs(pids.path(), &[], &[("ANC_TEST_PROBE_SETSID", "1")]);
+    let started = recorded_pids(pids.path());
+    // The fixture records the leftover's pid when it forks it, before the
+    // leftover calls `setsid`, and until then the group kill would end it.
+    let left_its_group = || {
+        // SAFETY: getpgid only reads another process's group.
+        let pgid = unsafe { libc::getpgid(started[0]) };
+        pgid > 0 && pgid != started[1]
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while started.len() == 2 && !left_its_group() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let escaped = started.len() == 2 && left_its_group();
     // SAFETY: kill only sends a signal.
     unsafe { libc::kill(anc.id() as libc::pid_t, libc::SIGTERM) };
     anc.wait().expect("anc exits");
 
-    let started = recorded_pids(pids.path());
     let survivors = survivors(&started);
-    assert!(!started.is_empty(), "no probe ran before the deadline");
+    assert!(
+        escaped,
+        "the leftover never left the probe's group: {started:?}"
+    );
     assert!(
         survivors.is_empty(),
         "these processes outlived the terminated audit: {survivors:?}"

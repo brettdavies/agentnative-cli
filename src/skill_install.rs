@@ -647,7 +647,7 @@ fn replace_bundle(host: SkillHost, dest: &Path) -> Result<InstallEnvelope, AppEr
         std::io::Error::new(
             e.kind(),
             format!(
-                "moving the install at {} aside to {}: {e}",
+                "could not move the install at {} aside to {}, so it was left unchanged: {e}",
                 dest.display(),
                 aside.display()
             ),
@@ -676,9 +676,10 @@ fn replace_bundle(host: SkillHost, dest: &Path) -> Result<InstallEnvelope, AppEr
             std::io::Error::new(
                 e.kind(),
                 format!(
-                    "the update failed and the install could not be moved back to {}; it is at {}: {e}",
+                    "the update failed and could not move the install back to {}: {e}. The install is at {}; move it back to {} once nothing is there.",
                     dest.display(),
-                    aside.display()
+                    aside.display(),
+                    dest.display()
                 ),
             )
         })?;

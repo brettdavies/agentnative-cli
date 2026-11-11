@@ -541,6 +541,88 @@ fn update_keeps_the_install_when_the_clone_fails_after_writing() {
     assert_eq!(skills_dir_entries(home.path()), ["agent-native-cli"]);
 }
 
+/// An update that cannot move the install back names where it is and what
+/// to do with it.
+#[cfg(unix)]
+#[test]
+fn update_says_where_the_install_is_when_it_cannot_move_it_back() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let dest = installed_bundle(home.path());
+    let tools = tempfile::tempdir().expect("tempdir");
+    let bin = stand_in_git(
+        tools.path(),
+        "for arg; do dest=$arg; done; echo leftover > \"$dest\"; exit 128",
+    );
+
+    let out = cmd_with_home(home.path())
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .args(["skill", "update", "claude_code"])
+        .output()
+        .expect("anc spawn");
+
+    assert_eq!(out.status.code(), Some(2));
+    let aside = skills_dir_entries(home.path())
+        .into_iter()
+        .find(|name| name.starts_with(".agent-native-cli.anc-update-"))
+        .expect("the install is kept beside the destination");
+    let kept = dest.with_file_name(&aside);
+    assert_eq!(
+        std::fs::read_to_string(kept.join("SKILL.md"))
+            .ok()
+            .as_deref(),
+        Some("# installed\n"),
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "The install is at {}; move it back to {} once nothing is there.",
+            kept.display(),
+            dest.display()
+        )),
+        "stderr: {stderr}"
+    );
+}
+
+/// An update that cannot move the install aside says it left the install
+/// alone.
+#[cfg(unix)]
+#[test]
+fn update_says_the_install_is_unchanged_when_it_cannot_move_it_aside() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = tempfile::tempdir().expect("tempdir");
+    let dest = installed_bundle(home.path());
+    let skills = dest.parent().expect("skills dir").to_path_buf();
+    std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o555)).expect("chmod");
+    let writable = std::fs::write(skills.join("probe"), "").is_ok();
+
+    let out = cmd_with_home(home.path())
+        .env("PATH", home.path())
+        .args(["skill", "update", "claude_code"])
+        .output()
+        .expect("anc spawn");
+
+    std::fs::set_permissions(&skills, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    if writable {
+        eprintln!("skipped: a read-only directory is writable for this user");
+        return;
+    }
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "could not move the install at {} aside to",
+            dest.display()
+        )) && stderr.contains("so it was left unchanged"),
+        "stderr: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dest.join("SKILL.md"))
+            .ok()
+            .as_deref(),
+        Some("# installed\n"),
+    );
+}
+
 /// An update whose clone succeeds replaces the install and leaves nothing
 /// of the old one behind.
 #[cfg(unix)]

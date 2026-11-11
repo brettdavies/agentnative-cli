@@ -36,9 +36,16 @@ impl Audit for SigpipeAudit {
 
         let status = match result.status {
             RunStatus::Ok => AuditStatus::Pass,
-            RunStatus::Crash { signal } => {
-                AuditStatus::Fail(format!("crashed on SIGPIPE (signal {signal})"))
-            }
+            #[cfg(unix)]
+            RunStatus::Crash { signal } if signal == libc::SIGPIPE => AuditStatus::Pass,
+            RunStatus::Crash { signal } => AuditStatus::Fail(format!(
+                "`--help` crashed (signal {signal}) during a partial read of its output"
+            )),
+            RunStatus::Timeout => AuditStatus::Warn(
+                "`--help` was still running at the probe timeout, so how it ends once its \
+                 reader closes the pipe could not be observed"
+                    .into(),
+            ),
             _ => AuditStatus::Warn(format!("unexpected status: {:?}", result.status)),
         };
 
@@ -76,11 +83,45 @@ mod tests {
         let result = SigpipeAudit
             .run(&project)
             .expect("audit should not panic on crash");
-        // run_partial always returns Ok status (kills child after partial read),
-        // so a crash script may still yield Pass or a non-panic result
-        assert!(matches!(
-            result.status,
-            AuditStatus::Pass | AuditStatus::Fail(_) | AuditStatus::Warn(_)
-        ));
+        assert!(
+            matches!(&result.status, AuditStatus::Fail(evidence) if evidence.contains("signal 11")),
+            "{:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn sigpipe_warns_a_help_that_outlasts_the_probe() {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(
+            "echo usage; exec sleep 20",
+        );
+        project.runner = Some(
+            crate::runner::BinaryRunner::new(
+                project.binary_paths[0].clone(),
+                std::time::Duration::from_secs(1),
+            )
+            .expect("create test runner"),
+        );
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(&result.status, AuditStatus::Warn(evidence)
+                if evidence == "`--help` was still running at the probe timeout, so how it ends once its reader closes the pipe could not be observed"),
+            "{:?}",
+            result.status
+        );
+    }
+
+    /// A tool with the default SIGPIPE disposition dies of it once its reader
+    /// closes the pipe, which is the graceful end P6 asks for.
+    #[cfg(unix)]
+    #[test]
+    fn sigpipe_passes_a_tool_that_dies_of_sigpipe() {
+        let project = crate::audits::behavioral::tests::test_project_with_sh_script("exec yes");
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::Pass),
+            "{:?}",
+            result.status
+        );
     }
 }

@@ -40,11 +40,19 @@ impl Audit for SigpipeAudit {
                 // the signal number, so 141 is the tool's SIGPIPE death.
                 #[cfg(unix)]
                 Some(code) if code == 128 + libc::SIGPIPE => AuditStatus::Pass,
-                Some(code) if code != 0 && runner.run(&["--help"], &[]).exit_code == Some(0) => {
+                // A crash reports itself on stderr. A tool that ends quietly on a
+                // closed pipe, as Python's documented recipe does with exit 1, has
+                // not crashed.
+                Some(code)
+                    if code != 0
+                        && !result.stderr.is_empty()
+                        && runner.run(&["--help"], &[]).exit_code == Some(0) =>
+                {
                     AuditStatus::Fail(format!(
-                        "`--help` exited {code} once its reader closed the pipe, where the full \
-                         `--help` exits 0. Restore the default SIGPIPE action, or exit 0 when a \
-                         write finds the reader gone."
+                        "`--help` exited {code} with output on stderr once its reader closed the \
+                         pipe, where the full `--help` exits 0. Restore the default SIGPIPE \
+                         action, or end without writing to stderr when a write finds the reader \
+                         gone."
                     ))
                 }
                 _ => AuditStatus::Pass,
@@ -138,9 +146,10 @@ mod tests {
         );
     }
 
-    /// The stand-in ignores SIGPIPE, as Rust does by default, and exits 101
-    /// when a write fails, as `println!` panics on a closed pipe. Its help is
-    /// longer than a pipe buffer, so the partial read's early close reaches it.
+    /// The stand-in ignores SIGPIPE, as Rust does by default, and when a
+    /// write fails it reports on stderr and exits 101, as a panicking
+    /// `println!` does. Its help is longer than a pipe buffer, so the partial
+    /// read's early close reaches it.
     #[cfg(unix)]
     #[test]
     fn sigpipe_fails_a_help_that_exits_non_zero_once_its_reader_closes_the_pipe() {
@@ -148,14 +157,14 @@ mod tests {
             "trap '' PIPE\n\
              i=0\n\
              while [ $i -lt 20000 ]; do\n\
-             echo \"usage line $i of a long help text\" || exit 101\n\
+             echo \"usage line $i of a long help text\" || { echo panicked >&2; exit 101; }\n\
              i=$((i + 1))\n\
              done",
         );
         let result = SigpipeAudit.run(&project).expect("audit should run");
         assert!(
             matches!(&result.status, AuditStatus::Fail(evidence)
-                if evidence == "`--help` exited 101 once its reader closed the pipe, where the full `--help` exits 0. Restore the default SIGPIPE action, or exit 0 when a write finds the reader gone."),
+                if evidence == "`--help` exited 101 with output on stderr once its reader closed the pipe, where the full `--help` exits 0. Restore the default SIGPIPE action, or end without writing to stderr when a write finds the reader gone."),
             "{:?}",
             result.status
         );
@@ -181,6 +190,27 @@ mod tests {
     fn sigpipe_passes_a_help_that_exits_non_zero_when_read_in_full_too() {
         let project =
             crate::audits::behavioral::tests::test_project_with_sh_script("echo usage; exit 2");
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(result.status, AuditStatus::Pass),
+            "{:?}",
+            result.status
+        );
+    }
+
+    /// The stand-in ends as Python's documented `BrokenPipeError` recipe
+    /// does: once a write fails it exits 1 and writes nothing to stderr.
+    #[cfg(unix)]
+    #[test]
+    fn sigpipe_passes_a_help_that_exits_quietly_once_its_reader_closes_the_pipe() {
+        let project = crate::audits::behavioral::tests::test_project_with_sh_script(
+            "trap '' PIPE\n\
+             i=0\n\
+             while [ $i -lt 20000 ]; do\n\
+             echo \"usage line $i of a long help text\" 2>/dev/null || exit 1\n\
+             i=$((i + 1))\n\
+             done",
+        );
         let result = SigpipeAudit.run(&project).expect("audit should run");
         assert!(
             matches!(result.status, AuditStatus::Pass),

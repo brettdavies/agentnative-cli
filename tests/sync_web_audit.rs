@@ -1,7 +1,7 @@
 //! Pins the git-hardening surface of `scripts/sync-web-audit.sh`: every git
 //! call runs with user and system config disabled, credential prompts off,
-//! the SSH, proxy, askpass and exec-path overrides stripped, and the five
-//! `-c` flags `src/skill_install.rs` applies to `anc skill install`. A `git`
+//! the environment variables `src/skill_install.rs` strips for
+//! `anc skill install` stripped, and the five `-c` flags it applies. A `git`
 //! shim on `PATH` records what the first invocation received and then fails,
 //! so the test needs no network and no site checkout.
 
@@ -25,12 +25,19 @@ const EXPECTED_FLAGS: [&str; 10] = [
 ];
 
 /// Every environment variable the script must strip before calling git.
-const STRIPPED: [&str; 5] = [
+const STRIPPED: [&str; 12] = [
     "GIT_SSH",
     "GIT_SSH_COMMAND",
     "GIT_PROXY_COMMAND",
     "GIT_ASKPASS",
     "GIT_EXEC_PATH",
+    "GIT_TEMPLATE_DIR",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
 ];
 
 fn repo_root() -> std::path::PathBuf {
@@ -53,12 +60,13 @@ fn every_git_call_carries_the_hardening_flags_and_environment() {
                printf 'GIT_CONFIG_GLOBAL=%s\\n' \"${{GIT_CONFIG_GLOBAL-<unset>}}\"\n\
                printf 'GIT_CONFIG_SYSTEM=%s\\n' \"${{GIT_CONFIG_SYSTEM-<unset>}}\"\n\
                printf 'GIT_TERMINAL_PROMPT=%s\\n' \"${{GIT_TERMINAL_PROMPT-<unset>}}\"\n\
-               for v in GIT_SSH GIT_SSH_COMMAND GIT_PROXY_COMMAND GIT_ASKPASS GIT_EXEC_PATH; do\n\
+               for v in {stripped}; do\n\
                  printf '%s=%s\\n' \"$v\" \"${{!v-<unset>}}\"\n\
                done\n\
              }} >> {log}\n\
              exit 1\n",
-            log = log.display()
+            log = log.display(),
+            stripped = STRIPPED.join(" ")
         ),
     )
     .unwrap();

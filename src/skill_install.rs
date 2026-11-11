@@ -639,7 +639,8 @@ fn holds_bundle(dest: &Path) -> bool {
 
 /// Clone the bundle in place of the install at `dest`. The install is moved
 /// aside first and deleted only once the clone succeeds; on any other
-/// outcome it is moved back, so a failed update leaves the install it found.
+/// outcome what the clone left is deleted and the install is moved back, so
+/// a failed update leaves the install it found.
 fn replace_bundle(host: SkillHost, dest: &Path) -> Result<InstallEnvelope, AppError> {
     let aside = aside_path(dest);
     fs::rename(dest, &aside).map_err(|e| {
@@ -664,7 +665,14 @@ fn replace_bundle(host: SkillHost, dest: &Path) -> Result<InstallEnvelope, AppEr
             );
         }
     } else {
-        fs::rename(&aside, dest).map_err(|e| {
+        // The install was moved off `dest`, so a directory there now is what
+        // a failed clone wrote, such as git's checkout when it fails.
+        let cleared = if fs::symlink_metadata(dest).is_ok_and(|meta| meta.is_dir()) {
+            fs::remove_dir_all(dest)
+        } else {
+            Ok(())
+        };
+        cleared.and_then(|()| fs::rename(&aside, dest)).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
                 format!(

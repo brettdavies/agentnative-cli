@@ -499,6 +499,48 @@ fn update_keeps_the_install_when_the_clone_fails() {
     assert_eq!(skills_dir_entries(home.path()), ["agent-native-cli"]);
 }
 
+/// A clone that writes the destination before it fails, as git does when
+/// the checkout fails, leaves nothing in the way of the install it replaced.
+#[cfg(unix)]
+#[test]
+fn update_keeps_the_install_when_the_clone_fails_after_writing() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let dest = installed_bundle(home.path());
+    let tools = tempfile::tempdir().expect("tempdir");
+    let bin = stand_in_git(
+        tools.path(),
+        "for arg; do dest=$arg; done; mkdir -p \"$dest\" && echo partial > \"$dest/SKILL.md\"; exit 128",
+    );
+
+    let out = cmd_with_home(home.path())
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .args(["skill", "update", "claude_code", "--output", "json"])
+        .output()
+        .expect("anc spawn");
+
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: Value = serde_json::from_slice(&out.stdout).expect("valid JSON envelope");
+    assert_eq!(v["reason"], "git-clone-failed");
+    assert_eq!(
+        std::fs::read_to_string(dest.join("SKILL.md"))
+            .ok()
+            .as_deref(),
+        Some("# installed\n"),
+    );
+    assert_eq!(
+        std::fs::read_to_string(dest.join("notes.md"))
+            .ok()
+            .as_deref(),
+        Some("local notes\n"),
+    );
+    assert_eq!(skills_dir_entries(home.path()), ["agent-native-cli"]);
+}
+
 /// An update whose clone succeeds replaces the install and leaves nothing
 /// of the old one behind.
 #[cfg(unix)]

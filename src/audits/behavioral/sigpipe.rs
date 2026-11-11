@@ -41,6 +41,11 @@ impl Audit for SigpipeAudit {
             RunStatus::Crash { signal } => AuditStatus::Fail(format!(
                 "`--help` crashed (signal {signal}) during a partial read of its output"
             )),
+            RunStatus::Timeout => AuditStatus::Warn(
+                "`--help` was still running at the probe timeout, so how it ends once its \
+                 reader closes the pipe could not be observed"
+                    .into(),
+            ),
             _ => AuditStatus::Warn(format!("unexpected status: {:?}", result.status)),
         };
 
@@ -80,6 +85,27 @@ mod tests {
             .expect("audit should not panic on crash");
         assert!(
             matches!(&result.status, AuditStatus::Fail(evidence) if evidence.contains("signal 11")),
+            "{:?}",
+            result.status
+        );
+    }
+
+    #[test]
+    fn sigpipe_warns_a_help_that_outlasts_the_probe() {
+        let mut project = crate::audits::behavioral::tests::test_project_with_sh_script(
+            "echo usage; exec sleep 20",
+        );
+        project.runner = Some(
+            crate::runner::BinaryRunner::new(
+                project.binary_paths[0].clone(),
+                std::time::Duration::from_secs(1),
+            )
+            .expect("create test runner"),
+        );
+        let result = SigpipeAudit.run(&project).expect("audit should run");
+        assert!(
+            matches!(&result.status, AuditStatus::Warn(evidence)
+                if evidence == "`--help` was still running at the probe timeout, so how it ends once its reader closes the pipe could not be observed"),
             "{:?}",
             result.status
         );

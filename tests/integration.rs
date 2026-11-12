@@ -1209,16 +1209,15 @@ fn test_subcommand_flag_alone_injects_audit() {
 
 #[test]
 fn test_command_flag_value_matching_subcommand_name() {
-    // `anc --command audit` — `audit` is the value of `--command`. Should
-    // try to resolve a binary named "audit" on PATH (which doesn't exist on
-    // a typical system) and surface a clean "not found" error.
+    // `anc --command emit`: `emit` is the value of `--command`. Should try
+    // to resolve a binary named "emit" on PATH and surface a clean "not
+    // found" error. `emit` rather than `audit`, which macOS ships as
+    // `/usr/sbin/audit`.
     cmd()
-        .args(["--command", "audit"])
+        .args(["--command", "emit"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains(
-            "command 'audit' not found on PATH",
-        ));
+        .stderr(predicate::str::contains("command 'emit' not found on PATH"));
 }
 
 // ── POSIX `--` separator ─────────────────────────────────────────

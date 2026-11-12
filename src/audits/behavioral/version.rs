@@ -217,9 +217,9 @@ mod tests {
 
     #[test]
     fn version_fail_non_zero_exit() {
-        // `/bin/false` exits 1 regardless of args, so `--version` fails the
+        // `/usr/bin/false` exits 1 regardless of args, so `--version` fails the
         // MUST, and its empty help declares no alias for the SHOULD.
-        let (must, should) = rows(&test_project_with_runner("/bin/false"));
+        let (must, should) = rows(&test_project_with_runner("/usr/bin/false"));
         assert!(matches!(must, AuditStatus::Fail(_)), "{must:?}");
         assert!(matches!(should, AuditStatus::Warn(_)), "{should:?}");
     }

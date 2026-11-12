@@ -291,6 +291,7 @@ struct Cli {
     fn run_reports_only_the_agentic_file_when_another_holds_plain_args() {
         let dir = std::env::temp_dir().join(format!("anc-envflags-split-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("src")).expect("create test dir");
+        let dir = std::fs::canonicalize(&dir).expect("resolve test dir");
         std::fs::write(
             dir.join("Cargo.toml"),
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\n",

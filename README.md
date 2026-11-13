@@ -566,8 +566,8 @@ P1 — Non-Interactive by Default
   [PASS] Non-interactive by default (p1-must-no-interactive) (must)
   [PASS] Flags advertise env-var bindings in --help (p1-must-env-var) (must)
   [PASS] Secret-bearing flags expose stdin or *-file companion (p1-must-secret-non-leaky-path) (must)
-  [WARN] Headless auth supported (p1-must-no-browser) (must)
-         Auth code detected but no --no-browser or --headless flag found. Agents need a way to authenticate without a browser.
+  [N/A ] Headless auth supported (p1-must-no-browser) (must)
+         No call into a browser-launching crate (open, opener, webbrowser) found. The requirement applies to tools that authenticate through a browser-based flow; static credentials fall under p1-must-secret-non-leaky-path.
   [N/A ] Prompt calls guarded by a stdin TTY check (p1-should-tty-detection) (should)
          No call into a prompt library (dialoguer, inquire, rpassword, rustyline) found, so there is no prompt to suppress.
   [PASS] No interactive prompt dependencies (p1-must-no-interactive) (must)
@@ -591,7 +591,7 @@ P8 — Discoverable Skill Bundles
 Code Quality
   [PASS] No .unwrap() in source (code-unwrap)
 
-70 audits: 60 pass, 1 warn, 0 fail, 0 opt_out, 1 n_a, 8 skip, 0 error
+70 audits: 60 pass, 0 warn, 0 fail, 0 opt_out, 2 n_a, 8 skip, 0 error
 
 🏆 Score: 100% — your tool qualifies for the agent-native badge.
    Embed in your README:

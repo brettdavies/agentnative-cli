@@ -16,7 +16,7 @@ use agentnative::web_audit::engine::{FetchHandle, RunInput, RunOutcome, RunRepor
 use agentnative::web_audit::fetch::{FetchInit, FetchOptions};
 use agentnative::web_audit::handlers::default_handlers;
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::registry::AUDIT_USER_AGENT;
+use agentnative::web_audit::registry::{AUDIT_USER_AGENT, MCP_DISCOVERY};
 use agentnative::web_audit::scorecard::{NaReason, ScorecardStatus, WebScorecard, to_wire_json};
 use agentnative::web_audit::transport::Request;
 use common::corpus::{
@@ -259,7 +259,7 @@ fn site_rules(endpoint_answer: MockResponse) -> Vec<MockRule> {
         )),
         MockRule::new(
             "GET",
-            "https://example.com/.well-known/mcp/server-card.json",
+            &format!("https://example.com{}", MCP_DISCOVERY.well_known[0]),
         )
         .response(MockResponse::ok(
             200,

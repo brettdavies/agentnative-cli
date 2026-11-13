@@ -3,7 +3,9 @@
 //! vendored site pin, each owned by the site change a later port closes.
 //! The suites compare the replayed corpus with it in both directions, so an
 //! unledgered divergence fails and a ledgered element that now matches fails
-//! until its entry is removed.
+//! until its entry is removed. Entries are true only at the pin that produced
+//! them, so they name it; an empty ledger makes no claim about any pin and
+//! names none, which lets a re-pin that reproduces the corpus touch no ledger.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -34,7 +36,7 @@ pub type Element = (String, String);
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LedgerFile {
-    site_sha: String,
+    site_sha: Option<String>,
     #[serde(default)]
     divergence: Vec<Entry>,
 }
@@ -53,40 +55,64 @@ pub fn ledger_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/web-audit-divergences.toml")
 }
 
-/// The committed ledger, keyed by element. Fails when it was generated at a
-/// different pin, or is unsorted or duplicated.
+/// The committed ledger, keyed by element. Fails when it does not hold at the
+/// vendored pin, or is unsorted or duplicated.
 pub fn load_ledger() -> BTreeMap<Element, String> {
     let raw = fs::read_to_string(ledger_path()).expect("the divergence ledger");
-    let file: LedgerFile = toml::from_str(&raw).expect("the divergence ledger parses");
-    assert_eq!(
-        file.site_sha, SITE_SHA,
-        "the divergence ledger was generated at another site pin; regenerate it"
-    );
+    parse_ledger(&raw, SITE_SHA).unwrap_or_else(|problem| panic!("{problem}"))
+}
+
+/// Reads a ledger against the vendored `pin`.
+pub fn parse_ledger(raw: &str, pin: &str) -> Result<BTreeMap<Element, String>, String> {
+    let file: LedgerFile =
+        toml::from_str(raw).map_err(|e| format!("the divergence ledger does not parse: {e}"))?;
+    match (file.divergence.is_empty(), file.site_sha.as_deref()) {
+        (true, None) => {}
+        (true, Some(named)) => {
+            return Err(format!(
+                "an empty divergence ledger names no site pin; remove site_sha = {named:?}"
+            ));
+        }
+        (false, None) => {
+            return Err(
+                "the divergence ledger has entries and names no site pin; regenerate it"
+                    .to_string(),
+            );
+        }
+        (false, Some(named)) if named != pin => {
+            return Err(format!(
+                "the divergence ledger was generated at site pin {named}, not {pin}; regenerate it"
+            ));
+        }
+        (false, Some(_)) => {}
+    }
     let keys: Vec<Element> = file
         .divergence
         .iter()
         .map(|e| (e.scenario.clone(), e.element.clone()))
         .collect();
-    assert!(
-        keys.windows(2).all(|w| w[0] < w[1]),
-        "the divergence ledger must be sorted by (scenario, element) without duplicates"
-    );
+    if !keys.windows(2).all(|w| w[0] < w[1]) {
+        return Err(
+            "the divergence ledger must be sorted by (scenario, element) without duplicates"
+                .to_string(),
+        );
+    }
     file.divergence
         .into_iter()
         .map(|e| {
-            assert!(
-                e.owner.starts_with('#') && e.owner[1..].parse::<u32>().is_ok(),
-                "{}/{}: owner {:?} must name a site PR as #<number>",
-                e.scenario,
-                e.element,
-                e.owner
-            );
-            ((e.scenario, e.element), e.owner)
+            if e.owner.starts_with('#') && e.owner[1..].parse::<u32>().is_ok() {
+                Ok(((e.scenario, e.element), e.owner))
+            } else {
+                Err(format!(
+                    "{}/{}: owner {:?} must name a site PR as #<number>",
+                    e.scenario, e.element, e.owner
+                ))
+            }
         })
         .collect()
 }
 
-fn golden_text(name: &str) -> String {
+pub fn golden_text(name: &str) -> String {
     fs::read_to_string(
         corpus_dir()
             .join("scenarios")
@@ -96,8 +122,19 @@ fn golden_text(name: &str) -> String {
     .expect("a golden scorecard")
 }
 
+/// A ledger key.
+pub fn element(scenario: &str, element: &str) -> (String, String) {
+    (scenario.to_string(), element.to_string())
+}
+
 /// The elements of one scenario the engine does not reproduce.
 pub fn divergences_of(case: &Case) -> BTreeSet<String> {
+    divergences_against(case, &golden_text(&case.name))
+}
+
+/// The same, against `want_text` in place of a scored scenario's golden document.
+/// An unreachable scenario's golden is its reason, read from `case`.
+pub fn divergences_against(case: &Case, want_text: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let outcome = replay(&case.scenario, Arc::new(default_handlers()));
     match (&case.golden, outcome) {
@@ -111,15 +148,19 @@ pub fn divergences_of(case: &Case) -> BTreeSet<String> {
             out.insert(UNREACHABLE.to_string());
         }
         (Golden::Scorecard(_), RunOutcome::Complete(report)) => {
-            let want_text = golden_text(&case.name);
             let got_text = to_wire_json(&report.scorecard);
             if want_text == got_text {
                 return out;
             }
-            let want: Value = serde_json::from_str(&want_text).expect("golden JSON");
+            let want: Value = serde_json::from_str(want_text).expect("golden JSON");
             let got: Value = serde_json::from_str(&got_text).expect("engine JSON");
             for (key, value) in want.as_object().expect("a scorecard object") {
                 if key != "results" && got.get(key) != Some(value) {
+                    out.insert(key.clone());
+                }
+            }
+            for key in got.as_object().expect("a scorecard object").keys() {
+                if want.get(key).is_none() {
                     out.insert(key.clone());
                 }
             }
@@ -178,7 +219,7 @@ pub fn compare_with_ledger(
     for (element, owner) in ledger {
         if in_scope(element) && !actual.contains(element) {
             problems.push(format!(
-                "{}/{}: now matches the site; remove this entry (owner {owner}) from tests/fixtures/web-audit-divergences.toml",
+                "{}/{}: now matches the site; remove this entry (owner {owner}) from tests/fixtures/web-audit-divergences.toml, and site_sha with the last one",
                 element.0, element.1
             ));
         }

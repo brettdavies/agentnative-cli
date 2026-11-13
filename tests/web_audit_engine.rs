@@ -25,7 +25,9 @@ use agentnative::web_audit::fetch::FetchInit;
 use agentnative::web_audit::headers::Headers;
 use agentnative::web_audit::locality::{Locality, Resolver};
 use agentnative::web_audit::mock::{MockResponse, MockRule, MockTransport};
-use agentnative::web_audit::registry::{AntecedentToken, CHECKS, HANDLER_KINDS, WebCheck};
+use agentnative::web_audit::registry::{
+    AntecedentToken, CHECKS, HANDLER_KINDS, MCP_DISCOVERY, WebCheck,
+};
 use agentnative::web_audit::scorecard::{
     DeclaredSiteType, EngineResult, EvidenceItem, NaReason, ScorecardStatus,
 };
@@ -162,8 +164,14 @@ fn stand_in_handlers() -> Arc<HandlerSet> {
 fn healthy_rules() -> Vec<MockRule> {
     vec![
         MockRule::new("GET", BASE).response(html(200)),
-        MockRule::new("GET", &format!("{BASE}.well-known/mcp.json"))
-            .response(json_body(json!({ "mcp_endpoint": "/mcp" }))),
+        MockRule::new(
+            "GET",
+            &format!(
+                "{BASE}{}",
+                MCP_DISCOVERY.well_known[0].trim_start_matches('/')
+            ),
+        )
+        .response(json_body(json!({ "mcp_endpoint": "/mcp" }))),
         MockRule::new("POST", &format!("{BASE}mcp"))
             .body_contains("notifications/initialized")
             .response(MockResponse::ok(202, &[], b"")),
@@ -232,6 +240,20 @@ impl ProgressSink for Collected {
     }
 }
 
+/// What `healthy_transport` leaves unmet: it has no JSON Schemas link, and its MCP
+/// endpoint answers without asking for a sign-in.
+const UNMET_ON_A_HEALTHY_TARGET: [AntecedentToken; 3] = [
+    AntecedentToken::SchemasRef,
+    AntecedentToken::McpAuthRequired,
+    AntecedentToken::McpAuth,
+];
+
+/// With no endpoint found, the trail holds one row per well-known card, one each
+/// for the AI and API catalogs, and two probes of each common path.
+fn discovery_trail_len() -> usize {
+    MCP_DISCOVERY.well_known.len() + 2 + 2 * MCP_DISCOVERY.common_paths.len()
+}
+
 #[test]
 fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     let transport = healthy_transport();
@@ -243,7 +265,7 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
     let ids: Vec<&str> = report.results.iter().map(|r| r.check.id).collect();
     let registry: Vec<&str> = CHECKS.iter().map(|c| c.id).collect();
     assert_eq!(ids, registry, "results follow registry order");
-    assert_eq!(report.scorecard.results.len(), 68);
+    assert_eq!(report.scorecard.results.len(), CHECKS.len());
     assert!(report.complete);
     // The stand-in set registers handler kinds and the api-description rule,
     // so retained-document is unported here; the protected-resource rows
@@ -258,15 +280,26 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         Some("https://example.com/mcp")
     );
     assert_eq!(
-        report.scorecard.summary.pass, 62,
-        "{:?}",
+        (report.scorecard.summary.pass
+            + report.scorecard.summary.n_a
+            + report.scorecard.summary.skip) as usize,
+        CHECKS.len(),
+        "every row passes, is n_a or skips: {:?}",
         report.scorecard.summary
     );
-    assert_eq!(report.scorecard.summary.n_a, 5);
     assert_eq!(
-        report.scorecard.summary.skip, 1,
-        "the unported retained-document row"
+        report.scorecard.summary.skip as usize,
+        report.unported.len(),
+        "one skip per unported row"
     );
+    for result in &report.results {
+        assert_eq!(
+            result.status == ScorecardStatus::NA,
+            UNMET_ON_A_HEALTHY_TARGET.contains(&result.check.antecedent),
+            "{}: n_a exactly when its antecedent is unmet",
+            result.check.id
+        );
+    }
     assert_eq!(report.scorecard.score.relative, 100);
     let auth = row(&report, "oauth-protected-resource");
     assert_eq!(auth.status, ScorecardStatus::NA);
@@ -335,7 +368,7 @@ fn a_healthy_target_runs_both_waves_into_a_full_scorecard() {
         progress.discovery,
         vec![Some("https://example.com/mcp".to_string())]
     );
-    assert_eq!(progress.ids.len(), 68);
+    assert_eq!(progress.ids.len(), CHECKS.len());
 }
 
 #[test]
@@ -362,7 +395,7 @@ fn unmet_antecedents_cascade_and_absent_mays_become_optional() {
     let report = complete(run_web_audit(input(transport, stand_in_handlers())));
 
     assert_eq!(report.scorecard.mcp_endpoint, None);
-    assert_eq!(report.scorecard.mcp_discovery.len(), 10);
+    assert_eq!(report.scorecard.mcp_discovery.len(), discovery_trail_len());
     let expect_unmet = |id: &str, evidence: &str| {
         let r = row(&report, id);
         assert_eq!(r.status, ScorecardStatus::NA, "{id}");
@@ -457,7 +490,7 @@ fn silence_and_edge_errors_are_unreachable_but_any_real_status_audits() {
             reason, discovery, ..
         } => {
             assert!(reason.starts_with("https://example.com/ did not answer any probe (no HTTP response from the root fetch or MCP discovery)."), "{reason}");
-            assert_eq!(discovery.len(), 10);
+            assert_eq!(discovery.len(), discovery_trail_len());
             assert_eq!(discovery[0].get("status"), Some(&Value::Null));
         }
         RunOutcome::Complete(_) => panic!("a silent target scored"),
@@ -476,7 +509,7 @@ fn silence_and_edge_errors_are_unreachable_but_any_real_status_audits() {
 
     let not_found = Arc::new(MockTransport::new(vec![], MockResponse::ok(404, &[], b"")));
     let report = complete(run_web_audit(input(not_found, stand_in_handlers())));
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert_eq!(
         row(&report, "agent-friendly-404").status,
         ScorecardStatus::Absent
@@ -740,7 +773,7 @@ fn deadline_skips(report: &RunReport) -> usize {
 fn a_tarpit_that_honors_timeouts_ends_inside_the_deadline_with_shortened_late_requests() {
     let (report, elapsed, seen) = run_stalled(Stall::HonorTimeout);
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     assert!(deadline_skips(&report) > 0);
     let probes: Vec<&(String, Duration)> = seen
@@ -760,7 +793,7 @@ fn a_tarpit_that_honors_timeouts_ends_inside_the_deadline_with_shortened_late_re
 fn a_tarpit_that_never_returns_is_abandoned_at_the_deadline() {
     let (report, elapsed, _) = run_stalled(Stall::Forever);
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     // No stalled request ever returned: each caller reported its timeout at
     // its own deadline, and the checks still queued at the audit's deadline
@@ -779,7 +812,7 @@ fn a_tarpit_that_never_returns_is_abandoned_at_the_deadline() {
 fn a_slow_loris_body_ends_inside_the_deadline() {
     let (report, elapsed, seen) = run_stalled(Stall::Trickle);
     assert!(elapsed < Duration::from_millis(700 + 600), "{elapsed:?}");
-    assert_eq!(report.results.len(), 68);
+    assert_eq!(report.results.len(), CHECKS.len());
     assert!(!report.complete);
     assert!(deadline_skips(&report) > 0);
     let probes: Vec<&(String, Duration)> = seen

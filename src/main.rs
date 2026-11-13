@@ -45,8 +45,6 @@ use agentnative::web_audit::fetch::{NOT_HTTPS, proxy, trust};
 #[cfg(feature = "web")]
 use agentnative::web_audit::handlers::default_handlers;
 #[cfg(feature = "web")]
-use agentnative::web_audit::locality::SystemResolver;
-#[cfg(feature = "web")]
 use agentnative::web_audit::registry::{AUDIT_USER_AGENT, check_by_id};
 #[cfg(feature = "web")]
 use agentnative::web_audit::scorecard::to_wire_json;
@@ -1199,13 +1197,12 @@ fn run_web(run: WebRun) -> Result<i32, AppError> {
     };
     let defaulted_https = scheme_less && normalized.starts_with("https://");
 
-    let fetch = FetchHandle::new(
-        Arc::new(UreqTransport::with_trust(
+    let fetch = FetchHandle::over_ureq(
+        UreqTransport::with_trust(
             AUDIT_USER_AGENT,
             proxy::proxy_from_env(),
             trust::TrustConfig::new(ca_certs),
-        )),
-        Arc::new(SystemResolver),
+        ),
         AUDIT_USER_AGENT,
     );
     let fetch = match credential {

@@ -16,12 +16,12 @@ use std::sync::Arc;
 
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, ClientConnection, StreamOwned};
-use ureq::unversioned::resolver::DefaultResolver;
 use ureq::unversioned::transport::{
     Buffers, ConnectProxyConnector, ConnectionDetails, Connector, Either, LazyBuffers, NextTimeout,
     TcpConnector, Transport, TransportAdapter,
 };
 
+use super::audit_resolver::ConnectResolver;
 use super::fetch::trust::{TrustClass, TrustConfig};
 
 /// The rustls client config for one trust class: TLS 1.2 and 1.3 under the
@@ -36,12 +36,17 @@ pub fn client_config(trust: &TrustConfig, class: TrustClass) -> Arc<ClientConfig
     Arc::new(config)
 }
 
-/// An agent whose HTTPS connections verify against `tls`.
-pub fn agent(config: ureq::config::Config, tls: Arc<ClientConfig>) -> ureq::Agent {
+/// An agent whose HTTPS connections verify against `tls` and whose names
+/// resolve through `resolver`.
+pub fn agent(
+    config: ureq::config::Config,
+    tls: Arc<ClientConfig>,
+    resolver: ConnectResolver,
+) -> ureq::Agent {
     let connector = ConnectProxyConnector::default()
         .chain(TcpConnector::default())
         .chain(TlsConnector { config: tls });
-    ureq::Agent::with_parts(config, connector, DefaultResolver::default())
+    ureq::Agent::with_parts(config, connector, resolver)
 }
 
 /// Wraps the chained connection in TLS when the URI is `https`.

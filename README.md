@@ -473,9 +473,9 @@ the challenge, the listed authorization servers, and whether a `tools/list` with
 whether it presented a token (`credentialed`).
 
 The `dns-aid` check queries public DNS-over-HTTPS resolvers, which would send a private hostname to a third party, so
-for a local or private target that row reports `n_a` with its reason stated rather than querying. `--external-dns` opts
-in. Redirects are followed but never off the target's own class: a hop from a local target to a public host, or to a
-cloud metadata address, is refused and recorded rather than taken.
+for a local or private target, or one whose class could not be established, that row reports `n_a` with its reason
+stated rather than querying. `--external-dns` opts in. Redirects are followed but never off the target's own class: a
+hop from a local target to a public host, or to a cloud metadata address, is refused and recorded rather than taken.
 
 Every request is HTTPS, at every vantage, local targets included; anc sends no plaintext request. A scheme-less target
 defaults to `https`. An explicit `http://` target, or a root that redirects to `http`, ends the run as `insecure-scheme`

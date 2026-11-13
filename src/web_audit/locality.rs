@@ -34,7 +34,7 @@
 //! - `Public`: anything else.
 
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 
 /// Where a host lives, decided before any connection is made.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,6 +100,13 @@ impl std::error::Error for ClassifyError {}
 pub trait Resolver {
     /// Every address the host resolves to, or the resolver's failure text.
     fn resolve(&self, host: &str) -> Result<Vec<IpAddr>, String>;
+
+    /// [`Resolver::resolve`] with what connecting to an address also needs: an
+    /// IPv6 link-local address's scope. The port is not meaningful.
+    fn resolve_sockets(&self, host: &str) -> Result<Vec<SocketAddr>, String> {
+        let ips = self.resolve(host)?;
+        Ok(ips.into_iter().map(|ip| SocketAddr::new(ip, 0)).collect())
+    }
 }
 
 /// The machine's own configured resolver, through `std::net::ToSocketAddrs`.
@@ -109,11 +116,22 @@ pub struct SystemResolver;
 
 impl Resolver for SystemResolver {
     fn resolve(&self, host: &str) -> Result<Vec<IpAddr>, String> {
+        let addrs = self.resolve_sockets(host)?;
+        Ok(addrs.into_iter().map(|a| a.ip()).collect())
+    }
+
+    fn resolve_sockets(&self, host: &str) -> Result<Vec<SocketAddr>, String> {
         (host, 0)
             .to_socket_addrs()
-            .map(|addrs| addrs.map(|a| a.ip()).collect())
+            .map(Iterator::collect)
             .map_err(|e| e.to_string())
     }
+}
+
+/// The one spelling of a name its lookups go by: DNS names are case-insensitive,
+/// and a URL can spell one with its root dot.
+pub fn name_of(host: &str) -> String {
+    host.trim().trim_end_matches('.').to_ascii_lowercase()
 }
 
 /// The IMDS IPv6 address AWS serves instance metadata on.
@@ -397,16 +415,16 @@ pub fn classify_host(host: &str, resolver: &dyn Resolver) -> Result<Locality, Cl
     if let Some(class) = classify_literal(host)? {
         return Ok(class);
     }
-    let name = host.trim().trim_end_matches('.');
+    let name = name_of(host);
     let addrs = resolver
-        .resolve(name)
+        .resolve(&name)
         .map_err(|detail| ClassifyError::Unresolvable {
-            host: name.to_string(),
+            host: name.clone(),
             detail,
         })?;
     if addrs.is_empty() {
         return Err(ClassifyError::Unresolvable {
-            host: name.to_string(),
+            host: name,
             detail: "no addresses returned".to_string(),
         });
     }

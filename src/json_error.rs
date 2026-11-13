@@ -102,8 +102,8 @@ pub enum NextAction {
     ChooseBin,
     /// Run `command`, the same invocation corrected.
     Rerun,
-    /// Run `command` once the target is up: the same `anc web` target with
-    /// `--verbose`, which reports each probe.
+    /// Run `command` once the target is up and its certificate passes: the same
+    /// `anc web` target and roots with `--verbose`, which reports each probe.
     Retry,
     /// Pass a target `anc web` can read: `command` prints the forms it
     /// accepts.

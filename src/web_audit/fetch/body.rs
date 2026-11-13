@@ -1,11 +1,12 @@
-//! The three body-cap regimes, applied to decoded bytes.
+//! The three body-cap regimes, applied to the bytes the transport hands over:
+//! gzip decoded, any other encoding as the server sent it.
 //!
 //! `Some(0)` never touches the body, `Some(n)` keeps the first `n` bytes and
 //! notes when more followed, and `None` reads everything up to the root
 //! ceiling, past which the read stops with the same note. Truncation is never
 //! an error: a check evaluates what it received, with the flag as evidence.
-//! Bytes are counted after decompression, so a compression bomb stops at the
-//! ceiling too.
+//! Gzip bytes are counted after decompression, so a compression bomb stops at
+//! the ceiling too.
 
 use std::io::{self, Read};
 

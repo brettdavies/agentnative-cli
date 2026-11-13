@@ -11,6 +11,7 @@ use crate::json_error::NextStep;
 use crate::spawn_env::WEB_TOKEN_ENV;
 use crate::web_audit::credential::{TokenError, TokenSource};
 use crate::web_audit::fetch::trust::CaCertError;
+use crate::web_audit::locality::{Locality, METADATA_ENDPOINT, classify_literal};
 
 /// A run that ended without a scorecard, and what to do about it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -160,6 +161,19 @@ pub fn invalid_target_failure(token: &str, reason: &str) -> Failure {
     }
 }
 
+/// The reason the root fetch was refused, when the target is a cloud metadata
+/// endpoint: by shape, or by what its name resolved to. Trying again changes neither.
+pub fn metadata_target_refusal<'a>(normalized: &str, root_error: &'a str) -> Option<&'a str> {
+    let reason = root_error.strip_prefix("blocked: ")?;
+    let host = url::Url::parse(normalized).ok();
+    let host = host
+        .as_ref()
+        .and_then(url::Url::host_str)
+        .unwrap_or_default();
+    let by_shape = classify_literal(host).is_ok_and(|class| class == Some(Locality::Metadata));
+    (by_shape || reason.ends_with(METADATA_ENDPOINT)).then_some(reason)
+}
+
 /// `--check` named an id the compiled registry does not carry, which is a
 /// usage error rather than an unreachable surface.
 pub fn unknown_check_failure(id: &str) -> Failure {
@@ -266,6 +280,29 @@ fn failure_meaning(exit_code: i32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_root_is_a_metadata_target_by_shape_or_by_what_its_name_resolved_to() {
+        let by_shape = "blocked: ipv4 169.254.169.254 is in blocked range 169.254.0.0/16";
+        assert_eq!(
+            metadata_target_refusal("https://169.254.169.254/", by_shape),
+            by_shape.strip_prefix("blocked: ")
+        );
+        let by_name = "blocked: rebind.example is a cloud metadata endpoint";
+        assert_eq!(
+            metadata_target_refusal("https://rebind.example/", by_name),
+            by_name.strip_prefix("blocked: ")
+        );
+        for (target, other) in [
+            (
+                "https://down.example/",
+                "blocked: could not resolve down.example",
+            ),
+            ("https://example.com/", "NetworkError: connection refused"),
+        ] {
+            assert_eq!(metadata_target_refusal(target, other), None, "{other}");
+        }
+    }
 
     #[test]
     fn a_retry_command_quotes_a_target_a_shell_would_split() {
